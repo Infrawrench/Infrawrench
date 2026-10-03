@@ -14,6 +14,7 @@ import {
   rdsClusterMetrics,
   dynamoDbTableMetrics,
   elastiCacheClusterMetrics,
+  elastiCacheServerlessCacheMetrics,
   redshiftClusterMetrics,
   openSearchDomainMetrics,
   documentDbClusterMetrics,
@@ -43,6 +44,7 @@ import {
 } from "./metrics/storage-metrics.js";
 import {
   sageMakerEndpointMetrics,
+  bedrockModelMetrics,
   codeBuildProjectMetrics,
   cloudWatchLogGroupMetrics,
   wafWebAclMetrics,
@@ -230,6 +232,10 @@ export async function fetchMetricSeries(
       return mskClusterMetrics(ctx, resource);
     case "sagemaker-endpoint":
       return sageMakerEndpointMetrics(ctx, resource);
+    case "bedrock-model":
+      return bedrockModelMetrics(ctx, resource);
+    case "elasticache-serverless-cache":
+      return elastiCacheServerlessCacheMetrics(ctx, resource);
     case "codebuild-project":
       return codeBuildProjectMetrics(ctx, resource);
     case "cloudwatch-log-group":

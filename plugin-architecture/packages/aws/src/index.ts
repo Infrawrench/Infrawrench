@@ -10,6 +10,7 @@ export { LambdaFunctionResourceType } from "./resources/lambda-function.js";
 export { ECSServiceResourceType } from "./resources/ecs-service.js";
 export { DynamoDBTableResourceType } from "./resources/dynamodb-table.js";
 export { ElastiCacheClusterResourceType } from "./resources/elasticache-cluster.js";
+export { ElastiCacheServerlessCacheResourceType } from "./resources/elasticache-serverless-cache.js";
 export { SQSQueueResourceType } from "./resources/sqs-queue.js";
 export { SNSTopicResourceType } from "./resources/sns-topic.js";
 export { ECRRepositoryResourceType } from "./resources/ecr-repository.js";

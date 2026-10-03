@@ -15,6 +15,7 @@ import { LambdaFunctionResourceType } from "./resources/lambda-function.js";
 import { ECSServiceResourceType } from "./resources/ecs-service.js";
 import { DynamoDBTableResourceType } from "./resources/dynamodb-table.js";
 import { ElastiCacheClusterResourceType } from "./resources/elasticache-cluster.js";
+import { ElastiCacheServerlessCacheResourceType } from "./resources/elasticache-serverless-cache.js";
 import { SQSQueueResourceType } from "./resources/sqs-queue.js";
 import { SNSTopicResourceType } from "./resources/sns-topic.js";
 import { ECRRepositoryResourceType } from "./resources/ecr-repository.js";
@@ -179,6 +180,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   RDSClusterResourceType,
   DynamoDBTableResourceType,
   ElastiCacheClusterResourceType,
+  ElastiCacheServerlessCacheResourceType,
   RedshiftClusterResourceType,
   OpenSearchDomainResourceType,
   NeptuneClusterResourceType,

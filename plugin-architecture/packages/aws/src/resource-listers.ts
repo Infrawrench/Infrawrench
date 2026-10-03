@@ -644,16 +644,36 @@ export async function listLambdaFunctions(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.jsonGet<{ Functions?: Record<string, unknown>[] }>(
-    "lambda",
-    "/2015-03-31/functions",
-  );
-  const functions = data.Functions ?? [];
+  // ListFunctions pages at 50 by default; follow NextMarker so accounts with
+  // more functions than one page still list all of them.
+  const functions: Record<string, unknown>[] = [];
+  let marker: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const path = marker
+      ? `/2015-03-31/functions?MaxItems=50&Marker=${encodeURIComponent(marker)}`
+      : "/2015-03-31/functions?MaxItems=50";
+    const data = await ctx.jsonGet<{
+      Functions?: Record<string, unknown>[];
+      NextMarker?: string | null;
+    }>("lambda", path);
+    functions.push(...(data.Functions ?? []));
+    marker = data.NextMarker ?? undefined;
+    if (!marker) break;
+  }
   return functions.map((fn) => {
     const name = String(fn["FunctionName"] ?? "");
     // ListFunctions returns the full FunctionConfiguration, VPC attachment
     // included: no per-function GetFunctionConfiguration needed.
     const vpcConfig = fn["VpcConfig"] as Record<string, unknown> | undefined;
+    const logging = fn["LoggingConfig"] as Record<string, unknown> | undefined;
+    const snapStart = fn["SnapStart"] as Record<string, unknown> | undefined;
+    const ephemeral = fn["EphemeralStorage"] as Record<string, unknown> | undefined;
+    const capacityProvider = (
+      fn["CapacityProviderConfig"] as Record<string, unknown> | undefined
+    )?.["LambdaManagedInstancesCapacityProviderConfig"] as Record<string, unknown> | undefined;
+    const architectures = Array.isArray(fn["Architectures"])
+      ? (fn["Architectures"] as string[])
+      : [];
     return {
       id: ctx.id(accountId, "lambda-function", name),
       pluginId: "aws",
@@ -665,9 +685,21 @@ export async function listLambdaFunctions(
         region: ctx.region,
         runtime: String(fn["Runtime"] ?? ""),
         handler: String(fn["Handler"] ?? ""),
+        // Lambda omits Architectures on functions created before arm64
+        // existed; those all run on x86_64, the documented default.
+        architecture: architectures[0] ?? "x86_64",
+        packageType: String(fn["PackageType"] ?? "Zip"),
         codeSize: Number(fn["CodeSize"] ?? 0),
         memorySize: Number(fn["MemorySize"] ?? 0),
         timeout: Number(fn["Timeout"] ?? 0),
+        ephemeralStorageMb: Number(ephemeral?.["Size"] ?? 512),
+        logFormat: String(logging?.["LogFormat"] ?? "Text"),
+        applicationLogLevel: String(logging?.["ApplicationLogLevel"] ?? ""),
+        systemLogLevel: String(logging?.["SystemLogLevel"] ?? ""),
+        logGroup: String(logging?.["LogGroup"] ?? `/aws/lambda/${name}`),
+        snapStart: String(snapStart?.["ApplyOn"] ?? "None"),
+        capacityProviderArn: String(capacityProvider?.["CapacityProviderArn"] ?? ""),
+        durableExecution: Boolean(fn["DurableConfig"]),
         state: String(fn["State"] ?? fn["LastUpdateStatus"] ?? "Active"),
         lastModified: String(fn["LastModified"] ?? ""),
         roleArn: String(fn["Role"] ?? ""),
@@ -867,8 +899,10 @@ export async function listElastiCacheClusters(
       resolvedOutputs: {
         endpoint: String(endpoint?.["Address"] ?? ""),
         port: String(endpoint?.["Port"] ?? ""),
+        // Valkey is wire-compatible with Redis and clients only know the
+        // redis:// scheme, so it gets that rather than its engine name.
         connectionString: endpoint?.["Address"]
-          ? `${String(c["Engine"] ?? "redis")}://${String(endpoint["Address"])}:${String(endpoint["Port"] ?? 6379)}`
+          ? `${c["Engine"] === "valkey" ? "redis" : String(c["Engine"] ?? "redis")}://${String(endpoint["Address"])}:${String(endpoint["Port"] ?? 6379)}`
           : "",
       },
       secretStates: [],

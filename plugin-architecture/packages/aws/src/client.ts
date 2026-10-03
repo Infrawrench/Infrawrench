@@ -85,6 +85,7 @@ import {
   listBatchJobQueues,
   listSageMakerEndpoints,
   listBedrockModels,
+  listElastiCacheServerlessCaches,
   listRoute53HealthChecks,
   listCognitoUserPools,
   listBackupVaults,
@@ -119,6 +120,11 @@ import {
   fetchMetricSeries as fetchMetricSeriesImpl,
 } from "./dashboard-metrics.js";
 import { estimateAwsCost } from "./cost-estimate.js";
+import {
+  buildServerlessCacheModifyParams,
+  modifyServerlessCache,
+  updateLambdaFunction,
+} from "./update-handlers.js";
 import { fetchEc2MonthlyPrices, HOURS_PER_MONTH as PRICING_HOURS_PER_MONTH } from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
 import { fetchAwsCommitments } from "./commitments.js";
@@ -182,6 +188,14 @@ export class AWSClient implements PluginClient {
     "route53-record-set",
     "cloudfront-distribution",
   ]);
+
+  /**
+   * Regional types listed from the credential's home region only. Bedrock
+   * models are a per-region catalog with the same ids everywhere, so a
+   * fan-out would yield one duplicate per region, and the Converse playground
+   * signs against the home region anyway.
+   */
+  private static readonly HOME_REGION_TYPES = new Set(["bedrock-model"]);
 
   /**
    * Maximum number of regions queried in parallel during a fan-out list. AWS
@@ -315,6 +329,7 @@ export class AWSClient implements PluginClient {
     "ecs-service": listECSServices,
     "dynamodb-table": listDynamoDBTables,
     "elasticache-cluster": listElastiCacheClusters,
+    "elasticache-serverless-cache": listElastiCacheServerlessCaches,
     "sqs-queue": listSQSQueues,
     "sns-topic": listSNSTopics,
     "ecr-repository": listECRRepositories,
@@ -377,8 +392,9 @@ export class AWSClient implements PluginClient {
     const lister = AWSClient.LISTERS[typeId];
     if (!lister) throw new Error(`AWS plugin: unknown resource type "${typeId}"`);
 
-    // Global resources have no concept of region: list them once.
-    if (AWSClient.GLOBAL_TYPES.has(typeId)) {
+    // Global resources have no concept of region: list them once. Home-region
+    // types are regional but only meaningful where the playground runs.
+    if (AWSClient.GLOBAL_TYPES.has(typeId) || AWSClient.HOME_REGION_TYPES.has(typeId)) {
       return lister(this.ctxFor(this.creds.region), accountId);
     }
 
@@ -806,6 +822,48 @@ export class AWSClient implements PluginClient {
       return {
         ...resource,
         fields: { ...resource.fields, instanceType },
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (typeId === "lambda-function") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const name = String(resource.externalId ?? resource.fields["name"] ?? "");
+      if (!name) throw new Error("Cannot determine the Lambda function name");
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      const updated = await updateLambdaFunction(this.credsFor(region), name, fields);
+      const logging = updated["LoggingConfig"] as Record<string, unknown> | undefined;
+      const ephemeral = updated["EphemeralStorage"] as Record<string, unknown> | undefined;
+      // Overlay what Lambda echoed back (it returns the full configuration),
+      // falling back to the submitted value for anything it left out.
+      const overlay: Record<string, string | number | boolean> = { ...fields };
+      if (typeof updated["MemorySize"] === "number") overlay["memorySize"] = updated["MemorySize"];
+      if (typeof updated["Timeout"] === "number") overlay["timeout"] = updated["Timeout"];
+      if (typeof updated["Runtime"] === "string") overlay["runtime"] = updated["Runtime"];
+      if (typeof ephemeral?.["Size"] === "number")
+        overlay["ephemeralStorageMb"] = ephemeral["Size"];
+      if (logging) {
+        overlay["logFormat"] = String(logging["LogFormat"] ?? "Text");
+        overlay["applicationLogLevel"] = String(logging["ApplicationLogLevel"] ?? "");
+        overlay["systemLogLevel"] = String(logging["SystemLogLevel"] ?? "");
+      }
+      return {
+        ...resource,
+        fields: { ...resource.fields, ...overlay },
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (typeId === "elasticache-serverless-cache") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const name = String(resource.externalId ?? resource.fields["name"] ?? "");
+      if (!name) throw new Error("Cannot determine the serverless cache name");
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      const params = buildServerlessCacheModifyParams(name, fields, resource.fields);
+      await modifyServerlessCache(this.credsFor(region), params);
+      return {
+        ...resource,
+        fields: { ...resource.fields, ...fields, status: "modifying" },
         updatedAt: new Date().toISOString(),
       };
     }

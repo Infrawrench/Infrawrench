@@ -10,13 +10,13 @@ The AWS plugin covers the services most teams live in day to day.
 
 - **Compute** — EC2 instances, Auto Scaling Groups, Lambda functions, ECS services.
 - **Kubernetes** — EKS clusters (links to the [Kubernetes plugin](./kubernetes.md) for pod-level access).
-- **Databases** — RDS (Postgres, MySQL, MariaDB, SQL Server, Oracle), Aurora, DocumentDB, Neptune, Redshift, DynamoDB, ElastiCache (Redis / Memcached), OpenSearch Service domains, DB subnet groups.
+- **Databases** — RDS (Postgres, MySQL, MariaDB, SQL Server, Oracle), Aurora, DocumentDB, Neptune, Redshift, DynamoDB, ElastiCache node-based clusters (Valkey / Redis OSS / Memcached), ElastiCache Serverless caches, OpenSearch Service domains, DB subnet groups.
 - **Storage** — S3 buckets, EBS volumes, EFS file systems.
 - **Networking** — VPC, Subnets, Security Groups, Internet / NAT Gateways, Elastic IPs, Load Balancers, API Gateway, CloudFront.
 - **Messaging** — SQS, SNS.
 - **Secrets & identity** — Secrets Manager, IAM users / roles / policies, KMS keys.
 - **CI/CD** — CodeBuild, CodePipeline, Step Functions, Glue, CloudFormation stacks.
-- **ML & AI** — SageMaker endpoints, Bedrock foundation models (chat playground).
+- **ML & AI** — SageMaker endpoints, Bedrock foundation models and inference profiles (chat playground and usage metrics).
 
 ## Credentials
 
@@ -51,12 +51,26 @@ The probe resolves the caller with `sts:GetCallerIdentity` (needs no permission)
 - **DynamoDB schema & indexes tab** — view the primary key, attribute definitions, and existing global/local secondary indexes on a table. Add or delete GSIs from the same page; LSIs are creation-only (DynamoDB rule). The create form also accepts an optional `secondaryIndexesJson` blob so you can declare GSIs and LSIs up front.
 - **Send test messages** to SQS queues, SNS topics, Kinesis streams, and EventBridge rules from a **Publish** tab on the detail page — see [Send test messages](../features/send-test-message.md). The IAM user needs `sqs:SendMessage`, `sns:Publish`, `kinesis:PutRecord`, and `events:PutEvents` respectively.
 - **Secret export to K8s** is supported for RDS, Aurora, Redshift, ElastiCache, S3, Lambda, SQS, SNS, DynamoDB, ECS, EKS — [Secret export](../features/secret-export-to-kubernetes.md).
-- **Bedrock playground** on Bedrock foundation models — the list shows on-demand, text-output models in your account's region; open one and use the **Playground** tab to chat with it through the Converse API. Replies arrive as a single whole message (non-streaming), and the full conversation history is sent on each turn. Models that require an inference profile or provisioned throughput are filtered out, since they can't be called by bare model ID.
+- **Bedrock playground** on Bedrock models. The list covers your account's home region and has two kinds of entry:
+  - **Foundation models** that can be called on demand by model ID and produce text.
+  - **Inference profiles**: the cross-region profiles Bedrock defines (`us.…`, `eu.…`, `apac.…`, `global.…`) and any application inference profiles you created. Most models released since late 2024 can only be called through a profile, so this is where current Claude, Llama and Nova models appear. A profile is listed when it routes to a text-output model; its **Routes to** field names the model behind it.
+
+  Open one and use the **Playground** tab to chat with it through the Converse API. Replies arrive as a single whole message (non-streaming), and the full conversation history is sent on each turn. Models that need provisioned throughput are still left out. The **Lifecycle** field reads `LEGACY` for models AWS has scheduled for end of life. Listing profiles needs `bedrock:ListInferenceProfiles` (without it you still get the on-demand models), and chatting needs `bedrock:InvokeModel`.
+
+- **Bedrock usage metrics**: each Bedrock model or profile has a Metrics tab built from `AWS/Bedrock` CloudWatch metrics: invocations, latency, time to first token, input, output and prompt-cache tokens, client and server errors, throttles, and estimated tokens-per-minute quota usage.
+- **Edit Lambda functions**: memory, timeout, ephemeral storage (`/tmp`), runtime, log format and application and system log levels can be changed from **Edit** (`lambda:UpdateFunctionConfiguration`). The detail page also shows the architecture, package type, log group (linked in the [dependency graph](../features/dependency-graph.md)), SnapStart setting, whether the function is a durable function, and the capacity provider for functions on Lambda Managed Instances. The create form defaults to arm64 (Graviton), which is billed at a lower rate, and offers Node.js 24 and 22, Python 3.12 to 3.14 and Ruby 3.3 to 4.0; Node.js 20 was dropped because AWS deprecated it in April 2026.
+- **ElastiCache Serverless caches**: create Valkey, Redis OSS or Memcached serverless caches with optional data-storage and ECPU ceilings and a security group picker; the cache is placed in the default VPC's subnets. **Edit** changes the description, both usage ceilings and the snapshot retention and time (`elasticache:ModifyServerlessCache`). Valkey and Redis OSS caches get a **Valkey** or **Redis** tab with a TLS (`rediss://`) connection string, and every cache has a Metrics tab: ECPUs consumed, data stored, hit rate, hits and misses, commands, throttled commands, read and write latency, connections, items, evictions and network bytes. Node-based ElastiCache clusters running Valkey also get the Valkey tab now.
 - **Read-only manifest view** for most resources.
 
 ![DynamoDB detail page showing the Schema & indexes tab with a primary key section, an attribute definitions table, and the global secondary index pills with their build status](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aws/dynamodb-schema-indexes.png)
 
 ![DynamoDB Create resource form with the optional "Secondary indexes (optional)" textarea expanded showing an example JSON value](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aws/dynamodb-create-secondary-indexes.png)
+
+## Size pickers
+
+The create forms offer current-generation sizes: Graviton (`db.t4g`, `db.m7g`/`db.r7g`, and Graviton4 `db.m8g`/`db.r8g`) RDS classes, `cache.t4g`, `cache.m7g` and `cache.r7g` ElastiCache nodes, Graviton3 and Graviton4 OpenSearch instances, and RA3 and Graviton RG nodes for Redshift. DC2 Redshift nodes are no longer offered, because AWS stopped accepting new DC2 clusters. Graviton4 and RG sizes are not available in every region yet; if AWS rejects one, pick the previous generation.
+
+The region pickers include every commercial region, including the opt-in regions added since 2023: Calgary (`ca-west-1`), Mexico (`mx-central-1`), Melbourne, Malaysia, New Zealand and Thailand (`ap-southeast-4` to `ap-southeast-7`) and Taipei (`ap-east-2`). Opt-in regions must be enabled on the account before anything can be created there.
 
 ## Tips & limits
 

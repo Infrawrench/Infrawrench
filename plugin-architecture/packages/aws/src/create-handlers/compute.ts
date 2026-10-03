@@ -790,16 +790,29 @@ export async function computeGetCreateConfig(
           options: [
             { id: "nodejs24.x", label: "Node.js 24.x" },
             { id: "nodejs22.x", label: "Node.js 22.x" },
-            { id: "nodejs20.x", label: "Node.js 20.x" },
             { id: "python3.14", label: "Python 3.14" },
             { id: "python3.13", label: "Python 3.13" },
             { id: "python3.12", label: "Python 3.12" },
+            { id: "ruby4.0", label: "Ruby 4.0" },
             { id: "ruby3.4", label: "Ruby 3.4" },
             { id: "ruby3.3", label: "Ruby 3.3" },
           ],
           defaultValue: "nodejs24.x",
           description:
             "Java and .NET runtimes require pre-built deployment packages; use the AWS console to upload those.",
+        },
+        {
+          key: "architecture",
+          label: "Architecture",
+          kind: "select",
+          required: false,
+          options: [
+            { id: "arm64", label: "arm64 (Graviton)" },
+            { id: "x86_64", label: "x86_64" },
+          ],
+          defaultValue: "arm64",
+          description:
+            "Every supported runtime runs on both. arm64 is billed at a lower rate per GB-second; it can only be changed later by redeploying the code.",
         },
         {
           key: "role",
@@ -825,7 +838,7 @@ export async function computeGetCreateConfig(
           required: true,
           showWhen: {
             fieldKey: "runtime",
-            fieldValues: ["nodejs24.x", "nodejs22.x", "nodejs20.x"],
+            fieldValues: ["nodejs24.x", "nodejs22.x"],
           },
           defaultValue: nodejsDefault,
           description: "Saved as index.js. Handler entry point is index.handler.",
@@ -850,7 +863,7 @@ export async function computeGetCreateConfig(
           kind: "code",
           codeLanguage: "ruby",
           required: true,
-          showWhen: { fieldKey: "runtime", fieldValues: ["ruby3.4", "ruby3.3"] },
+          showWhen: { fieldKey: "runtime", fieldValues: ["ruby4.0", "ruby3.4", "ruby3.3"] },
           defaultValue: rubyDefault,
           description:
             "Saved as lambda_function.rb. Handler entry point is lambda_function.lambda_handler.",
@@ -1204,6 +1217,7 @@ export async function computeCreateResource(
     const role = fields["role"] ?? "";
     const memorySize = fields["memorySize"] ?? "128";
     const timeout = fields["timeout"] ?? "3";
+    const architecture = fields["architecture"] === "x86_64" ? "x86_64" : "arm64";
 
     let handler: string;
     let code: string;
@@ -1302,6 +1316,7 @@ export async function computeCreateResource(
       Role: role,
       Handler: handler,
       Code: { ZipFile: zipBase64 },
+      Architectures: [architecture],
       MemorySize: parseInt(memorySize, 10),
       Timeout: parseInt(timeout, 10),
     });
@@ -1327,6 +1342,8 @@ export async function computeCreateResource(
         region,
         runtime,
         handler,
+        architecture,
+        packageType: "Zip",
         codeSize: String(codeBytes.length),
         memorySize,
         timeout,

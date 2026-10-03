@@ -30,6 +30,7 @@ export {
   listDocumentDBClusters,
   listDBSubnetGroups,
   listEFSFileSystems,
+  listElastiCacheServerlessCaches,
 } from "./resource-listers-extended/database.js";
 export {
   listKinesisStreams,
