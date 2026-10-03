@@ -40,6 +40,8 @@ import {
   agentToolLabel,
   agentToolLoginCommand,
   agentToolPackage,
+  shellDoubleQuoteContent,
+  shellQuote,
 } from "./launch-command.js";
 import type { AgentSetupPlan, AgentSurface, AgentTool, T3CodeAccess } from "./types.js";
 
@@ -834,12 +836,4 @@ export function t3CodeConnectNextStep(status: T3CodeConnectStatus | null): strin
   if (!status.desired) return "Enable exposure for this server (t3 connect link).";
   if (!status.linked) return "Start T3 Code on the server so it provisions its environment link.";
   return null;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function shellDoubleQuoteContent(value: string): string {
-  return value.replace(/(["\\$`])/g, "\\$1").replace(/\n/g, "\\n");
 }

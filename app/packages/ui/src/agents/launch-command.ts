@@ -915,10 +915,12 @@ function packageManagerName(spec: string): string {
   return spec.split("@")[0] || spec;
 }
 
-function shellQuote(value: string): string {
+/** POSIX single-quote `value` as one shell word. */
+export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function shellDoubleQuoteContent(value: string): string {
+/** Escape `value` for use inside a double-quoted shell string (newlines become `\n`). */
+export function shellDoubleQuoteContent(value: string): string {
   return value.replace(/(["\\$`])/g, "\\$1").replace(/\n/g, "\\n");
 }
