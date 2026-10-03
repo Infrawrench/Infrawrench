@@ -10,6 +10,7 @@ import {
   type LogWorkspaceQuery,
 } from "@infrawrench/client-core";
 import type { LogResourceOption, LogWorkspaceClient } from "./types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 const POLL_INTERVAL_MS = 3000;
 const TAIL_OPTIONS = [100, 500, 1000];
@@ -603,7 +604,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                   className="text-on-surface-faint hover:text-white px-1"
                   aria-label={gt("Remove {label}", { label: stream.label })}
                 >
-                  ×
+                  <CloseIcon size={12} />
                 </button>
               </span>
             );

@@ -1,5 +1,5 @@
 import { useGT } from "gt-react";
-import { extractHostLabel, useDataString } from "@infrawrench/ui";
+import { extractHostLabel, useDataString, CloseIcon } from "@infrawrench/ui";
 import { ConnectionFooter } from "./ConnectionFooter";
 import type { CardStatus, PinnedRow, PluginMeta } from "./types";
 
@@ -42,7 +42,7 @@ export function ResourceCard({
         aria-label={gt("Remove from dashboard")}
         className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs flex items-center justify-center"
       >
-        ✕
+        <CloseIcon size={12} />
       </button>
 
       <button type="button" onClick={onOpen} className="flex-1 flex flex-col p-5 text-left gap-3">

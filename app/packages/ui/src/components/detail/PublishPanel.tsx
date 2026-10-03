@@ -6,6 +6,7 @@ import type {
   PublishMessagePayload,
   PublishMessageResult,
 } from "@infrawrench/plugin-base";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 interface Props {
   capability: PublishPanelCapability;
@@ -373,7 +374,7 @@ function KeyValueListEditor({ value, onChange }: KeyValueListEditorProps) {
             className="text-xs text-on-surface-faint hover:text-danger px-2"
             aria-label={gt("Remove {key}", { key: k })}
           >
-            ×
+            <CloseIcon size={12} />
           </button>
         </div>
       ))}

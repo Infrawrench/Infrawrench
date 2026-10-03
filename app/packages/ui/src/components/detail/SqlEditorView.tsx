@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useGT } from "gt-react";
 import { useDataString } from "../../i18n/data-strings.js";
 import type { QueryCostEstimate, SqlTableMeta } from "@infrawrench/plugin-base";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 export interface QueryResult {
   rows: Record<string, unknown>[];
@@ -542,7 +543,7 @@ export function SqlEditorView({
                                   className="text-on-surface-muted hover:text-on-surface-secondary text-xs leading-none"
                                   title={gt("Cancel")}
                                 >
-                                  ✕
+                                  <CloseIcon size={12} />
                                 </button>
                               </div>
                             ) : (

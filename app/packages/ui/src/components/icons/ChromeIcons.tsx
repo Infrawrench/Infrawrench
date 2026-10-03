@@ -160,3 +160,13 @@ export function CloudIcon(props: ChromeIconProps) {
     </StrokeIcon>
   );
 }
+
+/** Close, dismiss or remove (Lucide `x`). */
+export function CloseIcon(props: ChromeIconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </StrokeIcon>
+  );
+}

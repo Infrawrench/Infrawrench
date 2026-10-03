@@ -3,6 +3,7 @@ import { T, Var, useGT } from "gt-react";
 import type { TerraformExportOutcome } from "@infrawrench/plugin-base";
 import { Modal } from "./Modal.js";
 import { formatErrorMessage } from "../utils.js";
+import { CloseIcon } from "./icons/ChromeIcons.js";
 
 export interface TerraformExportModalProps {
   /** What is being exported: resource or account display name. */
@@ -97,7 +98,7 @@ export function TerraformExportModal({
             className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
             aria-label={gt("Close")}
           >
-            &times;
+            <CloseIcon size={18} />
           </button>
         </div>
 

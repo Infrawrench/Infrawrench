@@ -1,6 +1,7 @@
 import { useGT } from "gt-react";
 import { formatBudgetMonth, formatMoney } from "./transform.js";
 import type { BudgetWithStatus } from "./types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export interface BudgetCardProps {
   budget: BudgetWithStatus;
@@ -65,7 +66,7 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
             aria-label={gt("Remove from dashboard")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         )}
       </div>

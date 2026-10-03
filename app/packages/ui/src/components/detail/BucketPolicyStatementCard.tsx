@@ -10,7 +10,7 @@ import {
   S3_ACTION_CATALOG,
   summarizeStatement,
 } from "../../bucket-policy.js";
-import { ArrowIcon, ChevronIcon } from "../icons/ChromeIcons.js";
+import { ArrowIcon, ChevronIcon, CloseIcon } from "../icons/ChromeIcons.js";
 
 /* -------------------------------------------------------------------------- */
 /* Statement card                                                             */
@@ -109,7 +109,7 @@ export function StatementCard({
             className="relative text-on-surface-faint hover:text-danger px-1 text-xs"
             title={gt("Delete")}
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
           <ChevronIcon
             direction={expanded ? "down" : "right"}
@@ -306,7 +306,7 @@ function ActionPicker({
               className="text-on-surface-faint hover:text-danger"
               title={gt("Remove")}
             >
-              ×
+              <CloseIcon size={12} />
             </button>
           </span>
         ))}
@@ -433,7 +433,7 @@ function ResourceEditor({
             className="text-on-surface-faint hover:text-danger text-xs px-1"
             title={gt("Remove")}
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         </div>
       ))}
@@ -572,7 +572,7 @@ function ConditionEditor({
             className="text-on-surface-faint hover:text-danger text-xs px-1"
             title={gt("Remove")}
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         </div>
       ))}

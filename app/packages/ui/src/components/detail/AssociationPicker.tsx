@@ -4,6 +4,7 @@ import type { ProviderResource, RerollSelection } from "./detail-types.js";
 import { Modal } from "../Modal.js";
 import { useDataString } from "../../i18n/data-strings.js";
 import { camelToTitle } from "@infrawrench/plugin-base";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 const tabOrder: Array<"provider" | "literal"> = ["provider", "literal"];
 
@@ -100,7 +101,7 @@ export function AssociationPicker({
             className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
             aria-label={gt("Close")}
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         </div>
 

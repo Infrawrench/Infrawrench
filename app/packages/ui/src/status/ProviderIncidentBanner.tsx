@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import { summarizeStatusIncident, type OrgStatusIncident } from "@infrawrench/client-core";
 import type { StatusIncidentsClient } from "./types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -96,7 +97,7 @@ export function ProviderIncidentBanner({ client, onOpenUrl }: ProviderIncidentBa
           onClick={() => setDismissedIds((ids) => [...ids, ...relevant.map((i) => i.id)])}
           className="opacity-70 hover:opacity-100"
         >
-          ✕
+          <CloseIcon size={12} />
         </button>
       </span>
     </div>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
 import { formatErrorMessage } from "../utils.js";
-import { ChevronIcon } from "./icons/ChromeIcons.js";
+import { ChevronIcon, CloseIcon } from "./icons/ChromeIcons.js";
 
 /**
  * The pieces the Mongo and Firestore document browsers render identically.
@@ -86,7 +86,7 @@ export function CollectionListItem({
             title={gt("{verb} collection", { verb: gtData(verb) })}
             aria-label={gt("{verb} collection", { verb: gtData(verb) })}
           >
-            ×
+            <CloseIcon size={12} />
           </button>
         </>
       )}

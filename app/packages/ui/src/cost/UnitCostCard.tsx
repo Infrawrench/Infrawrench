@@ -26,6 +26,7 @@ import {
   type UnitCostQueryResponse,
 } from "./config.js";
 import type { CostApi } from "./types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 /**
  * The unit-cost half of {@link CostGraphCard}: spend divided by a business
@@ -292,7 +293,7 @@ export function UnitCostCard({
             aria-label={gt("Remove from dashboard")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         )}
       </div>

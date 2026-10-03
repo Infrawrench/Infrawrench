@@ -7,6 +7,7 @@ import { Modal } from "./Modal.js";
 import { CostEstimateBreakdown } from "./CostEstimateChip.js";
 import { ErrorNotice } from "./ErrorNotice.js";
 import { useDataString } from "../i18n/data-strings.js";
+import { CloseIcon } from "./icons/ChromeIcons.js";
 
 export interface EditResourceModalProps {
   /** Title shown in the modal header: typically the resource type display name (e.g. "Project"). */
@@ -166,7 +167,7 @@ export function EditResourceModal({
             className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
             aria-label={gt("Close")}
           >
-            &times;
+            <CloseIcon size={18} />
           </button>
         </div>
 

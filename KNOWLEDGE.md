@@ -1227,7 +1227,7 @@ Desktop-only feature: the web app's server-side ssh2 has no path to reach a user
 | Plugin-base types missing after change | Dependent package built before plugin-base | Run `pnpm --filter @infrawrench/plugin-base build` first |
 | SSH auth fails despite correct key | Username defaults to `root`; GCP/DO use key comment as username | Read `.pub` file comment, use `comment.split("@")[0]` as username |
 | Sidebar shows deleted resource | Sidebar caches resource lists; `iw:resources-changed` event not fired | Dispatch event after delete; sidebar listener calls `loadAccountResources(..., true)` |
-| Chevron, arrow or cog looks different (or turns into a colour emoji) on one OS | A Unicode glyph (`▶ ◀ ▾ ‹ ↑ ↗ ⚙ ☁`) used as an icon; the OS picks its font | Use the SVGs in `ui/src/components/icons/ChromeIcons.tsx` (Lucide paths, `currentColor`); never a glyph for a control |
+| Chevron, arrow or cog looks different (or turns into a colour emoji) on one OS | A Unicode glyph (`▶ ◀ ▾ ‹ ↑ ▲ ↗ ✕ × ⚙ ☁`) used as an icon; the OS picks its font | Use the SVGs in `ui/src/components/icons/ChromeIcons.tsx` (Lucide paths, `currentColor`); never a glyph for a control |
 
 ---
 

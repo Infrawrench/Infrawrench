@@ -3,6 +3,7 @@ import { T, useGT } from "gt-react";
 import { formatErrorMessage } from "../utils.js";
 import { ErrorNotice } from "./ErrorNotice.js";
 import { Modal } from "./Modal.js";
+import { CloseIcon } from "./icons/ChromeIcons.js";
 
 export interface ImportYamlModalProps {
   title?: string;
@@ -61,7 +62,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
             aria-label={gt("Close")}
             className="text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-50 text-xl leading-none"
           >
-            ×
+            <CloseIcon size={18} />
           </button>
         </div>
 

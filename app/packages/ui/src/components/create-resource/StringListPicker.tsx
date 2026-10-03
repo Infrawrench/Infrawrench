@@ -1,5 +1,6 @@
 import { useGT } from "gt-react";
 import { useSerializedRows } from "./useSerializedRows.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 interface StringEntry {
   /** Stable per-row id for React keys: rows are editable and removable. */
@@ -100,7 +101,7 @@ export function StringListPicker({
             aria-label={gt("Remove")}
             title={gt("Remove")}
           >
-            ✕
+            <CloseIcon size={14} />
           </button>
         </div>
       ))}

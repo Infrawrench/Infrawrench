@@ -1,6 +1,6 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useGT } from "gt-react";
-import { ChevronIcon, type DraggableResource } from "@infrawrench/ui";
+import { ChevronIcon, type DraggableResource, CloseIcon } from "@infrawrench/ui";
 import { accountTabTarget } from "../../lib/workspace-tabs";
 import type { Account, PluginGroup } from "./types";
 
@@ -113,7 +113,7 @@ export function AccountDraggableRow({
           aria-label={gt("Delete account")}
           className="flex-shrink-0 size-5 flex items-center justify-center rounded text-on-surface-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-danger hover:bg-red-500/10 transition-all"
         >
-          ✕
+          <CloseIcon size={12} />
         </button>
       )}
     </div>

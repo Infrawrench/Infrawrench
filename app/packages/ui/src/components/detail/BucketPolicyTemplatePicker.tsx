@@ -5,6 +5,7 @@ import { useDataString } from "../../i18n/data-strings.js";
 
 import { type PolicyTemplate, templatesForVendor } from "../../bucket-policy.js";
 import { Modal } from "../Modal.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 /* -------------------------------------------------------------------------- */
 /* Template picker                                                            */
@@ -41,7 +42,7 @@ export function TemplatePickerModal({
             aria-label={gt("Close")}
             className="text-on-surface-faint hover:text-on-surface-secondary text-sm"
           >
-            <span aria-hidden="true">✕</span>
+            <CloseIcon size={14} />
           </button>
         </div>
 

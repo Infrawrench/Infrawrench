@@ -2,6 +2,7 @@ import { useGT } from "gt-react";
 import type { CostReport, CostReportWidgetConfig } from "../cost/config.js";
 import { CostGraphCard } from "../cost/CostGraphCard.js";
 import type { CostApi } from "../cost/types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export interface CostReportWidgetCardProps {
   /**
@@ -48,7 +49,7 @@ export function CostReportWidgetCard({
             aria-label={gt("Remove from dashboard")}
             className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all z-10"
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         )}
         <div className="flex-1 flex items-center justify-center px-6 text-center text-sm text-on-surface-faint">

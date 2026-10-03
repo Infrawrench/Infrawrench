@@ -28,7 +28,7 @@ One listing, not a tree beside a grid. Across the top is a **Path** box you can 
 - **Upload** with **Files**, or **Folder** where the backend supports it. There is no drag-and-drop target.
 - **+ Folder** creates one (for object stores, a zero-byte marker).
 - **Download** with the download icon on a row. Tick several rows and the toolbar offers **Download**, which streams them as a zip — on web that opens one download per batch, so allow pop-ups.
-- **Delete** — the `✕` on a row, or the toolbar's **Delete** for a selection. Both ask to confirm inline.
+- **Delete** — the **X** icon on a row, or the toolbar's **Delete** for a selection. Both ask to confirm inline.
 
 Shift-click selects a range. Sorting is fixed: folders first, then files.
 

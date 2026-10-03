@@ -1,5 +1,6 @@
 import { useGT } from "gt-react";
 import { useSerializedRows } from "./useSerializedRows.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 /**
  * Structured, no-code JSON Schema builder. Each row is one top-level
@@ -113,7 +114,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
               aria-label={gt("Remove property")}
               title={gt("Remove property")}
             >
-              ✕
+              <CloseIcon size={14} />
             </button>
           </div>
           <input

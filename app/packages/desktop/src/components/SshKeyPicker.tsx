@@ -1,6 +1,6 @@
 import { useState, useEffect, useId } from "react";
 import { useGT } from "gt-react";
-import { deriveSSHUsername, useUIStore, SshKeyRadioItem } from "@infrawrench/ui";
+import { deriveSSHUsername, useUIStore, SshKeyRadioItem, CloseIcon } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "../lib/ssh-agent";
@@ -388,7 +388,7 @@ function KeyRow({
             title={gt("Remove key")}
             aria-label={gt("Remove key")}
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         ) : undefined
       }

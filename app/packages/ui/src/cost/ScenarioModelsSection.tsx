@@ -23,6 +23,7 @@ import {
 } from "./config.js";
 import type { CostsClient } from "./types.js";
 import { parseNumericInputValue } from "../form-values.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
@@ -498,7 +499,7 @@ function AdjustmentRow({
           onClick={onRemove}
           className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-on-surface-faint hover:text-danger"
         >
-          ✕
+          <CloseIcon size={14} />
         </button>
       </div>
 

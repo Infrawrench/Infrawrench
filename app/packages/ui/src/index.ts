@@ -610,6 +610,7 @@ export { LogsIcon } from "./components/icons/LogsIcon.js";
 export {
   ArrowIcon,
   ChevronIcon,
+  CloseIcon,
   CloudIcon,
   DownloadIcon,
   ExternalLinkIcon,

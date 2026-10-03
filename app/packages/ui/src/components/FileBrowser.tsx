@@ -3,7 +3,13 @@ import { T, Var, useGT } from "gt-react";
 import type { StorageObject } from "@infrawrench/plugin-base";
 import { formatSize, formatDate, formatErrorMessage } from "../utils.js";
 import type { TransferEntry } from "../utils.js";
-import { ArrowIcon, ChevronIcon, DownloadIcon, UploadIcon } from "./icons/ChromeIcons.js";
+import {
+  ArrowIcon,
+  ChevronIcon,
+  DownloadIcon,
+  UploadIcon,
+  CloseIcon,
+} from "./icons/ChromeIcons.js";
 
 declare module "react" {
   interface InputHTMLAttributes<T> {
@@ -705,7 +711,7 @@ export function FileBrowser({
                             title={gt("Delete folder")}
                             aria-label={gt("Delete folder {name}", { name: d.name })}
                           >
-                            ✕
+                            <CloseIcon size={12} />
                           </button>
                         ))}
                     </td>
@@ -798,7 +804,7 @@ export function FileBrowser({
                                 title={gt("Delete")}
                                 aria-label={gt("Delete {name}", { name: f.name })}
                               >
-                                ✕
+                                <CloseIcon size={12} />
                               </button>
                             )}
                           </span>

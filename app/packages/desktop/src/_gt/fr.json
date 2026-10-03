@@ -9524,7 +9524,6 @@
   "898526791a18c1a2": "En attente d'une adresse SSH…",
   "b5a475b1095064e7": "Le serveur est peut-être encore en train de démarrer. Cette vue s'actualise automatiquement.",
   "7ac8b8f1f1614138": "SSH connecté",
-  "dc1fc691116aea7e": "Déconnecter ✕",
   "4db9af16de5b7d28": "Connexion avec infrawrench-agent...",
   "7265711b0df07cf8": "Préparation de la session SSH de l'agent...",
   "b6fbee2763227b71": "Impossible de se connecter automatiquement avec {keyName} : {error}",

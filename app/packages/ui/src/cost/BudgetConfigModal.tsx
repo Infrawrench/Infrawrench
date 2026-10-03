@@ -14,6 +14,7 @@ import {
 } from "./CostGraphConfigModal.js";
 import { Modal } from "../components/Modal.js";
 import type { CostApi } from "./types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
@@ -219,7 +220,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
                       className="text-on-surface-faint hover:text-on-surface-secondary text-xs"
                       title={gt("Remove threshold")}
                     >
-                      ✕
+                      <CloseIcon size={12} />
                     </button>
                   )}
                 </div>

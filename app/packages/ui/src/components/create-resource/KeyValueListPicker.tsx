@@ -1,5 +1,6 @@
 import { useGT } from "gt-react";
 import { useSerializedRows } from "./useSerializedRows.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 interface KeyValueEntry {
   /** Stable per-row id for React keys: rows are editable and removable. */
@@ -139,7 +140,7 @@ export function KeyValueListPicker({
             aria-label={gt("Remove row")}
             title={gt("Remove row")}
           >
-            ✕
+            <CloseIcon size={14} />
           </button>
         </div>
       ))}
