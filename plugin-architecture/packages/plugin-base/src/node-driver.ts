@@ -28,6 +28,23 @@ export interface SqlNodeDriver {
     sql: string,
     options?: SqlNodeDriverOptions,
   ): Promise<Record<string, unknown>[]>;
+  /**
+   * Like {@link query}, but the database itself refuses any change: the
+   * statement runs inside a read-only transaction that is rolled back, and
+   * input that is more than one statement is rejected (see
+   * `assertSingleSqlStatement`). Used where nobody approves the SQL first,
+   * such as the chat agent's `sql_query` tool.
+   *
+   * Optional on purpose: implement it only when the engine can enforce
+   * read-only access. Callers treat its absence as "this engine cannot
+   * guarantee a read" and gate the SQL behind approval instead, so a driver
+   * must never implement it as a plain {@link query}.
+   */
+  queryReadOnly?(
+    connectionString: string,
+    sql: string,
+    options?: SqlNodeDriverOptions,
+  ): Promise<Record<string, unknown>[]>;
   execute(
     connectionString: string,
     sql: string,

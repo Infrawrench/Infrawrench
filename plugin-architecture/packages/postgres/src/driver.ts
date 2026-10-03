@@ -1,5 +1,9 @@
-import { Pool } from "pg";
-import type { SqlNodeDriver, SqlNodeDriverOptions } from "@infrawrench/plugin-base";
+import { Pool, type QueryConfig } from "pg";
+import {
+  assertSingleSqlStatement,
+  type SqlNodeDriver,
+  type SqlNodeDriverOptions,
+} from "@infrawrench/plugin-base";
 
 /**
  * Bound connect + statement so a misconfigured target (most commonly: Cloud
@@ -105,6 +109,38 @@ export const driver = {
   ): Promise<Record<string, unknown>[]> {
     return runWithTimeout(connectionString, options, async (pool) => {
       return (await pool.query(sql)).rows as Record<string, unknown>[];
+    });
+  },
+
+  /**
+   * One dedicated connection: `BEGIN READ ONLY`, the statement, `ROLLBACK`.
+   * The statement goes over the extended protocol (`queryMode: "extended"`),
+   * where the server itself refuses more than one command, so a stacked
+   * `COMMIT; DROP ...` cannot end the read-only transaction early. The
+   * lexical single-statement check in front is belt and braces.
+   */
+  async queryReadOnly(
+    connectionString: string,
+    sql: string,
+    options?: SqlNodeDriverOptions,
+  ): Promise<Record<string, unknown>[]> {
+    assertSingleSqlStatement(sql);
+    return runWithTimeout(connectionString, options, async (pool) => {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN READ ONLY");
+        try {
+          // pg honours `queryMode` (the peer range is well past where it
+          // landed) but @types/pg does not declare it.
+          const config = { text: sql, queryMode: "extended" } as QueryConfig;
+          const result = await client.query(config);
+          return result.rows as Record<string, unknown>[];
+        } finally {
+          await client.query("ROLLBACK").catch(() => {});
+        }
+      } finally {
+        client.release();
+      }
     });
   },
 

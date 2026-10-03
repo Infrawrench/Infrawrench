@@ -259,6 +259,8 @@ export type {
   TranscriptWord,
 } from "./schema.js";
 
+export { isSingleSqlStatement, assertSingleSqlStatement } from "./sql-statements.js";
+
 export type {
   SqlNodeDriver,
   SqlNodeDriverOptions,

@@ -23,6 +23,7 @@ import {
 } from "../db/schema";
 import { getToolRegistry } from "../tools/registry";
 import { authorizeToolCall } from "../tools/permissions";
+import { needsApproval } from "../tools/approval";
 import type { ToolAuthContext, ToolDefinition, ToolResult } from "../tools/types";
 import {
   DEFAULT_CHAT_MODEL,
@@ -686,7 +687,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
         suspended = true;
         continue;
       }
-      if (tool.risk === "destructive") {
+      if (await needsApproval(tool, tu.input, auth)) {
         const pendingId = uuidv4();
         await db.insert(chatPendingActions).values({
           id: pendingId,

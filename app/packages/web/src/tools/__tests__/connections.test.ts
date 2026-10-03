@@ -16,11 +16,21 @@ const mockSqlQuery = vi.fn();
 const mockSqlExecute = vi.fn();
 const mockKvCommand = vi.fn();
 const mockDockerCommand = vi.fn();
-const sqlDriver = { query: mockSqlQuery, execute: mockSqlExecute };
+const mockSqlQueryReadOnly = vi.fn();
+// "postgres" can enforce read-only; "mssql" cannot (no `queryReadOnly`).
+const sqlDriver = {
+  query: mockSqlQuery,
+  queryReadOnly: mockSqlQueryReadOnly,
+  execute: mockSqlExecute,
+};
+const noReadOnlySqlDriver = { query: mockSqlQuery, execute: mockSqlExecute };
 const kvDriver = { command: mockKvCommand };
 const dockerDriver = { command: mockDockerCommand };
 vi.mock("../../services/drivers", () => ({
-  sqlDrivers: new Map([["postgres", sqlDriver]]),
+  sqlDrivers: new Map<string, unknown>([
+    ["postgres", sqlDriver],
+    ["mssql", noReadOnlySqlDriver],
+  ]),
   kvDrivers: new Map([["redis", kvDriver]]),
   dockerDrivers: new Map([["docker", dockerDriver]]),
 }));
@@ -71,11 +81,52 @@ describe("connectionTools", () => {
         },
         credentials: { url: "postgres://x" },
       });
-      mockSqlQuery.mockResolvedValue(new Array(600).fill({ a: 1 }));
+      mockSqlQueryReadOnly.mockResolvedValue(new Array(600).fill({ a: 1 }));
       const r = await tool("sql_query").handler({ accountId: "a1", sql: "SELECT 1" }, auth);
       const out = JSON.parse(r.content[0]!.text);
       expect(out.rows).toHaveLength(500);
       expect(out.truncated).toBe(true);
+    });
+
+    it("runs through the driver's read-only path, never plain query, when it has one", async () => {
+      mockGetClientForAccount.mockResolvedValue({
+        client: {},
+        plugin: {
+          manifest: { sqlDriver: { driver: "postgres", credentialKey: "url" } },
+          resourceTypes: [],
+        },
+        credentials: { url: "postgres://x" },
+      });
+      mockSqlQueryReadOnly.mockResolvedValue([]);
+      await tool("sql_query").handler({ accountId: "a1", sql: "DROP TABLE t" }, auth);
+      expect(mockSqlQueryReadOnly).toHaveBeenCalledWith("postgres://x", "DROP TABLE t");
+      expect(mockSqlQuery).not.toHaveBeenCalled();
+      expect(mockSqlExecute).not.toHaveBeenCalled();
+    });
+
+    it("uses the read-only path for a per-resource driver too", async () => {
+      const resolveOutput = vi.fn().mockResolvedValue("postgres://res");
+      mockGetClientForAccount.mockResolvedValue({
+        client: { resolveOutput },
+        plugin: {
+          manifest: {},
+          resourceTypes: [
+            {
+              id: "db",
+              resourceSqlDriver: { driver: "postgres", connectionStringOutputKey: "cs" },
+            },
+          ],
+        },
+        credentials: {},
+      });
+      mockSqlQueryReadOnly.mockResolvedValue([{ a: 1 }]);
+      await tool("sql_query").handler(
+        { accountId: "a1", sql: "SELECT 1", resourceId: "r1", resourceTypeId: "db" },
+        auth,
+      );
+      expect(resolveOutput).toHaveBeenCalledWith("db", "r1", "cs", "a1");
+      expect(mockSqlQueryReadOnly).toHaveBeenCalledWith("postgres://res", "SELECT 1");
+      expect(mockSqlQuery).not.toHaveBeenCalled();
     });
 
     it("uses executeQuery REST path when resourceId + client.executeQuery", async () => {
@@ -114,14 +165,85 @@ describe("connectionTools", () => {
         },
         credentials: { connectionString: "postgres://neon" },
       });
-      mockSqlQuery.mockResolvedValue([{ a: 1 }]);
+      mockSqlQueryReadOnly.mockResolvedValue([{ a: 1 }]);
       const r = await tool("sql_query").handler(
         { accountId: "a1", sql: "SELECT 1", pluginId: "postgres", parentResourceId: "db1" },
         auth,
       );
       expect(mockGetClientForResource).toHaveBeenCalledWith("postgres", "a1", "o1", "db1");
-      expect(mockSqlQuery).toHaveBeenCalledWith("postgres://neon", "SELECT 1");
+      expect(mockSqlQueryReadOnly).toHaveBeenCalledWith("postgres://neon", "SELECT 1");
       expect(JSON.parse(r.content[0]!.text).rows).toEqual([{ a: 1 }]);
+    });
+
+    it("falls back to plain query on a driver that cannot enforce read-only", async () => {
+      mockGetClientForAccount.mockResolvedValue({
+        client: {},
+        plugin: {
+          manifest: { sqlDriver: { driver: "mssql", credentialKey: "url" } },
+          resourceTypes: [],
+        },
+        credentials: { url: "mssql://x" },
+      });
+      mockSqlQuery.mockResolvedValue([]);
+      await tool("sql_query").handler({ accountId: "a1", sql: "SELECT 1" }, auth);
+      expect(mockSqlQuery).toHaveBeenCalledWith("mssql://x", "SELECT 1");
+    });
+  });
+
+  describe("sql_query approval", () => {
+    const needsApproval = (input: Record<string, unknown>) =>
+      tool("sql_query").requiresApproval!(input, auth);
+
+    it("auto-runs on an engine with a read-only path", async () => {
+      mockGetClientForAccount.mockResolvedValue({
+        client: {},
+        plugin: {
+          manifest: { sqlDriver: { driver: "postgres", credentialKey: "url" } },
+          resourceTypes: [],
+        },
+        credentials: {},
+      });
+      expect(await needsApproval({ accountId: "a1", sql: "SELECT 1" })).toBe(false);
+    });
+
+    it("asks for approval on a driver without a read-only path", async () => {
+      mockGetClientForAccount.mockResolvedValue({
+        client: {},
+        plugin: {
+          manifest: { sqlDriver: { driver: "mssql", credentialKey: "url" } },
+          resourceTypes: [],
+        },
+        credentials: {},
+      });
+      expect(await needsApproval({ accountId: "a1", sql: "SELECT 1" })).toBe(true);
+    });
+
+    it("asks for approval on a REST engine (executeQuery)", async () => {
+      mockGetClientForAccount.mockResolvedValue({
+        client: { executeQuery: vi.fn() },
+        plugin: { manifest: {}, resourceTypes: [] },
+        credentials: {},
+      });
+      expect(await needsApproval({ accountId: "a1", sql: "SELECT 1", resourceId: "r1" })).toBe(
+        true,
+      );
+    });
+
+    it("asks for approval on an unknown driver id", async () => {
+      mockGetClientForAccount.mockResolvedValue({
+        client: {},
+        plugin: {
+          manifest: { sqlDriver: { driver: "nope", credentialKey: "url" } },
+          resourceTypes: [],
+        },
+        credentials: {},
+      });
+      expect(await needsApproval({ accountId: "a1", sql: "SELECT 1" })).toBe(true);
+    });
+
+    it("does not ask when there is nothing to run", async () => {
+      mockGetClientForAccount.mockResolvedValue(null);
+      expect(await needsApproval({ accountId: "a1", sql: "SELECT 1" })).toBe(false);
     });
   });
 
