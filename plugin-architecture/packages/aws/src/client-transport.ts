@@ -119,13 +119,12 @@ async function resolveEndpoint(creds: AwsCredentials, service: string): Promise<
     };
   }
   const clients = getAwsClients(creds);
-  const client = clients[binding.clientKey] as unknown as {
-    config: {
-      endpoint?: () =>
-        Promise<{ hostname: string; path?: string }> | { hostname: string; path?: string };
-    };
-  };
-  const config = client.config;
+  // Every SDK v3 client's resolved config carries the optional `endpoint`
+  // provider; reading it through this structural slice needs no assertion.
+  const config: {
+    endpoint?: () =>
+      Promise<{ hostname: string; path?: string }> | { hostname: string; path?: string };
+  } = clients[binding.clientKey].config;
   let host: string;
   try {
     if (typeof config.endpoint === "function") {

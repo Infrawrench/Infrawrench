@@ -1176,11 +1176,15 @@ export class TogetherClient implements PluginClient {
         input_file_id: fields["input_file_id"] ?? "",
         ...(fields["model_id"] ? { model_id: fields["model_id"] } : {}),
       };
-      const created = await this.fetch<{ job?: BatchJob; warning?: string }>("/batches", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      const job = created.job ?? (created as unknown as BatchJob);
+      // Typed as either shape: the wrapper, or (tolerated) the bare job.
+      const created = await this.fetch<BatchJob & { job?: BatchJob; warning?: string }>(
+        "/batches",
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
+      const job: BatchJob = created.job ?? created;
       return this.mapBatch(job, accountId);
     }
 
