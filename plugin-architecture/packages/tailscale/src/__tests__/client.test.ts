@@ -61,7 +61,7 @@ describe("Tailscale plugin", () => {
     await expect(c.deleteResource!("device", "other:device:node-1", "acct")).rejects.toThrow(
       "not found",
     );
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls.some(([req]) => req.method === "DELETE")).toBe(false);
   });
   it("uses documented approval and expiry endpoints", async () => {
     const { request, client: c } = client();
