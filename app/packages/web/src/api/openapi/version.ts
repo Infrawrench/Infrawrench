@@ -154,4 +154,10 @@
 // `/api/slack/oauth/start` hop instead of a slack.com URL, and the state it
 // carries expires after 30 minutes and only completes in the requesting
 // user's own signed-in browser. Same response shape; open it the same way.
-export const API_VERSION = "1.42.2";
+// 1.42.3: security fix. The workflow schedule sub-resource now requires
+// `workflows:read` / `workflows:write` instead of the dashboard permissions,
+// and PUT also needs `secrets:read` when the workflow has secrets assigned.
+// Keys that held the dashboard permissions were granted the workflow ones by
+// the earlier permission split, so existing clients keep working. Automated
+// runs now act as the workflow's last editor rather than its creator.
+export const API_VERSION = "1.42.3";

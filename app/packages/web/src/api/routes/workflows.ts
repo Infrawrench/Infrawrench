@@ -22,6 +22,7 @@ import type { MetricDef, WorkflowTrigger } from "@infrawrench/workflow-runtime";
 import { requirePermission } from "../../auth/permissions";
 import {
   WorkflowError,
+  assignWorkflowSecrets,
   checkWorkflowSource,
   clearWorkflowSchedule,
   createWorkflow,
@@ -44,7 +45,6 @@ import {
   WorkflowSecretError,
   getWorkflowSecretAssignments,
   listAssignedWorkflowSecrets,
-  setWorkflowSecretAssignments,
 } from "../../services/workflow-secrets";
 
 const app = new Hono();
@@ -58,6 +58,22 @@ function fail(c: Context, e: unknown) {
   if (e instanceof WorkflowError) return c.json({ error: e.message }, e.status);
   if (e instanceof WorkflowSecretError) return c.json({ error: e.message }, e.status);
   throw e;
+}
+
+/** The signed-in user (or the API key's owner) making the request. */
+function sessionUserId(c: Context): string | null {
+  return (c.get("session") as { userId?: string } | undefined)?.userId ?? null;
+}
+
+/**
+ * An edit that changes a workflow's code or trigger makes its automated runs
+ * act for the editor, and those runs load the workflow's assigned secrets. So
+ * editing a workflow that has any requires `secrets:read`, the same bar as
+ * assigning them in the first place.
+ */
+async function requireSecretsReadIfAssigned(c: Context, id: string): Promise<void> {
+  const assigned = await getWorkflowSecretAssignments(orgId(c), id).catch(() => []);
+  if (assigned.length > 0) requirePermission(c, "secrets:read");
 }
 
 /** Load a workflow or return the 404 body; callers bail when it's null. */
@@ -76,7 +92,7 @@ app.post("/", async (c) => {
   requirePermission(c, "workflows:write");
   const body = (await c.req.json()) as WorkflowBody;
   if (body.secretIds !== undefined) requirePermission(c, "secrets:read");
-  const userId = (c.get("session") as { userId?: string } | undefined)?.userId ?? null;
+  const userId = sessionUserId(c);
   try {
     const workflow = await createWorkflow(orgId(c), body, userId);
     if (body.secretIds !== undefined) {
@@ -106,12 +122,13 @@ app.put("/:id", async (c) => {
   requirePermission(c, "workflows:write");
   const body = (await c.req.json()) as WorkflowBody;
   if (body.secretIds !== undefined) requirePermission(c, "secrets:read");
+  else await requireSecretsReadIfAssigned(c, c.req.param("id"));
   try {
-    const workflow = await updateWorkflow(orgId(c), c.req.param("id"), body);
+    const workflow = await updateWorkflow(orgId(c), c.req.param("id"), body, sessionUserId(c));
     if (body.secretIds !== undefined) {
       void logAudit({
         organizationId: orgId(c),
-        userId: (c.get("session") as { userId?: string }).userId,
+        userId: sessionUserId(c) ?? undefined,
         action: "workflow.secrets_assign",
         entityType: "workflow",
         entityId: workflow.id,
@@ -157,10 +174,15 @@ app.put("/:id/secrets", async (c) => {
     return c.json({ error: "Body must include a secretIds string array." }, 400);
   }
   try {
-    const secrets = await setWorkflowSecretAssignments(orgId(c), c.req.param("id"), body.secretIds);
+    const secrets = await assignWorkflowSecrets(
+      orgId(c),
+      c.req.param("id"),
+      body.secretIds,
+      sessionUserId(c),
+    );
     void logAudit({
       organizationId: orgId(c),
-      userId: (c.get("session") as { userId?: string }).userId,
+      userId: sessionUserId(c) ?? undefined,
       action: "workflow.secrets_assign",
       entityType: "workflow",
       entityId: c.req.param("id"),
@@ -176,16 +198,20 @@ app.put("/:id/secrets", async (c) => {
 });
 
 // --- Cron schedule sub-resource (the workflow's cron trigger) ---
+//
+// Gated like the rest of the workflow: a schedule is what turns a workflow
+// into an automation that runs unattended, so setting one is a workflow edit,
+// not dashboard content.
 
 app.get("/:id/schedule", async (c) => {
-  requirePermission(c, "dashboards:read");
+  requirePermission(c, "workflows:read");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   return c.json({ schedule: workflowScheduleView(wf) });
 });
 
 app.put("/:id/schedule", async (c) => {
-  requirePermission(c, "dashboards:write");
+  requirePermission(c, "workflows:write");
   const body = (await c.req.json().catch(() => null)) as WorkflowScheduleBody | null;
   if (!body || typeof body.expression !== "string") {
     return c.json({ error: "Body must be JSON with an `expression` string." }, 400);
@@ -200,8 +226,9 @@ app.put("/:id/schedule", async (c) => {
   if (body.timezone !== undefined && body.timezone !== null && typeof body.timezone !== "string") {
     return c.json({ error: "`timezone` must be a string or null." }, 400);
   }
+  await requireSecretsReadIfAssigned(c, c.req.param("id"));
   try {
-    const wf = await setWorkflowSchedule(orgId(c), c.req.param("id"), body);
+    const wf = await setWorkflowSchedule(orgId(c), c.req.param("id"), body, sessionUserId(c));
     return c.json({ schedule: workflowScheduleView(wf) });
   } catch (e) {
     return fail(c, e);
@@ -209,9 +236,9 @@ app.put("/:id/schedule", async (c) => {
 });
 
 app.delete("/:id/schedule", async (c) => {
-  requirePermission(c, "dashboards:write");
+  requirePermission(c, "workflows:write");
   try {
-    await clearWorkflowSchedule(orgId(c), c.req.param("id"));
+    await clearWorkflowSchedule(orgId(c), c.req.param("id"), sessionUserId(c));
     return c.json({ ok: true });
   } catch (e) {
     return fail(c, e);
