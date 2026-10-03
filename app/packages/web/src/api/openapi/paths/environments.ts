@@ -171,12 +171,24 @@ export function registerEnvironmentPaths(ctx: BuildContext) {
       .boolean()
       .describe("True when at least one member is unpriced — read as 'at least'."),
     unpricedCount: z.number().int(),
+    monthlyKgCo2e: z
+      .number()
+      .nullable()
+      .describe(
+        "Estimated monthly kg CO2e of the members that could be placed against a published grid " +
+          "figure. Null when none could. See the Carbon tag for the method.",
+      ),
+    uncarbonedCount: z
+      .number()
+      .int()
+      .describe("Sized compute members whose carbon could not be estimated."),
     members: z.array(
       strict({
         memberKey: z.string(),
         displayName: z.string(),
         monthlyAmount: z.number().nullable(),
         currency: z.string().nullable(),
+        monthlyKgCo2e: z.number().nullable(),
       }),
     ),
   }).openapi("EnvironmentCostEstimate");

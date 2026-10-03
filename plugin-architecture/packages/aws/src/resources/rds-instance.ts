@@ -3,6 +3,18 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const RDSInstanceResourceType = rt({
   name: "RDS Instance",
   id: "rds-instance",
+  // DB instance classes are EC2 sizes behind a `db.` prefix; the EC2 create
+  // form's catalogue carries their vCPUs.
+  carbon: {
+    regionFieldKey: "region",
+    vcpus: {
+      from: "size",
+      sizeFieldKey: "instanceClass",
+      catalogueTypeId: "ec2-instance",
+      catalogueFieldKey: "instanceType",
+      stripPrefix: "db.",
+    },
+  },
   description: "An Amazon RDS database instance",
   fields: [
     f("dbInstanceId", "DB Instance ID"),

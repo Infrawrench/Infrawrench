@@ -4,6 +4,7 @@
  * store), so these are never called when activeCloudOrgId is unset.
  */
 import type {
+  CarbonEstimate,
   BillingRule,
   BudgetInput,
   BudgetWithStatus,
@@ -72,6 +73,16 @@ export async function loadCloudCostDimensionValues(
     { orgId, dimension, ...(tagKey ? { tagKey } : {}) },
   );
   return (res?.values ?? []).map((v) => (typeof v === "string" ? { value: v, label: v } : v));
+}
+
+export async function loadCloudCarbonEstimate(
+  orgId: string,
+  windowDays?: number,
+): Promise<CarbonEstimate> {
+  return invoke<CarbonEstimate>("cloud_carbon_estimate", {
+    orgId,
+    ...(windowDays ? { windowDays } : {}),
+  });
 }
 
 export async function loadCloudCostStatus(orgId: string): Promise<CostAccountStatus[]> {

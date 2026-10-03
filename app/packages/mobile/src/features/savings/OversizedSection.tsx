@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { formatMoney, type OversizedResource } from "@infrawrench/client-core";
+import { formatCo2e, formatMoney, type OversizedResource } from "@infrawrench/client-core";
 import { Card, SectionTitle } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, spacing } from "@/lib/theme";
@@ -109,6 +109,9 @@ function OversizedRow({ resource, onPress }: { resource: OversizedResource; onPr
             {formatMoney(resource.monthlySaving, resource.currency)}
           </Text>
           <Text style={styles.savingUnit}>/mo</Text>
+          {resource.monthlyKgCo2eSaving !== null && resource.monthlyKgCo2eSaving > 0 && (
+            <Text style={styles.savingUnit}>~{formatCo2e(resource.monthlyKgCo2eSaving)} CO2e</Text>
+          )}
         </View>
       )}
     </Pressable>

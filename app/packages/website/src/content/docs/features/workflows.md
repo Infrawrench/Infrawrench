@@ -473,6 +473,22 @@ Even then the row stays distinguishable — every workflow-written row carries a
 
 Limits: 1,000 rows per call (larger arrays are chunked for you) and 50,000 rows per run. Keys beginning `infrawrench:` are reserved and rejected. Cost storage is cloud-only, so `infra.costs` is unavailable in the desktop app's local workflows — the generated types mark it as such so you catch it while editing.
 
+### Reading the carbon estimate
+
+`infra.carbon` reads the same [estimated carbon](./carbon.md) figures the Costs page shows. `estimate({ windowDays })` returns the organization's total, grouped by provider, region and account, with the resources that could not be estimated. `resource(resourceId, fields?)` returns one resource's monthly price and carbon. Pass `fields` to ask about a proposed edit instead, for example to check what a resize would save before applying it:
+
+```ts
+const before = await infra.carbon.resource(resourceId);
+const after = await infra.carbon.resource(resourceId, { instanceType: "m7g.large" });
+if (before.carbon?.estimate && after.carbon?.estimate) {
+  console.log(
+    `Saves ~${(before.carbon.estimate.kgCo2e - after.carbon.estimate.kgCo2e).toFixed(1)} kg CO2e/month`,
+  );
+}
+```
+
+Both are estimates, never measurements, and `carbon.estimate` is `null` (with a `reason`) when the region or size cannot be placed against a published figure. Reading needs **Costs: read**. Like `infra.costs`, it is cloud-only: the size catalogues behind it need the organization's provider credentials.
+
 ## Secrets
 
 Workflow secrets are reusable, encrypted organization values for API tokens, signing keys, and other credentials a workflow needs. Create or rotate them in the workflow editor's **Secrets** section, then assign only the secrets that workflow should receive. Values are write-only: after saving, Infrawrench shows **Value set** but never displays the value again.

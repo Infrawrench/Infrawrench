@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { T, Var, t, useGT } from "gt-react";
-import { formatMoney } from "@infrawrench/client-core";
+import { formatCo2e, formatMoney } from "@infrawrench/client-core";
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import type { OversizedResource, RightsizingClient, RightsizingListResponse } from "./types.js";
 
@@ -47,6 +47,13 @@ export function describeResizeConfirm(r: OversizedResource): string {
       ? t("Estimated saving: {amount}/mo.", { amount: formatMoney(r.monthlySaving, r.currency) })
       : t("No price could be quoted for this change."),
   ];
+  if (r.monthlyKgCo2eSaving !== null && r.monthlyKgCo2eSaving > 0) {
+    lines.push(
+      t("Estimated carbon saving: {amount} CO2e/mo.", {
+        amount: formatCo2e(r.monthlyKgCo2eSaving),
+      }),
+    );
+  }
   if (r.resizeNote) lines.push("", r.resizeNote);
   return lines.join("\n");
 }
@@ -218,6 +225,14 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                       ) : (
                         <span className="text-on-surface-faint">—</span>
                       )}
+                      {r.monthlyKgCo2eSaving !== null && r.monthlyKgCo2eSaving > 0 && (
+                        <div
+                          className="text-xs text-on-surface-faint"
+                          title={gt("Estimated, not measured")}
+                        >
+                          {gt("~{amount} CO2e/mo", { amount: formatCo2e(r.monthlyKgCo2eSaving) })}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-right">
                       {applied[r.id] ? (
@@ -265,6 +280,13 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                               value:
                                 r.monthlySaving !== null
                                   ? `${formatMoney(r.monthlySaving, r.currency)}/mo`
+                                  : undefined,
+                            },
+                            {
+                              label: gt("Estimated carbon saving"),
+                              value:
+                                r.monthlyKgCo2eSaving !== null && r.monthlyKgCo2eSaving > 0
+                                  ? `${formatCo2e(r.monthlyKgCo2eSaving)} CO2e/mo`
                                   : undefined,
                             },
                           ],

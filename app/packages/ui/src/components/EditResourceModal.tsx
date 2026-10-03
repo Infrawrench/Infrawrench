@@ -2,7 +2,12 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useGT } from "gt-react";
 import type { CostEstimate, FieldDefinition } from "@infrawrench/plugin-base";
 import { costEstimateDelta, isFieldEditable } from "@infrawrench/plugin-base";
-import { describeMonthlyDelta } from "@infrawrench/client-core";
+import {
+  describeMonthlyDelta,
+  formatMonthlyCo2eDelta,
+  type CarbonFootprint,
+  type ResourceCarbonEstimate,
+} from "@infrawrench/client-core";
 import { Modal } from "./Modal.js";
 import { CostEstimateBreakdown } from "./CostEstimateChip.js";
 import { ErrorNotice } from "./ErrorNotice.js";
@@ -37,6 +42,14 @@ export interface EditResourceModalProps {
    * exactly as it did before.
    */
   loadCostEstimate?: (changedFields: Record<string, string>) => Promise<CostEstimate | null>;
+  /**
+   * The estimated carbon of the same configuration, same contract. When
+   * supplied the modal shows what the change does to the monthly CO2e beside
+   * what it does to the bill. Hosts typically serve both from one request.
+   */
+  loadCarbonEstimate?: (
+    changedFields: Record<string, string>,
+  ) => Promise<ResourceCarbonEstimate | null>;
 }
 
 /**
@@ -53,6 +66,7 @@ export function EditResourceModal({
   onSubmit,
   onClose,
   loadCostEstimate,
+  loadCarbonEstimate,
 }: EditResourceModalProps) {
   const gt = useGT();
   const editableFields = useMemo(() => fields.filter(isFieldEditable), [fields]);
@@ -135,6 +149,49 @@ export function EditResourceModal({
     };
   }, [changedKey, hasChanges, loadCostEstimate]);
 
+  // The carbon of the same two configurations, on the same debounce.
+  const [carbonBaseline, setCarbonBaseline] = useState<CarbonFootprint | null>(null);
+  const [carbonProjected, setCarbonProjected] = useState<CarbonFootprint | null>(null);
+  useEffect(() => {
+    if (!loadCarbonEstimate) return;
+    let cancelled = false;
+    void loadCarbonEstimate({})
+      .then((c) => {
+        if (!cancelled) setCarbonBaseline(c?.estimate ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setCarbonBaseline(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadCarbonEstimate]);
+  useEffect(() => {
+    if (!loadCarbonEstimate) return;
+    if (!hasChanges) {
+      setCarbonProjected(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void loadCarbonEstimate(JSON.parse(changedKey) as Record<string, string>)
+        .then((c) => {
+          if (!cancelled) setCarbonProjected(c?.estimate ?? null);
+        })
+        .catch(() => {
+          if (!cancelled) setCarbonProjected(null);
+        });
+    }, ESTIMATE_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [changedKey, hasChanges, loadCarbonEstimate]);
+  const carbonDelta =
+    carbonBaseline && carbonProjected
+      ? formatMonthlyCo2eDelta(carbonProjected.kgCo2e - carbonBaseline.kgCo2e)
+      : null;
+
   const deltaLabel = useMemo(
     () => describeMonthlyDelta(costEstimateDelta(baseline, projected), projected?.currency),
     [baseline, projected],
@@ -198,6 +255,14 @@ export function EditResourceModal({
                 <CostEstimateBreakdown estimate={projected} />
               </div>
             </details>
+          )}
+          {carbonDelta && (
+            <p
+              className="mb-3 text-xs text-on-surface-tertiary"
+              title={gt("Estimated, not measured")}
+            >
+              {gt("Estimated carbon: {delta}", { delta: carbonDelta })}
+            </p>
           )}
           {error && (
             <ErrorNotice

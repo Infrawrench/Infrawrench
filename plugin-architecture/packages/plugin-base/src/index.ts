@@ -118,6 +118,8 @@ export type {
   BackupPolicyDeclaration,
   LifecycleActionsDeclaration,
   RightsizingDeclaration,
+  CarbonDeclaration,
+  CarbonVcpuSource,
   RightsizingCpuMetric,
   RightsizingMemoryMetric,
 } from "./resource.js";
@@ -272,6 +274,7 @@ export type {
 
 export type {
   CreateResourceConfig,
+  CreateCarbonHint,
   CreateSizePricingRequest,
   CreateFieldConfig,
   CreateFieldKind,

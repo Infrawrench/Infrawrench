@@ -142,4 +142,12 @@
 // 1.40.0: Tailscale plugin, cross-provider SSH service enrollment, and
 // `supportsSshInstall` on resource detail, and agent service accounts plus
 // T3 Code access over Tailscale. Additive.
-export const API_VERSION = "1.41.0";
+// 1.41.0: new resource type ids on the `resourceTypeId` enum. Additive.
+// 1.42.0: the carbon estimate; `GET /carbon`, estimated operational CO2e per
+// resource, region, account and provider, with its assumptions and its
+// unestimatable rows on the response. Carbon also rides beside every price:
+// a `carbon` member on the `POST /resources/cost-estimate` response,
+// `currentMonthlyKgCo2e`/`monthlyKgCo2eSaving` on OversizedResource,
+// `monthlyKgCo2e`/`uncarbonedCount` on EnvironmentCostEstimate, and an
+// optional `carbon` hint on the create-config response. All additive.
+export const API_VERSION = "1.42.0";

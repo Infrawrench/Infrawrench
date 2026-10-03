@@ -3,6 +3,17 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const OpenSearchDomainResourceType = rt({
   name: "OpenSearch Domain",
   id: "opensearch-domain",
+  carbon: {
+    regionFieldKey: "region",
+    vcpus: {
+      from: "size",
+      sizeFieldKey: "instanceType",
+      catalogueTypeId: "ec2-instance",
+      catalogueFieldKey: "instanceType",
+      stripSuffix: ".search",
+    },
+    countFieldKey: "instanceCount",
+  },
   description: "An Amazon OpenSearch Service domain",
   fields: [
     f("domainName", "Domain Name"),

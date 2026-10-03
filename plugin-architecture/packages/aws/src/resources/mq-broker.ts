@@ -3,6 +3,16 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MQBrokerResourceType = rt({
   name: "MQ Broker",
   id: "mq-broker",
+  carbon: {
+    regionFieldKey: "region",
+    vcpus: {
+      from: "size",
+      sizeFieldKey: "hostInstanceType",
+      catalogueTypeId: "ec2-instance",
+      catalogueFieldKey: "instanceType",
+      stripPrefix: "mq.",
+    },
+  },
   description: "An Amazon MQ message broker (ActiveMQ or RabbitMQ)",
   fields: [
     f("brokerName", "Broker Name"),

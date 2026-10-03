@@ -10,7 +10,7 @@ No new metric collection and no guesswork tables: the percentiles come from the 
 
 ## Where to find it
 
-Open **Costs** in the sidebar and scroll to **Oversized**, just below Potential savings. Each row shows the machine, its current and recommended size, the p95 CPU and memory figures backing the call, and the estimated monthly saving.
+Open **Costs** in the sidebar and scroll to **Oversized**, just below Potential savings. Each row shows the machine, its current and recommended size, the p95 CPU and memory figures backing the call, and the estimated monthly saving, with the [estimated CO2e](./carbon.md) the resize would save each month beneath it.
 
 ![Costs page scrolled to the Oversized section, showing a flagged server row with current → recommended size, p95 CPU/memory figures, a monthly saving on the right, and the Apply resize button](https://agent-assets.infrawrench.com/docs-screenshots/features/right-sizing/oversized-section.png)
 

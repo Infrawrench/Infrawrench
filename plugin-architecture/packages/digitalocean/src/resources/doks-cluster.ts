@@ -3,6 +3,13 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const DOKSClusterResourceType = rt({
   name: "DOKS Cluster",
   id: "doks-cluster",
+  // Worker nodes are droplets in their own right: shown here, never summed twice.
+  carbon: {
+    role: "aggregate",
+    regionFieldKey: "region",
+    vcpus: { from: "size", sizeFieldKey: "nodePoolSize" },
+    countFieldKey: "nodeCount",
+  },
   description: "A managed Kubernetes cluster on DigitalOcean",
   fields: [
     f("name", "Name"),

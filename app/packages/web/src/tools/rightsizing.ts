@@ -16,8 +16,9 @@ export function rightsizingTools(): ToolDefinition[] {
       description:
         "Resources whose p95 CPU/memory utilisation over the last 14 days of stored metrics " +
         "sits well under their current size, each with the cheapest smaller size from the " +
-        "provider's own catalog that still clears a headroom margin, and the live-priced " +
-        "monthly saving. Covers plugins that declare right-sizing support (Hetzner servers, " +
+        "provider's own catalog that still clears a headroom margin, the live-priced " +
+        "monthly saving, and the estimated monthly kg CO2e the resize would save " +
+        "(`monthlyKgCo2eSaving`, null where the region has no published grid figure). Covers plugins that declare right-sizing support (Hetzner servers, " +
         "DigitalOcean Droplets, EC2 instances, Azure VMs, GCE instances). Purely a read; " +
         "results are cached for a few minutes — pass refresh to recompute.",
       inputSchema: {

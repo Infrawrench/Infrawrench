@@ -4,6 +4,11 @@ export const MemorystoreMemcachedResourceType = rt({
   name: "Memorystore Memcached",
   plural: "Memorystore Memcached",
   id: "memorystore-memcached",
+  carbon: {
+    regionFieldKey: "location",
+    vcpus: { from: "field", fieldKey: "cpuCount" },
+    countFieldKey: "nodeCount",
+  },
   description: "A Google Cloud Memorystore for Memcached instance",
   fields: [
     f("name", "Name"),

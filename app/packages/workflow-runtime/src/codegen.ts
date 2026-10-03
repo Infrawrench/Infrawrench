@@ -515,6 +515,71 @@ interface WorkflowEvent {
  * dimension filters, and budgets alongside everything else. Mirrors
  * `WorkflowCostRow` in types.ts.
  */
+const CARBON_INTERFACE = `interface CarbonFootprint {
+  vcpus: number;
+  count: number;
+  region: string;
+  /** Coefficient table the region resolved in: "aws", "hetzner"… */
+  grid: string;
+  /** Grams CO2e per kWh used (the published figure). */
+  gridIntensity: number;
+  gridZone: string;
+  pue: number;
+  kwh: number;
+  kgCo2e: number;
+}
+
+interface CarbonGroup {
+  key: string;
+  label: string;
+  kgCo2e: number;
+  kwh: number;
+  resourceCount: number;
+}
+
+/**
+ * ESTIMATED operational carbon: vCPUs × published watts × hours × PUE × grid
+ * intensity, at an assumed 50% utilisation. Processors only; never measured.
+ * Report unestimatedCount beside totalKgCo2e so a partial total is not read
+ * as the whole estate.
+ */
+interface CarbonEstimate {
+  windowDays: number;
+  totalKgCo2e: number;
+  totalKwh: number;
+  estimatedCount: number;
+  unestimatedCount: number;
+  byProvider: CarbonGroup[];
+  byRegion: CarbonGroup[];
+  byAccount: CarbonGroup[];
+  rows: Array<CarbonFootprint & { resourceId: string; displayName: string; pluginId: string }>;
+  unestimated: Array<{ resourceId: string; displayName: string; reason: string }>;
+}
+
+interface ResourceFootprint {
+  resourceId: string;
+  /** Monthly list-price estimate; null when the plugin publishes no rates. */
+  cost: { monthlyAmount: number; currency: string; partial?: boolean } | null;
+  carbon: {
+    /** Monthly (730 h) footprint, or null when it cannot be placed. */
+    estimate: CarbonFootprint | null;
+    reason: "unsupported-provider" | "unknown-region" | "unknown-size" | null;
+    inScope: boolean;
+    role: "instance" | "aggregate";
+  } | null;
+}
+
+interface InfraCarbon {
+  /** The org's estimated carbon over a window (1–365 days, default 30). */
+  estimate(opts?: { windowDays?: number }): Promise<CarbonEstimate>;
+  /**
+   * One resource's monthly cost and carbon; pass \`fields\` to price a
+   * proposed edit instead (e.g. a smaller instance type before resizing).
+   */
+  resource(resourceId: string, fields?: Record<string, string>): Promise<ResourceFootprint>;
+}
+`;
+
 const COSTS_INTERFACE = `interface CostRowInput {
   /** UTC day the spend belongs to, \`YYYY-MM-DD\`. */
   date: string;
@@ -979,6 +1044,10 @@ export function generateInfraDtsParts(input: GenerateInfraDtsInput): InfraDtsPar
     input.costs === false
       ? `  /** Unavailable here — cost reporting needs the cloud's cost store. */\n  costs: never;`
       : `  /** Report spend from a source Infrawrench has no plugin for. */\n  readonly costs: InfraCosts;`;
+  const carbonDecl =
+    input.costs === false
+      ? `  /** Unavailable here: the carbon estimate needs the cloud's provider credentials. */\n  carbon: never;`
+      : `  /** The estimated carbon beside the cost: the org's, or one resource's. */\n  readonly carbon: InfraCarbon;`;
   const businessMetricsDecl =
     input.costs === false
       ? `  /** Unavailable here — business metrics need the cloud's cost store. */\n  businessMetrics: never;`
@@ -1008,6 +1077,8 @@ export function generateInfraDtsParts(input: GenerateInfraDtsInput): InfraDtsPar
 ${renderEventType(input.triggerKind ?? "manual")}
 
 ${input.costs === false ? "" : COSTS_INTERFACE}
+
+${input.costs === false ? "" : CARBON_INTERFACE}
 
 ${input.costs === false ? "" : BUSINESS_METRICS_INTERFACE}
 
@@ -1040,6 +1111,7 @@ ${promptDecl}
   /** What started this run. Frozen. */
   readonly event: WorkflowEvent;
 ${costsDecl}
+${carbonDecl}
 ${businessMetricsDecl}
 ${pageDecl}
 ${aiDecl}

@@ -4,6 +4,15 @@ export const NodeResourceType = rt({
   name: "Node",
   pinnable: false,
   id: "k8s-node",
+  // A node only reports the region label, not whose cloud it is on; region
+  // names do not collide across the hyperscalers, so "auto" finds the table.
+  // A node whose machine is already listed as an instance is counted once:
+  // the host matches node names against instance names.
+  carbon: {
+    regionFieldKey: "region",
+    grid: "auto",
+    vcpus: { from: "field", fieldKey: "capacityCpu", format: "k8s-quantity" },
+  },
   description: "A Kubernetes worker node — what pods actually schedule onto",
   fields: [
     f("name", "Name"),

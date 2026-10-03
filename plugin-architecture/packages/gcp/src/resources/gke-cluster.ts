@@ -3,6 +3,13 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const GkeClusterResourceType = rt({
   name: "GKE Cluster",
   id: "gke-cluster",
+  // Nodes are GCE instances in their own right: shown here, never summed twice.
+  carbon: {
+    role: "aggregate",
+    regionFieldKey: "location",
+    vcpus: { from: "size", sizeFieldKey: "machineType" },
+    countFieldKey: "nodeCount",
+  },
   description: "A Google Kubernetes Engine cluster",
   fields: [
     f("name", "Name"),

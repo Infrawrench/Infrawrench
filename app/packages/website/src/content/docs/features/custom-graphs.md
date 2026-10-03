@@ -13,6 +13,7 @@ Custom graphs are available on the **paid plan** and are cloud-only (the script 
 The script runs against a global `graph` object:
 
 - `graph.costs.query({ days, groupBy, filters, binning, topN })` — your organization's collected spend, the same data behind cost graphs, returned chart-ready.
+- `graph.carbon.estimate({ windowDays })`: the organization's [estimated carbon](./carbon.md), grouped by provider, region and account, with what could not be estimated.
 - `graph.resources.list(filter)` — list resources (for building your own pickers).
 - `graph.metrics(resourceId, { hours })` — provider metric series (CPU, bandwidth, …) for one resource.
 - `fetch(url, init)` — external HTTP APIs, through the same egress proxy workflows use (public addresses only).

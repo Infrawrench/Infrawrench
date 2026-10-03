@@ -167,6 +167,16 @@ export function formatMoney(amount: number, currency: string): string {
   }
 }
 
+/** A CO2e mass ("340 g", "2.4 kg", "1.2 t"). Mirrors client-core's `formatCo2e`. */
+export function formatCo2e(kg: number): string {
+  if (!Number.isFinite(kg)) return "n/a";
+  if (kg >= 1000) return `${(kg / 1000).toFixed(1)} t`;
+  if (kg >= 10) return `${Math.round(kg)} kg`;
+  if (kg >= 1) return `${kg.toFixed(1)} kg`;
+  if (kg > 0) return `${Math.round(kg * 1000)} g`;
+  return "0 kg";
+}
+
 export function formatNumber(value: number, unit?: string | undefined): string {
   const rounded =
     Math.abs(value) >= 100

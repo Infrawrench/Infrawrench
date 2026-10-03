@@ -6,6 +6,9 @@ import type { RequiredTag } from "@infrawrench/client-core";
 import type { CreateResourceFormState } from "../hooks/useCreateResourceForm.js";
 import { Modal } from "./Modal.js";
 import { CostEstimateChip } from "./CostEstimateChip.js";
+import { CarbonEstimateChip } from "./CarbonEstimateChip.js";
+import { CreateCarbonContext } from "./create-resource/carbon-context.js";
+import { createFormRegion } from "@infrawrench/client-core";
 import { ErrorNotice } from "./ErrorNotice.js";
 import { CloseIcon } from "./icons/ChromeIcons.js";
 
@@ -74,55 +77,103 @@ export function CreateResourceModal({
   const regularFields = form.visibleFields.filter((f) => f.kind !== "code");
   const splitPane = codeFields.length > 0;
 
+  const carbonContext = useMemo(
+    () =>
+      form.configWithPricing
+        ? {
+            hint: form.configWithPricing.carbon,
+            region: createFormRegion(form.configWithPricing, form.fields),
+          }
+        : null,
+    [form.configWithPricing, form.fields],
+  );
+
   return (
-    <Modal onClose={onClose} ariaLabel={gt("Create {name}", { name: displayName })}>
-      <div
-        className={`bg-surface-raised border border-border-strong rounded-xl shadow-2xl flex flex-col ${
-          splitPane ? "w-[1100px] h-[80vh]" : "w-[560px] max-h-[72vh]"
-        }`}
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
-          <h2 className="text-base font-semibold text-on-surface">
-            {gt("Create {name}", { name: displayName })}
-          </h2>
-          <div className="flex items-center gap-3">
-            {form.estimatedMonthlyPriceLabel && (
-              <CostEstimateChip
-                label={form.estimatedMonthlyPriceLabel}
-                estimate={form.costEstimate}
-              />
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
-              aria-label={gt("Close")}
-            >
-              <CloseIcon size={18} />
-            </button>
+    <CreateCarbonContext.Provider value={carbonContext}>
+      <Modal onClose={onClose} ariaLabel={gt("Create {name}", { name: displayName })}>
+        <div
+          className={`bg-surface-raised border border-border-strong rounded-xl shadow-2xl flex flex-col ${
+            splitPane ? "w-[1100px] h-[80vh]" : "w-[560px] max-h-[72vh]"
+          }`}
+        >
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+            <h2 className="text-base font-semibold text-on-surface">
+              {gt("Create {name}", { name: displayName })}
+            </h2>
+            <div className="flex items-center gap-3">
+              {form.carbonEstimate && (
+                <CarbonEstimateChip
+                  footprint={form.carbonEstimate}
+                  aggregate={form.configWithPricing?.carbon?.role === "aggregate"}
+                />
+              )}
+              {form.estimatedMonthlyPriceLabel && (
+                <CostEstimateChip
+                  label={form.estimatedMonthlyPriceLabel}
+                  estimate={form.costEstimate}
+                />
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
+                aria-label={gt("Close")}
+              >
+                <CloseIcon size={18} />
+              </button>
+            </div>
           </div>
-        </div>
 
-        {tagField && requiredTags && requiredTags.length > 0 && !form.loadingConfig && (
-          <div className="px-6 pt-3 flex-shrink-0">
-            <T>
-              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
-                Org policy requires tags:{" "}
-                <Var>
-                  {requiredTags
-                    .map((t) =>
-                      t.allowedValues?.length ? `${t.key} (${t.allowedValues.join(" | ")})` : t.key,
-                    )
-                    .join(", ")}
-                </Var>
-              </p>
-            </T>
-          </div>
-        )}
+          {tagField && requiredTags && requiredTags.length > 0 && !form.loadingConfig && (
+            <div className="px-6 pt-3 flex-shrink-0">
+              <T>
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
+                  Org policy requires tags:{" "}
+                  <Var>
+                    {requiredTags
+                      .map((t) =>
+                        t.allowedValues?.length
+                          ? `${t.key} (${t.allowedValues.join(" | ")})`
+                          : t.key,
+                      )
+                      .join(", ")}
+                  </Var>
+                </p>
+              </T>
+            </div>
+          )}
 
-        {splitPane ? (
-          <div className="flex flex-1 min-h-0 overflow-hidden">
-            <div className="w-[440px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-border">
+          {splitPane ? (
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              <div className="w-[440px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-border">
+                {form.loadingConfig ? (
+                  <div className="flex items-center gap-3 text-sm text-on-surface-muted py-8 justify-center">
+                    <span
+                      aria-hidden="true"
+                      className="animate-spin inline-block size-4 rounded-full border-2 border-border-strong border-t-gray-300"
+                    />
+                    {gt("Fetching available options…")}
+                  </div>
+                ) : form.configError ? (
+                  errorEl(form.configError, { textClassName: "text-sm text-danger" })
+                ) : form.configWithPricing ? (
+                  <div className="space-y-6">
+                    {regularFields.map((f) =>
+                      renderField(f, form.fields[f.key] ?? "", (v) => form.setField(f.key, v)),
+                    )}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex-1 min-w-0 flex flex-col">
+                {codeFields.map((f) => (
+                  <div key={f.key} className="flex-1 min-h-0">
+                    {renderField(f, form.fields[f.key] ?? "", (v) => form.setField(f.key, v))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-y-auto flex-1 px-6 py-5">
               {form.loadingConfig ? (
                 <div className="flex items-center gap-3 text-sm text-on-surface-muted py-8 justify-center">
                   <span
@@ -141,62 +192,37 @@ export function CreateResourceModal({
                 </div>
               ) : null}
             </div>
-            <div className="flex-1 min-w-0 flex flex-col">
-              {codeFields.map((f) => (
-                <div key={f.key} className="flex-1 min-h-0">
-                  {renderField(f, form.fields[f.key] ?? "", (v) => form.setField(f.key, v))}
-                </div>
-              ))}
+          )}
+
+          <div className="px-6 py-4 border-t border-border flex-shrink-0">
+            {form.error &&
+              errorEl(form.error, {
+                className:
+                  "mb-3 rounded bg-red-100 dark:bg-red-900/20 px-3 py-2 max-h-40 overflow-y-auto",
+                textClassName: "text-xs text-danger leading-relaxed break-words",
+              })}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
+              >
+                {gt("Cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void form.handleCreate()}
+                disabled={
+                  form.creating || form.loadingConfig || !!form.configError || !form.isValid
+                }
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
+              >
+                {form.creating ? gt("Creating...") : gt("Create {name}", { name: displayName })}
+              </button>
             </div>
           </div>
-        ) : (
-          <div className="overflow-y-auto flex-1 px-6 py-5">
-            {form.loadingConfig ? (
-              <div className="flex items-center gap-3 text-sm text-on-surface-muted py-8 justify-center">
-                <span
-                  aria-hidden="true"
-                  className="animate-spin inline-block size-4 rounded-full border-2 border-border-strong border-t-gray-300"
-                />
-                {gt("Fetching available options…")}
-              </div>
-            ) : form.configError ? (
-              errorEl(form.configError, { textClassName: "text-sm text-danger" })
-            ) : form.configWithPricing ? (
-              <div className="space-y-6">
-                {regularFields.map((f) =>
-                  renderField(f, form.fields[f.key] ?? "", (v) => form.setField(f.key, v)),
-                )}
-              </div>
-            ) : null}
-          </div>
-        )}
-
-        <div className="px-6 py-4 border-t border-border flex-shrink-0">
-          {form.error &&
-            errorEl(form.error, {
-              className:
-                "mb-3 rounded bg-red-100 dark:bg-red-900/20 px-3 py-2 max-h-40 overflow-y-auto",
-              textClassName: "text-xs text-danger leading-relaxed break-words",
-            })}
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
-            >
-              {gt("Cancel")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void form.handleCreate()}
-              disabled={form.creating || form.loadingConfig || !!form.configError || !form.isValid}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
-            >
-              {form.creating ? gt("Creating...") : gt("Create {name}", { name: displayName })}
-            </button>
-          </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+    </CreateCarbonContext.Provider>
   );
 }

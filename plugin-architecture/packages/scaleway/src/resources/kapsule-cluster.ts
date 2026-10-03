@@ -3,6 +3,14 @@ import { SCW_REGIONS as REGIONS } from "../locations.js";
 
 export const KapsuleClusterResourceType = rt({
   id: "kapsule-cluster",
+  // Pool nodes are Scaleway instances in their own right: shown here, never
+  // summed twice.
+  carbon: {
+    role: "aggregate",
+    regionFieldKey: "region",
+    vcpus: { from: "size", sizeFieldKey: "nodeType" },
+    countFieldKey: "nodeCount",
+  },
   name: "Kapsule Cluster",
   description: "A managed Kubernetes cluster on Scaleway",
   fields: [

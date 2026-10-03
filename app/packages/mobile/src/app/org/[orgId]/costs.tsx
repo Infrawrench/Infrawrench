@@ -13,6 +13,7 @@ import {
   Screen,
   SectionTitle,
 } from "@/components/ui";
+import { CarbonSection } from "@/features/costs/CarbonSection";
 import { CommitmentsSection } from "@/features/costs/CommitmentsSection";
 import { CostAnomaliesSection } from "@/features/costs/CostAnomaliesSection";
 import { CostChangeAlertsSection } from "@/features/costs/CostChangeAlertsSection";
@@ -83,6 +84,7 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["orphans"] });
         void queryClient.invalidateQueries({ queryKey: ["rightsizing"] });
         void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+        void queryClient.invalidateQueries({ queryKey: ["carbon"] });
       }}
       refreshing={budgets.isRefetching}
     >
@@ -139,6 +141,9 @@ export default function CostsScreen() {
       <OversizedSection />
 
       <SchedulesSection />
+
+      {/* A whole-estate figure beside spend, like the web/desktop section. */}
+      <CarbonSection />
     </Screen>
   );
 }

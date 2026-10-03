@@ -1,5 +1,7 @@
 import { useGT } from "gt-react";
 import type { SizeOption } from "@infrawrench/plugin-base";
+import { formatCo2e } from "@infrawrench/client-core";
+import { useSizeCarbon } from "./carbon-context.js";
 
 export function SizeCard({
   size,
@@ -15,6 +17,7 @@ export function SizeCard({
   onSelect: () => void;
 }) {
   const gt = useGT();
+  const monthlyKgCo2e = useSizeCarbon(size.vcpus);
   const memPct = Math.max(4, Math.round((size.memoryMb / maxMemory) * 100));
   const cpuPct = Math.max(4, Math.round((size.vcpus / maxCpu) * 100));
   const memLabel =
@@ -86,6 +89,14 @@ export function SizeCard({
           </span>
         )}
       </div>
+      {monthlyKgCo2e !== null && (
+        <p
+          className="mt-1 text-right text-[10px] text-on-surface-faint"
+          title={gt("Estimated, not measured")}
+        >
+          {gt("~{amount} CO2e/mo", { amount: formatCo2e(monthlyKgCo2e) })}
+        </p>
+      )}
     </button>
   );
 }

@@ -3,6 +3,10 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const PostgresFlexibleServerResourceType = rt({
   name: "PostgreSQL Flexible Server",
   id: "azure-postgres-flexible",
+  carbon: {
+    regionFieldKey: "location",
+    vcpus: { from: "size", sizeFieldKey: "sku" },
+  },
   description: "An Azure Database for PostgreSQL Flexible Server",
   fields: [
     f("name", "Name"),

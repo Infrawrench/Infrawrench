@@ -3,6 +3,10 @@ import { SCW_ZONES as ZONES } from "../locations.js";
 
 export const InstanceResourceType = rt({
   id: "instance",
+  carbon: {
+    regionFieldKey: "zone",
+    vcpus: { from: "size", sizeFieldKey: "commercialType" },
+  },
   name: "Instance",
   plural: "Instances",
   description: "A Scaleway virtual machine",

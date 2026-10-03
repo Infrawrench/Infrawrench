@@ -1,3 +1,4 @@
+import { createCarbonHint } from "@infrawrench/client-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPluginClient } from "../lib/plugin-client";
 import { invoke } from "../lib/invoke";
@@ -179,7 +180,10 @@ export function CreateResourceModal({
         localClients.set(`${accountId}:${pluginId}`, Promise.resolve(client));
         if (!client.getCreateConfig)
           throw new Error("Plugin does not support dynamic create config");
-        return client.getCreateConfig(resourceType.id, parentResourceId);
+        const config = await client.getCreateConfig(resourceType.id, parentResourceId);
+        // The server attaches this in cloud mode; locally the host is us.
+        const carbon = createCarbonHint(pluginId, resourceType);
+        return carbon ? { ...config, carbon } : config;
       },
       loadResources: async (
         sources: AssociationSource[],

@@ -56,6 +56,7 @@ import { registerCalendarPaths } from "./paths/calendar";
 import { registerRunbookPaths } from "./paths/runbooks";
 import { registerOnCallPaths } from "./paths/on-call";
 import { registerQueryMonitorPaths } from "./paths/query-monitors";
+import { registerCarbonPaths } from "./paths/carbon";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -193,6 +194,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerRunbookPaths(ctx);
   registerOnCallPaths(ctx);
   registerQueryMonitorPaths(ctx);
+  registerCarbonPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -491,6 +493,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Query monitors",
         description:
           "A SQL query on a schedule, with a threshold and an alert. Metric alerts watch what the provider reports \u2014 CPU, connections, queue depth. Nothing watched what the data itself says, which is where a whole class of incidents lives: the orders table stopped growing, the dead-letter queue has 4,000 rows in it, yesterday's ETL wrote nought. A monitor may only run a single read-only statement, enforced by an allowlist of leading keywords on every execution rather than only on save; a failed run is `unknown` rather than `ok`, because it has told you nothing about the data; and the alert fires on the run that reaches the consecutive-breach threshold and not on every run past it.",
+      },
+      {
+        name: "Carbon",
+        description:
+          "Estimated operational carbon beside the cost, with every assumption on the response. A resource whose provider, region or size cannot be placed against a published figure produces no estimate at all rather than a guessed one \u2014 a carbon number computed against a guessed grid is worse than no number, because it is a number somebody will put in a report. Coefficients are reproduced from the Cloud Carbon Footprint project and are not measured by us; the scope is operational compute, and storage, network and embodied emissions are excluded and said so.",
       },
       {
         name: "Status pages",

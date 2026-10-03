@@ -3,6 +3,10 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MachineResourceType = rt({
   name: "Machine",
   id: "machine",
+  carbon: {
+    regionFieldKey: "region",
+    vcpus: { from: "field", fieldKey: "cpus" },
+  },
   description: "A Fly Machine — a fast-launching microVM",
   parentTypeId: "app",
   fields: [

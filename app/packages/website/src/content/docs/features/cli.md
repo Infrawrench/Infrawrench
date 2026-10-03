@@ -213,6 +213,16 @@ infrawrench oversized
 infrawrench oversized --json
 ```
 
+`carbon` prints the organization's [estimated carbon](./carbon.md) by provider, region and resource, with how many resources could not be estimated beside the total and the assumptions underneath. Cloud-only:
+
+```
+infrawrench carbon
+infrawrench carbon --days 90
+infrawrench carbon --json
+```
+
+`oversized` and `estimate` both carry the carbon figure too: a `co2e/mo` column, and a carbon line under the price.
+
 `estimate` prints one resource's [monthly cost estimate](./cost-estimates.md) at the provider's list price, itemized — the same figure the create form and the resource page quote. Cloud-only, and a projection rather than a bill: `costs` is what you were actually charged, this is the run-rate the resource's current shape implies. Pass the compound resource id, or a display name / external id scoped with `--account`:
 
 ```

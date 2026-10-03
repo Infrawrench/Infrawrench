@@ -3,6 +3,10 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MySQLFlexibleServerResourceType = rt({
   name: "MySQL Flexible Server",
   id: "azure-mysql-flexible",
+  carbon: {
+    regionFieldKey: "location",
+    vcpus: { from: "size", sizeFieldKey: "sku" },
+  },
   description: "An Azure Database for MySQL Flexible Server",
   fields: [
     f("name", "Name"),

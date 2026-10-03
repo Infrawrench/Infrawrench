@@ -1,5 +1,6 @@
 import type React from "react";
 import { useEffect, useState } from "react";
+import type { ResourceCarbonEstimate } from "@infrawrench/client-core";
 import type {
   DetailViewSchema,
   ResourceInstance,
@@ -100,6 +101,9 @@ interface DetailViewContainerProps {
    */
   loadCostEstimate?:
     ((changedFields: Record<string, string>) => Promise<CostEstimate | null>) | null;
+  /** The carbon of the same configuration, beside its price. */
+  loadCarbonEstimate?:
+    ((changedFields: Record<string, string>) => Promise<ResourceCarbonEstimate | null>) | null;
   onNoSqlCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
   onChatStream: (
     messages: ChatMessage[],
@@ -162,6 +166,7 @@ export function DetailViewContainer({
   cloudParentResourceId,
   accountPluginId,
   loadCostEstimate,
+  loadCarbonEstimate,
   onPeerPaneOpen,
   onRunQuery,
   onExecute,
@@ -276,6 +281,20 @@ export function DetailViewContainer({
       cancelled = true;
     };
   }, [loadCostEstimate]);
+  const [carbonEstimate, setCarbonEstimate] = useState<ResourceCarbonEstimate | null>(null);
+  useEffect(() => {
+    if (!loadCarbonEstimate) {
+      setCarbonEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    void loadCarbonEstimate({}).then((carbon) => {
+      if (!cancelled) setCarbonEstimate(carbon);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadCarbonEstimate]);
 
   return (
     <div className="flex-1 overflow-hidden min-h-0">
@@ -284,6 +303,7 @@ export function DetailViewContainer({
         resourceId={decodedResourceId}
         pluginLogoSvg={logoSvg}
         costEstimate={costEstimate}
+        carbonEstimate={carbonEstimate}
         {...(onReroll ? { onReroll } : {})}
         peerPanes={peerPanes}
         renderPeerPane={(pane) => (

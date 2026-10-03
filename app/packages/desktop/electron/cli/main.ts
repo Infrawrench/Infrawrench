@@ -25,6 +25,7 @@ import { cmdBillingRules, cmdBillingRule } from "./commands/billing-rules";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
+import { cmdCarbon } from "./commands/carbon";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
 import { cmdRouting, cmdRoutingQueue } from "./commands/routing";
 import { cmdExpiring } from "./commands/expiring";
@@ -115,6 +116,8 @@ COMMANDS
                       (--local scans this machine's workspace; no cost column without the cloud)
   oversized           machines whose 14-day p95 utilisation sits well under their size, with the
                       recommended smaller size and monthly saving (cloud only)
+  carbon              estimated CO2e of the estate by provider, region and resource, with what
+                      could not be estimated and the assumptions   [--days 30] (cloud only)
   alerts              metric threshold alert rules ("CPU > 90% for 15m") with live firing status
   alerts events       recent metric alert firings & recoveries   [--limit 50]
   routing             alert routing rules, in evaluation order
@@ -480,6 +483,9 @@ export async function runCli(): Promise<void> {
         break;
       case "oversized":
         await cmdOversized(ctx);
+        break;
+      case "carbon":
+        await cmdCarbon(ctx, parsed.range);
         break;
       case "alerts":
         if (rest[0] === "events") {

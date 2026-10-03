@@ -11,6 +11,12 @@ import {
 } from "@infrawrench/server-core/secret-states";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { estimateResourceCost } from "@infrawrench/server-core/cost/estimate";
+import {
+  carbonHintFor,
+  getConfigCarbon,
+  getResourceCarbon,
+} from "@infrawrench/server-core/cost/carbon";
+import { resourceCarbonEstimate, type ResourceCarbonEstimate } from "@infrawrench/client-core";
 import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
 import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
@@ -378,8 +384,14 @@ export function registerLifecycleRoutes(app: Hono): void {
     if (!ctx.client.getCreateConfig)
       return c.json({ error: "Plugin does not support dynamic create config" }, 400);
 
-    const config = await ctx.client.getCreateConfig(input.resourceTypeId, input.parentResourceId);
-    return c.json(config);
+    // The host, not the plugin, attaches the carbon hint: it is read from the
+    // type's declaration, so the form can show CO2e beside each size's price
+    // without another request.
+    const [config, carbon] = await Promise.all([
+      ctx.client.getCreateConfig(input.resourceTypeId, input.parentResourceId),
+      carbonHintFor(input.pluginId ?? ctx.account.pluginId, input.resourceTypeId),
+    ]);
+    return c.json(carbon ? { ...config, carbon } : config);
   });
 
   /** POST /api/resources/picker-resources: get resources for resource-picker field */
@@ -576,14 +588,53 @@ export function registerLifecycleRoutes(app: Hono): void {
       parentResourceId?: string;
     }>();
 
+    // Carbon rides the same response as the price, so every surface that
+    // shows one can show the other without a second round trip. A peer
+    // resource's configuration has no carbon declaration to read.
+    const carbonFor = async (): Promise<ResourceCarbonEstimate | null> => {
+      if (input.parentResourceId) return null;
+      try {
+        if (input.resourceId) {
+          return await getResourceCarbon(organizationId, {
+            accountId: input.accountId,
+            resourceTypeId: input.resourceTypeId,
+            resourceId: input.resourceId,
+            fields: input.fields,
+          });
+        }
+        const [account] = await db
+          .select({ pluginId: accounts.pluginId })
+          .from(accounts)
+          .where(and(eq(accounts.id, input.accountId), eq(accounts.organizationId, organizationId)))
+          .limit(1);
+        if (!account) return null;
+        const footprint = await getConfigCarbon(organizationId, {
+          accountId: input.accountId,
+          pluginId: input.pluginId ?? account.pluginId,
+          resourceTypeId: input.resourceTypeId,
+          fields: input.fields ?? {},
+        });
+        return footprint
+          ? { ...resourceCarbonEstimate(null), inScope: true, estimate: footprint }
+          : null;
+      } catch {
+        // Like the price: a catalogue that fails costs the caller its
+        // estimate, never its request.
+        return null;
+      }
+    };
+
     if (!input.pluginId) {
-      const estimate = await estimateResourceCost(organizationId, {
-        accountId: input.accountId,
-        resourceTypeId: input.resourceTypeId,
-        fields: input.fields,
-        resourceId: input.resourceId,
-      });
-      return c.json({ estimate });
+      const [estimate, carbon] = await Promise.all([
+        estimateResourceCost(organizationId, {
+          accountId: input.accountId,
+          resourceTypeId: input.resourceTypeId,
+          fields: input.fields,
+          resourceId: input.resourceId,
+        }),
+        carbonFor(),
+      ]);
+      return c.json({ estimate, carbon });
     }
 
     const ctx = await getClientForResource(
@@ -593,11 +644,12 @@ export function registerLifecycleRoutes(app: Hono): void {
       input.parentResourceId,
     );
     if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
-    if (!ctx.client.estimateCost) return c.json({ estimate: null });
-
-    const estimate = await ctx.client
-      .estimateCost(input.resourceTypeId, input.fields ?? {})
-      .catch(() => null);
-    return c.json({ estimate: estimate ?? null });
+    const [estimate, carbon] = await Promise.all([
+      ctx.client.estimateCost
+        ? ctx.client.estimateCost(input.resourceTypeId, input.fields ?? {}).catch(() => null)
+        : Promise.resolve(null),
+      carbonFor(),
+    ]);
+    return c.json({ estimate: estimate ?? null, carbon });
   });
 }

@@ -10,8 +10,15 @@
  * other.
  */
 import type { CostEstimate, PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
+import {
+  effectiveCarbonDeclaration,
+  readCarbonInputs,
+  resourceCarbonEstimate,
+  type ResourceCarbonEstimate,
+} from "@infrawrench/client-core";
 
-import { getCloudCostEstimate } from "./cloud-resources";
+import { getCloudCarbonEstimate, getCloudCostEstimate } from "./cloud-resources";
+import { getPlugin } from "../plugins/loader";
 import type { CloudCtx } from "../routes/_resource-detail/-types";
 
 /** Stored fields are `unknown`-valued; `estimateCost` takes strings. */
@@ -64,5 +71,64 @@ export function makeResourceCostEstimator(
         ...changedFields,
       })
       .catch(() => null);
+  };
+}
+
+/**
+ * The carbon counterpart of {@link makeResourceCostEstimator}, same contract.
+ *
+ * Cloud mode reads the `carbon` half of the same `cost-estimate` response.
+ * Local mode reads the type's carbon declaration in-process and resolves its
+ * size through the local plugin client's create form, exactly as the server
+ * does, so the two modes quote the same figure.
+ */
+export function makeResourceCarbonEstimator(
+  options: ResourceCostEstimatorOptions,
+): ((changedFields: Record<string, string>) => Promise<ResourceCarbonEstimate | null>) | null {
+  const { resource, accountId, resourceId, getLocalClient, getCloudCtx } = options;
+  if (!resource) return null;
+
+  return async (changedFields: Record<string, string>) => {
+    const cloud = getCloudCtx();
+    if (cloud) {
+      return getCloudCarbonEstimate(cloud.orgId, accountId, cloud.resourceTypeId, {
+        resourceId,
+        ...(Object.keys(changedFields).length > 0 ? { fields: changedFields } : {}),
+        pluginId: cloud.pluginId,
+        ...(cloud.parentResourceId ? { parentResourceId: cloud.parentResourceId } : {}),
+      }).catch(() => null);
+    }
+
+    try {
+      const loaded = await getPlugin(resource.pluginId);
+      const type = loaded?.plugin.resourceTypes.find((t) => t.id === resource.resourceTypeId);
+      const declaration = type ? effectiveCarbonDeclaration(type) : null;
+      if (!declaration) return resourceCarbonEstimate(null);
+      const client = getLocalClient();
+      const configs = new Map<string, ReturnType<NonNullable<PluginClient["getCreateConfig"]>>>();
+      const inputs = await readCarbonInputs(
+        declaration,
+        { ...(resource.fields ?? {}), ...changedFields },
+        {
+          pluginId: resource.pluginId,
+          resourceTypeId: resource.resourceTypeId,
+          loadCatalogue: async (typeId, fieldKey) => {
+            if (!client?.getCreateConfig) return null;
+            let config = configs.get(typeId);
+            if (!config) {
+              config = client.getCreateConfig(typeId);
+              configs.set(typeId, config);
+            }
+            const field = (await config).fields.find(
+              (f) => f.key === fieldKey && f.kind === "size-picker",
+            );
+            return field?.sizes ?? null;
+          },
+        },
+      );
+      return resourceCarbonEstimate(inputs);
+    } catch {
+      return null;
+    }
   };
 }

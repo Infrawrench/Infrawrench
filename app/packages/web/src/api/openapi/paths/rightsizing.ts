@@ -52,6 +52,17 @@ export function registerRightsizingPaths(ctx: BuildContext) {
       .number()
       .nullable()
       .describe("Current minus recommended monthly price; null when either side is unpriced."),
+    currentMonthlyKgCo2e: z
+      .number()
+      .nullable()
+      .describe(
+        "Estimated monthly kg CO2e of the current size where it runs; null when the region " +
+          "has no published grid figure. See the Carbon tag for the method.",
+      ),
+    monthlyKgCo2eSaving: z
+      .number()
+      .nullable()
+      .describe("Estimated monthly kg CO2e the resize would save; null as above."),
     resizeNote: z
       .string()
       .nullable()

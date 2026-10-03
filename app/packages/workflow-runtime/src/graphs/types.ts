@@ -86,6 +86,11 @@ export interface GraphMetricSeries {
 export interface GraphHost {
   /** Org-scoped cost query (ClickHouse on the cloud). */
   queryCosts(query: GraphCostQuery): Promise<GraphCostResult>;
+  /**
+   * The org's estimated carbon (the Costs page's figure). Optional: a host
+   * that cannot estimate it leaves it off and the call fails with a reason.
+   */
+  carbonEstimate?(windowDays: number): Promise<unknown>;
   /** List org resources for the graph's own pickers. Read-only, capped. */
   listResources(filter: GraphResourceFilter): Promise<GraphResourceInfo[]>;
   /** Provider metric series for one org resource. */

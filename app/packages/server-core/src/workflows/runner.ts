@@ -33,7 +33,9 @@ import {
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "../db/client";
-import { accounts, workflowMetrics, workflowRuns, workflows } from "../db/schema";
+import { accounts, resources, workflowMetrics, workflowRuns, workflows } from "../db/schema";
+import { getCarbonEstimate, getResourceCarbon } from "../cost/carbon";
+import { estimateResourceCost } from "../cost/estimate";
 import { writeWorkflowCostRows } from "../cost/workflow-costs";
 import { writeWorkflowMetricValues } from "../cost/workflow-metrics";
 import { getPlugin, loadPlugins } from "../plugin-loader";
@@ -332,6 +334,27 @@ export function buildOrgWorkflowHost(
       (async () => {
         throw new Error("This run is not interactive; infra.prompt() is unavailable.");
       }),
+    carbonEstimate: (windowDays) => getCarbonEstimate(organizationId, { windowDays }),
+    resourceFootprint: async (resourceId, fields) => {
+      const [row] = await db
+        .select({ accountId: resources.accountId, resourceTypeId: resources.resourceTypeId })
+        .from(resources)
+        .where(
+          and(
+            eq(resources.id, resourceId),
+            eq(resources.organizationId, organizationId),
+            isNull(resources.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (!row) throw new Error(`infra.carbon.resource: resource ${resourceId} not found.`);
+      const target = { ...row, resourceId, fields };
+      const [cost, carbon] = await Promise.all([
+        estimateResourceCost(organizationId, target),
+        getResourceCarbon(organizationId, target).catch(() => null),
+      ]);
+      return { resourceId, cost, carbon };
+    },
     writeCosts: async (rows) => {
       const result = await writeWorkflowCostRows({
         organizationId,

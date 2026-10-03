@@ -549,6 +549,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // right-sizing: the list is derived from the org's resource set like
   // orphans; prices are provider catalog rates, not the org's billing data
   "GET /rightsizing": "resources:read",
+  "GET /carbon": "costs:read",
   // ssh keys
   "GET /ssh-keys": "ssh-keys:read",
   "POST /ssh-keys": "ssh-keys:write",

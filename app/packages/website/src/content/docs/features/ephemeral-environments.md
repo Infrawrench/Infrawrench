@@ -33,7 +33,7 @@ Press **Stamp out** on a template and fill in three things:
 - **A time to live.** This is required — there is no "forever" option. Pick a preset or type a number of hours, up to the ceiling your organization sets (see below).
 - **Any parameters** the template declares.
 
-Before you commit, the form shows a **cost estimate** for the whole environment, drawn from the same [forward-looking estimates](./cost-estimates.md) the create form uses, plus what the chosen TTL works out to. A resource the provider cannot price is reported as unpriced rather than counted as free — "at least $X/month" is an honest answer, `$0` is not.
+Before you commit, the form shows a **cost estimate** for the whole environment, drawn from the same [forward-looking estimates](./cost-estimates.md) the create form uses, plus what the chosen TTL works out to and the environment's [estimated monthly carbon](./carbon.md). A resource the provider cannot price is reported as unpriced rather than counted as free — "at least $X/month" is an honest answer, `$0` is not.
 
 ![The stamp-out dialog with a TTL of 3 days selected, a Region parameter, and the estimated cost line showing "At least $214.60/month"](https://agent-assets.infrawrench.com/docs-screenshots/features/ephemeral-environments/stamp-out-dialog.png)
 

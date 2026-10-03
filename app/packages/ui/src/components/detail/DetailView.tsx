@@ -24,6 +24,8 @@ import { useGT } from "gt-react";
 import { formatMonthlyEstimate } from "@infrawrench/client-core";
 import { MetricChart } from "../charts/MetricChart.js";
 import { CostEstimateChip } from "../CostEstimateChip.js";
+import { CarbonEstimateChip } from "../CarbonEstimateChip.js";
+import type { ResourceCarbonEstimate } from "@infrawrench/client-core";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
 import { ChildResourceTable } from "./ChildResourceTable.js";
@@ -124,6 +126,12 @@ interface DetailViewProps {
    * Omit when the plugin cannot price this type.
    */
   costEstimate?: CostEstimate | null | undefined;
+  /**
+   * The resource's estimated monthly carbon, beside its cost. Usually from
+   * the same request (`cost-estimate` returns both). Omit, or pass one with
+   * no `estimate`, and nothing renders.
+   */
+  carbonEstimate?: ResourceCarbonEstimate | null | undefined;
   /** Additional panes from peer plugins: rendered as extra tabs */
   peerPanes?: PeerPaneData[];
   renderPeerPane?: (pane: PeerPaneData, index: number) => React.ReactNode;
@@ -281,6 +289,7 @@ export function DetailView({
   onModifySecretVersion,
   onOpenConsole,
   costEstimate,
+  carbonEstimate,
   peerPanes = EMPTY_PEER_PANES,
   renderPeerPane,
   onPeerPaneOpen,
@@ -511,6 +520,12 @@ export function DetailView({
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 pt-1">
+            {carbonEstimate?.estimate && (
+              <CarbonEstimateChip
+                footprint={carbonEstimate.estimate}
+                aggregate={carbonEstimate.role === "aggregate"}
+              />
+            )}
             {costEstimate && (
               <CostEstimateChip
                 label={formatMonthlyEstimate(costEstimate.monthlyAmount, costEstimate.currency)}

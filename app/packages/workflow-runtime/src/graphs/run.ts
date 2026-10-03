@@ -553,6 +553,18 @@ export async function runGraph(opts: RunGraphOptions): Promise<GraphRunResult> {
         return host.queryCosts(costQuery(args["query"]));
       }
 
+      case "graph.carbon.estimate": {
+        // Same budget as cost queries: it is the same kind of whole-org read.
+        countCosts();
+        if (!host.carbonEstimate) fail("graph.carbon.estimate: not available on this host.");
+        const raw = args["windowDays"];
+        const windowDays = raw === undefined ? 30 : Number(raw);
+        if (!Number.isInteger(windowDays) || windowDays < 1 || windowDays > 365) {
+          fail("graph.carbon.estimate: windowDays must be a whole number from 1 to 365.");
+        }
+        return host.carbonEstimate(windowDays);
+      }
+
       case "graph.resources.list": {
         countLists();
         const f = (args["filter"] ?? {}) as Record<string, unknown>;

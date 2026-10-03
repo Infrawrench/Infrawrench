@@ -413,6 +413,13 @@ export const PRELUDE = String.raw`
     },
   };
 
+  // The carbon estimate beside the cost: the org's figure, and one
+  // resource's (optionally for a proposed edit, to gate a resize on it).
+  const carbon = {
+    estimate: (opts) => rpc("carbon.estimate", opts || {}),
+    resource: (resourceId, fields) => rpc("carbon.resource", fields ? { resourceId, fields } : { resourceId }),
+  };
+
   // Report the denominator of a unit cost: how many customers / requests / GB
   // there were on a day. Deliberately NOT infra.metrics.write — that name is
   // taken by the declared-metrics proxy above, whose get trap returns null for
@@ -476,6 +483,7 @@ export const PRELUDE = String.raw`
     secrets,
     event,
     costs,
+    carbon,
     businessMetrics,
     page,
     ai,

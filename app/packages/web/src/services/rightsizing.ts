@@ -6,6 +6,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { getMetricQuantilesBatch } from "@infrawrench/server-core/clickhouse/readers";
 import {
+  carbonSaving,
   DEFAULT_RIGHTSIZING_THRESHOLDS,
   RIGHTSIZING_WINDOW_DAYS,
   computeSizeRecommendation,
@@ -311,6 +312,20 @@ async function computeRightsizing(organizationId: string): Promise<RightsizingLi
         projectedCpuP95: recommendation.projectedCpuP95,
         currency: declaration.priceCurrency ?? "USD",
         monthlySaving: recommendation.monthlySaving,
+        // Same region, same grid: the saving is the vCPU difference and
+        // nothing else, which is why it can sit beside the price saving.
+        ...(() => {
+          const carbon = carbonSaving({
+            grid: typeDef.carbon?.grid ?? r.pluginId,
+            region,
+            currentVcpus: recommendation.current.vcpus,
+            recommendedVcpus: recommendation.recommended.vcpus,
+          });
+          return {
+            currentMonthlyKgCo2e: carbon?.currentMonthlyKgCo2e ?? null,
+            monthlyKgCo2eSaving: carbon?.monthlyKgCo2eSaving ?? null,
+          };
+        })(),
         resizeNote: declaration.resizeNote ?? null,
         lastSyncedAt: r.lastSyncedAt ? r.lastSyncedAt.toISOString() : null,
       } satisfies OversizedResource);

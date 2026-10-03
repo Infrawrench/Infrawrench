@@ -3,6 +3,19 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const EKSClusterResourceType = rt({
   name: "EKS Cluster",
   id: "eks-cluster",
+  // Nodes are EC2 instances in their own right, so the cluster is shown on its
+  // page and in the create form but never added to the total twice.
+  carbon: {
+    role: "aggregate",
+    regionFieldKey: "region",
+    vcpus: {
+      from: "size",
+      sizeFieldKey: "instanceTypes",
+      catalogueFieldKey: "instanceType",
+      list: true,
+    },
+    countFieldKey: "nodeCount",
+  },
   description:
     "An Amazon Elastic Kubernetes Service cluster. Creating one also provisions a default " +
     "managed node group once the control plane is ACTIVE (~10-15 min) — node counts show 0 " +

@@ -119,6 +119,9 @@ export const GRAPH_PRELUDE = String.raw`
     costs: {
       query: (query) => rpc("graph.costs.query", { query: query || {} }),
     },
+    carbon: {
+      estimate: (opts) => rpc("graph.carbon.estimate", opts || {}),
+    },
     resources: {
       list: (filter) => rpc("graph.resources.list", { filter: filter || {} }),
     },
