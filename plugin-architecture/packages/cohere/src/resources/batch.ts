@@ -10,7 +10,9 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * ⚠️ This is one of the few management-shaped surfaces that really is on
  * `/v2/`: datasets, models, embed jobs and fine-tuning are all still `/v1/`.
  * Batches are cancelled via the colon verb `POST /v2/batches/{id}:cancel`;
- * there is no delete.
+ * there is no delete. Created with `POST /v2/batches` over a validated
+ * `batch-*-input` dataset; the create form picks both the dataset and the
+ * model from live lists.
  */
 export const BatchResourceType = rt({
   name: "Batch",
@@ -46,6 +48,7 @@ export const BatchResourceType = rt({
     { fieldKey: "inputDatasetId", targetTypeId: "dataset", label: "reads" },
     { fieldKey: "outputDatasetId", targetTypeId: "dataset", label: "writes" },
   ],
+  supportsCreate: true,
   supportsDelete: false,
   iconKey: "batch",
 });

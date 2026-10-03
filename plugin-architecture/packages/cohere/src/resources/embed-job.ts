@@ -9,6 +9,8 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  *
  * ⚠️ This endpoint documents **no query parameters at all**: no pagination.
  * Jobs are cancelled (`POST /v1/embed-jobs/{id}/cancel`), never deleted.
+ * Created with `POST /v1/embed-jobs` over a validated `embed-input` dataset;
+ * the create form picks the dataset and the embed model from live lists.
  */
 export const EmbedJobResourceType = rt({
   name: "Embed Job",
@@ -36,6 +38,7 @@ export const EmbedJobResourceType = rt({
     { fieldKey: "inputDatasetId", targetTypeId: "dataset", label: "reads" },
     { fieldKey: "outputDatasetId", targetTypeId: "dataset", label: "writes" },
   ],
+  supportsCreate: true,
   supportsDelete: false,
   iconKey: "batch",
 });
