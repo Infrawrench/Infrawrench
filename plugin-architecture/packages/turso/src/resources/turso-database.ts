@@ -57,6 +57,7 @@ export const TursoDatabaseResourceType = rt({
   ],
   supportsCreate: true,
   supportsUpdate: true,
+  supportsMetrics: true,
   iconKey: "turso",
   secretExportTemplates: [
     {
