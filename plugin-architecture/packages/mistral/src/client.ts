@@ -1,6 +1,8 @@
 import type {
+  ActionNode,
   CostFetchRange,
   CostRow,
+  CreateResourceConfig,
   DetailViewSchema,
   HostServices,
   PluginClient,
@@ -20,6 +22,14 @@ import {
   joinSubtitle,
   jsonRestFetch,
 } from "@infrawrench/plugin-base";
+import {
+  type MistralAgent,
+  type MistralLibrary,
+  mapAgent,
+  mapLibrary,
+  renderAgentDetail,
+  renderLibraryDetail,
+} from "./agents.js";
 
 /** Data plane. `Authorization: Bearer <apiKey>`. https://docs.mistral.ai/api */
 const BASE = "https://api.mistral.ai/v1";
@@ -55,6 +65,23 @@ const MAX_TTS_CHARACTERS = 4000;
  */
 const FALLBACK_STT_MODEL = "voxtral-mini-latest";
 const FALLBACK_TTS_MODEL = "voxtral-mini-tts-2603";
+
+/**
+ * Endpoints a batch job can target (the `ApiEndpoint` enum).
+ * https://docs.mistral.ai/openapi.yaml
+ */
+const BATCH_ENDPOINTS = [
+  "/v1/chat/completions",
+  "/v1/embeddings",
+  "/v1/fim/completions",
+  "/v1/moderations",
+  "/v1/chat/moderations",
+  "/v1/ocr",
+  "/v1/classifications",
+  "/v1/chat/classifications",
+  "/v1/conversations",
+  "/v1/audio/transcriptions",
+];
 
 const STT_LANGUAGES: SpeechPanelOption[] = [
   { id: "", label: "Auto-detect" },
@@ -308,6 +335,10 @@ export class MistralClient implements PluginClient {
         return this.listBatchJobs(accountId);
       case "mistral-api-key":
         return this.listApiKeys(accountId);
+      case "mistral-agent":
+        return this.listAgents(accountId);
+      case "mistral-library":
+        return this.listLibraries(accountId);
       default:
         throw new Error(`Mistral plugin: unknown resource type "${typeId}"`);
     }
@@ -611,6 +642,50 @@ export class MistralClient implements PluginClient {
     };
   }
 
+  /**
+   * `GET /v1/agents/pages`: cursor-paged (`page_token` → `next_page_token`),
+   * and unlike the deprecated `GET /v1/agents` it honours per-agent sharing.
+   */
+  private async listAgents(accountId: string): Promise<ResourceInstance[]> {
+    const out: MistralAgent[] = [];
+    let token: string | undefined;
+    for (let page = 0; page < 50; page += 1) {
+      const params = new URLSearchParams({ page_size: "100" });
+      if (token) params.set("page_token", token);
+      const body = await this.fetch<{ data?: MistralAgent[]; next_page_token?: string | null }>(
+        `/agents/pages?${params.toString()}`,
+      );
+      out.push(...(body.data ?? []));
+      const next = body.next_page_token || undefined;
+      if (!next || next === token) break;
+      token = next;
+    }
+    const now = new Date().toISOString();
+    // A cursor that repeats a page would otherwise yield duplicate ids.
+    const byId = new Map<string, MistralAgent>();
+    for (const agent of out) if (agent.id) byId.set(String(agent.id), agent);
+    return [...byId.values()].map((a) => mapAgent(accountId, a, now));
+  }
+
+  /** `GET /v1/libraries`: cursor-paged with `page_token`, at most 100 per page. */
+  private async listLibraries(accountId: string): Promise<ResourceInstance[]> {
+    const out: MistralLibrary[] = [];
+    let token: string | undefined;
+    for (let page = 0; page < 50; page += 1) {
+      const params = new URLSearchParams({ page_size: "100" });
+      if (token) params.set("page_token", token);
+      const body = await this.fetch<{ data?: MistralLibrary[]; next_page_token?: string | null }>(
+        `/libraries?${params.toString()}`,
+      );
+      out.push(...(body.data ?? []));
+      const next = body.next_page_token || undefined;
+      if (!next || next === token) break;
+      token = next;
+    }
+    const now = new Date().toISOString();
+    return out.filter((l) => Boolean(l.id)).map((l) => mapLibrary(accountId, l, now));
+  }
+
   // ------------------------------------------------------------------- get
 
   async getResource(
@@ -675,6 +750,155 @@ export class MistralClient implements PluginClient {
     return value === undefined || value === null ? "" : String(value);
   }
 
+  // ----------------------------------------------------------------- create
+
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId === "mistral-agent") {
+      const models = await this.liveModelOptions(
+        (m) => m.capabilities?.["completion_chat"] !== false,
+      );
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          { key: "model", label: "Model", kind: "select", required: true, options: models },
+          { key: "description", label: "Description", kind: "text", required: false },
+          {
+            key: "instructions",
+            label: "Instructions",
+            kind: "code",
+            codeLanguage: "markdown",
+            required: false,
+            description: "The system prompt the agent follows in every conversation.",
+          },
+        ],
+      };
+    }
+    if (typeId === "mistral-library") {
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          { key: "description", label: "Description", kind: "text", required: false },
+        ],
+      };
+    }
+    if (typeId === "mistral-batch-job") {
+      const [models, files] = await Promise.all([
+        this.liveModelOptions(() => true),
+        this.listFiles("picker").catch(() => [] as ResourceInstance[]),
+      ]);
+      return {
+        fields: [
+          {
+            key: "inputFile",
+            label: "Input file",
+            kind: "select",
+            required: true,
+            options: files
+              .filter((file) => String(file.fields["purpose"] ?? "") === "batch")
+              .map((file) => ({
+                id: String(file.fields["fileId"]),
+                label: file.displayName,
+                description: String(file.fields["createdAt"] || ""),
+              })),
+            description: 'A .jsonl file uploaded with purpose "batch", one request per line.',
+          },
+          {
+            key: "endpoint",
+            label: "Endpoint",
+            kind: "select",
+            required: true,
+            options: BATCH_ENDPOINTS.map((id) => ({ id, label: id })),
+            defaultValue: "/v1/chat/completions",
+          },
+          { key: "model", label: "Model", kind: "select", required: true, options: models },
+          {
+            key: "timeoutHours",
+            label: "Timeout (hours)",
+            kind: "number",
+            required: false,
+            minValue: 1,
+            defaultValue: "24",
+          },
+        ],
+      };
+    }
+    throw new Error(`Mistral plugin: no create config for type "${typeId}"`);
+  }
+
+  /** Live, non-archived models as picker options. */
+  private async liveModelOptions(
+    keep: (model: MistralModel) => boolean,
+  ): Promise<Array<{ id: string; label: string; description?: string }>> {
+    try {
+      const data = await this.fetch<{ data?: MistralModel[] }>("/models");
+      return (data.data ?? [])
+        .filter((m) => Boolean(m.id) && m.archived !== true && keep(m))
+        .map((m) => ({
+          id: String(m.id),
+          label: String(m.id),
+          ...(m.name && m.name !== m.id ? { description: m.name } : {}),
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const now = new Date().toISOString();
+
+    if (typeId === "mistral-agent") {
+      // https://docs.mistral.ai/openapi.yaml: POST /v1/agents
+      const name = fields["name"]?.trim();
+      const model = fields["model"];
+      if (!name || !model) throw new Error("Mistral plugin: an agent needs a name and a model");
+      const body: Record<string, unknown> = { name, model };
+      if (fields["description"]) body["description"] = fields["description"];
+      if (fields["instructions"]) body["instructions"] = fields["instructions"];
+      const created = await this.fetch<MistralAgent>("/agents", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return mapAgent(accountId, created, now);
+    }
+
+    if (typeId === "mistral-library") {
+      // POST /v1/libraries
+      const name = fields["name"]?.trim();
+      if (!name) throw new Error("Mistral plugin: a library needs a name");
+      const body: Record<string, unknown> = { name };
+      if (fields["description"]) body["description"] = fields["description"];
+      const created = await this.fetch<MistralLibrary>("/libraries", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return mapLibrary(accountId, created, now);
+    }
+
+    if (typeId === "mistral-batch-job") {
+      // https://docs.mistral.ai/api/endpoint/batch: POST /v1/batch/jobs
+      const inputFile = fields["inputFile"];
+      const endpoint = fields["endpoint"];
+      const model = fields["model"];
+      if (!inputFile || !endpoint || !model) {
+        throw new Error("Mistral plugin: a batch job needs an input file, an endpoint and a model");
+      }
+      const body: Record<string, unknown> = { input_files: [inputFile], endpoint, model };
+      const timeout = Number(fields["timeoutHours"]);
+      if (Number.isFinite(timeout) && timeout > 0) body["timeout_hours"] = Math.round(timeout);
+      const created = await this.fetch<MistralBatchJob>("/batch/jobs", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return this.mapBatchJob(accountId, created, now);
+    }
+
+    throw new Error(`Mistral plugin: cannot create type "${typeId}"`);
+  }
+
   // --------------------------------------------------------------- mutation
 
   async updateResource(
@@ -683,6 +907,39 @@ export class MistralClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    if (typeId === "mistral-agent") {
+      // PATCH /v1/agents/{agent_id}: every edit mints a new agent version.
+      const agentId = resourceId.slice(`${accountId}:${typeId}:`.length);
+      const body: Record<string, unknown> = {};
+      if (fields["name"] !== undefined && fields["name"].trim())
+        body["name"] = fields["name"].trim();
+      if (fields["description"] !== undefined) body["description"] = fields["description"] || null;
+      if (fields["instructions"] !== undefined) {
+        body["instructions"] = fields["instructions"] || null;
+      }
+      if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
+      const updated = await this.fetch<MistralAgent>(`/agents/${encodeURIComponent(agentId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      return mapAgent(accountId, updated, new Date().toISOString());
+    }
+
+    if (typeId === "mistral-library") {
+      // PATCH /v1/libraries/{library_id}: name and description only.
+      const libraryId = resourceId.slice(`${accountId}:${typeId}:`.length);
+      const body: Record<string, unknown> = {};
+      if (fields["name"] !== undefined && fields["name"].trim())
+        body["name"] = fields["name"].trim();
+      if (fields["description"] !== undefined) body["description"] = fields["description"] || null;
+      if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
+      const updated = await this.fetch<MistralLibrary>(
+        `/libraries/${encodeURIComponent(libraryId)}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      );
+      return mapLibrary(accountId, updated, new Date().toISOString());
+    }
+
     if (typeId !== "mistral-voice") {
       throw new Error(`Mistral plugin: ${typeId} does not support edit`);
     }
@@ -728,6 +985,18 @@ export class MistralClient implements PluginClient {
           method: "DELETE",
         });
         return;
+      // DELETE /v1/agents/{agent_id}
+      case "mistral-agent":
+        await this.fetch<unknown>(`/agents/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      // DELETE /v1/libraries/{library_id}: deletes its documents too.
+      case "mistral-library":
+        await this.fetch<unknown>(`/libraries/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
       // Admin plane: DELETE /v1/admin/api-keys/{key_id}
       case "mistral-api-key":
         await this.adminFetch<unknown>(`/api-keys/${encodeURIComponent(externalId)}`, {
@@ -739,18 +1008,42 @@ export class MistralClient implements PluginClient {
     }
   }
 
-  /** https://docs.mistral.ai/api/endpoint/batch: `POST /v1/batch/jobs/{job_id}/cancel` */
+  /**
+   * - batch `cancel`: `POST /v1/batch/jobs/{job_id}/cancel`
+   *   (https://docs.mistral.ai/api/endpoint/batch)
+   * - fine-tuned model `archive` / `unarchive`:
+   *   `POST` / `DELETE /v1/fine_tuning/models/{model_id}/archive`
+   * - fine-tuned model `delete-model`: `DELETE /v1/models/{model_id}`. Only
+   *   fine-tuned models can be deleted, which is why this is an action on
+   *   those rather than a type-level delete offered on every base model too.
+   */
   async invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
   ): Promise<void> {
+    const externalId = resourceId.slice(`${accountId}:${typeId}:`.length);
     if (typeId === "mistral-batch-job" && actionId === "cancel") {
-      const jobId = resourceId.slice(`${accountId}:${typeId}:`.length);
-      await this.fetch<unknown>(`/batch/jobs/${encodeURIComponent(jobId)}/cancel`, {
+      await this.fetch<unknown>(`/batch/jobs/${encodeURIComponent(externalId)}/cancel`, {
         method: "POST",
       });
+      return;
+    }
+    if (typeId === "mistral-model" && (actionId === "archive" || actionId === "unarchive")) {
+      await this.fetch<unknown>(`/fine_tuning/models/${encodeURIComponent(externalId)}/archive`, {
+        method: actionId === "archive" ? "POST" : "DELETE",
+      });
+      return;
+    }
+    if (typeId === "mistral-model" && actionId === "delete-model") {
+      const result = await this.fetch<{ deleted?: boolean }>(
+        `/models/${encodeURIComponent(externalId)}`,
+        { method: "DELETE" },
+      );
+      if (result.deleted === false) {
+        throw new Error(`Mistral plugin: model ${externalId} was not deleted`);
+      }
       return;
     }
     throw new Error(`Mistral plugin: unknown action "${actionId}" for ${typeId}`);
@@ -998,6 +1291,10 @@ export class MistralClient implements PluginClient {
         return this.renderBatchJobDetail(resource);
       case "mistral-api-key":
         return this.renderApiKeyDetail(resource);
+      case "mistral-agent":
+        return renderAgentDetail(resource);
+      case "mistral-library":
+        return renderLibraryDetail(resource);
       default:
         return { title: resource.displayName, subtitle: "Mistral", sections: [] };
     }
@@ -1135,7 +1432,12 @@ export class MistralClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        ...(isFineTuned(resource)
+          ? fineTunedModelActions(resource.fields["archived"] === true)
+          : []),
+      ],
       speechPanel: this.speechPanel(resource),
     };
   }
@@ -1415,6 +1717,55 @@ export class MistralClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
+}
+
+/**
+ * A workspace fine-tune rather than a Mistral base model. `type` says so on
+ * current responses; the `ft:` id prefix and the producing job cover older ones.
+ */
+function isFineTuned(resource: ResourceInstance): boolean {
+  const type = String(resource.fields["type"] ?? "");
+  const id = String(resource.fields["modelId"] ?? resource.externalId ?? "");
+  return type === "fine-tuned" || id.startsWith("ft:") || Boolean(resource.fields["job"]);
+}
+
+function fineTunedModelActions(archived: boolean): ActionNode[] {
+  return [
+    archived
+      ? {
+          kind: "action",
+          label: "Unarchive",
+          action: {
+            type: "plugin-action",
+            actionId: "unarchive",
+            successMessage: "Model unarchived.",
+          },
+        }
+      : {
+          kind: "action",
+          label: "Archive",
+          action: {
+            type: "plugin-action",
+            actionId: "archive",
+            confirmMessage:
+              "Archive this fine-tuned model? It stops being listed for inference until unarchived.",
+            successMessage: "Model archived.",
+          },
+        },
+    {
+      kind: "action",
+      label: "Delete model",
+      variant: "danger",
+      action: {
+        type: "plugin-action",
+        actionId: "delete-model",
+        destructive: true,
+        confirmMessage:
+          "Permanently delete this fine-tuned model? Requests that name it will fail, and it cannot be restored.",
+        successMessage: "Model deleted.",
+      },
+    },
+  ];
 }
 
 function splitList(value: string): string[] {

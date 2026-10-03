@@ -6,6 +6,11 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * `GET https://api.mistral.ai/v1/fine_tuning/jobs`: paginated with
  * `page`/`page_size`.
  * https://docs.mistral.ai/api/endpoint/jobs
+ *
+ * Mistral now files the fine-tuning API under "legacy" and no longer lists
+ * the jobs endpoints in its public OpenAPI document. The listing still
+ * answers, so existing jobs stay visible; nothing here creates one.
+ * https://docs.mistral.ai/resources/deprecated/customization
  */
 export const MistralFineTuningJobResourceType = rt({
   name: "Fine-Tuning Job",

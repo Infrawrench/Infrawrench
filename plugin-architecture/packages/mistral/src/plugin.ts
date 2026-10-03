@@ -7,6 +7,8 @@ import { MistralFileResourceType } from "./resources/file.js";
 import { MistralFineTuningJobResourceType } from "./resources/fine-tuning-job.js";
 import { MistralModelResourceType } from "./resources/model.js";
 import { MistralVoiceResourceType } from "./resources/voice.js";
+import { MistralAgentResourceType } from "./resources/agent.js";
+import { MistralLibraryResourceType } from "./resources/library.js";
 
 const manifest: PluginManifest = {
   id: "mistral",
@@ -36,7 +38,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A workspace API key from console.mistral.ai → API Keys. Drives models, files, fine-tuning, batch jobs, voices, transcription, and speech.",
+        "A workspace API key from console.mistral.ai → API Keys. Drives models, agents, libraries, files, fine-tuning, batch jobs, voices, transcription, and speech.",
       sensitive: true,
       placeholder: "your-mistral-api-key",
       helpLink: {
@@ -94,6 +96,8 @@ const manifest: PluginManifest = {
 
 const resourceTypes: ResourceTypeDefinition[] = [
   MistralModelResourceType,
+  MistralAgentResourceType,
+  MistralLibraryResourceType,
   MistralVoiceResourceType,
   MistralFineTuningJobResourceType,
   MistralBatchJobResourceType,

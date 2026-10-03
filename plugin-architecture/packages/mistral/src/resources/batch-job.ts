@@ -5,6 +5,8 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  *
  * `GET https://api.mistral.ai/v1/batch/jobs`: paginated with
  * `page`/`page_size`; cancel is `POST /v1/batch/jobs/{job_id}/cancel`.
+ * Create is `POST /v1/batch/jobs` over an uploaded `.jsonl` file; the create
+ * form picks the file, the endpoint and the model from live lists.
  * https://docs.mistral.ai/api/endpoint/batch
  */
 export const MistralBatchJobResourceType = rt({
@@ -36,6 +38,7 @@ export const MistralBatchJobResourceType = rt({
     { fieldKey: "outputFile", targetTypeId: "mistral-file", label: "writes" },
     { fieldKey: "errorFile", targetTypeId: "mistral-file", label: "errors to" },
   ],
+  supportsCreate: true,
   supportsDelete: true,
   iconKey: "layers",
 });

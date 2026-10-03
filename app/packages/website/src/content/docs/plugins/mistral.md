@@ -1,17 +1,19 @@
 ---
 title: Mistral AI
-description: Manage Mistral models, voices, files, fine-tuning and batch jobs, plus Voxtral transcription and speech synthesis from the Speech tab.
+description: Manage Mistral models, agents, libraries, voices, files, fine-tuning and batch jobs, plus Voxtral transcription and speech synthesis from the Speech tab.
 sidebar_order: 41
 ---
 
 ## What you can manage
 
-- **Models** — base and fine-tuned checkpoints, with the full `capabilities` flag table and max context length
-- **Voices** — TTS presets and workspace clones (rename, retag, delete clones)
-- **Fine-tuning jobs** — status, datasets, trained tokens, and the resulting model id
-- **Batch jobs** — progress counters and output/error files, with cancel and delete
-- **Files** — fine-tuning datasets, batch JSONL, and OCR inputs (delete)
-- **API keys** — Enterprise plans only, via the Admin API
+- **Models**: base and fine-tuned checkpoints, with the full `capabilities` flag table and max context length. Fine-tuned models also get **Archive** / **Unarchive** and **Delete model**; base models belong to Mistral and offer neither.
+- **Agents**: each agent's model, instructions, tools, attached libraries, handoffs, completion arguments and version history. Create one with a model picked from the live list, edit its name, description or instructions (every edit becomes a new agent version), delete it.
+- **Libraries**: document libraries agents search through a `document_library` tool, with document count and total size. Create, rename, change the description, delete. Documents themselves are uploaded through the Libraries API.
+- **Voices**: TTS presets and workspace clones (rename, retag, delete clones)
+- **Fine-tuning jobs**: status, datasets, trained tokens, and the resulting model id
+- **Batch jobs**: progress counters and output/error files, with create, cancel and delete. The create form picks the input file (only files uploaded with purpose `batch` are offered), the target endpoint and the model, and takes an optional timeout.
+- **Files**: fine-tuning datasets, batch JSONL, and OCR inputs (delete)
+- **API keys**: Enterprise plans only, via the Admin API
 
 ## Credentials
 
@@ -22,7 +24,7 @@ The **Admin API key** field is optional and separate. Mistral's Admin API lives 
 - the API-key listing is empty rather than broken, and
 - cost collection is disabled with a message explaining why.
 
-Everything else — models, voices, files, jobs, transcription, synthesis — works on the workspace key alone.
+Everything else (models, agents, libraries, voices, files, jobs, transcription, synthesis) works on the workspace key alone.
 
 ![Mistral Add-account form showing the required API key field and the optional Admin API key field with its Enterprise-only description](https://agent-assets.infrawrench.com/docs-screenshots/plugins/mistral/add-account.png)
 
@@ -53,3 +55,5 @@ If you collected Mistral costs before August 2026, an earlier version dated the 
 - **API keys are listed, not created.** New keys are minted in the Mistral backoffice, which is the only place the plaintext value is ever shown. The plugin can revoke a key but deliberately does not create one.
 - Uploads through the Speech tab are capped at 25 MB. The transcription API itself accepts far longer recordings — use a file id or URL through the API directly for those.
 - OCR is available at `POST /v1/ocr` but is a one-shot action rather than a listable resource, so it has no resource type here.
+- **Fine-tuning is legacy.** Mistral has moved the fine-tuning API to its deprecated section and no longer lists the jobs endpoints in its OpenAPI document. Existing jobs and fine-tuned models stay visible and manageable here, but the app does not start new jobs.
+- **Agents and libraries page by cursor.** Both use `page_token`; the older page-numbered agent listing is deprecated because it ignores per-agent sharing, so the app uses `GET /v1/agents/pages` and shows only agents your key is allowed to see.
