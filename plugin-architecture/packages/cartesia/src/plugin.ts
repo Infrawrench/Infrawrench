@@ -4,6 +4,9 @@ import { CartesiaClient } from "./client.js";
 import { VoiceResourceType } from "./resources/voice.js";
 import { PronunciationDictResourceType } from "./resources/pronunciation-dict.js";
 import { ApiKeyResourceType } from "./resources/api-key.js";
+import { AgentResourceType } from "./resources/agent.js";
+import { PhoneNumberResourceType } from "./resources/phone-number.js";
+import { OrganizationUserResourceType } from "./resources/organization-user.js";
 
 // Brand mark ("Archie") and palette taken from Cartesia's own brand page,
 // https://www.cartesia.ai/brand: the symbol is lifted verbatim from the
@@ -26,7 +29,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your Cartesia API key, created in the Cartesia console under API Keys. Starts with sk_car_. This key drives voice and pronunciation-dictionary listing, text-to-speech, and transcription.",
+        "Your Cartesia API key, created in the Cartesia console under API Keys. Starts with sk_car_. This key drives voices, pronunciation dictionaries, agents and phone numbers, text-to-speech, and transcription.",
       sensitive: true,
       placeholder: "sk_car_...",
     },
@@ -34,7 +37,7 @@ const manifest: PluginManifest = {
       key: "adminApiKey",
       label: "Admin API Key (optional)",
       description:
-        "A separate Cartesia *admin* key, created in the console with the Admin key type. It starts with sk_car_admin_ and is NOT interchangeable with the key above. Cartesia only accepts an admin key on /usage/credits and /api-keys, so leaving this blank hides the API Keys list and the credit-usage stats, and cost collection cannot run — voices, pronunciation dictionaries, synthesis, and transcription all keep working.",
+        "A separate Cartesia *admin* key, created in the console with the Admin key type. It starts with sk_car_admin_ and is NOT interchangeable with the key above. Cartesia only accepts an admin key on /usage/credits, /api-keys and /organizations/users, so leaving this blank hides the API Keys and Organization Members lists and the credit-usage stats and charts, and cost collection cannot run; voices, pronunciation dictionaries, synthesis, and transcription all keep working.",
       sensitive: true,
       optional: true,
       placeholder: "sk_car_admin_...",
@@ -73,6 +76,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   VoiceResourceType,
   PronunciationDictResourceType,
   ApiKeyResourceType,
+  AgentResourceType,
+  PhoneNumberResourceType,
+  OrganizationUserResourceType,
 ];
 
 export const plugin: Plugin = {

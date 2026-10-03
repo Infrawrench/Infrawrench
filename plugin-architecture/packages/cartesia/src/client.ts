@@ -13,6 +13,8 @@ import type {
   TranscriptWord,
   CostFetchRange,
   CostRow,
+  CreateResourceConfig,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 import {
   base64ToBytes,
@@ -21,24 +23,36 @@ import {
   externalIdOf,
 } from "@infrawrench/plugin-base";
 import { cartesiaCostSetupError, fetchCartesiaCostData } from "./cost-data.js";
+import { LANGUAGES } from "./languages.js";
+import { mapAgent, mapPhoneNumber, renderAgentDetail, renderPhoneNumberDetail } from "./agents.js";
+import type {
+  CartesiaAgent,
+  CartesiaAgentsResponse,
+  CartesiaDeployment,
+  CartesiaPhoneNumber,
+} from "./agents.js";
 
 const BASE_URL = "https://api.cartesia.ai";
 
 /**
  * Cartesia pins its API to a date and rejects any request without it: this
- * header is mandatory on *every* call, including GETs.
+ * header is mandatory on *every* call, including GETs. 2026-08-14 is the only
+ * version the current reference accepts; it made `access` a plain string,
+ * replaced `locales` with `accents` and dropped voice embeddings from TTS.
  * https://docs.cartesia.ai/api-reference/tts/bytes
+ * https://docs.cartesia.ai/changelog/2026
  */
-const CARTESIA_VERSION = "2026-03-01";
+const CARTESIA_VERSION = "2026-08-14";
 
 /** Cartesia has no GET /models endpoint: the TTS model list is a fixed enum. */
 const SONIC_MODELS: SpeechPanelOption[] = [
   {
-    id: "sonic-3.5",
-    label: "Sonic 3.5",
-    description: "Current flagship — fastest and most natural, sub-90 ms latency",
+    id: "sonic-3.6",
+    label: "Sonic 3.6",
+    description: "Current flagship: most natural pacing and emotion, 44 languages",
   },
-  { id: "sonic-3", label: "Sonic 3", description: "Previous generation, pinned snapshot" },
+  { id: "sonic-3.5", label: "Sonic 3.5", description: "Previous generation" },
+  { id: "sonic-3", label: "Sonic 3", description: "Older generation, pinned snapshot" },
   {
     id: "sonic-latest",
     label: "Sonic (latest)",
@@ -46,7 +60,7 @@ const SONIC_MODELS: SpeechPanelOption[] = [
   },
 ];
 
-const DEFAULT_MODEL = "sonic-3.5";
+const DEFAULT_MODEL = "sonic-3.6";
 
 /** Cartesia's batch transcription API exposes exactly one model. */
 const STT_MODEL = "ink-whisper";
@@ -70,57 +84,6 @@ const ACCEPTED_AUDIO_TYPES = [
 ];
 
 /**
- * A trimmed picker list for the transcription half. Ink Whisper accepts 99+
- * ISO-639-1 codes; these are the ones the Sonic voice library actually covers,
- * so the two halves of the panel agree.
- * https://docs.cartesia.ai/build-with-cartesia/models/tts
- */
-const LANGUAGES: SpeechPanelOption[] = [
-  { id: "en", label: "English" },
-  { id: "ar", label: "Arabic" },
-  { id: "bn", label: "Bengali" },
-  { id: "bg", label: "Bulgarian" },
-  { id: "zh", label: "Chinese" },
-  { id: "hr", label: "Croatian" },
-  { id: "cs", label: "Czech" },
-  { id: "da", label: "Danish" },
-  { id: "nl", label: "Dutch" },
-  { id: "fi", label: "Finnish" },
-  { id: "fr", label: "French" },
-  { id: "ka", label: "Georgian" },
-  { id: "de", label: "German" },
-  { id: "el", label: "Greek" },
-  { id: "gu", label: "Gujarati" },
-  { id: "he", label: "Hebrew" },
-  { id: "hi", label: "Hindi" },
-  { id: "hu", label: "Hungarian" },
-  { id: "id", label: "Indonesian" },
-  { id: "it", label: "Italian" },
-  { id: "ja", label: "Japanese" },
-  { id: "kn", label: "Kannada" },
-  { id: "ko", label: "Korean" },
-  { id: "ms", label: "Malay" },
-  { id: "ml", label: "Malayalam" },
-  { id: "mr", label: "Marathi" },
-  { id: "no", label: "Norwegian" },
-  { id: "pl", label: "Polish" },
-  { id: "pt", label: "Portuguese" },
-  { id: "pa", label: "Punjabi" },
-  { id: "ro", label: "Romanian" },
-  { id: "ru", label: "Russian" },
-  { id: "sk", label: "Slovak" },
-  { id: "es", label: "Spanish" },
-  { id: "sv", label: "Swedish" },
-  { id: "tl", label: "Tagalog" },
-  { id: "ta", label: "Tamil" },
-  { id: "te", label: "Telugu" },
-  { id: "th", label: "Thai" },
-  { id: "tr", label: "Turkish" },
-  { id: "uk", label: "Ukrainian" },
-  { id: "vi", label: "Vietnamese" },
-];
-
-/**
  * Voice/dictionary/key listings all share one cursor envelope: `limit` +
  * `starting_after`, answered with `{ data, has_more, next_page }`.
  */
@@ -130,6 +93,7 @@ interface CartesiaPage<T> {
   next_page?: string | null;
 }
 
+/** Pre-2026-08-14 object form of `access`; still tolerated on read. */
 interface CartesiaAccess {
   type?: string;
   visibility?: string;
@@ -142,12 +106,16 @@ interface CartesiaVoice {
   description?: string;
   gender?: string | null;
   language?: string;
+  /** Superseded by `accents` in 2026-08-14; still read when present. */
   locales?: Array<{ locale?: string } | string>;
+  accents?: Array<{ accent?: string; locale?: string; is_native?: boolean }>;
+  status?: string;
+  visibility?: string;
   country?: string | null;
   created_at?: string;
   is_owner?: boolean;
   is_pro?: boolean;
-  access?: CartesiaAccess;
+  access?: CartesiaAccess | string;
   /** Null unless the request asked for `expand[]=preview_file_url`. */
   preview_file_url?: string | null;
 }
@@ -156,6 +124,15 @@ interface CartesiaPronunciationItem {
   text?: string;
   pronunciation?: string;
   alias?: string;
+  case_sensitive?: boolean;
+}
+
+interface CartesiaOrganizationUser {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  role?: string;
+  created_at?: string;
 }
 
 interface CartesiaPronunciationDict {
@@ -163,7 +140,8 @@ interface CartesiaPronunciationDict {
   name?: string;
   description?: string;
   is_owner?: boolean;
-  access?: CartesiaAccess;
+  access?: CartesiaAccess | string;
+  visibility?: string;
   pinned?: boolean;
   items?: CartesiaPronunciationItem[];
   created_at?: string;
@@ -181,6 +159,9 @@ interface CartesiaCreditBucket {
   start_ts?: string;
   end_ts?: string;
   credits?: number;
+  /** Present on breakdown series when `group_by` is set. */
+  id?: string;
+  buckets?: CartesiaCreditBucket[];
 }
 
 interface CartesiaCreditsResponse {
@@ -208,10 +189,59 @@ function str(value: unknown): string {
 }
 
 function localeLabels(voice: CartesiaVoice): string {
-  return (voice.locales ?? [])
-    .map((entry) => (typeof entry === "string" ? entry : (entry.locale ?? "")))
+  const fromAccents = (voice.accents ?? []).map((accent) => accent.locale ?? "");
+  const fromLocales = (voice.locales ?? []).map((entry) =>
+    typeof entry === "string" ? entry : (entry.locale ?? ""),
+  );
+  return [...new Set([...fromAccents, ...fromLocales].filter(Boolean))].join(", ");
+}
+
+function accentLabels(voice: CartesiaVoice): string {
+  return (voice.accents ?? [])
+    .map((accent) => accent.accent ?? "")
     .filter(Boolean)
     .join(", ");
+}
+
+/** `access` is a string from 2026-08-14 on and an object before it. */
+function accessType(access: CartesiaAccess | string | undefined): string {
+  if (typeof access === "string") return access;
+  return str(access?.type);
+}
+
+function visibilityOf(record: { visibility?: string; access?: CartesiaAccess | string }): string {
+  if (record.visibility) return record.visibility;
+  return typeof record.access === "object" ? str(record.access.visibility) : "";
+}
+
+/**
+ * Parse `text = pronunciation` entries, one per line or separated by
+ * semicolons (the edit form is a single line). Malformed entries are an
+ * error rather than silently dropped.
+ */
+export function parsePronunciationEntries(
+  raw: string,
+): Array<{ text: string; pronunciation: string }> {
+  const entries: Array<{ text: string; pronunciation: string }> = [];
+  const chunks = raw.split(/[\n;]/);
+  for (const chunk of chunks) {
+    const entry = chunk.trim();
+    if (!entry) continue;
+    const separator = entry.indexOf("=");
+    const text = separator > 0 ? entry.slice(0, separator).trim() : "";
+    const pronunciation = separator > 0 ? entry.slice(separator + 1).trim() : "";
+    if (!text || !pronunciation) {
+      throw new Error(`Cartesia plugin: entry "${entry}" must look like "text = pronunciation"`);
+    }
+    entries.push({ text, pronunciation });
+  }
+  return entries;
+}
+
+function formatPronunciationEntries(items: CartesiaPronunciationItem[]): string {
+  return items
+    .map((item) => `${str(item.text)} = ${str(item.pronunciation ?? item.alias)}`)
+    .join("; ");
 }
 
 function voiceSubtitle(voice: {
@@ -301,9 +331,13 @@ export class CartesiaClient implements PluginClient {
         undefined,
         admin,
       );
-      out.push(...(body.data ?? []));
-      if (!body.has_more || !body.next_page) break;
-      cursor = body.next_page;
+      const items = body.data ?? [];
+      out.push(...items);
+      // Phone numbers answer `has_more` without `next_page`; every list here
+      // is keyed by `id`, so the last one is the documented cursor.
+      const next = body.next_page ?? (items.at(-1) as { id?: string } | undefined)?.id;
+      if (!body.has_more || !next) break;
+      cursor = next;
     }
 
     return out;
@@ -319,6 +353,16 @@ export class CartesiaClient implements PluginClient {
         );
       case "api-key":
         return (await this.fetchApiKeys()).map((key) => this.mapApiKey(accountId, key));
+      case "agent":
+        return (await this.fetchAgents()).map((agent) => mapAgent(accountId, agent));
+      case "phone-number":
+        return (await this.listPaginated<CartesiaPhoneNumber>("/agents/phone-numbers", {})).map(
+          (phone) => mapPhoneNumber(accountId, phone),
+        );
+      case "organization-user":
+        return (await this.fetchOrganizationUsers()).map((user) =>
+          this.mapOrganizationUser(accountId, user),
+        );
       default:
         throw new Error(`Cartesia plugin: unknown resource type "${typeId}"`);
     }
@@ -352,6 +396,21 @@ export class CartesiaClient implements PluginClient {
       return instance;
     }
 
+    if (typeId === "agent") {
+      // Deployments ride along as JSON for the synchronous renderDetail.
+      const [agent, deployments] = await Promise.all([
+        this.fetch<CartesiaAgent>(`/agents/${encodeURIComponent(externalId)}`),
+        this.fetch<CartesiaDeployment[]>(
+          `/agents/${encodeURIComponent(externalId)}/deployments`,
+        ).catch((): CartesiaDeployment[] => []),
+      ]);
+      const instance = mapAgent(accountId, agent);
+      instance.resolvedOutputs["__deployments__"] = JSON.stringify(
+        Array.isArray(deployments) ? deployments.slice(0, 20) : [],
+      );
+      return instance;
+    }
+
     const all = await this.listResources(typeId, accountId);
     const found = all.find((resource) => resource.id === resourceId);
     if (!found) throw new Error(`Cartesia plugin: resource ${typeId}/${externalId} not found`);
@@ -380,6 +439,16 @@ export class CartesiaClient implements PluginClient {
     }
 
     if (typeId === "api-key" && outputKey === "keyId") return str(f["keyId"]);
+
+    if (typeId === "agent" && outputKey === "agentId") return str(f["agentId"]);
+    if (typeId === "phone-number") {
+      if (outputKey === "phoneNumber") return str(f["number"]);
+      if (outputKey === "phoneNumberId") return str(f["phoneNumberId"]);
+    }
+    if (typeId === "organization-user") {
+      if (outputKey === "userId") return str(f["userId"]);
+      if (outputKey === "email") return str(f["email"]);
+    }
 
     throw new Error(`Cartesia plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
@@ -429,6 +498,28 @@ export class CartesiaClient implements PluginClient {
       ];
     }
 
+    if (resourceTypeId === "agent") {
+      return [
+        { label: "Language", value: str(f["ttsLanguage"]) || "-" },
+        { label: "Deployments", value: str(f["deploymentCount"] ?? 0) },
+        { label: "Phone", value: str(f["phoneNumbers"]) || "None" },
+      ];
+    }
+
+    if (resourceTypeId === "phone-number") {
+      return [
+        { label: "Agent", value: str(f["agentName"]) || "Unassigned" },
+        { label: "Provider", value: str(f["providerType"]) || "-" },
+      ];
+    }
+
+    if (resourceTypeId === "organization-user") {
+      return [
+        { label: "Role", value: str(f["role"]) || "-" },
+        { label: "Joined", value: str(f["joinedAt"]).slice(0, 10) || "-" },
+      ];
+    }
+
     return [];
   }
 
@@ -440,6 +531,12 @@ export class CartesiaClient implements PluginClient {
         return this.renderPronunciationDictDetail(resource);
       case "api-key":
         return this.renderApiKeyDetail(resource);
+      case "agent":
+        return renderAgentDetail(resource);
+      case "phone-number":
+        return renderPhoneNumberDetail(resource);
+      case "organization-user":
+        return this.renderOrganizationUserDetail(resource);
       default:
         return {
           title: resource.displayName,
@@ -452,14 +549,44 @@ export class CartesiaClient implements PluginClient {
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
-    return {
-      id: resource.id,
-      label: resource.displayName,
-      status: {
-        kind: "status-dot",
-        status: resource.fields["isOwner"] === true ? "healthy" : "info",
-      },
-    };
+    const f = resource.fields;
+    switch (resource.resourceTypeId) {
+      case "agent":
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: Number(f["deploymentCount"] ?? 0) > 0 ? "healthy" : "info",
+            ...(f["ttsLanguage"] ? { label: str(f["ttsLanguage"]) } : {}),
+          },
+        };
+      case "phone-number":
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: f["agentId"] ? "healthy" : "info",
+            label: str(f["agentName"]) || "Unassigned",
+          },
+        };
+      case "organization-user":
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: { kind: "status-dot", status: "healthy", label: str(f["role"]) || "member" },
+        };
+      default:
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: f["isOwner"] === true ? "healthy" : "info",
+          },
+        };
+    }
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
@@ -482,7 +609,225 @@ export class CartesiaClient implements PluginClient {
       return;
     }
 
+    if (typeId === "agent") {
+      // DELETE /agents/{agent_id}: https://docs.cartesia.ai/api-reference/agents/agents/delete (204)
+      await this.fetch(`/agents/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+      return;
+    }
+
+    if (typeId === "organization-user") {
+      // DELETE /organizations/users/{id}: admin key only, and refused for
+      // admins. https://docs.cartesia.ai/api-reference/organizations/remove-user
+      await this.fetch(
+        `/organizations/users/${encodeURIComponent(externalId)}`,
+        { method: "DELETE" },
+        true,
+      );
+      return;
+    }
+
     throw new Error(`Cartesia plugin: cannot delete type "${typeId}"`);
+  }
+
+  // ---- Create and edit -----------------------------------------------------
+
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId === "pronunciation-dict") {
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          { key: "description", label: "Description", kind: "text", required: false },
+          {
+            key: "entries",
+            label: "Entries",
+            kind: "text",
+            multiline: true,
+            required: false,
+            description:
+              "One entry per line, written as text = pronunciation. The pronunciation can be a respelling or IPA.",
+            placeholder: "Cartesia = car-TEE-zha\nSQL = sequel",
+          },
+          {
+            key: "accessType",
+            label: "Access",
+            kind: "select",
+            required: true,
+            defaultValue: "private",
+            options: [
+              { id: "private", label: "Private", description: "Only your organization can use it" },
+              {
+                id: "public",
+                label: "Public",
+                description: "Anyone with the dictionary ID can use it",
+              },
+            ],
+          },
+        ],
+      };
+    }
+    throw new Error(`Cartesia plugin: cannot create resources of type "${typeId}"`);
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId === "pronunciation-dict") {
+      const name = (fields["name"] ?? "").trim();
+      if (!name) throw new Error("Cartesia plugin: a pronunciation dictionary needs a name");
+      const items = parsePronunciationEntries(fields["entries"] ?? "");
+      // POST /pronunciation-dicts/: https://docs.cartesia.ai/api-reference/pronunciation-dicts/create
+      const created = await this.fetch<CartesiaPronunciationDict>("/pronunciation-dicts/", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          access: fields["accessType"] === "public" ? "public" : "private",
+          ...(fields["description"] ? { description: fields["description"] } : {}),
+          ...(items.length ? { items } : {}),
+        }),
+      });
+      return this.mapPronunciationDict(accountId, created);
+    }
+    throw new Error(`Cartesia plugin: cannot create resources of type "${typeId}"`);
+  }
+
+  /**
+   * PATCH with only the changed keys:
+   * - voice: `PATCH /voices/{id}` (name, tagline, description, gender, access)
+   * - pronunciation-dict: `PATCH /pronunciation-dicts/{id}` (name, description,
+   *   access, items). Editing entries replaces the whole list, so the case
+   *   sensitivity of entries whose text is unchanged is carried over.
+   * - agent: `PATCH /agents/{id}` (name, description, language, noise suppression)
+   * https://docs.cartesia.ai/api-reference/voices/update
+   * https://docs.cartesia.ai/api-reference/pronunciation-dicts/update
+   * https://docs.cartesia.ai/api-reference/agents/agents/update
+   */
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const encoded = encodeURIComponent(externalIdOf(resourceId));
+
+    if (typeId === "voice") {
+      const body: Record<string, unknown> = {};
+      if (fields["name"] !== undefined)
+        body["name"] = requireNonEmpty(fields["name"], "voice name");
+      if (fields["tagline"] !== undefined) {
+        if (fields["tagline"].length > 32) {
+          throw new Error("Cartesia plugin: a voice tagline is at most 32 characters");
+        }
+        body["tagline"] = fields["tagline"];
+      }
+      if (fields["description"] !== undefined) body["description"] = fields["description"];
+      if (fields["gender"] !== undefined) body["gender"] = fields["gender"] || null;
+      if (fields["accessType"] !== undefined) body["access"] = fields["accessType"];
+      if (Object.keys(body).length) {
+        await this.fetch(`/voices/${encoded}`, { method: "PATCH", body: JSON.stringify(body) });
+      }
+      return this.getResource("voice", resourceId, accountId);
+    }
+
+    if (typeId === "pronunciation-dict") {
+      const body: Record<string, unknown> = {};
+      if (fields["name"] !== undefined) {
+        body["name"] = requireNonEmpty(fields["name"], "dictionary name");
+      }
+      if (fields["description"] !== undefined) body["description"] = fields["description"];
+      if (fields["accessType"] !== undefined) body["access"] = fields["accessType"];
+      if (fields["entries"] !== undefined) {
+        const current = await this.getResource("pronunciation-dict", resourceId, accountId);
+        const previous = parsePronunciationItems(current.resolvedOutputs["__items__"]);
+        body["items"] = parsePronunciationEntries(fields["entries"]).map((entry) => {
+          const match = previous.find((item) => item.text === entry.text);
+          return match?.case_sensitive !== undefined
+            ? { ...entry, case_sensitive: match.case_sensitive }
+            : entry;
+        });
+      }
+      if (Object.keys(body).length) {
+        const updated = await this.fetch<CartesiaPronunciationDict>(
+          `/pronunciation-dicts/${encoded}`,
+          { method: "PATCH", body: JSON.stringify(body) },
+        );
+        if (updated?.id) return this.mapPronunciationDict(accountId, updated);
+      }
+      return this.getResource("pronunciation-dict", resourceId, accountId);
+    }
+
+    if (typeId === "agent") {
+      const body: Record<string, unknown> = {};
+      if (fields["name"] !== undefined)
+        body["name"] = requireNonEmpty(fields["name"], "agent name");
+      if (fields["description"] !== undefined) body["description"] = fields["description"] || null;
+      if (fields["ttsLanguage"] !== undefined) body["tts_language"] = fields["ttsLanguage"];
+      if (fields["noiseSuppressionLevel"] !== undefined) {
+        const level = Number(fields["noiseSuppressionLevel"]);
+        if (!Number.isInteger(level) || level < 0 || level > 100) {
+          throw new Error(
+            "Cartesia plugin: noise suppression must be a whole number from 0 to 100",
+          );
+        }
+        body["noise_suppression_level"] = level;
+      }
+      if (Object.keys(body).length) {
+        await this.fetch(`/agents/${encoded}`, { method: "PATCH", body: JSON.stringify(body) });
+      }
+      return this.getResource("agent", resourceId, accountId);
+    }
+
+    throw new Error(`Cartesia plugin: cannot update type "${typeId}"`);
+  }
+
+  // ---- Metrics -------------------------------------------------------------
+
+  /**
+   * Daily credit consumption from `GET /usage/credits?interval=day`: filtered
+   * with `api_key_id` for an API key, and broken down with `group_by=voice`
+   * for a voice (the series whose `id` is the voice). Admin key only; with
+   * none there is nothing to chart and this returns no series.
+   * https://docs.cartesia.ai/api-reference/usage/credits
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (!this.hasAdminKey) return [];
+    if (resourceTypeId !== "api-key" && resourceTypeId !== "voice") return [];
+
+    const externalId = externalIdOf(resourceId);
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = timeRange?.startMs ?? endMs - 30 * 24 * 60 * 60 * 1000;
+    const query = new URLSearchParams();
+    query.set("start_ts", new Date(startMs).toISOString());
+    query.set("end_ts", new Date(endMs).toISOString());
+    query.set("interval", "day");
+    if (resourceTypeId === "api-key") query.set("api_key_id", externalId);
+    else query.set("group_by", "voice");
+
+    const body = await this.fetch<CartesiaCreditsResponse>(
+      `/usage/credits?${query.toString()}`,
+      undefined,
+      true,
+    );
+    const data = body.data ?? [];
+    const buckets =
+      resourceTypeId === "voice"
+        ? (data.find((series) => series.id === externalId)?.buckets ?? [])
+        : data;
+
+    const points = buckets
+      .map((bucket) => ({
+        timestamp: Date.parse(str(bucket.start_ts)),
+        value: bucket.credits ?? 0,
+      }))
+      .filter((point) => Number.isFinite(point.timestamp))
+      .sort((a, b) => a.timestamp - b.timestamp);
+    return [{ label: "Credits", unit: "credits", points }];
   }
 
   // ---- Speech tab ----------------------------------------------------------
@@ -507,7 +852,7 @@ export class CartesiaClient implements PluginClient {
       transcript: payload.text,
       // The voice is part of the body, not the path, and always arrives as an
       // object rather than a bare id.
-      voice: { mode: "id", id: voiceId },
+      voice: { id: voiceId },
       // Required: Cartesia has no server-side default. For mp3 the object is
       // container/sample_rate/bit_rate only; adding an `encoding` key here is
       // rejected with a 400.
@@ -680,6 +1025,24 @@ export class CartesiaClient implements PluginClient {
   }
 
   /**
+   * GET /agents: https://docs.cartesia.ai/api-reference/agents/agents/list
+   * Unpaginated; answers `{ summaries }` (the `data` envelope is tolerated).
+   */
+  private async fetchAgents(): Promise<CartesiaAgent[]> {
+    const body = await this.fetch<CartesiaAgentsResponse>("/agents");
+    return (body.summaries ?? body.data ?? []).filter((agent) => !agent.deleted_at);
+  }
+
+  /**
+   * GET /organizations/users: admin key only, newest first.
+   * https://docs.cartesia.ai/api-reference/organizations/list-users
+   */
+  private async fetchOrganizationUsers(): Promise<CartesiaOrganizationUser[]> {
+    if (!this.hasAdminKey) return [];
+    return this.listPaginated<CartesiaOrganizationUser>("/organizations/users", {}, true);
+  }
+
+  /**
    * GET /usage/credits: verified 2026-07-28 against
    * https://docs.cartesia.ai/api-reference/usage/credits
    *
@@ -751,10 +1114,12 @@ export class CartesiaClient implements PluginClient {
         description: str(voice.description),
         language: str(voice.language),
         locales: localeLabels(voice),
+        accents: accentLabels(voice),
         gender: str(voice.gender),
         country: str(voice.country),
-        accessType: str(voice.access?.type),
-        visibility: str(voice.access?.visibility),
+        status: str(voice.status) || "active",
+        accessType: accessType(voice.access),
+        visibility: visibilityOf(voice),
         isOwner: voice.is_owner === true,
         isPro: voice.is_pro === true,
         previewUrl: str(voice.preview_file_url),
@@ -785,9 +1150,10 @@ export class CartesiaClient implements PluginClient {
         name: str(dict.name),
         dictId: dict.id,
         description: str(dict.description),
+        entries: formatPronunciationEntries(items),
         entryCount: items.length,
-        accessType: str(dict.access?.type),
-        visibility: str(dict.access?.visibility),
+        accessType: accessType(dict.access),
+        visibility: visibilityOf(dict),
         isOwner: dict.is_owner === true,
         pinned: dict.pinned === true,
         createdAt,
@@ -820,6 +1186,30 @@ export class CartesiaClient implements PluginClient {
       resolvedOutputs: {},
       secretStates: [],
       createdAt,
+      updatedAt: now,
+    };
+  }
+
+  private mapOrganizationUser(accountId: string, user: CartesiaOrganizationUser): ResourceInstance {
+    const now = new Date().toISOString();
+    const joinedAt = user.created_at ?? now;
+    return {
+      id: `${accountId}:organization-user:${user.id}`,
+      pluginId: "cartesia",
+      resourceTypeId: "organization-user",
+      accountId,
+      displayName: str(user.name) || str(user.email) || user.id,
+      externalId: user.id,
+      fields: {
+        email: str(user.email),
+        name: str(user.name),
+        role: str(user.role),
+        userId: user.id,
+        joinedAt,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: joinedAt,
       updatedAt: now,
     };
   }
@@ -860,6 +1250,7 @@ export class CartesiaClient implements PluginClient {
                 { key: "Description", value: str(f["description"]) || "—" },
                 { key: "Language", value: str(f["language"]) || "—" },
                 { key: "Locales", value: str(f["locales"]) || "—" },
+                { key: "Accents", value: str(f["accents"]) || "-" },
                 { key: "Gender", value: str(f["gender"]) || "—" },
                 { key: "Country", value: str(f["country"]) || "—" },
               ],
@@ -873,6 +1264,7 @@ export class CartesiaClient implements PluginClient {
             {
               kind: "key-value-list",
               items: [
+                { key: "Status", value: str(f["status"]) || "-" },
                 { key: "Access", value: str(f["accessType"]) || "—" },
                 { key: "Visibility", value: str(f["visibility"]) || "—" },
                 { key: "Owned by You", value: f["isOwner"] === true ? "Yes" : "No" },
@@ -889,6 +1281,7 @@ export class CartesiaClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      metricsCapability: { defaultTimeRangeMs: 30 * 24 * 60 * 60 * 1000 },
       speechPanel: {
         modes: ["tts", "stt"],
         subtitle: `Sonic text-to-speech and Ink Whisper transcription · ${name}`,
@@ -960,6 +1353,34 @@ export class CartesiaClient implements PluginClient {
     };
   }
 
+  private renderOrganizationUserDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    return {
+      title: resource.displayName,
+      subtitle: "Cartesia Organization Member",
+      status: { kind: "status-dot", status: "healthy", label: str(f["role"]) || "member" },
+      sections: [
+        {
+          kind: "section",
+          title: "Member",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Name", value: str(f["name"]) || "-" },
+                { key: "Email", value: str(f["email"]) || "-" },
+                { key: "Role", value: str(f["role"]) || "-" },
+                { key: "User ID", value: str(f["userId"]) || "-", copyable: true },
+                { key: "Joined", value: str(f["joinedAt"]) || "-" },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
   private renderApiKeyDetail(resource: ResourceInstance): DetailViewSchema {
     const f = resource.fields;
     return {
@@ -988,8 +1409,15 @@ export class CartesiaClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      metricsCapability: { defaultTimeRangeMs: 30 * 24 * 60 * 60 * 1000 },
     };
   }
+}
+
+function requireNonEmpty(value: string, what: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`Cartesia plugin: the ${what} cannot be empty`);
+  return trimmed;
 }
 
 function parseVoiceOptions(raw: string | undefined): SpeechPanelOption[] {
