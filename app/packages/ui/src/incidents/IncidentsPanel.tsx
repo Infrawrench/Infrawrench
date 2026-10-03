@@ -14,6 +14,7 @@ import { useDataString } from "../i18n/data-strings.js";
 import { DeclareIncidentModal } from "./DeclareIncidentModal.js";
 import { IncidentTimelineView, artifactLabel } from "./IncidentTimelineView.js";
 import type { IncidentSeed, IncidentsClient } from "./types.js";
+import { ArrowIcon } from "../components/icons/ChromeIcons.js";
 
 export interface IncidentsPanelProps {
   client: IncidentsClient;
@@ -231,7 +232,10 @@ export function IncidentsPanel({
           onClick={() => open(null)}
           className="text-xs text-on-surface-secondary hover:text-on-surface"
         >
-          {gt("← All incidents")}
+          <span className="inline-flex items-center gap-1">
+            <ArrowIcon direction="left" size={12} />
+            {gt("All incidents")}
+          </span>
         </button>
 
         <header className="space-y-2">

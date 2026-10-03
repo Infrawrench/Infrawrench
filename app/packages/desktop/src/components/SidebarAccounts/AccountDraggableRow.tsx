@@ -1,6 +1,6 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useGT } from "gt-react";
-import type { DraggableResource } from "@infrawrench/ui";
+import { ChevronIcon, type DraggableResource } from "@infrawrench/ui";
 import { accountTabTarget } from "../../lib/workspace-tabs";
 import type { Account, PluginGroup } from "./types";
 
@@ -80,12 +80,11 @@ export function AccountDraggableRow({
         title={isExpanded ? gt("Collapse") : gt("Expand resources")}
         className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
       >
-        <span
-          className="inline-block transition-transform text-xs"
-          style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
-        >
-          ▶
-        </span>
+        <ChevronIcon
+          direction="right"
+          size={12}
+          className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
+        />
       </button>
       <button
         type="button"

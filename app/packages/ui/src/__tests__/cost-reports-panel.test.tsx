@@ -200,7 +200,7 @@ describe("CostReportsPanel", () => {
 
   it("renders the detail view for the selected report", async () => {
     render(<CostReportsPanel client={makeClient([report()])} reportId="r1" />);
-    expect(await screen.findByText("← All reports")).toBeTruthy();
+    expect(await screen.findByText("All reports")).toBeTruthy();
   });
 
   it("surfaces a failed list rather than looking empty", async () => {

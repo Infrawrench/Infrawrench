@@ -3,6 +3,7 @@ import { useGT } from "gt-react";
 import type { SidebarItemSchema } from "@infrawrench/plugin-base";
 import { SidebarItem } from "./SidebarItem.js";
 import { useDataString } from "../../i18n/data-strings.js";
+import { ChevronIcon } from "../icons/ChromeIcons.js";
 
 interface SidebarSectionProps {
   /** Plugin display name (e.g. "DigitalOcean") */
@@ -51,7 +52,11 @@ export function SidebarSection({
         <span className="flex-1 text-left truncate">
           {gtData(pluginName)} · {accountName}
         </span>
-        <span className="text-on-surface-faint">{expanded ? "▾" : "▸"}</span>
+        <ChevronIcon
+          direction={expanded ? "down" : "right"}
+          size={12}
+          className="text-on-surface-faint flex-shrink-0"
+        />
       </button>
 
       {expanded && (
@@ -94,7 +99,7 @@ function ResourceTypeGroup({
         className="w-full flex items-center gap-1 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
       >
         <span className="flex-1 text-left">{gtData(group.displayName)}</span>
-        <span>{expanded ? "▾" : "▸"}</span>
+        <ChevronIcon direction={expanded ? "down" : "right"} size={12} className="flex-shrink-0" />
       </button>
       {expanded && (
         <div id={panelId}>

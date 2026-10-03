@@ -13,6 +13,7 @@ import {
   type DismissedAccessFinding,
 } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
+import { ChevronIcon } from "../components/icons/ChromeIcons.js";
 
 export interface AccessReviewSectionProps {
   /**
@@ -780,9 +781,10 @@ export function AccessReviewSection({
                 type="button"
                 onClick={() => setShowDismissed((open) => !open)}
                 aria-expanded={showDismissed}
-                className="text-sm font-medium text-on-surface-secondary hover:text-on-surface"
+                className="inline-flex items-center gap-1 text-sm font-medium text-on-surface-secondary hover:text-on-surface"
               >
-                {showDismissed ? "▾" : "▸"} {gt("Dismissed ({count})", { count: dismissed.length })}
+                <ChevronIcon direction={showDismissed ? "down" : "right"} size={12} />
+                {gt("Dismissed ({count})", { count: dismissed.length })}
               </button>
               <p className="mt-1 text-xs text-on-surface-faint">
                 {gt(

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { SidebarItemSchema } from "@infrawrench/plugin-base";
 import { StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { useUIStore } from "../../store/ui.store.js";
+import { ChevronIcon } from "../icons/ChromeIcons.js";
 
 interface SidebarItemProps {
   item: SidebarItemSchema;
@@ -33,8 +34,8 @@ export function SidebarItem({ item, pluginId, resourceTypeId, depth = 0 }: Sideb
         style={{ paddingLeft: `${12 + depth * 12}px` }}
       >
         {hasChildren && (
-          <span className="text-on-surface-faint w-3 flex-shrink-0 text-xs">
-            {expanded ? "▾" : "▸"}
+          <span className="text-on-surface-faint w-3 flex-shrink-0 flex items-center">
+            <ChevronIcon direction={expanded ? "down" : "right"} size={12} />
           </span>
         )}
         {!hasChildren && <span className="w-3 flex-shrink-0" />}

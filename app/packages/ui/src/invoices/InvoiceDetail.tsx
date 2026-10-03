@@ -11,6 +11,7 @@ import {
 import { Modal } from "../components/Modal.js";
 import type { InvoicesClient } from "./types.js";
 import { StatusChip, money, BTN, FIELD } from "./shared.js";
+import { ArrowIcon } from "../components/icons/ChromeIcons.js";
 
 /**
  * The delivery record, stated in full.
@@ -124,7 +125,10 @@ export function InvoiceDetail({
     return (
       <div className="flex flex-col gap-3">
         <button type="button" className={BTN + " self-start"} onClick={onBack}>
-          {gt("← All invoices")}
+          <span className="inline-flex items-center gap-1">
+            <ArrowIcon direction="left" size={12} />
+            {gt("All invoices")}
+          </span>
         </button>
         {error !== null ? (
           <p role="alert" className="text-sm text-danger">
@@ -160,7 +164,10 @@ export function InvoiceDetail({
   return (
     <div className="flex flex-col gap-5">
       <button type="button" className={BTN + " self-start"} onClick={onBack}>
-        {gt("← All invoices")}
+        <span className="inline-flex items-center gap-1">
+          <ArrowIcon direction="left" size={12} />
+          {gt("All invoices")}
+        </span>
       </button>
 
       <header className="flex flex-col gap-1">
@@ -206,7 +213,10 @@ export function InvoiceDetail({
             className="self-start text-xs underline text-on-surface-faint"
             onClick={() => onOpenInvoice(invoice.supersedesInvoiceId!)}
           >
-            {gt("← Corrects an earlier, voided invoice")}
+            <span className="inline-flex items-center gap-1">
+              <ArrowIcon direction="left" size={12} />
+              {gt("Corrects an earlier, voided invoice")}
+            </span>
           </button>
         )}
       </header>

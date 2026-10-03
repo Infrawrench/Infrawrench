@@ -7,6 +7,7 @@ import {
   type StatusPageComponentInput,
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
+import { ArrowIcon } from "../components/icons/ChromeIcons.js";
 
 export interface StatusPageEditorModalProps {
   /** The page being edited, or null to create a new one. */
@@ -240,7 +241,7 @@ export function StatusPageEditorModal({
                         aria-label={gt("Move {probe} up", { probe: component.probeName })}
                         className="rounded px-2 py-0.5 text-xs text-on-surface-secondary hover:text-on-surface disabled:opacity-30"
                       >
-                        ↑
+                        <ArrowIcon direction="up" size={12} />
                       </button>
                       <button
                         type="button"
@@ -249,7 +250,7 @@ export function StatusPageEditorModal({
                         aria-label={gt("Move {probe} down", { probe: component.probeName })}
                         className="rounded px-2 py-0.5 text-xs text-on-surface-secondary hover:text-on-surface disabled:opacity-30"
                       >
-                        ↓
+                        <ArrowIcon direction="down" size={12} />
                       </button>
                       <button
                         type="button"

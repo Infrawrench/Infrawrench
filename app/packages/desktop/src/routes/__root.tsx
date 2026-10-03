@@ -26,6 +26,11 @@ import {
   type TunnelSshAttachKey,
   type WorkspaceTab,
   type WorkspaceTabTarget,
+  ChevronIcon,
+  CloudIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  SettingsIcon,
 } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
@@ -631,7 +636,7 @@ function RootLayout() {
               className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
               aria-label={gt("Go back")}
             >
-              ‹
+              <ChevronIcon direction="left" size={16} />
             </button>
             <button
               type="button"
@@ -639,7 +644,7 @@ function RootLayout() {
               className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
               aria-label={gt("Go forward")}
             >
-              ›
+              <ChevronIcon direction="right" size={16} />
             </button>
           </div>
         </div>
@@ -697,7 +702,7 @@ function RootLayout() {
                   style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                   aria-label={gt("Collapse sidebar")}
                 >
-                  &#9664;
+                  <PanelLeftCloseIcon />
                 </button>
               </div>
 
@@ -728,7 +733,7 @@ function RootLayout() {
                     }
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                   >
-                    <span className="text-base leading-none">&#9881;</span>
+                    <SettingsIcon />
                     {gt("Settings")}
                   </button>
                 )}
@@ -768,7 +773,7 @@ function RootLayout() {
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                   >
-                    <span className="text-base leading-none">&#9729;</span>
+                    <CloudIcon />
                     {gt("Sign in to cloud")}
                   </button>
                 )}
@@ -783,7 +788,7 @@ function RootLayout() {
               className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
               aria-label={gt("Expand sidebar")}
             >
-              ▶
+              <PanelLeftOpenIcon />
             </button>
           )}
 

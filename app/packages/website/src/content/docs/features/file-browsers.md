@@ -20,14 +20,14 @@ Several plugins expose a file-browser panel on any resource that holds files. It
 
 ## What you see
 
-One listing, not a tree beside a grid. Across the top is a **Path** box you can type into (Enter to go, Escape to revert) and a **Filter…** box; below it a single table with **Name**, **Size** and **Last modified** columns. Folders are rows in that table, marked `▶` and shown before the files, with a `..` row to go up. The footer counts what you are looking at.
+One listing, not a tree beside a grid. Across the top is a **Path** box you can type into (Enter to go, Escape to revert) and a **Filter…** box; below it a single table with **Name**, **Size** and **Last modified** columns. Folders are rows in that table, marked with a chevron and shown before the files, with a `..` row to go up. The footer counts what you are looking at.
 
 ## What you can do
 
 - **Navigate** by clicking a folder row, or by typing a path.
-- **Upload** with **↑ Files**, or **↑ Folder** where the backend supports it. There is no drag-and-drop target.
+- **Upload** with **Files**, or **Folder** where the backend supports it. There is no drag-and-drop target.
 - **+ Folder** creates one (for object stores, a zero-byte marker).
-- **Download** with the `↓` on a row. Tick several rows and the toolbar offers **↓ Download**, which streams them as a zip — on web that opens one download per batch, so allow pop-ups.
+- **Download** with the download icon on a row. Tick several rows and the toolbar offers **Download**, which streams them as a zip — on web that opens one download per batch, so allow pop-ups.
 - **Delete** — the `✕` on a row, or the toolbar's **Delete** for a selection. Both ask to confirm inline.
 
 Shift-click selects a range. Sorting is fixed: folders first, then files.

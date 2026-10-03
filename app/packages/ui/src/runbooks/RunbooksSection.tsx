@@ -13,6 +13,7 @@ import {
   type RunbookStepKind,
   type RunbookStepStatus,
 } from "@infrawrench/client-core";
+import { ArrowIcon } from "../components/icons/ChromeIcons.js";
 
 export interface RunbooksSectionProps {
   /** The org's runbooks, or null while loading. */
@@ -481,7 +482,7 @@ function RunbookEditor({
                 aria-label={gt("Move step up")}
                 className="rounded border border-border px-1.5 py-0.5 text-xs text-on-surface-tertiary"
               >
-                ↑
+                <ArrowIcon direction="up" size={12} />
               </button>
               <button
                 type="button"
@@ -489,7 +490,7 @@ function RunbookEditor({
                 aria-label={gt("Move step down")}
                 className="rounded border border-border px-1.5 py-0.5 text-xs text-on-surface-tertiary"
               >
-                ↓
+                <ArrowIcon direction="down" size={12} />
               </button>
               <button
                 type="button"

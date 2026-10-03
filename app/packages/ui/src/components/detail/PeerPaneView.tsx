@@ -14,6 +14,7 @@ import {
   peerPaneGroupName,
   peerPaneGroupTitle,
 } from "./PeerPaneView.utils.js";
+import { ChevronIcon } from "../icons/ChromeIcons.js";
 
 export interface PeerPanePortForwardEntry {
   sessionId: string;
@@ -354,12 +355,11 @@ export function PeerPaneView({
                 aria-controls={`peer-pane-group-${groupKey}`}
                 className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer select-none"
               >
-                <span
-                  aria-hidden="true"
-                  className={`text-on-surface-muted text-xs transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-                >
-                  ▶
-                </span>
+                <ChevronIcon
+                  direction="right"
+                  size={12}
+                  className={`text-on-surface-muted transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                />
                 <h3 className="text-sm font-semibold text-on-surface">
                   {peerPaneGroupTitle(group.title, itemCount)}
                 </h3>

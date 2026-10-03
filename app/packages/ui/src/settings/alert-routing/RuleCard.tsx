@@ -16,6 +16,7 @@ import {
   ConditionRow,
 } from "./ConditionRow.js";
 import { QuietHoursEditor, EscalationEditor } from "./QuietHoursEditor.js";
+import { ArrowIcon } from "../../components/icons/ChromeIcons.js";
 
 /* -------------------------------------------------------------------------- */
 /* One rule                                                                   */
@@ -70,7 +71,7 @@ export function RuleCard({
             className="px-1.5 text-xs text-on-surface-tertiary disabled:opacity-30"
             aria-label={gt("Move rule {n} up", { n: index + 1 })}
           >
-            ↑
+            <ArrowIcon direction="up" size={12} />
           </button>
           <button
             type="button"
@@ -79,7 +80,7 @@ export function RuleCard({
             className="px-1.5 text-xs text-on-surface-tertiary disabled:opacity-30"
             aria-label={gt("Move rule {n} down", { n: index + 1 })}
           >
-            ↓
+            <ArrowIcon direction="down" size={12} />
           </button>
         </div>
         <button

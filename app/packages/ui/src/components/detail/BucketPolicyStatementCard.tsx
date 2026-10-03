@@ -10,6 +10,7 @@ import {
   S3_ACTION_CATALOG,
   summarizeStatement,
 } from "../../bucket-policy.js";
+import { ArrowIcon, ChevronIcon } from "../icons/ChromeIcons.js";
 
 /* -------------------------------------------------------------------------- */
 /* Statement card                                                             */
@@ -85,7 +86,7 @@ export function StatementCard({
             className="relative text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
             title={gt("Move up")}
           >
-            ↑
+            <ArrowIcon direction="up" size={12} />
           </button>
           <button
             type="button"
@@ -97,7 +98,7 @@ export function StatementCard({
             className="relative text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
             title={gt("Move down")}
           >
-            ↓
+            <ArrowIcon direction="down" size={12} />
           </button>
           <button
             type="button"
@@ -110,7 +111,11 @@ export function StatementCard({
           >
             ✕
           </button>
-          <span className="text-on-surface-faint text-xs">{expanded ? "▾" : "▸"}</span>
+          <ChevronIcon
+            direction={expanded ? "down" : "right"}
+            size={12}
+            className="text-on-surface-faint"
+          />
         </span>
       </div>
 

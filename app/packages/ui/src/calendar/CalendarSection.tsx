@@ -11,6 +11,7 @@ import {
   type CalendarResponse,
   type CalendarSubscription,
 } from "@infrawrench/client-core";
+import { ChevronIcon } from "../components/icons/ChromeIcons.js";
 
 export interface CalendarRange {
   /** ISO 8601, inclusive lower bound. */
@@ -393,7 +394,7 @@ export function CalendarSection({
                 aria-label={gt("Previous month")}
                 className="rounded-lg border border-border px-2 py-1 text-xs text-on-surface-tertiary hover:text-on-surface"
               >
-                ‹
+                <ChevronIcon direction="left" size={14} />
               </button>
               <button
                 type="button"
@@ -412,7 +413,7 @@ export function CalendarSection({
                 aria-label={gt("Next month")}
                 className="rounded-lg border border-border px-2 py-1 text-xs text-on-surface-tertiary hover:text-on-surface"
               >
-                ›
+                <ChevronIcon direction="right" size={14} />
               </button>
             </div>
             <h2 className="text-sm font-medium text-on-surface">

@@ -3,6 +3,7 @@ import { T, Var, useGT } from "gt-react";
 import type { StorageObject } from "@infrawrench/plugin-base";
 import { formatSize, formatDate, formatErrorMessage } from "../utils.js";
 import type { TransferEntry } from "../utils.js";
+import { ArrowIcon, ChevronIcon, DownloadIcon, UploadIcon } from "./icons/ChromeIcons.js";
 
 declare module "react" {
   interface InputHTMLAttributes<T> {
@@ -384,17 +385,19 @@ export function FileBrowser({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong hover:border-border-strong rounded transition-colors"
+                  className="px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong hover:border-border-strong rounded transition-colors inline-flex items-center gap-1"
                 >
-                  {gt("↑ Files")}
+                  <UploadIcon size={12} />
+                  {gt("Files")}
                 </button>
                 {showFolderUpload && (
                   <button
                     type="button"
                     onClick={() => folderInputRef.current?.click()}
-                    className="px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong hover:border-border-strong rounded transition-colors"
+                    className="px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong hover:border-border-strong rounded transition-colors inline-flex items-center gap-1"
                   >
-                    {gt("↑ Folder")}
+                    <UploadIcon size={12} />
+                    {gt("Folder")}
                   </button>
                 )}
                 <input
@@ -446,9 +449,10 @@ export function FileBrowser({
                 type="button"
                 onClick={() => void handleDownload([...selected])}
                 disabled={bulkWorking}
-                className="px-2.5 py-1 text-xs text-on-surface-secondary hover:text-white border border-border-strong hover:border-border-strong rounded transition-colors disabled:opacity-40"
+                className="px-2.5 py-1 text-xs text-on-surface-secondary hover:text-white border border-border-strong hover:border-border-strong rounded transition-colors disabled:opacity-40 inline-flex items-center gap-1"
               >
-                {gt("↓ Download")}
+                <DownloadIcon size={12} />
+                {gt("Download")}
               </button>
             )}
             {onDelete &&
@@ -536,7 +540,11 @@ export function FileBrowser({
                   <td aria-label={gt("Select")} />
                   <td className="px-2 py-1.5" colSpan={3}>
                     <div className="flex items-center gap-2">
-                      <span className="text-warning">▶</span>
+                      <ChevronIcon
+                        direction="right"
+                        size={12}
+                        className="text-warning flex-shrink-0"
+                      />
                       <input
                         ref={newFolderInputRef}
                         aria-label={gt("Folder name")}
@@ -615,9 +623,7 @@ export function FileBrowser({
                     className="px-2 py-1.5 text-on-surface-muted flex items-center gap-2"
                     colSpan={3}
                   >
-                    <span aria-hidden="true" className="text-on-surface-faint">
-                      ↑
-                    </span>
+                    <ArrowIcon direction="up" size={12} className="text-on-surface-faint" />
                     <span>..</span>
                   </td>
                 </tr>
@@ -656,9 +662,11 @@ export function FileBrowser({
                         aria-label={gt("Open folder {name}", { name: d.name })}
                         className="flex items-center gap-2 min-w-0 w-full text-left cursor-pointer"
                       >
-                        <span aria-hidden="true" className="text-warning flex-shrink-0">
-                          ▶
-                        </span>
+                        <ChevronIcon
+                          direction="right"
+                          size={12}
+                          className="text-warning flex-shrink-0"
+                        />
                         <span className="text-on-surface-secondary truncate">{d.name}/</span>
                       </button>
                     </td>
@@ -779,7 +787,7 @@ export function FileBrowser({
                                 title={gt("Download")}
                                 aria-label={gt("Download {name}", { name: f.name })}
                               >
-                                ↓
+                                <DownloadIcon size={12} />
                               </button>
                             )}
                             {onDelete && (
