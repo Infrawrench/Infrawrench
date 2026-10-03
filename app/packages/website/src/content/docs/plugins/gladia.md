@@ -26,6 +26,10 @@ Gladia is asynchronous, so one press uploads the clip, creates a job, and polls 
 
 ![Gladia Speech tab on the workspace, showing the Solaria model picker and a diarised transcript with speaker labels](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gladia/speech-tab-solaria.png)
 
+## Metrics
+
+The **Workspace** has a **Metrics** tab charting, per day: pre-recorded transcriptions, failed transcriptions, billed minutes (split by model when more than one is in use), the average processing time of finished jobs, and live sessions with their billed minutes. Gladia has no usage endpoint, so the charts are counted from `/v2/pre-recorded` and `/v2/live`, filtered to the chart's range with `after_date`/`before_date` and capped at 2,000 jobs per list. Billed minutes come from each job's `billing_time` (audio duration times distinct channels), so they are a sum over the history you still have, not an invoice.
+
 ## Tips & limits
 
 - **There is no usage or quota endpoint.** The workspace's activity panel is deliberately not called "Usage": it sums the most recent jobs returned by `/v2/pre-recorded` and the most recent sessions from `/v2/live`, which is a **lower bound** on real usage, not a billing figure. The panel says so in as many words, and Infrawrench charts no Gladia spend.
