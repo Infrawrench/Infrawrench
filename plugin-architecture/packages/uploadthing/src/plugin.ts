@@ -37,6 +37,12 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  // `getUsageInfo` reports the app's storage quota alongside what counts
+  // against it; `fetchQuotas` turns the pair into a reading.
+  quotas: {
+    label: "Storage quota",
+    increaseUrl: "https://uploadthing.com/pricing",
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [UtAppResourceType, UtFileResourceType];
