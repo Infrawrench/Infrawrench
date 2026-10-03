@@ -2,6 +2,7 @@ export { plugin } from "./plugin.js";
 export { ReplicateClient } from "./client.js";
 export { PredictionResourceType } from "./resources/prediction.js";
 export { ModelResourceType } from "./resources/model.js";
+export { ModelVersionResourceType } from "./resources/model-version.js";
 export { CollectionResourceType } from "./resources/collection.js";
 export { TrainingResourceType } from "./resources/training.js";
 export { DeploymentResourceType } from "./resources/deployment.js";

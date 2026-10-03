@@ -4,6 +4,7 @@ import { ReplicateClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { PredictionResourceType } from "./resources/prediction.js";
 import { ModelResourceType } from "./resources/model.js";
+import { ModelVersionResourceType } from "./resources/model-version.js";
 import { CollectionResourceType } from "./resources/collection.js";
 import { TrainingResourceType } from "./resources/training.js";
 import { DeploymentResourceType } from "./resources/deployment.js";
@@ -54,6 +55,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   PredictionResourceType,
   DeploymentResourceType,
   ModelResourceType,
+  ModelVersionResourceType,
   TrainingResourceType,
   FileResourceType,
   CollectionResourceType,
