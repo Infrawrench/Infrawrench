@@ -59,5 +59,7 @@ export const WorkspaceResourceType = rt({
   outputs: [o("workspaceId", "Workspace ID"), o("slug", "Workspace Slug")],
   supportsCreate: true,
   supportsUpdate: true,
+  // Analytics API (`POST /analytics/query`) series filtered to this workspace.
+  supportsMetrics: true,
   iconKey: "workspace",
 });

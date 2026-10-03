@@ -69,6 +69,88 @@ const ENDPOINT_FANOUT_CONCURRENCY = 5;
 /** GET /activity only covers the last 30 completed UTC days. */
 const ACTIVITY_WINDOW_DAYS = 30;
 
+const HOUR_MS = 60 * 60 * 1000;
+
+/** Latency and throughput metrics refuse a time range wider than 31 days. */
+const ANALYTICS_LATENCY_MAX_DAYS = 31;
+
+interface AnalyticsMetric {
+  name: string;
+  label: string;
+  unit: string;
+  /** Multiplier applied to each value: rates come back as 0 to 1 ratios. */
+  scale?: number;
+}
+
+/**
+ * Metric names and units from OpenRouter's analytics guides: spend metrics
+ * are USD, token metrics native tokens, `cache_hit_rate` a 0 to 1 ratio.
+ * https://openrouter.ai/docs/cookbook/administration/analytics-cost-control
+ * https://github.com/OpenRouterTeam/skills/tree/main/skills/openrouter-analytics
+ */
+const ANALYTICS_USAGE_METRICS: AnalyticsMetric[] = [
+  { name: "request_count", label: "Requests", unit: "requests" },
+  { name: "total_usage", label: "Spend", unit: "USD" },
+  { name: "byok_usage", label: "BYOK spend", unit: "USD" },
+  { name: "tokens_prompt", label: "Prompt tokens", unit: "tokens" },
+  { name: "tokens_completion", label: "Completion tokens", unit: "tokens" },
+  { name: "reasoning_tokens", label: "Reasoning tokens", unit: "tokens" },
+  { name: "cache_hit_rate", label: "Cache hit rate", unit: "%", scale: 100 },
+];
+
+/**
+ * `*_latency` is the provider's time to first token and `*_throughput`
+ * completion tokens per second; both in the same guides as above.
+ */
+const ANALYTICS_PERFORMANCE_METRICS: AnalyticsMetric[] = [
+  { name: "p50_latency", label: "Time to first token p50", unit: "ms" },
+  { name: "p90_latency", label: "Time to first token p90", unit: "ms" },
+  { name: "p50_throughput", label: "Throughput p50", unit: "tokens/s" },
+];
+
+interface AnalyticsFilter {
+  field: string;
+  operator: "eq" | "in";
+  value: string | string[];
+}
+
+/** `POST /analytics/query`. Count metrics can come back as strings. */
+interface AnalyticsQueryResponse {
+  data?: {
+    data?: Array<Record<string, unknown>>;
+    metadata?: { row_count?: number; truncated?: boolean };
+  };
+}
+
+/**
+ * One series per metric. Each row carries its bucket under `date__<g>` or
+ * `created_at__<g>` depending on the data source the query resolved to;
+ * unused metrics are `null` rather than 0 and are skipped.
+ */
+function analyticsSeries(
+  response: AnalyticsQueryResponse,
+  metrics: AnalyticsMetric[],
+  granularity: string,
+): MetricSeries[] {
+  const rows = response.data?.data ?? [];
+  const series: MetricSeries[] = [];
+  for (const metric of metrics) {
+    const points: Array<{ timestamp: number; value: number }> = [];
+    for (const row of rows) {
+      const bucket = row[`date__${granularity}`] ?? row[`created_at__${granularity}`];
+      const timestamp = typeof bucket === "string" ? Date.parse(bucket) : NaN;
+      const raw = row[metric.name];
+      if (!Number.isFinite(timestamp) || raw === null || raw === undefined || raw === "") continue;
+      const value = Number(raw) * (metric.scale ?? 1);
+      if (Number.isFinite(value)) points.push({ timestamp, value });
+    }
+    if (points.length === 0) continue;
+    points.sort((a, b) => a.timestamp - b.timestamp);
+    series.push({ label: metric.label, unit: metric.unit, points });
+  }
+  return series;
+}
+
 const STT_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 /**
@@ -229,6 +311,7 @@ export class OpenRouterClient implements PluginClient {
   private readonly caCert: string | undefined;
   private readonly services: HostServices | undefined;
   private speechModelsPromise: Promise<{ tts: OrModel[]; stt: OrModel[] }> | undefined;
+  private canonicalSlugs: Promise<Map<string, string>> | undefined;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const managementKey = credentials["managementKey"] || credentials["apiKey"];
@@ -823,40 +906,152 @@ export class OpenRouterClient implements PluginClient {
     }
   }
 
-  /** Daily spend and request count for one model, read off GET /activity. */
+  /**
+   * Metrics tabs for models, API keys and workspaces, from the Analytics API
+   * (`POST /analytics/query`, management key, the programmatic form of the
+   * Activity dashboard's Explore view). Models fall back to the daily
+   * `GET /activity` rows when the query endpoint refuses the key.
+   * https://openrouter.ai/docs/api/api-reference/analytics/query-analytics-data
+   */
   async fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "model") return [];
-    const modelId = resourceId.split(":").slice(2).join(":");
-    const items = await this.fetchActivity().catch(() => [] as OrActivityItem[]);
-
+    const id = resourceId.split(":").slice(2).join(":");
+    if (!id) return [];
     const endMs = timeRange?.endMs ?? Date.now();
     const startMs = timeRange?.startMs ?? endMs - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
-    const spend = new Map<number, number>();
-    const requests = new Map<number, number>();
+    let filter: AnalyticsFilter;
+    switch (resourceTypeId) {
+      case "model": {
+        // Filters match the model's permaslug (`canonical_slug`), which often
+        // differs from the catalogue id (dated snapshots), so pass both.
+        const canonical = await this.canonicalSlugOf(id).catch(() => "");
+        filter = {
+          field: "model",
+          operator: "in",
+          value: canonical && canonical !== id ? [id, canonical] : [id],
+        };
+        break;
+      }
+      case "api-key":
+        // `api_key_id` accepts the key hash and resolves it server-side.
+        filter = { field: "api_key_id", operator: "eq", value: id };
+        break;
+      case "workspace":
+        filter = { field: "workspace", operator: "eq", value: id };
+        break;
+      default:
+        return [];
+    }
+
+    try {
+      return await this.queryAnalyticsSeries(filter, startMs, endMs);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/\b(401|403|404)\b/.test(message)) throw err;
+      return resourceTypeId === "model" ? this.activitySeries(id, startMs, endMs) : [];
+    }
+  }
+
+  /**
+   * Two queries over the same buckets: usage metrics for any range, and the
+   * latency and throughput percentiles, which OpenRouter only computes for
+   * ranges up to 31 days. The second one failing never hides the first.
+   */
+  private async queryAnalyticsSeries(
+    filter: AnalyticsFilter,
+    startMs: number,
+    endMs: number,
+  ): Promise<MetricSeries[]> {
+    const span = endMs - startMs;
+    const granularity = span <= 6 * HOUR_MS ? "minute" : span <= 7 * 24 * HOUR_MS ? "hour" : "day";
+    const run = (metrics: AnalyticsMetric[]) =>
+      this.fetch<AnalyticsQueryResponse>("/analytics/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          metrics: metrics.map((m) => m.name),
+          filters: [filter],
+          granularity,
+          limit: 1000,
+          time_range: {
+            start: new Date(startMs).toISOString(),
+            end: new Date(endMs).toISOString(),
+          },
+        }),
+      });
+
+    const usage = await run(ANALYTICS_USAGE_METRICS);
+    const performance =
+      span <= ANALYTICS_LATENCY_MAX_DAYS * 24 * HOUR_MS
+        ? await run(ANALYTICS_PERFORMANCE_METRICS).catch((): AnalyticsQueryResponse => ({}))
+        : {};
+
+    return [
+      ...analyticsSeries(usage, ANALYTICS_USAGE_METRICS, granularity),
+      ...analyticsSeries(performance, ANALYTICS_PERFORMANCE_METRICS, granularity),
+    ];
+  }
+
+  /** The model's `canonical_slug`, from the catalogue, cached for the client's life. */
+  private async canonicalSlugOf(modelId: string): Promise<string> {
+    if (!this.canonicalSlugs) {
+      this.canonicalSlugs = this.fetchAllModels().then(
+        (models) => new Map(models.map((m) => [m.id, m.canonical_slug ?? ""])),
+      );
+      // A failed catalogue fetch shouldn't poison every later lookup.
+      this.canonicalSlugs.catch(() => {
+        this.canonicalSlugs = undefined;
+      });
+    }
+    return (await this.canonicalSlugs).get(modelId) ?? "";
+  }
+
+  /** Daily spend, requests and tokens for one model, read off GET /activity. */
+  private async activitySeries(
+    modelId: string,
+    startMs: number,
+    endMs: number,
+  ): Promise<MetricSeries[]> {
+    const items = await this.fetchActivity().catch(() => [] as OrActivityItem[]);
+
+    const keys = [
+      ["Spend", "USD", (i: OrActivityItem) => i.usage],
+      ["Requests", "requests", (i: OrActivityItem) => i.requests],
+      ["Prompt tokens", "tokens", (i: OrActivityItem) => i.prompt_tokens],
+      ["Completion tokens", "tokens", (i: OrActivityItem) => i.completion_tokens],
+      ["Reasoning tokens", "tokens", (i: OrActivityItem) => i.reasoning_tokens],
+    ] as const;
+    const sums = keys.map(() => new Map<number, number>());
     for (const item of items) {
       if (item.model !== modelId && item.model_permaslug !== modelId) continue;
       const ts = Date.parse(`${item.date}T00:00:00Z`);
       if (Number.isNaN(ts) || ts < startMs || ts > endMs) continue;
-      spend.set(ts, (spend.get(ts) ?? 0) + (item.usage ?? 0));
-      requests.set(ts, (requests.get(ts) ?? 0) + (item.requests ?? 0));
+      keys.forEach(([, , pick], index) => {
+        const value = pick(item);
+        if (value === undefined) return;
+        const map = sums[index]!;
+        map.set(ts, (map.get(ts) ?? 0) + value);
+      });
     }
-    if (spend.size === 0) return [];
 
-    const toPoints = (map: Map<number, number>) =>
-      [...map.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([timestamp, value]) => ({ timestamp, value }));
-
-    return [
-      { label: `${modelId} spend`, unit: "USD", points: toPoints(spend) },
-      { label: `${modelId} requests`, unit: "Requests", points: toPoints(requests) },
-    ];
+    const series: MetricSeries[] = [];
+    keys.forEach(([label, unit], index) => {
+      const map = sums[index]!;
+      if (map.size === 0) return;
+      series.push({
+        label,
+        unit,
+        points: [...map.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([timestamp, value]) => ({ timestamp, value })),
+      });
+    });
+    return series;
   }
 
   // ------------------------------------------------------------ create/edit
@@ -1790,6 +1985,7 @@ export class OpenRouterClient implements PluginClient {
     const remaining = Number(f["limitRemaining"] ?? 0);
 
     return {
+      metricsCapability: { defaultTimeRangeMs: ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000 },
       title: resource.displayName,
       subtitle: "OpenRouter API Key",
       status: { kind: "status-dot", status: disabled ? "degraded" : "healthy" },

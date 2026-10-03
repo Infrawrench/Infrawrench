@@ -48,5 +48,7 @@ export const ApiKeyResourceType = rt({
   principalRole: { role: "key", createdKey: "createdAt", parentKey: "creatorUserId" },
   supportsCreate: true,
   supportsUpdate: true,
+  // Analytics API (`POST /analytics/query`) series filtered to this key.
+  supportsMetrics: true,
   iconKey: "key",
 });
