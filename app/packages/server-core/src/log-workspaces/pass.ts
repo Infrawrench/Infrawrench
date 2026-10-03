@@ -54,6 +54,12 @@ export interface LogAlertPassOptions {
   limit?: number;
   /** Fixed clock for tests. */
   now?: number;
+  /**
+   * Per-stream deadline for a `/regex/` search, in ms. Defaults to the
+   * worker's `DEFAULT_REGEX_TIMEOUT_MS`; tests pass a short one so the
+   * timeout path does not depend on how fast the runner backtracks.
+   */
+  regexTimeoutMs?: number;
 }
 
 export interface LogAlertPassResult {
@@ -191,6 +197,7 @@ async function evaluateStream(
   displayName: string,
   search: ReturnType<typeof compileLogSearch>,
   clients: AccountClientCache,
+  regexTimeoutMs: number | undefined,
 ): Promise<StreamMatchResult> {
   const base: StreamMatchResult = {
     selector,
@@ -236,6 +243,7 @@ async function evaluateStream(
     );
     const evaluated = await evaluateLogMatchesBounded(result.text, search, {
       matchCap: LOG_WORKSPACE_LIMITS.alertMatchCap,
+      ...(regexTimeoutMs !== undefined ? { timeoutMs: regexTimeoutMs } : {}),
     });
     return {
       ...base,
@@ -257,6 +265,7 @@ async function evaluateQuery(
   row: LogWorkspaceQueryRecord,
   now: number,
   claimToken: string,
+  regexTimeoutMs: number | undefined,
 ): Promise<{ matched: boolean; notified: boolean; failed: boolean }> {
   const search = compileLogSearch(row.search);
   if (search.error) {
@@ -303,7 +312,7 @@ async function evaluateQuery(
     const displayName = selector.parentResourceId
       ? sidecarStreamName(selector, name.displayName)
       : name.displayName;
-    results.push(await evaluateStream(row, selector, displayName, search, clients));
+    results.push(await evaluateStream(row, selector, displayName, search, clients, regexTimeoutMs));
   }
 
   const errors = results.filter((r) => r.error !== null).map((r) => r.error!);
@@ -398,7 +407,7 @@ export async function runLogAlertPass(
         .limit(1);
       const row = rows[0] as LogWorkspaceQueryRecord | undefined;
       if (!row || !row.alertEnabled) continue;
-      const outcome = await evaluateQuery(row, now, claimToken);
+      const outcome = await evaluateQuery(row, now, claimToken, options.regexTimeoutMs);
       result.evaluated += 1;
       if (outcome.matched) result.matched += 1;
       if (outcome.notified) result.notified += 1;

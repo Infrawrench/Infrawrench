@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { RegexTimeoutError, testRegexBounded } from "./bounded-regex.js";
 
-// Exponential under a backtracking engine, and invisible to a group-shape
-// check: no quantified group at all, just adjacent optional atoms.
-const EVIL_SOURCE = `${"a?".repeat(40)}${"a".repeat(40)}`;
-const EVIL_INPUT = "a".repeat(40);
+// Catastrophic under a backtracking engine, and invisible to a group-shape
+// check: no quantified group at all, just adjacent optional atoms. The
+// trailing `b` makes it a guaranteed non-match, so the engine has to exhaust
+// every split of the ambiguous prefix (minutes on any runner); a matching
+// variant finishes in a couple of seconds on a fast CPU and races the deadline.
+const EVIL_SOURCE = `${"a?".repeat(60)}${"a".repeat(60)}b`;
+const EVIL_INPUT = "a".repeat(60);
 
 describe("testRegexBounded", () => {
   it("matches each input independently", async () => {

@@ -110,14 +110,17 @@ function baseRow(over: Record<string, unknown> = {}): Record<string, unknown> {
  * `names: false` for rows whose guards fire before it), and the completion
  * UPDATE's RETURNING row (the claim token still held).
  */
-async function runPass(opts: { names?: boolean } = {}) {
+async function runPass(opts: { names?: boolean; regexTimeoutMs?: number } = {}) {
   pg.queueRows(claimRows);
   if (claimRows.length > 0) {
     pg.queueRows(queryRow ? [queryRow] : []);
     if (opts.names !== false) pg.queueRows(resourceRows);
     pg.queueRows([{ id: "q1" }]);
   }
-  return runLogAlertPass({ now: NOW });
+  return runLogAlertPass({
+    now: NOW,
+    ...(opts.regexTimeoutMs !== undefined ? { regexTimeoutMs: opts.regexTimeoutMs } : {}),
+  });
 }
 
 function hushLogs() {
@@ -340,10 +343,13 @@ describe("runLogAlertPass — guard rails", () => {
   });
 
   it("records a regex that outruns its deadline instead of stalling the pass", async () => {
-    // Passes the shape guard, backtracks exponentially on the line below.
-    queryRow = baseRow({ search: `/${"a?".repeat(40)}${"a".repeat(40)}/` });
-    getLogs.mockResolvedValue({ text: `${"a".repeat(40)}\n`, containers: [], activeContainer: "" });
-    const result = await runPass();
+    // Passes the shape guard and can never match (the trailing `b`), so V8
+    // has to exhaust the ambiguous `a?` prefix: minutes on any runner, far
+    // past the short deadline injected here. A matching pattern would not
+    // do: a fast enough runner finds the match before the deadline.
+    queryRow = baseRow({ search: `/${"a?".repeat(60)}${"a".repeat(60)}b/` });
+    getLogs.mockResolvedValue({ text: `${"a".repeat(60)}\n`, containers: [], activeContainer: "" });
+    const result = await runPass({ regexTimeoutMs: 100 });
     expect(result.failed).toBe(1);
     expect(routeAlert).not.toHaveBeenCalled();
     expect(completionWrites().at(-1)!["last_eval_error"]).toMatch(/took longer than/);

@@ -26,11 +26,12 @@ describe("evaluateLogMatchesBounded", () => {
   });
 
   it("fails a catastrophically backtracking regex instead of blocking", async () => {
-    // Passes the shape guard (no quantified group), backtracks exponentially.
-    const search = compileLogSearch(`/${"a?".repeat(40)}${"a".repeat(40)}/`);
+    // Passes the shape guard (no quantified group) and can never match, so
+    // the backtracking has to run to exhaustion: minutes on any runner.
+    const search = compileLogSearch(`/${"a?".repeat(60)}${"a".repeat(60)}b/`);
     expect(search.error).toBeNull();
     await expect(
-      evaluateLogMatchesBounded(`${"a".repeat(40)}\n`, search, { timeoutMs: 250 }),
+      evaluateLogMatchesBounded(`${"a".repeat(60)}\n`, search, { timeoutMs: 100 }),
     ).rejects.toBeInstanceOf(RegexTimeoutError);
   });
 });
