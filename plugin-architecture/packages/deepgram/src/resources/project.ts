@@ -10,7 +10,7 @@ export const ProjectResourceType = rt({
   name: "Project",
   id: "project",
   description:
-    "A Deepgram project. Owns the API keys, members, invites, prepaid balances and usage for a workspace, and hosts the Speech playground for transcription and text-to-speech.",
+    "A Deepgram project. Owns the API keys, members, invites, prepaid balances, Voice Agent configurations and usage for a workspace, and hosts the Speech playground and the request log.",
   fields: [
     f("name", "Name"),
     f("projectId", "Project ID", { required: false, editable: false }),
@@ -26,7 +26,9 @@ export const ProjectResourceType = rt({
     o("projectName", "Project Name"),
   ],
   supportsUpdate: true,
-  supportsDelete: false,
+  // DELETE /v1/projects/{id}: permanent, and takes every key, member and
+  // balance in the project with it.
+  supportsDelete: true,
   supportsMetrics: true,
   iconKey: "project",
 });
