@@ -274,6 +274,13 @@ export type {
   PluginNodeDriver,
 } from "./node-driver.js";
 
+export {
+  type DialTarget,
+  hostPortDialTarget,
+  unbracketHost,
+  urlDialTarget,
+} from "./dial-targets.js";
+
 export type {
   CreateResourceConfig,
   CreateCarbonHint,

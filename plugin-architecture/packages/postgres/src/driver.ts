@@ -1,6 +1,8 @@
 import { Pool, type QueryConfig } from "pg";
 import {
   assertSingleSqlStatement,
+  unbracketHost,
+  type DialTarget,
   type SqlNodeDriver,
   type SqlNodeDriverOptions,
 } from "@infrawrench/plugin-base";
@@ -99,8 +101,38 @@ async function runWithTimeout<T>(
   }
 }
 
+/**
+ * Where pg would connect. pg-connection-string lets a `host` query parameter
+ * override the URL host (and accepts a socket directory there), falls back to
+ * the default unix socket when there is no host at all, and reads
+ * `sslcert`/`sslkey`/`sslrootcert` as file paths off the local disk.
+ */
+export function dialTargets(connectionString: string): DialTarget[] {
+  if (connectionString.startsWith("/")) {
+    return [{ kind: "local", reason: "a unix socket path" }];
+  }
+  let u: URL;
+  try {
+    u = new URL(connectionString);
+  } catch {
+    return [{ kind: "local", reason: "a connection string that is not a URL" }];
+  }
+  if (u.protocol === "socket:") return [{ kind: "local", reason: "a unix socket path" }];
+  for (const fileParam of ["sslcert", "sslkey", "sslrootcert"]) {
+    if (u.searchParams.has(fileParam)) {
+      return [{ kind: "local", reason: `\`${fileParam}\`, which reads a file from disk` }];
+    }
+  }
+  const host = u.searchParams.get("host") || decodeURIComponent(unbracketHost(u.hostname));
+  if (!host) return [{ kind: "local", reason: "no host, which means the default unix socket" }];
+  if (host.startsWith("/")) return [{ kind: "local", reason: "a unix socket path" }];
+  const port = Number(u.searchParams.get("port") || u.port || 5432);
+  return [{ kind: "host", host, port }];
+}
+
 export const driver = {
   id: "postgres",
+  dialTargets,
 
   async query(
     connectionString: string,

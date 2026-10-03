@@ -48,7 +48,7 @@ vi.mock("ssh2", () => {
 const { installAgentServices, releaseAgentServices, resolveAgentServiceAccounts } =
   await import("../agent-services");
 
-const target = { host: "203.0.113.7", port: 22, username: "root" };
+const target = { host: "93.184.216.34", port: 22, username: "root" };
 const row = {
   id: "session-1",
   serviceAccountIds: ["ts-account"],

@@ -1,5 +1,10 @@
 import { createClient, type ResultSet } from "@libsql/client";
-import { assertSingleSqlStatement, type SqlNodeDriver } from "@infrawrench/plugin-base";
+import {
+  assertSingleSqlStatement,
+  urlDialTarget,
+  type DialTarget,
+  type SqlNodeDriver,
+} from "@infrawrench/plugin-base";
 
 function toRows(result: ResultSet): Record<string, unknown>[] {
   return result.rows.map((row) => {
@@ -27,8 +32,33 @@ function buildClient(connectionString: string) {
   }
 }
 
+const LIBSQL_DEFAULT_PORTS: Record<string, number> = {
+  "libsql:": 443,
+  "https:": 443,
+  "wss:": 443,
+  "http:": 80,
+  "ws:": 80,
+};
+
+/**
+ * Where the libSQL client would connect. `file:` URLs (and `:memory:`) open a
+ * database on the local disk rather than dialing anything.
+ */
+export function dialTargets(connectionString: string): DialTarget[] {
+  let u: URL;
+  try {
+    u = new URL(connectionString);
+  } catch {
+    return [{ kind: "local", reason: "a local database file" }];
+  }
+  const port = LIBSQL_DEFAULT_PORTS[u.protocol];
+  if (port === undefined) return [{ kind: "local", reason: `a \`${u.protocol}\` URL` }];
+  return [urlDialTarget(u, port)];
+}
+
 export const driver = {
   id: "libsql",
+  dialTargets,
 
   async query(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
     const client = buildClient(connectionString);

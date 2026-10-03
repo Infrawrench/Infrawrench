@@ -37,11 +37,20 @@ Infrawrench ships as a desktop app, a hosted web app, and a [mobile app](../feat
 
 The [mobile app](../features/mobile-app.md) signs into a cloud org and covers: dashboards and budgets (render-only), the account/resource browser with plugin-rendered detail pages (actions, logs, metrics), global search, AI chat with action approvals, the SSH terminal and Kubernetes pod shells, the SQL editor, the KV console and document browsers, container actions, peer-plugin integration panes, read-only workflows and agent sessions, and org settings. Billing is read-only, code editors (manifests, bucket policies, workflows) stay on web/desktop, and dashboards cannot be edited from the phone — see the [mobile app page](../features/mobile-app.md) for the full list.
 
+## What the cloud can connect to
+
+The web app's servers are shared by every organization, so every connection they open on your behalf (a plugin's API calls, a database or Redis or Kafka connection, a Docker daemon, a kubeconfig's API server, an SSH or SFTP session, a workflow's `resource.ssh()`) is checked before it is made:
+
+- **Never reachable:** loopback (`127.0.0.1`, `::1`, `localhost`), link-local addresses including cloud metadata endpoints (`169.254.169.254`), multicast, and other reserved ranges, in every IPv4 and IPv6 spelling. Unix sockets (`unix:///var/run/docker.sock`, a Postgres socket directory, a Redis socket path), local database files (`file:` libSQL URLs) and connection-string options that read files from disk (Postgres `sslrootcert`, `sslcert`, `sslkey`) are refused too; paste a certificate into the account's CA field instead.
+- **Private addresses** (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, the `100.64.0.0/10` carrier-grade NAT range, and IPv6 unique-local `fc00::/7`) are **not reachable directly by default**. Reach a private host from inside your own network instead: a [bastion](../features/bastion-vms.md) for a plugin's API calls, an [SSH tunnel](../features/ssh-tunnels.md) for database, cache, Docker and other driver connections, and a [jumpbox](../features/ssh-jumpbox.md) for SSH sessions. Self-hosted deployments can allow private addresses with the `EGRESS_ALLOW_PRIVATE_NETWORKS` server setting.
+
+The desktop app connects from your own machine and has none of these limits: `localhost`, your LAN and local sockets all work there.
+
 ## Feature-parity gaps to know about
 
 - **The [`infrawrench` CLI](../features/cli.md)** ships with the desktop app (it launches the app headlessly), so the terminal/TUI experience is desktop-only — though it can browse all your cloud organizations once you're signed in.
 - **SFTP file browser** is available on desktop (direct SSH connection) and mobile (proxied through the cloud); the web app cannot open a raw SSH file system.
-- **Docker Unix socket** is desktop-only; web needs a remote Docker daemon reachable over TCP.
+- **Docker Unix socket** is desktop-only; web needs a remote Docker daemon reachable over TCP at a public address, or through an SSH tunnel or bastion if it is private.
 - **Pageant** is Windows desktop only.
 - **Ephemeral Kubernetes scratch pods** work in both, but the launch button opens a [terminal](../features/ssh-terminal.md) which on web is proxied.
 - **[AI chat](../features/ai-chat.md)** requires a cloud org — the agent loop, billing, and conversation history live in the web backend. On desktop it appears once you sign in to Infrawrench Cloud and select an organization; in local-only mode there is no chat.

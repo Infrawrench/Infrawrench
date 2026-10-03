@@ -9,6 +9,7 @@ import { accounts } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
 import { buildPluginHostServices } from "./host-services";
+import { withEgressScope } from "./egress-guard";
 import { applyCredentialRewriters } from "./credential-rewriters";
 
 /** Decrypt an account's credentials and instantiate its plugin client. */
@@ -40,8 +41,12 @@ export async function getOrgAccountClient(accountId: string, organizationId: str
 
   const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
     accountId,
+    organizationId,
     bastionId: account.bastionId ?? null,
   });
-  const client = loaded.plugin.createClient(credentials, hostServices);
+  const client = withEgressScope(loaded.plugin.createClient(credentials, hostServices), {
+    accountId,
+    organizationId,
+  });
   return { client, plugin: loaded.plugin, credentials, account };
 }

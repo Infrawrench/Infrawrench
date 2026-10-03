@@ -1,5 +1,5 @@
 import Memjs from "memjs";
-import type { KvNodeDriver } from "@infrawrench/plugin-base";
+import { hostPortDialTarget, type DialTarget, type KvNodeDriver } from "@infrawrench/plugin-base";
 
 type MemjsClient = InstanceType<typeof Memjs.Client>;
 
@@ -24,8 +24,18 @@ function statsAll(
   });
 }
 
+/** Every server in the comma-separated list memjs is handed. */
+export function dialTargets(connectionString: string): DialTarget[] {
+  return connectionString
+    .replace(/^memcacheds?:\/\//, "")
+    .split(",")
+    .filter((s) => s.trim())
+    .map((s) => hostPortDialTarget(s, 11211));
+}
+
 export const driver = {
   id: "memcached",
+  dialTargets,
 
   async command(
     connectionString: string,

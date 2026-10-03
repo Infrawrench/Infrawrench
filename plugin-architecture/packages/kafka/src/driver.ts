@@ -1,5 +1,5 @@
 import { Kafka, logLevel, type KafkaConfig, type SASLOptions } from "kafkajs";
-import type { KvNodeDriver } from "@infrawrench/plugin-base";
+import { hostPortDialTarget, type DialTarget, type KvNodeDriver } from "@infrawrench/plugin-base";
 
 const CONNECT_TIMEOUT_MS = 8000;
 const REQUEST_TIMEOUT_MS = 12000;
@@ -191,8 +191,19 @@ function isStaleConnectionError(err: unknown): boolean {
 
 type KafkaAdmin = ReturnType<Kafka["admin"]>;
 
+/**
+ * The bootstrap brokers. kafkajs then dials whatever brokers the cluster
+ * advertises in its metadata, which no connection-string check can see.
+ */
+export function dialTargets(connectionString: string): DialTarget[] {
+  const { brokers } = buildKafkaConfig(connectionString);
+  if (!Array.isArray(brokers)) return [{ kind: "local", reason: "a broker list function" }];
+  return brokers.map((b) => hostPortDialTarget(b, 9092));
+}
+
 export const driver = {
   id: "kafka",
+  dialTargets,
 
   async command(
     connectionString: string,

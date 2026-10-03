@@ -22,51 +22,94 @@ import { setLiteralSecretState } from "./secret-states";
 import { resourceIdBelongsToAccount } from "./resource-ids";
 import { getDispatcherFor } from "./bastion/registry";
 import { BastionDisconnectedError } from "./bastion/errors";
+import {
+  guardDriverConnection,
+  pinnedLookup,
+  resolveDialAddress,
+  runInEgressScope,
+  type DialScope,
+} from "./egress-guard";
+
+/*
+ * Every driver call below is preceded by `guardDriverConnection`: these run
+ * in the shared server, so a tenant's connection string must not reach
+ * loopback, the metadata endpoint or the cluster. `scope` is what lets a
+ * connection the tunnel resolver rewrote to `127.0.0.1:<port>` through, and
+ * only for the account that owns that tunnel.
+ */
 
 export function buildHostServices(
   driverId: string,
   connectionString: string,
-  options: { caCert?: string } = {},
+  options: { caCert?: string; scope?: DialScope } = {},
 ): HostServices {
   const driver = sqlDrivers.get(driverId);
   if (!driver) throw new Error(`Unknown SQL driver: ${driverId}`);
   // Pull caCert out into a single SqlNodeDriverOptions value so we don't
   // rebuild it on every query.
   const sqlOptions = options.caCert ? { caCert: options.caCert } : undefined;
+  const guard = () => guardDriverConnection(driver, connectionString, options.scope);
   return {
     sql: {
-      query: (sql) => driver.query(connectionString, sql, sqlOptions),
-      execute: (sql, params) => driver.execute(connectionString, sql, params, sqlOptions),
+      query: async (sql) => {
+        await guard();
+        return driver.query(connectionString, sql, sqlOptions);
+      },
+      execute: async (sql, params) => {
+        await guard();
+        return driver.execute(connectionString, sql, params, sqlOptions);
+      },
     },
   };
 }
 
-export function buildKvHostServices(driverId: string, connectionString: string): HostServices {
+export function buildKvHostServices(
+  driverId: string,
+  connectionString: string,
+  scope?: DialScope,
+): HostServices {
   const driver = kvDrivers.get(driverId);
   if (!driver) throw new Error(`Unknown KV driver: ${driverId}`);
   return {
     kv: {
-      command: (cmd, ...args) => driver.command(connectionString, cmd, args),
+      command: async (cmd, ...args) => {
+        await guardDriverConnection(driver, connectionString, scope);
+        return driver.command(connectionString, cmd, args);
+      },
     },
   };
 }
 
-export function buildDockerHostServices(driverId: string, dockerHost: string): HostServices {
+export function buildDockerHostServices(
+  driverId: string,
+  dockerHost: string,
+  scope?: DialScope,
+): HostServices {
   const driver = dockerDrivers.get(driverId);
   if (!driver) throw new Error(`Unknown Docker driver: ${driverId}`);
   return {
     docker: {
-      command: (op, params) => driver.command(dockerHost, op, params),
+      command: async (op, params) => {
+        await guardDriverConnection(driver, dockerHost, scope);
+        return driver.command(dockerHost, op, params);
+      },
     },
   };
 }
 
-export function buildK8sHostServices(driverId: string, kubeconfig: string): HostServices {
+export function buildK8sHostServices(
+  driverId: string,
+  kubeconfig: string,
+  scope?: DialScope,
+): HostServices {
   const driver = k8sDrivers.get(driverId);
   if (!driver) throw new Error(`Unknown Kubernetes driver: ${driverId}`);
   return {
     k8s: {
-      command: (op, params) => driver.command(kubeconfig, op, params),
+      command: async (op, params) => {
+        await guardDriverConnection(driver, kubeconfig, scope);
+        return driver.command(kubeconfig, op, params);
+      },
     },
   };
 }
@@ -130,7 +173,10 @@ function accountSecretHostServices(accountId: string): SecretHostServices {
  * resolution from a parent that itself isn't behind a bastion, or callers
  * that genuinely don't have an account context).
  */
-function buildHttpHostServices(bastionId: string | null | undefined): HttpHostServices {
+function buildHttpHostServices(
+  bastionId: string | null | undefined,
+  scope: DialScope,
+): HttpHostServices {
   return {
     request: async (req) => {
       const binary = req.responseEncoding === "binary";
@@ -165,13 +211,17 @@ function buildHttpHostServices(bastionId: string | null | undefined): HttpHostSe
         };
       }
       if (req.caCert) {
-        return nodeHttpsRequest(req);
+        return nodeHttpsRequest(req, scope);
       }
-      const resp = await fetch(req.url, {
-        method: req.method,
-        headers: req.headers,
-        ...(req.body != null ? { body: req.body as string | Uint8Array<ArrayBuffer> } : {}),
-      });
+      // Inside the egress scope, the global dispatcher vets and pins every
+      // connection this fetch opens, redirects included.
+      const resp = await runInEgressScope(scope, () =>
+        fetch(req.url, {
+          method: req.method,
+          headers: req.headers,
+          ...(req.body != null ? { body: req.body as string | Uint8Array<ArrayBuffer> } : {}),
+        }),
+      );
       const headers = Object.fromEntries(resp.headers.entries());
       if (binary) {
         return {
@@ -190,14 +240,17 @@ function buildHttpHostServices(bastionId: string | null | undefined): HttpHostSe
   };
 }
 
-function nodeHttpsRequest(req: {
-  url: string;
-  method?: string;
-  headers?: Record<string, string>;
-  body?: string | Uint8Array;
-  caCert?: string;
-  responseEncoding?: "utf8" | "binary";
-}): Promise<{
+async function nodeHttpsRequest(
+  req: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string | Uint8Array;
+    caCert?: string;
+    responseEncoding?: "utf8" | "binary";
+  },
+  scope: DialScope,
+): Promise<{
   status: number;
   headers: Record<string, string>;
   body: string;
@@ -214,10 +267,18 @@ function nodeHttpsRequest(req: {
     );
   }
   const mod = isHttps ? https : http;
+  const port = Number(parsed.port) || (isHttps ? 443 : 80);
+  // Vet the destination and pin the socket to the address that cleared;
+  // `hostname` still drives SNI and the certificate check.
+  const address = await resolveDialAddress(parsed.hostname, port, { scope, label: "HTTP host" });
   const options: https.RequestOptions = {
     method: req.method ?? "GET",
     hostname: parsed.hostname,
-    port: parsed.port || (isHttps ? 443 : 80),
+    port,
+    lookup: pinnedLookup(address),
+    // No pooled socket: a keep-alive connection would be shared across
+    // tenants by host and port, and skip the check above.
+    agent: false,
     path: `${parsed.pathname}${parsed.search}`,
     headers: req.headers ?? {},
     ...(isHttps && req.caCert ? { ca: req.caCert } : {}),
@@ -280,27 +341,32 @@ async function getAccountBastionId(accountId: string): Promise<string | null> {
 export async function buildPluginHostServices(
   manifest: PluginManifest,
   credentials: Record<string, string>,
-  options: { accountId?: string; bastionId?: string | null } = {},
+  options: {
+    accountId?: string;
+    organizationId?: string | undefined;
+    bastionId?: string | null;
+  } = {},
 ): Promise<HostServices | undefined> {
   let bastionId: string | null | undefined = options.bastionId;
   if (bastionId === undefined && options.accountId) {
     bastionId = await getAccountBastionId(options.accountId);
   }
+  const scope: DialScope = { accountId: options.accountId, organizationId: options.organizationId };
   const base: HostServices = {
-    http: buildHttpHostServices(bastionId ?? null),
+    http: buildHttpHostServices(bastionId ?? null, scope),
     secrets: options.accountId ? accountSecretHostServices(options.accountId) : secretHostServices,
   };
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
     return {
-      ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost),
+      ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost, scope),
       ...base,
     };
   }
   if (manifest.kubernetesDriver) {
     const kubeconfig = credentials[manifest.kubernetesDriver.credentialKey] ?? "";
     return {
-      ...buildK8sHostServices(manifest.kubernetesDriver.driver, kubeconfig),
+      ...buildK8sHostServices(manifest.kubernetesDriver.driver, kubeconfig, scope),
       ...base,
     };
   }
@@ -312,6 +378,7 @@ export async function buildPluginHostServices(
     return {
       ...buildHostServices(manifest.sqlDriver.driver, connectionString, {
         ...(caCert ? { caCert } : {}),
+        scope,
       }),
       ...base,
     };
@@ -319,7 +386,7 @@ export async function buildPluginHostServices(
   if (manifest.kvDriver) {
     const connectionString = credentials[manifest.kvDriver.credentialKey] ?? "";
     return {
-      ...buildKvHostServices(manifest.kvDriver.driver, connectionString),
+      ...buildKvHostServices(manifest.kvDriver.driver, connectionString, scope),
       ...base,
     };
   }

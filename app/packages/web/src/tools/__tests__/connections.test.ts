@@ -47,6 +47,11 @@ vi.mock("../../services/host-validation", () => ({
   resolveSafeHost: (...a: unknown[]) => mockResolveSafeHost(...a),
 }));
 
+const mockGuardDriverConnection = vi.fn(async (..._a: unknown[]) => undefined);
+vi.mock("@infrawrench/server-core/egress-guard", () => ({
+  guardDriverConnection: (...a: unknown[]) => mockGuardDriverConnection(...a),
+}));
+
 vi.mock("../../services/audit", () => ({ logAudit: vi.fn() }));
 // Not importOriginal: the real module pulls in db/client, which requires
 // DATABASE_URL at import time. Only the class identity matters here.
@@ -323,6 +328,23 @@ describe("connectionTools", () => {
         auth,
       );
       expect(JSON.parse(r.content[0]!.text).result).toBe("OK");
+      expect(mockGuardDriverConnection).toHaveBeenCalledWith(kvDriver, "redis://x", {
+        accountId: "a1",
+        organizationId: "o1",
+      });
+    });
+
+    it("never reaches the driver when the guard refuses the connection", async () => {
+      mockGetClientForAccount.mockResolvedValue({
+        client: {},
+        plugin: { manifest: { kvDriver: { driver: "redis", credentialKey: "url" } } },
+        credentials: { url: "redis://127.0.0.1:6379" },
+      });
+      mockGuardDriverConnection.mockRejectedValueOnce(new Error("blocked address range"));
+      await expect(
+        tool("kv_command").handler({ accountId: "a1", command: "GET", args: ["k"] }, auth),
+      ).rejects.toThrow("blocked address range");
+      expect(mockKvCommand).not.toHaveBeenCalled();
     });
   });
 

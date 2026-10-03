@@ -13,6 +13,7 @@ import { db } from "../db/client";
 import { sshKeys } from "../db/schema";
 import { decrypt, buildAad } from "./encryption";
 import { HostKeyTrustRequiredError, makeHostKeyVerifier } from "./ssh-host-keys";
+import { resolveSafeHost } from "./host-validation";
 
 /**
  * Resolve an SSH config for an SFTP/SSH-exec request:
@@ -71,10 +72,16 @@ export interface SshExecResult {
  * identity deliberately stays `config.host`: pins live in `ssh_host_keys`
  * keyed by (host, port), so verifying against the IP would invalidate every
  * existing trust record and re-prompt the operator on a host they already
- * trust. Omit it only where no SSRF check applies to the destination.
+ * trust. When it is omitted, {@link sshExec} and {@link sshExecCapture} vet
+ * `config.host` themselves and dial the address that cleared.
  */
 export interface SshDialOptions {
   dialAddress?: string | undefined;
+}
+
+/** The address to open the socket to: the caller's vetted one, or vet it here. */
+function vetDialAddress(config: SshConfig, dial?: SshDialOptions): Promise<string> {
+  return dial?.dialAddress ? Promise.resolve(dial.dialAddress) : resolveSafeHost(config.host);
 }
 
 /** Caps for fan-out style captures: bound memory when many hosts stream at once. */
@@ -189,22 +196,26 @@ export function sshExecCapture(
       }
       finish(() => reject(new Error(`SSH error: ${err.message}`)));
     });
-    client.connect({
-      // Socket to the vetted address when there is one; identity below stays
-      // the configured host either way. See {@link SshDialOptions}.
-      host: dial?.dialAddress ?? config.host,
-      port: config.port,
-      username: config.username,
-      privateKey: config.privateKey,
-      readyTimeout: CAPTURE_READY_TIMEOUT_MS,
-      hostVerifier: makeHostKeyVerifier(
-        organizationId,
-        config.host,
-        config.port,
-        hostKeyErrorRef,
-        "ssh",
-      ),
-    });
+    vetDialAddress(config, dial).then(
+      (dialAddress) =>
+        client.connect({
+          // Socket to the vetted address; identity below stays the configured
+          // host either way. See {@link SshDialOptions}.
+          host: dialAddress,
+          port: config.port,
+          username: config.username,
+          privateKey: config.privateKey,
+          readyTimeout: CAPTURE_READY_TIMEOUT_MS,
+          hostVerifier: makeHostKeyVerifier(
+            organizationId,
+            config.host,
+            config.port,
+            hostKeyErrorRef,
+            "ssh",
+          ),
+        }),
+      (err: unknown) => finish(() => reject(err)),
+    );
   });
 }
 
@@ -252,20 +263,24 @@ export function sshExec(
       }
       reject(new Error(`SSH error: ${err.message}`));
     });
-    client.connect({
-      // Socket to the vetted address when there is one; identity below stays
-      // the configured host either way. See {@link SshDialOptions}.
-      host: dial?.dialAddress ?? config.host,
-      port: config.port,
-      username: config.username,
-      privateKey: config.privateKey,
-      hostVerifier: makeHostKeyVerifier(
-        organizationId,
-        config.host,
-        config.port,
-        hostKeyErrorRef,
-        "ssh",
-      ),
-    });
+    vetDialAddress(config, dial).then(
+      (dialAddress) =>
+        client.connect({
+          // Socket to the vetted address; identity below stays the configured
+          // host either way. See {@link SshDialOptions}.
+          host: dialAddress,
+          port: config.port,
+          username: config.username,
+          privateKey: config.privateKey,
+          hostVerifier: makeHostKeyVerifier(
+            organizationId,
+            config.host,
+            config.port,
+            hostKeyErrorRef,
+            "ssh",
+          ),
+        }),
+      reject,
+    );
   });
 }

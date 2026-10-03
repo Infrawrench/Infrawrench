@@ -239,15 +239,16 @@ describe("handleSshSession", () => {
     );
   });
 
-  it("skips the SSRF guard when jumping through a bastion", async () => {
+  it("vets only the first jump hop, and dials it by the vetted address", async () => {
     selectRows([KEY_ROW]);
     mockResolveSshChain.mockResolvedValue([
       { host: "jump.example", port: 22, username: "jb", privateKey: "JUMP_KEY" },
     ]);
+    mockResolveSafeHost.mockResolvedValue("198.51.100.20");
     mockForwardOutHop.mockRejectedValue(new Error("stop here"));
     const ws = fakeWs();
-    // A private target is exactly what a jump host is for, so the guard must
-    // not fire: reaching hop establishment at all proves it didn't.
+    // A private target behind the jump host is exactly what a jump host is
+    // for: it is reached over the hop's `sock`, never resolved here.
     const session = handleSshSession(ws as never, "org-1", "acct-1", undefined, {
       ...DIRECT,
       host: "10.0.0.5",
@@ -258,10 +259,28 @@ describe("handleSshSession", () => {
     sshClients[1]!.emit("ready");
     await session;
 
-    expect(mockResolveSafeHost).not.toHaveBeenCalled();
-    // The bastion itself is dialed by name too: its endpoint comes from a
-    // stored account, not from the frame, and is routinely private on purpose.
-    expect(sshClients[1]!.connectConfig).toMatchObject({ host: "jump.example" });
+    // The jump host is dialed by this process, so it is vetted like any
+    // other destination; the target behind it is not.
+    expect(mockResolveSafeHost).toHaveBeenCalledTimes(1);
+    expect(mockResolveSafeHost).toHaveBeenCalledWith("jump.example");
+    expect(sshClients[1]!.connectConfig).toMatchObject({ host: "198.51.100.20" });
+  });
+
+  it("refuses a jump host in blocked address space", async () => {
+    selectRows([KEY_ROW]);
+    mockResolveSshChain.mockResolvedValue([
+      { host: "127.0.0.1", port: 22, username: "jb", privateKey: "JUMP_KEY" },
+    ]);
+    mockResolveSafeHost.mockRejectedValueOnce(
+      new Error("SSH host 127.0.0.1 resolves to a blocked address range"),
+    );
+    const ws = fakeWs();
+    await handleSshSession(ws as never, "org-1", "acct-1", undefined, {
+      ...DIRECT,
+      host: "10.0.0.5",
+      connectThroughAccountId: "jump-1",
+    });
+    expect(sshClients.every((c) => c.connectConfig === null)).toBe(true);
   });
 
   it("wires a host verifier into the final connect", async () => {

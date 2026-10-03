@@ -49,6 +49,11 @@ vi.mock("@/services/ssh-host-keys", () => ({
   makeHostKeyVerifier: (...a: unknown[]) => mockMakeHostKeyVerifier(...a),
 }));
 
+const mockResolveSafeHost = vi.fn(async (host: string) => `vetted:${host}`);
+vi.mock("@/services/host-validation", () => ({
+  resolveSafeHost: (host: string) => mockResolveSafeHost(host),
+}));
+
 const { sshExecCapture, sshExec } = await import("@/services/ssh");
 
 const CONFIG = { host: "203.0.113.5", port: 22, username: "root", privateKey: "KEY" };
@@ -186,8 +191,15 @@ describe("dialAddress", () => {
     );
   });
 
-  it("falls back to the configured host when no address was vetted", async () => {
+  it("vets the configured host itself when no address was vetted", async () => {
     const client = await run(sshExecCapture);
-    expect(client.connectConfig).toMatchObject({ host: "box.example" });
+    expect(mockResolveSafeHost).toHaveBeenCalledWith("box.example");
+    expect(client.connectConfig).toMatchObject({ host: "vetted:box.example" });
+  });
+
+  it("never connects when the configured host is refused", async () => {
+    mockResolveSafeHost.mockRejectedValueOnce(new Error("blocked address range"));
+    await expect(sshExec("org-1", NAMED, "uptime")).rejects.toThrow("blocked address range");
+    expect(sshClients.at(-1)!.connectConfig).toBeNull();
   });
 });
