@@ -9,6 +9,45 @@ cluster_name = "infrawrench-prod"
 # owner/repo allowed to push images and deploy via Workload Identity Federation.
 github_repository = "Infrawrench/infrawrench"
 
+# ---------------------------------------------------------------------------
+# Cluster isolation
+# ---------------------------------------------------------------------------
+
+# Optional, default true. Enforces the NetworkPolicies in
+# infra/k8s/network-policy.yaml and clickhouse.tf through GKE's Calico addon.
+# An in-place cluster update (no replacement), after which GKE recreates every
+# node, one surge node at a time. Apply infra/k8s first (CI does on any push)
+# so the allow rules exist before enforcement starts. Setting false leaves the
+# policies inert: the cluster accepts them and enforces nothing.
+# enable_network_policy = true
+
+# Optional, default true. Turns on the control plane's DNS-based endpoint,
+# which is gated by IAM rather than source IP. CI uses it when the
+# GKE_DNS_ENDPOINT repo variable is "true". Non-disruptive.
+# control_plane_dns_endpoint = true
+
+# Optional, default [] (public IP endpoint open to the internet, still behind
+# IAM). Restricts the control plane's public IP endpoint to these ranges.
+# Order matters, or CI and terraform lock themselves out:
+#   1. apply with control_plane_dns_endpoint = true (the default),
+#   2. set the GKE_DNS_ENDPOINT repo variable to "true" and let one deploy go
+#      green through it,
+#   3. then set this list. Include the address you run terraform from: the
+#      kubernetes and helm providers reach the cluster over the IP endpoint.
+#      Humans can use `get-credentials --dns-endpoint` instead of being listed.
+# master_authorized_networks = [
+#   { cidr_block = "203.0.113.10/32", display_name = "ops-office" },
+# ]
+
+# Optional, default false. ClickHouse replicas authenticate interserver part
+# fetches (port 9009) with a terraform-generated password. Fresh clusters need
+# nothing. On an already-running cluster, apply the change that first adds the
+# credentials with this set to true, wait for both clickhouse pods to finish
+# their rolling restart, then remove it and apply again: without it, the
+# replica that restarts last cannot fetch parts from the one that restarted
+# first for the length of the rollout (fetches retry, nothing is lost).
+# clickhouse_interserver_allow_empty = true
+
 # Runtime env for web + poller + github-watcher (one shared k8s secret).
 app_env = {
   NODE_ENV = "production"

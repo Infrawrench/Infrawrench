@@ -98,6 +98,27 @@ resource "random_password" "clickhouse_app" {
   special = false
 }
 
+# Replica-to-replica part fetches on 9009 (interserver_http_credentials).
+# Without them any pod that can reach a replica can download its data parts
+# or pose as a replica.
+resource "random_password" "clickhouse_interserver" {
+  length  = 32
+  special = false
+}
+
+# Digest identity the servers present to Keeper. ClickHouse creates every
+# znode with the `auth` ACL once a session carries an identity, so the DDL
+# queue and replication metadata are writable only by holders of this secret
+# rather than by `world:anyone`. Never rotate it by tainting this resource:
+# znodes created under the old identity would lock the servers out of their
+# own replication metadata. Znodes that predate the identity keep the open
+# ACL until reset by hand (infra/README.md, NetworkPolicy section); the
+# Keeper ingress policy below is what guards those.
+resource "random_password" "clickhouse_keeper" {
+  length  = 32
+  special = false
+}
+
 resource "kubernetes_secret" "clickhouse_auth" {
   metadata {
     name      = "clickhouse-auth"
@@ -106,7 +127,9 @@ resource "kubernetes_secret" "clickhouse_auth" {
   type = "Opaque"
 
   data = {
-    CLICKHOUSE_APP_PASSWORD = random_password.clickhouse_app.result
+    CLICKHOUSE_APP_PASSWORD         = random_password.clickhouse_app.result
+    CLICKHOUSE_INTERSERVER_PASSWORD = random_password.clickhouse_interserver.result
+    CLICKHOUSE_KEEPER_IDENTITY      = "clickhouse:${random_password.clickhouse_keeper.result}"
   }
 }
 
@@ -132,6 +155,11 @@ resource "kubernetes_config_map" "clickhouse_keeper" {
         <listen_host>0.0.0.0</listen_host>
         <keeper_server>
           <tcp_port>9181</tcp_port>
+          <!-- Read-only four-letter words only. The default list includes
+               rcvr, rqld, ydld, csnp, crst and srst, which take no auth and
+               let anything reaching 9181 force recovery mode or move
+               leadership. -->
+          <four_letter_word_white_list>conf,cons,envi,ruok,srvr,stat,wchs,dirs,mntr,isro,apiv,lgif</four_letter_word_white_list>
           <server_id from_env="SERVER_ID"/>
           <log_storage_path>/var/lib/clickhouse-keeper/coordination/log</log_storage_path>
           <snapshot_storage_path>/var/lib/clickhouse-keeper/coordination/snapshots</snapshot_storage_path>
@@ -341,6 +369,14 @@ resource "kubernetes_config_map" "clickhouse_server" {
         <!-- Replicas fetch merged parts from each other over this address;
              the default (hostname) is not resolvable across pods. -->
         <interserver_http_host from_env="MY_POD_FQDN"/>
+        <!-- Replicas authenticate part fetches with these; identical on
+             every replica. allow_empty is only for the one rollout that
+             first adds them to a running cluster. -->
+        <interserver_http_credentials>
+          <user>interserver</user>
+          <password from_env="CLICKHOUSE_INTERSERVER_PASSWORD"/>
+          <allow_empty>${var.clickhouse_interserver_allow_empty}</allow_empty>
+        </interserver_http_credentials>
         <macros>
           <shard>01</shard>
           <replica from_env="POD_NAME"/>
@@ -350,6 +386,7 @@ resource "kubernetes_config_map" "clickhouse_server" {
     for fqdn in local.keeper_fqdns :
     "<node><host>${fqdn}</host><port>9181</port></node>"
     ])}
+          <identity from_env="CLICKHOUSE_KEEPER_IDENTITY"/>
         </zookeeper>
         <remote_servers>
           <infrawrench>
@@ -526,6 +563,24 @@ resource "kubernetes_stateful_set" "clickhouse" {
               }
             }
           }
+          env {
+            name = "CLICKHOUSE_INTERSERVER_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.clickhouse_auth.metadata[0].name
+                key  = "CLICKHOUSE_INTERSERVER_PASSWORD"
+              }
+            }
+          }
+          env {
+            name = "CLICKHOUSE_KEEPER_IDENTITY"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.clickhouse_auth.metadata[0].name
+                key  = "CLICKHOUSE_KEEPER_IDENTITY"
+              }
+            }
+          }
 
           port {
             name           = "http"
@@ -650,6 +705,156 @@ resource "kubernetes_pod_disruption_budget_v1" "clickhouse" {
     selector {
       match_labels = {
         app = "clickhouse"
+      }
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Network isolation
+# ---------------------------------------------------------------------------
+# ClickHouse shares the `infrawrench` namespace with the app workloads, whose
+# own policies live in infra/k8s/network-policy.yaml. Selecting a pod here
+# switches it to default-deny ingress; each rule below is a path that has to
+# keep working. Enforced only while var.enable_network_policy is on.
+
+locals {
+  # Everything that legitimately queries ClickHouse: the three app workloads
+  # (all of them get CLICKHOUSE_METRICS_* through the shared env secret) plus
+  # this file's bootstrap Job and backup CronJob.
+  ch_client_apps = ["web", "poller", "github-watcher", "clickhouse-bootstrap", "clickhouse-backup"]
+
+  # kubelet probes come from the node, not a pod, so only the node subnet can
+  # express them. The Calico addon does not exempt them the way Dataplane V2
+  # does, and a blocked probe restarts the pod.
+  node_cidr = google_compute_subnetwork.prod.ip_cidr_range
+}
+
+resource "kubernetes_network_policy_v1" "clickhouse" {
+  metadata {
+    name      = "clickhouse-ingress"
+    namespace = local.ch_namespace
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        app = "clickhouse"
+      }
+    }
+    policy_types = ["Ingress"]
+
+    # Queries: HTTP for the app, native for clickhouse-client.
+    ingress {
+      from {
+        pod_selector {
+          match_expressions {
+            key      = "app"
+            operator = "In"
+            values   = local.ch_client_apps
+          }
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "8123"
+      }
+      ports {
+        protocol = "TCP"
+        port     = "9000"
+      }
+    }
+
+    # Replica to replica: native for ON CLUSTER DDL, interserver for part
+    # fetches.
+    ingress {
+      from {
+        pod_selector {
+          match_labels = {
+            app = "clickhouse"
+          }
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "9000"
+      }
+      ports {
+        protocol = "TCP"
+        port     = "9009"
+      }
+    }
+
+    ingress {
+      from {
+        ip_block {
+          cidr = local.node_cidr
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "8123"
+      }
+    }
+  }
+}
+
+resource "kubernetes_network_policy_v1" "clickhouse_keeper" {
+  metadata {
+    name      = "clickhouse-keeper-ingress"
+    namespace = local.ch_namespace
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        app = "clickhouse-keeper"
+      }
+    }
+    policy_types = ["Ingress"]
+
+    # Only the ClickHouse servers are Keeper clients. Nothing else in the
+    # cluster has a reason to read or write the replication metadata or the
+    # DDL queue.
+    ingress {
+      from {
+        pod_selector {
+          match_labels = {
+            app = "clickhouse"
+          }
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "9181"
+      }
+    }
+
+    # Raft between quorum members. The Raft port has no authentication of its
+    # own, so this rule is the whole of its protection.
+    ingress {
+      from {
+        pod_selector {
+          match_labels = {
+            app = "clickhouse-keeper"
+          }
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "9234"
+      }
+    }
+
+    ingress {
+      from {
+        ip_block {
+          cidr = local.node_cidr
+        }
+      }
+      ports {
+        protocol = "TCP"
+        port     = "9181"
       }
     }
   }

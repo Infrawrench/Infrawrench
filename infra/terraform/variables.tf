@@ -132,3 +132,57 @@ variable "app_env" {
   type        = map(string)
   sensitive   = true
 }
+
+variable "enable_network_policy" {
+  description = <<-EOT
+    Enforce Kubernetes NetworkPolicy with GKE's Calico addon. Without it the
+    cluster accepts NetworkPolicy objects and enforces none of them, so the
+    app and ClickHouse isolation in infra/k8s/network-policy.yaml and
+    clickhouse.tf does nothing. Turning it on updates the cluster in place
+    (no replacement), but GKE recreates every node afterwards; see the
+    NetworkPolicy section of infra/README.md.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "master_authorized_networks" {
+  description = <<-EOT
+    CIDR ranges allowed to reach the control plane's public IP endpoint. Empty
+    (the default) leaves the endpoint reachable from anywhere, still behind
+    IAM. Before setting it, move CI to the DNS endpoint (the GKE_DNS_ENDPOINT
+    repo variable), since GitHub-hosted runners have no fixed address, and
+    include the address terraform runs from: the kubernetes and helm providers
+    use the IP endpoint.
+  EOT
+  type = list(object({
+    cidr_block   = string
+    display_name = string
+  }))
+  default = []
+}
+
+variable "control_plane_dns_endpoint" {
+  description = <<-EOT
+    Allow user traffic on the control plane's DNS-based endpoint. Access to it
+    is decided by IAM (container.clusters.connect) rather than source address,
+    and master_authorized_networks does not apply to it, which is what lets CI
+    keep deploying from GitHub-hosted runners once the IP endpoint is locked
+    down.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "clickhouse_interserver_allow_empty" {
+  description = <<-EOT
+    Let ClickHouse replicas accept unauthenticated interserver (port 9009)
+    requests alongside authenticated ones. Only for the one apply that first
+    adds interserver credentials to an already-running cluster, so a replica
+    that has not restarted yet can still fetch parts from one that has; set it
+    back to false on the next apply. See the ClickHouse notes in
+    terraform.tfvars.example.
+  EOT
+  type        = bool
+  default     = false
+}

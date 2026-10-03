@@ -1,57 +1,64 @@
-# Ingress isolation for the three app workloads.
+# Network isolation for the three app workloads. ClickHouse and Keeper share
+# this namespace; their policies live with them in
+# infra/terraform/clickhouse.tf.
 #
 # ---------------------------------------------------------------------------
 # Read this before adding an egress rule
 # ---------------------------------------------------------------------------
 #
-# These policies restrict *ingress only*, and that is a deliberate design
-# decision rather than an unfinished job.
+# The egress policy at the bottom is a *denylist of the cluster's own address
+# space*, not an allowlist of destinations, and that is deliberate.
 #
 # `app/packages/egress-proxy/src/index.ts` opens by explaining that if the
 # `web`/`poller` pods made a workflow's own HTTP requests, "the blast radius of
 # fetch(...) would be the cluster's own network: other pods' Services, the
 # kubelet, the GCP metadata server on 169.254.169.254 (which hands out node
-# credentials to anyone who asks)". That problem was solved *structurally* —
-# the request is handed to a Cloudflare Worker that has no route into the VPC —
-# precisely because an in-pod control could not be trusted to hold. These
-# policies are the in-cluster half of the same argument, and they stop at the
-# same honest boundary the Worker's README draws: "the line is who chooses the
+# credentials to anyone who asks)". That problem was solved *structurally*;
+# the request is handed to a Cloudflare Worker that has no route into the VPC;
+# precisely because an in-pod control could not be trusted to hold. The
+# Worker's README draws the boundary: "the line is who chooses the
 # destination, not who makes the request."
 #
-# For everything the app itself dials, an egress allowlist is not expressible:
+# For everything the app itself dials, a destination allowlist is not
+# expressible:
 #
 #   * `web` opens SSH to customer hosts (services/ssh-proxy.ts, ssh.ts,
 #     agent-setup.ts), raw TCP to customer databases (postgres, mysql, mssql,
 #     mongodb, redis, memcached, kafka, opensearch plugins), and HTTPS to
 #     customer Kubernetes API servers from a user-supplied kubeconfig. The
-#     host:port is org-configured — it is the product. Tunnels deliberately
-#     reach RFC1918 space: services/host-validation.ts validates the bastion
-#     endpoint and notes that the inner remote host is not validated, "reaching
-#     private hosts via the bastion is the whole point".
+#     host:port is org-configured; it is the product. Tunnels reach RFC1918
+#     space *behind a customer bastion*: the pod's own connection goes to the
+#     bastion's public address (or arrives inbound from a bastion-agent), never
+#     to a private one.
 #   * `poller` loads all ~50 provider plugins in-process and calls them
 #     directly, so its destination set is the same.
-#   * `github-watcher` is not GitHub-only — it calls loadPlugins() too ("the git
+#   * `github-watcher` is not GitHub-only; it calls loadPlugins() too ("the git
 #     trigger runs the workflow, which needs the plugin clients") and runs
 #     hosted Cloud Builds off the metadata server.
 #
 # A NetworkPolicy matches on CIDRs, not names, so even the fixed SaaS
 # dependencies (*.neon.tech, api.stripe.com, api.workos.com, slack.com,
-# exp.host, *-aiplatform.googleapis.com) cannot be written down here — their
-# addresses move. The only egress policy that would not break customer
-# connections is one that allows 0.0.0.0/0, which is not a control.
+# exp.host, *-aiplatform.googleapis.com) cannot be written down here.
+#
+# What *can* be written down is the inverse: nothing a customer legitimately
+# points us at lives in this VPC's private ranges, because the VPC has no
+# peering to anyone. Every private, link-local and cluster address an app pod
+# can reach is therefore either ours (nodes and kubelets on 10.0.0.0/20, pods
+# on 10.4.0.0/14, Services on 10.8.0.0/20, the control plane's private
+# endpoint on 172.16.0.0/28, the metadata server) or nothing at all. Denying
+# those, then re-opening the handful of in-cluster paths the app needs, turns
+# an SSRF or a compromised pod from "the whole cluster network" into "the
+# public internet", which is where it could already reach.
 #
 # ---------------------------------------------------------------------------
-# Enforcement is NOT enabled on this cluster
+# Enforcement
 # ---------------------------------------------------------------------------
 #
-# `infra/terraform/main.tf` sets neither `datapath_provider =
-# "ADVANCED_DATAPATH"` (Dataplane V2) nor a `network_policy { enabled = true }`
-# block, so a GKE Standard cluster accepts these objects and enforces nothing.
-# They are inert until an operator turns enforcement on — see the NetworkPolicy
-# section of infra/README.md for the two options and their disruption cost.
-# Applying them now is still worth it: it makes the rules reviewable, and it
-# means enabling enforcement is a one-line terraform change rather than a
-# change plus a scramble to work out what should be allowed.
+# Enforced by GKE's Calico addon, switched on by `enable_network_policy` in
+# infra/terraform/main.tf (on by default). If an operator turns that off, the
+# cluster accepts these objects and enforces nothing; see the NetworkPolicy
+# section of infra/README.md. Verify enforcement is live before trusting
+# these: a policy that is present but inert reads as protection.
 ---
 # Default-deny ingress for the three app workloads.
 #
@@ -131,6 +138,107 @@ spec:
     # the relay only ever dials private pod addresses out of its own table;
     # this rule narrows *who may try*, which is the half a policy can express.
     - from:
+        - podSelector:
+            matchLabels:
+              app: web
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# Egress for the three app workloads: the public internet, minus the cluster's
+# own address space, plus the in-cluster paths the app actually uses. See the
+# header for why this is a denylist rather than an allowlist.
+#
+# NetworkPolicy rules are additive, so each `to` below is an allow and the
+# `except` list is the only deny. Anything in-cluster that is not re-opened
+# here is unreachable once enforcement is on, which is the point: a pod that
+# needs a new in-cluster dependency needs a new rule.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - web
+          - poller
+          - github-watcher
+  policyTypes:
+    - Egress
+  egress:
+    # Customer infrastructure, provider APIs and SaaS dependencies. The
+    # excluded ranges are every private and link-local block: the node subnet
+    # and kubelets, pod and Service ranges, the control plane's private
+    # endpoint (172.16.0.0/28) and the metadata server. Nothing legitimate
+    # lives there from this cluster's point of view; the VPC is not peered.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+    # Cluster DNS. kube-dns pods carry `k8s-app: kube-dns` in kube-system.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The GKE metadata server, for Workload Identity: Vertex AI from `web`,
+    # hosted Cloud Build from `github-watcher`. The node pools run
+    # `GKE_METADATA` mode, so this endpoint only ever hands out the pod's own
+    # Kubernetes service account identity, never the node's. GKE documents
+    # 169.254.169.252 on 987/988 for Workload Identity under network policy
+    # and 169.254.169.254 on 80/8080 under Dataplane V2; both are listed so a
+    # later move to Dataplane V2 does not silently break auth. Port 53 on
+    # .254 is DNS if Cloud DNS for GKE is ever enabled.
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.252/32
+      ports:
+        - protocol: TCP
+          port: 987
+        - protocol: TCP
+          port: 988
+    # The in-cluster ClickHouse (infra/terraform/clickhouse.tf), matching its
+    # ingress policy. A ClickHouse Cloud URL is public and needs nothing here.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: clickhouse
+      ports:
+        - protocol: TCP
+          port: 8123
+        - protocol: TCP
+          port: 9000
+    # web → web for the cross-replica relay; the egress half of the rule in
+    # web-allow-ingress above. Only `web` has a peer to relay to, but listing
+    # the source side here keeps the app egress in one policy.
+    - to:
         - podSelector:
             matchLabels:
               app: web
