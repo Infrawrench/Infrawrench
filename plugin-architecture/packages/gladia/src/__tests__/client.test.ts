@@ -286,3 +286,57 @@ describe("transcribeAudio", () => {
     ).rejects.toThrow(/cannot transcribe audio for type "transcription"/);
   });
 });
+
+describe("live sessions", () => {
+  function liveSession(id: string) {
+    return {
+      ...doneJob(id),
+      kind: "live",
+      file: undefined,
+      request_params: {
+        model: "solaria-1",
+        encoding: "wav/pcm",
+        sample_rate: 16000,
+        bit_depth: 16,
+        channels: 1,
+      },
+    };
+  }
+
+  it("lists /v2/live and maps the stream format", async () => {
+    installFetch(() => jsonResponse({ next: null, items: [liveSession("live-1")] }));
+    const [session] = await client().listResources("live-session", ACCOUNT);
+    expect(calls[0]?.url).toBe("https://api.gladia.io/v2/live?offset=0&limit=50");
+    expect(session?.id).toBe(`${ACCOUNT}:live-session:live-1`);
+    expect(session?.resourceTypeId).toBe("live-session");
+    expect(session?.fields["streamFormat"]).toBe("wav/pcm · 16000 Hz · 16-bit · 1 ch");
+    expect(session?.fields["billingTime"]).toBe(4.2);
+  });
+
+  it("reads and deletes a session on the live path", async () => {
+    installFetch((url, init) =>
+      init?.method === "DELETE" ? jsonResponse("", 202) : jsonResponse(liveSession("live-2")),
+    );
+    const resourceId = `${ACCOUNT}:live-session:live-2`;
+    const session = await client().getResource("live-session", resourceId, ACCOUNT);
+    expect(calls[0]?.url).toBe("https://api.gladia.io/v2/live/live-2");
+    expect(client().renderDetail(session).subtitle).toBe("Gladia live session · done");
+    expect(await client().resolveOutput("live-session", resourceId, "resultUrl", ACCOUNT)).toBe(
+      "https://api.gladia.io/v2/live/live-2",
+    );
+    await client().deleteResource("live-session", resourceId, ACCOUNT);
+    expect(calls.at(-1)?.url).toBe("https://api.gladia.io/v2/live/live-2");
+    expect(calls.at(-1)?.init?.method).toBe("DELETE");
+  });
+
+  it("counts live sessions in the workspace activity", async () => {
+    installFetch((url) =>
+      url.includes("/v2/live")
+        ? jsonResponse({ next: null, items: [liveSession("l1"), liveSession("l2")] })
+        : jsonResponse({ next: null, items: [] }),
+    );
+    const [workspace] = await client().listResources("workspace", ACCOUNT);
+    expect(workspace?.fields["liveSessions"]).toBe(2);
+    expect(workspace?.fields["sampledLiveBillingTime"]).toBe(8.4);
+  });
+});

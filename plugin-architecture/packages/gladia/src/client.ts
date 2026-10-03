@@ -53,6 +53,21 @@ const MAX_POLL_WAIT_MS = 120_000;
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // Gladia accepts 1000 MB; our transport does not.
 const MAX_AUDIO_MINUTES = 135;
 
+/**
+ * The two job collections. Pre-recorded and live jobs share one response
+ * shape (`kind` tells them apart) but live under different paths, and a live
+ * job is only ever created over the streaming handshake, never from here.
+ */
+type JobTypeId = "transcription" | "live-session";
+const JOB_PATHS: Record<JobTypeId, string> = {
+  transcription: "/v2/pre-recorded",
+  "live-session": "/v2/live",
+};
+
+function isJobType(typeId: string): typeId is JobTypeId {
+  return typeId === "transcription" || typeId === "live-session";
+}
+
 const ACCEPTED_AUDIO_TYPES = [
   "audio/*",
   "video/*",
@@ -127,6 +142,11 @@ interface GladiaJob {
   request_params?: {
     model?: string;
     language_config?: { languages?: string[]; code_switching?: boolean };
+    /** Live sessions only: the audio format the stream was opened with. */
+    encoding?: string;
+    sample_rate?: number;
+    bit_depth?: number;
+    channels?: number;
   };
   result?: {
     metadata?: {
@@ -252,9 +272,10 @@ export class GladiaClient implements PluginClient {
     switch (typeId) {
       case "workspace":
         return [await this.buildWorkspace(accountId)];
-      case "transcription": {
-        const jobs = await this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES);
-        return jobs.map((job) => this.mapJob(accountId, job));
+      case "transcription":
+      case "live-session": {
+        const jobs = await this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES, typeId);
+        return jobs.map((job) => this.mapJob(accountId, job, typeId));
       }
       default:
         throw new Error(`Gladia plugin: unknown resource type "${typeId}"`);
@@ -268,9 +289,9 @@ export class GladiaClient implements PluginClient {
   ): Promise<ResourceInstance> {
     if (typeId === "workspace") return this.buildWorkspace(accountId);
 
-    if (typeId === "transcription") {
-      const job = await this.fetchJob(externalIdOf(resourceId));
-      return this.mapJob(accountId, job);
+    if (isJobType(typeId)) {
+      const job = await this.fetchJob(externalIdOf(resourceId), typeId);
+      return this.mapJob(accountId, job, typeId);
     }
 
     throw new Error(`Gladia plugin: unknown resource type "${typeId}"`);
@@ -284,12 +305,12 @@ export class GladiaClient implements PluginClient {
   ): Promise<string> {
     if (typeId === "workspace" && outputKey === "endpoint") return BASE_URL;
 
-    if (typeId === "transcription") {
+    if (isJobType(typeId)) {
       const id = externalIdOf(resourceId);
-      if (outputKey === "transcriptionId") return id;
-      if (outputKey === "resultUrl") return `${BASE_URL}/v2/pre-recorded/${id}`;
+      if (outputKey === "transcriptionId" || outputKey === "sessionId") return id;
+      if (outputKey === "resultUrl") return `${BASE_URL}${JOB_PATHS[typeId]}/${id}`;
       if (outputKey === "fullTranscript") {
-        const job = await this.fetchJob(id);
+        const job = await this.fetchJob(id, typeId);
         // `result` is null unless status === "done": optional-chain it.
         return str(job.result?.transcription?.full_transcript);
       }
@@ -320,7 +341,7 @@ export class GladiaClient implements PluginClient {
       ];
     }
 
-    if (resourceTypeId === "transcription") {
+    if (isJobType(resourceTypeId)) {
       const status = String(fields["status"] ?? "");
       return [
         {
@@ -339,8 +360,7 @@ export class GladiaClient implements PluginClient {
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     if (resource.resourceTypeId === "workspace") return this.renderWorkspaceDetail(resource);
-    if (resource.resourceTypeId === "transcription")
-      return this.renderTranscriptionDetail(resource);
+    if (isJobType(resource.resourceTypeId)) return this.renderTranscriptionDetail(resource);
     return {
       title: resource.displayName,
       subtitle: resource.resourceTypeId,
@@ -357,7 +377,7 @@ export class GladiaClient implements PluginClient {
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
-    if (resource.resourceTypeId === "transcription") {
+    if (isJobType(resource.resourceTypeId)) {
       return {
         id: resource.id,
         label: resource.displayName,
@@ -372,14 +392,15 @@ export class GladiaClient implements PluginClient {
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId !== "transcription") {
+    if (!isJobType(typeId)) {
       throw new Error(`Gladia plugin: cannot delete type "${typeId}"`);
     }
-    // DELETE /v2/pre-recorded/{id}: verified 2026-07-28 against
-    // https://docs.gladia.io/api-reference/v2/pre-recorded/delete
-    // 202 Accepted on success; 403 when the job is not in a deletable state.
+    // DELETE /v2/pre-recorded/{id} and DELETE /v2/live/{id}: verified against
+    // https://docs.gladia.io/api-reference/v2/pre-recorded/delete and
+    // https://docs.gladia.io/api-reference/v2/live/delete. Both answer 202
+    // Accepted on success and 403 when the job is not in a deletable state.
     await this.requestVoid(
-      `/v2/pre-recorded/${encodeURIComponent(externalIdOf(resourceId))}`,
+      `${JOB_PATHS[typeId]}/${encodeURIComponent(externalIdOf(resourceId))}`,
       "DELETE",
     );
   }
@@ -570,24 +591,25 @@ export class GladiaClient implements PluginClient {
    * GET /v2/pre-recorded/{id}: verified 2026-07-28 against
    * https://docs.gladia.io/api-reference/v2/pre-recorded/get
    */
-  private async fetchJob(jobId: string): Promise<GladiaJob> {
-    return this.fetch<GladiaJob>(`/v2/pre-recorded/${encodeURIComponent(jobId)}`);
+  private async fetchJob(jobId: string, typeId: JobTypeId = "transcription"): Promise<GladiaJob> {
+    return this.fetch<GladiaJob>(`${JOB_PATHS[typeId]}/${encodeURIComponent(jobId)}`);
   }
 
   /**
-   * GET /v2/pre-recorded: verified 2026-07-28 against
-   * https://docs.gladia.io/api-reference/v2/pre-recorded/list
+   * GET /v2/pre-recorded and GET /v2/live: verified against
+   * https://docs.gladia.io/api-reference/v2/pre-recorded/list and
+   * https://docs.gladia.io/api-reference/v2/live/list
    *
    * The envelope is `{first, current, next, items}` with **no total**, so
    * paging follows `next` until it is null (bounded by MAX_LIST_PAGES).
    */
-  private async fetchJobs(max: number): Promise<GladiaJob[]> {
+  private async fetchJobs(max: number, typeId: JobTypeId = "transcription"): Promise<GladiaJob[]> {
     const out: GladiaJob[] = [];
     let offset = 0;
 
     for (let page = 0; page < MAX_LIST_PAGES && out.length < max; page++) {
       const query = new URLSearchParams({ offset: String(offset), limit: String(PAGE_SIZE) });
-      const body = await this.fetch<GladiaListResponse>(`/v2/pre-recorded?${query.toString()}`);
+      const body = await this.fetch<GladiaListResponse>(`${JOB_PATHS[typeId]}?${query.toString()}`);
       const items = body.items ?? [];
       out.push(...items);
       if (!body.next || items.length === 0) break;
@@ -597,7 +619,11 @@ export class GladiaClient implements PluginClient {
     return out.slice(0, max);
   }
 
-  private mapJob(accountId: string, job: GladiaJob): ResourceInstance {
+  private mapJob(
+    accountId: string,
+    job: GladiaJob,
+    typeId: JobTypeId = "transcription",
+  ): ResourceInstance {
     const id = str(job.id);
     const createdAt = str(job.created_at) || new Date().toISOString();
     const completedAt = typeof job.completed_at === "string" ? job.completed_at : "";
@@ -605,12 +631,29 @@ export class GladiaClient implements PluginClient {
     const metadata = job.result?.metadata;
     const languages = job.result?.transcription?.languages ?? [];
 
+    const params = job.request_params;
+    const streamFormat =
+      typeId === "live-session"
+        ? [
+            params?.encoding,
+            num(params?.sample_rate) ? `${params?.sample_rate} Hz` : undefined,
+            num(params?.bit_depth) ? `${params?.bit_depth}-bit` : undefined,
+            num(params?.channels) ? `${params?.channels} ch` : undefined,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : "";
+
     return {
-      id: `${accountId}:transcription:${id}`,
+      id: `${accountId}:${typeId}:${id}`,
       pluginId: "gladia",
-      resourceTypeId: "transcription",
+      resourceTypeId: typeId,
       accountId,
-      displayName: filename || id || "transcription",
+      displayName:
+        filename ||
+        (typeId === "live-session" && createdAt ? `Live ${createdAt.slice(0, 19)}` : "") ||
+        id ||
+        typeId,
       externalId: id,
       fields: {
         status: str(job.status),
@@ -626,6 +669,8 @@ export class GladiaClient implements PluginClient {
         errorCode: num(job.error_code) ?? 0,
         requestId: str(job.request_id),
         kind: str(job.kind),
+        model: str(params?.model),
+        ...(typeId === "live-session" ? { streamFormat } : {}),
       },
       resolvedOutputs: {
         // renderDetail is synchronous, so the transcript is stashed here by the
@@ -640,14 +685,14 @@ export class GladiaClient implements PluginClient {
   }
 
   private async buildWorkspace(accountId: string): Promise<ResourceInstance> {
-    let jobs: GladiaJob[] = [];
-    try {
-      jobs = await this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES);
-    } catch {
-      // A brand-new key with no history (or a transient list failure) should
-      // still leave the workspace navigable and the Speech tab usable.
-      jobs = [];
-    }
+    // A brand-new key with no history (or a transient list failure) should
+    // still leave the workspace navigable and the Speech tab usable.
+    const [jobs, liveJobs] = await Promise.all([
+      this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES).catch(() => [] as GladiaJob[]),
+      this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES, "live-session").catch(() => [] as GladiaJob[]),
+    ]);
+    let liveBilling = 0;
+    for (const job of liveJobs) liveBilling += num(job.result?.metadata?.billing_time) ?? 0;
 
     let done = 0;
     let errored = 0;
@@ -686,6 +731,8 @@ export class GladiaClient implements PluginClient {
         sampledBillingTime: round(billing, 2),
         sampledAudioDuration: round(audio, 2),
         oldestSampledAt: oldest,
+        liveSessions: liveJobs.length,
+        sampledLiveBillingTime: round(liveBilling, 2),
       },
       resolvedOutputs: { endpoint: BASE_URL },
       secretStates: [],
@@ -700,6 +747,7 @@ export class GladiaClient implements PluginClient {
     const billed = Number(fields["sampledBillingTime"] ?? 0);
     const audio = Number(fields["sampledAudioDuration"] ?? 0);
     const oldest = String(fields["oldestSampledAt"] ?? "");
+    const liveBilled = Number(fields["sampledLiveBillingTime"] ?? 0);
 
     const languages: SpeechPanelOption[] = GLADIA_LANGUAGE_OPTIONS;
 
@@ -754,6 +802,11 @@ export class GladiaClient implements PluginClient {
                   value: `${round(audio, 1)} s (${round(audio / 60, 1)} min)`,
                 },
                 { key: "Oldest job sampled", value: oldest || "—" },
+                { key: "Live sessions sampled", value: String(fields["liveSessions"] ?? 0) },
+                {
+                  key: "Live billed time (sampled)",
+                  value: `${round(liveBilled, 1)} s (${round(liveBilled / 60, 1)} min)`,
+                },
               ],
             },
           ],
@@ -787,6 +840,8 @@ export class GladiaClient implements PluginClient {
     const transcript = String(resource.resolvedOutputs["__transcript__"] ?? "");
     const model = String(resource.resolvedOutputs["__model__"] ?? "");
     const errorCode = Number(fields["errorCode"] ?? 0);
+    const isLive = resource.resourceTypeId === "live-session";
+    const streamFormat = String(fields["streamFormat"] ?? "");
 
     const sections: DetailViewSchema["sections"] = [
       {
@@ -822,6 +877,7 @@ export class GladiaClient implements PluginClient {
                 value: `${round(Number(fields["transcriptionTime"] ?? 0), 2)} s`,
               },
               { key: "Languages", value: String(fields["languages"] ?? "") || "—" },
+              ...(isLive ? [{ key: "Stream Format", value: streamFormat || "—" }] : []),
             ],
           },
         ],
@@ -855,7 +911,9 @@ export class GladiaClient implements PluginClient {
               content:
                 status === "done"
                   ? "Gladia returned no transcript text for this job."
-                  : 'The transcript appears once the job reaches status "done".',
+                  : isLive
+                    ? 'The transcript appears once the stream is closed and the session reaches status "done".'
+                    : 'The transcript appears once the job reaches status "done".',
               variant: "muted",
             },
       ],
@@ -863,7 +921,7 @@ export class GladiaClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Gladia transcription · ${status || "unknown"}`,
+      subtitle: `${isLive ? "Gladia live session" : "Gladia transcription"} · ${status || "unknown"}`,
       status: { kind: "status-dot", status: statusDot(status) },
       sections,
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],

@@ -76,7 +76,11 @@ describe("renderDetail", () => {
     expect(schema.speechPanel?.maxAudioBytes).toBe(25 * 1024 * 1024);
     expect(schema.speechPanel!.maxAudioBytes!).toBeLessThanOrEqual(27 * 1024 * 1024);
     expect(schema.speechPanel?.defaultLanguage).toBe("auto");
-    expect(schema.speechPanel?.models?.map((m) => m.id)).toEqual(["solaria-1", "solaria-3"]);
+    expect(schema.speechPanel?.models?.map((m) => m.id)).toEqual([
+      "solaria-1",
+      "solaria-3",
+      "solaria-fusion",
+    ]);
   });
 
   it("labels the derived usage figures as a history sum, not a quota", () => {
