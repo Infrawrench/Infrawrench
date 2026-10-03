@@ -2,14 +2,15 @@ import type { Plugin } from "@infrawrench/plugin-base";
 import { TailscaleClient } from "./client.js";
 import { INSTALL_MESSAGES } from "./install.js";
 import { logoSvg } from "./logo.js";
-import { deviceType } from "./resource-types.js";
+import { resourceTypes } from "./resource-types.js";
 
 export const plugin: Plugin = {
   manifest: {
     id: "tailscale",
     version: "0.1.0",
     displayName: "Tailscale",
-    description: "Manage your tailnet and enroll servers from any SSH-capable provider.",
+    description:
+      "Manage your tailnet (devices, users, keys, Services, webhooks, DNS and settings) and enroll servers from any SSH-capable provider.",
     logoSvg,
     author: "Infrawrench",
     minHostVersion: "0.1.0",
@@ -41,6 +42,6 @@ export const plugin: Plugin = {
       },
     ],
   },
-  resourceTypes: [deviceType],
+  resourceTypes,
   createClient: (credentials, services) => new TailscaleClient(credentials, services),
 };
