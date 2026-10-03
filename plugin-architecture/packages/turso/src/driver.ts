@@ -1,5 +1,15 @@
-import { createClient } from "@libsql/client";
-import type { SqlNodeDriver } from "@infrawrench/plugin-base";
+import { createClient, type ResultSet } from "@libsql/client";
+import { assertSingleSqlStatement, type SqlNodeDriver } from "@infrawrench/plugin-base";
+
+function toRows(result: ResultSet): Record<string, unknown>[] {
+  return result.rows.map((row) => {
+    const obj: Record<string, unknown> = {};
+    for (const col of result.columns) {
+      obj[col] = row[col];
+    }
+    return obj;
+  });
+}
 
 /**
  * Parse a libsql connection string and create a client.
@@ -23,14 +33,28 @@ export const driver = {
   async query(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
     const client = buildClient(connectionString);
     try {
-      const result = await client.execute(sql);
-      return result.rows.map((row) => {
-        const obj: Record<string, unknown> = {};
-        for (const col of result.columns) {
-          obj[col] = row[col];
-        }
-        return obj;
-      });
+      return toRows(await client.execute(sql));
+    } finally {
+      client.close();
+    }
+  },
+
+  /**
+   * `transaction("read")` opens `BEGIN TRANSACTION READONLY` (libSQL's
+   * extension of SQLite's BEGIN), in which any write fails; the transaction
+   * is rolled back afterwards regardless.
+   */
+  async queryReadOnly(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
+    assertSingleSqlStatement(sql);
+    const client = buildClient(connectionString);
+    try {
+      const tx = await client.transaction("read");
+      try {
+        return toRows(await tx.execute(sql));
+      } finally {
+        await tx.rollback().catch(() => {});
+        tx.close();
+      }
     } finally {
       client.close();
     }

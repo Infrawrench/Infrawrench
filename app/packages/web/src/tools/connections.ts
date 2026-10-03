@@ -20,13 +20,99 @@ const SIDECAR_RETRY_HINT =
 
 const NO_SQL_DRIVER_HINT = `No SQL driver available for this account. ${SIDECAR_RETRY_HINT}`;
 
+interface SqlQueryInput {
+  accountId: string;
+  sql: string;
+  resourceId?: string;
+  resourceTypeId?: string;
+  pluginId?: string;
+  parentResourceId?: string;
+}
+
+type SqlQueryContext = NonNullable<Awaited<ReturnType<typeof getClientForAccount>>>;
+
+/**
+ * Where `sql_query` will send the SQL: a plugin's REST `executeQuery`
+ * (BigQuery, Databricks, ClickHouse, D1), or a node driver resolved from the
+ * resource type or the account manifest. Split from running it so the chat
+ * agent can ask {@link sqlQueryNeedsApproval} without resolving a connection
+ * string or touching the database.
+ */
+type SqlQueryRoute =
+  | { kind: "rest" }
+  | { kind: "resource-driver"; driverId: string; outputKey: string; resourceTypeId: string }
+  | { kind: "account-driver"; driverId: string; credentialKey: string };
+
+async function planSqlQuery(
+  input: SqlQueryInput,
+  organizationId: string,
+): Promise<{ ctx: SqlQueryContext; route: SqlQueryRoute | null } | null> {
+  const { accountId, resourceId, resourceTypeId, pluginId, parentResourceId } = input;
+  const ctx = pluginId
+    ? await getClientForResource(pluginId, accountId, organizationId, parentResourceId)
+    : await getClientForAccount(accountId, organizationId);
+  if (!ctx) return null;
+  const { client, plugin } = ctx;
+
+  if (resourceId && client.executeQuery) return { ctx, route: { kind: "rest" } };
+
+  if (resourceId && resourceTypeId) {
+    const rtDriver = plugin.resourceTypes.find((t) => t.id === resourceTypeId)?.resourceSqlDriver;
+    if (rtDriver) {
+      return {
+        ctx,
+        route: {
+          kind: "resource-driver",
+          driverId: rtDriver.driver,
+          outputKey: rtDriver.connectionStringOutputKey,
+          resourceTypeId,
+        },
+      };
+    }
+  }
+
+  const sqlDriver = plugin.manifest.sqlDriver;
+  if (sqlDriver) {
+    return {
+      ctx,
+      route: {
+        kind: "account-driver",
+        driverId: sqlDriver.driver,
+        credentialKey: sqlDriver.credentialKey,
+      },
+    };
+  }
+  return { ctx, route: null };
+}
+
+/**
+ * `sql_query` is only a read where the database enforces it: a node driver
+ * that implements `queryReadOnly` (Postgres, MySQL, libSQL). Everything else
+ * (MSSQL, PlanetScale, the REST engines) would run the SQL exactly as given,
+ * so the chat surface has to confirm it like `sql_execute`.
+ */
+export async function sqlQueryNeedsApproval(
+  input: Record<string, unknown>,
+  organizationId: string,
+): Promise<boolean> {
+  const plan = await planSqlQuery(input as unknown as SqlQueryInput, organizationId);
+  // Nothing to run (unknown account, no SQL route): the handler errors
+  // without reaching a database, so there is nothing to approve.
+  if (!plan?.route) return false;
+  if (plan.route.kind === "rest") return true;
+  return !sqlDrivers.get(plan.route.driverId)?.queryReadOnly;
+}
+
 export function connectionTools(): ToolDefinition[] {
   return [
     {
       name: "sql_query",
       title: "Run read SQL query",
       description:
-        "Run a read-only SQL query (SELECT, SHOW, EXPLAIN) against an account- or per-resource SQL driver. Returns rows. " +
+        "Run a single read-only SQL statement (SELECT, SHOW, EXPLAIN) against an account- or per-resource SQL driver. Returns rows. " +
+        "On Postgres, MySQL and libSQL/Turso it runs inside a read-only transaction that is rolled back, so writes fail; send one " +
+        "statement with no ';' except at the end (not even inside a string or comment). On engines that cannot enforce read-only " +
+        "(e.g. SQL Server, PlanetScale, BigQuery, Databricks, ClickHouse, D1) the chat surface asks the user to confirm first. " +
         "Pass `resourceId`+`resourceTypeId` to target a per-resource database; omit them to use the account's primary SQL connection. " +
         "For managed-database providers whose own plugin has no SQL driver (Neon, RDS, Cloud SQL, DO managed databases, …), pass " +
         "`pluginId` of the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` = the database resource id " +
@@ -40,60 +126,42 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "read",
+      requiresApproval: (input, auth) => sqlQueryNeedsApproval(input, auth.organizationId),
       permission: "resources:execute",
       handler: async (input, auth) => {
-        const { accountId, sql, resourceId, resourceTypeId, pluginId, parentResourceId } =
-          input as {
-            accountId: string;
-            sql: string;
-            resourceId?: string;
-            resourceTypeId?: string;
-            pluginId?: string;
-            parentResourceId?: string;
-          };
-        const ctx = pluginId
-          ? await getClientForResource(pluginId, accountId, auth.organizationId, parentResourceId)
-          : await getClientForAccount(accountId, auth.organizationId);
-        if (!ctx) return err("Account or sidecar resource not found");
-        const { client, plugin, credentials } = ctx;
+        const queryInput = input as unknown as SqlQueryInput;
+        const { accountId, sql, resourceId } = queryInput;
+        const plan = await planSqlQuery(queryInput, auth.organizationId);
+        if (!plan) return err("Account or sidecar resource not found");
+        const { ctx, route } = plan;
+        if (!route) return err(NO_SQL_DRIVER_HINT);
+        const { client, credentials } = ctx;
 
-        // REST-based query (BigQuery, Databricks)
-        if (resourceId && client.executeQuery) {
-          const result = await client.executeQuery(resourceId, accountId, sql);
+        // REST-based query (BigQuery, Databricks, ...). No read-only mode, so
+        // the chat agent has had the user approve this call already.
+        if (route.kind === "rest") {
+          const result = await client.executeQuery!(resourceId!, accountId, sql);
           return ok(result);
         }
 
-        // Per-resource SQL driver
-        if (resourceId && resourceTypeId) {
-          const typeDef = plugin.resourceTypes.find((t) => t.id === resourceTypeId);
-          const rtDriver = typeDef?.resourceSqlDriver;
-          if (rtDriver) {
-            let cs = await client.resolveOutput(
-              resourceTypeId,
-              resourceId,
-              rtDriver.connectionStringOutputKey,
-              accountId,
-            );
-            cs = await rewriteConnectionForTunnel(accountId, cs);
-            const driver = sqlDrivers.get(rtDriver.driver);
-            if (!driver) return err(`Unknown SQL driver: ${rtDriver.driver}`);
-            const rows = await driver.query(cs, sql);
-            return ok({ rows: rows.slice(0, 500), truncated: rows.length > 500 });
-          }
-        }
-
-        // Account-level SQL driver
-        const manifest = plugin.manifest;
-        if (manifest.sqlDriver) {
-          let cs = credentials[manifest.sqlDriver.credentialKey] ?? "";
-          cs = await rewriteConnectionForTunnel(accountId, cs);
-          const driver = sqlDrivers.get(manifest.sqlDriver.driver);
-          if (!driver) return err(`Unknown SQL driver: ${manifest.sqlDriver.driver}`);
-          const rows = await driver.query(cs, sql);
-          return ok({ rows: rows.slice(0, 500), truncated: rows.length > 500 });
-        }
-
-        return err(NO_SQL_DRIVER_HINT);
+        const driver = sqlDrivers.get(route.driverId);
+        if (!driver) return err(`Unknown SQL driver: ${route.driverId}`);
+        let cs =
+          route.kind === "resource-driver"
+            ? await client.resolveOutput(
+                route.resourceTypeId,
+                resourceId!,
+                route.outputKey,
+                accountId,
+              )
+            : (credentials[route.credentialKey] ?? "");
+        cs = await rewriteConnectionForTunnel(accountId, cs);
+        // Prefer the database-enforced read. A driver without one only gets
+        // here after approval in chat (see `requiresApproval` above).
+        const rows = driver.queryReadOnly
+          ? await driver.queryReadOnly(cs, sql)
+          : await driver.query(cs, sql);
+        return ok({ rows: rows.slice(0, 500), truncated: rows.length > 500 });
       },
     },
 

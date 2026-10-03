@@ -34,7 +34,7 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 
 - **Resource lifecycle** — list, search, get, create, delete, attach, invoke action, apply manifest.
 - **Sidecars** — operate inside the peer plugins managed resources expose: ask "what's running in my DOKS cluster?" and the agent discovers the cluster's `kubernetes` sidecar (`list_resource_sidecars`) and lists deployments/pods/services through it; same for managed databases (`postgres`/`mysql`/`redis`/`mongodb`).
-- **SQL** — `sql_query` (read), `sql_execute` (write), `introspect_sql_schema`. Targets the account's primary database, a per-resource SQL driver (including REST-queried databases like ClickHouse services and BigQuery datasets), or — for managed-database providers whose own plugin has no SQL driver (Neon, RDS, Cloud SQL, DO managed databases, …) — the database's SQL sidecar (`postgres`/`mysql`), the same way the sidecar tools above do.
+- **SQL** — `sql_query` (read), `sql_execute` (write), `introspect_sql_schema`. Targets the account's primary database, a per-resource SQL driver (including REST-queried databases like ClickHouse services and BigQuery datasets), or — for managed-database providers whose own plugin has no SQL driver (Neon, RDS, Cloud SQL, DO managed databases, …) — the database's SQL sidecar (`postgres`/`mysql`), the same way the sidecar tools above do. On PostgreSQL, MySQL and libSQL/Turso, `sql_query` runs a single statement inside a read-only transaction that is rolled back afterwards, so the database itself refuses a write and the query runs without asking. Input with a `;` anywhere but the end is refused, even inside a string. Engines that can't enforce read-only (SQL Server, PlanetScale, and the REST-queried ones such as BigQuery, Databricks, ClickHouse and D1) show an approval card for `sql_query` as well.
 - **KV** — `kv_command` for Redis/Memcached/MongoDB-style verbs.
 - **Docker** — `docker_command` for container ops on a Docker-enabled account.
 - **SSH** — `ssh_exec` for one-shot remote commands. For plugins that natively expose SSH (Fly, Hetzner) the plugin's config is used; otherwise pass an SSH key id and host.
@@ -84,7 +84,7 @@ The agent can mix both in one form. Submit sends every answer together and the c
 
 ## Destructive-action approval
 
-Every tool is tagged with a risk tier: `read`, `write`, or `destructive`. Read and write tools auto-run inside the model loop. Destructive tools (deletes, drops, exec, manifest applies, write SQL, KV writes, Docker stop/restart, secret destroy, credential export) **suspend the loop** and write a pending-action row.
+Every tool is tagged with a risk tier: `read`, `write`, or `destructive`. Read and write tools auto-run inside the model loop. Destructive tools (deletes, drops, exec, manifest applies, write SQL, KV writes, Docker stop/restart, secret destroy, credential export) **suspend the loop** and write a pending-action row. A few tools are only safe on some targets and escalate per call: `sql_query` is auto-run where the database enforces read-only and needs approval everywhere else.
 
 The UI surfaces these as Approve / Reject cards inline in the conversation. Approving runs the tool and resumes the model with the result; rejecting feeds the model an error message it can react to.
 

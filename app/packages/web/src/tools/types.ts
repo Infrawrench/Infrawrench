@@ -64,6 +64,14 @@ export interface ToolDefinition {
   inputSchema: Record<string, ZodTypeAny>;
   risk: ToolRisk;
   /**
+   * Per-call escalation for a tool whose risk depends on its target. When it
+   * resolves true the chat surface queues the call for approval exactly as
+   * it would a `destructive` tool; a throw is treated as true. Used by
+   * `sql_query`, which is only a guaranteed read on engines that can run it
+   * in a read-only transaction.
+   */
+  requiresApproval?(input: Record<string, unknown>, auth: ToolAuthContext): Promise<boolean>;
+  /**
    * Permission the caller must hold, enforced centrally by
    * {@link authorizeToolCall} at every dispatch site (MCP + chat): NOT by the
    * handler. Must mirror the `requirePermission` on the equivalent HTTP route

@@ -5,7 +5,11 @@ import {
   type ResultSetHeader,
   type RowDataPacket,
 } from "mysql2/promise";
-import type { SqlNodeDriver, SqlNodeDriverOptions } from "@infrawrench/plugin-base";
+import {
+  assertSingleSqlStatement,
+  type SqlNodeDriver,
+  type SqlNodeDriverOptions,
+} from "@infrawrench/plugin-base";
 
 /**
  * mysql2 delivers `query`/`execute` through a mixin (`QueryableBase(...)`)
@@ -53,6 +57,41 @@ export const driver = {
     try {
       const [rows] = await (conn as unknown as Queryable).query(sql);
       return rows;
+    } finally {
+      await conn.end();
+    }
+  },
+
+  /**
+   * `SET SESSION TRANSACTION READ ONLY` covers every later transaction on the
+   * connection, including the one a DDL statement's implicit commit would
+   * otherwise start, and MySQL refuses DDL as well as DML in that mode. The
+   * explicit `START TRANSACTION READ ONLY` + `ROLLBACK` keeps the statement's
+   * own effects (temporary tables) from outliving the call.
+   *
+   * The single-statement check is what stops a stacked `SET SESSION
+   * TRANSACTION READ WRITE; DROP ...`: mysql2 leaves `multipleStatements` off,
+   * but a connection string can turn it back on (`?multipleStatements=true`
+   * wins over an explicit `false` option), so the driver default is not
+   * something to lean on.
+   */
+  async queryReadOnly(
+    connectionString: string,
+    sql: string,
+    options?: SqlNodeDriverOptions,
+  ): Promise<Record<string, unknown>[]> {
+    assertSingleSqlStatement(sql);
+    const conn = await openConnection(connectionString, options);
+    const q = conn as unknown as Queryable;
+    try {
+      await q.query("SET SESSION TRANSACTION READ ONLY");
+      await q.query("START TRANSACTION READ ONLY");
+      try {
+        const [rows] = await q.query(sql);
+        return rows;
+      } finally {
+        await q.query("ROLLBACK").catch(() => {});
+      }
     } finally {
       await conn.end();
     }

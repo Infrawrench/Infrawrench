@@ -2,11 +2,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockExecute = vi.fn();
 const mockClose = vi.fn();
+const mockTxExecute = vi.fn();
+const mockTxRollback = vi.fn();
+const mockTxClose = vi.fn();
+const mockTransaction = vi.fn(async () => ({
+  execute: mockTxExecute,
+  rollback: mockTxRollback,
+  close: mockTxClose,
+}));
 
 vi.mock("@libsql/client", () => ({
   createClient: vi.fn(() => ({
     execute: mockExecute,
     close: mockClose,
+    transaction: mockTransaction,
   })),
 }));
 
@@ -20,6 +29,29 @@ describe("turso driver", () => {
 
   it("has id 'libsql'", () => {
     expect(driver.id).toBe("libsql");
+  });
+
+  describe("queryReadOnly", () => {
+    it("runs inside a read transaction that is rolled back", async () => {
+      mockTxRollback.mockResolvedValue(undefined);
+      mockTxExecute.mockResolvedValue({ columns: ["id"], rows: [{ id: 1 }] });
+
+      const result = await driver.queryReadOnly("libsql://localhost", "SELECT id FROM users");
+
+      expect(result).toEqual([{ id: 1 }]);
+      expect(mockTransaction).toHaveBeenCalledWith("read");
+      expect(mockTxExecute).toHaveBeenCalledWith("SELECT id FROM users");
+      expect(mockTxRollback).toHaveBeenCalled();
+      expect(mockExecute).not.toHaveBeenCalled();
+      expect(mockClose).toHaveBeenCalled();
+    });
+
+    it("rejects stacked statements before connecting", async () => {
+      await expect(
+        driver.queryReadOnly("libsql://localhost", "SELECT 1; DELETE FROM users"),
+      ).rejects.toThrow(/single SQL statement/);
+      expect(createClient).not.toHaveBeenCalled();
+    });
   });
 
   describe("query", () => {

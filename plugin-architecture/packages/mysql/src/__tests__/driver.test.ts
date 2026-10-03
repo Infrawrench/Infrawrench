@@ -49,6 +49,52 @@ describe("mysql driver", () => {
     });
   });
 
+  describe("queryReadOnly", () => {
+    it("runs the statement in a read-only session and transaction, then rolls back", async () => {
+      const rows = [{ id: 1 }];
+      mockQuery.mockImplementation(async (sql: string) =>
+        sql === "SELECT * FROM users" ? [rows, []] : [[], []],
+      );
+
+      const result = await driver.queryReadOnly("mysql://localhost/test", "SELECT * FROM users");
+
+      expect(result).toEqual(rows);
+      expect(mockQuery.mock.calls.map((c) => c[0])).toEqual([
+        "SET SESSION TRANSACTION READ ONLY",
+        "START TRANSACTION READ ONLY",
+        "SELECT * FROM users",
+        "ROLLBACK",
+      ]);
+      expect(mockExecute).not.toHaveBeenCalled();
+      expect(mockEnd).toHaveBeenCalled();
+    });
+
+    it("rolls back and closes when the statement fails", async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql === "DROP TABLE users") {
+          throw new Error("Cannot execute statement in a READ ONLY transaction.");
+        }
+        return [[], []];
+      });
+
+      await expect(
+        driver.queryReadOnly("mysql://localhost/test", "DROP TABLE users"),
+      ).rejects.toThrow(/READ ONLY/);
+      expect(mockQuery).toHaveBeenLastCalledWith("ROLLBACK");
+      expect(mockEnd).toHaveBeenCalled();
+    });
+
+    it("rejects stacked statements before connecting", async () => {
+      await expect(
+        driver.queryReadOnly(
+          "mysql://localhost/test",
+          "SET SESSION TRANSACTION READ WRITE; DROP TABLE users",
+        ),
+      ).rejects.toThrow(/single SQL statement/);
+      expect(createConnection).not.toHaveBeenCalled();
+    });
+  });
+
   describe("execute", () => {
     it("returns affectedRows from result", async () => {
       mockExecute.mockResolvedValue([{ affectedRows: 5 }, []]);
