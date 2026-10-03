@@ -883,3 +883,151 @@ describe("organization member metrics", () => {
     expect(byLabel["Claude Code estimated cost"]).toBe(1.13);
   });
 });
+
+describe("workspace cost and API key Claude Code metrics", () => {
+  it("adds the workspace's daily cost, picked out of the workspace-grouped cost report", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-10T12:00:00Z"));
+    installFetch((url) => {
+      if (url.includes("/usage_report/messages"))
+        return jsonResponse({ data: [], has_more: false });
+      if (url.includes("/v1/organizations/cost_report")) {
+        return jsonResponse({
+          data: [
+            {
+              starting_at: "2026-09-01T00:00:00Z",
+              ending_at: "2026-09-02T00:00:00Z",
+              results: [
+                { amount: "250.00", currency: "USD", workspace_id: "wrkspc_1" },
+                { amount: "125.40", currency: "USD", workspace_id: "wrkspc_1" },
+                { amount: "999.00", currency: "USD", workspace_id: "wrkspc_2" },
+              ],
+            },
+          ],
+          has_more: false,
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const series = await client().fetchMetricSeries(
+      "workspace",
+      `${ACCOUNT}:workspace:wrkspc_1`,
+      ACCOUNT,
+      { startMs: Date.parse("2026-09-01T00:00:00Z"), endMs: Date.parse("2026-09-03T00:00:00Z") },
+    );
+
+    const costCall = calls.find((c) => c.url.includes("/cost_report"))!;
+    const params = new URL(costCall.url).searchParams;
+    expect(params.getAll("group_by[]")).toEqual(["workspace_id"]);
+    expect(params.get("bucket_width")).toBe("1d");
+    expect(series[0]).toEqual({
+      label: "Cost",
+      unit: "USD",
+      points: [{ timestamp: Date.parse("2026-09-01T00:00:00Z"), value: 3.75 }],
+    });
+  });
+
+  it("charts Claude Code activity run on an API key by matching the key's name", async () => {
+    installFetch((url) => {
+      if (url.includes("/usage_report/messages"))
+        return jsonResponse({ data: [], has_more: false });
+      if (url.endsWith("/v1/organizations/api_keys/apikey_1")) {
+        return jsonResponse({ id: "apikey_1", name: "ci-bot" });
+      }
+      if (url.includes("/usage_report/claude_code")) {
+        return jsonResponse({
+          data: [
+            {
+              actor: { type: "api_actor", api_key_name: "ci-bot" },
+              core_metrics: { num_sessions: 3, commits_by_claude_code: 4 },
+            },
+            {
+              actor: { type: "api_actor", api_key_name: "other" },
+              core_metrics: { num_sessions: 50 },
+            },
+            {
+              actor: { type: "user_actor", email_address: "ci-bot" },
+              core_metrics: { num_sessions: 70 },
+            },
+          ],
+          has_more: false,
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const series = await client().fetchMetricSeries(
+      "api-key",
+      `${ACCOUNT}:api-key:apikey_1`,
+      ACCOUNT,
+      { startMs: Date.parse("2026-09-01T00:00:00Z"), endMs: Date.parse("2026-09-01T12:00:00Z") },
+    );
+
+    const byLabel = Object.fromEntries(series.map((s) => [s.label, s.points[0]?.value]));
+    expect(byLabel["Claude Code sessions"]).toBe(3);
+    expect(byLabel["Claude Code commits"]).toBe(4);
+  });
+});
+
+describe("organization member logs", () => {
+  it("reads the member's Activity Feed entries with the admin key, oldest line first", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/compliance/activities")) {
+        return jsonResponse({
+          data: [
+            {
+              id: "activity_2",
+              created_at: "2026-09-02T10:00:00Z",
+              organization_id: "org_1",
+              type: "platform_api_key_created",
+              actor: { type: "user_actor", user_id: "user_1", ip_address: "192.0.2.1" },
+              api_key_id: "apikey_9",
+            },
+            {
+              id: "activity_1",
+              created_at: "2026-09-01T10:00:00Z",
+              type: "platform_workspace_created",
+              actor: { type: "user_actor", user_id: "user_1" },
+            },
+          ],
+          has_more: false,
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const logs = await client().getLogs(
+      "organization-user",
+      `${ACCOUNT}:organization-user:user_1`,
+      ACCOUNT,
+      { tailLines: 50 },
+    );
+
+    const params = new URL(calls[0]!.url).searchParams;
+    expect(params.getAll("actor_ids[]")).toEqual(["user_1"]);
+    expect(params.get("limit")).toBe("50");
+    expect(headerOf(calls[0]!.init, "x-api-key")).toBe("sk-ant-admin01-test");
+    expect(logs.text).toBe(
+      "2026-09-01T10:00:00Z platform_workspace_created\n" +
+        "2026-09-02T10:00:00Z platform_api_key_created from 192.0.2.1 api_key_id=apikey_9\n",
+    );
+    expect(logs.containers).toEqual(["activity"]);
+  });
+
+  it("explains how to enable the feed when the admin key lacks the scope", async () => {
+    installFetch(() =>
+      jsonResponse(
+        { error: { type: "permission_error", message: "Missing required scopes" } },
+        403,
+      ),
+    );
+    const logs = await client().getLogs(
+      "organization-user",
+      `${ACCOUNT}:organization-user:user_1`,
+      ACCOUNT,
+      {},
+    );
+    expect(logs.text).toContain("Compliance API");
+  });
+});
