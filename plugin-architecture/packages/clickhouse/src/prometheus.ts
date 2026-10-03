@@ -133,3 +133,46 @@ export function serviceMetricSeries(body: string, timestamp: number): MetricSeri
   }
   return series;
 }
+
+/**
+ * ClickPipes counters from the same service scrape, documented in the
+ * "ClickPipes metrics" section of the Prometheus integration page. Each
+ * sample carries `clickpipe_id`; every one is a lifetime counter, so the
+ * labels say so and the trend is the host's sampling of them.
+ */
+const CLICKPIPE_METRICS: MetricPick[] = [
+  { name: "ClickPipes_FetchedEvents_Total", label: "Fetched events (cumulative)" },
+  { name: "ClickPipes_SentEvents_Total", label: "Sent events (cumulative)" },
+  { name: "ClickPipes_Errors_Total", label: "Errors (cumulative)" },
+  { name: "ClickPipes_FetchedBytes_Total", label: "Fetched data (cumulative)", unit: "bytes" },
+  {
+    name: "ClickPipes_FetchedBytesCompressed_Total",
+    label: "Fetched data, compressed (cumulative)",
+    unit: "bytes",
+  },
+  { name: "ClickPipes_SentBytes_Total", label: "Sent data (cumulative)", unit: "bytes" },
+  {
+    name: "ClickPipes_SentBytesCompressed_Total",
+    label: "Sent data, compressed (cumulative)",
+    unit: "bytes",
+  },
+];
+
+export function clickPipeMetricSeries(
+  body: string,
+  clickPipeId: string,
+  timestamp: number,
+): MetricSeries[] {
+  const samples = parsePrometheusText(body).filter((s) => s.labels["clickpipe_id"] === clickPipeId);
+  const series: MetricSeries[] = [];
+  for (const pick of CLICKPIPE_METRICS) {
+    const values = samples.filter((s) => s.name === pick.name).map((s) => s.value);
+    if (values.length === 0) continue;
+    series.push({
+      label: pick.label,
+      ...(pick.unit ? { unit: pick.unit } : {}),
+      points: [{ timestamp, value: values.reduce((a, b) => a + b, 0) }],
+    });
+  }
+  return series;
+}

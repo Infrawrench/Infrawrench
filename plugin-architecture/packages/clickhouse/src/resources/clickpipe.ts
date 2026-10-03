@@ -64,5 +64,7 @@ export const ClickPipeResourceType = rt({
   parentTypeId: "ch-service",
   showInSidebar: true,
   supportsUpdate: true,
+  // ClickPipes_* counters from the parent service's Prometheus scrape.
+  supportsMetrics: true,
   iconKey: "pipeline",
 });

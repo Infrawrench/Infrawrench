@@ -16,6 +16,8 @@ import type {
   DashboardStat,
   CreateResourceConfig,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
 } from "@infrawrench/plugin-base";
 import { decodePromptArgs } from "@infrawrench/plugin-base";
 import type {
@@ -37,7 +39,9 @@ import {
   postgresToResource,
 } from "./resource-listers.js";
 import { fetchClickHouseCostData } from "./cost-data.js";
-import { serviceMetricSeries } from "./prometheus.js";
+import { clickPipeMetricSeries, serviceMetricSeries } from "./prometheus.js";
+import type { CloudActivity, PostgresLogEntry } from "./logs.js";
+import { POSTGRES_LOG_FILTERS, postgresLogLines, serviceActivityLines } from "./logs.js";
 import { CLOUD_REGIONS, postgresSizeOptions } from "./regions.js";
 
 const SQL_REQUEST_TIMEOUT_MS = 30_000;
@@ -438,6 +442,17 @@ export class ClickHouseClient implements PluginClient {
         return [];
       }
     }
+    if (resourceTypeId === "ch-clickpipe") {
+      const [serviceId, clickPipeId] = externalId.split("/");
+      if (!serviceId || !clickPipeId) return [];
+      // The filtered scrape is the server's curated set; ClickPipes counters
+      // are documented on the full one.
+      const body = await this.cloudRequest(
+        "GET",
+        `${this.orgPath}/services/${serviceId}/prometheus`,
+      );
+      return clickPipeMetricSeries(body, clickPipeId, Date.now());
+    }
     if (resourceTypeId === "ch-postgres") {
       const endMs = timeRange?.endMs ?? Date.now();
       const startMs = timeRange?.startMs ?? endMs - 60 * 60 * 1000;
@@ -474,6 +489,58 @@ export class ClickHouseClient implements PluginClient {
       return out;
     }
     return [];
+  }
+
+  /**
+   * Logs tab: a service's entries in the organization activity log (the
+   * last 30 days), or a Managed Postgres service's server log (the last 24
+   * hours, filterable by severity).
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    const tail = Math.max(1, Math.min(params.tailLines ?? 200, 2000));
+    const now = Date.now();
+    if (typeId === "ch-service") {
+      const from = encodeURIComponent(new Date(now - 30 * 86_400_000).toISOString());
+      const to = encodeURIComponent(new Date(now).toISOString());
+      const data = await this.cloudApi<{ result?: CloudActivity[] }>(
+        "GET",
+        `${this.orgPath}/activities?from_date=${from}&to_date=${to}`,
+      );
+      const text = serviceActivityLines(data.result ?? [], externalId, tail);
+      return {
+        text: text || "No activity recorded for this service in the last 30 days.\n",
+        containers: ["activity"],
+        activeContainer: "activity",
+      };
+    }
+    if (typeId === "ch-postgres") {
+      const containers = [...POSTGRES_LOG_FILTERS];
+      const active =
+        params.container && (containers as string[]).includes(params.container)
+          ? params.container
+          : "all";
+      const from = encodeURIComponent(new Date(now - 86_400_000).toISOString());
+      const to = encodeURIComponent(new Date(now).toISOString());
+      const data = await this.cloudApi<{ result?: PostgresLogEntry[] }>(
+        "GET",
+        `${this.orgPath}/postgres/${encodeURIComponent(externalId)}/logs?from_date=${from}&to_date=${to}` +
+          `&sort_order=desc&limit=${tail}` +
+          (active === "all" ? "" : `&severity=${encodeURIComponent(active)}`),
+      );
+      const text = postgresLogLines(data.result ?? []);
+      return {
+        text: text || "No log entries in the last 24 hours.\n",
+        containers,
+        activeContainer: active,
+      };
+    }
+    return { text: "", containers: [], activeContainer: "" };
   }
 
   /** Active prepaid and trial credit balances, in ClickHouse Credits. */
@@ -796,6 +863,7 @@ export class ClickHouseClient implements PluginClient {
       };
     }
     detail.metricsCapability = { defaultTimeRangeMs: 60 * 60 * 1000 };
+    detail.logs = { defaultTailLines: 200 };
 
     return detail;
   }
@@ -1188,6 +1256,11 @@ export class ClickHouseClient implements PluginClient {
     };
     if (typeId === "ch-postgres") {
       detail.metricsCapability = { defaultTimeRangeMs: 6 * 60 * 60 * 1000 };
+      detail.logs = { defaultTailLines: 200 };
+    }
+    if (typeId === "ch-clickpipe") {
+      // Lifetime counters sampled by the host: no window of its own.
+      detail.metricsCapability = {};
     }
     return detail;
   }
