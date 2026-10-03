@@ -1,18 +1,18 @@
 /**
  * Shared "spawn a Kubernetes-related binary in a PTY and proxy I/O over
  * WebSocket" helper. Backs both `kubectl exec -it` (k8s-exec-proxy) and
- * `k9s` (k9s-proxy). The kubeconfig is written to a temp file and never
- * shipped to the browser.
+ * `k9s` (k9s-proxy). The kubeconfig is checked against the server
+ * kubeconfig policy, written to a temp file and never shipped to the
+ * browser; the child gets a minimal environment (see `./kube-child`).
  *
  * A PTY is required because both binaries check that stdin is a TTY; a
  * plain pipe yields "Unable to use a TTY - input is not a terminal" for
  * kubectl exec and a broken UI for k9s.
  */
 import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import * as crypto from "node:crypto";
 import type { WebSocket } from "ws";
+import { kubeChildEnv, writeServerKubeconfig, type KubeconfigDir } from "./kube-child";
 import { makeWsBackpressure } from "./ws-backpressure";
 
 interface KubectlPtyMessageTypes {
@@ -61,9 +61,19 @@ export async function handleKubectlPtySession(
 ): Promise<void> {
   const sessionId = crypto.randomUUID();
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "iw-kube-"));
-  const kubeconfigPath = path.join(tmpDir, "kubeconfig.yaml");
-  fs.writeFileSync(kubeconfigPath, config.kubeconfig, { mode: 0o600 });
+  let kubeDir: KubeconfigDir;
+  try {
+    kubeDir = writeServerKubeconfig("iw-kube-", config.kubeconfig);
+  } catch (err) {
+    ws.send(
+      JSON.stringify({
+        type: messageTypes.error,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    return;
+  }
+  const { tmpDir, kubeconfigPath } = kubeDir;
 
   let pty: typeof import("node-pty");
   try {
@@ -85,10 +95,7 @@ export async function handleKubectlPtySession(
       name: "xterm-256color",
       cols: config.cols,
       rows: config.rows,
-      env: {
-        ...process.env,
-        TERM: "xterm-256color",
-      } as { [key: string]: string },
+      env: kubeChildEnv(kubeDir),
     });
   } catch (err) {
     cleanup(tmpDir);

@@ -3,3 +3,8 @@ export { KubernetesClusterResourceType } from "./resources/k8s-cluster.js";
 export { NamespaceResourceType } from "./resources/namespace.js";
 export { DeploymentResourceType } from "./resources/deployment.js";
 export { KubernetesClient } from "./client.js";
+export {
+  assertKubeconfigSafeForServer,
+  findServerUnsafeKubeconfigFields,
+  serverKubeconfigError,
+} from "./kubeconfig-policy.js";

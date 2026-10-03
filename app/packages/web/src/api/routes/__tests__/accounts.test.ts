@@ -496,6 +496,57 @@ describe("Account routes", () => {
     });
   });
 
+  describe("server credential policy", () => {
+    // A plugin that refuses some credentials on the shared server (the
+    // kubernetes plugin refuses kubeconfigs with exec plugins this way).
+    const validateServerCredentials = vi.fn((creds: Record<string, string>) =>
+      creds["kubeconfig"]?.includes("exec") ? "This kubeconfig can't be used in cloud" : null,
+    );
+    const createClient = vi.fn();
+    const unsafe = { kubeconfig: "users: [{ name: u, user: { exec: { command: sh } } }]" };
+
+    beforeEach(() => {
+      mockGetPlugin.mockResolvedValue({
+        plugin: { manifest: preflightManifest, createClient, validateServerCredentials },
+      });
+    });
+
+    it("POST / refuses the credentials before storing anything", async () => {
+      const res = await buildApp().request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pluginId: "kubernetes", displayName: "k", credentials: unsafe }),
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("can't be used in cloud");
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(encryptionMock.encrypt).not.toHaveBeenCalled();
+    });
+
+    it("POST /preflight refuses before building a client", async () => {
+      const res = await buildApp().request("/preflight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pluginId: "kubernetes", credentials: unsafe }),
+      });
+      expect(res.status).toBe(400);
+      expect(createClient).not.toHaveBeenCalled();
+      expect(hostServicesMock.buildPluginHostServices).not.toHaveBeenCalled();
+    });
+
+    it("PUT /:id/credentials refuses before overwriting the stored blob", async () => {
+      mockSelect.mockReturnValue(chainMock([{ id: "a1", pluginId: "kubernetes" }]));
+      const res = await buildApp().request("/a1/credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentials: unsafe }),
+      });
+      expect(res.status).toBe(400);
+      expect(validateServerCredentials).toHaveBeenCalledWith(unsafe);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+  });
+
   describe("POST /:accountId/preflight — stored-account probe", () => {
     it("resolves the account client and returns the normalized report", async () => {
       mockGetClientForAccount.mockResolvedValue({

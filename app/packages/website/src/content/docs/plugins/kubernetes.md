@@ -32,6 +32,22 @@ The form has two fields and both are plain text areas. Paste your cluster's kube
 
 There is one optional second field, **Cluster hourly rates**, used only for cost allocation — see [Cost allocation](#cost-allocation) below. Leave it blank unless you are connecting a cluster that has no cloud account behind it in Infrawrench, or you want to price the parts of the cluster that are not node compute.
 
+### Cloud accounts need inline credentials
+
+In the web app (and for accounts synced to the cloud), the kubeconfig runs on Infrawrench's servers, so it must carry its credentials inline. Use one of:
+
+- a bearer `token`
+- `client-certificate-data` and `client-key-data`
+- a `username` and `password`
+
+The cluster's CA goes in `certificate-authority-data`. Anything that would make the server run a program or read a file is refused when you add the account, with an error naming the offending field: `exec` credential plugins (`gke-gcloud-auth-plugin`, `aws-iam-authenticator`, `kubelogin`, `aws eks get-token`), `auth-provider`, file paths (`tokenFile`, `client-certificate`, `client-key`, `certificate-authority`) and `proxy-url`. A service account token is the usual way to get a kubeconfig that qualifies.
+
+The desktop app has no such restriction: there the kubeconfig runs on your own machine, so exec plugins and file paths work as they do with `kubectl`. A kubeconfig that uses them can still sync to the cloud, but the cluster only opens in the desktop app.
+
+Clusters opened from their cloud account (below) are not affected. Infrawrench generates those kubeconfigs with a short-lived token already inlined, including for AKS clusters that use Microsoft Entra ID, where it mints the token for the Azure account's service principal instead of calling `kubelogin`. That service principal needs a Kubernetes RBAC role on the cluster.
+
+### Clusters from a cloud account
+
 For a cluster you already have in Infrawrench — EKS, AKS, GKE, DOKS, OVH Managed Kubernetes, Scaleway Kapsule — don't add an account here at all. Open the cluster resource and use its **Kubernetes** tab: the kubeconfig (and, where the provider reports them, the node prices) flow through from the cluster's own outputs as an [output reference](../core-concepts/output-references.md). There is no picker in this credential form.
 
 ![Kubernetes Add-account form with the Kubeconfig textarea and the optional Cluster hourly rates field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/kubernetes/add-account.png)

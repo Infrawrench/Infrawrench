@@ -11,12 +11,11 @@
  * optimization can multiplex many streams over one WS via stream ids.
  */
 import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import * as crypto from "node:crypto";
 import * as net from "node:net";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { WebSocket } from "ws";
+import { kubeChildEnv, writeServerKubeconfig, type KubeconfigDir } from "./kube-child";
 import { makeWsBackpressure, type WsBackpressure } from "./ws-backpressure";
 
 interface K8sPfConfig {
@@ -38,9 +37,19 @@ const activeSessions = new Map<string, K8sPfSession>();
 export function handleK8sPfSession(ws: WebSocket, config: K8sPfConfig): void {
   const sessionId = crypto.randomUUID();
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "iw-k8s-pf-"));
-  const kubeconfigPath = path.join(tmpDir, "kubeconfig.yaml");
-  fs.writeFileSync(kubeconfigPath, config.kubeconfig, { mode: 0o600 });
+  let kubeDir: KubeconfigDir;
+  try {
+    kubeDir = writeServerKubeconfig("iw-k8s-pf-", config.kubeconfig);
+  } catch (err) {
+    ws.send(
+      JSON.stringify({
+        type: "k8s:pf:error",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    return;
+  }
+  const { tmpDir, kubeconfigPath } = kubeDir;
 
   const args = [
     "port-forward",
@@ -55,7 +64,7 @@ export function handleK8sPfSession(ws: WebSocket, config: K8sPfConfig): void {
   let proc: ChildProcess;
   try {
     proc = spawn("kubectl", args, {
-      env: { ...process.env },
+      env: kubeChildEnv(kubeDir),
       stdio: ["pipe", "pipe", "pipe"],
     });
   } catch (err) {

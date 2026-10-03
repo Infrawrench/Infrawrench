@@ -15,6 +15,51 @@ interface ResolveOutputDeps {
     resourceId: string,
     accountId: string,
   ) => Promise<string>;
+  /** AAD token for an Entra-integrated AKS API server (see `withStaticAksToken`). */
+  aksAccessToken?: () => Promise<string>;
+}
+
+/**
+ * On an Entra ID-integrated cluster `listClusterUserCredential` returns a
+ * kubeconfig whose user is a kubelogin `exec` plugin or the legacy `azure`
+ * `auth-provider`. Neither works for us: the shared cloud pods refuse any
+ * kubeconfig that runs a local command, and on the desktop kubelogin's
+ * default is an interactive device-code login as the human rather than as
+ * this account. So mint the token kubelogin would have fetched, for the
+ * account's service principal, and rebuild the kubeconfig around it, the
+ * way the EKS and GKE kubeconfigs already carry static tokens. Clusters
+ * with local accounts get a token or client certificate inline and pass
+ * through untouched; anything that cannot be rebuilt is returned as-is.
+ */
+async function withStaticAksToken(
+  kubeconfig: string,
+  clusterName: string,
+  mintToken: () => Promise<string>,
+): Promise<string> {
+  if (!/^\s*(exec|auth-provider):/m.test(kubeconfig)) return kubeconfig;
+  const server = /^\s*server:\s*(https:\/\/\S+)\s*$/m.exec(kubeconfig)?.[1];
+  const caData = /^\s*certificate-authority-data:\s*([A-Za-z0-9+/=]+)\s*$/m.exec(kubeconfig)?.[1];
+  if (!server) return kubeconfig;
+  const token = await mintToken();
+  return [
+    "apiVersion: v1",
+    "kind: Config",
+    "clusters:",
+    `- name: ${clusterName}`,
+    "  cluster:",
+    `    server: ${server}`,
+    ...(caData ? [`    certificate-authority-data: ${caData}`] : []),
+    "contexts:",
+    `- name: ${clusterName}`,
+    "  context:",
+    `    cluster: ${clusterName}`,
+    `    user: ${clusterName}`,
+    `current-context: ${clusterName}`,
+    "users:",
+    `- name: ${clusterName}`,
+    "  user:",
+    `    token: ${token}`,
+  ].join("\n");
 }
 
 export async function resolveAzureOutput(
@@ -35,7 +80,10 @@ export async function resolveAzureOutput(
       {},
     );
     const encoded = kubeconfigData.kubeconfigs?.[0]?.value ?? "";
-    return atob(encoded);
+    const kubeconfig = atob(encoded);
+    return deps.aksAccessToken
+      ? withStaticAksToken(kubeconfig, name || "aks", deps.aksAccessToken)
+      : kubeconfig;
   }
 
   if (

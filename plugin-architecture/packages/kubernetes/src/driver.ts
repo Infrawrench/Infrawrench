@@ -13,6 +13,12 @@
  * The driver is intentionally a thin command dispatcher: it returns the
  * same JSON shapes the K8s REST API would (lists with `items`, etc.) so
  * downstream lister / detail code is path-agnostic.
+ *
+ * Two instances are exported. `driver` is for the desktop, where the
+ * kubeconfig's exec plugins and file paths are the user's own machine.
+ * `serverDriver` is for the shared cloud pods: it refuses any kubeconfig
+ * that would run a command, read a local file or reroute traffic before
+ * the SDK ever sees it (see `./kubeconfig-policy.ts`).
  */
 import * as https from "node:https";
 import * as http from "node:http";
@@ -27,6 +33,13 @@ import {
   PatchStrategy,
 } from "@kubernetes/client-node";
 import type { K8sNodeDriver } from "@infrawrench/plugin-base";
+import { assertKubeconfigSafeForServer } from "./kubeconfig-policy.js";
+
+export {
+  assertKubeconfigSafeForServer,
+  findServerUnsafeKubeconfigFields,
+  serverKubeconfigError,
+} from "./kubeconfig-policy.js";
 
 interface CachedConfig {
   kubeconfig: string;
@@ -244,6 +257,25 @@ export const driver = {
       default:
         throw new Error(`Kubernetes driver: unknown op "${op}"`);
     }
+  },
+} satisfies K8sNodeDriver;
+
+/**
+ * Server driver: the same dispatcher, but only for kubeconfigs whose
+ * credentials are inline. Checked on every call, not only when an account
+ * is saved, because kubeconfigs also arrive by paths that never touch the
+ * account routes (desktop sync, peer integrations resolving a managed
+ * cluster's kubeconfig).
+ */
+export const serverDriver = {
+  id: driver.id,
+  async command(
+    kubeconfig: string,
+    op: string,
+    params?: Record<string, unknown>,
+  ): Promise<unknown> {
+    assertKubeconfigSafeForServer(kubeconfig);
+    return driver.command(kubeconfig, op, params);
   },
 } satisfies K8sNodeDriver;
 

@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { KubernetesClient } from "./client.js";
+import { serverKubeconfigError } from "./kubeconfig-policy.js";
 import { KubernetesClusterResourceType } from "./resources/k8s-cluster.js";
 import { NamespaceResourceType } from "./resources/namespace.js";
 import { NodeResourceType } from "./resources/node.js";
@@ -119,4 +120,8 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new KubernetesClient(credentials, services),
+  validateServerCredentials: (credentials) => {
+    const kubeconfig = credentials["kubeconfig"];
+    return kubeconfig ? serverKubeconfigError(kubeconfig) : null;
+  },
 };
