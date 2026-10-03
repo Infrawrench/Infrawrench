@@ -82,3 +82,23 @@ export function userAssignedIdentityNames(resource: Record<string, unknown>): st
 export function joinRefs(values: Array<string | undefined | null>): string {
   return [...new Set(values.filter((v): v is string => Boolean(v)))].join(", ");
 }
+
+/**
+ * Every item of an ARM list, following `nextLink` until it runs out. ARM pages
+ * at the provider's discretion (Container Apps and Cognitive Services both
+ * document `nextLink`), and a page boundary must not silently hide resources.
+ */
+export async function listAllPages(
+  ctx: Pick<ListerContext, "get">,
+  url: string,
+): Promise<Record<string, unknown>[]> {
+  const items: Record<string, unknown>[] = [];
+  let next: string | null | undefined = url;
+  while (next) {
+    const page: { value?: Record<string, unknown>[]; nextLink?: string | null } =
+      await ctx.get(next);
+    items.push(...(page.value ?? []));
+    next = page.nextLink;
+  }
+  return items;
+}

@@ -44,6 +44,15 @@ export const MySQLFlexibleServerResourceType = rt({
     },
   ],
   iconKey: "database",
+  // Sleep/wake schedules: flexibleServers start / stop. Compute stops billing;
+  // Azure restarts a stopped server by itself after 30 days.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "state",
+    runningValues: ["Ready"],
+    stoppedValues: ["Stopped"],
+  },
   supportsCreate: true,
   supportsMetrics: true,
   peerIntegrations: [

@@ -31,3 +31,8 @@ export { AppGatewayResourceType } from "./resources/app-gateway.js";
 export { LogAnalyticsWorkspaceResourceType } from "./resources/log-analytics.js";
 export { ManagedIdentityResourceType } from "./resources/managed-identity.js";
 export { FirewallResourceType } from "./resources/firewall.js";
+export { ContainerAppResourceType } from "./resources/container-app.js";
+export { ContainerAppEnvironmentResourceType } from "./resources/container-app-environment.js";
+export { ContainerAppJobResourceType } from "./resources/container-app-job.js";
+export { ManagedRedisResourceType } from "./resources/managed-redis.js";
+export { AIServicesAccountResourceType } from "./resources/ai-services.js";

@@ -4,6 +4,7 @@ import {
   extractName,
   extractResourceGroup,
   extractVaultName,
+  listAllPages,
   subnetRef,
   type ListerContext,
 } from "./shared.js";
@@ -161,6 +162,93 @@ export async function listRedisCaches(
       updatedAt: ctx.now(),
     };
   });
+}
+
+/** Azure Managed Redis (`Microsoft.Cache/redisEnterprise`) api-version. */
+const MANAGED_REDIS_API_VERSION = "2025-07-01";
+
+/**
+ * Azure Managed Redis clusters. Connection-level settings (port, TLS, keys,
+ * modules) live on the cluster's database, not the cluster: a Managed Redis
+ * cluster carries exactly one database, `default`, so the first database the
+ * list returns is read and folded into the cluster's fields. That is one
+ * extra request per cluster; a failure leaves the database fields blank
+ * rather than dropping the cluster.
+ */
+export async function listManagedRedis(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const clusters = await listAllPages(
+    ctx,
+    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Cache/redisEnterprise?api-version=${MANAGED_REDIS_API_VERSION}`,
+  );
+  return Promise.all(
+    clusters.map(async (cluster) => {
+      const name = String(cluster["name"] ?? "");
+      const azureId = String(cluster["id"] ?? "");
+      const rg = extractResourceGroup(azureId);
+      const props = cluster["properties"] as Record<string, unknown> | undefined;
+      const sku = cluster["sku"] as Record<string, unknown> | undefined;
+
+      let db: Record<string, unknown> | undefined;
+      try {
+        const dbs = await listAllPages(
+          ctx,
+          `${ARM}${azureId}/databases?api-version=${MANAGED_REDIS_API_VERSION}`,
+        );
+        db = dbs[0]?.["properties"] as Record<string, unknown> | undefined;
+      } catch {
+        // See the doc comment: the cluster still lists.
+      }
+      const persistence = db?.["persistence"] as Record<string, unknown> | undefined;
+      const modules = (db?.["modules"] as Array<Record<string, unknown>> | undefined) ?? [];
+      const hostName = String(props?.["hostName"] ?? "");
+      // Managed Redis databases listen on 10000 unless set otherwise at create.
+      const port = db?.["port"] != null ? String(db["port"]) : "10000";
+
+      return {
+        id: ctx.id(accountId, "azure-managed-redis", `${rg}/${name}`),
+        pluginId: "azure",
+        resourceTypeId: "azure-managed-redis",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          resourceGroup: rg,
+          location: String(cluster["location"] ?? ""),
+          sku: String(sku?.["name"] ?? ""),
+          provisioningState: String(props?.["provisioningState"] ?? ""),
+          resourceState: String(props?.["resourceState"] ?? ""),
+          redisVersion: String(db?.["redisVersion"] ?? props?.["redisVersion"] ?? ""),
+          highAvailability: String(props?.["highAvailability"] ?? "Enabled"),
+          redundancyMode: String(props?.["redundancyMode"] ?? ""),
+          minimumTlsVersion: String(props?.["minimumTlsVersion"] ?? ""),
+          publicNetworkAccess: String(props?.["publicNetworkAccess"] ?? ""),
+          clientProtocol: String(db?.["clientProtocol"] ?? ""),
+          clusteringPolicy: String(db?.["clusteringPolicy"] ?? ""),
+          evictionPolicy: String(db?.["evictionPolicy"] ?? ""),
+          modules: modules
+            .map((m) => String(m["name"] ?? ""))
+            .filter(Boolean)
+            .join(", "),
+          persistence: persistence?.["aofEnabled"]
+            ? "AOF"
+            : persistence?.["rdbEnabled"]
+              ? "RDB"
+              : db
+                ? "None"
+                : "",
+          accessKeysAuthentication: String(db?.["accessKeysAuthentication"] ?? ""),
+        },
+        resolvedOutputs: { hostName, port, resourceId: azureId },
+        secretStates: [],
+        externalId: `${rg}/${name}`,
+        createdAt: ctx.now(),
+        updatedAt: ctx.now(),
+      };
+    }),
+  );
 }
 
 export async function listPostgresFlexibleServers(

@@ -92,6 +92,49 @@ export async function resolveAzureOutput(
   }
 
   if (
+    typeId === "azure-managed-redis" &&
+    (outputKey === "primaryKey" || outputKey === "connectionString")
+  ) {
+    const resource = await getResource(typeId, resourceId, accountId);
+    const [rg, name] = (resource.externalId ?? "").split("/");
+    // Managed Redis access keys default to Disabled (Entra ID only) on new
+    // clusters, and listKeys then fails with an opaque 400: say why instead.
+    if (String(resource.fields["accessKeysAuthentication"] ?? "") === "Disabled") {
+      throw new Error(
+        `Access keys are disabled on Managed Redis "${name}", so no key can be resolved. ` +
+          `Enable access keys authentication on the cluster's database, or connect with Microsoft Entra ID.`,
+      );
+    }
+    // A Managed Redis cluster has exactly one database, always named "default".
+    const keys = await ctx.post<{ primaryKey?: string }>(
+      `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Cache/redisEnterprise/${name}/databases/default/listKeys?api-version=2025-07-01`,
+      {},
+    );
+    const pk = keys.primaryKey ?? "";
+    if (outputKey === "primaryKey") return pk;
+    const host = String(resource.resolvedOutputs["hostName"] ?? "");
+    const port = String(resource.resolvedOutputs["port"] ?? "10000");
+    const scheme = resource.fields["clientProtocol"] === "Plaintext" ? "redis" : "rediss";
+    return `${scheme}://:${encodeURIComponent(pk)}@${host}:${port}`;
+  }
+
+  if (typeId === "azure-ai-services" && outputKey === "apiKey") {
+    const resource = await getResource(typeId, resourceId, accountId);
+    const [rg, name] = (resource.externalId ?? "").split("/");
+    if (resource.fields["localAuthEnabled"] === false) {
+      throw new Error(
+        `Key authentication is disabled on "${name}" (disableLocalAuth), so it has no usable API key. ` +
+          `Use Microsoft Entra ID, or re-enable local authentication on the account.`,
+      );
+    }
+    const keys = await ctx.post<{ key1?: string }>(
+      `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.CognitiveServices/accounts/${name}/listKeys?api-version=2024-10-01`,
+      {},
+    );
+    return keys.key1 ?? "";
+  }
+
+  if (
     typeId === "azure-container-registry" &&
     (outputKey === "username" || outputKey === "password" || outputKey === "dockerConfigJson")
   ) {

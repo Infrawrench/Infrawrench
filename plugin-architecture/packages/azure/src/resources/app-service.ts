@@ -59,6 +59,15 @@ export const AppServiceResourceType = rt({
         "App Service names are globally unique and released on delete, so any Azure customer can create an app with the same name and serve it under your hostname.",
     },
   ],
+  // Sleep/wake schedules: sites start / stop. Stopping an app does not stop
+  // its App Service plan billing; it frees the plan's capacity for other apps.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "state",
+    runningValues: ["Running"],
+    stoppedValues: ["Stopped"],
+  },
   supportsCreate: true,
   supportsMetrics: true,
 });

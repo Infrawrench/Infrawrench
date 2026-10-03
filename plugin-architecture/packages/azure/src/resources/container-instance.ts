@@ -32,6 +32,12 @@ export const ContainerInstanceResourceType = rt({
     { fieldKey: "subnetRefs", targetTypeId: "azure-subnet", label: "in subnet" },
   ],
   iconKey: "container",
+  // Sleep/wake schedules: containerGroups start / stop. Stop deallocates the
+  // group's compute, so billing stops. The list carries no instance state.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+  },
   supportsCreate: true,
   supportsMetrics: true,
 });

@@ -29,7 +29,14 @@ export {
   listRedisCaches,
   listPostgresFlexibleServers,
   listMySQLFlexibleServers,
+  listManagedRedis,
 } from "./resource-listers/database.js";
+export {
+  listContainerApps,
+  listContainerAppEnvironments,
+  listContainerAppJobs,
+} from "./resource-listers/container-apps.js";
+export { listAIServicesAccounts } from "./resource-listers/ai.js";
 export { listStorageAccounts, listKeyVaults } from "./resource-listers/storage.js";
 export { listServiceBusNamespaces, listEventHubNamespaces } from "./resource-listers/messaging.js";
 export { listDNSZones, listPrivateDNSZones } from "./resource-listers/dns.js";

@@ -79,6 +79,8 @@ import { renderAzureDetail, renderAzureSidebarItem } from "./renderers.js";
 import { fetchAzureCostData } from "./cost-data.js";
 import { fetchAzureCommitments } from "./commitments.js";
 import { deleteAzureResource } from "./delete-handlers.js";
+import { invokeAzureAction, supportsAzureAction } from "./actions.js";
+import { updateContainerApp } from "./container-app-create-handlers.js";
 import { attachAzureResource } from "./attach-handlers.js";
 import { applyAzureManifest, getAzureManifest } from "./manifest.js";
 import { exportAzureCredential } from "./export-credential.js";
@@ -230,6 +232,13 @@ export class AzureClient implements PluginClient {
     // ARM answers a good few writes with an empty body (204, or 200 with no
     // content): those are successes with nothing to parse.
     if (res.status === 204 || res.headers.get("content-length") === "0") return {} as T;
+    // 202 is ARM's "accepted, running asynchronously" (stop/start/restart
+    // and most PATCHes answer with it) and usually has no body at all, often
+    // without a content-length header to say so.
+    if (res.status === 202) {
+      const text = await res.text();
+      return (text ? JSON.parse(text) : {}) as T;
+    }
     return res.json<T>();
   }
 
@@ -353,6 +362,11 @@ export class AzureClient implements PluginClient {
     "azure-log-analytics": listers.listLogAnalyticsWorkspaces,
     "azure-managed-identity": listers.listManagedIdentities,
     "azure-firewall": listers.listFirewalls,
+    "azure-container-app": listers.listContainerApps,
+    "azure-container-app-environment": listers.listContainerAppEnvironments,
+    "azure-container-app-job": listers.listContainerAppJobs,
+    "azure-managed-redis": listers.listManagedRedis,
+    "azure-ai-services": listers.listAIServicesAccounts,
   };
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -593,22 +607,20 @@ export class AzureClient implements PluginClient {
     actionId: string,
     accountId: string,
   ): Promise<void> {
-    if (typeId === "azure-vm" && (actionId === "start" || actionId === "deallocate")) {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      // externalId is rg/name: the same two-part form deleteResource splits.
-      const [rg, name] = String(resource.externalId ?? "").split("/");
-      if (!rg || !name) throw new Error("Cannot determine resource group/name for VM");
-      await this.post(
-        `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${name}/${actionId}?api-version=2024-03-01`,
-        {},
+    if (!supportsAzureAction(typeId, actionId)) {
+      throw new Error(
+        `Azure plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
       );
-      return;
     }
-    throw new Error(`Azure plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+    const resource = await this.getResource(typeId, resourceId, accountId);
+    await invokeAzureAction(this.httpCtx, resource, actionId);
   }
 
   /**
-   * Edit a VM: change its size (`vmSize`); the right-sizing apply path.
+   * Edit a container app (image, CPU/memory, replica bounds: see
+   * `updateContainerApp`) or a VM.
+   *
+   * VM: change its size (`vmSize`); the right-sizing apply path.
    * ARM PATCH on `hardwareProfile.vmSize`; Azure accepts it on a running VM
    * but restarts it during the change, and rejects sizes unavailable on the
    * current hardware cluster (deallocate first to widen the choice). VM
@@ -620,6 +632,11 @@ export class AzureClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    if (typeId === "azure-container-app") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      await updateContainerApp(this.httpCtx, resource, fields);
+      return this.getResource(typeId, resourceId, accountId);
+    }
     if (typeId !== "azure-vm") {
       throw new Error(`Azure plugin: updateResource not supported for type "${typeId}"`);
     }

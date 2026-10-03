@@ -49,6 +49,14 @@ export const FunctionAppResourceType = rt({
     },
   ],
   iconKey: "function",
+  // Sleep/wake schedules: sites start / stop (see the App Service type).
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "state",
+    runningValues: ["Running"],
+    stoppedValues: ["Stopped"],
+  },
   supportsCreate: true,
   supportsMetrics: true,
 });

@@ -47,6 +47,9 @@ export const azureTerraformExport: TerraformExportCapability = {
     "azure-dns-zone",
     "azure-key-vault",
     "azure-redis-cache",
+    "azure-container-app-environment",
+    "azure-managed-redis",
+    "azure-ai-services",
   ],
   mapResource(resource): TerraformExportResult | null {
     switch (resource.resourceTypeId) {
@@ -223,8 +226,98 @@ export const azureTerraformExport: TerraformExportCapability = {
           },
         };
       }
+      case "azure-container-app-environment": {
+        const name = fieldString(resource, "name") || resource.displayName;
+        const resourceGroup = fieldString(resource, "resourceGroup");
+        const location = fieldString(resource, "location");
+        if (!name || !resourceGroup || !location) return null;
+        const attributes: Record<string, TerraformValue> = {
+          name: tf.str(name),
+          resource_group_name: tf.str(resourceGroup),
+          location: tf.str(location),
+        };
+        if (fieldBool(resource, "zoneRedundant")) {
+          attributes["zone_redundancy_enabled"] = tf.bool(true);
+        }
+        return {
+          resource: {
+            type: "azurerm_container_app_environment",
+            name,
+            attributes,
+            importId: armImportId(resource),
+            comments: [
+              "Workload profiles, the infrastructure subnet and the Log Analytics link are not exported.",
+            ],
+          },
+        };
+      }
+      case "azure-managed-redis": {
+        const name = fieldString(resource, "name") || resource.displayName;
+        const resourceGroup = fieldString(resource, "resourceGroup");
+        const location = fieldString(resource, "location");
+        const sku = fieldString(resource, "sku");
+        if (!name || !resourceGroup || !location || !sku) return null;
+        const attributes: Record<string, TerraformValue> = {
+          name: tf.str(name),
+          resource_group_name: tf.str(resourceGroup),
+          location: tf.str(location),
+          sku_name: tf.str(sku),
+        };
+        if (fieldString(resource, "highAvailability") === "Disabled") {
+          attributes["high_availability_enabled"] = tf.bool(false);
+        }
+        return {
+          resource: {
+            type: "azurerm_managed_redis",
+            name,
+            attributes,
+            importId: armImportId(resource),
+            comments: [
+              "The default database block (modules, eviction, persistence) is not exported.",
+            ],
+          },
+        };
+      }
+      case "azure-ai-services": {
+        const name = fieldString(resource, "name") || resource.displayName;
+        const resourceGroup = fieldString(resource, "resourceGroup");
+        const location = fieldString(resource, "location");
+        const kind = fieldString(resource, "kind");
+        const sku = fieldString(resource, "sku");
+        if (!name || !resourceGroup || !location || !kind || !sku) return null;
+        const attributes: Record<string, TerraformValue> = {
+          name: tf.str(name),
+          resource_group_name: tf.str(resourceGroup),
+          location: tf.str(location),
+          kind: tf.str(kind),
+          sku_name: tf.str(sku),
+        };
+        const subdomain = fieldString(resource, "customSubDomainName");
+        if (subdomain) attributes["custom_subdomain_name"] = tf.str(subdomain);
+        if (resource.fields["localAuthEnabled"] === false) {
+          attributes["local_auth_enabled"] = tf.bool(false);
+        }
+        return {
+          resource: {
+            type: "azurerm_cognitive_account",
+            name,
+            attributes,
+            importId: armImportId(resource),
+            comments: ["Model deployments are separate azurerm_cognitive_deployment resources."],
+          },
+        };
+      }
       default:
         return null;
     }
   },
 };
+
+/**
+ * azurerm imports by full ARM resource id. The listers for newer types keep it
+ * in the hidden `resourceId` output; fall back to the external id otherwise.
+ */
+function armImportId(resource: Parameters<TerraformExportCapability["mapResource"]>[0]) {
+  const id = resource.resolvedOutputs?.["resourceId"];
+  return typeof id === "string" && id.startsWith("/subscriptions/") ? id : resource.externalId;
+}

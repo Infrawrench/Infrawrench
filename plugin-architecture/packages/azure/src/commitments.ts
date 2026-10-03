@@ -1,4 +1,6 @@
 /**
+ * Commitment inventory: reservations and savings plans.
+ *
  * Reservation inventory via the tenant-level list:
  * `GET https://management.azure.com/providers/Microsoft.Capacity/reservations?api-version=2022-11-01`,
  * paginated by following `nextLink` (which carries the `$skiptoken`).
@@ -19,6 +21,19 @@
  * `termDays` comes from `properties.term` (P1Y/P3Y/P5Y). Never from the
  * dates: Azure splits and merges reservations on exchange, and a split
  * child's effective date no longer spans the term it inherited.
+ *
+ * Savings plans via the tenant-level
+ * `GET https://management.azure.com/providers/Microsoft.BillingBenefits/savingsPlans?api-version=2022-11-01`.
+ * Unlike reservations, a savings plan's list entry does carry money: the
+ * hourly commitment (`properties.commitment`, `grain: "Hourly"`), which is
+ * exactly the number spend-commitment utilization is measured against. Its
+ * id lives under `/providers/microsoft.billingbenefits/`, the same provider
+ * segment the cost data's `BenefitId` column carries for savings-plan rows.
+ *
+ * The two lists need separate grants (reservations and savings plans are
+ * each readable only by principals holding a role on them), so a refused
+ * savings-plan list is treated as "none visible" rather than failing the
+ * reservations that did come back.
  */
 
 import type {
@@ -35,6 +50,9 @@ export interface AzureCommitmentsContext {
 
 const LIST_URL =
   "https://management.azure.com/providers/Microsoft.Capacity/reservations?api-version=2022-11-01";
+
+const SAVINGS_PLAN_LIST_URL =
+  "https://management.azure.com/providers/Microsoft.BillingBenefits/savingsPlans?api-version=2022-11-01";
 
 interface AzureUtilizationAggregate {
   grain?: number;
@@ -65,11 +83,6 @@ interface AzureReservation {
   location?: string;
   sku?: { name?: string };
   properties?: AzureReservationProperties;
-}
-
-interface AzureReservationListResponse {
-  value?: AzureReservation[];
-  nextLink?: string | null;
 }
 
 /**
@@ -192,18 +205,96 @@ export function mapAzureReservation(reservation: AzureReservation): CommitmentRe
   };
 }
 
-export async function fetchAzureCommitments(
+interface AzureSavingsPlan {
+  id?: string;
+  name?: string;
+  sku?: { name?: string };
+  properties?: {
+    displayName?: string;
+    provisioningState?: string;
+    displayProvisioningState?: string;
+    effectiveDateTime?: string;
+    benefitStartTime?: string;
+    expiryDateTime?: string;
+    purchaseDateTime?: string;
+    term?: string;
+    billingPlan?: string;
+    appliedScopeType?: string;
+    commitment?: { grain?: string; currencyCode?: string; amount?: number };
+    utilization?: { aggregates?: AzureUtilizationAggregate[] };
+  };
+}
+
+/** `Compute_Savings_Plan` → `Compute Savings Plan`. */
+function skuLabel(sku: string): string {
+  return sku.replace(/_/g, " ");
+}
+
+export function mapAzureSavingsPlan(plan: AzureSavingsPlan): CommitmentRecord | null {
+  const id = normalizeAzureCommitmentId(plan.id ?? "");
+  if (!id) return null;
+  const props = plan.properties ?? {};
+  const termDays = termToDays(props.term);
+  const commitment = props.commitment;
+  const hourly =
+    commitment?.grain === "Hourly" && Number.isFinite(Number(commitment.amount))
+      ? Number(commitment.amount)
+      : undefined;
+  const aggregates = utilization(props.utilization?.aggregates);
+  const startDate =
+    props.benefitStartTime ?? props.effectiveDateTime ?? props.purchaseDateTime ?? "";
+  const description = [
+    props.displayName || "Azure savings plan",
+    plan.sku?.name ? skuLabel(plan.sku.name) : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return {
+    id,
+    kind: "savings_plan",
+    description,
+    ...(props.appliedScopeType ? { scope: props.appliedScopeType } : {}),
+    // Savings plans apply across regions: no region, deliberately.
+    startDate,
+    ...(props.expiryDateTime ? { endDate: props.expiryDateTime } : {}),
+    ...(termDays !== undefined ? { termDays } : {}),
+    // P1M is the monthly billing plan; Azure documents no other value, and
+    // an absent plan is not evidence of upfront payment, so it stays unset.
+    ...(props.billingPlan === "P1M" ? { paymentOption: "monthly" as const } : {}),
+    ...(hourly !== undefined && commitment?.currencyCode
+      ? { currency: commitment.currencyCode, hourlyCommitmentAmount: hourly }
+      : {}),
+    state: normalizeAzureProvisioningState(props.provisioningState ?? ""),
+    ...(aggregates.length > 0 ? { providerUtilization: aggregates } : {}),
+  };
+}
+
+async function listPages<T>(
   ctx: AzureCommitmentsContext,
+  firstUrl: string,
+  map: (item: T) => CommitmentRecord | null,
 ): Promise<CommitmentRecord[]> {
   const records: CommitmentRecord[] = [];
-  let url: string | null | undefined = LIST_URL;
+  let url: string | null | undefined = firstUrl;
   while (url) {
-    const page: AzureReservationListResponse = await ctx.getJson<AzureReservationListResponse>(url);
-    for (const reservation of page.value ?? []) {
-      const record = mapAzureReservation(reservation);
+    const page: { value?: T[]; nextLink?: string | null } = await ctx.getJson(url);
+    for (const item of page.value ?? []) {
+      const record = map(item);
       if (record) records.push(record);
     }
     url = page.nextLink;
   }
   return records;
+}
+
+export async function fetchAzureCommitments(
+  ctx: AzureCommitmentsContext,
+): Promise<CommitmentRecord[]> {
+  const reservations = await listPages(ctx, LIST_URL, mapAzureReservation);
+  // See the module comment: savings-plan access is granted separately, so a
+  // refusal here must not discard the reservations above.
+  const savingsPlans = await listPages(ctx, SAVINGS_PLAN_LIST_URL, mapAzureSavingsPlan).catch(
+    () => [],
+  );
+  return [...reservations, ...savingsPlans];
 }

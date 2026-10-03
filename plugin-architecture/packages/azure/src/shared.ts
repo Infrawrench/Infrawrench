@@ -129,4 +129,15 @@ export const AZURE_ARM_SPECS: Record<string, ArmResourceSpec> = {
     apiVersion: "2023-01-31",
   },
   "azure-firewall": { provider: "Microsoft.Network/azureFirewalls", apiVersion: "2023-09-01" },
+  "azure-container-app": { provider: "Microsoft.App/containerApps", apiVersion: "2025-07-01" },
+  "azure-container-app-environment": {
+    provider: "Microsoft.App/managedEnvironments",
+    apiVersion: "2025-07-01",
+  },
+  "azure-container-app-job": { provider: "Microsoft.App/jobs", apiVersion: "2025-07-01" },
+  "azure-managed-redis": { provider: "Microsoft.Cache/redisEnterprise", apiVersion: "2025-07-01" },
+  "azure-ai-services": {
+    provider: "Microsoft.CognitiveServices/accounts",
+    apiVersion: "2024-10-01",
+  },
 };

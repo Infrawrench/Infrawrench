@@ -31,6 +31,7 @@ import { createAppService } from "./app-service-create-handlers.js";
 import { createFunctionApp } from "./function-app-create-handlers.js";
 import { createSQLDatabase } from "./sql-database-create-handlers.js";
 import { createLoadBalancer } from "./load-balancer-create-handlers.js";
+import { createContainerApp } from "./container-app-create-handlers.js";
 
 export async function createAzureResource(
   ctx: AzureCreateContext,
@@ -130,5 +131,6 @@ export async function createAzureResource(
   if (typeId === "azure-function-app") return createFunctionApp(ctx, accountId, fields);
   if (typeId === "azure-sql-database") return createSQLDatabase(ctx, accountId, fields);
   if (typeId === "azure-load-balancer") return createLoadBalancer(ctx, accountId, fields);
+  if (typeId === "azure-container-app") return createContainerApp(ctx, accountId, fields);
   throw new Error(`Azure plugin: createResource not supported for type "${typeId}"`);
 }
