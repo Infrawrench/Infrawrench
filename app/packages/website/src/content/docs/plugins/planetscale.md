@@ -1,17 +1,19 @@
 ---
 title: PlanetScale
-description: Manage PlanetScale databases, branches, deploy requests, backups, and passwords.
+description: Manage PlanetScale Vitess and Postgres databases, branches, deploy requests, backups, passwords, Postgres roles, and webhooks, with branch metrics.
 sidebar_order: 13
 ---
 
 ## What you can manage
 
-- Databases
+- Databases, both Vitess (MySQL-compatible) and Postgres
 - Branches
-- Branch passwords
+- Branch passwords (Vitess)
+- Postgres roles
 - Deploy requests
 - Branch backups
-- Connection strings (generated per-branch via password creation)
+- Database webhooks
+- Connection strings (generated per branch: a password on Vitess, a role on Postgres)
 
 ## Credentials
 
@@ -25,17 +27,26 @@ PlanetScale dashboard → **Settings → Service tokens → New service token**.
 
 ## Notable flows
 
-- **Branch creation** — from `main` or any branch, pick a name and click.
-- **Deploy request tracking** — list schema deploy requests with source and target branches, approval state, and deployment status.
-- **Backup inventory** — inspect branch backups and lifecycle state.
-- **Connection string generation** — infrawrench creates a named password for a branch and returns the resulting connection string as an output. Reference it from the [MySQL plugin](./mysql.md) for SQL editor access.
+- **Database creation**: pick the engine (Vitess or Postgres), a region that runs it, and a cluster size from the sizes your organization can provision.
+- **Database settings**: **Edit** on a database sets deletion protection, deploy-request approval, the default branch, branch-region restriction, the production web console, full-query collection in Insights, and the development branch limit. On Vitess databases it also covers data branching, foreign key constraints, and migration-table copying. Only the settings you change are sent.
+- **Branch creation**: from `main` or any branch, optionally seeded with data from the latest backup and with deletion protection on.
+- **Branch actions**: **Promote to Production** / **Demote to Development**, and on Vitess production branches **Enable/Disable Safe Migrations**. **Edit** toggles deletion protection.
+- **Branch metrics**: the Metrics tab charts queries, errors, rows read and written, p50/p99 latency, connections, CPU, memory, storage, and replica lag from PlanetScale's Metrics API (the last 12 hours by default).
+- **Deploy requests**: list schema deploy requests with source and target branches, approval, and deployment state. Each one offers the next step its state allows: **Deploy**, **Apply Changes** for a gated cutover, **Cancel Deploy**, **Skip Revert Period**, **Revert**, or **Close**. Drag one branch onto another to open a deploy request.
+- **Backups**: inspect branch backups, take an on-demand backup with its own retention, protect a backup from expiring, and delete it.
+- **Passwords** (Vitess): create with a role, TTL, replica routing, and allowed CIDRs; rename or change CIDRs; **Renew** a password that has a TTL.
+- **Postgres roles**: create a role with the built-in roles it inherits (read all data, write all data, monitor, and so on), an optional expiry, and query-safety rules that warn on or block `DELETE`/`UPDATE` without `WHERE`. Roles can be renewed, have their password reset, and be deleted.
+- **Webhooks**: subscribe a URL to branch, deploy-request, backup, and storage events, with an optional `Authorization` header. **Send Test Event** checks delivery; the detail page shows whether the last delivery succeeded.
+- **Connection string generation**: infrawrench creates a dedicated password (Vitess) or role (Postgres) for a branch and returns the resulting connection string as an output. The branch opens it in the [MySQL](./mysql.md) or [PostgreSQL](./postgres.md) tab to match its engine.
 - **Secret export to K8s** — branches export credentials as secrets.
-- **SQL editor** (via the MySQL plugin’s output reference).
+- **SQL editor** (via the MySQL or PostgreSQL plugin’s output reference).
+- **Terraform export**: branches, passwords, and Postgres roles export as `planetscale_vitess_branch` / `planetscale_postgres_branch`, `planetscale_vitess_branch_password`, and `planetscale_postgres_branch_role`, with import IDs ready to adopt the live objects.
 
 ## Tips & limits
 
 - PlanetScale uses Vitess. Cross-shard joins and some DDL shapes are restricted. Raw errors are passed through.
-- Branch passwords are listed without exposing plaintext. A new plaintext password is only returned by PlanetScale at creation time, so connection-string generation still creates a dedicated password on demand.
+- Branch passwords and Postgres roles are listed without exposing plaintext. PlanetScale returns a secret only when it is created, so connection-string generation creates a dedicated password or role on demand. A role you create in infrawrench keeps its connection string as an output; after a **Reset Password**, create a new role to get one you can copy.
+- Branch metrics need the service token's `read_branch` access. Without it the Metrics tab stays empty.
 
 ## Cost graphs
 

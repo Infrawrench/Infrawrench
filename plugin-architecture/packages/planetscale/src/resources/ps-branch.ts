@@ -7,18 +7,31 @@ export const PsBranchResourceType = rt({
   description:
     "A PlanetScale database branch — isolated schema environment with its own connection endpoint",
   fields: [
-    f("name", "Name"),
-    f("databaseName", "Database"),
-    f("parentBranch", "Parent Branch", { required: false }),
-    f("production", "Production", { kind: "boolean", required: false }),
-    f("ready", "Ready", { kind: "boolean", required: false }),
-    f("safeMigrations", "Safe Migrations", { kind: "boolean", required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("name", "Name", { editable: false }),
+    f("databaseName", "Database", { editable: false }),
+    f("kind", "Engine", {
+      kind: "enum",
+      enumValues: ["mysql", "postgresql", "neki"],
+      required: false,
+      editable: false,
+    }),
+    f("parentBranch", "Parent Branch", { required: false, editable: false }),
+    f("region", "Region", { required: false, editable: false }),
+    f("clusterName", "Cluster Size", { required: false, editable: false }),
+    f("production", "Production", { kind: "boolean", required: false, editable: false }),
+    f("ready", "Ready", { kind: "boolean", required: false, editable: false }),
+    f("safeMigrations", "Safe Migrations", { kind: "boolean", required: false, editable: false }),
+    f("deletionProtected", "Deletion Protection", {
+      kind: "boolean",
+      required: false,
+      description: "Refuse deletion of this branch until protection is turned off again.",
+    }),
+    f("createdAt", "Created At", { required: false, editable: false }),
   ],
   outputs: [
     o("branchName", "Branch Name"),
     o("databaseName", "Database Name"),
-    o("connectionString", "Connection String (MySQL)", { sensitive: true }),
+    o("connectionString", "Connection String", { sensitive: true }),
   ],
   // `parentBranch` holds a bare branch name while a branch's external id is
   // `{database}/{branch}`. A branch can only fork inside its own database, so
@@ -40,6 +53,8 @@ export const PsBranchResourceType = rt({
   backupPolicy: { protectedBy: ["ps-backup"] },
   parentTypeId: "ps-database",
   supportsCreate: true,
+  supportsUpdate: true,
+  supportsMetrics: true,
   iconKey: "planetscale",
   attachTargets: [
     {
@@ -49,18 +64,28 @@ export const PsBranchResourceType = rt({
       verb: "Create deploy request",
     },
   ],
+  // The connection string is MySQL for Vitess branches (a branch password)
+  // and Postgres for Postgres branches (a branch role), so each SQL tab only
+  // shows on the engine it can talk to.
   peerIntegrations: [
     {
       pluginId: "mysql",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "MySQL",
+      showWhen: { fieldKey: "kind", equals: "mysql" },
+    },
+    {
+      pluginId: "postgres",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "PostgreSQL",
+      showWhen: { fieldKey: "kind", equals: "postgresql" },
     },
   ],
   secretExportTemplates: [
     {
       id: "connection-url",
       displayName: "Connection URL",
-      description: "DATABASE_URL for MySQL-compatible connections to this branch",
+      description: "DATABASE_URL for connections to this branch",
       entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
     },
   ],

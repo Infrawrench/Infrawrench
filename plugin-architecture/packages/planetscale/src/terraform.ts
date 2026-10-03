@@ -7,18 +7,23 @@ import { fieldBool, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
  * Terraform mapping for PlanetScale: provider `planetscale/planetscale` v1.
- * Attribute names verified against PlanetScale docs + registry
- * (registry.terraform.io/providers/planetscale/planetscale,
- *  planetscale.com/docs/terraform):
- *   - planetscale_vitess_branch: `organization`, `database`, `name` required.
- *   - planetscale_vitess_branch_password: `organization`, `database`, `branch`,
- *     `role` required; `name` optional.
- * There is no managed `planetscale_*_database` resource in v1: databases are
- * created outside Terraform or via the API; ps-database is intentionally skipped.
+ * Attribute names and import formats verified against the provider's docs
+ * (github.com/planetscale/terraform-provider-planetscale/docs/resources,
+ * October 2026):
+ *   - planetscale_vitess_branch / planetscale_postgres_branch: `organization`,
+ *     `database`, `name` required; `parent_branch`, `region`,
+ *     `deletion_protected` optional (vitess adds `safe_migrations`).
+ *   - planetscale_vitess_branch_password: `organization`, `database`,
+ *     `branch` required; `name`, `role`, `cidrs`, `replica` optional.
+ *   - planetscale_postgres_branch_role: `organization`, `database`, `branch`
+ *     required; `name`, `inherited_roles` optional.
+ * Every import id is a JSON object carrying the organization, database,
+ * (branch,) and the object's PlanetScale id. There is no database resource
+ * in the provider, so ps-database is intentionally skipped.
  * Service token credentials map to provider service_token_id / secret.
  */
 export const planetscaleTerraformExport: TerraformExportCapability = {
-  provider: { name: "planetscale", source: "planetscale/planetscale", version: "~> 1.0" },
+  provider: { name: "planetscale", source: "planetscale/planetscale", version: "~> 1.8" },
   providerConfig: {
     service_token_id: tf.ref("var.planetscale_service_token_id"),
     service_token: tf.ref("var.planetscale_service_token_secret"),
@@ -38,15 +43,17 @@ export const planetscaleTerraformExport: TerraformExportCapability = {
       description: "PlanetScale organization slug",
     },
   ],
-  supportedResourceTypeIds: ["ps-branch", "ps-password"],
+  supportedResourceTypeIds: ["ps-branch", "ps-password", "ps-role"],
   mapResource(resource): TerraformExportResult | null {
     const organization = tf.ref("var.planetscale_organization");
+    const org = fieldString(resource, "organization");
 
     switch (resource.resourceTypeId) {
       case "ps-branch": {
         const name = fieldString(resource, "name") || resource.displayName;
         const database = fieldString(resource, "databaseName");
         if (!name || !database) return null;
+        const postgres = fieldString(resource, "kind") === "postgresql";
         const attributes: Record<string, TerraformValue> = {
           organization,
           database: tf.str(database),
@@ -56,26 +63,27 @@ export const planetscaleTerraformExport: TerraformExportCapability = {
         if (parentBranch) attributes["parent_branch"] = tf.str(parentBranch);
         const region = fieldString(resource, "region");
         if (region) attributes["region"] = tf.str(region);
-        if (fieldBool(resource, "production")) {
-          return {
-            resource: {
-              type: "planetscale_vitess_branch",
-              name: `${database}/${name}`,
-              attributes,
-              importId: resource.externalId ?? `${database}/${name}`,
-              comments: [
-                "Production branch flag is read-only in Terraform — enforce via",
-                "PlanetScale dashboard or branch protection settings.",
-              ],
-            },
-          };
+        if (fieldBool(resource, "deletionProtected")) {
+          attributes["deletion_protected"] = tf.bool(true);
         }
+        if (!postgres && fieldBool(resource, "safeMigrations")) {
+          attributes["safe_migrations"] = tf.bool(true);
+        }
+        const id = fieldString(resource, "id");
         return {
           resource: {
-            type: "planetscale_vitess_branch",
+            type: postgres ? "planetscale_postgres_branch" : "planetscale_vitess_branch",
             name: `${database}/${name}`,
             attributes,
-            importId: resource.externalId ?? `${database}/${name}`,
+            ...(id && org ? { importId: JSON.stringify({ database, id, organization: org }) } : {}),
+            ...(fieldBool(resource, "production")
+              ? {
+                  comments: [
+                    "Production status is not a Terraform attribute: promote the branch",
+                    "in PlanetScale (or from Infrawrench) after creating it.",
+                  ],
+                }
+              : {}),
           },
         };
       }
@@ -84,7 +92,7 @@ export const planetscaleTerraformExport: TerraformExportCapability = {
         const database = fieldString(resource, "databaseName");
         const branch = fieldString(resource, "branchName");
         if (!database || !branch) return null;
-        const role = fieldString(resource, "role") ?? "reader";
+        const role = fieldString(resource, "role") || "reader";
         const attributes: Record<string, TerraformValue> = {
           organization,
           database: tf.str(database),
@@ -92,18 +100,52 @@ export const planetscaleTerraformExport: TerraformExportCapability = {
           role: tf.str(role),
         };
         if (name) attributes["name"] = tf.str(name);
-        // externalId is `{database}/{branch}/{passwordId}`: import uses password id.
-        const parts = (resource.externalId ?? "").split("/");
-        const passwordId = parts.length >= 3 ? parts.slice(2).join("/") : resource.externalId;
+        if (fieldBool(resource, "replica")) attributes["replica"] = tf.bool(true);
+        const cidrs = fieldString(resource, "cidrs")
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean);
+        if (cidrs.length > 0) attributes["cidrs"] = tf.list(cidrs.map((c) => tf.str(c)));
         return {
           resource: {
             type: "planetscale_vitess_branch_password",
             name: name || `${branch} password`,
             attributes,
-            ...(passwordId ? { importId: passwordId } : {}),
+            ...branchScopedImport(org, database, branch, resource.externalId),
             comments: [
               "Password plaintext is only available at create time in Terraform —",
               "import existing credentials and rotate if the secret is unknown.",
+            ],
+          },
+        };
+      }
+      case "ps-role": {
+        const database = fieldString(resource, "databaseName");
+        const branch = fieldString(resource, "branchName");
+        if (!database || !branch) return null;
+        const name = fieldString(resource, "name");
+        const attributes: Record<string, TerraformValue> = {
+          organization,
+          database: tf.str(database),
+          branch: tf.str(branch),
+        };
+        if (name) attributes["name"] = tf.str(name);
+        const inherited = fieldString(resource, "inheritedRoles")
+          .split(",")
+          .map((r) => r.trim())
+          .filter(Boolean);
+        if (inherited.length > 0) {
+          attributes["inherited_roles"] = tf.list(inherited.map((r) => tf.str(r)));
+        }
+        return {
+          resource: {
+            type: "planetscale_postgres_branch_role",
+            name: name || resource.displayName || `${branch} role`,
+            attributes,
+            ...branchScopedImport(org, database, branch, resource.externalId),
+            comments: [
+              "The role's password is only available at create time in Terraform:",
+              "import existing roles and reset the password if the secret is unknown.",
             ],
           },
         };
@@ -113,3 +155,16 @@ export const planetscaleTerraformExport: TerraformExportCapability = {
     }
   },
 };
+
+/** `{database}/{branch}/{id}` external id → the provider's JSON import id. */
+function branchScopedImport(
+  organization: string,
+  database: string,
+  branch: string,
+  externalId: string | undefined,
+): { importId?: string } {
+  const parts = (externalId ?? "").split("/");
+  const id = parts.length >= 3 ? parts.slice(2).join("/") : "";
+  if (!id || !organization) return {};
+  return { importId: JSON.stringify({ branch, database, id, organization }) };
+}
