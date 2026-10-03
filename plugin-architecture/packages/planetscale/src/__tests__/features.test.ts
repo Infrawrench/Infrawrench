@@ -188,6 +188,7 @@ describe("branch actions and settings", () => {
       );
     expect(ids(vitess)).toEqual(["", "demote", "enable-safe-migrations"]);
     expect(vitess.metricsCapability).toBeTruthy();
+    expect(vitess.logs).toEqual({ defaultTailLines: 50 });
 
     const pg = client().renderDetail({
       ...base,
@@ -493,11 +494,110 @@ describe("branch metrics", () => {
     expect(url.searchParams.get("from")).toBe(new Date(1_789_990_000_000).toISOString());
   });
 
+  it("charts the byte, disk and WAL series with byte units", async () => {
+    const mock = routeFetch({
+      [`GET ${DB}/app/branches/main/metrics`]: {
+        series: [
+          { metric: "egress_bytes", labels: {}, points: [[1_790_000_000, 2048]] },
+          { metric: "planetscale_wal_size_bytes", labels: {}, points: [[1_790_000_000, 1]] },
+          {
+            metric: "planetscale_edge_bytes_sent_rate",
+            labels: {},
+            points: [[1_790_000_000, 5]],
+          },
+        ],
+      },
+    });
+    const series = await client().fetchMetricSeries(
+      "ps-branch",
+      "acct1:ps-branch:app/main",
+      ACCOUNT,
+    );
+    expect(series.map((s) => [s.label, s.unit])).toEqual([
+      ["Egress", "bytes"],
+      ["WAL Size", "bytes"],
+      ["Edge Sent", "bytes/s"],
+    ]);
+    const asked = new URL(String(mock.mock.calls[0]![0])).searchParams.get("metrics") ?? "";
+    for (const name of [
+      "latency_p95",
+      "planetscale_volume_usage_percentages",
+      "planetscale_pods_iops_total",
+    ]) {
+      expect(asked.split(",")).toContain(name);
+    }
+  });
+
   it("returns nothing when the token can't read metrics", async () => {
     routeFetch({});
     expect(
       await client().fetchMetricSeries("ps-branch", "acct1:ps-branch:app/main", ACCOUNT),
     ).toEqual([]);
+  });
+});
+
+describe("branch logs (Insights)", () => {
+  it("renders query errors newest last and offers both feeds", async () => {
+    const mock = routeFetch({
+      [`GET ${DB}/app/branches/main/insights/errors`]: {
+        type: "list",
+        data: [
+          {
+            started_at: "2026-10-03T10:00:00Z",
+            error_count: 3,
+            time_per_query: 1.25,
+            error_message: "Duplicate entry\n'1' for key 'PRIMARY'",
+          },
+          { started_at: "2026-10-03T09:00:00Z", error_count: 1, error_message: "deadlock" },
+        ],
+      },
+    });
+    const result = await client().getLogs("ps-branch", "acct1:ps-branch:app/main", ACCOUNT, {
+      tailLines: 20,
+    });
+    expect(result.containers).toEqual(["query-errors", "anomalies"]);
+    expect(result.activeContainer).toBe("query-errors");
+    expect(result.text).toBe(
+      "2026-10-03T09:00:00Z  ERROR  x1  deadlock\n" +
+        "2026-10-03T10:00:00Z  ERROR  x3, avg 1.3 ms  Duplicate entry '1' for key 'PRIMARY'\n",
+    );
+    const url = new URL(String(mock.mock.calls[0]![0]));
+    expect(url.searchParams.get("per_page")).toBe("20");
+    expect(url.searchParams.get("sort")).toBe("lastRun");
+    expect(url.searchParams.get("period")).toBe("1d");
+  });
+
+  it("renders anomalies with the most correlated query", async () => {
+    routeFetch({
+      [`GET ${DB}/app/branches/main/insights/anomalies`]: {
+        data: [
+          {
+            period_start: "2026-10-03T08:00:00Z",
+            period_end: "2026-10-03T08:30:00Z",
+            active: false,
+            minutes_in_violation: 12,
+            correlations: [
+              { r: 0.4, normalized_sql: "select 1" },
+              { r: 0.91, normalized_sql: "select *\n from orders" },
+            ],
+          },
+        ],
+      },
+    });
+    const result = await client().getLogs("ps-branch", "acct1:ps-branch:app/main", ACCOUNT, {
+      container: "anomalies",
+    });
+    expect(result.activeContainer).toBe("anomalies");
+    expect(result.text).toBe(
+      "2026-10-03T08:00:00Z  ANOMALY resolved  2026-10-03T08:00:00Z to 2026-10-03T08:30:00Z, 12 min over baseline" +
+        "  likely cause (r=0.91): select * from orders\n",
+    );
+  });
+
+  it("says so when there is nothing to show", async () => {
+    routeFetch({ [`GET ${DB}/app/branches/main/insights/errors`]: { data: [] } });
+    const result = await client().getLogs("ps-branch", "acct1:ps-branch:app/main", ACCOUNT, {});
+    expect(result.text).toBe("No query errors on this branch in the last day.\n");
   });
 });
 

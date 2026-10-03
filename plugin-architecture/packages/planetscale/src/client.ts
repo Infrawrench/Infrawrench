@@ -8,6 +8,8 @@ import type {
   CostFetchRange,
   CostRow,
   DashboardStat,
+  LogsFetchParams,
+  LogsFetchResult,
   MetricSeries,
   RegionOption,
   SelectOption,
@@ -15,6 +17,7 @@ import type {
 import { decodePromptArgs, joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
 import { fetchPlanetScaleCostData } from "./cost-data.js";
 import { fetchBranchMetrics, PS_METRICS_CAPABILITY } from "./metrics.js";
+import { fetchInsightsLog } from "./insights-log.js";
 
 type Engine = "mysql" | "postgresql" | "neki";
 
@@ -1148,6 +1151,22 @@ export class PlanetScaleClient implements PluginClient {
     );
   }
 
+  /** Branch Logs tab: Insights query errors and latency anomalies. */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    if (typeId !== "ps-branch") return { text: "", containers: [], activeContainer: "" };
+    const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
+    return fetchInsightsLog(
+      <T>(path: string) => this.fetch<T>(path),
+      this.branchPath(databaseName, branchName),
+      params,
+    );
+  }
+
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     // Bind preserves the generic signature of the private fetch helper so the
     // cost module reuses the token auth + optional CA/bastion routing.
@@ -2105,6 +2124,7 @@ export class PlanetScaleClient implements PluginClient {
           : "SHOW TABLES;",
       },
       metricsCapability: PS_METRICS_CAPABILITY,
+      logs: { defaultTailLines: 50 },
     };
   }
 

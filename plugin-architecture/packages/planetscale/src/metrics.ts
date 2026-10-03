@@ -7,7 +7,11 @@
  * The response is `{ series: [{ metric, label, labels, points: [[unix, value]] }] }`
  * with one series per metric and label set (per tablet, pod or role), so a
  * metric can come back as several lines. Names not reported for a branch's
- * engine simply return no series.
+ * engine simply return no series. The names below all come from the
+ * endpoint's `metrics` enum; the spec gives no units, so a unit is set only
+ * where the name states one (`_bytes`, `_percentages`, `_seconds`, `_rate` on
+ * a byte counter) or, for latency, where the Insights fields it mirrors are
+ * documented in milliseconds.
  */
 
 import type { MetricSeries } from "@infrawrench/plugin-base";
@@ -21,13 +25,34 @@ const METRICS: Record<string, { label: string; unit?: string }> = {
   query_errors: { label: "Query Errors" },
   rows_read: { label: "Rows Read" },
   rows_written: { label: "Rows Written" },
+  rows_returned: { label: "Rows Returned" },
   latency_p50: { label: "Latency p50", unit: "ms" },
+  latency_p95: { label: "Latency p95", unit: "ms" },
   latency_p99: { label: "Latency p99", unit: "ms" },
   connections: { label: "Connections" },
+  ingress_bytes: { label: "Ingress", unit: "bytes" },
+  egress_bytes: { label: "Egress", unit: "bytes" },
+  traffic_control_throttled: { label: "Traffic Control Throttled" },
+  traffic_control_warnings: { label: "Traffic Control Warnings" },
   planetscale_pods_cpu_util_percentages: { label: "CPU", unit: "%" },
   planetscale_pods_mem_util_percentages: { label: "Memory", unit: "%" },
+  planetscale_pods_iops_total: { label: "IOPS" },
+  planetscale_pods_container_restarts: { label: "Container Restarts" },
+  planetscale_pods_container_ooms: { label: "Out-of-Memory Kills" },
   planetscale_storage_usage_bytes: { label: "Storage", unit: "bytes" },
+  planetscale_volume_usage_percentages: { label: "Disk Used", unit: "%" },
   planetscale_replica_lag_seconds: { label: "Replica Lag", unit: "s" },
+  // Postgres: connection pooling and the write-ahead log.
+  planetscale_pgbouncer_current_connections: { label: "PgBouncer Connections" },
+  planetscale_wal_size_bytes: { label: "WAL Size", unit: "bytes" },
+  planetscale_wal_archiver_lag_bytes: { label: "WAL Archive Lag", unit: "bytes" },
+  planetscale_replication_slot_max_wal_retained_bytes: {
+    label: "Replication Slot WAL Retained",
+    unit: "bytes",
+  },
+  // Edge (connection proxy) throughput.
+  planetscale_edge_bytes_received_rate: { label: "Edge Received", unit: "bytes/s" },
+  planetscale_edge_bytes_sent_rate: { label: "Edge Sent", unit: "bytes/s" },
 };
 
 interface ApiSeries {
