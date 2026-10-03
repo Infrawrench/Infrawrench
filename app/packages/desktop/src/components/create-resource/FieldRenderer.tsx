@@ -35,9 +35,9 @@ export function FieldRenderer({
     if (field.kind !== "ssh-key-picker") return;
     let cancelled = false;
 
-    invoke<string | null>("cloud_auth_get_token")
-      .then((token) => {
-        if (!cancelled) setCloudAuthed(!!token);
+    invoke<{ authenticated: boolean }>("cloud_auth_status")
+      .then((status) => {
+        if (!cancelled) setCloudAuthed(status.authenticated);
       })
       .catch(() => {
         if (!cancelled) setCloudAuthed(false);
@@ -128,8 +128,8 @@ export function FieldRenderer({
             // callback to await: poll the token store until it lands.
             const poll = setInterval(async () => {
               try {
-                const token = await invoke<string | null>("cloud_auth_get_token");
-                if (token) {
+                const status = await invoke<{ authenticated: boolean }>("cloud_auth_status");
+                if (status.authenticated) {
                   clearInterval(poll);
                   setCloudAuthed(true);
                 }

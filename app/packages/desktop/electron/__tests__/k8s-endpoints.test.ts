@@ -1,8 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   isK8sApiEndpointAllowed,
+  isPrivateAddress,
   registerK8sEndpoint,
   registerKubeconfigClusterEndpoints,
+  resolveK8sApiEndpoint,
 } from "../k8s-endpoints";
 
 // `registerKubeconfigClusterEndpoints` dynamically imports
@@ -110,5 +112,53 @@ describe("registerKubeconfigClusterEndpoints", () => {
   it("is a no-op for undefined or empty input", async () => {
     await expect(registerKubeconfigClusterEndpoints(undefined)).resolves.toBeUndefined();
     await expect(registerKubeconfigClusterEndpoints("")).resolves.toBeUndefined();
+  });
+});
+
+describe("resolveK8sApiEndpoint", () => {
+  const resolvesTo =
+    (...addresses: string[]) =>
+    async () =>
+      addresses.map((address) => ({ address, family: address.includes(":") ? 6 : 4 }));
+
+  it("returns the vetted address of a public name", async () => {
+    await expect(
+      resolveK8sApiEndpoint("k8s.example.com", "443", { lookupAll: resolvesTo("34.1.2.3") }),
+    ).resolves.toEqual({ address: "34.1.2.3", family: 4 });
+  });
+
+  it("refuses a public name that resolves to loopback, private or metadata addresses", async () => {
+    for (const addr of ["127.0.0.1", "10.0.0.1", "169.254.169.254", "::1", "::ffff:127.0.0.1"]) {
+      await expect(
+        resolveK8sApiEndpoint("rebind.example.com", "443", {
+          lookupAll: resolvesTo("34.1.2.3", addr),
+        }),
+      ).rejects.toThrow(/private\/loopback/);
+    }
+  });
+
+  it("refuses private literals unless registered or trusted", async () => {
+    await expect(resolveK8sApiEndpoint("100.64.0.1", "443")).rejects.toThrow();
+    registerK8sEndpoint("10.99.0.1", 6443);
+    await expect(resolveK8sApiEndpoint("10.99.0.1", "6443")).resolves.toEqual({
+      address: "10.99.0.1",
+      family: 4,
+    });
+    await expect(
+      resolveK8sApiEndpoint("search.corp", "9200", {
+        lookupAll: resolvesTo("10.5.5.5"),
+        trusted: true,
+      }),
+    ).resolves.toEqual({ address: "10.5.5.5", family: 4 });
+  });
+});
+
+describe("isPrivateAddress", () => {
+  it("covers the ranges a literal-prefix check missed", () => {
+    expect(isPrivateAddress("100.64.1.1")).toBe(true);
+    expect(isPrivateAddress("::ffff:192.168.0.1")).toBe(true);
+    expect(isPrivateAddress("fe80::1")).toBe(true);
+    expect(isPrivateAddress("8.8.8.8")).toBe(false);
+    expect(isPrivateAddress("not-an-ip")).toBe(false);
   });
 });

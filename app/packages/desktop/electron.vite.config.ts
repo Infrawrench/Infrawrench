@@ -9,8 +9,37 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
+import { rendererCspMetaTag } from "./electron/renderer-csp";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
+/**
+ * Inject the renderer's Content-Security-Policy (electron/renderer-csp.ts)
+ * into the built index.html. Build-only: the Vite dev server's inline
+ * React-refresh preamble and HMR client need inline script and eval.
+ */
+function rendererCsp(): Plugin {
+  return {
+    name: "renderer-csp",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler: (html) => {
+        // The policy forbids inline script, so a build that emits one would
+        // ship a blank window. Fail the build instead.
+        if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(html)) {
+          throw new Error("index.html contains an inline <script>, which the renderer CSP blocks");
+        }
+        // Before any <script> or <link> so it governs them; after the charset,
+        // which must stay first.
+        const tag = rendererCspMetaTag();
+        return /<meta charset[^>]*>/i.test(html)
+          ? html.replace(/(<meta charset[^>]*>)/i, `$1\n    ${tag}`)
+          : html.replace(/<head>/i, `<head>\n    ${tag}`);
+      },
+    },
+  };
+}
 
 /**
  * The GT compiler's own include filter is extension-only, so it also parses
@@ -224,6 +253,7 @@ export default defineConfig(({ command }) => ({
       }),
       tailwindcss(),
       react(),
+      rendererCsp(),
       scopedGtCompiler(command === "serve"),
       // `@netlify/api/lib/open_api.js` uses `createRequire` to load the
       // OpenAPI JSON spec, which fails in the renderer build because

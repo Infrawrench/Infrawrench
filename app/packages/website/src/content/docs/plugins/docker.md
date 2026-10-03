@@ -18,6 +18,8 @@ A single **Docker Host** field — the address of the Docker daemon to talk to. 
 - **Local Unix socket** (desktop only): `unix:///var/run/docker.sock`
 - **Remote TCP**: `tcp://host:2376` (TLS) or `tcp://host:2375` (plaintext, insecure)
 
+Control of a Docker engine amounts to administrator access on the machine that runs it, so the desktop app asks in a system dialog before it saves a Docker host. After that, the saved account connects without asking. A host reached through the account's SSH tunnel never asks. If the dialog appears when you didn't just add or open a Docker account, choose **Cancel**.
+
 ![Docker Add-account form with the single Docker Host field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/docker/add-account.png)
 
 ## Notable flows

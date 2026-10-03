@@ -112,7 +112,6 @@ const INVOKE_CHANNELS = [
   // cloud
   "cloud_auth_start",
   "cloud_auth_status",
-  "cloud_auth_get_token",
   "cloud_auth_get_ws_token",
   "cloud_ssh_host_key_trust",
   "cloud_auth_orgs",
