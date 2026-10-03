@@ -7,10 +7,10 @@ export const TursoOrganizationInviteResourceType = rt({
   description: "A pending invitation to join the configured Turso organization",
   fields: [
     f("email", "Email"),
-    f("username", "Username", { required: false }),
     f("role", "Role", { kind: "enum", required: false, enumValues: ["admin", "member", "viewer"] }),
+    f("createdAt", "Invited At", { required: false }),
   ],
-  outputs: [o("email", "Email"), o("username", "Username")],
+  outputs: [o("email", "Email")],
   supportsCreate: true,
   iconKey: "turso",
 });

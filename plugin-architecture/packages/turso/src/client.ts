@@ -8,34 +8,85 @@ import type {
   DashboardStat,
   CostFetchRange,
   CostRow,
+  QuotaUsage,
+  SectionNode,
 } from "@infrawrench/plugin-base";
 import { joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
 import { fetchTursoCostData } from "./cost-data.js";
+import { fetchTursoQuotas } from "./quotas.js";
 import { createClient as createTursoApiClient } from "@tursodatabase/api";
-import type {
-  ApiToken,
-  Database,
-  DatabaseInstance,
-  Group,
-  Location,
-  LocationKeys,
-  OrganizationMember,
-} from "@tursodatabase/api";
+import type { DatabaseInstance, Location, OrganizationMember } from "@tursodatabase/api";
 
 type TursoApiClient = ReturnType<typeof createTursoApiClient>;
 
+/** `GET /v2/organizations/{org}/invites` item (v1 invites were retired in April 2026). */
 interface TursoInvite {
-  ID?: number;
-  Email?: string;
-  Username?: string;
-  Role?: string;
-  Token?: string;
-  Accepted?: boolean;
+  id?: number;
   email?: string;
-  username?: string;
   role?: string;
-  token?: string;
-  accepted?: boolean;
+  created_at?: string;
+}
+
+/**
+ * Raw database object from `GET /v1/organizations/{org}/databases`. Read
+ * directly rather than through the SDK, whose mapper drops
+ * `delete_protection` and `parent`. Field casing is Turso's own (mixed).
+ */
+interface TursoDatabaseRecord {
+  Name: string;
+  DbId?: string;
+  Hostname?: string;
+  block_reads?: boolean;
+  block_writes?: boolean;
+  regions?: string[];
+  primaryRegion?: string;
+  group?: string;
+  version?: string;
+  sleeping?: boolean;
+  archived?: boolean;
+  is_schema?: boolean;
+  schema?: string;
+  delete_protection?: boolean;
+  parent?: { id?: string; name?: string; branched_at?: string } | null;
+}
+
+/** `GET/PATCH .../databases/{db}/configuration`. */
+interface TursoDatabaseConfiguration {
+  size_limit?: string;
+  block_reads?: boolean;
+  block_writes?: boolean;
+  delete_protection?: boolean;
+  allowed_ips?: string[];
+  allowed_aws_vpc_ids?: string[];
+}
+
+/** Raw group object, read directly for `uuid`, `archived` and `delete_protection`. */
+interface TursoGroupRecord {
+  name: string;
+  uuid?: string;
+  version?: string;
+  locations?: string[];
+  primary?: string;
+  archived?: boolean;
+  delete_protection?: boolean;
+}
+
+/** `GET /v1/organizations/{org}/api-tokens` item: every token in the org, with its owner. */
+interface TursoOrgApiToken {
+  id: string;
+  name: string;
+  organization?: string;
+  group?: string;
+  scopes?: string[];
+  owner?: { username?: string; email?: string };
+  created_at?: string;
+}
+
+interface TursoUsageObject {
+  rows_read?: number;
+  rows_written?: number;
+  storage_bytes?: number;
+  bytes_synced?: number;
 }
 
 const TURSO_LOCATIONS: Record<string, { location: string; flag: string }> = {
@@ -72,6 +123,14 @@ const TURSO_LOCATIONS: Record<string, { location: string; flag: string }> = {
   waw: { location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
   yul: { location: "Montreal, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
   yyz: { location: "Toronto, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
+  // Turso Cloud's AWS locations, which replaced the Fly ones above for new
+  // groups (the older codes still appear on groups that have not migrated).
+  "aws-us-east-1": { location: "Virginia, USA", flag: "\u{1F1FA}\u{1F1F8}" },
+  "aws-us-east-2": { location: "Ohio, USA", flag: "\u{1F1FA}\u{1F1F8}" },
+  "aws-us-west-2": { location: "Oregon, USA", flag: "\u{1F1FA}\u{1F1F8}" },
+  "aws-eu-west-1": { location: "Ireland", flag: "\u{1F1EE}\u{1F1EA}" },
+  "aws-ap-south-1": { location: "Mumbai, India", flag: "\u{1F1EE}\u{1F1F3}" },
+  "aws-ap-northeast-1": { location: "Tokyo, Japan", flag: "\u{1F1EF}\u{1F1F5}" },
 };
 
 function formatLocation(code: string): string {
@@ -114,6 +173,11 @@ export class TursoClient implements PluginClient {
       ...(options ? { init: options } : {}),
       ...(this.services?.http ? { http: this.services.http } : {}),
     });
+  }
+
+  /** `/v1/organizations/{org}` prefix shared by every org-scoped route. */
+  private get orgPath(): string {
+    return `/v1/organizations/${encodeURIComponent(this.orgName)}`;
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -191,6 +255,11 @@ export class TursoClient implements PluginClient {
       if (outputKey === "email") return String(resource.fields["email"] ?? "");
     }
 
+    if (typeId === "turso-organization-invite") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "email") return String(resource.fields["email"] ?? "");
+    }
+
     throw new Error(`Turso plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
@@ -204,17 +273,28 @@ export class TursoClient implements PluginClient {
 
     if (resourceTypeId === "turso-database") {
       const sleeping = f["sleeping"] === true || f["sleeping"] === "true";
-      return [
+      const stats: DashboardStat[] = [
         { label: "Group", value: String(f["group"] ?? "") },
         {
           label: "Region",
           value: formatLocation(String(f["primaryRegion"] ?? "")),
         },
-        { label: "Version", value: String(f["version"] ?? "") },
-        ...(sleeping
-          ? [{ label: "Status", value: "sleeping", variant: "status-degraded" as const }]
-          : []),
       ];
+      // Usage is a separate call; a failure (plan without usage, transient
+      // error) just leaves the card without the usage figures.
+      const usage = await this.fetchDatabaseUsage(String(f["name"] ?? "")).catch(() => null);
+      if (usage) {
+        stats.push(
+          { label: "Rows Read", value: formatCount(usage.rows_read) },
+          { label: "Rows Written", value: formatCount(usage.rows_written) },
+          { label: "Storage", value: formatBytes(usage.storage_bytes) },
+        );
+      }
+      if (sleeping) stats.push({ label: "Status", value: "sleeping", variant: "status-degraded" });
+      if (f["blockWrites"] === true) {
+        stats.push({ label: "Writes", value: "blocked", variant: "status-error" });
+      }
+      return stats;
     }
 
     if (resourceTypeId === "turso-group") {
@@ -243,6 +323,36 @@ export class TursoClient implements PluginClient {
     return [];
   }
 
+  /**
+   * Pull the current month's usage and the top queries for the detail page.
+   * Both are best-effort: Turso answers usage and stats per database, and a
+   * failure on either just leaves that section out.
+   */
+  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    if (resource.resourceTypeId !== "turso-database") return resource;
+    const name = String(resource.fields["name"] ?? "");
+    if (!name) return resource;
+    const [usage, stats] = await Promise.all([
+      this.fetchDatabaseUsage(name).catch(() => null),
+      this.fetch<{ top_queries?: TopQuery[] }>(
+        `${this.orgPath}/databases/${encodeURIComponent(name)}/stats`,
+      ).catch(() => null),
+    ]);
+    const fields = { ...resource.fields };
+    if (usage) {
+      fields["usageRowsRead"] = usage.rows_read ?? 0;
+      fields["usageRowsWritten"] = usage.rows_written ?? 0;
+      fields["usageStorageBytes"] = usage.storage_bytes ?? 0;
+      fields["usageBytesSynced"] = usage.bytes_synced ?? 0;
+    }
+    if (stats?.top_queries) fields["topQueries"] = JSON.stringify(stats.top_queries);
+    return { ...resource, fields };
+  }
+
+  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
+    return fetchTursoQuotas(<T>(path: string) => this.fetch<T>(path), this.orgName);
+  }
+
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
       case "turso-database":
@@ -267,10 +377,15 @@ export class TursoClient implements PluginClient {
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     if (resource.resourceTypeId === "turso-database") {
       const sleeping = resource.fields["sleeping"] === true;
+      const blocked =
+        resource.fields["blockReads"] === true || resource.fields["blockWrites"] === true;
       return {
         id: resource.id,
         label: resource.displayName,
-        status: { kind: "status-dot", status: sleeping ? "degraded" : "healthy" },
+        status: {
+          kind: "status-dot",
+          status: blocked ? "error" : sleeping ? "degraded" : "healthy",
+        },
       };
     }
 
@@ -283,11 +398,23 @@ export class TursoClient implements PluginClient {
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "turso-database") {
-      const groups = await this.fetchGroups();
+      const [groups, databases] = await Promise.all([
+        this.fetchGroups(),
+        this.fetchDatabases().catch(() => [] as TursoDatabaseRecord[]),
+      ]);
       const groupOptions = groups.map((g) => ({
         id: g.name,
         label: g.name,
+        ...(g.primary ? { description: formatLocation(g.primary) } : {}),
       }));
+      const sourceOptions = [
+        { id: "", label: "Empty database" },
+        ...databases.map((db) => ({
+          id: db.Name,
+          label: db.Name,
+          ...(db.group ? { description: db.group } : {}),
+        })),
+      ];
 
       return {
         fields: [
@@ -301,27 +428,69 @@ export class TursoClient implements PluginClient {
             ...(groupOptions[0] ? { defaultValue: groupOptions[0].id } : {}),
           },
           {
+            key: "seedDatabase",
+            label: "Copy From",
+            kind: "select",
+            required: false,
+            description:
+              "Branch an existing database instead of starting empty. The copy lands in the group above.",
+            options: sourceOptions,
+            defaultValue: "",
+          },
+          {
+            key: "seedTimestamp",
+            label: "Point in Time",
+            kind: "datetime",
+            required: false,
+            description:
+              "Restore the copy as of this moment (point-in-time recovery). Leave blank for the latest data. The window depends on your plan.",
+            showWhen: { fieldKey: "seedDatabase", fieldValuesNot: [""] },
+          },
+          {
+            key: "sizeLimit",
+            label: "Size Limit",
+            kind: "text",
+            required: false,
+            placeholder: "1gb",
+            description: "Optional maximum size, in bytes or with a unit (256mb, 1gb).",
+          },
+          {
             key: "isSchema",
             label: "Schema Database",
             kind: "select",
             required: false,
+            description:
+              "Multi-DB schemas are only available to existing paid organizations; Turso rejects this for new ones.",
             options: [
               { id: "false", label: "No" },
-              { id: "true", label: "Yes \u2014 use as a multi-tenant schema" },
+              { id: "true", label: "Yes, use as a multi-tenant schema" },
             ],
             defaultValue: "false",
+            showWhen: { fieldKey: "seedDatabase", fieldValue: "" },
           },
         ],
       };
     }
 
     if (typeId === "turso-group") {
-      const locationOptions = Object.entries(TURSO_LOCATIONS).map(([id, info]) => ({
+      // Ask Turso which locations it offers today rather than trusting the
+      // static table: new groups can only be placed in the current set.
+      const live = await this.api.locations.list().catch(() => [] as Location[]);
+      const codes =
+        live.length > 0
+          ? live.map((l) => ({ id: String(l.code), description: l.description }))
+          : Object.entries(TURSO_LOCATIONS).map(([id, info]) => ({
+              id,
+              description: info.location,
+            }));
+      const locationOptions = codes.map(({ id, description }) => ({
         id,
         label: id,
-        location: info.location,
-        flag: info.flag,
+        location: TURSO_LOCATIONS[id]?.location ?? description,
+        ...(TURSO_LOCATIONS[id] ? { flag: TURSO_LOCATIONS[id].flag } : {}),
       }));
+      const defaultLocation =
+        locationOptions.find((l) => l.id === "aws-us-east-1")?.id ?? locationOptions[0]?.id;
 
       return {
         fields: [
@@ -332,7 +501,19 @@ export class TursoClient implements PluginClient {
             kind: "region-picker",
             required: true,
             regions: locationOptions,
-            defaultValue: "iad",
+            ...(defaultLocation ? { defaultValue: defaultLocation } : {}),
+          },
+          {
+            key: "extensions",
+            label: "SQLite Extensions",
+            kind: "select",
+            required: false,
+            description: "Enable Turso's bundled SQLite extensions (vector, crypto, fuzzy...).",
+            options: [
+              { id: "", label: "None" },
+              { id: "all", label: "All bundled extensions" },
+            ],
+            defaultValue: "",
           },
         ],
       };
@@ -389,14 +570,83 @@ export class TursoClient implements PluginClient {
       const role = fields["role"];
       if (!username) throw new Error("Turso plugin: missing member username");
       if (!role) throw new Error("Turso plugin: missing member role");
+      if (role === "owner") {
+        throw new Error("Turso plugin: ownership can't be granted through the API");
+      }
       const data = await this.fetch<{ member: OrganizationMember }>(
-        `/v1/organizations/${encodeURIComponent(this.orgName)}/members/${encodeURIComponent(username)}`,
+        `${this.orgPath}/members/${encodeURIComponent(username)}`,
         { method: "PATCH", body: JSON.stringify({ role }) },
       );
       return this.mapOrganizationMember(accountId, data.member, new Date().toISOString());
     }
 
+    if (typeId === "turso-database") {
+      const name = resourceId.split(":").slice(2).join(":");
+      if (!name) throw new Error("Turso plugin: missing database name");
+      await this.updateDatabaseConfiguration(name, fields);
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
+    if (typeId === "turso-group") {
+      const name = resourceId.split(":").slice(2).join(":");
+      if (!name) throw new Error("Turso plugin: missing group name");
+      if (fields["deleteProtection"] !== undefined) {
+        await this.fetch(`${this.orgPath}/groups/${encodeURIComponent(name)}/configuration`, {
+          method: "PATCH",
+          body: JSON.stringify({ delete_protection: isTrue(fields["deleteProtection"]) }),
+        });
+      }
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
     throw new Error(`Turso plugin: cannot update type "${typeId}"`);
+  }
+
+  /**
+   * Write only what actually changed. The Edit form submits every editable
+   * field, and `allowed_ips: []` *clears* the allow-list, so a blind PATCH
+   * from a form that failed to load the current list would silently open the
+   * database to the internet. Diffing against a fresh read prevents that.
+   */
+  private async updateDatabaseConfiguration(
+    name: string,
+    fields: Record<string, string>,
+  ): Promise<void> {
+    const path = `${this.orgPath}/databases/${encodeURIComponent(name)}/configuration`;
+    const current = await this.fetch<TursoDatabaseConfiguration>(path);
+    const body: TursoDatabaseConfiguration = {};
+
+    const flags: Array<[string, "delete_protection" | "block_reads" | "block_writes"]> = [
+      ["deleteProtection", "delete_protection"],
+      ["blockReads", "block_reads"],
+      ["blockWrites", "block_writes"],
+    ];
+    for (const [key, apiKey] of flags) {
+      const value = fields[key];
+      if (value === undefined) continue;
+      const next = isTrue(value);
+      if (next !== (current[apiKey] === true)) body[apiKey] = next;
+    }
+
+    const sizeLimit = fields["sizeLimit"];
+    if (sizeLimit !== undefined && sizeLimit.trim() !== (current.size_limit ?? "")) {
+      // Turso reports "no limit" as "0"; an emptied field asks for that back.
+      body.size_limit = sizeLimit.trim() || "0";
+    }
+
+    const lists: Array<[string, "allowed_ips" | "allowed_aws_vpc_ids"]> = [
+      ["allowedIps", "allowed_ips"],
+      ["allowedAwsVpcIds", "allowed_aws_vpc_ids"],
+    ];
+    for (const [key, apiKey] of lists) {
+      const value = fields[key];
+      if (value === undefined) continue;
+      const next = splitList(value);
+      if (next.join(",") !== (current[apiKey] ?? []).join(",")) body[apiKey] = next;
+    }
+
+    if (Object.keys(body).length === 0) return;
+    await this.fetch(path, { method: "PATCH", body: JSON.stringify(body) });
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
@@ -410,24 +660,54 @@ export class TursoClient implements PluginClient {
       return;
     }
     if (typeId === "turso-api-token") {
-      await this.api.apiTokens.revoke(externalId);
+      // Org-level revocation is keyed by token id, not name.
+      await this.fetch(`${this.orgPath}/api-tokens/${encodeURIComponent(externalId)}`, {
+        method: "DELETE",
+      });
       return;
     }
     if (typeId === "turso-organization-member") {
-      await this.fetch(
-        `/v1/organizations/${encodeURIComponent(this.orgName)}/members/${encodeURIComponent(externalId)}`,
-        { method: "DELETE" },
-      );
+      await this.fetch(`${this.orgPath}/members/${encodeURIComponent(externalId)}`, {
+        method: "DELETE",
+      });
       return;
     }
     if (typeId === "turso-organization-invite") {
       await this.fetch(
-        `/v1/organizations/${encodeURIComponent(this.orgName)}/invites/${encodeURIComponent(externalId)}`,
+        `/v2/organizations/${encodeURIComponent(this.orgName)}/invites/${encodeURIComponent(externalId)}`,
         { method: "DELETE" },
       );
       return;
     }
     throw new Error(`Turso plugin: cannot delete type "${typeId}"`);
+  }
+
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    _accountId: string,
+  ): Promise<void> {
+    if (typeId === "turso-database" && actionId === "rotate-tokens") {
+      await this.invalidateDatabaseAuthTokens(resourceId);
+      return;
+    }
+    if (typeId === "turso-group") {
+      const name = encodeURIComponent(resourceId.split(":").slice(2).join(":"));
+      if (actionId === "rotate-tokens") {
+        await this.invalidateGroupAuthTokens(resourceId);
+        return;
+      }
+      if (actionId === "unarchive") {
+        await this.fetch(`${this.orgPath}/groups/${name}/unarchive`, { method: "POST" });
+        return;
+      }
+      if (actionId === "update-version") {
+        await this.fetch(`${this.orgPath}/groups/${name}/update`, { method: "POST" });
+        return;
+      }
+    }
+    throw new Error(`Turso plugin: unknown action "${actionId}" for type "${typeId}"`);
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
@@ -436,51 +716,90 @@ export class TursoClient implements PluginClient {
 
   async invalidateDatabaseAuthTokens(resourceId: string): Promise<void> {
     const databaseName = resourceId.split(":").slice(2).join(":");
-    await this.fetch(
-      `/v1/organizations/${encodeURIComponent(this.orgName)}/databases/${encodeURIComponent(databaseName)}/auth/rotate`,
-      { method: "POST" },
-    );
+    await this.fetch(`${this.orgPath}/databases/${encodeURIComponent(databaseName)}/auth/rotate`, {
+      method: "POST",
+    });
   }
 
   async invalidateGroupAuthTokens(resourceId: string): Promise<void> {
     const groupName = resourceId.split(":").slice(2).join(":");
-    await this.fetch(
-      `/v1/organizations/${encodeURIComponent(this.orgName)}/groups/${encodeURIComponent(groupName)}/auth/rotate`,
-      { method: "POST" },
-    );
+    await this.fetch(`${this.orgPath}/groups/${encodeURIComponent(groupName)}/auth/rotate`, {
+      method: "POST",
+    });
   }
 
-  private async fetchDatabases(): Promise<Database[]> {
-    return this.api.databases.list();
+  private async fetchDatabaseUsage(name: string): Promise<TursoUsageObject | null> {
+    if (!name) return null;
+    const data = await this.fetch<{ database?: { total?: TursoUsageObject } }>(
+      `${this.orgPath}/databases/${encodeURIComponent(name)}/usage`,
+    );
+    return data.database?.total ?? null;
+  }
+
+  private async fetchDatabases(): Promise<TursoDatabaseRecord[]> {
+    const data = await this.fetch<{ databases?: TursoDatabaseRecord[] }>(
+      `${this.orgPath}/databases`,
+    );
+    return data.databases ?? [];
+  }
+
+  private async fetchDatabaseConfiguration(
+    name: string,
+  ): Promise<TursoDatabaseConfiguration | null> {
+    return this.fetch<TursoDatabaseConfiguration>(
+      `${this.orgPath}/databases/${encodeURIComponent(name)}/configuration`,
+    ).catch(() => null);
   }
 
   private async listDatabases(accountId: string): Promise<ResourceInstance[]> {
     const databases = await this.fetchDatabases();
+    // The size limit and network allow-lists live only on the configuration
+    // route, and the Edit form needs them to show the current values.
+    const configs = await mapLimit(databases, 8, (db) => this.fetchDatabaseConfiguration(db.Name));
     const now = new Date().toISOString();
 
-    return databases.map((db) => ({
-      id: `${accountId}:turso-database:${db.name}`,
+    return databases.map((db, i) => this.mapDatabase(accountId, db, configs[i] ?? null, now));
+  }
+
+  private mapDatabase(
+    accountId: string,
+    db: TursoDatabaseRecord,
+    config: TursoDatabaseConfiguration | null,
+    now: string,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:turso-database:${db.Name}`,
       pluginId: "turso",
       resourceTypeId: "turso-database",
       accountId,
-      displayName: db.name,
-      externalId: db.name,
+      displayName: db.Name,
+      externalId: db.Name,
       fields: {
-        name: db.name,
-        hostname: db.hostname,
+        name: db.Name,
+        dbId: db.DbId ?? "",
+        hostname: db.Hostname ?? "",
         group: db.group ?? "",
         primaryRegion: db.primaryRegion ?? "",
         regions: (db.regions ?? []).join(", "),
-        version: db.version,
-        isSchema: db.is_schema,
+        version: db.version ?? "",
+        isSchema: db.is_schema === true,
         schema: db.schema || "",
-        sleeping: db.sleeping,
+        parent: db.parent?.name ?? "",
+        branchedAt: db.parent?.branched_at ?? "",
+        sleeping: db.sleeping === true,
+        archived: db.archived === true,
+        deleteProtection: (config?.delete_protection ?? db.delete_protection) === true,
+        blockReads: (config?.block_reads ?? db.block_reads) === true,
+        blockWrites: (config?.block_writes ?? db.block_writes) === true,
+        sizeLimit: config?.size_limit && config.size_limit !== "0" ? config.size_limit : "",
+        allowedIps: (config?.allowed_ips ?? []).join(", "),
+        allowedAwsVpcIds: (config?.allowed_aws_vpc_ids ?? []).join(", "),
       },
       resolvedOutputs: {},
       secretStates: [],
       createdAt: now,
       updatedAt: now,
-    }));
+    };
   }
 
   private async resolveDatabaseConnectionString(
@@ -502,49 +821,61 @@ export class TursoClient implements PluginClient {
     const name = fields["name"];
     if (!name) throw new Error("Turso plugin: missing database name");
     const group = fields["group"];
+    const seedDatabase = fields["seedDatabase"] ?? "";
+    const seedTimestamp = fields["seedTimestamp"] ?? "";
+    const sizeLimit = (fields["sizeLimit"] ?? "").trim();
 
-    const options: Parameters<typeof this.api.databases.create>[1] = {
+    const body: Record<string, unknown> = {
+      name,
       ...(group ? { group } : {}),
-      ...(fields["isSchema"] === "true" ? { is_schema: true } : {}),
+      ...(sizeLimit ? { size_limit: sizeLimit } : {}),
+      ...(seedDatabase
+        ? {
+            seed: {
+              type: "database",
+              name: seedDatabase,
+              ...(seedTimestamp ? { timestamp: seedTimestamp } : {}),
+            },
+          }
+        : fields["isSchema"] === "true"
+          ? { is_schema: true }
+          : {}),
     };
 
-    const created = await this.api.databases.create(name, options);
+    const data = await this.fetch<{ database: { DbId?: string; Hostname?: string; Name: string } }>(
+      `${this.orgPath}/databases`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+    const created = data.database;
 
-    const now = new Date().toISOString();
-    return {
-      id: `${accountId}:turso-database:${created.name}`,
-      pluginId: "turso",
-      resourceTypeId: "turso-database",
+    return this.mapDatabase(
       accountId,
-      displayName: created.name,
-      externalId: created.name,
-      fields: {
-        name: created.name,
-        hostname: created.hostname,
-        group: group ?? "",
-        primaryRegion: "",
-        regions: "",
-        version: "",
-        isSchema: fields["isSchema"] === "true",
-        schema: "",
-        sleeping: false,
+      {
+        Name: created.Name,
+        ...(created.DbId ? { DbId: created.DbId } : {}),
+        ...(created.Hostname ? { Hostname: created.Hostname } : {}),
+        ...(group ? { group } : {}),
+        is_schema: !seedDatabase && fields["isSchema"] === "true",
+        ...(seedDatabase ? { parent: { name: seedDatabase } } : {}),
       },
-      resolvedOutputs: {},
-      secretStates: [],
-      createdAt: now,
-      updatedAt: now,
-    };
+      sizeLimit ? { size_limit: sizeLimit } : null,
+      new Date().toISOString(),
+    );
   }
 
-  private async fetchGroups(): Promise<Group[]> {
-    return this.api.groups.list();
+  private async fetchGroups(): Promise<TursoGroupRecord[]> {
+    const data = await this.fetch<{ groups?: TursoGroupRecord[] }>(`${this.orgPath}/groups`);
+    return data.groups ?? [];
   }
 
   private async listGroups(accountId: string): Promise<ResourceInstance[]> {
     const groups = await this.fetchGroups();
     const now = new Date().toISOString();
+    return groups.map((g) => this.mapGroup(accountId, g, now));
+  }
 
-    return groups.map((g) => ({
+  private mapGroup(accountId: string, g: TursoGroupRecord, now: string): ResourceInstance {
+    return {
       id: `${accountId}:turso-group:${g.name}`,
       pluginId: "turso",
       resourceTypeId: "turso-group",
@@ -553,23 +884,26 @@ export class TursoClient implements PluginClient {
       externalId: g.name,
       fields: {
         name: g.name,
-        primaryLocation: g.primary,
-        locations: g.locations.join(", "),
-        version: "",
+        uuid: g.uuid ?? "",
+        primaryLocation: g.primary ?? "",
+        locations: (g.locations ?? []).join(", "),
+        version: g.version ?? "",
+        archived: g.archived === true,
+        deleteProtection: g.delete_protection === true,
       },
       resolvedOutputs: {},
       secretStates: [],
       createdAt: now,
       updatedAt: now,
-    }));
+    };
   }
 
   private async listDatabaseInstances(accountId: string): Promise<ResourceInstance[]> {
     const databases = await this.fetchDatabases();
     const instanceGroups = await Promise.all(
       databases.map(async (db) => ({
-        database: db.name,
-        instances: await this.api.databases.listInstances(db.name),
+        database: db.Name,
+        instances: await this.api.databases.listInstances(db.Name),
       })),
     );
     const now = new Date().toISOString();
@@ -633,28 +967,38 @@ export class TursoClient implements PluginClient {
     };
   }
 
+  /**
+   * Org-level listing: every token in the organization with its owner (admins
+   * see all, members their own), unlike `/v1/auth/api-tokens`, which only
+   * ever shows the caller's.
+   */
   private async listApiTokens(accountId: string): Promise<ResourceInstance[]> {
-    const tokens = await this.api.apiTokens.list();
+    const data = await this.fetch<{ tokens?: TursoOrgApiToken[] }>(`${this.orgPath}/api-tokens`);
     const now = new Date().toISOString();
 
-    return tokens.map((token) => this.mapApiToken(accountId, token, now));
+    return (data.tokens ?? []).map((token) => this.mapApiToken(accountId, token, now));
   }
 
-  private mapApiToken(accountId: string, token: ApiToken, now: string): ResourceInstance {
+  private mapApiToken(accountId: string, token: TursoOrgApiToken, now: string): ResourceInstance {
     return {
-      id: `${accountId}:turso-api-token:${token.name}`,
+      id: `${accountId}:turso-api-token:${token.id}`,
       pluginId: "turso",
       resourceTypeId: "turso-api-token",
       accountId,
       displayName: token.name,
-      externalId: token.name,
+      externalId: token.id,
       fields: {
         id: token.id,
         name: token.name,
+        group: token.group ?? "",
+        scopes: (token.scopes ?? []).join(", "),
+        ownerUsername: token.owner?.username ?? "",
+        ownerEmail: token.owner?.email ?? "",
+        createdAt: token.created_at ?? "",
       },
       resolvedOutputs: {},
       secretStates: [],
-      createdAt: now,
+      createdAt: token.created_at || now,
       updatedAt: now,
     };
   }
@@ -668,7 +1012,7 @@ export class TursoClient implements PluginClient {
 
   private async listOrganizationInvites(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.fetch<{ invites?: TursoInvite[] }>(
-      `/v1/organizations/${encodeURIComponent(this.orgName)}/invites`,
+      `/v2/organizations/${encodeURIComponent(this.orgName)}/invites`,
     );
     const now = new Date().toISOString();
     return (data.invites ?? []).map((invite) => this.mapOrganizationInvite(accountId, invite, now));
@@ -707,27 +1051,16 @@ export class TursoClient implements PluginClient {
     if (!name) throw new Error("Turso plugin: missing group name");
     if (!location) throw new Error("Turso plugin: missing group location");
 
-    const g = await this.api.groups.create(name, location as keyof LocationKeys);
+    const data = await this.fetch<{ group: TursoGroupRecord }>(`${this.orgPath}/groups`, {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        location,
+        ...(fields["extensions"] === "all" ? { extensions: "all" } : {}),
+      }),
+    });
 
-    const now = new Date().toISOString();
-    return {
-      id: `${accountId}:turso-group:${g.name}`,
-      pluginId: "turso",
-      resourceTypeId: "turso-group",
-      accountId,
-      displayName: g.name,
-      externalId: g.name,
-      fields: {
-        name: g.name,
-        primaryLocation: g.primary,
-        locations: (g.locations ?? []).join(", "),
-        version: "",
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      createdAt: now,
-      updatedAt: now,
-    };
+    return this.mapGroup(accountId, data.group, new Date().toISOString());
   }
 
   private async createOrganizationInvite(
@@ -739,14 +1072,18 @@ export class TursoClient implements PluginClient {
     if (!email) throw new Error("Turso plugin: missing invite email");
 
     const data = await this.fetch<{ invited: TursoInvite }>(
-      `/v1/organizations/${encodeURIComponent(this.orgName)}/invites`,
+      `/v2/organizations/${encodeURIComponent(this.orgName)}/invites`,
       {
         method: "POST",
         body: JSON.stringify({ email, role }),
       },
     );
 
-    return this.mapOrganizationInvite(accountId, data.invited, new Date().toISOString());
+    return this.mapOrganizationInvite(
+      accountId,
+      { ...data.invited, email: data.invited?.email ?? email },
+      new Date().toISOString(),
+    );
   }
 
   private mapOrganizationInvite(
@@ -754,91 +1091,181 @@ export class TursoClient implements PluginClient {
     invite: TursoInvite,
     now: string,
   ): ResourceInstance {
-    const email = invite.email ?? invite.Email ?? "";
-    const username = invite.username ?? invite.Username ?? "";
-    const externalId = email || username;
+    // v2 deletes an invite by email, so the email is the external id.
+    const email = invite.email ?? "";
     return {
-      id: `${accountId}:turso-organization-invite:${externalId}`,
+      id: `${accountId}:turso-organization-invite:${email}`,
       pluginId: "turso",
       resourceTypeId: "turso-organization-invite",
       accountId,
-      displayName: email || username,
-      externalId,
+      displayName: email,
+      externalId: email,
       fields: {
         email,
-        username,
-        role: invite.role ?? invite.Role ?? "",
+        role: invite.role ?? "",
+        createdAt: invite.created_at ?? "",
       },
       resolvedOutputs: {},
       secretStates: [],
-      createdAt: now,
+      createdAt: invite.created_at || now,
       updatedAt: now,
     };
   }
-
   private renderDatabaseDetail(resource: ResourceInstance): DetailViewSchema {
-    const regions = String(resource.fields["regions"] ?? "")
+    const f = resource.fields;
+    const regions = String(f["regions"] ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
       .map(formatLocation)
       .join(", ");
+    const blocked = f["blockReads"] === true || f["blockWrites"] === true;
+
+    const sections: SectionNode[] = [
+      {
+        kind: "section",
+        title: "Connection",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Hostname", value: String(f["hostname"] ?? "—") },
+              {
+                key: "Connection String",
+                value: `libsql://${String(f["hostname"] ?? "")}`,
+                sensitive: true,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        kind: "section",
+        title: "Configuration",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Group", value: String(f["group"] ?? "—") },
+              {
+                key: "Primary Region",
+                value: formatLocation(String(f["primaryRegion"] ?? "")),
+              },
+              { key: "Regions", value: regions || "—" },
+              { key: "Version", value: String(f["version"] ?? "") || "—" },
+              ...(f["isSchema"] === true ? [{ key: "Schema Database", value: "Yes" }] : []),
+              ...(f["schema"] ? [{ key: "Parent Schema", value: String(f["schema"]) }] : []),
+              ...(f["parent"]
+                ? [
+                    {
+                      key: "Branched From",
+                      value: f["branchedAt"]
+                        ? `${String(f["parent"])} (${String(f["branchedAt"])})`
+                        : String(f["parent"]),
+                    },
+                  ]
+                : []),
+              {
+                key: "Status",
+                value:
+                  f["archived"] === true
+                    ? "Archived"
+                    : f["sleeping"] === true
+                      ? "Sleeping"
+                      : "Active",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        kind: "section",
+        title: "Protection & Access",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Delete Protection", value: f["deleteProtection"] === true ? "On" : "Off" },
+              { key: "Reads", value: f["blockReads"] === true ? "Blocked" : "Allowed" },
+              { key: "Writes", value: f["blockWrites"] === true ? "Blocked" : "Allowed" },
+              { key: "Size Limit", value: String(f["sizeLimit"] ?? "") || "None" },
+              { key: "Allowed IPs", value: String(f["allowedIps"] ?? "") || "Any" },
+              {
+                key: "Allowed AWS VPC Endpoints",
+                value: String(f["allowedAwsVpcIds"] ?? "") || "Any",
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    if (f["usageRowsRead"] !== undefined) {
+      sections.push({
+        kind: "section",
+        title: "Usage (current billing month)",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Rows Read", value: formatCount(Number(f["usageRowsRead"])) },
+              { key: "Rows Written", value: formatCount(Number(f["usageRowsWritten"])) },
+              { key: "Storage", value: formatBytes(Number(f["usageStorageBytes"])) },
+              { key: "Bytes Synced", value: formatBytes(Number(f["usageBytesSynced"])) },
+            ],
+          },
+        ],
+      });
+    }
+
+    const topQueries = parseTopQueries(f["topQueries"]);
+    if (topQueries.length > 0) {
+      sections.push({
+        kind: "section",
+        title: "Top Queries",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "query", label: "Query", width: "wide", mono: true },
+              { key: "rowsRead", label: "Rows Read", width: "narrow" },
+              { key: "rowsWritten", label: "Rows Written", width: "narrow" },
+            ],
+            rows: topQueries.map((q) => ({
+              cells: {
+                query: q.query ?? "",
+                rowsRead: formatCount(q.rows_read),
+                rowsWritten: formatCount(q.rows_written),
+              },
+            })),
+          },
+        ],
+      });
+    }
 
     return {
       title: resource.displayName,
-      subtitle: `Turso Database \u00B7 ${String(resource.fields["group"] ?? "default")}`,
+      subtitle: `Turso Database · ${String(f["group"] || "default")}`,
       status: {
         kind: "status-dot",
-        status: resource.fields["sleeping"] === true ? "degraded" : "healthy",
+        status: blocked ? "error" : f["sleeping"] === true ? "degraded" : "healthy",
       },
-      sections: [
+      sections,
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
         {
-          kind: "section",
-          title: "Connection",
-          children: [
-            {
-              kind: "key-value-list",
-              items: [
-                { key: "Hostname", value: String(resource.fields["hostname"] ?? "\u2014") },
-                {
-                  key: "Connection String",
-                  value: `libsql://${String(resource.fields["hostname"] ?? "")}`,
-                  sensitive: true,
-                },
-              ],
-            },
-          ],
-        },
-        {
-          kind: "section",
-          title: "Configuration",
-          children: [
-            {
-              kind: "key-value-list",
-              items: [
-                { key: "Group", value: String(resource.fields["group"] ?? "\u2014") },
-                {
-                  key: "Primary Region",
-                  value: formatLocation(String(resource.fields["primaryRegion"] ?? "")),
-                },
-                { key: "Regions", value: regions || "\u2014" },
-                { key: "Version", value: String(resource.fields["version"] ?? "\u2014") },
-                ...(resource.fields["isSchema"] === true
-                  ? [{ key: "Schema Database", value: "Yes" }]
-                  : []),
-                ...(resource.fields["schema"]
-                  ? [{ key: "Parent Schema", value: String(resource.fields["schema"]) }]
-                  : []),
-                {
-                  key: "Status",
-                  value: resource.fields["sleeping"] === true ? "Sleeping" : "Active",
-                },
-              ],
-            },
-          ],
+          kind: "action",
+          label: "Rotate Auth Tokens",
+          action: {
+            type: "plugin-action",
+            actionId: "rotate-tokens",
+            confirmMessage:
+              "Invalidate every auth token issued for this database? Clients using an existing token are disconnected until they get a new one.",
+            successMessage: "Database auth tokens rotated.",
+          },
+          variant: "danger",
         },
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
       sqlEditor: {
         connectionStringOutputKey: "connectionString",
         defaultQuery: "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;",
@@ -847,17 +1274,19 @@ export class TursoClient implements PluginClient {
   }
 
   private renderGroupDetail(resource: ResourceInstance): DetailViewSchema {
-    const locations = String(resource.fields["locations"] ?? "")
+    const f = resource.fields;
+    const locations = String(f["locations"] ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
       .map(formatLocation)
       .join("\n");
+    const archived = f["archived"] === true;
 
     return {
       title: resource.displayName,
       subtitle: "Turso Group",
-      status: { kind: "status-dot", status: "info" },
+      status: { kind: "status-dot", status: archived ? "degraded" : "info" },
       sections: [
         {
           kind: "section",
@@ -868,16 +1297,57 @@ export class TursoClient implements PluginClient {
               items: [
                 {
                   key: "Primary Location",
-                  value: formatLocation(String(resource.fields["primaryLocation"] ?? "")),
+                  value: formatLocation(String(f["primaryLocation"] ?? "")),
                 },
-                { key: "Locations", value: locations || "\u2014" },
-                { key: "Version", value: String(resource.fields["version"] ?? "\u2014") },
+                { key: "Locations", value: locations || "—" },
+                { key: "Version", value: String(f["version"] ?? "") || "—" },
+                { key: "Delete Protection", value: f["deleteProtection"] === true ? "On" : "Off" },
+                { key: "Status", value: archived ? "Archived" : "Active" },
+                ...(f["uuid"] ? [{ key: "UUID", value: String(f["uuid"]) }] : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        ...(archived
+          ? [
+              {
+                kind: "action" as const,
+                label: "Unarchive",
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "unarchive",
+                  successMessage: "Unarchive requested; the group's databases are waking up.",
+                },
+              },
+            ]
+          : []),
+        {
+          kind: "action",
+          label: "Update libSQL Version",
+          action: {
+            type: "plugin-action",
+            actionId: "update-version",
+            confirmMessage:
+              "Upgrade every database in this group to the latest libSQL server version? Databases restart briefly.",
+            successMessage: "Version update started.",
+          },
+        },
+        {
+          kind: "action",
+          label: "Rotate Auth Tokens",
+          action: {
+            type: "plugin-action",
+            actionId: "rotate-tokens",
+            confirmMessage:
+              "Invalidate every auth token issued for this group and its databases? Clients using an existing token are disconnected until they get a new one.",
+            successMessage: "Group auth tokens rotated.",
+          },
+          variant: "danger",
+        },
+      ],
     };
   }
 
@@ -951,6 +1421,16 @@ export class TursoClient implements PluginClient {
               items: [
                 { key: "ID", value: String(resource.fields["id"] ?? "—") },
                 { key: "Name", value: String(resource.fields["name"] ?? "—") },
+                {
+                  key: "Owner",
+                  value:
+                    [resource.fields["ownerUsername"], resource.fields["ownerEmail"]]
+                      .filter(Boolean)
+                      .join(" \u00B7 ") || "—",
+                },
+                { key: "Group", value: String(resource.fields["group"] ?? "") || "All groups" },
+                { key: "Scopes", value: String(resource.fields["scopes"] ?? "") || "Unrestricted" },
+                { key: "Created", value: String(resource.fields["createdAt"] ?? "") || "—" },
               ],
             },
           ],
@@ -999,8 +1479,8 @@ export class TursoClient implements PluginClient {
               kind: "key-value-list",
               items: [
                 { key: "Email", value: String(resource.fields["email"] ?? "—") },
-                { key: "Username", value: String(resource.fields["username"] ?? "—") },
                 { key: "Role", value: String(resource.fields["role"] ?? "—") },
+                { key: "Invited", value: String(resource.fields["createdAt"] ?? "") || "—" },
               ],
             },
           ],
@@ -1019,4 +1499,66 @@ export class TursoClient implements PluginClient {
       headerActions: [],
     };
   }
+}
+
+interface TopQuery {
+  query?: string;
+  rows_read?: number;
+  rows_written?: number;
+}
+
+function parseTopQueries(value: unknown): TopQuery[] {
+  if (typeof value !== "string" || !value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? (parsed as TopQuery[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function isTrue(value: string | undefined): boolean {
+  return value === "true" || value === "1" || value === "on";
+}
+
+function splitList(value: string): string[] {
+  return value
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function formatCount(value: number | undefined): string {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n.toLocaleString("en-US") : "0";
+}
+
+function formatBytes(value: number | undefined): string {
+  let n = Number(value ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1000 && i < units.length - 1) {
+    n /= 1000;
+    i += 1;
+  }
+  return `${n >= 10 || i === 0 ? n.toFixed(0) : n.toFixed(1)} ${units[i]}`;
+}
+
+/** `Promise.all` over `items` with at most `limit` calls in flight. */
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
