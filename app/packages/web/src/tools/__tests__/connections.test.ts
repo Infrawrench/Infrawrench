@@ -109,6 +109,27 @@ describe("connectionTools", () => {
       expect(mockSqlExecute).not.toHaveBeenCalled();
     });
 
+    it("guards the read-only path's connection before it reaches the driver", async () => {
+      mockGetClientForAccount.mockResolvedValue({
+        client: {},
+        plugin: {
+          manifest: { sqlDriver: { driver: "postgres", credentialKey: "url" } },
+          resourceTypes: [],
+        },
+        credentials: { url: "postgres://127.0.0.1/db" },
+      });
+      mockGuardDriverConnection.mockRejectedValueOnce(new Error("blocked address range"));
+      await expect(
+        tool("sql_query").handler({ accountId: "a1", sql: "SELECT 1" }, auth),
+      ).rejects.toThrow("blocked address range");
+      expect(mockGuardDriverConnection).toHaveBeenCalledWith(sqlDriver, "postgres://127.0.0.1/db", {
+        accountId: "a1",
+        organizationId: "o1",
+      });
+      expect(mockSqlQueryReadOnly).not.toHaveBeenCalled();
+      expect(mockSqlQuery).not.toHaveBeenCalled();
+    });
+
     it("uses the read-only path for a per-resource driver too", async () => {
       const resolveOutput = vi.fn().mockResolvedValue("postgres://res");
       mockGetClientForAccount.mockResolvedValue({
