@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@infrawrench/server-core/db/client";
-import { workflows } from "@infrawrench/server-core/db/schema";
+import { githubInstallations, workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { runDeployment } from "@infrawrench/server-core/infrafile/runner";
 import {
@@ -72,9 +72,25 @@ export class GithubWatcher extends TickLoop {
       .from(workflows)
       .where(and(eq(workflows.enabled, true), isNull(workflows.deletedAt)));
 
+    // A trigger's installation id is only honoured if the workflow's own org
+    // has it connected. The write paths check this too; this catches rows
+    // saved before they did, and installations disconnected since.
+    const owned = new Set(
+      (
+        await db
+          .select({
+            organizationId: githubInstallations.organizationId,
+            installationId: githubInstallations.installationId,
+          })
+          .from(githubInstallations)
+          .where(isNull(githubInstallations.deletedAt))
+      ).map((i) => `${i.organizationId}:${i.installationId}`),
+    );
+
     const watches: Watch[] = rows.flatMap((row) => {
       const t = row.trigger as GitTrigger | null;
       if (!t || t.kind !== "git" || !t.repo || !t.installationId || !t.branch) return [];
+      if (!owned.has(`${row.organizationId}:${t.installationId}`)) return [];
       const [owner, repo] = t.repo.split("/");
       if (!owner || !repo) return [];
       return [{ row, installationId: t.installationId, owner, repo, branch: t.branch }];

@@ -163,7 +163,8 @@ api.route("/callback", callbackRoutes);
 api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
 // Public git webhook for workflows (no session; opaque token in path).
 api.route("/api", workflowGitWebhook);
-// Public GitHub App setup callback (no session; signed `state` binds the org).
+// GitHub App setup callback, outside the org tree: it checks the session
+// itself (bouncing through sign-in) and verifies the installation over OAuth.
 api.route("/api", githubSetupRoute);
 // Public Slack OAuth callback (no session; signed `state` binds the org).
 api.route("/api", slackOauthRoute);

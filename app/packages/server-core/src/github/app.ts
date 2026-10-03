@@ -10,8 +10,10 @@
  *   GITHUB_APP_ID            - the app's numeric id
  *   GITHUB_APP_PRIVATE_KEY   - PEM private key (literal newlines or \n-escaped)
  *   GITHUB_APP_SLUG          - the app's URL slug (for the install link)
+ *   GITHUB_APP_CLIENT_ID     - the app's OAuth client id (proves who installed it)
+ *   GITHUB_APP_CLIENT_SECRET - the app's OAuth client secret
  */
-import { createSign, createHmac, createHash } from "node:crypto";
+import { createSign, createHmac, createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 const GITHUB_API = "https://api.github.com";
 
@@ -270,6 +272,88 @@ export async function getInstallation(
   return { accountLogin: body.account?.login ?? null, accountType: body.account?.type ?? null };
 }
 
+// --- Install ownership: the GitHub App user-authorization (OAuth) flow ---
+//
+// GitHub's setup redirect carries an `installation_id` anyone can type, and
+// GitHub's own guidance is not to trust it: instead, obtain a user access token
+// for the person who came back and confirm the installation is one they can
+// access. That needs the app's OAuth client credentials, which are separate
+// from the app id and private key used for installation tokens.
+
+const GITHUB_WEB = "https://github.com";
+
+/** The app's OAuth client credentials, or null when either is missing. */
+export function githubAppOAuthConfig(): { clientId: string; clientSecret: string } | null {
+  const clientId = process.env["GITHUB_APP_CLIENT_ID"];
+  const clientSecret = process.env["GITHUB_APP_CLIENT_SECRET"];
+  return clientId && clientSecret ? { clientId, clientSecret } : null;
+}
+
+/**
+ * Where to send the browser so GitHub identifies the user to us. The user has
+ * just installed (or is managing) the app, so GitHub normally redirects
+ * straight back without a prompt. `redirectUri` must be one of the app's
+ * registered callback URLs.
+ */
+export function githubUserAuthorizeUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, state });
+  return `${GITHUB_WEB}/login/oauth/authorize?${params.toString()}`;
+}
+
+/** Exchange an authorization `code` for a short-lived user access token. */
+export async function exchangeGithubUserCode(code: string, redirectUri: string): Promise<string> {
+  const config = githubAppOAuthConfig();
+  if (!config) {
+    throw new Error("GITHUB_APP_CLIENT_ID / GITHUB_APP_CLIENT_SECRET are not configured.");
+  }
+  const res = await fetch(`${GITHUB_WEB}/login/oauth/access_token`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "infrawrench",
+    },
+    body: JSON.stringify({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      code,
+      redirect_uri: redirectUri,
+    }),
+  });
+  // GitHub answers 200 with an `error` field for a bad or expired code.
+  const body = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string };
+  if (!res.ok || !body.access_token) {
+    throw new Error(
+      `GitHub user token exchange failed (${res.status}): ${body.error ?? "no token"}`,
+    );
+  }
+  return body.access_token;
+}
+
+/**
+ * Whether the user behind `userToken` can access `installationId`, per
+ * `GET /user/installations` (installations of this app the user has explicit
+ * permission on).
+ */
+export async function userCanAccessInstallation(
+  userToken: string,
+  installationId: number,
+): Promise<boolean> {
+  for (let page = 1; page <= 10; page++) {
+    const res = await gh(userToken, `/user/installations?per_page=100&page=${page}`);
+    if (!res.ok) throw new Error(`GitHub user installations failed (${res.status})`);
+    const body = (await res.json()) as { installations?: Array<{ id?: number }> };
+    const list = body.installations ?? [];
+    if (list.some((i) => i.id === installationId)) return true;
+    if (list.length < 100) break;
+  }
+  return false;
+}
+
 // --- Signed state for the install round-trip (binds the install to an org) ---
 
 function stateKey(): Buffer {
@@ -278,30 +362,70 @@ function stateKey(): Buffer {
   return createHash("sha256").update(privateKey()).digest();
 }
 
+/** How long an install URL stays usable; long enough to create a GitHub org mid-flow. */
+export const INSTALL_STATE_TTL_MS = 60 * 60 * 1000;
+
 export interface InstallState {
   organizationId: string;
+  /** The Infrawrench user who asked for the install URL; only they may complete it. */
+  userId: string;
   /** Where in the app to send the user back to after the install (e.g. "agents"). */
   returnTo: string | null;
+  /**
+   * Set on the second leg only: the OAuth redirect has to carry the
+   * installation id from the setup redirect through GitHub's authorize page.
+   */
+  installationId: number | null;
 }
 
-export function signInstallState(organizationId: string, returnTo?: string): string {
-  const payload = JSON.stringify({ o: organizationId, ...(returnTo ? { r: returnTo } : {}) });
+export function signInstallState(
+  input: {
+    organizationId: string;
+    userId: string;
+    returnTo?: string | null;
+    installationId?: number | null;
+  },
+  now: number = Date.now(),
+): string {
+  const payload = JSON.stringify({
+    o: input.organizationId,
+    u: input.userId,
+    ...(input.returnTo ? { r: input.returnTo } : {}),
+    ...(input.installationId != null ? { i: input.installationId } : {}),
+    n: randomBytes(16).toString("base64url"),
+    e: now + INSTALL_STATE_TTL_MS,
+  });
   const mac = createHmac("sha256", stateKey()).update(payload).digest("base64url");
   return `${b64url(payload)}.${mac}`;
 }
 
-export function verifyInstallState(state: string): InstallState | null {
-  const [payloadB64, mac] = state.split(".");
-  if (!payloadB64 || !mac) return null;
+export function verifyInstallState(state: string, now: number = Date.now()): InstallState | null {
+  const [payloadB64, mac, extra] = state.split(".");
+  if (!payloadB64 || !mac || extra !== undefined) return null;
   const payload = Buffer.from(payloadB64, "base64url").toString("utf8");
-  const expected = createHmac("sha256", stateKey()).update(payload).digest("base64url");
-  if (mac !== expected) return null;
+  const expected = createHmac("sha256", stateKey()).update(payload).digest();
+  const given = Buffer.from(mac, "base64url");
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
+  let parsed: { o?: unknown; u?: unknown; r?: unknown; i?: unknown; n?: unknown; e?: unknown };
   try {
-    const parsed = JSON.parse(payload) as { o?: string; r?: string };
-    if (!parsed.o) return null;
-    return { organizationId: parsed.o, returnTo: parsed.r ?? null };
+    parsed = JSON.parse(payload) as typeof parsed;
   } catch {
-    // Pre-returnTo states signed the bare org id.
-    return { organizationId: payload, returnTo: null };
+    return null;
   }
+  // Every field is required: a state minted before user binding and expiry
+  // existed carries neither, and is refused rather than honoured forever.
+  if (typeof parsed.o !== "string" || !parsed.o) return null;
+  if (typeof parsed.u !== "string" || !parsed.u) return null;
+  if (typeof parsed.n !== "string" || !parsed.n) return null;
+  if (typeof parsed.e !== "number" || !(parsed.e > now)) return null;
+  const installationId =
+    typeof parsed.i === "number" && Number.isSafeInteger(parsed.i) && parsed.i > 0
+      ? parsed.i
+      : null;
+  return {
+    organizationId: parsed.o,
+    userId: parsed.u,
+    returnTo: typeof parsed.r === "string" ? parsed.r : null,
+    installationId,
+  };
 }

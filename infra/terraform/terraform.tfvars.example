@@ -88,6 +88,15 @@ app_env = {
   GITHUB_APP_ID          = "..."
   GITHUB_APP_PRIVATE_KEY = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
   GITHUB_APP_SLUG        = "..."
+  # Required alongside the three above to connect an installation: the app's
+  # OAuth client id and a generated client secret, from the same settings page.
+  # The setup callback uses them to confirm the signed-in user can access the
+  # installation GitHub names; without them every new connection is refused
+  # (existing connections keep working). Set the app's Setup URL to
+  # <APP_URL>/api/github/setup, add that same URL as a Callback URL, and leave
+  # "Request user authorization (OAuth) during installation" unchecked.
+  GITHUB_APP_CLIENT_ID     = "Iv23..."
+  GITHUB_APP_CLIENT_SECRET = "..."
 
   # Optional: comma-separated emails allowed on /api/admin + the /admin page
   # (grant/revoke complimentary orgs). Omit to disable the admin surface.

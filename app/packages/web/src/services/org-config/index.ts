@@ -75,6 +75,7 @@ import {
   workflows,
 } from "../../db/schema";
 import { requirePaidPlan } from "../entitlements";
+import { orgGithubInstallationIds } from "../github-installations";
 import { OrgConfigError, type ParsedOrgConfigDocument } from "./schema";
 import {
   loadOrgConfigState,
@@ -405,10 +406,17 @@ async function buildOrgConfigPlan(
     organizationId,
     state.workflows.map((w) => w.id),
   );
+  const githubInstallationIds = await orgGithubInstallationIds(organizationId);
 
   const workflowIdByKey = planCollection(plan, "workflows", mode, state.workflows, doc.workflows, {
     create: (id, entry) => {
-      const trigger = resolveTrigger(plan, entry.key, entry.trigger, budgetIdByKey);
+      const trigger = resolveTrigger(
+        plan,
+        entry.key,
+        entry.trigger,
+        budgetIdByKey,
+        githubInstallationIds,
+      );
       const derived = triggerDerived(trigger, entry.enabled, null);
       return async (tx) => {
         await tx.insert(workflows).values({
@@ -427,7 +435,13 @@ async function buildOrgConfigPlan(
       };
     },
     update: (id, entry) => {
-      const trigger = resolveTrigger(plan, entry.key, entry.trigger, budgetIdByKey);
+      const trigger = resolveTrigger(
+        plan,
+        entry.key,
+        entry.trigger,
+        budgetIdByKey,
+        githubInstallationIds,
+      );
       const derived = triggerDerived(trigger, entry.enabled, existingWebhookTokens.get(id) ?? null);
       return async (tx) => {
         await tx
@@ -677,7 +691,23 @@ function resolveTrigger(
   workflowKey: string,
   trigger: OrgConfigWorkflowTrigger,
   budgetIdByKey: Map<string, string>,
+  githubInstallationIds: ReadonlySet<number>,
 ): Record<string, unknown> {
+  if (trigger.kind === "git") {
+    if (trigger.installationId === undefined || githubInstallationIds.has(trigger.installationId)) {
+      return { ...trigger };
+    }
+    // The github-watcher mints tokens for whatever installation is stored, so
+    // a foreign id would poll another org's repository. Drop it and say so;
+    // the trigger keeps working as a webhook trigger.
+    const { installationId, ...rest } = trigger;
+    plan.miss(
+      "workflows",
+      workflowKey,
+      `git trigger names GitHub installation ${installationId}, which is not connected to this organization; the installation is dropped`,
+    );
+    return { ...rest };
+  }
   if (trigger.kind !== "budget") return { ...trigger };
   const budgetId = budgetIdByKey.get(trigger.budgetKey);
   if (!budgetId) {
