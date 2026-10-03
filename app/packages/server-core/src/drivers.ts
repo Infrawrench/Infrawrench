@@ -10,13 +10,16 @@ import type {
   StorageNodeDriver,
 } from "@infrawrench/plugin-base";
 
-import { driver as pgDriver } from "@infrawrench/plugin-postgres/driver";
+// The restricted Postgres and MongoDB drivers: a connection string that
+// would read a local file or authenticate with this shared pod's own
+// identity is refused. The desktop uses the full ones.
+import { serverDriver as pgDriver } from "@infrawrench/plugin-postgres/driver";
 import { driver as mysqlDriver } from "@infrawrench/plugin-mysql/driver";
 import { driver as mssqlDriver } from "@infrawrench/plugin-mssql/driver";
 import { driver as redisDriver } from "@infrawrench/plugin-redis/driver";
 import { driver as kafkaDriver } from "@infrawrench/plugin-kafka/driver";
 import { driver as memcachedDriver } from "@infrawrench/plugin-memcached/driver";
-import { driver as mongodbDriver } from "@infrawrench/plugin-mongodb/driver";
+import { serverDriver as mongodbDriver } from "@infrawrench/plugin-mongodb/driver";
 import { driver as dockerDriver } from "@infrawrench/plugin-docker/driver";
 // The restricted driver: a kubeconfig that would run a command or read a
 // local file in this shared pod is refused. The desktop uses the full one.

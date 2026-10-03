@@ -33,3 +33,4 @@ For a managed database you already have in Infrawrench, don't add an account her
 
 - SSL mode defaults to `require` when the URL does not specify. Append `?sslmode=disable` if you know what you are doing.
 - Very large result sets are trimmed in the grid at 10k rows. Export to CSV or narrow your `LIMIT`.
+- In the cloud app, connection strings that point at certificate files (`sslrootcert`, `sslcert`, `sslkey`) are refused, because those paths would be read on the shared Infrawrench server rather than your machine. Paste the CA into the **CA Certificate** field instead. Client-certificate (mutual TLS) logins need the desktop app, where those paths are your own files.

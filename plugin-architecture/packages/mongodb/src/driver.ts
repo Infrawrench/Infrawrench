@@ -1,5 +1,8 @@
 import { MongoClient, ObjectId } from "mongodb";
 import type { KvNodeDriver } from "@infrawrench/plugin-base";
+import { findServerUnsafeMongoOptions } from "./uri-policy.js";
+
+export { findServerUnsafeMongoOptions } from "./uri-policy.js";
 
 /** Convert ObjectId instances to { $oid: "hex" } for JSON-safe serialization */
 function serializeDoc(doc: unknown): unknown {
@@ -268,5 +271,48 @@ export const driver = {
     } finally {
       releaseClient(connectionString);
     }
+  },
+} satisfies KvNodeDriver;
+
+/**
+ * The server policy as a credential check: a user-facing message when the
+ * connection string is refused, or null. Suitable for a save-time hook such
+ * as `Plugin.validateServerCredentials`. A string the driver cannot parse at
+ * all is left to the connection attempt to report.
+ */
+export function serverMongoConnectionStringError(connectionString: string): string | null {
+  // A pooled client already holds the parsed options. Otherwise parse with a
+  // throwaway client: the constructor reads and dials nothing, so a refused
+  // one is simply dropped.
+  let options = clientPool.get(connectionString)?.client.options;
+  if (!options) {
+    try {
+      options = new MongoClient(connectionString).options;
+    } catch {
+      return null;
+    }
+  }
+  const reasons = findServerUnsafeMongoOptions(options);
+  return reasons.length > 0 ? `MongoDB connection string rejected: ${reasons.join(" ")}` : null;
+}
+
+/**
+ * Server driver for the shared cloud pods: refuses connection strings that
+ * would authenticate with the host's own identity or read local files (see
+ * `./uri-policy.ts`) before the driver connects. Checked on every call, not
+ * only when an account is saved, because connection strings also arrive by
+ * paths that skip the account routes (desktop sync, peer integrations). The
+ * desktop keeps using `driver`, where all of that is the user's own machine.
+ */
+export const serverDriver = {
+  id: driver.id,
+  async command(
+    connectionString: string,
+    cmd: string,
+    args: (string | number)[],
+  ): Promise<unknown> {
+    const error = serverMongoConnectionStringError(connectionString);
+    if (error) throw new Error(error);
+    return driver.command(connectionString, cmd, args);
   },
 } satisfies KvNodeDriver;
