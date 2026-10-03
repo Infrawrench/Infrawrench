@@ -651,6 +651,47 @@ describe("admin surfaces", () => {
     expect(series[0]?.points.map((point) => point.value)).toEqual([10, 20]);
   });
 
+  it("charts an API key's credits and splits them by capability", async () => {
+    installFetch((url) =>
+      url.includes("group_by=capability")
+        ? jsonResponse({
+            group_by: "capability",
+            data: [
+              {
+                id: "tts",
+                label: "Text to Speech",
+                buckets: [{ start_ts: "2026-09-01T00:00:00Z", credits: 7 }],
+              },
+              { id: "stt", buckets: [{ start_ts: "2026-09-01T00:00:00Z", credits: 0 }] },
+            ],
+          })
+        : jsonResponse({ data: [{ start_ts: "2026-09-01T00:00:00Z", credits: 7 }] }),
+    );
+    const series = await client({ adminApiKey: "sk_car_admin_x" }).fetchMetricSeries(
+      "api-key",
+      `${ACCOUNT}:api-key:k1`,
+      ACCOUNT,
+      { startMs: Date.UTC(2026, 8, 1), endMs: Date.UTC(2026, 8, 2) },
+    );
+    expect(calls.every((call) => call.url.includes("api_key_id=k1"))).toBe(true);
+    // The all-zero `stt` split is dropped.
+    expect(series.map((s) => s.label)).toEqual(["Credits", "Credits: Text to Speech"]);
+  });
+
+  it("keeps the API key total when the capability split fails", async () => {
+    installFetch((url) =>
+      url.includes("group_by=capability")
+        ? jsonResponse({ message: "bad" }, 400)
+        : jsonResponse({ data: [{ start_ts: "2026-09-01T00:00:00Z", credits: 3 }] }),
+    );
+    const series = await client({ adminApiKey: "sk_car_admin_x" }).fetchMetricSeries(
+      "api-key",
+      `${ACCOUNT}:api-key:k1`,
+      ACCOUNT,
+    );
+    expect(series.map((s) => s.label)).toEqual(["Credits"]);
+  });
+
   it("returns no metric series without an admin key", async () => {
     installFetch(() => jsonResponse({}));
     expect(await client().fetchMetricSeries("api-key", `${ACCOUNT}:api-key:k1`, ACCOUNT)).toEqual(

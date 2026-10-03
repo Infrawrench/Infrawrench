@@ -161,6 +161,8 @@ interface CartesiaCreditBucket {
   credits?: number;
   /** Present on breakdown series when `group_by` is set. */
   id?: string;
+  /** Optional display name on a breakdown series (e.g. a voice or model name). */
+  label?: string;
   buckets?: CartesiaCreditBucket[];
 }
 
@@ -786,8 +788,11 @@ export class CartesiaClient implements PluginClient {
   /**
    * Daily credit consumption from `GET /usage/credits?interval=day`: filtered
    * with `api_key_id` for an API key, and broken down with `group_by=voice`
-   * for a voice (the series whose `id` is the voice). Admin key only; with
-   * none there is nothing to chart and this returns no series.
+   * for a voice (the series whose `id` is the voice). An API key also gets
+   * its credits split by capability (`api_key_id` + `group_by=capability`;
+   * the docs only rule out pairing `api_key_id` with `group_by=api_key`).
+   * Admin key only; with none there is nothing to chart and this returns no
+   * series.
    * https://docs.cartesia.ai/api-reference/usage/credits
    */
   async fetchMetricSeries(
@@ -802,32 +807,45 @@ export class CartesiaClient implements PluginClient {
     const externalId = externalIdOf(resourceId);
     const endMs = timeRange?.endMs ?? Date.now();
     const startMs = timeRange?.startMs ?? endMs - 30 * 24 * 60 * 60 * 1000;
-    const query = new URLSearchParams();
-    query.set("start_ts", new Date(startMs).toISOString());
-    query.set("end_ts", new Date(endMs).toISOString());
-    query.set("interval", "day");
-    if (resourceTypeId === "api-key") query.set("api_key_id", externalId);
-    else query.set("group_by", "voice");
+    const credits = (params: Record<string, string>): Promise<CartesiaCreditsResponse> => {
+      const query = new URLSearchParams();
+      query.set("start_ts", new Date(startMs).toISOString());
+      query.set("end_ts", new Date(endMs).toISOString());
+      query.set("interval", "day");
+      for (const [key, value] of Object.entries(params)) query.set(key, value);
+      return this.fetch<CartesiaCreditsResponse>(
+        `/usage/credits?${query.toString()}`,
+        undefined,
+        true,
+      );
+    };
 
-    const body = await this.fetch<CartesiaCreditsResponse>(
-      `/usage/credits?${query.toString()}`,
-      undefined,
-      true,
-    );
-    const data = body.data ?? [];
-    const buckets =
-      resourceTypeId === "voice"
-        ? (data.find((series) => series.id === externalId)?.buckets ?? [])
-        : data;
+    if (resourceTypeId === "voice") {
+      const body = await credits({ group_by: "voice" });
+      const buckets = (body.data ?? []).find((series) => series.id === externalId)?.buckets ?? [];
+      return [{ label: "Credits", unit: "credits", points: creditPoints(buckets) }];
+    }
 
-    const points = buckets
-      .map((bucket) => ({
-        timestamp: Date.parse(str(bucket.start_ts)),
-        value: bucket.credits ?? 0,
-      }))
-      .filter((point) => Number.isFinite(point.timestamp))
-      .sort((a, b) => a.timestamp - b.timestamp);
-    return [{ label: "Credits", unit: "credits", points }];
+    const [total, byCapability] = await Promise.all([
+      credits({ api_key_id: externalId }),
+      // The split is an extra: a refusal there must not blank the total.
+      credits({ api_key_id: externalId, group_by: "capability" }).catch(
+        (): CartesiaCreditsResponse => ({}),
+      ),
+    ]);
+    const series: MetricSeries[] = [
+      { label: "Credits", unit: "credits", points: creditPoints(total.data ?? []) },
+    ];
+    for (const entry of byCapability.data ?? []) {
+      const points = creditPoints(entry.buckets ?? []);
+      if (!entry.id || !points.some((p) => p.value !== 0)) continue;
+      series.push({
+        label: `Credits: ${str(entry.label) || entry.id}`,
+        unit: "credits",
+        points,
+      });
+    }
+    return series;
   }
 
   // ---- Speech tab ----------------------------------------------------------
@@ -1474,4 +1492,17 @@ async function safeText(res: Response): Promise<string> {
 
 function headerValue(res: Response, name: string): string | undefined {
   return res.headers?.get?.(name) ?? undefined;
+}
+
+/** Credit buckets as chart points, oldest first; unparseable timestamps dropped. */
+function creditPoints(
+  buckets: CartesiaCreditBucket[],
+): Array<{ timestamp: number; value: number }> {
+  return buckets
+    .map((bucket) => ({
+      timestamp: Date.parse(str(bucket.start_ts)),
+      value: bucket.credits ?? 0,
+    }))
+    .filter((point) => Number.isFinite(point.timestamp))
+    .sort((a, b) => a.timestamp - b.timestamp);
 }
