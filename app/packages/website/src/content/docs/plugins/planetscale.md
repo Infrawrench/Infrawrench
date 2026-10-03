@@ -31,7 +31,8 @@ PlanetScale dashboard → **Settings → Service tokens → New service token**.
 - **Database settings**: **Edit** on a database sets deletion protection, deploy-request approval, the default branch, branch-region restriction, the production web console, full-query collection in Insights, and the development branch limit. On Vitess databases it also covers data branching, foreign key constraints, and migration-table copying. Only the settings you change are sent.
 - **Branch creation**: from `main` or any branch, optionally seeded with data from the latest backup and with deletion protection on.
 - **Branch actions**: **Promote to Production** / **Demote to Development**, and on Vitess production branches **Enable/Disable Safe Migrations**. **Edit** toggles deletion protection.
-- **Branch metrics**: the Metrics tab charts queries, errors, rows read and written, p50/p99 latency, connections, CPU, memory, storage, and replica lag from PlanetScale's Metrics API (the last 12 hours by default).
+- **Branch metrics**: the Metrics tab charts queries, errors, rows read, written, and returned, p50/p95/p99 latency, connections, ingress and egress bytes, traffic-control throttles and warnings, CPU, memory, IOPS, container restarts and out-of-memory kills, storage, disk used, and replica lag from PlanetScale's Metrics API (the last 12 hours by default). Postgres branches add PgBouncer connections, WAL size, WAL archive lag, and WAL retained by replication slots; edge proxy throughput is charted where PlanetScale reports it.
+- **Branch logs**: a branch's Logs tab shows the last day of Insights data, picked from two feeds: **query-errors** (each grouped error with its count and average duration) and **anomalies** (latency anomalies with the query most correlated with each).
 - **Deploy requests**: list schema deploy requests with source and target branches, approval, and deployment state. Each one offers the next step its state allows: **Deploy**, **Apply Changes** for a gated cutover, **Cancel Deploy**, **Skip Revert Period**, **Revert**, or **Close**. Drag one branch onto another to open a deploy request.
 - **Backups**: inspect branch backups, take an on-demand backup with its own retention, protect a backup from expiring, and delete it.
 - **Passwords** (Vitess): create with a role, TTL, replica routing, and allowed CIDRs; rename or change CIDRs; **Renew** a password that has a TTL.
@@ -46,7 +47,7 @@ PlanetScale dashboard → **Settings → Service tokens → New service token**.
 
 - PlanetScale uses Vitess. Cross-shard joins and some DDL shapes are restricted. Raw errors are passed through.
 - Branch passwords and Postgres roles are listed without exposing plaintext. PlanetScale returns a secret only when it is created, so connection-string generation creates a dedicated password or role on demand. A role you create in infrawrench keeps its connection string as an output; after a **Reset Password**, create a new role to get one you can copy.
-- Branch metrics need the service token's `read_branch` access. Without it the Metrics tab stays empty.
+- Branch metrics need the service token's `read_branch` access. Without it the Metrics tab stays empty. The Logs tab reads Insights, which needs `read_database`.
 
 ## Cost graphs
 
