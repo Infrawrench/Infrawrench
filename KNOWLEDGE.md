@@ -2976,7 +2976,6 @@ One time axis over six things the org already stores. API **1.28.0**; migration 
 
 Docs: `website/src/content/docs/features/ops-calendar.md`.
 
-<<<<<<< HEAD
 ## Runbooks (cloud-only)
 
 The org's procedures, made runnable, plus the record of who did what. API **1.33.0**; migration `0117_runbooks` adds three tables.
@@ -3053,7 +3052,7 @@ A read-only SQL query on a schedule, with a threshold and an alert. API **1.37.0
 - **Deliberate omissions.** No stored run history — a monitor's value over time is a metric and the product already has a place for metrics; a second, worse time series here would be a table nobody prunes. No per-monitor alert routing (that is what routing rules are). No mobile surface. Desktop is cloud-only for a reason beyond org state: the schedule runs in the poller, so a local monitor would only run while the app was open.
 
 Docs: `website/src/content/docs/features/query-monitors.md`.
-=======
+
 ## Carbon estimate (cloud-only)
 
 Estimated operational CO2e beside the cost. API **1.38.0**; **no migration** — a read over synced inventory plus a static coefficient table.
@@ -3069,7 +3068,6 @@ Estimated operational CO2e beside the cost. API **1.38.0**; **no migration** —
 - **Deliberate omissions.** No storage or egress estimate (the coefficients exist but the inventory does not carry the volumes reliably), no embodied emissions (needs hardware lifetimes and machine counts nobody here has), no per-resource time series, no mobile surface.
 
 Docs: `website/src/content/docs/features/carbon.md`.
->>>>>>> 0957c83 (feat(carbon): estimated CO2e beside the cost, with its assumptions on the page)
 
 ## Pushing in from outside (pages & cost rows over the API)
 
