@@ -7,6 +7,8 @@ import {
 } from "mysql2/promise";
 import {
   assertSingleSqlStatement,
+  urlDialTarget,
+  type DialTarget,
   type SqlNodeDriver,
   type SqlNodeDriverOptions,
 } from "@infrawrench/plugin-base";
@@ -45,8 +47,27 @@ function openConnection(
   return createConnection(connectionString);
 }
 
+/**
+ * Where mysql2 would connect. Its URI parser copies every query parameter
+ * into the connection options, so `?socketPath=` turns a TCP URL into a unix
+ * socket connection.
+ */
+export function dialTargets(connectionString: string): DialTarget[] {
+  let u: URL;
+  try {
+    u = new URL(connectionString);
+  } catch {
+    return [{ kind: "local", reason: "a connection string that is not a URL" }];
+  }
+  if (u.searchParams.has("socketPath")) {
+    return [{ kind: "local", reason: "a unix socket path" }];
+  }
+  return [urlDialTarget(u, 3306)];
+}
+
 export const driver = {
   id: "mysql",
+  dialTargets,
 
   async query(
     connectionString: string,

@@ -6,6 +6,7 @@ import { db } from "../db/client";
 import { agentSessions } from "../db/schema";
 import { getClientForAccount } from "./plugin-clients";
 import { listSshInstallAccounts, refreshInstallerAccount } from "./ssh-install";
+import { resolveSafeHost } from "./host-validation";
 
 /**
  * Services attached to an agent session: accounts whose plugin installs
@@ -49,7 +50,8 @@ export async function resolveAgentServiceAccounts(
  * rest of the agent pipeline, the VM's host key is not pinned: the VM was
  * created moments ago by this same pipeline (see `agentSshExec`).
  */
-function connectAgentServiceTransport(target: AgentSshTarget, privateKey: string) {
+async function connectAgentServiceTransport(target: AgentSshTarget, privateKey: string) {
+  const dialAddress = await resolveSafeHost(target.host);
   return new Promise<{ exec(script: string): Promise<string>; close(): void }>(
     (resolve, reject) => {
       const client = new ssh2.Client();
@@ -58,7 +60,7 @@ function connectAgentServiceTransport(target: AgentSshTarget, privateKey: string
       );
       client.once("error", (err) => reject(new Error(`SSH connection failed: ${err.message}`)));
       client.connect({
-        host: target.host,
+        host: dialAddress,
         port: target.port,
         username: target.username,
         privateKey,

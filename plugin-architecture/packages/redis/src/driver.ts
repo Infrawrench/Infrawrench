@@ -1,5 +1,5 @@
 import Redis from "ioredis";
-import type { KvNodeDriver } from "@infrawrench/plugin-base";
+import { unbracketHost, type DialTarget, type KvNodeDriver } from "@infrawrench/plugin-base";
 
 const CONNECT_TIMEOUT_MS = 5000;
 
@@ -95,8 +95,30 @@ async function runOnce(
   }
 }
 
+/**
+ * Where ioredis would connect. It treats a bare path as a unix socket, and
+ * merges query parameters into the options for any key the URL left unset,
+ * so `?path=` selects a socket and `?host=`/`?port=` fill an empty authority.
+ */
+export function dialTargets(connectionString: string): DialTarget[] {
+  if (!/^rediss?:\/\//i.test(connectionString)) {
+    return [{ kind: "local", reason: "a connection string without redis:// or rediss://" }];
+  }
+  let u: URL;
+  try {
+    u = new URL(connectionString);
+  } catch {
+    return [{ kind: "local", reason: "a connection string that is not a URL" }];
+  }
+  if (u.searchParams.has("path")) return [{ kind: "local", reason: "a unix socket path" }];
+  const host = u.hostname ? unbracketHost(u.hostname) : u.searchParams.get("host");
+  if (!host) return [{ kind: "local", reason: "no host" }];
+  return [{ kind: "host", host, port: Number(u.port || u.searchParams.get("port") || 6379) }];
+}
+
 export const driver = {
   id: "redis",
+  dialTargets,
 
   async command(
     connectionString: string,

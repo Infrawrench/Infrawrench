@@ -32,7 +32,7 @@ import {
   VersionApi,
   PatchStrategy,
 } from "@kubernetes/client-node";
-import type { K8sNodeDriver } from "@infrawrench/plugin-base";
+import { urlDialTarget, type DialTarget, type K8sNodeDriver } from "@infrawrench/plugin-base";
 import { assertKubeconfigSafeForServer } from "./kubeconfig-policy.js";
 
 export {
@@ -88,8 +88,35 @@ function num(params: Record<string, unknown> | undefined, key: string): number |
   return typeof v === "number" ? v : undefined;
 }
 
+/**
+ * The current context's API server, and its proxy when one is set. Every
+ * call this driver makes goes to the current cluster, so other clusters in a
+ * pasted multi-context kubeconfig are not reported.
+ */
+export function dialTargets(kubeconfig: string): DialTarget[] {
+  let cluster: ReturnType<KubeConfig["getCurrentCluster"]>;
+  try {
+    cluster = getConfig(kubeconfig).kc.getCurrentCluster();
+  } catch {
+    return [{ kind: "local", reason: "a kubeconfig that does not parse" }];
+  }
+  if (!cluster) return [{ kind: "local", reason: "a kubeconfig without a current cluster" }];
+  const targets: DialTarget[] = [];
+  for (const raw of [cluster.server, cluster.proxyUrl]) {
+    if (!raw) continue;
+    try {
+      const url = new URL(raw);
+      targets.push(urlDialTarget(url, url.protocol === "http:" ? 80 : 443));
+    } catch {
+      targets.push({ kind: "local", reason: "a cluster server that is not a URL" });
+    }
+  }
+  return targets.length > 0 ? targets : [{ kind: "local", reason: "a cluster without a server" }];
+}
+
 export const driver = {
   id: "kubernetes",
+  dialTargets,
 
   async command(
     kubeconfig: string,
@@ -265,10 +292,18 @@ export const driver = {
  * credentials are inline. Checked on every call, not only when an account
  * is saved, because kubeconfigs also arrive by paths that never touch the
  * account routes (desktop sync, peer integrations resolving a managed
- * cluster's kubeconfig).
+ * cluster's kubeconfig). The host's egress guard then checks the cluster
+ * `server` through `dialTargets` before each call.
  */
 export const serverDriver = {
   id: driver.id,
+  // The policy runs first so a refused kubeconfig reports why it is refused
+  // rather than where it would have dialed. `proxy-url` never reaches the
+  // dial guard here: the policy rejects it outright.
+  dialTargets(kubeconfig: string): DialTarget[] {
+    assertKubeconfigSafeForServer(kubeconfig);
+    return dialTargets(kubeconfig);
+  },
   async command(
     kubeconfig: string,
     op: string,

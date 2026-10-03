@@ -9,6 +9,7 @@
  * The host (Electron main) registers them and dispatches generic IPC calls:
  * it never contains plugin-specific logic.
  */
+import type { DialTarget } from "./dial-targets.js";
 
 /**
  * Optional per-call options for a SQL driver. Currently used to pass a
@@ -51,18 +52,36 @@ export interface SqlNodeDriver {
     params: unknown[],
     options?: SqlNodeDriverOptions,
   ): Promise<number>;
+  /**
+   * Every network destination `connectionString` makes this driver dial, so a
+   * shared cloud server can vet them first. Optional: the desktop never calls
+   * it, and the server refuses a driver that cannot say where it connects.
+   */
+  dialTargets?(connectionString: string): DialTarget[];
 }
 
 /** Key-value / Redis-compatible driver. */
 export interface KvNodeDriver {
   readonly id: string;
   command(connectionString: string, cmd: string, args: (string | number)[]): Promise<unknown>;
+  /**
+   * Every network destination `connectionString` makes this driver dial, so a
+   * shared cloud server can vet them first. Optional: the desktop never calls
+   * it, and the server refuses a driver that cannot say where it connects.
+   */
+  dialTargets?(connectionString: string): DialTarget[];
 }
 
 /** Docker daemon driver. */
 export interface DockerNodeDriver {
   readonly id: string;
   command(dockerHost: string, op: string, params?: Record<string, unknown>): Promise<unknown>;
+  /**
+   * Every network destination `dockerHost` makes this driver dial, so a
+   * shared cloud server can vet them first. Optional: the desktop never calls
+   * it, and the server refuses a driver that cannot say where it connects.
+   */
+  dialTargets?(dockerHost: string): DialTarget[];
 }
 
 /**
@@ -75,6 +94,12 @@ export interface DockerNodeDriver {
 export interface K8sNodeDriver {
   readonly id: string;
   command(kubeconfig: string, op: string, params?: Record<string, unknown>): Promise<unknown>;
+  /**
+   * Every network destination `kubeconfig` makes this driver dial, so a
+   * shared cloud server can vet them first. Optional: the desktop never calls
+   * it, and the server refuses a driver that cannot say where it connects.
+   */
+  dialTargets?(kubeconfig: string): DialTarget[];
 }
 
 /**

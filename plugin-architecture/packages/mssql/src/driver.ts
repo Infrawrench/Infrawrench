@@ -1,5 +1,5 @@
 import * as mssql from "mssql";
-import type { SqlNodeDriver } from "@infrawrench/plugin-base";
+import { urlDialTarget, type DialTarget, type SqlNodeDriver } from "@infrawrench/plugin-base";
 
 interface MssqlConfig {
   user: string;
@@ -25,8 +25,17 @@ function parseConnectionString(cs: string): MssqlConfig {
   };
 }
 
+export function dialTargets(connectionString: string): DialTarget[] {
+  try {
+    return [urlDialTarget(new URL(connectionString), 1433)];
+  } catch {
+    return [{ kind: "local", reason: "a connection string that is not a URL" }];
+  }
+}
+
 export const driver = {
   id: "mssql",
+  dialTargets,
 
   async query(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
     const pool = new mssql.ConnectionPool(parseConnectionString(connectionString));

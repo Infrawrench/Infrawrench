@@ -16,6 +16,7 @@ import { accounts, sshKeys } from "@/db/schema";
 import { decrypt, buildAad } from "@/services/encryption";
 import { getPlugin } from "@/plugins/loader";
 import { buildPluginHostServices } from "@/services/host-services";
+import { withEgressScope } from "@infrawrench/server-core/egress-guard";
 import { buildInProcessAgent, type AgentAuditContext } from "@/services/ssh-agent";
 import { logAudit } from "@/services/audit";
 import { HostKeyTrustRequiredError, makeHostKeyVerifier } from "@/services/ssh-host-keys";
@@ -103,11 +104,10 @@ export async function handleSshSession(
     let targetConfig: { host: string; port: number; username: string; privateKey: string };
     let connectThroughAccountId: string | undefined;
     /**
-     * The vetted IP the final socket goes to, set only on the one path the
-     * server dials on a client's say-so. Undefined everywhere else: a
-     * bastion-routed session reaches its target over `sock`, and a
-     * plugin-supplied endpoint is not client-chosen, and `dialFinal` then
-     * falls back to the configured host as before.
+     * The vetted IP the final socket goes to on a single-hop session. Set
+     * early for a direct-SSH host (so a refused host fails before the key is
+     * decrypted) and otherwise once the hop list is known. A chained session
+     * reaches its target over `sock` and leaves this undefined.
      */
     let targetDialAddress: string | undefined;
 
@@ -177,8 +177,12 @@ export async function handleSshSession(
 
       const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
         accountId: account.id,
+        organizationId,
       });
-      const client = loaded.plugin.createClient(credentials, hostServices);
+      const client = withEgressScope(loaded.plugin.createClient(credentials, hostServices), {
+        accountId: account.id,
+        organizationId,
+      });
       const pluginSshConfig = client.getSshConfig?.();
       if (!pluginSshConfig) {
         ws.send(JSON.stringify({ type: "ssh:error", error: "Plugin does not support SSH" }));
@@ -203,6 +207,16 @@ export async function handleSshSession(
     }
 
     const finalConfig = hops[hops.length - 1]!;
+    // Whatever this process dials itself is vetted, whoever configured it: a
+    // plugin's SSH endpoint and a stored jump host are tenant input too, and
+    // the shared server must not open SSH to loopback, the metadata endpoint
+    // or the cluster for them. Later hops are dialed *through* the previous
+    // one over `sock`, never resolved here, so they keep reaching private
+    // hosts, which is what a jump host is for.
+    if (hops.length === 1 && targetDialAddress === undefined) {
+      targetDialAddress = await resolveSafeHost(finalConfig.host);
+    }
+    const firstHopDialAddress = hops.length > 1 ? await resolveSafeHost(hops[0]!.host) : undefined;
     const intermediates: Client[] = [];
     const conn = new Client();
     let shellStream: import("ssh2").ClientChannel | null = null;
@@ -594,7 +608,7 @@ export async function handleSshSession(
     const dialFinal = (sock?: SshSock) => {
       if (torndown) return;
       conn.connect({
-        // `targetDialAddress` is only ever set on the single-hop path, where
+        // `targetDialAddress` is set on the single-hop path, where
         // `finalConfig` *is* the target that was vetted; a chained session
         // arrives here with a `sock` and no address to pin.
         ...(sock
@@ -623,13 +637,9 @@ export async function handleSshSession(
     if (hops.length === 1) {
       dialFinal();
     } else {
-      // No address pinning anywhere in here, deliberately. Every hop after the
-      // first is dialed *through* the previous one over `sock`, so this
-      // process never resolves it, and the first hop's endpoint comes from a
-      // stored SSH account written by someone with `accounts:write`, not from
-      // the WebSocket frame, and is routinely a private address an operator
-      // configured on purpose. Guarding it would break the documented reason
-      // jump hosts exist without closing a window a member can open.
+      // Only the first hop is dialed from this process, to the address vetted
+      // above. Every later hop is dialed *through* the previous one over
+      // `sock`, so this process never resolves it.
       try {
         let prev: Client | null = null;
         for (let i = 0; i < hops.length - 1; i++) {
@@ -652,7 +662,9 @@ export async function handleSshSession(
               reject(new Error("SSH connection closed while establishing the jump chain")),
             );
             client.connect({
-              ...(sockForThis ? { sock: sockForThis } : { host: hop.host, port: hop.port ?? 22 }),
+              ...(sockForThis
+                ? { sock: sockForThis }
+                : { host: firstHopDialAddress ?? hop.host, port: hop.port ?? 22 }),
               username: hop.username,
               privateKey: hop.privateKey,
               hostVerifier: makeHostKeyVerifier(

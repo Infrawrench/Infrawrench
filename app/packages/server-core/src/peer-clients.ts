@@ -24,6 +24,7 @@ import { db } from "./db/client";
 import { resources } from "./db/schema";
 import { getPlugin } from "./plugin-loader";
 import { buildPluginHostServices } from "./host-services";
+import { withEgressScope } from "./egress-guard";
 import { applyCredentialRewriters } from "./credential-rewriters";
 import { getOrgAccountClient } from "./org-accounts";
 
@@ -105,9 +106,12 @@ export async function buildPeerPluginClient(input: {
   const peerHostServices = await buildPluginHostServices(
     peerLoaded.plugin.manifest,
     peerCredentials,
-    { accountId: input.accountId },
+    { accountId: input.accountId, organizationId: input.organizationId },
   );
-  const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
+  const peerClient = withEgressScope(
+    peerLoaded.plugin.createClient(peerCredentials, peerHostServices),
+    { accountId: input.accountId, organizationId: input.organizationId },
+  );
   return { client: peerClient, plugin: peerLoaded.plugin, credentials: peerCredentials };
 }
 

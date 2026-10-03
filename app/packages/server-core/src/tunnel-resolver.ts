@@ -13,6 +13,7 @@ import {
 import { db } from "./db/client";
 import { sshTunnelConfigs } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
+import { resolveSafeHost } from "./egress-guard";
 
 function findTunnelForAccount(accountId: string): { localPort: number } | null {
   const r = findTunnel<TunnelExtras>((rec) => rec.extras.accountId === accountId);
@@ -48,6 +49,10 @@ async function resolveTunnelForAccount(accountId: string): Promise<TunnelResolut
       config.privateKeyIv,
       buildAad("sshTunnelConfig", config.id, "privateKey"),
     );
+    // The bastion endpoint is the one hop this process dials itself; vet it
+    // like every other tenant-supplied destination. `remoteHost` is reached
+    // from the bastion, so a private address there is the point.
+    await resolveSafeHost(config.sshHost);
     const { localPort } = await coreOpenTunnel<TunnelExtras>(
       {
         sshHost: config.sshHost,

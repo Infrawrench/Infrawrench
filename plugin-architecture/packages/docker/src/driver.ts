@@ -1,5 +1,5 @@
 import Dockerode from "dockerode";
-import type { DockerNodeDriver } from "@infrawrench/plugin-base";
+import { urlDialTarget, type DialTarget, type DockerNodeDriver } from "@infrawrench/plugin-base";
 
 function makeClient(dockerHost: string): Dockerode {
   if (!dockerHost || dockerHost.startsWith("unix://")) {
@@ -10,8 +10,26 @@ function makeClient(dockerHost: string): Dockerode {
   return new Dockerode({ host: url.hostname, port: Number(url.port) || 2375 });
 }
 
+/**
+ * Where dockerode would connect: the local daemon socket for an empty host or
+ * a `unix://` URL, otherwise the TCP endpoint `makeClient` builds.
+ */
+export function dialTargets(dockerHost: string): DialTarget[] {
+  if (!dockerHost || dockerHost.startsWith("unix://")) {
+    return [{ kind: "local", reason: "the Docker unix socket" }];
+  }
+  try {
+    const url = new URL(dockerHost);
+    if (url.protocol === "npipe:") return [{ kind: "local", reason: "a Docker named pipe" }];
+    return [urlDialTarget(url, 2375)];
+  } catch {
+    return [{ kind: "local", reason: "a Docker host that is not a URL" }];
+  }
+}
+
 export const driver = {
   id: "docker",
+  dialTargets,
 
   async command(
     dockerHost: string,

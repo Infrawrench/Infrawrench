@@ -6,6 +6,7 @@ import {
   sftpDelete as sftpDeleteImpl,
 } from "../../services/sftp";
 import { rewriteConnectionForTunnel } from "../../services/tunnel-resolver";
+import { guardDriverConnection } from "@infrawrench/server-core/egress-guard";
 import { getClientForAccount, getClientForResource } from "../../services/plugin-clients";
 import { resolveSshConfig } from "../../services/ssh";
 import { requirePermission } from "../../auth/permissions";
@@ -55,6 +56,10 @@ app.post("/sql/query", async (c) => {
       connectionString = await rewriteConnectionForTunnel(input.accountId, connectionString);
       const driver = sqlDrivers.get(rtSqlDriver.driver);
       if (!driver) return c.json({ error: `Unknown SQL driver: ${rtSqlDriver.driver}` }, 400);
+      await guardDriverConnection(driver, connectionString, {
+        accountId: input.accountId,
+        organizationId,
+      });
       const start = Date.now();
       const rows = await driver.query(connectionString, input.sql);
       return c.json({ rows, durationMs: Date.now() - start });
@@ -68,6 +73,10 @@ app.post("/sql/query", async (c) => {
     connectionString = await rewriteConnectionForTunnel(input.accountId, connectionString);
     const driver = sqlDrivers.get(manifest.sqlDriver.driver);
     if (!driver) return c.json({ error: `Unknown SQL driver: ${manifest.sqlDriver.driver}` }, 400);
+    await guardDriverConnection(driver, connectionString, {
+      accountId: input.accountId,
+      organizationId,
+    });
     const start = Date.now();
     const rows = await driver.query(connectionString, input.sql);
     return c.json({ rows, durationMs: Date.now() - start });
@@ -126,6 +135,10 @@ app.post("/sql/execute", async (c) => {
       connectionString = await rewriteConnectionForTunnel(input.accountId, connectionString);
       const driver = sqlDrivers.get(rtSqlDriver.driver);
       if (!driver) return c.json({ error: `Unknown SQL driver: ${rtSqlDriver.driver}` }, 400);
+      await guardDriverConnection(driver, connectionString, {
+        accountId: input.accountId,
+        organizationId,
+      });
       const affectedRows = await driver.execute(connectionString, input.sql, params);
       return c.json({ affectedRows });
     }
@@ -138,6 +151,10 @@ app.post("/sql/execute", async (c) => {
     connectionString = await rewriteConnectionForTunnel(input.accountId, connectionString);
     const driver = sqlDrivers.get(manifest.sqlDriver.driver);
     if (!driver) return c.json({ error: `Unknown SQL driver: ${manifest.sqlDriver.driver}` }, 400);
+    await guardDriverConnection(driver, connectionString, {
+      accountId: input.accountId,
+      organizationId,
+    });
     const affectedRows = await driver.execute(connectionString, input.sql, params);
     return c.json({ affectedRows });
   }
@@ -195,6 +212,10 @@ app.post("/kv/command", async (c) => {
   const driver = kvDrivers.get(manifest.kvDriver.driver);
   if (!driver) return c.json({ error: `Unknown KV driver: ${manifest.kvDriver.driver}` }, 400);
 
+  await guardDriverConnection(driver, connectionString, {
+    accountId: input.accountId,
+    organizationId,
+  });
   const result = await driver.command(connectionString, input.command, input.args);
   return c.json({ result });
 });
@@ -221,6 +242,7 @@ app.post("/docker/command", async (c) => {
   if (!driver)
     return c.json({ error: `Unknown Docker driver: ${manifest.dockerDriver.driver}` }, 400);
 
+  await guardDriverConnection(driver, dockerHost, { accountId: input.accountId, organizationId });
   const result = await driver.command(dockerHost, input.op, input.params);
   return c.json({ result });
 });

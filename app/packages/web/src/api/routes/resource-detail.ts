@@ -4,6 +4,7 @@ import { db } from "../../db/client";
 import { resources } from "../../db/schema";
 import { getPlugin } from "../../plugins/loader";
 import { sqlDrivers } from "../../services/drivers";
+import { guardDriverConnection } from "@infrawrench/server-core/egress-guard";
 import {
   getClientForAccount,
   getClientForResource,
@@ -210,6 +211,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
         const driver = sqlDrivers.get(rtSqlDriver.driver);
         if (driver) {
           try {
+            await guardDriverConnection(driver, rtConnectionString, { accountId, organizationId });
             const [tableRows, columnRows, pkRows] = await Promise.all([
               driver.query(
                 rtConnectionString,

@@ -13,19 +13,27 @@ import {
 } from "@infrawrench/sftp-host";
 import type { SftpConfig } from "@infrawrench/plugin-base";
 import { HostKeyTrustRequiredError, makeHostKeyConfigureConnect } from "./ssh-host-keys";
+import { resolveSafeHost } from "./host-validation";
 
 /**
  * Wrap an SFTP call so any host-key trust failure surfaces as a typed
  * `HostKeyTrustRequiredError` instead of the underlying ssh2 connect error.
+ *
+ * The destination is vetted first and the socket pinned to the address that
+ * cleared; host-key identity stays the configured name (the verifier is
+ * installed before the host is swapped, and keys off the config it sees).
  */
 async function withHostKeyCapture<T>(
   organizationId: string,
+  config: SftpConfig,
   run: (opts: WithSftpOptions) => Promise<T>,
 ): Promise<T> {
+  const dialAddress = await resolveSafeHost(config.host);
   const hostKeyErrorRef = { value: null as HostKeyTrustRequiredError | null };
+  const withHostKey = makeHostKeyConfigureConnect(organizationId, hostKeyErrorRef, "sftp");
   try {
     return await run({
-      configureConnect: makeHostKeyConfigureConnect(organizationId, hostKeyErrorRef, "sftp"),
+      configureConnect: (opts) => ({ ...withHostKey(opts), host: dialAddress }),
     });
   } catch (e) {
     if (hostKeyErrorRef.value) throw hostKeyErrorRef.value;
@@ -38,7 +46,7 @@ export function sftpList(
   config: SftpConfig,
   dirPath: string,
 ): Promise<SftpEntry[]> {
-  return withHostKeyCapture(organizationId, (opts) => sftpListImpl(config, dirPath, opts));
+  return withHostKeyCapture(organizationId, config, (opts) => sftpListImpl(config, dirPath, opts));
 }
 
 export function sftpMkdir(
@@ -46,7 +54,7 @@ export function sftpMkdir(
   config: SftpConfig,
   dirPath: string,
 ): Promise<void> {
-  return withHostKeyCapture(organizationId, (opts) => sftpMkdirImpl(config, dirPath, opts));
+  return withHostKeyCapture(organizationId, config, (opts) => sftpMkdirImpl(config, dirPath, opts));
 }
 
 export function sftpDelete(
@@ -55,7 +63,7 @@ export function sftpDelete(
   remotePath: string,
   isDir: boolean,
 ): Promise<void> {
-  return withHostKeyCapture(organizationId, (opts) =>
+  return withHostKeyCapture(organizationId, config, (opts) =>
     sftpDeleteImpl(config, remotePath, isDir, opts),
   );
 }
@@ -66,7 +74,7 @@ export function sftpUpload(
   remotePath: string,
   data: Buffer,
 ): Promise<void> {
-  return withHostKeyCapture(organizationId, (opts) =>
+  return withHostKeyCapture(organizationId, config, (opts) =>
     sftpUploadImpl(config, remotePath, data, opts),
   );
 }
@@ -76,7 +84,7 @@ export function sftpDownloadToBuffer(
   config: SftpConfig,
   remotePath: string,
 ): Promise<Buffer> {
-  return withHostKeyCapture(organizationId, (opts) =>
+  return withHostKeyCapture(organizationId, config, (opts) =>
     sftpDownloadToBufferImpl(config, remotePath, opts),
   );
 }

@@ -14,6 +14,7 @@
     "./tick-loop": "./src/tick-loop.ts",
     "./drivers": "./src/drivers.ts",
     "./host-services": "./src/host-services.ts",
+    "./egress-guard": "./src/egress-guard.ts",
     "./tunnel-resolver": "./src/tunnel-resolver.ts",
     "./credential-rewriters": "./src/credential-rewriters/index.ts",
     "./bastion/registry": "./src/bastion/registry.ts",
