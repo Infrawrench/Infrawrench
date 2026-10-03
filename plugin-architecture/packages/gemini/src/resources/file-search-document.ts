@@ -13,6 +13,11 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  *
  * `DELETE .../documents/{id}` also takes `?force=true`, to drop the chunks
  * derived from the document alongside it.
+ *
+ * Create imports an already-uploaded Files API file:
+ * `POST /v1beta/fileSearchStores/{store}:importFile` with `{ fileName,
+ * chunkingConfig }`, returning a long-running Operation (verified 2026-10-03
+ * against https://ai.google.dev/api/file-search/file-search-stores).
  */
 export const FileSearchDocumentResourceType = rt({
   name: "File Search Document",
@@ -37,5 +42,6 @@ export const FileSearchDocumentResourceType = rt({
     }),
     o("state", "State"),
   ],
+  supportsCreate: true,
   iconKey: "file",
 });

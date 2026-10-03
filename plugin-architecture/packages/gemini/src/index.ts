@@ -7,6 +7,8 @@ export { CachedContentResourceType } from "./resources/cached-content.js";
 export { BatchResourceType } from "./resources/batch.js";
 export { FileSearchStoreResourceType } from "./resources/file-search-store.js";
 export { FileSearchDocumentResourceType } from "./resources/file-search-document.js";
+export { WebhookResourceType } from "./resources/webhook.js";
+export { VoiceResourceType } from "./resources/voice.js";
 export {
   pcmToWav,
   geminiPcmBase64ToWavBase64,

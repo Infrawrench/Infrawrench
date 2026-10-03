@@ -1,5 +1,6 @@
 import type {
   CreateResourceConfig,
+  CredentialExport,
   DashboardStat,
   DetailViewSchema,
   HostServices,
@@ -54,8 +55,12 @@ import type {
   ListModelsResponse,
   ListOperationsResponse,
   ListTunedModelsResponse,
+  ListVoicesResponse,
+  ListWebhooksResponse,
   Operation,
   TunedModel,
+  Voice,
+  Webhook,
 } from "./api-types.js";
 
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -66,7 +71,18 @@ const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
  * do it; the picker is populated from the live model list and this is only the
  * fallback when that call fails.
  */
-const DEFAULT_STT_MODEL = "gemini-2.5-flash";
+const DEFAULT_STT_MODEL = "gemini-3.8-flash";
+
+/** Events a webhook can subscribe to. Verified: https://ai.google.dev/api/webhooks */
+const WEBHOOK_EVENTS: Array<{ id: string; label: string }> = [
+  { id: "batch.succeeded", label: "Batch succeeded" },
+  { id: "batch.failed", label: "Batch failed" },
+  { id: "batch.expired", label: "Batch expired" },
+  { id: "interaction.completed", label: "Background interaction completed" },
+  { id: "interaction.failed", label: "Background interaction failed" },
+  { id: "interaction.requires_action", label: "Interaction requires action" },
+  { id: "video.generated", label: "Video generated" },
+];
 
 const SPEECH_HELP_TEXT =
   "Text-to-speech runs through the Interactions API and returns raw 24 kHz mono PCM, which this " +
@@ -156,6 +172,29 @@ export class GeminiClient implements PluginClient {
     return items;
   }
 
+  /**
+   * The same walk for the newer snake_case surfaces (webhooks, voices), which
+   * take `page_size` / `page_token` and answer with `next_page_token`.
+   */
+  private async paginateSnake<TItem, TResponse extends { next_page_token?: string }>(
+    path: string,
+    pageSize: number,
+    pick: (response: TResponse) => TItem[] | undefined,
+    extraParams: Array<[string, string]> = [],
+  ): Promise<TItem[]> {
+    const items: TItem[] = [];
+    let pageToken: string | undefined;
+    for (let page = 0; page < 25; page += 1) {
+      const params = new URLSearchParams([["page_size", String(pageSize)], ...extraParams]);
+      if (pageToken) params.set("page_token", pageToken);
+      const data = await this.fetch<TResponse>(`${path}?${params.toString()}`);
+      items.push(...(pick(data) ?? []));
+      if (!data.next_page_token) break;
+      pageToken = data.next_page_token;
+    }
+    return items;
+  }
+
   // ---------------------------------------------------------------------------
   // Resource listing
   // ---------------------------------------------------------------------------
@@ -176,6 +215,10 @@ export class GeminiClient implements PluginClient {
         return this.listFileSearchStores(accountId);
       case "file-search-document":
         return this.listAllFileSearchDocuments(accountId);
+      case "webhook":
+        return this.listWebhooks(accountId);
+      case "voice":
+        return this.listVoices(accountId);
       default:
         throw new Error(`Gemini plugin: unknown resource type "${typeId}"`);
     }
@@ -191,13 +234,26 @@ export class GeminiClient implements PluginClient {
       // populated from the live model list. `renderDetail` is synchronous, so
       // that extra call happens here and the result is stashed as JSON under a
       // __double-underscore__ key in resolvedOutputs.
+      // Custom voices ride along the same way so the voice picker offers them
+      // next to the prebuilt catalogue.
       const resource = await this.findResource(typeId, resourceId, accountId);
-      const sttModels = await this.safely(() => this.fetchAudioCapableModelOptions(), []);
+      const [sttModels, customVoices] = await Promise.all([
+        this.safely(() => this.fetchAudioCapableModelOptions(), []),
+        this.safely(() => this.fetchCustomVoices(), [] as Voice[]),
+      ]);
+      const voiceOptions: SpeechPanelOption[] = customVoices
+        .filter((v) => Boolean(v.id))
+        .map((v) => ({
+          id: v.id!,
+          label: v.display_name || v.id!,
+          description: `Custom ${v.type ?? "voice"}${v.language_code ? ` · ${v.language_code}` : ""}`,
+        }));
       return {
         ...resource,
         resolvedOutputs: {
           ...resource.resolvedOutputs,
           __sttModels__: JSON.stringify(sttModels),
+          __customVoices__: JSON.stringify(voiceOptions),
         },
       };
     }
@@ -447,6 +503,7 @@ export class GeminiClient implements PluginClient {
       fields: {
         name,
         displayName: batch.displayName ?? "",
+        priority: Number(batch.priority ?? 0),
         model: batch.model ?? "",
         state: batch.state ?? "",
         done: Boolean(operation.done),
@@ -457,6 +514,7 @@ export class GeminiClient implements PluginClient {
         pendingRequestCount: Number(stats.pendingRequestCount ?? 0),
         successfulRequestCount: Number(stats.successfulRequestCount ?? 0),
         failedRequestCount: Number(stats.failedRequestCount ?? 0),
+        inputFileName: batch.inputConfig?.fileName ?? "",
         outputFileName: batch.output?.responsesFile ?? "",
         errorMessage: operation.error?.message ?? "",
       },
@@ -584,6 +642,97 @@ export class GeminiClient implements PluginClient {
     };
   }
 
+  /** `GET /v1beta/webhooks`: https://ai.google.dev/api/webhooks (max 1000 per page). */
+  private async listWebhooks(accountId: string): Promise<ResourceInstance[]> {
+    const hooks = await this.paginateSnake<Webhook, ListWebhooksResponse>(
+      "/webhooks",
+      1000,
+      (r) => r.webhooks,
+    );
+    const now = new Date().toISOString();
+    return hooks.filter((h) => Boolean(h.id)).map((h) => this.mapWebhook(accountId, h, now));
+  }
+
+  private mapWebhook(accountId: string, hook: Webhook, now: string): ResourceInstance {
+    const id = hook.id ?? "";
+    return {
+      id: `${accountId}:webhook:${id}`,
+      pluginId: "gemini",
+      resourceTypeId: "webhook",
+      accountId,
+      displayName: hook.name || hook.uri || id,
+      fields: {
+        displayName: hook.name ?? "",
+        uri: hook.uri ?? "",
+        subscribedEvents: (hook.subscribed_events ?? []).join(", "),
+        state: hook.state ?? "",
+        signingSecrets: (hook.signing_secrets ?? [])
+          .map(
+            (sec) =>
+              `${sec.truncated_secret ?? "?"}${sec.expire_time ? ` (expires ${sec.expire_time})` : ""}`,
+          )
+          .join(", "),
+        createTime: hook.create_time ?? "",
+        updateTime: hook.update_time ?? "",
+      },
+      resolvedOutputs: { webhookId: id, uri: hook.uri ?? "" },
+      secretStates: [],
+      externalId: id,
+      createdAt: hook.create_time ?? now,
+      updatedAt: hook.update_time ?? now,
+    };
+  }
+
+  /**
+   * `GET /v1beta/voices?type=prompted&type=replicated`:
+   * https://ai.google.dev/api/voices. Filtering by type drops the prebuilt
+   * catalogue, which the list otherwise appends after the custom voices.
+   */
+  private fetchCustomVoices(): Promise<Voice[]> {
+    return this.paginateSnake<Voice, ListVoicesResponse>("/voices", 1000, (r) => r.voices, [
+      ["type", "prompted"],
+      ["type", "replicated"],
+    ]);
+  }
+
+  private async listVoices(accountId: string): Promise<ResourceInstance[]> {
+    const voices = await this.fetchCustomVoices();
+    const now = new Date().toISOString();
+    return voices
+      .filter((v) => Boolean(v.id) && v.type !== "prebuilt")
+      .map((v) => this.mapVoice(accountId, v, now));
+  }
+
+  private mapVoice(accountId: string, voice: Voice, now: string): ResourceInstance {
+    const id = voice.id ?? "";
+    return {
+      id: `${accountId}:voice:${id}`,
+      pluginId: "gemini",
+      resourceTypeId: "voice",
+      accountId,
+      displayName: voice.display_name || id,
+      fields: {
+        displayName: voice.display_name ?? "",
+        voiceId: id,
+        type: voice.type ?? "",
+        model: voice.model ?? "",
+        prompt: voice.prompted?.input ?? "",
+        languageCode: voice.language_code ?? "",
+        gender: voice.gender ?? "",
+        accent: voice.accent ?? "",
+        persona: voice.persona ?? "",
+        pitch: voice.pitch ?? "",
+        description: voice.description ?? "",
+        expireTime: voice.expire_time ?? "",
+      },
+      resolvedOutputs: { voiceId: id },
+      secretStates: [],
+      externalId: id,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Outputs
   // ---------------------------------------------------------------------------
@@ -641,6 +790,13 @@ export class GeminiClient implements PluginClient {
       if (outputKey === "state") return String(fields["state"] ?? "");
     }
 
+    if (typeId === "webhook") {
+      if (outputKey === "webhookId") return resource.externalId ?? "";
+      if (outputKey === "uri") return String(fields["uri"] ?? "");
+    }
+
+    if (typeId === "voice" && outputKey === "voiceId") return resource.externalId ?? "";
+
     throw new Error(`Gemini plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
@@ -648,46 +804,411 @@ export class GeminiClient implements PluginClient {
   // Mutations
   // ---------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "file-search-store") {
-      return {
-        fields: [
-          {
-            key: "displayName",
-            label: "Display Name",
-            kind: "text",
-            required: true,
-            description: "Shown in Infrawrench and AI Studio. The resource name is generated.",
-          },
-        ],
-      };
+  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
+    switch (typeId) {
+      case "file-search-store": {
+        const models = await this.safely(() => this.fetchModels(), [] as GeminiModel[]);
+        const embeddingModels = models
+          .filter((m) => Boolean(m.name))
+          .filter((m) => (m.supportedGenerationMethods ?? []).includes("embedContent"))
+          .map((m) => ({ id: m.name!, label: m.displayName || shortName(m.name!) }));
+        return {
+          fields: [
+            {
+              key: "displayName",
+              label: "Display Name",
+              kind: "text",
+              required: true,
+              description: "Shown in Infrawrench and AI Studio. The resource name is generated.",
+            },
+            {
+              key: "embeddingModel",
+              label: "Embedding Model",
+              kind: "select",
+              required: false,
+              defaultValue: "",
+              options: [{ id: "", label: "Service default" }, ...embeddingModels],
+              description:
+                "The model that embeds every document in this store. Fixed once created.",
+            },
+          ],
+        };
+      }
+
+      case "file-search-document": {
+        const [stores, files] = await Promise.all([
+          this.fetchFileSearchStores(),
+          this.fetchFiles(),
+        ]);
+        const parentStore = parentResourceId
+          ? `fileSearchStores/${externalIdOf(parentResourceId)}`
+          : "";
+        return {
+          fields: [
+            parentStore
+              ? {
+                  key: "storeName",
+                  label: "Store",
+                  kind: "text",
+                  required: true,
+                  hidden: true,
+                  defaultValue: parentStore,
+                }
+              : {
+                  key: "storeName",
+                  label: "Store",
+                  kind: "select",
+                  required: true,
+                  options: stores
+                    .filter((st) => Boolean(st.name))
+                    .map((st) => ({ id: st.name!, label: st.displayName || shortName(st.name!) })),
+                },
+            {
+              key: "fileName",
+              label: "File",
+              kind: "select",
+              required: true,
+              options: files
+                .filter((fl) => Boolean(fl.name) && fl.state !== "FAILED")
+                .map((fl) => ({
+                  id: fl.name!,
+                  label: fl.displayName || shortName(fl.name!),
+                  description: [fl.mimeType, fl.sizeBytes ? formatBytes(Number(fl.sizeBytes)) : ""]
+                    .filter(Boolean)
+                    .join(" · "),
+                })),
+              description:
+                "A file already uploaded to the Files API. Files expire after 48 hours, but the imported document stays in the store.",
+            },
+            {
+              key: "maxTokensPerChunk",
+              label: "Max Tokens per Chunk",
+              kind: "number",
+              required: false,
+              minValue: 1,
+              description: "Leave blank for the service's default chunking.",
+            },
+            {
+              key: "maxOverlapTokens",
+              label: "Overlap Tokens",
+              kind: "number",
+              required: false,
+              minValue: 0,
+              showWhen: { fieldKey: "maxTokensPerChunk", fieldValuesNot: [""] },
+            },
+          ],
+        };
+      }
+
+      case "batch": {
+        const [models, files] = await Promise.all([this.fetchModels(), this.fetchFiles()]);
+        const batchModels = models
+          .filter((m) => Boolean(m.name))
+          .filter((m) => (m.supportedGenerationMethods ?? []).includes("batchGenerateContent"))
+          .map((m) => ({ id: m.name!, label: m.displayName || shortName(m.name!) }));
+        const jsonlFiles = files
+          .filter((fl) => Boolean(fl.name) && fl.state !== "FAILED")
+          .filter((fl) => /jsonl|json|text\/plain/.test(fl.mimeType ?? "") || !fl.mimeType)
+          .map((fl) => ({
+            id: fl.name!,
+            label: fl.displayName || shortName(fl.name!),
+            description: fl.sizeBytes ? formatBytes(Number(fl.sizeBytes)) : "",
+          }));
+        return {
+          fields: [
+            {
+              key: "displayName",
+              label: "Display Name",
+              kind: "text",
+              required: true,
+              placeholder: "nightly-eval",
+            },
+            {
+              key: "model",
+              label: "Model",
+              kind: "select",
+              required: true,
+              options: batchModels,
+              ...(batchModels[0] ? { defaultValue: batchModels[0].id } : {}),
+            },
+            {
+              key: "inputFileName",
+              label: "Input File",
+              kind: "select",
+              required: true,
+              options: jsonlFiles,
+              description:
+                "A JSONL file uploaded to the Files API, one GenerateContentRequest per line with a `key`. Up to 2 GB.",
+            },
+            {
+              key: "priority",
+              label: "Priority",
+              kind: "number",
+              required: false,
+              description: "Higher-priority batches run first. Leave blank for 0.",
+            },
+          ],
+        };
+      }
+
+      case "webhook":
+        return {
+          fields: [
+            {
+              key: "displayName",
+              label: "Name",
+              kind: "text",
+              required: false,
+              placeholder: "batch-notifications",
+            },
+            {
+              key: "uri",
+              label: "Endpoint URL",
+              kind: "text",
+              required: true,
+              placeholder: "https://example.com/gemini-webhook",
+              description: "Receives a signed POST for each subscribed event and must answer 2xx.",
+            },
+            {
+              key: "subscribedEvents",
+              label: "Events",
+              kind: "policy-picker",
+              required: true,
+              policies: WEBHOOK_EVENTS.map((e) => ({ ...e, category: e.id.split(".")[0] ?? e.id })),
+              description:
+                "The signing secret is not shown here. Use Get credentials on the new webhook to rotate one and copy it.",
+            },
+          ],
+        };
+
+      case "voice":
+        return {
+          fields: [
+            {
+              key: "displayName",
+              label: "Name",
+              kind: "text",
+              required: true,
+              placeholder: "Warm British Astronomer",
+            },
+            {
+              key: "prompt",
+              label: "Voice Description",
+              kind: "text",
+              multiline: true,
+              required: true,
+              placeholder:
+                "A warm, thoughtful astronomer in his late 60s with a gentle British accent, speaking with quiet wonder.",
+              description:
+                "Describe permanent traits: age, timbre, accent, personality. Keep situational emotion for the per-request style instead.",
+            },
+            {
+              key: "gender",
+              label: "Gender",
+              kind: "select",
+              required: false,
+              defaultValue: "",
+              options: [
+                { id: "", label: "Unspecified" },
+                { id: "female", label: "Female" },
+                { id: "male", label: "Male" },
+                { id: "neutral", label: "Neutral" },
+              ],
+            },
+            {
+              key: "languageCode",
+              label: "Language",
+              kind: "select",
+              required: false,
+              defaultValue: "",
+              options: [
+                { id: "", label: "Unspecified" },
+                ...TTS_LANGUAGES.filter((l) => l.id !== "").map((l) => ({
+                  id: l.id,
+                  label: l.label,
+                })),
+              ],
+            },
+            {
+              key: "model",
+              label: "Design Model",
+              kind: "select",
+              required: false,
+              defaultValue: "",
+              options: [
+                { id: "", label: "Latest voice design model" },
+                ...TTS_MODELS.filter((m) => m.id.startsWith("gemini-3.8")).map((m) => ({
+                  id: m.id,
+                  label: m.label,
+                })),
+              ],
+              description: "The finished voice works with every Gemini TTS model.",
+            },
+          ],
+        };
+
+      default:
+        throw new Error(`Gemini plugin: no create config for type "${typeId}"`);
     }
-    throw new Error(`Gemini plugin: no create config for type "${typeId}"`);
   }
 
-  /** `POST /v1beta/fileSearchStores`: https://ai.google.dev/api/file-search */
   async createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    if (typeId !== "file-search-store") {
-      throw new Error(`Gemini plugin: cannot create type "${typeId}"`);
-    }
-    const displayName = fields["displayName"];
-    if (!displayName) throw new Error("Gemini plugin: a display name is required");
+    const now = new Date().toISOString();
+    switch (typeId) {
+      case "file-search-store": {
+        // `POST /v1beta/fileSearchStores`: https://ai.google.dev/api/file-search
+        const displayName = fields["displayName"];
+        if (!displayName) throw new Error("Gemini plugin: a display name is required");
+        const store = await this.fetch<FileSearchStore>("/fileSearchStores", {
+          method: "POST",
+          body: JSON.stringify({
+            displayName,
+            ...(fields["embeddingModel"] ? { embeddingModel: fields["embeddingModel"] } : {}),
+          }),
+        });
+        return this.mapFileSearchStore(accountId, store, now);
+      }
 
-    const store = await this.fetch<FileSearchStore>("/fileSearchStores", {
-      method: "POST",
-      body: JSON.stringify({ displayName }),
-    });
-    return this.mapFileSearchStore(accountId, store, new Date().toISOString());
+      case "file-search-document":
+        return this.importFileSearchDocument(accountId, fields, now);
+
+      case "batch": {
+        // `POST /v1beta/models/{model}:batchGenerateContent`: verified
+        // 2026-10-03 against https://ai.google.dev/gemini-api/docs/batch-mode.
+        // Returns the batch Operation, the same shape the list returns.
+        const model = fields["model"];
+        const fileName = fields["inputFileName"];
+        if (!model || !fileName) throw new Error("Gemini plugin: pick a model and an input file");
+        const priority = fields["priority"]?.trim();
+        const operation = await this.fetch<Operation>(`/${modelPath(model)}:batchGenerateContent`, {
+          method: "POST",
+          body: JSON.stringify({
+            batch: {
+              displayName: fields["displayName"] || shortName(fileName),
+              model: modelPath(model),
+              inputConfig: { fileName },
+              ...(priority ? { priority: String(Math.trunc(Number(priority))) } : {}),
+            },
+          }),
+        });
+        return this.mapBatch(accountId, operation, now);
+      }
+
+      case "webhook": {
+        // `POST /v1beta/webhooks`: https://ai.google.dev/api/webhooks
+        const uri = fields["uri"]?.trim();
+        if (!uri) throw new Error("Gemini plugin: a webhook needs an endpoint URL");
+        const events = parseEvents(fields["subscribedEvents"]);
+        if (events.length === 0) throw new Error("Gemini plugin: subscribe to at least one event");
+        const hook = await this.fetch<Webhook>("/webhooks", {
+          method: "POST",
+          body: JSON.stringify({
+            uri,
+            subscribed_events: events,
+            ...(fields["displayName"] ? { name: fields["displayName"] } : {}),
+          }),
+        });
+        return this.mapWebhook(accountId, hook, now);
+      }
+
+      case "voice": {
+        // `POST /v1beta/voices` with a prompted voice: verified 2026-10-03
+        // against https://ai.google.dev/gemini-api/docs/voice-design.
+        // `store` must be true for prompted voices.
+        const prompt = fields["prompt"]?.trim();
+        if (!prompt) throw new Error("Gemini plugin: describe the voice you want");
+        const voice = await this.fetch<Voice>("/voices", {
+          method: "POST",
+          body: JSON.stringify({
+            store: true,
+            voice: {
+              type: "prompted",
+              prompted: { input: prompt },
+              ...(fields["displayName"] ? { display_name: fields["displayName"] } : {}),
+              ...(fields["gender"] ? { gender: fields["gender"] } : {}),
+              ...(fields["languageCode"] ? { language_code: fields["languageCode"] } : {}),
+              ...(fields["model"] ? { model: fields["model"] } : {}),
+            },
+          }),
+        });
+        return this.mapVoice(accountId, voice, now);
+      }
+
+      default:
+        throw new Error(`Gemini plugin: cannot create type "${typeId}"`);
+    }
   }
 
   /**
-   * Only a context cache's expiry is updatable:
-   * `PATCH /v1beta/cachedContents/{id}?updateMask=ttl`.
-   * https://ai.google.dev/api/caching
+   * `POST /v1beta/fileSearchStores/{store}:importFile`: verified 2026-10-03
+   * against https://ai.google.dev/api/file-search/file-search-stores.
+   *
+   * Indexing runs as a long-running operation. When it has already finished
+   * and names its document, that document is returned; otherwise a pending
+   * placeholder keyed by the operation stands in until the next sync finds
+   * the real document.
+   */
+  private async importFileSearchDocument(
+    accountId: string,
+    fields: Record<string, string>,
+    now: string,
+  ): Promise<ResourceInstance> {
+    const storeName = fields["storeName"];
+    const fileName = fields["fileName"];
+    if (!storeName || !fileName) throw new Error("Gemini plugin: pick a store and a file");
+    const maxTokens = Number(fields["maxTokensPerChunk"]);
+    const overlap = Number(fields["maxOverlapTokens"]);
+    const operation = await this.fetch<Operation>(`/${storeName}:importFile`, {
+      method: "POST",
+      body: JSON.stringify({
+        fileName,
+        ...(Number.isFinite(maxTokens) && maxTokens > 0
+          ? {
+              chunkingConfig: {
+                whiteSpaceConfig: {
+                  maxTokensPerChunk: Math.trunc(maxTokens),
+                  ...(Number.isFinite(overlap) && overlap >= 0
+                    ? { maxOverlapTokens: Math.trunc(overlap) }
+                    : {}),
+                },
+              },
+            }
+          : {}),
+      }),
+    });
+
+    const documentName = operation.response?.["documentName"];
+    if (operation.done && typeof documentName === "string" && documentName) {
+      const doc = await this.fetch<FileSearchDocument>(`/${documentName}`);
+      return this.mapFileSearchDocument(accountId, storeName, doc, now);
+    }
+    if (operation.error?.message) {
+      throw new Error(`Gemini plugin: import failed: ${operation.error.message}`);
+    }
+    return this.mapFileSearchDocument(
+      accountId,
+      storeName,
+      {
+        name: operation.name ?? `${storeName}/documents/pending-${shortName(fileName)}`,
+        displayName: shortName(fileName),
+        state: "STATE_PENDING",
+      },
+      now,
+    );
+  }
+
+  /**
+   * Updates:
+   *  - context cache TTL: `PATCH /v1beta/cachedContents/{id}?updateMask=ttl`
+   *    (https://ai.google.dev/api/caching)
+   *  - batch display name and priority:
+   *    `PATCH /v1beta/batches/{id}:updateGenerateContentBatch?updateMask=…`
+   *  - webhook name, URI, events and state:
+   *    `PATCH /v1beta/webhooks/{id}?update_mask=…` (https://ai.google.dev/api/webhooks)
    */
   async updateResource(
     typeId: string,
@@ -695,22 +1216,78 @@ export class GeminiClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    if (typeId !== "cached-content") {
-      throw new Error(`Gemini plugin: cannot update type "${typeId}"`);
-    }
-    const ttl = fields["ttl"];
-    if (!ttl) {
-      throw new Error(
-        'Gemini plugin: only a cache\'s ttl is updatable — supply a duration such as "3600s"',
+    const externalId = externalIdOf(resourceId);
+    const now = new Date().toISOString();
+
+    if (typeId === "cached-content") {
+      const ttl = fields["ttl"];
+      if (!ttl) {
+        throw new Error(
+          'Gemini plugin: only a cache\'s ttl is updatable — supply a duration such as "3600s"',
+        );
+      }
+      const cache = await this.fetch<CachedContent>(
+        `/cachedContents/${encodeURIComponent(externalId)}?updateMask=ttl`,
+        { method: "PATCH", body: JSON.stringify({ ttl }) },
       );
+      return this.mapCachedContent(accountId, cache, now);
     }
 
-    const externalId = externalIdOf(resourceId);
-    const cache = await this.fetch<CachedContent>(
-      `/cachedContents/${encodeURIComponent(externalId)}?updateMask=ttl`,
-      { method: "PATCH", body: JSON.stringify({ ttl }) },
-    );
-    return this.mapCachedContent(accountId, cache, new Date().toISOString());
+    if (typeId === "batch") {
+      const body: Record<string, unknown> = {};
+      const mask: string[] = [];
+      if (fields["displayName"] !== undefined && fields["displayName"] !== "") {
+        body["displayName"] = fields["displayName"];
+        mask.push("displayName");
+      }
+      if (fields["priority"] !== undefined && String(fields["priority"]).trim() !== "") {
+        const priority = Number(fields["priority"]);
+        if (!Number.isInteger(priority))
+          throw new Error("Gemini plugin: priority must be a whole number");
+        body["priority"] = String(priority);
+        mask.push("priority");
+      }
+      if (mask.length === 0) return this.getResource(typeId, resourceId, accountId);
+      await this.fetch<unknown>(
+        `/batches/${encodeURIComponent(externalId)}:updateGenerateContentBatch?updateMask=${mask.join(",")}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      );
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
+    if (typeId === "webhook") {
+      const body: Record<string, unknown> = {};
+      const mask: string[] = [];
+      if (fields["displayName"] !== undefined) {
+        body["name"] = fields["displayName"];
+        mask.push("name");
+      }
+      if (fields["uri"]?.trim()) {
+        body["uri"] = fields["uri"].trim();
+        mask.push("uri");
+      }
+      if (fields["subscribedEvents"] !== undefined) {
+        const events = parseEvents(fields["subscribedEvents"]);
+        const unknown = events.filter((e) => !WEBHOOK_EVENTS.some((w) => w.id === e));
+        if (unknown.length > 0) {
+          throw new Error(`Gemini plugin: unknown webhook event(s): ${unknown.join(", ")}`);
+        }
+        if (events.length === 0) throw new Error("Gemini plugin: subscribe to at least one event");
+        body["subscribed_events"] = events;
+        mask.push("subscribed_events");
+      }
+      if (fields["state"] === "enabled" || fields["state"] === "disabled") {
+        body["state"] = fields["state"];
+        mask.push("state");
+      }
+      const hook = await this.fetch<Webhook>(
+        `/webhooks/${encodeURIComponent(externalId)}?update_mask=${mask.join(",")}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      );
+      return this.mapWebhook(accountId, hook, now);
+    }
+
+    throw new Error(`Gemini plugin: cannot update type "${typeId}"`);
   }
 
   /**
@@ -721,6 +1298,8 @@ export class GeminiClient implements PluginClient {
    *  - `DELETE /v1beta/batches/{id}`             https://ai.google.dev/api/batch-mode
    *  - `DELETE /v1beta/fileSearchStores/{id}?force=true`
    *  - `DELETE /v1beta/fileSearchStores/{store}/documents/{id}?force=true`
+   *  - `DELETE /v1beta/webhooks/{id}`            https://ai.google.dev/api/webhooks
+   *  - `DELETE /v1beta/voices/{id}`              https://ai.google.dev/api/voices
    *
    * `force` is required on both File Search deletes: without it a store that
    * still holds documents returns FAILED_PRECONDITION. Since the host has
@@ -753,12 +1332,21 @@ export class GeminiClient implements PluginClient {
         // includes the store path.
         await this.fetch(`/${externalId}?force=true`, { method: "DELETE" });
         return;
+      case "webhook":
+        await this.fetch(`/webhooks/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+        return;
+      case "voice":
+        await this.fetch(`/voices/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+        return;
       default:
         throw new Error(`Gemini plugin: cannot delete type "${typeId}"`);
     }
   }
 
-  /** `POST /v1beta/batches/{id}:cancel`: https://ai.google.dev/api/batch-mode */
+  /**
+   * - `POST /v1beta/batches/{id}:cancel`: https://ai.google.dev/api/batch-mode
+   * - `POST /v1beta/webhooks/{id}:ping`: https://ai.google.dev/api/webhooks
+   */
   async invokeAction(
     typeId: string,
     resourceId: string,
@@ -771,7 +1359,51 @@ export class GeminiClient implements PluginClient {
       });
       return;
     }
+    if (typeId === "webhook" && actionId === "ping-webhook") {
+      await this.fetch(`/webhooks/${encodeURIComponent(externalIdOf(resourceId))}:ping`, {
+        method: "POST",
+        body: "{}",
+      });
+      return;
+    }
     throw new Error(`Gemini plugin: unknown action "${actionId}" for type "${typeId}"`);
+  }
+
+  /**
+   * `POST /v1beta/webhooks/{id}:rotateSigningSecret`: verified 2026-10-03
+   * against https://ai.google.dev/api/webhooks. The secret is returned only
+   * here; previous secrets stay valid for 24 hours.
+   */
+  async exportCredential(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    formatId: string,
+  ): Promise<CredentialExport> {
+    if (typeId !== "webhook" || formatId !== "signing-secret") {
+      throw new Error(`Gemini plugin: no credential format "${formatId}" for type "${typeId}"`);
+    }
+    const id = externalIdOf(resourceId);
+    const res = await this.fetch<{ secret?: string }>(
+      `/webhooks/${encodeURIComponent(id)}:rotateSigningSecret`,
+      {
+        method: "POST",
+        body: JSON.stringify({ revocation_behavior: "revoke_previous_secrets_after_h24" }),
+      },
+    );
+    const secret = res.secret ?? "";
+    if (!secret) throw new Error("Gemini plugin: the rotation returned no secret");
+    return {
+      content: secret,
+      filename: `gemini-${id}-webhook-secret.txt`,
+      mimeType: "text/plain",
+      fields: [
+        { label: "Webhook ID", value: id },
+        { label: "Signing Secret", value: secret, sensitive: true, hint: "Only shown once" },
+      ],
+      warning:
+        "Save this secret now; Gemini only ever shows a truncated version again. Previous secrets stop working in 24 hours.",
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -836,6 +1468,16 @@ export class GeminiClient implements PluginClient {
       ];
     }
 
+    if (resourceTypeId === "webhook") {
+      return [
+        { label: "State", value: String(fields["state"] || "—") },
+        {
+          label: "Events",
+          value: String(parseEvents(String(fields["subscribedEvents"] ?? "")).length),
+        },
+      ];
+    }
+
     if (resourceTypeId === "file-search-store") {
       return [
         { label: "Documents", value: String(fields["activeDocumentsCount"] ?? 0) },
@@ -867,6 +1509,10 @@ export class GeminiClient implements PluginClient {
         return this.renderFileSearchStoreDetail(resource);
       case "file-search-document":
         return this.renderFileSearchDocumentDetail(resource);
+      case "webhook":
+        return this.renderWebhookDetail(resource);
+      case "voice":
+        return this.renderVoiceDetail(resource);
       default:
         return {
           title: resource.displayName,
@@ -994,7 +1640,7 @@ export class GeminiClient implements PluginClient {
           ? "Synthesize speech with this TTS model, or transcribe a clip"
           : "Synthesize speech, or transcribe a clip with a Gemini model",
         helpText: SPEECH_HELP_TEXT,
-        voices: GEMINI_VOICES,
+        voices: [...customVoiceOptions(resource), ...GEMINI_VOICES],
         defaultVoice: DEFAULT_VOICE,
         voiceLabel: "Voice",
         // Gemini's TTS models are a distinct, small set addressed through the
@@ -1204,6 +1850,10 @@ export class GeminiClient implements PluginClient {
                 { key: "Operation Name", value: String(fields["name"] ?? "—"), copyable: true },
                 { key: "State", value: prettyBatchState(state) },
                 { key: "Model", value: String(fields["model"] || "—") },
+                { key: "Priority", value: String(fields["priority"] ?? 0) },
+                ...(fields["inputFileName"]
+                  ? [{ key: "Input File", value: String(fields["inputFileName"]), copyable: true }]
+                  : []),
                 { key: "Done", value: fields["done"] === true ? "Yes" : "No" },
                 { key: "Created", value: String(fields["createTime"] || "—") },
                 { key: "Updated", value: String(fields["updateTime"] || "—") },
@@ -1389,6 +2039,108 @@ export class GeminiClient implements PluginClient {
     };
   }
 
+  private renderWebhookDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const state = String(fields["state"] ?? "");
+    return {
+      title: resource.displayName,
+      subtitle: String(fields["uri"] ?? ""),
+      status: { kind: "status-dot", status: webhookStatusDot(state), label: state || "unknown" },
+      sections: [
+        {
+          kind: "section",
+          title: "Webhook",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Webhook ID", value: resource.externalId ?? "", copyable: true },
+                { key: "Name", value: String(fields["displayName"] || "—") },
+                { key: "Endpoint", value: String(fields["uri"] || "—"), copyable: true },
+                { key: "Events", value: String(fields["subscribedEvents"] || "—") },
+                { key: "State", value: state || "—" },
+                { key: "Signing Secrets", value: String(fields["signingSecrets"] || "—") },
+                { key: "Created", value: String(fields["createTime"] || "—") },
+                { key: "Updated", value: String(fields["updateTime"] || "—") },
+              ],
+            },
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                state === "disabled_due_to_failed_deliveries"
+                  ? "Gemini disabled this webhook after repeated failed deliveries. Fix the endpoint, then edit the webhook and set its state back to enabled."
+                  : "Every delivery is signed. Use Get credentials to rotate the signing secret and copy the new one; the old one keeps working for 24 hours.",
+            },
+          ],
+        },
+      ],
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        {
+          kind: "action",
+          label: "Send test ping",
+          action: {
+            type: "plugin-action",
+            actionId: "ping-webhook",
+            successMessage: "Ping sent.",
+          },
+        },
+      ],
+    };
+  }
+
+  private renderVoiceDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const optional = (key: string, label: string) =>
+      fields[key] ? [{ key: label, value: String(fields[key]) }] : [];
+    return {
+      title: resource.displayName,
+      subtitle: `Custom ${String(fields["type"] || "")} voice`,
+      status: { kind: "status-dot", status: "healthy", label: String(fields["type"] || "") },
+      sections: [
+        {
+          kind: "section",
+          title: "Voice",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Voice ID", value: resource.externalId ?? "", copyable: true },
+                { key: "Name", value: String(fields["displayName"] || "—") },
+                { key: "Type", value: String(fields["type"] || "—") },
+                ...optional("model", "Created With"),
+                ...optional("languageCode", "Language"),
+                ...optional("gender", "Gender"),
+                ...optional("accent", "Accent"),
+                ...optional("persona", "Persona"),
+                ...optional("pitch", "Pitch"),
+                { key: "Expires", value: String(fields["expireTime"] || "—") },
+              ],
+            },
+            ...(fields["prompt"]
+              ? [
+                  {
+                    kind: "text" as const,
+                    variant: "body" as const,
+                    copyable: true,
+                    content: String(fields["prompt"]),
+                  },
+                ]
+              : []),
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                "Pick this voice in any Gemini model's Speech tab, or pass its id as the voice in speech_config. Stored voices expire after a year without use; every synthesis extends the expiry.",
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     const fields = resource.fields;
     const label = resource.displayName;
@@ -1429,6 +2181,12 @@ export class GeminiClient implements PluginClient {
             kind: "status-dot",
             status: Number(fields["failedDocumentsCount"] ?? 0) > 0 ? "degraded" : "healthy",
           },
+        };
+      case "webhook":
+        return {
+          id: resource.id,
+          label,
+          status: { kind: "status-dot", status: webhookStatusDot(String(fields["state"] ?? "")) },
         };
       default:
         return { id: resource.id, label, status: { kind: "status-dot", status: "healthy" } };
@@ -1533,8 +2291,7 @@ export class GeminiClient implements PluginClient {
     if (!base64) {
       throw new Error(
         `Gemini plugin: ${model} returned no audio. TTS is only available on the *-tts models — ` +
-          "pick one of gemini-3.1-flash-tts-preview, gemini-2.5-flash-preview-tts or " +
-          "gemini-2.5-pro-preview-tts.",
+          `pick one of ${TTS_MODELS.map((m) => m.id).join(", ")}.`,
       );
     }
 
@@ -1695,6 +2452,52 @@ function extensionForContainer(mimeType: string): string {
   if (mimeType === "audio/mpeg" || mimeType === "audio/mp3") return "mp3";
   if (mimeType === "audio/m4a") return "m4a";
   return mimeType.split("/")[1] ?? "audio";
+}
+
+function webhookStatusDot(state: string): ResourceStatus {
+  if (state === "enabled") return "healthy";
+  if (state === "disabled_due_to_failed_deliveries") return "error";
+  if (state === "disabled") return "degraded";
+  return "unknown";
+}
+
+/** Custom voices stashed by `getResource("model")` for the Speech tab picker. */
+function customVoiceOptions(resource: ResourceInstance): SpeechPanelOption[] {
+  const stashed = resource.resolvedOutputs?.["__customVoices__"];
+  if (typeof stashed !== "string" || stashed.length === 0) return [];
+  try {
+    const parsed = JSON.parse(stashed) as SpeechPanelOption[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A picker value (`models/x` or `x`) as a `models/x` resource path. */
+function modelPath(model: string): string {
+  return model.startsWith("models/") ? model : `models/${model}`;
+}
+
+/** Webhook events from a picker (JSON array) or a comma-separated edit field. */
+function parseEvents(raw: string | undefined): string[] {
+  const value = (raw ?? "").trim();
+  if (!value) return [];
+  if (value.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {
+      /* fall through to the comma-separated form */
+    }
+  }
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 /** `models/gemini-2.5-flash` → `gemini-2.5-flash`. */

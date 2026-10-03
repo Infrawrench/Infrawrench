@@ -42,28 +42,37 @@ export const GEMINI_VOICES: SpeechPanelOption[] = [
 export const DEFAULT_VOICE = "Kore";
 
 /**
- * The TTS models addressable through the Interactions API.
- * Verified: https://ai.google.dev/gemini-api/docs/interactions/speech-generation
+ * The TTS models addressable through the Interactions API, newest first.
+ * Verified 2026-10-03 against the supported-models table at
+ * https://ai.google.dev/gemini-api/docs/speech-generation, which no longer
+ * lists `gemini-2.5-flash-preview-tts`. The 3.8 models return WAV rather than
+ * raw PCM by default; `synthesizeSpeech` reads the reported MIME type and
+ * passes a real container straight through.
  */
 export const TTS_MODELS: SpeechPanelOption[] = [
   {
-    id: "gemini-3.1-flash-tts-preview",
-    label: "gemini-3.1-flash-tts-preview",
-    description: "Latest Flash TTS preview",
+    id: "gemini-3.8-flash-tts",
+    label: "gemini-3.8-flash-tts",
+    description: "Highest fidelity and most expressive control",
   },
   {
-    id: "gemini-2.5-flash-preview-tts",
-    label: "gemini-2.5-flash-preview-tts",
-    description: "Flash TTS — faster and cheaper",
+    id: "gemini-3.8-flash-lite-tts",
+    label: "gemini-3.8-flash-lite-tts",
+    description: "Fast, cost-efficient workhorse",
+  },
+  {
+    id: "gemini-3.1-flash-tts-preview",
+    label: "gemini-3.1-flash-tts-preview",
+    description: "Previous Flash TTS preview",
   },
   {
     id: "gemini-2.5-pro-preview-tts",
     label: "gemini-2.5-pro-preview-tts",
-    description: "Pro TTS — highest quality",
+    description: "Pro TTS preview",
   },
 ];
 
-export const DEFAULT_TTS_MODEL = "gemini-3.1-flash-tts-preview";
+export const DEFAULT_TTS_MODEL = "gemini-3.8-flash-tts";
 
 /**
  * Languages Gemini supports, as BCP-47 tags.

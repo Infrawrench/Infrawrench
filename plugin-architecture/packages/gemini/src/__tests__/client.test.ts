@@ -480,7 +480,7 @@ describe("synthesizeSpeech", () => {
       text: "Hi",
       modelId: "gemini-2.5-flash",
     });
-    expect(bodyOf(calls[0]!.init)["model"]).toBe("gemini-3.1-flash-tts-preview");
+    expect(bodyOf(calls[0]!.init)["model"]).toBe("gemini-3.8-flash-tts");
   });
 
   it("defaults the voice to Kore", async () => {
@@ -607,7 +607,7 @@ describe("transcribeAudio", () => {
       mimeType: "audio/wav",
       modelId: "gemini-2.5-pro-preview-tts",
     });
-    expect(calls[0]!.url).toContain("/models/gemini-2.5-flash:generateContent");
+    expect(calls[0]!.url).toContain("/models/gemini-3.8-flash:generateContent");
   });
 
   it("refuses a clip that would blow the 20 MB inline request cap", async () => {
@@ -650,5 +650,246 @@ describe("error surfacing", () => {
     await expect(client().listResources("model", ACCOUNT)).rejects.toThrow(
       /Gemini API error 429 for \/models/,
     );
+  });
+});
+
+describe("webhooks", () => {
+  it("lists with snake_case paging and maps the webhook fields", async () => {
+    installFetch((url) => {
+      if (url.includes("page_token=n2")) {
+        return jsonResponse({ webhooks: [{ id: "wh_2", uri: "https://b.example/hook" }] });
+      }
+      return jsonResponse({
+        webhooks: [
+          {
+            id: "wh_1",
+            name: "batches",
+            uri: "https://a.example/hook",
+            subscribed_events: ["batch.succeeded", "batch.failed"],
+            state: "enabled",
+            signing_secrets: [
+              { truncated_secret: "whsec_ab…", expire_time: "2026-12-01T00:00:00Z" },
+            ],
+          },
+        ],
+        next_page_token: "n2",
+      });
+    });
+
+    const hooks = await client().listResources("webhook", ACCOUNT);
+    expect(calls[0]!.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/webhooks?page_size=1000",
+    );
+    expect(hooks.map((h) => h.externalId)).toEqual(["wh_1", "wh_2"]);
+    expect(hooks[0]!.fields["subscribedEvents"]).toBe("batch.succeeded, batch.failed");
+    expect(hooks[0]!.fields["signingSecrets"]).toContain("whsec_ab");
+  });
+
+  it("creates from the event picker's JSON value and edits with an update mask", async () => {
+    installFetch(() =>
+      jsonResponse({ id: "wh_1", uri: "https://a.example/hook", state: "enabled" }),
+    );
+
+    await client().createResource("webhook", ACCOUNT, {
+      displayName: "batches",
+      uri: "https://a.example/hook",
+      subscribedEvents: JSON.stringify(["batch.succeeded", "video.generated"]),
+    });
+    expect(calls[0]!.url).toBe("https://generativelanguage.googleapis.com/v1beta/webhooks");
+    expect(bodyOf(calls[0]!.init)).toEqual({
+      uri: "https://a.example/hook",
+      subscribed_events: ["batch.succeeded", "video.generated"],
+      name: "batches",
+    });
+
+    await client().updateResource("webhook", `${ACCOUNT}:webhook:wh_1`, ACCOUNT, {
+      subscribedEvents: "batch.failed, batch.expired",
+      state: "disabled",
+    });
+    expect(calls[1]!.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/webhooks/wh_1?update_mask=subscribed_events,state",
+    );
+    expect(calls[1]!.init?.method).toBe("PATCH");
+    expect(bodyOf(calls[1]!.init)).toEqual({
+      subscribed_events: ["batch.failed", "batch.expired"],
+      state: "disabled",
+    });
+  });
+
+  it("rejects an unknown event on edit", async () => {
+    await expect(
+      client().updateResource("webhook", `${ACCOUNT}:webhook:wh_1`, ACCOUNT, {
+        subscribedEvents: "batch.exploded",
+      }),
+    ).rejects.toThrow(/unknown webhook event/);
+  });
+
+  it("pings, and rotates the signing secret through credential export", async () => {
+    installFetch((url) =>
+      url.endsWith(":rotateSigningSecret")
+        ? jsonResponse({ secret: "whsec_new" })
+        : jsonResponse({}),
+    );
+    await client().invokeAction("webhook", `${ACCOUNT}:webhook:wh_1`, "ping-webhook", ACCOUNT);
+    expect(calls[0]!.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/webhooks/wh_1:ping",
+    );
+
+    const exported = await client().exportCredential(
+      "webhook",
+      `${ACCOUNT}:webhook:wh_1`,
+      ACCOUNT,
+      "signing-secret",
+    );
+    expect(bodyOf(calls[1]!.init)).toEqual({
+      revocation_behavior: "revoke_previous_secrets_after_h24",
+    });
+    expect(exported.content).toBe("whsec_new");
+  });
+});
+
+describe("custom voices", () => {
+  it("lists only stored custom voices", async () => {
+    installFetch(() =>
+      jsonResponse({
+        voices: [
+          {
+            id: "voice_abc",
+            display_name: "Astronomer",
+            type: "prompted",
+            language_code: "en-GB",
+            prompted: { input: "A warm astronomer" },
+            expire_time: "2027-10-01T00:00:00Z",
+          },
+          { id: "Puck", display_name: "Puck", type: "prebuilt" },
+        ],
+      }),
+    );
+    const voices = await client().listResources("voice", ACCOUNT);
+    const url = new URL(calls[0]!.url);
+    expect(url.pathname).toBe("/v1beta/voices");
+    expect(url.searchParams.getAll("type")).toEqual(["prompted", "replicated"]);
+    expect(voices).toHaveLength(1);
+    expect(voices[0]!.fields["prompt"]).toBe("A warm astronomer");
+    expect(voices[0]!.resolvedOutputs["voiceId"]).toBe("voice_abc");
+  });
+
+  it("designs a stored prompted voice", async () => {
+    installFetch(() => jsonResponse({ id: "voice_new", type: "prompted", display_name: "Ogre" }));
+    const created = await client().createResource("voice", ACCOUNT, {
+      displayName: "Ogre",
+      prompt: "A deep, booming voice",
+      gender: "male",
+      languageCode: "",
+      model: "",
+    });
+    expect(bodyOf(calls[0]!.init)).toEqual({
+      store: true,
+      voice: {
+        type: "prompted",
+        prompted: { input: "A deep, booming voice" },
+        display_name: "Ogre",
+        gender: "male",
+      },
+    });
+    expect(created.externalId).toBe("voice_new");
+  });
+
+  it("deletes a voice", async () => {
+    installFetch(() => jsonResponse({}));
+    await client().deleteResource("voice", `${ACCOUNT}:voice:voice_new`, ACCOUNT);
+    expect(calls[0]!.url).toBe("https://generativelanguage.googleapis.com/v1beta/voices/voice_new");
+    expect(calls[0]!.init?.method).toBe("DELETE");
+  });
+});
+
+describe("batch create and edit", () => {
+  it("creates a file-backed batch on the model's batchGenerateContent", async () => {
+    installFetch(() =>
+      jsonResponse({
+        name: "batches/b1",
+        metadata: {
+          displayName: "nightly",
+          model: "models/gemini-3.8-flash",
+          state: "BATCH_STATE_PENDING",
+          priority: "5",
+          inputConfig: { fileName: "files/in" },
+        },
+      }),
+    );
+    const batch = await client().createResource("batch", ACCOUNT, {
+      displayName: "nightly",
+      model: "models/gemini-3.8-flash",
+      inputFileName: "files/in",
+      priority: "5",
+    });
+    expect(calls[0]!.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:batchGenerateContent",
+    );
+    expect(bodyOf(calls[0]!.init)).toEqual({
+      batch: {
+        displayName: "nightly",
+        model: "models/gemini-3.8-flash",
+        inputConfig: { fileName: "files/in" },
+        priority: "5",
+      },
+    });
+    expect(batch.fields["priority"]).toBe(5);
+    expect(batch.fields["inputFileName"]).toBe("files/in");
+  });
+
+  it("patches only the changed batch fields", async () => {
+    installFetch((url) =>
+      url.includes(":updateGenerateContentBatch")
+        ? jsonResponse({})
+        : jsonResponse({ operations: [{ name: "batches/b1", metadata: { displayName: "x" } }] }),
+    );
+    await client().updateResource("batch", `${ACCOUNT}:batch:b1`, ACCOUNT, { priority: "7" });
+    expect(calls[0]!.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/batches/b1:updateGenerateContentBatch?updateMask=priority",
+    );
+    expect(bodyOf(calls[0]!.init)).toEqual({ priority: "7" });
+  });
+});
+
+describe("File Search import", () => {
+  it("imports a Files API file with chunking and returns a pending placeholder", async () => {
+    installFetch(() => jsonResponse({ name: "fileSearchStores/s1/operations/op1", done: false }));
+    const doc = await client().createResource("file-search-document", ACCOUNT, {
+      storeName: "fileSearchStores/s1",
+      fileName: "files/abc",
+      maxTokensPerChunk: "200",
+      maxOverlapTokens: "20",
+    });
+    expect(calls[0]!.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/fileSearchStores/s1:importFile",
+    );
+    expect(bodyOf(calls[0]!.init)).toEqual({
+      fileName: "files/abc",
+      chunkingConfig: { whiteSpaceConfig: { maxTokensPerChunk: 200, maxOverlapTokens: 20 } },
+    });
+    expect(doc.fields["state"]).toBe("STATE_PENDING");
+    expect(doc.parentResourceId).toBe(`${ACCOUNT}:file-search-store:s1`);
+  });
+
+  it("returns the real document when the import has already finished", async () => {
+    installFetch((url) =>
+      url.endsWith(":importFile")
+        ? jsonResponse({
+            name: "op",
+            done: true,
+            response: { documentName: "fileSearchStores/s1/documents/d1" },
+          })
+        : jsonResponse({ name: "fileSearchStores/s1/documents/d1", state: "STATE_ACTIVE" }),
+    );
+    const doc = await client().createResource("file-search-document", ACCOUNT, {
+      storeName: "fileSearchStores/s1",
+      fileName: "files/abc",
+    });
+    expect(bodyOf(calls[0]!.init)).toEqual({ fileName: "files/abc" });
+    expect(calls[1]!.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/fileSearchStores/s1/documents/d1",
+    );
+    expect(doc.fields["state"]).toBe("STATE_ACTIVE");
   });
 });
