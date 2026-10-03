@@ -42,6 +42,7 @@ import {
   buildT3CodeLogoutCommand,
   createT3CodeSetupPlan,
   isT3CodeSurface,
+  t3CodeAccessOrDefault,
 } from "@infrawrench/ui/agents/t3-code";
 
 import {
@@ -54,6 +55,7 @@ import { db } from "../db/client";
 import { agentSessions, githubInstallations, resources, sshKeys } from "../db/schema";
 import { buildAad, decrypt } from "./encryption";
 import { getClientForAccount } from "./plugin-clients";
+import { installAgentServices } from "./agent-services";
 
 const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
@@ -325,6 +327,11 @@ async function runAgentVmSetup(
   if (warning) {
     await appendAgentSessionLog(row.id, `Warning: ${warning}`, "setting-up");
   }
+  // Attached services (e.g. Tailscale) install after the bootstrap, so a
+  // T3 Code server already exists when it is published on the tailnet.
+  await installAgentServices(row, organizationId, target, privateKey, (message) =>
+    appendAgentSessionLog(row.id, message, "setting-up"),
+  );
   // Web sessions are cloned from a Git URL on the VM; there is no local
   // config/repo file sync step (that path exists only in the desktop app).
   if (opts?.launchReadyToken) {
@@ -371,7 +378,8 @@ async function buildSetupBootstrapCommand(
 }
 
 export function setupPlanForRow(
-  row: Pick<SessionRow, "repo" | "tool" | "surface" | "workspaceName" | "setupPlanJson">,
+  row: Pick<SessionRow, "repo" | "tool" | "surface" | "workspaceName" | "setupPlanJson"> &
+    Partial<Pick<SessionRow, "t3Access">>,
 ): AgentSetupPlan {
   try {
     const parsed = JSON.parse(row.setupPlanJson) as AgentSetupPlan;
@@ -380,7 +388,8 @@ export function setupPlanForRow(
     // fall through to the default plan
   }
   // The repo-derived fallback can't describe a T3 Code server — it has no repo.
-  if (isT3CodeSurface(row.surface)) return createT3CodeSetupPlan(sessionTool(row));
+  if (isT3CodeSurface(row.surface))
+    return createT3CodeSetupPlan(sessionTool(row), t3CodeAccessOrDefault(row.t3Access));
   return createAgentSetupPlanForRepo(row.repo, sessionTool(row), row.workspaceName);
 }
 
@@ -591,6 +600,8 @@ export async function revokeT3CodeLinkOnVm(
     .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.organizationId, organizationId)))
     .limit(1);
   if (!row || !row.vmResourceId || !isT3CodeSurface(row.surface)) return;
+  // A Tailscale-served environment was never linked to T3 Connect.
+  if (t3CodeAccessOrDefault(row.t3Access) === "tailscale") return;
   try {
     const privateKey = await loadOrgAgentSshPrivateKey(organizationId);
     const target = await resolveAgentSshTargetNow(row, organizationId);

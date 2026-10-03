@@ -509,6 +509,9 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     hasDockerActions,
     hasSshTerminal,
     hasSftpBrowser,
+    // A plugin that installs itself over SSH is never offered as a target of
+    // its own installer (e.g. enrolling a Tailscale device into Tailscale).
+    supportsSshInstall: (hasSshTerminal || !!sshHost) && !loadedPlugin.plugin.manifest.sshInstall,
     sshHost,
     sshPrivateHost,
     defaultSshUsername,

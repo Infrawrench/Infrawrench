@@ -984,4 +984,76 @@ describe("AgentsPanel", () => {
       expect(title).toBe("T3 Code setup · team-box");
     });
   });
+  it("attaches a Tailscale service and offers T3 Code over Tailscale only while it is attached", async () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const client = makeClient(
+      account,
+      {
+        accountId: "acct-1",
+        pluginId: "digitalocean",
+        resourceTypeId: "droplet",
+        tool: "codex",
+        surface: "t3-code",
+        fields: {},
+        serviceAccountIds: ["ts"],
+        t3Access: "tailscale",
+      },
+      {
+        listServiceAccounts: vi.fn(async () => [
+          {
+            accountId: "other",
+            displayName: "lab tailnet",
+            pluginId: "tailscale",
+            serviceName: "Tailscale",
+            description: "Install Tailscale.",
+          },
+          {
+            accountId: "ts",
+            displayName: "acme tailnet",
+            pluginId: "tailscale",
+            serviceName: "Tailscale",
+            description: "Install Tailscale.",
+          },
+        ]),
+      },
+    );
+    render(<AgentsPanel client={client} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Workspace \(DigitalOcean\)/ }));
+
+    const option = await screen.findByRole("option", { name: /acme tailnet/ });
+    expect(option).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("listbox", { name: "Services" })).toHaveAttribute(
+      "aria-multiselectable",
+      "true",
+    );
+    expect(screen.getByText("T3 Code access")).toBeInTheDocument();
+    expect(screen.getByText(/published on your tailnet with Tailscale Serve/)).toBeInTheDocument();
+
+    // The search narrows the list like the region picker's.
+    fireEvent.change(screen.getByRole("textbox", { name: "Search services" }), {
+      target: { value: "acme" },
+    });
+    expect(screen.queryByRole("option", { name: /lab tailnet/ })).not.toBeInTheDocument();
+
+    // Detaching the only Tailscale account falls back to T3 Connect.
+    fireEvent.click(option);
+    expect(option).toHaveAttribute("aria-selected", "false");
+    expect(screen.queryByText("T3 Code access")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save defaults" }));
+    await waitFor(() =>
+      expect(client.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceAccountIds: [], t3Access: "t3-connect" }),
+      ),
+    );
+  });
 });

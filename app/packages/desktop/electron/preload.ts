@@ -46,6 +46,7 @@ const INVOKE_CHANNELS = [
   "ssh_open_tunnel",
   "ssh_get_active_tunnels",
   "ssh_exec_command",
+  "ssh_exec_script",
   // Linux applications: open a session on a host, relay frames, list apps,
   // and check (or fix) what the host is missing before any of that.
   "apps_session_open",
@@ -66,6 +67,7 @@ const INVOKE_CHANNELS = [
   "ssh_host_key_decide",
   // workflow ssh
   "workflow_ssh_exec",
+  "workflow_ssh_exec_script",
   "workflow_ssh_stream_start",
   "workflow_ssh_stream_read",
   "workflow_ssh_stream_close",
@@ -143,6 +145,8 @@ const INVOKE_CHANNELS = [
   "cloud_export_credential",
   "cloud_load_picker_resources",
   "cloud_tunnel_ssh_attach",
+  "cloud_ssh_install_accounts",
+  "cloud_ssh_install",
   "cloud_list_ssh_keys",
   "cloud_pin_resource",
   "cloud_unpin_resource",

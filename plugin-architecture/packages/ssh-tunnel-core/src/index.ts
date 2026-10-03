@@ -163,3 +163,4 @@ export function findTunnel<E = unknown>(
   }
   return null;
 }
+export { execSshScript } from "./exec-script.js";

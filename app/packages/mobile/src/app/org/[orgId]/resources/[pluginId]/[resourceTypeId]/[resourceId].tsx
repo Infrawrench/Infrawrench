@@ -1,3 +1,4 @@
+import { SshInstallSheet } from "@/features/ssh/SshInstallSheet";
 import { useMemo, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -52,6 +53,7 @@ interface DetailResponse {
   resourceTypeLabel: string;
   hasSqlEditor: boolean;
   hasSshTerminal: boolean;
+  supportsSshInstall?: boolean;
   hasKvConsole: boolean;
   hasKvBrowser: boolean;
   hasSftpBrowser: boolean;
@@ -88,6 +90,7 @@ export default function ResourceDetailScreen() {
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();
   const [prompt, setPrompt] = useState<PromptAction | null>(null);
+  const [showSshInstall, setShowSshInstall] = useState(false);
 
   const pluginId = params.pluginId;
   const resourceTypeId = params.resourceTypeId;
@@ -248,6 +251,17 @@ export default function ResourceDetailScreen() {
           {(data.detailSchema.headerActions ?? []).map((action, i) => (
             <SchemaNodeView key={`ha-${i}`} node={action} />
           ))}
+          {data.supportsSshInstall && (
+            <Button label="Install service…" onPress={() => setShowSshInstall(true)} />
+          )}
+          {showSshInstall && (
+            <SshInstallSheet
+              target={{ accountId: data.accountId, resourceId, resourceTypeId }}
+              nativeConnection={data.hasSshTerminal && !data.sshHost}
+              defaultUsername={data.defaultSshUsername}
+              onClose={() => setShowSshInstall(false)}
+            />
+          )}
           {data.hasSshTerminal && (
             <Button label="SSH terminal" onPress={() => router.push(terminalHref("ssh"))} />
           )}

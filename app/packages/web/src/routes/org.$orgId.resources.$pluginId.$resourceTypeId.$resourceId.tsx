@@ -81,6 +81,7 @@ interface ResourceDetailResponse {
   isMongoDb?: boolean;
   hasDockerActions?: boolean;
   hasSshTerminal?: boolean;
+  supportsSshInstall?: boolean;
   hasSftpBrowser?: boolean;
   sshHost?: string;
   sshPrivateHost?: string;
@@ -351,6 +352,7 @@ export function ResourcePanel({
         isMongoDb={data.isMongoDb}
         hasDockerActions={data.hasDockerActions}
         hasSshTerminal={data.hasSshTerminal}
+        supportsSshInstall={!!data.supportsSshInstall}
         hasSftpBrowser={data.hasSftpBrowser}
         sshHost={data.sshHost}
         sshPrivateHost={data.sshPrivateHost}

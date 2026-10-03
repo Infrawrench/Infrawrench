@@ -8,6 +8,21 @@ const Tool = z.enum(["codex", "claude-code"]);
 // used from T3 Code's own client. Orthogonal to `tool` — T3 Code is a
 // control surface, not an agent. Optional for clients predating it.
 const Surface = z.enum(["terminal", "t3-code"]);
+// How a T3 Code server is reached: T3's hosted relay ("t3-connect", the
+// default) or Tailscale Serve on the tailnet ("tailscale", which needs an
+// attached Tailscale service account).
+const T3Access = z.enum(["t3-connect", "tailscale"]);
+const ServiceAccountIds = z
+  .array(z.string())
+  .describe(
+    "Accounts whose plugin installs a service on the VM over SSH after setup (e.g. Tailscale). See GET /resources/ssh-install/accounts.",
+  );
+const AgentServiceInstall = strict({
+  accountId: z.string(),
+  pluginId: z.string(),
+  message: z.string(),
+  address: z.string().optional(),
+}).openapi("AgentServiceInstall");
 const Status = z.enum(["pending", "provisioning", "setting-up", "up", "failed", "stopped"]);
 
 const AgentVmAccount = strict({
@@ -32,6 +47,8 @@ const AgentSettings = strict({
   tool: Tool,
   surface: Surface.optional(),
   fields: z.record(z.string()),
+  serviceAccountIds: ServiceAccountIds.optional(),
+  t3Access: T3Access.optional(),
 }).openapi("AgentSettings");
 
 const AgentSession = strict({
@@ -44,6 +61,9 @@ const AgentSession = strict({
   resourceTypeId: z.string(),
   tool: Tool,
   surface: Surface.optional(),
+  serviceAccountIds: ServiceAccountIds.optional(),
+  t3Access: T3Access.optional(),
+  serviceInstalls: z.array(AgentServiceInstall).optional(),
   branchName: z.string(),
   status: Status,
   vmResourceId: z.string().nullable(),

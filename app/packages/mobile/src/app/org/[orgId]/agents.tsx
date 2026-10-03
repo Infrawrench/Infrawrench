@@ -27,6 +27,10 @@ interface AgentSession {
   tool: string;
   /** "terminal" (the tool's CLI in a terminal) or "t3-code". */
   surface?: string;
+  /** T3 Code only: "t3-connect" or "tailscale". */
+  t3Access?: string;
+  /** Services installed on the VM (e.g. Tailscale) and their addresses. */
+  serviceInstalls?: Array<{ accountId: string; pluginId: string; address?: string }>;
   branchName: string;
   /** e.g. "setting-up" | "up" | "failed" */
   status: string;
@@ -55,10 +59,16 @@ function toolLabel(tool: string): string {
  */
 function sessionSubtitle(session: AgentSession): string {
   const created = new Date(session.createdAt).toLocaleString();
+  const addresses = (session.serviceInstalls ?? [])
+    .map((install) => install.address)
+    .filter(Boolean)
+    .join(", ");
+  const network = addresses ? ` · ${addresses}` : "";
   if (session.surface === "t3-code") {
-    return `T3 Code + ${toolLabel(session.tool)} · ${created}`;
+    const access = session.t3Access === "tailscale" ? " over Tailscale" : "";
+    return `T3 Code + ${toolLabel(session.tool)}${access}${network} · ${created}`;
   }
-  return `${toolLabel(session.tool)} · ${session.branchName} · ${created}`;
+  return `${toolLabel(session.tool)} · ${session.branchName}${network} · ${created}`;
 }
 
 export default function AgentsScreen() {

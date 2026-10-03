@@ -27,6 +27,8 @@ import {
   buildT3CodeLogoutCommand,
   createT3CodeSetupPlan,
   isT3CodeSurface,
+  resolveT3CodeAccess,
+  t3CodeAccessOrDefault,
   T3_CODE_PROJECTS_DIR,
 } from "@infrawrench/ui/agents";
 import { dispatchResourcesChanged } from "@infrawrench/ui";
@@ -43,6 +45,14 @@ import { getDb } from "../db/client";
 import { loadPlugins } from "../plugins/loader";
 import { invoke } from "./invoke";
 import { createPluginClient } from "./plugin-client";
+import {
+  installLocalAgentServices,
+  publicLocalServiceInstalls,
+  releaseLocalAgentServices,
+  resolveLocalAgentServiceAccounts,
+  type StoredServiceInstall,
+} from "./agent-services";
+import { listLocalSshInstallAccounts } from "./ssh-install";
 
 const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
@@ -91,6 +101,8 @@ interface SettingsRow {
   tool: "codex" | "claude-code";
   surface: string | null;
   fields_json: string;
+  service_account_ids_json?: string | null;
+  t3_access?: string | null;
 }
 
 interface SessionRow {
@@ -110,6 +122,9 @@ interface SessionRow {
   setup_plan_json: string;
   setup_env_json: string;
   created_resources_json: string;
+  service_account_ids_json?: string | null;
+  t3_access?: string | null;
+  service_installs_json?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -175,6 +190,9 @@ function rowToSession(row: SessionRow): AgentSession {
     resourceTypeId: row.resource_type_id,
     tool: row.tool,
     surface: agentSurfaceOrDefault(row.surface),
+    serviceAccountIds: parseJson<string[]>(row.service_account_ids_json ?? "[]", []),
+    t3Access: t3CodeAccessOrDefault(row.t3_access),
+    serviceInstalls: publicLocalServiceInstalls(serviceInstallsForRow(row)),
     branchName: row.branch_name,
     status: row.status,
     vmResourceId: row.vm_resource_id,
@@ -184,8 +202,14 @@ function rowToSession(row: SessionRow): AgentSession {
   };
 }
 
+function serviceInstallsForRow(row: SessionRow): StoredServiceInstall[] {
+  return parseJson<StoredServiceInstall[]>(row.service_installs_json ?? "[]", []);
+}
+
 export function createDesktopAgentClient(): AgentClient {
   return {
+    // The same list the resource page's "Install service…" offers.
+    listServiceAccounts: () => listLocalSshInstallAccounts(),
     async listAccounts(): Promise<AgentVmAccount[]> {
       const db = await getDb();
       const [plugins, accounts] = await Promise.all([
@@ -232,14 +256,18 @@ export function createDesktopAgentClient(): AgentClient {
         tool: row.tool,
         surface: agentSurfaceOrDefault(row.surface),
         fields: parseJson<Record<string, string>>(row.fields_json, {}),
+        serviceAccountIds: parseJson<string[]>(row.service_account_ids_json ?? "[]", []),
+        t3Access: t3CodeAccessOrDefault(row.t3_access),
       };
     },
     async saveSettings(settings: AgentSettings): Promise<AgentSettings> {
       const db = await getDb();
+      const services = await resolveLocalAgentServiceAccounts(settings.serviceAccountIds);
+      const t3Access = resolveT3CodeAccess(settings.t3Access, services.pluginIds);
       await db.execute(
         `INSERT OR REPLACE INTO agent_settings
-         (id, account_id, plugin_id, resource_type_id, tool, surface, fields_json, updated_at)
-         VALUES ('default', $1, $2, $3, $4, $5, $6, datetime('now'))`,
+         (id, account_id, plugin_id, resource_type_id, tool, surface, fields_json, service_account_ids_json, t3_access, updated_at)
+         VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, datetime('now'))`,
         [
           settings.accountId,
           settings.pluginId,
@@ -247,9 +275,11 @@ export function createDesktopAgentClient(): AgentClient {
           settings.tool,
           agentSurfaceOrDefault(settings.surface),
           JSON.stringify(settings.fields),
+          JSON.stringify(services.accountIds),
+          t3Access,
         ],
       );
-      return settings;
+      return { ...settings, serviceAccountIds: services.accountIds, t3Access };
     },
     async pickLocalRepoPath(): Promise<string | null> {
       const result = await invoke<{ canceled?: boolean; filePaths?: string[] }>(
@@ -292,8 +322,18 @@ export function createDesktopAgentClient(): AgentClient {
       const workspaceName = isT3Code
         ? T3_CODE_PROJECTS_DIR
         : body.workspaceName?.trim() || projectNameFromRepo(repo) || projectName;
+      const services = await resolveLocalAgentServiceAccounts(body.settings.serviceAccountIds);
+      if (services.accountIds.length !== (body.settings.serviceAccountIds?.length ?? 0)) {
+        throw new Error("An attached service account was not found or cannot install over SSH");
+      }
+      const t3Access = isT3Code
+        ? resolveT3CodeAccess(body.settings.t3Access, services.pluginIds)
+        : "t3-connect";
+      if (isT3Code && t3CodeAccessOrDefault(body.settings.t3Access) !== t3Access) {
+        throw new Error("T3 Code over Tailscale needs a Tailscale account attached");
+      }
       const setupPlan = isT3Code
-        ? createT3CodeSetupPlan(body.settings.tool)
+        ? createT3CodeSetupPlan(body.settings.tool, t3Access)
         : await createAgentSetupPlan(repo, body.settings.tool, workspaceName).catch((error) => {
             throw new Error(`Agent setup plan failed: ${formatErrorMessage(error)}`);
           });
@@ -358,8 +398,8 @@ export function createDesktopAgentClient(): AgentClient {
       const initialStatus = setupAwareStatusFromLogs(updatedLogs, initialVmStatus);
       await db.execute(
         `INSERT INTO agent_sessions
-         (id, repo, project_name, workspace_name, account_id, plugin_id, resource_type_id, tool, surface, branch_name, status, vm_resource_id, logs_json, setup_plan_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+         (id, repo, project_name, workspace_name, account_id, plugin_id, resource_type_id, tool, surface, branch_name, status, vm_resource_id, logs_json, setup_plan_json, service_account_ids_json, t3_access)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
         [
           id,
           repo,
@@ -375,6 +415,8 @@ export function createDesktopAgentClient(): AgentClient {
           resource.id,
           JSON.stringify(updatedLogs),
           JSON.stringify(setupPlan),
+          JSON.stringify(services.accountIds),
+          t3Access,
         ],
       );
       // Resources declared by .infrawrench/agent.json (e.g. a db branch).
@@ -437,7 +479,10 @@ export function createDesktopAgentClient(): AgentClient {
       // marker is waited on.
       if (isT3CodeSurface(row.surface)) {
         return {
-          command: buildT3CodeConnectCommand({ tool: row.tool }),
+          command: buildT3CodeConnectCommand({
+            tool: row.tool,
+            access: t3CodeAccessOrDefault(row.t3_access),
+          }),
           cwd: `~/${workspaceNameForRow(row)}`,
           sshKeyId: agentKey.id,
           sshKeyName: agentKey.name,
@@ -509,7 +554,8 @@ export function createDesktopAgentClient(): AgentClient {
       // is destroyed there is no way to remove the environment from T3's side.
       // Best effort: an unreachable VM must not block deletion of a machine
       // that is still billing.
-      if (isT3CodeSurface(row.surface)) {
+      // A Tailscale-served environment was never linked to T3 Connect.
+      if (isT3CodeSurface(row.surface) && t3CodeAccessOrDefault(row.t3_access) !== "tailscale") {
         await revokeT3CodeLinkOnVm(row).catch((error) => {
           console.warn(`Could not revoke the T3 Connect link for ${row.id}`, error);
         });
@@ -568,6 +614,9 @@ export function createDesktopAgentClient(): AgentClient {
           });
         }
       }
+      // The VM is gone; let attached services forget it too (e.g. remove the
+      // tailnet device, which would otherwise linger offline).
+      await releaseLocalAgentServices(serviceInstallsForRow(row));
       await db.execute("DELETE FROM agent_sessions WHERE id = $1", [id]);
     },
   };
@@ -821,6 +870,16 @@ async function ensureAgentVmSetup(
   // runtimes (bootstrap), so it runs after both. The bootstrap's own script
   // hook only fires on git-URL clones (web); desktop always runs it here.
   if (!t3Code) await runAgentRepoSetupScript(db, row, target, privateKey);
+  // Attached services (e.g. Tailscale) install after the bootstrap, so a
+  // T3 Code server already exists when it is published on the tailnet.
+  await installLocalAgentServices(
+    row.id,
+    parseJson<string[]>(row.service_account_ids_json ?? "[]", []),
+    serviceInstallsForRow(row),
+    target,
+    privateKey,
+    (message) => appendAgentSessionLog(db, row.id, message, "setting-up"),
+  );
   if (opts?.launchReadyToken) {
     await markAgentLaunchReady(target, privateKey, opts.launchReadyToken);
   }
@@ -1324,7 +1383,8 @@ function setupPlanForRow(row: SessionRow): AgentSetupPlan {
 
 function defaultAgentSetupPlan(row: SessionRow): AgentSetupPlan {
   // The repo-derived fallback can't describe a T3 Code server — it has no repo.
-  if (isT3CodeSurface(row.surface)) return createT3CodeSetupPlan(row.tool);
+  if (isT3CodeSurface(row.surface))
+    return createT3CodeSetupPlan(row.tool, t3CodeAccessOrDefault(row.t3_access));
   return {
     source: isCloneableGitRepo(row.repo) ? "git-url" : "local-folder",
     workspaceName: workspaceNameForRow(row),

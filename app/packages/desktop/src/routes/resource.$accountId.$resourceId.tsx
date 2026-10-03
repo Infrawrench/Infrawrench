@@ -1,3 +1,4 @@
+import { SshInstallDialog } from "../components/SshInstallDialog";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { T, Var, useGT } from "gt-react";
@@ -204,6 +205,24 @@ export function ResourcePanel({
   const [agentLaunchError, setAgentLaunchError] = useState<string | null>(null);
   const [showTunnelModal, setShowTunnelModal] = useState(false);
   const [showDockerSetup, setShowDockerSetup] = useState(false);
+  const [showSshInstall, setShowSshInstall] = useState(false);
+  // A plugin that installs itself over SSH is never a target of its own
+  // installer; same rule as the cloud's `supportsSshInstall`.
+  const [isSshInstallerPlugin, setIsSshInstallerPlugin] = useState(false);
+  const resourcePluginId = resource?.pluginId;
+  useEffect(() => {
+    let cancelled = false;
+    if (!resourcePluginId) {
+      setIsSshInstallerPlugin(false);
+      return;
+    }
+    void getPlugin(resourcePluginId).then((loaded) => {
+      if (!cancelled) setIsSshInstallerPlugin(!!loaded?.plugin.manifest.sshInstall);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [resourcePluginId]);
   const [showDropSpotlight, setShowDropSpotlight] = useState(false);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
@@ -1170,12 +1189,14 @@ export function ResourcePanel({
               <ResourceActionBar
                 hasSftpBrowser={hasSftpBrowser}
                 hasSshPanel={hasSshPanel}
+                supportsSshInstall={hasSshPanel && !isSshInstallerPlugin}
                 sshHost={sshHost}
                 onOpenSftpTab={openSftpTab}
                 onOpenSshTab={openSshTab}
                 onOpenAppsTab={openAppsTab}
                 onShowTunnelModal={() => setShowTunnelModal(true)}
                 onShowDockerSetup={() => setShowDockerSetup(true)}
+                onShowSshInstall={() => setShowSshInstall(true)}
                 onShowDropSpotlight={() => setShowDropSpotlight(true)}
               />
             )}
@@ -1301,6 +1322,19 @@ export function ResourcePanel({
         />
       )}
 
+      {showSshInstall && resource && (
+        <SshInstallDialog
+          target={{
+            accountId,
+            resourceTypeId: resource.resourceTypeId,
+            resourceId: decodedResourceId,
+          }}
+          hostName={resource.displayName}
+          defaultUsername={sshDefaultUsername ?? undefined}
+          nativeConnection={!!sshConfig || (hasTerminal && !sshHost)}
+          onClose={() => setShowSshInstall(false)}
+        />
+      )}
       <ResourceModals
         showExportCredential={showExportCredential}
         resource={resource}

@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { T, Var, useGT } from "gt-react";
-import type { CreateFieldConfig } from "@infrawrench/plugin-base";
+import type { CreateFieldConfig, SshInstallAccount } from "@infrawrench/plugin-base";
 import { FieldRenderer } from "../components/create-resource/FieldRenderer.js";
 import { useDataString } from "../i18n/data-strings.js";
 import { AGENT_SETUP_FAILED_LOG_PREFIX } from "./launch-command.js";
 import { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./open-ssh-tab.js";
+import { ServiceAccountPicker } from "./ServiceAccountPicker.js";
 import {
   agentSurfaceOrDefault,
   agentSurfaceRequiresRepo,
   isT3CodeSurface,
+  resolveT3CodeAccess,
   T3_CODE_PROJECTS_DIR,
+  T3_CODE_TAILSCALE_PLUGIN_ID,
 } from "./t3-code.js";
 import { resourceSshTabTarget } from "../workspace-tabs.js";
 import { useUIStore } from "../store/ui.store.js";
@@ -21,6 +24,7 @@ import type {
   AgentSurface,
   AgentTool,
   AgentVmAccount,
+  T3CodeAccess,
 } from "./types.js";
 
 type RepoSource = "git-url" | "local-path";
@@ -58,6 +62,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   const gt = useGT();
   const gtData = useDataString();
   const [accounts, setAccounts] = useState<AgentVmAccount[]>([]);
+  const [serviceAccounts, setServiceAccounts] = useState<SshInstallAccount[]>([]);
   const [settings, setSettings] = useState<AgentSettings | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [agentName, setAgentName] = useState("");
@@ -77,12 +82,15 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const [nextAccounts, saved, nextSessions] = await Promise.all([
+      const [nextAccounts, saved, nextSessions, nextServiceAccounts] = await Promise.all([
         client.listAccounts(),
         client.getSettings(),
         client.listSessions(),
+        // Optional and non-fatal: without it the panel simply offers no services.
+        client.listServiceAccounts?.().catch(() => []) ?? Promise.resolve([]),
       ]);
       if (cancelled) return;
+      setServiceAccounts(nextServiceAccounts);
       const sortedAccounts = sortAccounts(nextAccounts);
       setAccounts(sortedAccounts);
       setSessions(nextSessions.filter(sessionHasVm));
@@ -147,17 +155,28 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
     );
   }, [selectedAccount, settings]);
 
+  // Attached services that still exist and can install over SSH.
+  const attachedServices = useMemo(
+    () => serviceAccounts.filter((a) => (settings?.serviceAccountIds ?? []).includes(a.accountId)),
+    [serviceAccounts, settings?.serviceAccountIds],
+  );
+  const t3Access: T3CodeAccess = resolveT3CodeAccess(
+    settings?.t3Access,
+    attachedServices.map((a) => a.pluginId),
+  );
+
   const configSummary = useMemo(() => {
     const parts = [
       isT3CodeSurface(settings?.surface)
         ? `T3 Code + ${toolLabel(settings?.tool ?? "codex")}`
         : toolLabel(settings?.tool ?? "codex"),
+      ...attachedServices.map((a) => a.serviceName),
       ...visibleFields
         .slice(0, 3)
         .map(([key, value]) => formatFieldSummary(fieldLabel(selectedAccount, key), key, value)),
     ].filter(Boolean);
     return parts.join(" · ");
-  }, [selectedAccount, settings?.tool, settings?.surface, visibleFields]);
+  }, [selectedAccount, settings?.tool, settings?.surface, visibleFields, attachedServices]);
 
   const gitRepoOptions = useMemo<GitRepoOption[]>(
     () => (gitIntegration?.configured ? gitIntegration.repos : []),
@@ -223,6 +242,39 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
     [gt],
   );
 
+  // Offered only when a Tailscale account is attached: T3 Code's own
+  // Tailscale support needs the VM on the tailnet.
+  const t3AccessField = useMemo<CreateFieldConfig>(
+    () => ({
+      key: "t3Access",
+      label: gt("T3 Code access"),
+      kind: "select",
+      required: true,
+      options: [
+        { id: "t3-connect", label: "T3 Connect" },
+        { id: "tailscale", label: "Tailscale" },
+      ],
+    }),
+    [gt],
+  );
+
+  function toggleServiceAccount(accountId: string, attached: boolean) {
+    if (!settings) return;
+    const current = settings.serviceAccountIds ?? [];
+    const serviceAccountIds = attached
+      ? [...current.filter((id) => id !== accountId), accountId]
+      : current.filter((id) => id !== accountId);
+    const pluginIds = serviceAccounts
+      .filter((a) => serviceAccountIds.includes(a.accountId))
+      .map((a) => a.pluginId);
+    setSettings({
+      ...settings,
+      serviceAccountIds,
+      // Detaching the last Tailscale account falls back to T3 Connect.
+      t3Access: resolveT3CodeAccess(settings.t3Access, pluginIds),
+    });
+  }
+
   const selectedSurface = agentSurfaceOrDefault(settings?.surface);
   // T3 Code manages its own projects, so these sessions provision a bare
   // server: no repo field, no clone, no branch.
@@ -231,8 +283,14 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   async function updateAccount(value: string) {
     const account = accounts.find((a) => accountKey(a) === value);
     if (!account) return;
-    const nextSettings = defaultSettings(account, settings?.tool ?? "codex", selectedSurface);
-    if (!nextSettings) return;
+    const defaults = defaultSettings(account, settings?.tool ?? "codex", selectedSurface);
+    if (!defaults) return;
+    // Attached services belong to the defaults, not to the VM provider.
+    const nextSettings: AgentSettings = {
+      ...defaults,
+      ...(settings?.serviceAccountIds ? { serviceAccountIds: settings.serviceAccountIds } : {}),
+      ...(settings?.t3Access ? { t3Access: settings.t3Access } : {}),
+    };
     setSettings(nextSettings);
     setSaveNotice(false);
     try {
@@ -449,6 +507,44 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                         </p>
                       </T>
                     )}
+                    {serviceAccounts.length > 0 && (
+                      <div>
+                        <p className="block text-xs font-medium text-on-surface-tertiary mb-2">
+                          {gt("Services")}
+                        </p>
+                        <p className="text-xs text-on-surface-faint mb-2">
+                          {gt("Installed on the VM over SSH once it is set up.")}
+                        </p>
+                        <ServiceAccountPicker
+                          accounts={serviceAccounts}
+                          value={settings?.serviceAccountIds ?? []}
+                          onToggle={toggleServiceAccount}
+                        />
+                      </div>
+                    )}
+                    {isT3CodeSurface(selectedSurface) &&
+                      attachedServices.some((a) => a.pluginId === T3_CODE_TAILSCALE_PLUGIN_ID) && (
+                        <>
+                          <FieldRenderer
+                            field={t3AccessField}
+                            value={t3Access}
+                            onChange={(value) =>
+                              settings &&
+                              setSettings({ ...settings, t3Access: value as T3CodeAccess })
+                            }
+                          />
+                          {t3Access === "tailscale" && (
+                            <T>
+                              <p className="text-xs text-on-surface-muted">
+                                The server is published on your tailnet with Tailscale Serve instead
+                                of T3 Connect, so no T3 account is needed. Authorize server prints a
+                                pairing link for T3 Code&apos;s Add environment. Your tailnet needs
+                                MagicDNS and HTTPS certificates enabled.
+                              </p>
+                            </T>
+                          )}
+                        </>
+                      )}
                     {visibleFields.map(([key, value]) => (
                       <FieldRenderer
                         key={key}
@@ -665,6 +761,23 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               </div>
                             </>
                           )}
+                          {isT3CodeSurface(session.surface) && session.t3Access === "tailscale" && (
+                            <div className="mt-1 text-xs text-on-surface-muted">
+                              {gt("Reached over Tailscale")}
+                            </div>
+                          )}
+                          {(session.serviceInstalls ?? [])
+                            .filter((install) => install.address)
+                            .map((install) => (
+                              <div
+                                key={install.accountId}
+                                className="mt-1 text-xs font-mono text-on-surface-tertiary"
+                              >
+                                {serviceAccounts.find((a) => a.accountId === install.accountId)
+                                  ?.serviceName ?? install.pluginId}
+                                : {install.address}
+                              </div>
+                            ))}
                           <div className="mt-1 text-xs text-on-surface-tertiary truncate">
                             {sessionLocationLabel(session, sessionAccount, gt)}
                           </div>

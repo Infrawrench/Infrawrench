@@ -1,0 +1,68 @@
+import { f, o, rt, type Plugin } from "@infrawrench/plugin-base";
+import { TailscaleClient } from "./client.js";
+import { INSTALL_MESSAGES } from "./install.js";
+import { logoSvg } from "./logo.js";
+
+export const deviceType = rt({
+  id: "device",
+  name: "Device",
+  description: "A device connected to your Tailscale network.",
+  fields: [
+    f("name", "DNS name", { editable: true }),
+    f("hostname", "Hostname", { editable: false }),
+    f("os", "Operating system", { editable: false }),
+    f("user", "Owner", { editable: false }),
+    f("addresses", "Addresses", { editable: false }),
+    f("tags", "Tags", { editable: false }),
+    f("authorized", "Approved", { editable: false }),
+    f("connected", "Connected", { editable: false }),
+    f("clientVersion", "Client version", { editable: false }),
+    f("lastSeen", "Last seen", { editable: false }),
+    f("expires", "Key expires", { editable: false }),
+    f("keyExpiryDisabled", "Key expiry disabled", { editable: false }),
+  ],
+  outputs: [o("ip", "Tailscale IP"), o("dnsName", "DNS name")],
+  supportsUpdate: true,
+  sshEndpoint: { hostOutputKey: "ip", defaultUsername: "root" },
+});
+
+export const plugin: Plugin = {
+  manifest: {
+    id: "tailscale",
+    version: "0.1.0",
+    displayName: "Tailscale",
+    description: "Manage your tailnet and enroll servers from any SSH-capable provider.",
+    logoSvg,
+    author: "Infrawrench",
+    minHostVersion: "0.1.0",
+    sshInstall: {
+      messages: INSTALL_MESSAGES,
+      description:
+        "Install Tailscale on a Linux server and join this account's tailnet. Requires root or passwordless sudo and outbound HTTPS. Existing SSH and DNS settings are preserved. If your tailnet requires device approval, the server is approved with this account.",
+    },
+    credentialFields: [
+      {
+        key: "apiKey",
+        label: "API access token",
+        description:
+          "A Tailscale API access token, not a device auth key. Used to list devices and create a short-lived, single-use enrollment key.",
+        sensitive: true,
+        placeholder: "tskey-api-…",
+        helpLink: {
+          label: "Create an API access token",
+          url: "https://login.tailscale.com/admin/settings/keys",
+        },
+      },
+      {
+        key: "tailnet",
+        label: "Tailnet",
+        description: "Leave as - to use the tailnet belonging to your API token.",
+        defaultValue: "-",
+        optional: true,
+        sensitive: false,
+      },
+    ],
+  },
+  resourceTypes: [deviceType],
+  createClient: (credentials, services) => new TailscaleClient(credentials, services),
+};

@@ -11,6 +11,8 @@ import {
   createT3CodeSetupPlan,
   isT3CodeSurface,
   parseT3CodeConnectStatus,
+  resolveT3CodeAccess,
+  t3CodeAccessOrDefault,
   t3CodeConnectNextStep,
   T3_CODE_NODE_VERSION,
   T3_CODE_PROJECTS_DIR,
@@ -416,5 +418,53 @@ describe("buildT3CodeStatusCommand", () => {
     const script = scriptBody(buildT3CodeStatusCommand());
     expect(script).toContain("command -v t3 >/dev/null 2>&1 || exit 3");
     expect(script).toContain("t3 connect status --json");
+  });
+});
+
+describe("T3 Code over Tailscale", () => {
+  it("only resolves to Tailscale when a Tailscale service account is attached", () => {
+    expect(t3CodeAccessOrDefault(undefined)).toBe("t3-connect");
+    expect(t3CodeAccessOrDefault("nonsense")).toBe("t3-connect");
+    expect(resolveT3CodeAccess("tailscale", ["tailscale"])).toBe("tailscale");
+    expect(resolveT3CodeAccess("tailscale", [])).toBe("t3-connect");
+    expect(resolveT3CodeAccess("tailscale", ["other"])).toBe("t3-connect");
+    expect(resolveT3CodeAccess("t3-connect", ["tailscale"])).toBe("t3-connect");
+  });
+
+  it("pairs over Tailscale Serve instead of linking T3 Connect", () => {
+    const script = scriptBody(buildT3CodeConnectCommand({ tool: "codex", access: "tailscale" }));
+    // Comments may mention it; no line may run it.
+    expect(script).not.toMatch(/^t3 connect link/m);
+    expect(script).not.toContain("t3 connect status");
+    expect(script).toContain("t3 pair --tailscale");
+    // Serve needs root or the tailscale operator.
+    expect(script).toContain('sudo -n tailscale set --operator="$(id -un)"');
+    expect(script).toContain("Step 1/3");
+    expect(script).toContain("Step 3/3 — Start T3 Code and pair over Tailscale");
+    // Still restarts the service first, so the drop-ins take effect.
+    expect(script.indexOf("restart_t3_service\n")).toBeLessThan(
+      script.indexOf("pair_t3_over_tailscale\n"),
+    );
+  });
+
+  it("produces a script bash can parse", async () => {
+    // This package has no Node types; the test itself runs under Node.
+    const childProcess: string = "node:child_process";
+    const { execFileSync } = (await import(childProcess)) as {
+      execFileSync(file: string, args: string[], options: { stdio: "pipe" }): unknown;
+    };
+    for (const access of ["tailscale", "t3-connect"] as const) {
+      const command = buildT3CodeConnectCommand({ tool: "claude-code", access });
+      expect(() =>
+        execFileSync("bash", ["-n", "-c", scriptBody(command)], { stdio: "pipe" }),
+      ).not.toThrow();
+    }
+  });
+
+  it("describes Tailscale access in the setup plan", () => {
+    expect(createT3CodeSetupPlan("codex", "tailscale").warnings.join(" ")).toContain(
+      "Tailscale Serve",
+    );
+    expect(createT3CodeSetupPlan("codex").warnings.join(" ")).toContain("T3 Connect");
   });
 });

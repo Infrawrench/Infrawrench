@@ -40,6 +40,8 @@ for (const plugin of BUNDLED_PLUGINS) {
   const manifest = plugin.manifest;
   add(manifest.displayName);
   add(manifest.description);
+  add(manifest.sshInstall?.description);
+  for (const message of manifest.sshInstall?.messages ?? []) add(message);
   for (const field of manifest.credentialFields) {
     add(field.label);
     add(field.description);

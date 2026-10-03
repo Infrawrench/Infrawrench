@@ -20,6 +20,9 @@ function logoSvgIsInert(value: string, ctx: z.RefinementCtx): void {
 const inertSvg = z.string().min(1).superRefine(logoSvgIsInert);
 
 export const pluginManifestSchema = z.object({
+  sshInstall: z
+    .object({ description: z.string().min(1), messages: z.array(z.string()).optional() })
+    .optional(),
   id: z
     .string()
     .min(1)

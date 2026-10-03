@@ -1,4 +1,4 @@
-import type { CreateFieldConfig } from "@infrawrench/plugin-base";
+import type { CreateFieldConfig, SshInstallAccount } from "@infrawrench/plugin-base";
 
 /** The coding agent CLI installed on the session's VM. */
 export type AgentTool = "codex" | "claude-code";
@@ -15,6 +15,24 @@ export type AgentTool = "codex" | "claude-code";
  *   next to it — which is why `tool` still applies. See `t3-code.ts`.
  */
 export type AgentSurface = "terminal" | "t3-code";
+
+/**
+ * How a T3 Code server is reached. `t3-connect` (the default) links it to
+ * T3's hosted relay; `tailscale` publishes it on the tailnet with Tailscale
+ * Serve instead, and needs an attached Tailscale service account.
+ */
+export type T3CodeAccess = "t3-connect" | "tailscale";
+
+/**
+ * A service a plugin installed on the session's VM over SSH (e.g. Tailscale
+ * enrollment). Plugin-owned `ref` is kept server-side for cleanup.
+ */
+export interface AgentServiceInstall {
+  accountId: string;
+  pluginId: string;
+  message: string;
+  address?: string;
+}
 export type AgentStatus = "pending" | "provisioning" | "setting-up" | "up" | "failed" | "stopped";
 export type AgentRuntimeLanguage = "node" | "php" | "ruby" | "go";
 export type AgentRuntimeVersionSource = "project" | "latest";
@@ -96,6 +114,13 @@ export interface AgentSettings {
   /** Absent on rows saved before T3 Code sessions existed; treat as "terminal". */
   surface?: AgentSurface;
   fields: Record<string, string>;
+  /**
+   * Accounts whose plugin installs a service on the VM over SSH once it is
+   * set up (any plugin declaring `sshInstall`, e.g. Tailscale).
+   */
+  serviceAccountIds?: string[];
+  /** T3 Code sessions only; absent means T3 Connect. */
+  t3Access?: T3CodeAccess;
 }
 
 export interface AgentSession {
@@ -109,6 +134,10 @@ export interface AgentSession {
   tool: AgentTool;
   /** Absent on sessions created before T3 Code sessions existed. */
   surface?: AgentSurface;
+  serviceAccountIds?: string[];
+  t3Access?: T3CodeAccess;
+  /** Services installed on the VM so far, in attach order. */
+  serviceInstalls?: AgentServiceInstall[];
   branchName: string;
   status: AgentStatus;
   vmResourceId?: string | null;
@@ -170,6 +199,8 @@ export interface AgentCreateBody {
 
 export interface AgentClient {
   listAccounts(): Promise<AgentVmAccount[]>;
+  /** Accounts that can install a service on the VM over SSH (e.g. Tailscale). */
+  listServiceAccounts?(): Promise<SshInstallAccount[]>;
   getSettings(): Promise<AgentSettings | null>;
   saveSettings(settings: AgentSettings): Promise<AgentSettings>;
   pickLocalRepoPath?(): Promise<string | null>;

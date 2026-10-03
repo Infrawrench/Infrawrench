@@ -80,6 +80,7 @@ export function allowlistForPlugins(pluginIds: Iterable<string>): string[] {
 }
 
 const PLUGIN_ALLOWLIST: Record<string, string[]> = {
+  tailscale: ["api.tailscale.com"],
   aws: ["*.amazonaws.com", "*.aws.amazon.com"],
   gcp: ["*.googleapis.com", "*.google.com"],
   azure: [

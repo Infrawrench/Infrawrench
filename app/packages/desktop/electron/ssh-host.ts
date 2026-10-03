@@ -10,6 +10,7 @@ import {
   getActiveTunnels,
   sshExecCommand,
   workflowSshExec,
+  workflowSshExecScript,
   workflowSshStreamStart,
   workflowSshStreamRead,
   workflowSshStreamClose,
@@ -17,6 +18,8 @@ import {
 } from "./ssh-tunnel";
 import {
   spawnSshShell,
+  connectSshChain,
+  endSshChain,
   writeSshShell,
   resizeSshShell,
   killSshShell,
@@ -83,6 +86,18 @@ ipcMain.handle(
       skipHostKeyCheck,
     }: { config: WorkflowSshConfig; command: string; skipHostKeyCheck?: boolean },
   ) => workflowSshExec(config, command, skipHostKeyCheck),
+);
+
+ipcMain.handle(
+  "workflow_ssh_exec_script",
+  (
+    _e,
+    {
+      config,
+      script,
+      skipHostKeyCheck,
+    }: { config: WorkflowSshConfig; script: string; skipHostKeyCheck?: boolean },
+  ) => workflowSshExecScript(config, script, skipHostKeyCheck),
 );
 
 ipcMain.handle(
@@ -389,3 +404,17 @@ ipcMain.handle("ssh_list_1password_keys", async (): Promise<AgentSshKey[]> => {
     }
   });
 });
+
+// Generic provisioning transport. Scripts travel on stdin, never in remote argv.
+ipcMain.handle(
+  "ssh_exec_script",
+  async (_e, { config, script }: { config: SshShellConfig; script: string }) => {
+    const { execSshScript } = await import("@infrawrench/ssh-tunnel-core");
+    const { client, intermediates } = await connectSshChain(config);
+    try {
+      return await execSshScript(client, script);
+    } finally {
+      endSshChain(client, intermediates);
+    }
+  },
+);
