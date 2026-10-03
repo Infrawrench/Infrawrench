@@ -20,8 +20,10 @@ vi.mock("../../db/client", () => ({
 vi.mock("../plugin-clients", () => ({
   getClientForAccount: (...args: unknown[]) => getClient(...args),
 }));
+const refresh = vi.fn();
 vi.mock("../ssh-install", () => ({
   listSshInstallAccounts: (...args: unknown[]) => listAccounts(...args),
+  refreshInstallerAccount: (...args: unknown[]) => refresh(...args),
 }));
 vi.mock("@infrawrench/ssh-tunnel-core", () => ({
   execSshScript: (...args: unknown[]) => execScript(...args),
@@ -84,6 +86,8 @@ describe("agent service accounts", () => {
     expect(execScript).toHaveBeenCalledWith(expect.anything(), "secret-bearing script");
     expect(end).toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith("Tailscale: Connected.");
+    // The account is re-synced so the new device is listed without a Refresh.
+    expect(refresh).toHaveBeenCalledWith("ts-account", "org");
     expect(updates.at(-1)).toMatchObject({
       serviceInstallsJson: [
         { accountId: "ts-account", pluginId: "tailscale", address: "100.64.0.9", ref: "nNode1" },
@@ -116,5 +120,7 @@ describe("agent service accounts", () => {
       "org",
     );
     expect(release.mock.calls).toEqual([["n1"], ["n3"]]);
+    // Only the successful release re-syncs its account.
+    expect(refresh.mock.calls).toEqual([["c", "org"]]);
   });
 });

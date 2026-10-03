@@ -1,3 +1,4 @@
+import { dispatchResourcesChanged } from "@infrawrench/ui";
 import type { AgentServiceInstall, AgentSshTarget } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { createPluginClient } from "./plugin-client";
@@ -95,6 +96,9 @@ export async function installLocalAgentServices(
       JSON.stringify(installs),
       sessionId,
     ]);
+    // Local accounts list live from the provider: an expanded sidebar entry
+    // reloads and shows the new device without a manual Refresh.
+    dispatchResourcesChanged(accountId);
   }
 }
 
@@ -112,7 +116,9 @@ export async function releaseLocalAgentServices(
       await client.releaseSshInstall?.(install.ref);
     } catch {
       // Best effort; see above.
+      continue;
     }
+    dispatchResourcesChanged(install.accountId);
   }
 }
 

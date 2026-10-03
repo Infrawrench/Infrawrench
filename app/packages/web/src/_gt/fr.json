@@ -10178,7 +10178,7 @@
   "29e184c096ae7575": "Installer un service sur le serveur",
   "439f2abbbcdb818b": "Connectez {host} à un compte de service via SSH.",
   "11c716dd553d40e1": "Adresse réseau : {address}",
-  "e1377509aef7f1a6": "Actualisez le compte de service pour afficher ses appareils.",
+  "3b5b4b01abae6cac": "{account} a été actualisé pour inclure ce serveur.",
   "9d128425cb2f13fa": "Compte de service",
   "6bddc0fc3444f89f": "Sélectionnez un compte",
   "8495bcb78cee8d9d": "Aucun de vos comptes ne peut encore installer de service via SSH. Ajoutez-en un, puis revenez ici.",

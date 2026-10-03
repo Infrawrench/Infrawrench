@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SshInstallKeyField, SshInstallModal } from "../../components/detail/SshInstallModal.js";
+import { RESOURCES_CHANGED_EVENT } from "../../utils.js";
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function () {
@@ -47,6 +48,20 @@ describe("SSH service installer", () => {
     await screen.findByText("Connected");
     expect(props.onRun).toHaveBeenCalledWith("tailnet");
     expect(screen.getByText("Network address: 100.64.0.1")).toBeInTheDocument();
+  });
+  it("refreshes the service account by itself once the install succeeds", async () => {
+    const seen: unknown[] = [];
+    const listener = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener(RESOURCES_CHANGED_EVENT, listener);
+    try {
+      show();
+      fireEvent.click(screen.getByRole("button", { name: "Install and connect" }));
+      await screen.findByText("Work has been refreshed to include this server.");
+      expect(seen).toEqual([{ accountId: "tailnet" }]);
+      expect(screen.queryByText(/Refresh the service account/)).not.toBeInTheDocument();
+    } finally {
+      window.removeEventListener(RESOURCES_CHANGED_EVENT, listener);
+    }
   });
   it("prevents duplicate installs and dismissal while a run is pending", async () => {
     let finish!: (value: { message: string }) => void;

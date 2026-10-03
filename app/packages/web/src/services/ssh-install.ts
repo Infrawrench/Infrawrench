@@ -10,6 +10,23 @@ import { loadPlugins } from "../plugins/loader";
 import { getClientForAccount } from "./plugin-clients";
 import { resolveSshConfig } from "./ssh";
 import { connectSshInstaller } from "./ssh-install-transport";
+import { syncAccountResources } from "./sync-resources";
+
+/**
+ * Re-sync the installer account so what the install created (e.g. the new
+ * tailnet device) is already listed, without anyone pressing Refresh. Best
+ * effort: the install itself succeeded either way.
+ */
+export async function refreshInstallerAccount(
+  accountId: string,
+  organizationId: string,
+): Promise<void> {
+  try {
+    await syncAccountResources(accountId, organizationId);
+  } catch (error) {
+    console.warn(`[ssh-install] could not refresh account ${accountId} after install`, error);
+  }
+}
 
 export async function listSshInstallAccounts(organizationId: string): Promise<SshInstallAccount[]> {
   const plugins = await loadPlugins();
@@ -109,9 +126,12 @@ export async function runSshInstall(
     config,
     target.credentials.connectThroughAccountId,
   );
+  let result: SshInstallResult;
   try {
-    return await installer.client.installOnSsh(transport);
+    result = await installer.client.installOnSsh(transport);
   } finally {
     transport.close();
   }
+  await refreshInstallerAccount(input.installerAccountId, organizationId);
+  return result;
 }

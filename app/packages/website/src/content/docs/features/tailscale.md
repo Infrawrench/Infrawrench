@@ -9,7 +9,7 @@ First [add your Tailscale account](../plugins/tailscale.md). Then open a server 
 2. Select your Tailscale account from **Service account**.
 3. For a cloud-provider server, select an SSH key and enter its username and port. An SSH account uses its saved connection, including its port and any configured jump hosts.
 4. Click **Install and connect**. Keep the dialog open until setup finishes.
-5. Refresh the Tailscale account to see the device.
+5. The device shows up under your Tailscale account on its own: Infrawrench re-syncs the account once the install succeeds, so there is nothing to refresh. Deleting an agent session that enrolled a VM re-syncs it again to drop the device.
 
 If your tailnet requires [device approval](https://tailscale.com/kb/1099/device-approval), you don't need to approve the server yourself. Infrawrench is enrolling it with your account, so the enrollment key is pre-approved and the device joins already approved. Creating a pre-approved key, and approving a device, needs a token from an Owner, Admin, IT admin or Network admin. If your token can't approve devices, the dialog says so; open the device in the Tailscale account and choose **Approve device**. A server that joined earlier but is still waiting for approval is approved when you run **Install service…** on it again.
 

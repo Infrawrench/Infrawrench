@@ -1,5 +1,5 @@
 import { Alert, Modal, Text, View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CreateFieldConfig,
   SshInstallAccount,
@@ -24,6 +24,7 @@ export function SshInstallSheet({
   onClose(): void;
 }) {
   const { api, orgId } = useOrgApi();
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["ssh-install-accounts", orgId, nativeConnection],
     queryFn: async () => {
@@ -135,6 +136,15 @@ export function SshInstallSheet({
           }),
         });
         if (!result) throw new Error("Installation returned no result.");
+        // The server re-synced the account after installing; drop the cached
+        // listing so the new device shows without pulling to refresh.
+        const installerAccountId = String(values.installerAccountId);
+        void queryClient.invalidateQueries({
+          queryKey: ["account-resources", orgId, installerAccountId],
+        });
+        const accountName = query.data.accounts.find(
+          (a) => a.accountId === installerAccountId,
+        )?.displayName;
         onClose();
         Alert.alert(
           "Installation complete",
@@ -142,7 +152,7 @@ export function SshInstallSheet({
             result.message,
             result.address,
             ...(result.warnings ?? []),
-            "Refresh the service account to see its devices.",
+            accountName ? `${accountName} has been refreshed to include this server.` : "",
           ]
             .filter(Boolean)
             .join("\n\n"),

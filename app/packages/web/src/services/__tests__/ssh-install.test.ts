@@ -15,6 +15,10 @@ vi.mock("../ssh", () => ({ resolveSshConfig: (...args: unknown[]) => resolveConf
 vi.mock("../ssh-install-transport", () => ({
   connectSshInstaller: (...args: unknown[]) => connect(...args),
 }));
+const sync = vi.fn();
+vi.mock("../sync-resources", () => ({
+  syncAccountResources: (...args: unknown[]) => sync(...args),
+}));
 const { runSshInstall } = await import("../ssh-install");
 const input = {
   installerAccountId: "installer",
@@ -110,6 +114,8 @@ describe("cross-provider service installation", () => {
       "jump-account",
     );
     expect(close).toHaveBeenCalled();
+    // The installer account is re-synced so the new device is already listed.
+    expect(sync).toHaveBeenCalledWith("installer", "org");
   });
   it("preserves a native SSH account's saved port and credentials", async () => {
     native = true;
@@ -140,5 +146,6 @@ describe("cross-provider service installation", () => {
     install.mockRejectedValue(new Error("Install failed"));
     await expect(runSshInstall("org", input)).rejects.toThrow("Install failed");
     expect(close).toHaveBeenCalled();
+    expect(sync).not.toHaveBeenCalled();
   });
 });

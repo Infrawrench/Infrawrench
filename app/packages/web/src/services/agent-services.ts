@@ -5,7 +5,7 @@ import { execSshScript } from "@infrawrench/ssh-tunnel-core";
 import { db } from "../db/client";
 import { agentSessions } from "../db/schema";
 import { getClientForAccount } from "./plugin-clients";
-import { listSshInstallAccounts } from "./ssh-install";
+import { listSshInstallAccounts, refreshInstallerAccount } from "./ssh-install";
 
 /**
  * Services attached to an agent session: accounts whose plugin installs
@@ -120,6 +120,8 @@ export async function installAgentServices(
       .update(agentSessions)
       .set({ serviceInstallsJson: installs, updatedAt: new Date() })
       .where(eq(agentSessions.id, row.id));
+    // So the new device shows up under the account without a manual Refresh.
+    await refreshInstallerAccount(accountId, organizationId);
   }
 }
 
@@ -140,7 +142,10 @@ export async function releaseAgentServices(
       await ctx?.client.releaseSshInstall?.(install.ref);
     } catch {
       // Best effort; see above.
+      continue;
     }
+    // Drop the removed device from the account's listing too.
+    await refreshInstallerAccount(install.accountId, organizationId);
   }
 }
 

@@ -4,6 +4,7 @@ import type { SshInstallAccount, SshInstallResult } from "@infrawrench/plugin-ba
 import { Modal } from "../Modal.js";
 import { useDataString } from "../../i18n/data-strings.js";
 import { SshKeyRadioGroup } from "../SshKeyRadioGroup.js";
+import { dispatchResourcesChanged } from "../../utils.js";
 
 export interface SshInstallModalProps {
   hostName: string;
@@ -44,6 +45,9 @@ export function SshInstallModal({
     setError(null);
     try {
       setResult(await onRun(account.accountId));
+      // The host re-synced the account after installing; have any open
+      // sidebar or account view pick up what was added (e.g. the new device).
+      dispatchResourcesChanged(account.accountId);
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Installation failed"));
     } finally {
@@ -70,9 +74,13 @@ export function SshInstallModal({
                 {ds(warning)}
               </p>
             ))}
-            <p className="text-on-surface-muted">
-              {gt("Refresh the service account to see its devices.")}
-            </p>
+            {account && (
+              <p className="text-on-surface-muted">
+                {gt("{account} has been refreshed to include this server.", {
+                  account: account.displayName,
+                })}
+              </p>
+            )}
           </div>
         ) : (
           <fieldset disabled={running || loading} className="space-y-4">

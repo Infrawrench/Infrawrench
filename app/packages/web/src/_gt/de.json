@@ -10178,7 +10178,7 @@
   "29e184c096ae7575": "Dienst auf dem Server installieren",
   "439f2abbbcdb818b": "Verbinden Sie {host} über SSH mit einem Dienstkonto.",
   "11c716dd553d40e1": "Netzwerkadresse: {address}",
-  "e1377509aef7f1a6": "Aktualisieren Sie das Dienstkonto, um seine Geräte anzuzeigen.",
+  "3b5b4b01abae6cac": "{account} wurde aktualisiert und enthält jetzt diesen Server.",
   "9d128425cb2f13fa": "Dienstkonto",
   "6bddc0fc3444f89f": "Konto auswählen",
   "8495bcb78cee8d9d": "Keines Ihrer Konten kann bisher einen Dienst über SSH installieren. Fügen Sie eines hinzu und kehren Sie dann hierher zurück.",
