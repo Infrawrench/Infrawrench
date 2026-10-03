@@ -12,9 +12,9 @@ jobs:
     name: EAS preview build
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
 
@@ -43,6 +43,10 @@ jobs:
       # `eas build` from a workstation; this job then picks it up on the next
       # run. Removing the flag is not an option: the interactive ad-hoc path
       # prompts for device selection.
+      # eas-cli is not a workspace dependency, so it is pinned here (and in
+      # mobile-release.yml) instead of letting npx fetch whatever is latest
+      # into a job holding EXPO_TOKEN and the ASC key. Keep both pins at or
+      # above eas.json `cli.version`.
       - name: EAS build (preview)
         working-directory: app/packages/mobile
         env:
@@ -53,5 +57,5 @@ jobs:
           EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_TEAM_TYPE }}
         run: |
-          npx eas-cli build --platform all --profile preview --non-interactive \
+          npx -y eas-cli@24.10.0 build --platform all --profile preview --non-interactive \
             --refresh-ad-hoc-provisioning-profile
