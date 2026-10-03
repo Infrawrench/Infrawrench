@@ -25,6 +25,7 @@ import {
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
+import { readObjectBody } from "../object-body";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -50,16 +51,9 @@ export function registerFindingDismissalRoutes(app: Hono, auditPrefix: string): 
    */
   app.post("/dismissals", async (c) => {
     requirePermission(c, "resources:write");
-    let body: Record<string, unknown>;
-    try {
-      const parsed = await c.req.json();
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        return c.json({ error: "Request body must be an object" }, 400);
-      }
-      body = parsed as Record<string, unknown>;
-    } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
+    const parsed = await readObjectBody(c.req);
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+    const body = parsed.body;
 
     const resourceId = body["resourceId"];
     const ruleId = body["ruleId"];

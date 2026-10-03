@@ -11,6 +11,7 @@ import type { ResourceOwnershipPatch } from "@infrawrench/client-core";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
+import { parseObjectBody } from "../object-body";
 
 /**
  * Resource ownership — owner, purpose, and the authorizing ticket, on any
@@ -35,23 +36,6 @@ declare module "hono" {
 }
 
 const app = new Hono();
-
-interface ParsedBody {
-  body: Record<string, unknown>;
-  error?: Response;
-}
-
-async function parseObjectBody(c: Context): Promise<ParsedBody> {
-  try {
-    const parsed = (await c.req.json()) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { body: {}, error: c.json({ error: "Request body must be an object" }, 400) };
-    }
-    return { body: parsed as Record<string, unknown> };
-  } catch {
-    return { body: {}, error: c.json({ error: "Invalid JSON body" }, 400) };
-  }
-}
 
 function ownershipErrorResponse(c: Context, err: unknown) {
   if (err instanceof OwnershipInputError) {

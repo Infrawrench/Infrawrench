@@ -32,6 +32,7 @@ import {
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
+import { readObjectBody } from "../object-body";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -43,20 +44,6 @@ const app = new Hono();
 
 const MODES: QueryMonitorMode[] = ["scalar", "rowCount"];
 const OPERATORS: QueryMonitorOperator[] = ["gt", "gte", "lt", "lte", "eq", "neq"];
-
-async function readObjectBody(req: {
-  json: () => Promise<unknown>;
-}): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; error: string }> {
-  try {
-    const parsed = await req.json();
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { ok: false, error: "Request body must be an object" };
-    }
-    return { ok: true, body: parsed as Record<string, unknown> };
-  } catch {
-    return { ok: false, error: "Invalid JSON body" };
-  }
-}
 
 function readMonitorBody(
   body: Record<string, unknown>,

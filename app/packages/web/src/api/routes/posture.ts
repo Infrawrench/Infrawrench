@@ -27,6 +27,7 @@ import {
 import { requirePermission } from "../../auth/permissions";
 import { registerFindingDismissalRoutes } from "./finding-dismissals";
 import type { AuthSession } from "../auth-middleware";
+import { readObjectBody } from "../object-body";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -70,16 +71,9 @@ app.get("/settings", async (c) => {
  */
 app.put("/settings", async (c) => {
   requirePermission(c, "org:settings:write");
-  let body: Record<string, unknown>;
-  try {
-    const parsed = await c.req.json();
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return c.json({ error: "Request body must be an object" }, 400);
-    }
-    body = parsed as Record<string, unknown>;
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  const parsed = await readObjectBody(c.req);
+  if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+  const body = parsed.body;
   const patch: PostureSettingsPatch = {};
 
   if (body["enabled"] !== undefined) {

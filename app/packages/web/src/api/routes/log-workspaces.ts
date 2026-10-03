@@ -14,6 +14,7 @@ import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import { listLogCapableResources } from "../../services/log-workspaces";
 import type { AuthSession } from "../auth-middleware";
+import { parseObjectBody } from "../object-body";
 
 /**
  * Log workspace saved queries — a named set of log-capable resources plus a
@@ -79,20 +80,6 @@ function readSelectors(value: unknown): LogStreamSelector[] | { error: string } 
     });
   }
   return selectors;
-}
-
-async function parseObjectBody(
-  c: Context,
-): Promise<{ body: Record<string, unknown>; error?: Response }> {
-  try {
-    const parsed = (await c.req.json()) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { body: {}, error: c.json({ error: "Request body must be an object" }, 400) };
-    }
-    return { body: parsed as Record<string, unknown> };
-  } catch {
-    return { body: {}, error: c.json({ error: "Invalid JSON body" }, 400) };
-  }
 }
 
 app.get("/", async (c) => {

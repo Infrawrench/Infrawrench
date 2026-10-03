@@ -32,6 +32,7 @@ import type { BackupPolicyInput } from "@infrawrench/client-core";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
+import { readObjectBody } from "../object-body";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -40,25 +41,6 @@ declare module "hono" {
 }
 
 const app = new Hono();
-
-/**
- * Parse a JSON object body. Discriminated on `ok` rather than on the presence
- * of an `error` key, because `{"error": "..."}` is a perfectly legal request
- * body and the sloppier shape would misread it as a parse failure.
- */
-async function readObjectBody(req: {
-  json: () => Promise<unknown>;
-}): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; error: string }> {
-  try {
-    const parsed = await req.json();
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { ok: false, error: "Request body must be an object" };
-    }
-    return { ok: true, body: parsed as Record<string, unknown> };
-  } catch {
-    return { ok: false, error: "Invalid JSON body" };
-  }
-}
 
 /**
  * Read one optional nullable integer out of a body, distinguishing "absent"

@@ -15,6 +15,7 @@ import {
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
+import { parseObjectBody } from "../object-body";
 
 /**
  * Sleep/wake schedules — "off at 19:00, on at 08:00, Mon–Fri" windows on
@@ -35,23 +36,6 @@ declare module "hono" {
 }
 
 const app = new Hono();
-
-interface ParsedBody {
-  body: Record<string, unknown>;
-  error?: Response;
-}
-
-async function parseObjectBody(c: Context): Promise<ParsedBody> {
-  try {
-    const parsed = (await c.req.json()) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { body: {}, error: c.json({ error: "Request body must be an object" }, 400) };
-    }
-    return { body: parsed as Record<string, unknown> };
-  } catch {
-    return { body: {}, error: c.json({ error: "Invalid JSON body" }, 400) };
-  }
-}
 
 /** Wall-clock "HH:MM", 24-hour — the same shape the MCP tool schema enforces. */
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
