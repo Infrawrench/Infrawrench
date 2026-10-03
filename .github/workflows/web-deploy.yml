@@ -23,6 +23,12 @@ name: web-deploy
 #   AR_REGISTRY                    — us-east4-docker.pkg.dev/<project>/infrawrench
 #   GKE_CLUSTER                    — cluster name (default: infrawrench-prod)
 #   GKE_REGION                     — cluster region (default: us-east4)
+# Optional repo variables:
+#   GKE_DNS_ENDPOINT               - "true" to reach the control plane through
+#                                    its IAM-gated DNS endpoint instead of the
+#                                    public IP. Required once terraform's
+#                                    master_authorized_networks is set, since
+#                                    GitHub-hosted runners have no fixed IP.
 
 on:
   push:
@@ -151,7 +157,14 @@ jobs:
           install_components: gke-gcloud-auth-plugin
 
       - name: Fetch cluster credentials
-        run: gcloud container clusters get-credentials "$CLUSTER" --region "$REGION"
+        env:
+          DNS_ENDPOINT: ${{ vars.GKE_DNS_ENDPOINT }}
+        run: |
+          if [ "$DNS_ENDPOINT" = "true" ]; then
+            gcloud container clusters get-credentials "$CLUSTER" --region "$REGION" --dns-endpoint
+          else
+            gcloud container clusters get-credentials "$CLUSTER" --region "$REGION"
+          fi
 
       - name: Point manifests at ${{ github.sha }}
         working-directory: infra/k8s

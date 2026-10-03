@@ -153,6 +153,58 @@ resource "google_container_cluster" "prod" {
     master_ipv4_cidr_block  = "172.16.0.0/28"
   }
 
+  # Who may reach the public IP endpoint. Empty (the default) leaves it open
+  # to the internet, still behind IAM; set var.master_authorized_networks to
+  # narrow it. GitHub-hosted runners have no stable address and cannot be
+  # listed here, so move CI to the DNS endpoint below first (the
+  # GKE_DNS_ENDPOINT repo variable read by web-deploy.yml) or the next deploy
+  # is locked out. The address terraform itself runs from must be listed too:
+  # the kubernetes and helm providers in versions.tf dial the IP endpoint.
+  dynamic "master_authorized_networks_config" {
+    for_each = length(var.master_authorized_networks) > 0 ? [1] : []
+    content {
+      gcp_public_cidrs_access_enabled = false
+
+      dynamic "cidr_blocks" {
+        for_each = var.master_authorized_networks
+        content {
+          cidr_block   = cidr_blocks.value.cidr_block
+          display_name = cidr_blocks.value.display_name
+        }
+      }
+    }
+  }
+
+  # The DNS-based endpoint is authorised by IAM (container.clusters.connect,
+  # which the CI account's roles/container.developer carries) rather than by
+  # source address, and authorized networks do not apply to it. That is what
+  # lets the IP endpoint be locked down without locking out GitHub-hosted
+  # runners. Turning it on is an in-place, non-disruptive update.
+  control_plane_endpoints_config {
+    dns_endpoint_config {
+      allow_external_traffic = var.control_plane_dns_endpoint
+    }
+  }
+
+  # NetworkPolicy enforcement through GKE's Calico addon, the only enforcement
+  # an existing Standard cluster can turn on in place: Dataplane V2
+  # (datapath_provider = "ADVANCED_DATAPATH") is create-time only and would
+  # replace this cluster. Enabling the addon updates the cluster in place, but
+  # GKE then recreates every node (honouring the maintenance window and each
+  # pool's surge settings) to start the Calico agents. Without it the policies
+  # in infra/k8s/network-policy.yaml and clickhouse.tf are accepted by the API
+  # server and enforce nothing.
+  addons_config {
+    network_policy_config {
+      disabled = !var.enable_network_policy
+    }
+  }
+
+  network_policy {
+    enabled  = var.enable_network_policy
+    provider = var.enable_network_policy ? "CALICO" : "PROVIDER_UNSPECIFIED"
+  }
+
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
   }

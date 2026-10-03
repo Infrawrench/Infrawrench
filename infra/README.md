@@ -35,7 +35,8 @@ Nothing DigitalOcean-side remains.
 - **Private nodes.** Nodes have no external IPs; egress leaves through Cloud
   NAT pinned to a reserved address, so the whole fleet has one stable source
   IP. The control plane endpoint stays public so GitHub Actions can reach it
-  without a bastion.
+  without a bastion; see [Control plane access](#control-plane-access) for
+  narrowing it.
 - **No image pull secret.** The node pool runs as a dedicated service account
   holding `artifactregistry.reader`, so kubelet pulls with its own identity.
   (The DOKS stack needed a `docr-pull` dockerconfigjson secret; this one
@@ -164,41 +165,85 @@ dropped, `seccompProfile: RuntimeDefault`, and `readOnlyRootFilesystem: true`.
   token or calls the in-cluster Kubernetes API — the `kubernetes` plugin talks
   to _customer_ clusters from a user-supplied kubeconfig.
 
-### NetworkPolicy — ingress only, and not yet enforced
+### NetworkPolicy
 
-`infra/k8s/network-policy.yaml` default-denies ingress to the three app
-workloads and re-opens exactly one path: `ingress-nginx` → `web:3000`, plus the
-node subnet for kubelet probes. `poller` and `github-watcher` expose no ports
-and keep the bare deny. The selector is an explicit label list rather than
-`podSelector: {}` because the ClickHouse StatefulSet and Keeper quorum share
-this namespace — an empty selector would sever their replication mesh.
+**App workloads** (`infra/k8s/network-policy.yaml`, applied by CI):
 
-**There is deliberately no egress policy.** `web`, `poller` and
-`github-watcher` all dial arbitrary customer infrastructure by design — SSH to
-customer hosts, raw TCP to customer databases, customer Kubernetes API servers,
-~50 provider APIs, and tunnels that intentionally reach RFC1918 space behind a
-bastion. A NetworkPolicy matches CIDRs rather than names, so even the fixed SaaS
-dependencies can't be written down. The only egress rule that wouldn't break
-customer connections is `0.0.0.0/0`, which is not a control. That is the same
-conclusion the egress proxy reaches from the other side: workflow `fetch()` is
-isolated _structurally_, by running off-cluster on a Cloudflare Worker, rather
-than by a policy in the pod.
+- _Ingress_ is default-deny for `web`, `poller` and `github-watcher`, with
+  exactly these paths re-opened: `ingress-nginx` → `web:3000`, the node subnet
+  for kubelet probes, and `web` → `web:3000` for the cross-replica relay.
+  `poller` and `github-watcher` expose no ports and keep the bare deny. The
+  selector is an explicit label list rather than `podSelector: {}` because
+  ClickHouse, Keeper and cert-manager's HTTP-01 solver pods share this
+  namespace.
+- _Egress_ is the public internet minus every private and link-local range
+  (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, `169.254/16`), plus
+  kube-dns, the GKE metadata server's Workload Identity endpoints, ClickHouse,
+  and `web` → `web`. It is a denylist of the cluster's own address space, not
+  an allowlist of destinations: `web`, `poller` and `github-watcher` dial
+  arbitrary customer infrastructure by design and a NetworkPolicy cannot name
+  SaaS hosts. But this VPC is not peered with anything, so nothing a customer
+  legitimately points us at lives in those ranges; everything there is ours
+  (nodes, kubelets, pods, Services, the control plane's private endpoint, the
+  metadata server). Workflow `fetch()` is still isolated structurally, off
+  cluster on the egress proxy; this policy covers what the app dials itself.
 
-**Enforcement is off.** The cluster in `infra/terraform/main.tf` sets neither
-`datapath_provider = "ADVANCED_DATAPATH"` nor `network_policy { enabled = true }`,
-so GKE accepts these objects and enforces nothing. Turning it on is an operator
-decision with real disruption cost:
+**ClickHouse and Keeper** (`infra/terraform/clickhouse.tf`): ClickHouse accepts
+8123/9000 only from the app workloads and its own bootstrap/backup jobs, 9000
+and 9009 only from the other replica, and probes from the node subnet. Keeper
+accepts 9181 only from the ClickHouse servers and 9234 (Raft, which has no
+authentication of its own) only from other Keeper members. On top of the
+network layer:
 
+- **Interserver credentials.** Part fetches on 9009 carry a terraform-generated
+  user/password (`interserver_http_credentials`). Adding them to a running
+  cluster needs one apply with `clickhouse_interserver_allow_empty = true`,
+  then another with it removed; the tfvars example has the reasoning.
+- **Keeper digest identity.** The servers authenticate to Keeper with a
+  terraform-generated digest identity, and ClickHouse then creates every znode
+  with the `auth` ACL instead of `world:anyone`. Znodes that existed before the
+  identity was added keep their open ACL; the Keeper ingress policy is what
+  protects those. To close them too, from a ClickHouse pod with a ZooKeeper
+  3.6+ CLI: `addauth digest <CLICKHOUSE_KEEPER_IDENTITY>` then
+  `setAcl -R /clickhouse auth::cdrwa`. Never regenerate the identity without
+  doing the same, or the servers lock themselves out of their own metadata.
+- **Keeper four-letter words** are limited to the read-only set; the defaults
+  include `rcvr`, `rqld` and `ydld`, which change cluster state without auth.
+
+**Enforcement** is GKE's Calico addon, `enable_network_policy` in
+`infra/terraform/main.tf` (on by default). The alternatives and their cost:
+
+- **The Calico addon** (`network_policy` plus
+  `addons_config.network_policy_config`) is what this config uses. It is an
+  in-place cluster update, **not a replacement**, but GKE then recreates every
+  node to start the Calico agents, honouring the maintenance window and each
+  pool's surge settings. Workloads are rescheduled once, under their PDBs.
 - **Dataplane V2** (`datapath_provider = "ADVANCED_DATAPATH"`) is the better
-  long-term answer, but it cannot be enabled in place on an existing cluster —
-  it means recreating the cluster, and `deletion_protection = true` is set.
-- **The Calico addon** (`network_policy { enabled = true }` plus
-  `addons_config.network_policy_config`) can be enabled on the running cluster,
-  at the cost of a rolling node-pool recreation.
+  long-term answer, but it can only be chosen at cluster creation; on this
+  cluster it means recreating it, and `deletion_protection = true` is set. The
+  app egress policy already allows the Dataplane V2 metadata endpoints, so the
+  policies carry over unchanged if the cluster is ever rebuilt on it.
 
-Verify enforcement is live before trusting the policy — apply it, then confirm a
-connection that _should_ be blocked actually is. A NetworkPolicy that is present
-but inert is worse than none, because it reads as protection.
+Rollout order: let CI apply `infra/k8s` first (any push to it does), then
+`terraform apply`; the ClickHouse policies and enforcement then land together.
+Verify enforcement is live before trusting the policy: from a throwaway pod in
+the namespace, a connection to `clickhouse-keeper-headless:9181` should time
+out, and the app should still serve, sync and query metrics. A NetworkPolicy
+that is present but inert is worse than none, because it reads as protection.
+
+### Control plane access
+
+The control plane keeps its public IP endpoint, behind IAM, so GitHub-hosted
+runners (which have no fixed address) can deploy. Two variables narrow it:
+`control_plane_dns_endpoint` (on by default) exposes the IAM-gated DNS endpoint,
+which authorized networks do not apply to, and `master_authorized_networks`
+restricts the IP endpoint to listed CIDRs. Move CI first: set the
+`GKE_DNS_ENDPOINT` repo variable to `true` so `web-deploy.yml` fetches
+credentials with `--dns-endpoint`, let a deploy go green, and only then set the
+list, including the address terraform runs from (its kubernetes and helm
+providers use the IP endpoint). People can use
+`gcloud container clusters get-credentials ... --dns-endpoint` instead of being
+listed.
 
 ## Day-2 notes
 
