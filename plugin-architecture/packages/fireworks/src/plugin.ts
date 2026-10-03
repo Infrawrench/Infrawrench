@@ -10,6 +10,12 @@ import { SupervisedFineTuningJobResourceType } from "./resources/supervised-fine
 import { ApiKeyResourceType } from "./resources/api-key.js";
 import { SecretResourceType } from "./resources/secret.js";
 import { QuotaResourceType } from "./resources/quota.js";
+import { RouterResourceType } from "./resources/router.js";
+import { DpoJobResourceType } from "./resources/dpo-job.js";
+import { ReinforcementFineTuningJobResourceType } from "./resources/reinforcement-fine-tuning-job.js";
+import { EvaluatorResourceType } from "./resources/evaluator.js";
+import { EvaluationJobResourceType } from "./resources/evaluation-job.js";
+import { UserResourceType } from "./resources/user.js";
 
 // Mark taken verbatim from Fireworks AI's own app icon, served at
 // https://fireworks.ai/icon0.svg: a chevron over two mirrored brackets, drawn
@@ -26,7 +32,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Fireworks AI",
   description:
-    "Manage Fireworks AI deployments, models, datasets, fine-tuning and batch jobs, API keys, secrets and quotas — with usage costs.",
+    "Manage Fireworks AI deployments, routers, models, datasets, fine-tuning (SFT, DPO, RFT), evaluators and evaluation jobs, batch jobs, users, API keys, secrets and quotas, with usage costs.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#6720FF"/>
     <g transform="translate(18 18) scale(2)" fill="#FFFFFF">
@@ -72,11 +78,17 @@ const manifest: PluginManifest = {
 
 const resourceTypes: ResourceTypeDefinition[] = [
   DeploymentResourceType,
+  RouterResourceType,
   ModelResourceType,
   DeployedModelResourceType,
   DatasetResourceType,
   SupervisedFineTuningJobResourceType,
+  DpoJobResourceType,
+  ReinforcementFineTuningJobResourceType,
+  EvaluatorResourceType,
+  EvaluationJobResourceType,
   BatchInferenceJobResourceType,
+  UserResourceType,
   ApiKeyResourceType,
   SecretResourceType,
   QuotaResourceType,

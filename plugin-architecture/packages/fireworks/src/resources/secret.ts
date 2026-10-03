@@ -7,5 +7,6 @@ export const SecretResourceType = rt({
     "An account-scoped secret Fireworks jobs can reference by key name (e.g. a Weights & Biases token). Values are write-only and never returned.",
   fields: [f("keyName", "Key Name"), f("secretId", "Secret ID")],
   outputs: [o("secretName", "Secret Resource Name"), o("keyName", "Key Name")],
+  supportsCreate: true,
   iconKey: "secret",
 });

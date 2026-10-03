@@ -1,0 +1,51 @@
+import { f, o, rt } from "@infrawrench/plugin-base";
+
+export const ReinforcementFineTuningJobResourceType = rt({
+  name: "RFT Job",
+  id: "reinforcement-fine-tuning-job",
+  plural: "RFT Jobs",
+  description:
+    "A reinforcement fine-tuning run that trains a model against an evaluator's reward score",
+  fields: [
+    f("displayName", "Display Name"),
+    f("jobId", "Job ID"),
+    f("state", "State", { required: false }),
+    f("statusMessage", "Status Message", { required: false }),
+    f("baseModel", "Base Model", { required: false }),
+    f("evaluator", "Evaluator", { required: false }),
+    f("dataset", "Dataset", { required: false }),
+    f("evaluationDataset", "Evaluation Dataset", { required: false }),
+    f("outputModel", "Output Model", { required: false }),
+    f("lossMethod", "Loss Method", { required: false }),
+    f("epochs", "Epochs", { kind: "number", required: false }),
+    f("learningRate", "Learning Rate", { kind: "number", required: false }),
+    f("loraRank", "LoRA Rank", { kind: "number", required: false }),
+    f("progressPercent", "Progress (%)", { kind: "number", required: false }),
+    f("epoch", "Current Epoch", { kind: "number", required: false }),
+    f("inputTokens", "Input Tokens", { kind: "number", required: false }),
+    f("outputTokens", "Output Tokens", { kind: "number", required: false }),
+    f("nodeCount", "Nodes", { kind: "number", required: false }),
+    f("wandbUrl", "Weights & Biases Run", { required: false }),
+    f("createdBy", "Created By", { required: false }),
+    f("createTime", "Created", { required: false }),
+    f("completedTime", "Completed", { required: false }),
+  ],
+  outputs: [o("jobName", "Job Resource Name"), o("outputModel", "Output Model Name")],
+  dependsOn: [
+    { fieldKey: "baseModel", targetTypeId: "model", targetKey: "modelName", label: "trained from" },
+    {
+      fieldKey: "evaluator",
+      targetTypeId: "evaluator",
+      targetKey: "evaluatorName",
+      label: "rewarded by",
+    },
+    { fieldKey: "dataset", targetTypeId: "dataset", targetKey: "datasetName", label: "trains on" },
+    {
+      fieldKey: "evaluationDataset",
+      targetTypeId: "dataset",
+      targetKey: "datasetName",
+      label: "evaluates on",
+    },
+  ],
+  iconKey: "pipeline",
+});
