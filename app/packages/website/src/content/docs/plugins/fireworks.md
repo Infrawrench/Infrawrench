@@ -1,6 +1,6 @@
 ---
 title: Fireworks AI
-description: Manage Fireworks deployments, models, datasets, fine-tuning and batch jobs, API keys, secrets and quotas — with real usage costs.
+description: Manage Fireworks deployments, routers, models, datasets, SFT, DPO and RFT jobs, evaluators, batch jobs, users, API keys, secrets and quotas, with real usage costs.
 sidebar_order: 39
 ---
 
@@ -12,11 +12,17 @@ Fireworks AI serves open models both serverless and on dedicated GPU capacity yo
 - **Models** — base models and LoRA add-ons, with context length and capabilities
 - **Deployed models** — LoRA add-ons attached to a deployment
 - **Datasets** — uploaded JSONL, with example and token counts
+- **Routers**: spread one model string across several deployments, with weighted-random or even-load balancing; create, edit and delete
 - **Fine-tuning jobs** — supervised runs, with hyperparameters, progress and estimated cost; cancel and resume
+- **DPO jobs**: preference fine-tuning (DPO or ORPO) with the loss method, KL beta and training settings; resume and delete
+- **RFT jobs**: reinforcement fine-tuning against an evaluator's reward, with epoch and token progress; cancel, resume and delete
+- **Evaluators**: the scoring code behind evaluation jobs and RFT, with build state and source; edit the name and description
+- **Evaluation jobs**: an evaluator's run over a dataset, with the metrics it reported
 - **Batch inference jobs** — progress, success and failure counts, and the output dataset
+- **Users**: members and service accounts with their roles; invite, create and change roles
 - **API keys** — full create, with the plaintext shown once
-- **Secrets** — the account-scoped secrets jobs reference by key name
-- **Quotas** — accelerator quota per region, and how much of it is in use
+- **Secrets**: the account-scoped secrets jobs reference by key name; create them here
+- **Quotas**: accelerator quota per region, how much of it is in use, and an editable enforced limit
 
 ## Credentials
 
@@ -57,7 +63,13 @@ Deployments get a **Metrics** tab charting accelerator-seconds per day. Models c
 
 - **Scale a deployment** by editing its replica count. Fireworks exposes scaling as a dedicated RPC separate from editing the min/max window, and the plugin sends whichever of the two your edit implies.
 - **Create an API key** against any user or service account in the account. The plaintext value is returned exactly once, in the create response, and is shown to you as a warning — Fireworks never stores it, so there is no way to read it back later. Create a replacement instead.
-- **Cancel or resume a fine-tuning job** from its detail page.
+- **Cancel or resume a fine-tuning job** from its detail page. RFT jobs offer the same pair; DPO jobs can only be resumed, because Fireworks has no cancel verb for them.
+- **Create a router** by ticking deployments in a multi-select, then choosing the strategy (weighted random by replica count, or even load per replica) and whether other accounts may query it. The optional model is offered from the base models those deployments serve; leave it empty when the deployments span regions, which Fireworks requires. Routers Fireworks generates for a deployment are read-only and are removed with the deployment.
+- **Invite a user** by email, or create a service account, with a role picker (admin, user, contributor, inference user, or custom with a permission preset). Fireworks has no delete-user API, so removing someone is done in the dashboard.
+- **Create a secret** from a key name and a value. The value is write-only; the secret id is derived from the key name (`WANDB_API_KEY` becomes `wandb-api-key`).
+- **Cap a quota** by editing its enforced limit.
+
+<insert [Fireworks Create Router form with the Deployments multi-select open, two deployments ticked, and the routing strategy picker below] here>
 
 ## Tips & limits
 
@@ -66,4 +78,5 @@ Deployments get a **Metrics** tab charting accelerator-seconds per day. Models c
 - **Page size caps at 200.** Larger values are silently coerced.
 - **API-key listing does not paginate.** Fireworks documents pagination on that route as a TODO, so a very large account may not show every key.
 - **Secret values are write-only.** Neither a get nor a list ever returns them, so only the key name is shown.
+- **Evaluators are created through Fireworks' upload-and-build flow** (firectl or the Eval Protocol SDK), which packages and uploads source code. The plugin lists, edits and deletes them but does not create them.
 - **Quotas can be lowered but not raised.** You can set the enforced limit below your approved maximum to cap spend; going above the maximum needs a usage-limit increase request with Fireworks.
