@@ -242,6 +242,23 @@ describe("cross-section references", () => {
     expect(result.unresolved[0]?.detail).toMatch(/set to manual/);
   });
 
+  it("drops and reports a git trigger installation the org has not connected", async () => {
+    // The mocked db answers every select with no rows: the org owns no installations.
+    const result = await plan({
+      workflows: [
+        {
+          key: "deploy",
+          name: "Deploy",
+          source: "",
+          trigger: { kind: "git", repo: "someone/else", branch: "main", installationId: 7 },
+        },
+      ],
+    });
+    expect(result.counts.create).toBe(1);
+    expect(result.unresolved[0]).toMatchObject({ section: "workflows", key: "deploy" });
+    expect(result.unresolved[0]?.detail).toMatch(/installation 7, which is not connected/);
+  });
+
   it("drops a dashboard card whose workflow the document doesn't define", async () => {
     const result = await plan({
       dashboards: [

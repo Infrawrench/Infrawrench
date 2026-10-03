@@ -2,12 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // --- mocks (must be declared before importing the loop) ---
 const rows = vi.fn();
+// Live GitHub App installations, as (organizationId, installationId) rows.
+const installs = vi.fn();
 const updates: Array<Record<string, unknown>> = [];
 // The CAS update returns the claimed row ids; [] simulates losing the race.
 const updateReturning = vi.fn().mockResolvedValue([{ id: "wf1" }]);
 vi.mock("@infrawrench/server-core/db/client", () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => rows() }) }),
+    select: () => ({
+      from: (table: { table?: string }) => ({
+        where: () => (table.table === "github_installations" ? installs() : rows()),
+      }),
+    }),
     update: () => ({
       set: (v: Record<string, unknown>) => ({
         where: () => {
@@ -20,6 +26,12 @@ vi.mock("@infrawrench/server-core/db/client", () => ({
 }));
 vi.mock("@infrawrench/server-core/db/schema", () => ({
   workflows: { id: "id", organizationId: "org", trigger: "trigger", gitLastSha: "sha" },
+  githubInstallations: {
+    table: "github_installations",
+    organizationId: "org",
+    installationId: "inst",
+    deletedAt: "deleted",
+  },
 }));
 vi.mock("drizzle-orm", () => ({
   and: (...a: unknown[]) => ({ and: a }),
@@ -77,6 +89,17 @@ describe("GithubWatcher", () => {
     claimDueDeploymentTriggers.mockResolvedValue([]);
     runDeployment.mockReset();
     rows.mockResolvedValue([]);
+    installs.mockResolvedValue([{ organizationId: "org1", installationId: 42 }]);
+  });
+
+  it("never polls an installation the workflow's org has not connected", async () => {
+    // Installation 42 belongs to another org (or was disconnected).
+    installs.mockResolvedValue([{ organizationId: "org2", installationId: 42 }]);
+    rows.mockResolvedValue([gitRow({ gitLastSha: "sha-1" })]);
+    getBranchHeadSha.mockResolvedValue("sha-2");
+    await new GithubWatcher().tick();
+    expect(getBranchHeadSha).not.toHaveBeenCalled();
+    expect(runOrgWorkflow).not.toHaveBeenCalled();
   });
 
   it("records the head SHA on first sight without running", async () => {

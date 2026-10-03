@@ -32,6 +32,7 @@ import { isWorkflowAiConfigured } from "@infrawrench/server-core/workflows/ai";
 
 import { db } from "../db/client";
 import { budgets, workflowMetrics, workflowRuns, workflows } from "../db/schema";
+import { orgGithubInstallationIds } from "./github-installations";
 import { listOrgPlugins } from "./workflow-host";
 import { setWorkflowSecretAssignments, validateWorkflowSecretIds } from "./workflow-secrets";
 
@@ -135,6 +136,20 @@ async function validateTrigger(organizationId: string, trigger: WorkflowTrigger)
       throw new WorkflowError(
         `Unknown timezone "${trigger.timezone}" — use an IANA name like "Europe/London".`,
       );
+    }
+    return;
+  }
+  if (trigger.kind === "git") {
+    // The github-watcher mints installation tokens for whatever id is stored
+    // here, so an id the org never connected would let it poll (and fire on)
+    // another org's private repository.
+    if (trigger.installationId !== undefined && trigger.installationId !== null) {
+      const owned = await orgGithubInstallationIds(organizationId);
+      if (!owned.has(trigger.installationId)) {
+        throw new WorkflowError(
+          `GitHub installation ${String(trigger.installationId)} is not connected to this organization. Connect GitHub and pick a repository from its list.`,
+        );
+      }
     }
     return;
   }

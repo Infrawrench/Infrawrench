@@ -103,7 +103,7 @@ const workflowTriggerSchema = z.discriminatedUnion("kind", [
       repo: z.string().max(300).optional(),
       branch: z.string().max(300).optional(),
       events: z.array(z.string().max(50)).max(20).optional(),
-      installationId: z.number().int().optional(),
+      installationId: z.number().int().positive().optional(),
     })
     .strict(),
   z
