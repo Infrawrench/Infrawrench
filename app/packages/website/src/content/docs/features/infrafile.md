@@ -182,14 +182,16 @@ there. Do not interpolate them into the command string.
 
 On a web deploy, `run()` executes on a Cloud Build worker with your project
 mounted at `/workspace`, exactly as it does locally — the image is staged so the
-worker can pull it. Each call is its own step, so combine work with `&&` when
+worker can load it. Each call is its own build, so combine work with `&&` when
 round-trips matter.
 
 Commands run through `sh` by default, so `&&`, pipes and `npm run` scripts all
 behave. That entrypoint is set explicitly rather than inherited from the image —
 a container's arguments are appended to whatever `ENTRYPOINT` the Dockerfile
 declared, so an image that sets one would otherwise mangle every command. Pass
-`entrypoint` to use a different binary, or `""` to clear it.
+`entrypoint` to use a different binary, or `""` to clear it. On a web deploy,
+only a shell entrypoint (`sh`, `bash`) returns the command's output; any other
+returns its exit code with empty `stdout` and `stderr`.
 
 Other options: `workdir` (defaults to `/workspace`), `mountSource: false` for an
 image that already carries everything, and `image` to run something other than

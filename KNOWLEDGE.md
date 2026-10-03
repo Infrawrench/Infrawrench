@@ -2325,6 +2325,23 @@ server (`169.254.169.254` → node SA creds) and every other pod — exactly wha
 exists to keep workflow `fetch` away from, and a build is strictly more capable than a fetch.
 Cloud Build's isolation is structural rather than a NetworkPolicy we have to keep getting right.
 
+- **The build's own service account belongs to the customer, for isolation purposes.** Every
+  step (and, in practice, a Dockerfile `RUN`) can mint a token for the account the build runs as,
+  and every tenant's build runs as the same one. Builds used to run as the project default (the
+  Compute Engine account, often still holding project Editor) with `objectAdmin` on the shared
+  staging bucket, `artifactregistry.writer` on a shared staging repo and `secretAccessor` on the
+  whole `infrawrench-deploy-` prefix, so one customer's `RUN` could read or overwrite another's
+  source, image and registry password. Now every submission sets **`serviceAccount`** to a
+  dedicated account (`GCP_BUILD_SERVICE_ACCOUNT`; config is null without it, so hosted builds
+  fail closed) whose only grant is project `logging.logWriter`, which is write-only. Naming an
+  account forces an explicit log destination; **`CLOUD_LOGGING_ONLY`** is the one that costs no
+  isolation, because a logs bucket would need the account to hold storage access there.
+  Everything else moves through **V4 signed URLs the pod mints per object** (`signGcsUrl`, signed
+  locally with `GCP_BUILD_SA_KEY` or via IAM `signBlob` on GKE): source in, `docker save` tarball
+  out, `run()` report out. **Per-build secrets are bound to the account per secret**
+  (`setIamPolicy` right after create, plus a `ttl` backstop), never by prefix; the account has no
+  `secrets.list`, so it cannot find another build's secret. The leftover manual step, removing
+  Editor from the default compute account, is in `infra/README.md`.
 - **The image goes to the customer's registry** (`plan().registry`), not ours. Pushing to an
   Infrawrench registry would mean their cluster couldn't pull without us minting and rotating a
   pull credential for it.
@@ -2335,17 +2352,22 @@ Cloud Build's isolation is structural rather than a NetworkPolicy we have to kee
   credential reaches the build. A first step flattens the `owner-repo-sha/` prefix GitHub wraps
   everything in and writes the rendered Dockerfile beside the source, which is how this module
   avoids a hand-rolled tar writer.
-- **`run()` is one single-step build per call**, since calls are interleaved with arbitrary JS in
+- **`run()` is one build per call**, since calls are interleaved with arbitrary JS in
   `deploy()` and can't be known upfront. Combine with `&&` when latency matters. Making it work
-  across that split needed three things that are easy to miss: the built image is **always pushed
-  to a staging Artifact Registry repo** (`GCP_BUILD_STAGING_REPO`) because a step's image is
-  _pulled from a registry_ and an image built in one build's daemon does not exist on the next
-  build's worker; the run build **reuses the same `storageSource`** so `/workspace` holds the
-  project the way the local driver mounts it; and logging is **`GCS_ONLY` with a `logsBucket`** so
-  the command's stdout can be read back — without it `run()` returns `""` on cloud and the same
-  Infrafile silently behaves differently depending on where it was deployed from. `run()` env goes
-  through Secret Manager per variable, same reasoning as the registry password. The staged image is
-  deleted after the deploy; give the repo a TTL policy as the backstop.
+  across that split needs three things that are easy to miss: the image build **always
+  `docker save`s the image to a staging object** because an image built in one build's daemon
+  does not exist on the next build's worker, and each `run()` build's first step `docker load`s it
+  under a local `infrawrench.invalid/staged:<uuid>` tag, which Cloud Build runs from the daemon
+  cache rather than pulling (`.invalid` so a missing tag can never resolve to someone's registry);
+  that first step also **re-fetches the same source** so `/workspace` holds the project the way
+  the local driver mounts it; and the wrapped command **writes its report to a shared volume that
+  a last step uploads** through a signed URL, with the command step `allowFailure: true` so a
+  non-zero exit still reaches the upload. Without the report `run()` returns `""` on cloud and the
+  same Infrafile silently behaves differently depending on where it was deployed from. `run()` env
+  goes through Secret Manager per variable, same reasoning as the registry password. Everything a
+  deploy staged shares one prefix and `cleanupHostedBuild` deletes it; the bucket TTL is the
+  backstop. (This replaced a staging Artifact Registry repo, which every build could read and
+  overwrite, and a `GCS_ONLY` logs bucket, which every build could read.)
 - **Where the image runs**: a Cloud Build worker, never our cluster. It was built from a customer
   Dockerfile, so running it beside our pods is the same exposure as building it there.
 - **The command is wrapped so it reports its own streams and exit code.** Cloud Build gives one
@@ -2355,11 +2377,15 @@ Cloud Build's isolation is structural rather than a NetworkPolicy we have to kee
   whole shell and the markers never print, losing the output _and_ the code, so it must be a
   subshell; and **filtering Cloud Build's banners by regex is wrong** — it silently ate any line
   of the command's own output starting with `DONE`/`BUILD`/`PUSH`, which is why parsing is by
-  marker and not by shape. A non-shell `entrypoint` can't be wrapped, so it falls back to the
-  build's verdict and the whole log. `parseWrappedOutput` is exported as a test seam.
+  marker and not by shape. A non-shell `entrypoint` can't be wrapped, so it reports the command
+  step's own `exitCode` from the build record and no output (the log is in Cloud Logging, which
+  the pod does not read). `parseWrappedOutput` is exported as a test seam, as are the pure
+  submission builders `imageBuildConfig` / `runBuildConfig`, whose tests pin the isolation
+  properties (named account, no `storageSource`, no `logsBucket`, no registry).
 - Bounded by `HOSTED_BUILD_TIMEOUT_SECONDS` (1200) and metered into
   `deployment_runs.build_seconds` / `build_runner`. Env: `GCP_BUILD_PROJECT_ID`,
-  `GCP_BUILD_STAGING_BUCKET`, `GCP_BUILD_REGION`, and `GCP_BUILD_SA_KEY` only off-GKE (on GKE the
+  `GCP_BUILD_STAGING_BUCKET`, `GCP_BUILD_SERVICE_ACCOUNT`, `GCP_BUILD_REGION`, and
+  `GCP_BUILD_SA_KEY` only off-GKE (on GKE the
   pod's workload identity is used). Absent config = hosted builds unavailable, reported as such.
 
 **Three build paths, deliberately.** The CLI shells out to the local `docker` binary
@@ -2511,13 +2537,19 @@ these rows off a poller-collected row's key. Keying on the _run_ also makes a re
 own row rather than double-count. `HOSTED_BUILD_USD_PER_SECOND` is an order-of-magnitude
 placeholder — revisit before billing anyone off it.
 
-**Terraform for hosted builds** is `infra/terraform/builds.tf`. Two grants there are not what you
-would guess, and the code is wrong without them: `roles/artifactregistry.writer` has no
-`tags.delete`, so `cleanupStagedImage()` 403s on every deploy and only the 1-day cleanup policy
-does any work — the web SA needs `repoAdmin` on that repo. And the _build worker_ needs
-`secretmanager.secretAccessor` or `availableSecrets` never resolves, which is invisible until a
-build with a registry password fails. Secret access is two narrow custom roles rather than
-`secretmanager.admin`, which would let the web pods read every secret in the project.
+**Terraform for hosted builds** is `infra/terraform/builds.tf`. Three grants there are not what
+you would guess, and the code is wrong without them: the web SA needs `serviceAccountUser` on the
+build account (submitting a build that runs as it is `actAs`); it needs `serviceAccountTokenCreator`
+**on itself**, because IAM `signBlob` demands it even when an account signs as itself and the
+signed URLs are how builds reach staging storage at all; and its prefix-scoped Secret Manager role
+carries `secrets.setIamPolicy`, or the per-secret accessor binding 403s and `availableSecrets`
+never resolves, which is invisible until a build with a registry password or `run()` env fails.
+The build account deliberately holds **no** project-level `secretAccessor`, conditioned or not:
+every tenant's build runs as it, so a prefix grant would hand every build every other build's
+credential. Secret access for the pods is two narrow custom roles rather than
+`secretmanager.admin`, which would let them read every secret in the project. A per-secret IAM
+binding can take a few seconds to propagate; the image build creates its secret before uploading
+the source to give it that time.
 
 **Three things about Cloud Build that only a real build reveals**, all found by running one:
 
@@ -2526,17 +2558,21 @@ build with a registry password fails. Secret access is two narrow custom roles r
 substitution data` — `run()` would have failed 100% of the time. The wrapper's variable is now
    `iwcode`, and `substitutionOption: ALLOW_LOOSE` is set because the _customer's_ command may
    legitimately contain `$_FOO` and that must fail the command, not the submission.
-2. **`storage.objectAdmin` is not enough for the source bucket.** Cloud Build calls `buckets.get`
-   to validate the source before starting, which is bucket-level, so the worker also needs
-   `roles/storage.legacyBucketReader` — otherwise every submission is rejected with
-   `invalid bucket ...; service account does not have access`.
+2. **`storage.objectAdmin` was not enough for a `storageSource` bucket.** Cloud Build calls
+   `buckets.get` to validate the source before starting, so the worker also needed
+   `roles/storage.legacyBucketReader`. Moot since builds stopped using `storageSource` (the
+   build account has no bucket access at all; the first step `curl`s a signed URL), but the
+   reason not to go back: `legacyBucketReader` also lists every object in the bucket.
 3. **Flatten only a tarball wrapped in exactly ONE directory.** The first version took
    `ls -d */ | head -1`, so an unwrapped archive whose root contained `src/` had _that_ flattened
    and failed later at a `COPY`.
 
 Verified end to end against the real project: build → staged push → `run()` pulling that image with
 the project mounted → stdout `3.1.4`, stderr separated, **real exit code 7** (not normalised), and
-`parseWrappedOutput` reading the genuine log correctly.
+`parseWrappedOutput` reading the genuine log correctly. That run predates the isolation rework
+(dedicated account, signed URLs, `docker save`/`load` instead of a staging registry, report
+upload instead of a logs bucket), which has unit coverage but has not yet been re-run against
+the real project.
 
 **The watcher pod shares web's GCP identity** (`serviceAccountName: web` in
 `github-watcher-deployment.yaml`). Deploy-on-push runs hosted Cloud Builds from the watcher, and
