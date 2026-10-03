@@ -33,5 +33,8 @@ export const AccountResourceType = rt({
     o("region", "API Region"),
   ],
   supportsDelete: false,
+  // Daily transcript jobs, failures and turnaround, derived from the
+  // transcript list; account-wide voice agent sessions alongside.
+  supportsMetrics: true,
   iconKey: "account",
 });

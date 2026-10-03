@@ -43,6 +43,10 @@ const HOSTS: Record<string, string> = {
  * "complete" number to reach for: this is a recent-activity window.
  */
 const LIST_LIMIT = 100;
+/** `GET /v2/transcript` caps `limit` at 200. */
+const JOB_PAGE_SIZE = 200;
+/** Bounds the metrics walk at 2,000 jobs, so a busy account cannot fan out unboundedly. */
+const MAX_JOB_PAGES = 10;
 
 /** Parallelism for the per-transcript hydration pass. Deliberately modest: a
  *  rate-limit violation comes back as a 403 that is indistinguishable from an
@@ -478,8 +482,96 @@ export class AssemblyAIClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
+    if (resourceTypeId === ACCOUNT_TYPE) {
+      const [jobs, sessions] = await Promise.all([
+        this.transcriptJobSeries(timeRange),
+        // Voice Agent API access is separate from transcription; a key
+        // without it still gets the transcript charts.
+        this.voice.accountMetrics(timeRange).catch(() => [] as MetricSeries[]),
+      ]);
+      return [...jobs, ...sessions.filter((s) => s.points.some((p) => p.value !== 0))];
+    }
     if (resourceTypeId !== VOICE_AGENT_TYPE) return [];
     return this.voice.metrics(resourceId, timeRange);
+  }
+
+  /**
+   * Daily transcript jobs from `GET /v2/transcript`, the only account-wide
+   * activity record AssemblyAI exposes (there is no usage endpoint). The list
+   * carries `status`, `created` and `completed` but not audio duration, so
+   * the charts are job counts, failures, and turnaround (created to
+   * completed). It is newest first and paged with `before_id`; paging stops
+   * once a page reaches past the window, or after {@link MAX_JOB_PAGES}.
+   * https://www.assemblyai.com/docs/pre-recorded-audio/api-reference/transcripts/list
+   */
+  private async transcriptJobSeries(timeRange?: {
+    startMs: number;
+    endMs: number;
+  }): Promise<MetricSeries[]> {
+    const dayMs = 86_400_000;
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = timeRange?.startMs ?? endMs - 30 * dayMs;
+    const items: TranscriptListItem[] = [];
+    let beforeId = "";
+    for (let page = 0; page < MAX_JOB_PAGES; page++) {
+      const params = new URLSearchParams({ limit: String(JOB_PAGE_SIZE) });
+      if (beforeId) params.set("before_id", beforeId);
+      const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?${params.toString()}`);
+      const batch = data.transcripts ?? [];
+      items.push(...batch);
+      const last = batch[batch.length - 1];
+      if (!last || batch.length < JOB_PAGE_SIZE) break;
+      const oldest = parseApiTime(last.created);
+      if (oldest !== undefined && oldest < startMs) break;
+      beforeId = last.id;
+    }
+
+    type Day = { jobs: number; failed: number; turnaroundSum: number; turnaroundCount: number };
+    const days = new Map<number, Day>();
+    for (let t = Math.floor(startMs / dayMs) * dayMs; t <= endMs; t += dayMs) {
+      days.set(t, { jobs: 0, failed: 0, turnaroundSum: 0, turnaroundCount: 0 });
+    }
+    for (const item of items) {
+      const created = parseApiTime(item.created);
+      if (created === undefined || created < startMs || created > endMs) continue;
+      const day = days.get(Math.floor(created / dayMs) * dayMs);
+      if (!day) continue;
+      day.jobs += 1;
+      if (item.status === "error") day.failed += 1;
+      const completed = parseApiTime(item.completed);
+      if (item.status === "completed" && completed !== undefined && completed >= created) {
+        day.turnaroundSum += (completed - created) / 1000;
+        day.turnaroundCount += 1;
+      }
+    }
+    const stamps = [...days.keys()].sort((a, b) => a - b);
+    const series: MetricSeries[] = [
+      {
+        label: "Transcripts",
+        unit: "count",
+        points: stamps.map((t) => ({ timestamp: t, value: days.get(t)!.jobs })),
+      },
+      {
+        label: "Failed transcripts",
+        unit: "count",
+        points: stamps.map((t) => ({ timestamp: t, value: days.get(t)!.failed })),
+      },
+    ];
+    // Days with no completed job have no turnaround: leave them out rather
+    // than plot a misleading zero.
+    const turnaround = stamps
+      .filter((t) => days.get(t)!.turnaroundCount > 0)
+      .map((t) => {
+        const day = days.get(t)!;
+        return {
+          timestamp: t,
+          value: Number((day.turnaroundSum / day.turnaroundCount).toFixed(1)),
+        };
+      });
+    if (turnaround.length > 0) {
+      series.push({ label: "Avg turnaround", unit: "seconds", points: turnaround });
+    }
+    return series;
   }
 
   /**
@@ -552,6 +644,9 @@ export class AssemblyAIClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // Daily transcript jobs, failures and turnaround from GET /v2/transcript,
+      // plus voice agent sessions when the key has that API.
+      metricsCapability: { defaultTimeRangeMs: 30 * 86_400_000 },
       speechPanel: this.speechPanel(),
     };
   }
@@ -1039,4 +1134,15 @@ async function mapWithConcurrency<T, R>(
   });
   await Promise.all(workers);
   return results;
+}
+
+/**
+ * AssemblyAI timestamps (`created`, `completed`) carry no zone designator
+ * (`2026-07-01T12:00:00.123456`); they are UTC, so pin them before parsing.
+ */
+function parseApiTime(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`;
+  const ms = Date.parse(zoned);
+  return Number.isFinite(ms) ? ms : undefined;
 }
