@@ -65,6 +65,9 @@ describe("driver registry", () => {
 
   it("the postgres driver is the server one, on every path including the read-only one", async () => {
     const driver = sqlDrivers.get("postgres")!;
+    expect(driver.dialTargets?.("postgresql://u:p@db.example.com/app")).toEqual([
+      { kind: "host", host: "db.example.com", port: 5432 },
+    ]);
     // sql_query relies on queryReadOnly; the server wrapper must keep it.
     expect(typeof driver.queryReadOnly).toBe("function");
     const unsafe = "postgresql://u:p@127.0.0.1:1/db?sslrootcert=/etc/hostname";
@@ -75,6 +78,9 @@ describe("driver registry", () => {
 
   it("the mongodb driver is the server one, which refuses host-identity auth", async () => {
     const driver = kvDrivers.get("mongodb")!;
+    expect(driver.dialTargets?.("mongodb://u:p@db.example.com/app")).toEqual([
+      { kind: "host", host: "db.example.com", port: 27017 },
+    ]);
     await expect(
       driver.command("mongodb://127.0.0.1:1/?authMechanism=MONGODB-AWS", "listCollections", [
         "app",

@@ -75,6 +75,22 @@ describe("postgres serverDriver", () => {
     mockQuery.mockResolvedValue({ rows: [{ ok: 1 }], rowCount: 1 });
   });
 
+  it("reports the effective host and port to the server egress guard", () => {
+    expect(
+      serverDriver.dialTargets(
+        "postgresql://u:p@db.example.com/app?host=other.example.com&port=6432",
+      ),
+    ).toEqual([{ kind: "host", host: "other.example.com", port: 6432 }]);
+    expect(Pool).not.toHaveBeenCalled();
+  });
+
+  it("rejects file parameters before reporting dial targets", () => {
+    expect(() =>
+      serverDriver.dialTargets("postgresql://u:p@db.example.com/app?sslrootcert=/etc/hostname"),
+    ).toThrow(/sslrootcert/);
+    expect(Pool).not.toHaveBeenCalled();
+  });
+
   it("refuses a file parameter before pg is constructed", async () => {
     await expect(
       serverDriver.query("postgresql://u:p@h/db?sslrootcert=/etc/hostname", "SELECT 1"),

@@ -1,5 +1,4 @@
 import { MongoClient, ObjectId } from "mongodb";
-import type { KvNodeDriver } from "@infrawrench/plugin-base";
 import { hostPortDialTarget, type DialTarget, type KvNodeDriver } from "@infrawrench/plugin-base";
 
 import { findServerUnsafeMongoOptions, mongoRejectionMessage } from "./uri-policy.js";
@@ -336,6 +335,11 @@ export function serverMongoConnectionStringError(connectionString: string): stri
  */
 export const serverDriver = {
   id: driver.id,
+  dialTargets(connectionString: string): DialTarget[] {
+    const error = serverMongoConnectionStringError(connectionString);
+    if (error) throw new Error(error);
+    return dialTargets(connectionString);
+  },
   async command(
     connectionString: string,
     cmd: string,

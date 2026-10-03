@@ -206,6 +206,10 @@ function assertSafeForServer(connectionString: string): void {
  */
 export const serverDriver = {
   id: driver.id,
+  dialTargets(connectionString: string): DialTarget[] {
+    assertSafeForServer(connectionString);
+    return dialTargets(connectionString);
+  },
   async query(
     connectionString: string,
     sql: string,

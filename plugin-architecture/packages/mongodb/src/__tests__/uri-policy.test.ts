@@ -121,6 +121,27 @@ describe("serverMongoUriError (driver-free, save time)", () => {
 });
 
 describe("mongodb serverDriver", () => {
+  it("reports seed and SRV destinations to the server egress guard", () => {
+    expect(serverDriver.dialTargets("mongodb://u:p@a.example.com,b.example.com:27018/app")).toEqual(
+      [
+        { kind: "host", host: "a.example.com", port: 27017 },
+        { kind: "host", host: "b.example.com", port: 27018 },
+      ],
+    );
+    expect(serverDriver.dialTargets("mongodb+srv://u:p@cluster0.example.net/app")).toEqual([
+      { kind: "srv", name: "_mongodb._tcp.cluster0.example.net" },
+    ]);
+  });
+
+  it("rejects unsafe options before reporting dial targets", () => {
+    expect(() =>
+      serverDriver.dialTargets("mongodb://db.example.com/?authMechanism=MONGODB-AWS"),
+    ).toThrow(/MONGODB-AWS/);
+    expect(() =>
+      serverDriver.dialTargets("mongodb://db.example.com/?tls=true&tlsCAFile=/etc/hostname"),
+    ).toThrow(/tlsCAFile/);
+  });
+
   it("refuses an unsafe connection string before connecting", async () => {
     await expect(
       serverDriver.command(
