@@ -73,6 +73,10 @@ export const agentSessions = pgTable(
     // Serialized AgentSetupPlan (text to mirror the desktop app's local
     // schema); consumed by the server-side VM setup pipeline.
     setupPlanJson: text("setup_plan_json").notNull().default("{}"),
+    // SHA256 fingerprint of the VM's SSH host key, pinned on the first
+    // connection while the session is fresh and enforced strictly after
+    // (`decideAgentHostKey` in ssh-tunnel-core). NULL until then.
+    hostKeyFingerprint: text("host_key_fingerprint"),
     // Cross-replica lease for the VM setup pipeline. The web deployment runs
     // two replicas and the in-process in-flight map only guards one heap, so
     // without this both pods run setup for the same session against the same

@@ -9,6 +9,8 @@ import os from "node:os";
 import path from "node:path";
 import { workflowSshExec } from "./ssh-tunnel";
 import { sftpUpload, sftpDownloadToBuffer } from "./sftp";
+import { agentHostKeyCheck } from "./agent-host-keys";
+import type { HostKeyCheck } from "./ssh-host-keys";
 import { sanitizeGitConfigForAgentVm } from "./agent-gitconfig";
 import { getDb, isDialogBlessedPath } from "./main-utils";
 import { z } from "zod";
@@ -31,6 +33,20 @@ export type { WorkflowSshConfig };
 
 export type SftpCfg = { host: string; port: number; username: string; privateKey: string };
 
+/**
+ * One agent VM as main connects to it: the renderer-resolved connect config
+ * plus the session's host-key pin (agent-host-keys.ts). Every SSH and SFTP
+ * call below goes through `hostKeyCheck`; none of them may skip it.
+ */
+interface AgentVmConnection {
+  config: WorkflowSshConfig;
+  hostKeyCheck: HostKeyCheck;
+}
+
+function agentVmConnection(sessionId: string, config: WorkflowSshConfig): AgentVmConnection {
+  return { config, hostKeyCheck: agentHostKeyCheck(sessionId) };
+}
+
 interface RuntimeCandidate {
   language: AgentRuntimeLanguage;
   versionRaw?: string;
@@ -45,16 +61,19 @@ interface RuntimeCandidate {
  * has as the basis), download it over SFTP, and `git fetch` from it locally.
  */
 export async function reconcileAgentBranch({
+  sessionId,
   config,
   workspaceName,
   branchName,
   repoPath,
 }: {
+  sessionId: string;
   config: WorkflowSshConfig;
   workspaceName: string;
   branchName: string;
   repoPath: string;
 }): Promise<{ message: string }> {
+  const conn = agentVmConnection(sessionId, config);
   const localRepoPath = path.resolve(expandHomePath(repoPath));
   await ensureAgentRepoPathAllowed(localRepoPath);
   if (!fs.existsSync(localRepoPath) || !fs.statSync(localRepoPath).isDirectory()) {
@@ -100,7 +119,11 @@ export async function reconcileAgentBranch({
     `if [ -n "$NEG" ]; then git bundle create "$BUNDLE" "refs/heads/$BR" --not $NEG >/dev/null; else git bundle create "$BUNDLE" "refs/heads/$BR" >/dev/null; fi`,
     `echo "RECONCILE:BUNDLED"`,
   ].join("\n");
-  const result = await workflowSshExec(config, `bash -lc ${shellQuote(remoteScript)}`, true);
+  const result = await workflowSshExec(
+    config,
+    `bash -lc ${shellQuote(remoteScript)}`,
+    conn.hostKeyCheck,
+  );
   const stdout = Buffer.from(result.stdoutBase64, "base64").toString("utf8");
   const stderr = Buffer.from(result.stderrBase64, "base64").toString("utf8");
   if (result.code !== 0) {
@@ -122,8 +145,12 @@ export async function reconcileAgentBranch({
     throw new Error(`Unexpected reconcile output from the VM: ${stdout.trim().slice(0, 200)}`);
   }
 
-  const bundleBytes = await sftpDownloadToBuffer(workflowToSftpConfig(config), remoteBundle);
-  void workflowSshExec(config, `rm -f ${shellQuote(remoteBundle)}`, true).catch(() => undefined);
+  const bundleBytes = await sftpDownloadToBuffer(workflowToSftpConfig(config), remoteBundle, {
+    hostKeyCheck: conn.hostKeyCheck,
+  });
+  void workflowSshExec(config, `rm -f ${shellQuote(remoteBundle)}`, conn.hostKeyCheck).catch(
+    () => undefined,
+  );
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "infrawrench-reconcile-"));
   const bundlePath = path.join(tempDir, "agent.bundle");
@@ -720,25 +747,36 @@ function agentToolLabel(tool: AgentTool): string {
 }
 
 export async function syncAgentFiles({
+  sessionId,
   config,
   tool,
   remoteHome,
   projectDir,
   repoPath,
 }: {
+  sessionId: string;
   config: WorkflowSshConfig;
   tool: "codex" | "claude-code";
   remoteHome: string;
   projectDir: string;
   repoPath?: string;
 }): Promise<{ repoFiles: number; configFiles: number; warnings: string[] }> {
+  const conn = agentVmConnection(sessionId, config);
   const sftpConfig = workflowToSftpConfig(config);
   const warnings: string[] = [];
   let repoFiles = 0;
   let configFiles = 0;
 
   const configSources = agentConfigSources(tool, remoteHome);
-  for (const source of configSources) {
+  // Logins and tool config only leave this machine for a host the user has
+  // approved for this session (a native dialog main shows itself).
+  const credentialsApproved = await confirmAgentCredentialSync(sessionId, config, configSources);
+  if (!credentialsApproved) {
+    warnings.push(
+      `Skipped syncing ${agentToolLabel(tool)} login and config: not approved for ${config.sshHost}. Log in on the VM manually.`,
+    );
+  }
+  for (const source of credentialsApproved ? configSources : []) {
     if (!fs.existsSync(source.localPath)) {
       warnings.push(`No local ${source.label} config found at ${source.localPath}`);
       continue;
@@ -751,7 +789,7 @@ export async function syncAgentFiles({
       // fresh SSH connection per file, which takes forever for a populated
       // plugins directory (thousands of files).
       await uploadDirectoryArchive(
-        config,
+        conn,
         sftpConfig,
         source.remotePath,
         source.localPath,
@@ -759,13 +797,13 @@ export async function syncAgentFiles({
       );
       configFiles += listed.files.length;
     } else if (stat.isFile()) {
-      await ensureRemoteDirs(config, [path.posix.dirname(source.remotePath)]);
+      await ensureRemoteDirs(conn, [path.posix.dirname(source.remotePath)]);
       const raw = fs.readFileSync(source.localPath);
       const data = source.transform
         ? Buffer.from(source.transform(raw.toString("utf8")), "utf8")
         : raw;
       await sftpUpload(sftpConfig, source.remotePath, data, {
-        skipHostKeyCheck: true,
+        hostKeyCheck: conn.hostKeyCheck,
       });
       configFiles += 1;
     }
@@ -776,15 +814,15 @@ export async function syncAgentFiles({
   // above never carries the login. Resolve it (credentials file on Linux,
   // Keychain on macOS) and upload it explicitly. Must run after the directory
   // sync: that step clears the remote ~/.claude first.
-  if (tool === "claude-code") {
+  if (tool === "claude-code" && credentialsApproved) {
     const credentials = loadClaudeCredentials();
     if (credentials) {
       const remoteCredentialsPath = joinRemote(remoteHome, ".claude/.credentials.json");
-      await ensureRemoteDirs(config, [path.posix.dirname(remoteCredentialsPath)]);
+      await ensureRemoteDirs(conn, [path.posix.dirname(remoteCredentialsPath)]);
       await sftpUpload(sftpConfig, remoteCredentialsPath, Buffer.from(credentials, "utf8"), {
-        skipHostKeyCheck: true,
+        hostKeyCheck: conn.hostKeyCheck,
       });
-      await runAgentRemoteCommand(config, `chmod 600 ${shellQuote(remoteCredentialsPath)}`);
+      await runAgentRemoteCommand(conn, `chmod 600 ${shellQuote(remoteCredentialsPath)}`);
       configFiles += 1;
     } else {
       warnings.push(
@@ -801,7 +839,7 @@ export async function syncAgentFiles({
     } else {
       const listed = listRepoFiles(localRepoPath);
       warnings.push(...listed.warnings);
-      await uploadDirectoryArchive(config, sftpConfig, projectDir, localRepoPath, listed.files);
+      await uploadDirectoryArchive(conn, sftpConfig, projectDir, localRepoPath, listed.files);
       repoFiles = listed.files.length;
     }
   }
@@ -1083,19 +1121,19 @@ function isSafeRelativePath(relativePath: string): boolean {
   return parts.every((part) => part && part !== "." && part !== "..");
 }
 
-async function cleanRemoteDir(config: WorkflowSshConfig, remoteDir: string): Promise<void> {
+async function cleanRemoteDir(conn: AgentVmConnection, remoteDir: string): Promise<void> {
   await runAgentRemoteCommand(
-    config,
+    conn,
     `REMOTE_DIR=${shellQuote(remoteDir)}; mkdir -p "$REMOTE_DIR"; find "$REMOTE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +`,
   );
 }
 
-async function ensureRemoteDirs(config: WorkflowSshConfig, dirs: string[]): Promise<void> {
+async function ensureRemoteDirs(conn: AgentVmConnection, dirs: string[]): Promise<void> {
   const uniqueDirs = Array.from(new Set(dirs.filter(Boolean)));
   for (let i = 0; i < uniqueDirs.length; i += 50) {
     const chunk = uniqueDirs.slice(i, i + 50);
     if (chunk.length === 0) continue;
-    await runAgentRemoteCommand(config, `mkdir -p -- ${chunk.map(shellQuote).join(" ")}`);
+    await runAgentRemoteCommand(conn, `mkdir -p -- ${chunk.map(shellQuote).join(" ")}`);
   }
 }
 
@@ -1106,14 +1144,14 @@ async function ensureRemoteDirs(config: WorkflowSshConfig, dirs: string[]): Prom
  * takes hours.
  */
 async function uploadDirectoryArchive(
-  config: WorkflowSshConfig,
+  conn: AgentVmConnection,
   sftpConfig: SftpCfg,
   remoteDir: string,
   localRoot: string,
   files: LocalFileEntry[],
 ): Promise<void> {
   if (files.length === 0) {
-    await cleanRemoteDir(config, remoteDir);
+    await cleanRemoteDir(conn, remoteDir);
     return;
   }
 
@@ -1125,10 +1163,10 @@ async function uploadDirectoryArchive(
 
   try {
     await sftpUpload(sftpConfig, remoteArchive, fs.readFileSync(archive.archivePath), {
-      skipHostKeyCheck: true,
+      hostKeyCheck: conn.hostKeyCheck,
     });
     await runAgentRemoteCommand(
-      config,
+      conn,
       [
         `ARCHIVE=${shellQuote(remoteArchive)}`,
         `TARGET_DIR=${shellQuote(remoteDir)}`,
@@ -1165,8 +1203,8 @@ function createLocalRepoArchive(
   return { archivePath, tempDir };
 }
 
-async function runAgentRemoteCommand(config: WorkflowSshConfig, command: string): Promise<void> {
-  const result = await workflowSshExec(config, command, true);
+async function runAgentRemoteCommand(conn: AgentVmConnection, command: string): Promise<void> {
+  const result = await workflowSshExec(conn.config, command, conn.hostKeyCheck);
   if (result.code !== 0) {
     const stderr = Buffer.from(result.stderrBase64, "base64").toString("utf8").trim();
     const stdout = Buffer.from(result.stdoutBase64, "base64").toString("utf8").trim();
@@ -1182,6 +1220,56 @@ function joinRemote(...parts: string[]): string {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Ask before uploading tool logins and config to an agent VM, once per
+ * session and host. The dialog is shown by main, so a renderer can't answer
+ * it; the approval is stored on the session row (`sync_approved_host`). Like
+ * the other main-process dialogs it is English-only: gt-react runs in the
+ * renderer.
+ */
+async function confirmAgentCredentialSync(
+  sessionId: string,
+  config: WorkflowSshConfig,
+  sources: AgentConfigSource[],
+): Promise<boolean> {
+  const present = sources.filter((source) => fs.existsSync(source.localPath));
+  if (present.length === 0) return true;
+  const approvalKey = `${config.sshUser}@${config.sshHost}:${config.sshPort}`;
+  const db = await getDb();
+  const rows = await db.select<Array<{ sync_approved_host: string | null }>>(
+    `SELECT sync_approved_host FROM agent_sessions WHERE id = ?`,
+    [sessionId],
+  );
+  if (!rows[0]) throw new Error(`Agent session ${sessionId} was not found`);
+  if (rows[0].sync_approved_host === approvalKey) return true;
+
+  const home = os.homedir();
+  const shown = present.map((source) => {
+    const relative = path.relative(home, source.localPath);
+    return relative && !relative.startsWith("..") ? `~/${relative}` : source.localPath;
+  });
+  const choice = await dialog.showMessageBox({
+    type: "warning",
+    title: "Upload logins to the agent VM?",
+    message: `Infrawrench wants to copy your coding-agent logins and config to ${approvalKey}.`,
+    detail: [
+      "These files can include OAuth tokens that act as you:",
+      ...shown.map((file) => `  ${file}`),
+      "",
+      "Only allow this if you created this agent VM and trust the host.",
+    ].join("\n"),
+    buttons: ["Upload", "Don't upload"],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (choice.response !== 0) return false;
+  await db.execute(`UPDATE agent_sessions SET sync_approved_host = ? WHERE id = ?`, [
+    approvalKey,
+    sessionId,
+  ]);
+  return true;
 }
 
 async function ensureLocalPathAllowed(localPath: string, description: string): Promise<void> {

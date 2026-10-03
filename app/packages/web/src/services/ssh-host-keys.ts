@@ -99,6 +99,26 @@ async function verifyHostKey(
   return existing.fingerprint;
 }
 
+/** The org's pinned fingerprint for host:port, or null. Never writes. */
+export async function lookupHostKeyPin(
+  orgId: string,
+  host: string,
+  port: number,
+): Promise<string | null> {
+  const [existing] = await db
+    .select({ fingerprint: sshHostKeys.fingerprint })
+    .from(sshHostKeys)
+    .where(
+      and(
+        eq(sshHostKeys.organizationId, orgId),
+        eq(sshHostKeys.host, host),
+        eq(sshHostKeys.port, port),
+      ),
+    )
+    .limit(1);
+  return existing?.fingerprint ?? null;
+}
+
 /**
  * Record (or replace) a pin after the user has explicitly accepted the
  * presented fingerprint. Idempotent: re-pinning the same fingerprint is a

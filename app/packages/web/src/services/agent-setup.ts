@@ -56,6 +56,7 @@ import { agentSessions, githubInstallations, resources, sshKeys } from "../db/sc
 import { buildAad, decrypt } from "./encryption";
 import { getClientForAccount } from "./plugin-clients";
 import { installAgentServices } from "./agent-services";
+import { makeAgentHostVerifier } from "./agent-host-keys";
 
 const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
@@ -71,6 +72,12 @@ const AGENT_SETUP_RETRY_MS = 5 * 1000;
 const AGENT_SSH_READY_TIMEOUT_MS = 15 * 1000;
 
 type SessionRow = typeof agentSessions.$inferSelect;
+
+/** Which session's host-key pin an agent SSH connection is checked against. */
+interface AgentHostKeyPin {
+  sessionId: string;
+  organizationId: string;
+}
 
 interface AgentSshExecResult {
   stdout: string;
@@ -318,7 +325,13 @@ async function runAgentVmSetup(
   const bootstrapCommand = await buildSetupBootstrapCommand(row, organizationId);
   const result = await (async () => {
     try {
-      return await runAgentSetupCommandWithRetry(target, privateKey, bootstrapCommand, logger);
+      return await runAgentSetupCommandWithRetry(
+        { sessionId: row.id, organizationId },
+        target,
+        privateKey,
+        bootstrapCommand,
+        logger,
+      );
     } finally {
       await logger.flush();
     }
@@ -335,7 +348,12 @@ async function runAgentVmSetup(
   // Web sessions are cloned from a Git URL on the VM; there is no local
   // config/repo file sync step (that path exists only in the desktop app).
   if (opts?.launchReadyToken) {
-    await markAgentLaunchReady(target, privateKey, opts.launchReadyToken);
+    await markAgentLaunchReady(
+      { sessionId: row.id, organizationId },
+      target,
+      privateKey,
+      opts.launchReadyToken,
+    );
   }
   await appendAgentSessionLog(row.id, AGENT_SETUP_COMPLETE_LOG, "up");
 }
@@ -541,6 +559,7 @@ function resolveAgentSshTarget(
 }
 
 async function runAgentSetupCommandWithRetry(
+  pin: AgentHostKeyPin,
   target: AgentSshTarget,
   privateKey: string,
   command: string,
@@ -550,7 +569,7 @@ async function runAgentSetupCommandWithRetry(
   let lastError = "SSH did not become reachable";
   while (Date.now() - startedAt < AGENT_SETUP_TIMEOUT_MS) {
     try {
-      const result = await agentSshExec(target, privateKey, command, logger.onData);
+      const result = await agentSshExec(pin, target, privateKey, command, logger.onData);
       // A bootstrap that announced completion did its job; a non-zero exit
       // after that point (a dropped channel, a login shell's exit quirk) is
       // not a setup failure and must not strand a ready VM in "failed".
@@ -606,7 +625,12 @@ export async function revokeT3CodeLinkOnVm(
     const privateKey = await loadOrgAgentSshPrivateKey(organizationId);
     const target = await resolveAgentSshTargetNow(row, organizationId);
     if (!target) return;
-    await agentSshExec(target, privateKey, buildT3CodeLogoutCommand());
+    await agentSshExec(
+      { sessionId: row.id, organizationId },
+      target,
+      privateKey,
+      buildT3CodeLogoutCommand(),
+    );
     await appendAgentSessionLog(row.id, "Revoked the T3 Connect environment link.");
   } catch (error) {
     console.warn(`[agent-setup] could not revoke the T3 Connect link for ${sessionId}`, error);
@@ -637,11 +661,13 @@ async function resolveAgentSshTargetNow(
 }
 
 async function markAgentLaunchReady(
+  pin: AgentHostKeyPin,
   target: AgentSshTarget,
   privateKey: string,
   launchReadyToken: string,
 ): Promise<void> {
   const result = await agentSshExec(
+    pin,
     target,
     privateKey,
     `mkdir -p "$HOME/.infrawrench-agent/launch-ready" && touch "$HOME/.infrawrench-agent/launch-ready/${shellDoubleQuoteContent(launchReadyToken)}"`,
@@ -650,12 +676,12 @@ async function markAgentLaunchReady(
 }
 
 /**
- * Execute a command on the agent VM over SSH. Fresh agent VMs have no pinned
- * host key yet, so: mirroring the desktop app, which runs its agent setup
- * with `skipHostKeyCheck: true`; the presented host key is accepted without
- * the org-level pinning used for user-initiated SSH connections.
+ * Execute a command on the agent VM over SSH. The VM's host key is checked
+ * against the session's pin (agent-host-keys.ts): trusted on first use while
+ * the session is fresh, refused on any change after.
  */
 function agentSshExec(
+  pin: AgentHostKeyPin,
   target: AgentSshTarget,
   privateKey: string,
   command: string,
@@ -663,6 +689,7 @@ function agentSshExec(
 ): Promise<AgentSshExecResult> {
   return new Promise((resolve, reject) => {
     const client = new SshClient();
+    const hostKeyError = { value: null as Error | null };
     client.once("ready", () => {
       client.exec(command, (err, stream) => {
         if (err) {
@@ -689,7 +716,7 @@ function agentSshExec(
       });
     });
     client.once("error", (err) => {
-      reject(new Error(`SSH connection failed: ${err.message}`));
+      reject(hostKeyError.value ?? new Error(`SSH connection failed: ${err.message}`));
     });
     client.connect({
       host: target.host,
@@ -697,6 +724,13 @@ function agentSshExec(
       username: target.username,
       privateKey,
       readyTimeout: AGENT_SSH_READY_TIMEOUT_MS,
+      hostVerifier: makeAgentHostVerifier(
+        pin.sessionId,
+        pin.organizationId,
+        target.host,
+        target.port,
+        hostKeyError,
+      ),
     });
   });
 }

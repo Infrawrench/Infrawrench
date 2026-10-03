@@ -21,7 +21,7 @@ import { get1PasswordAgentPath } from "./onepassword-agent";
 import {
   ensureHostKeyCacheLoaded,
   verifyOrPinHostKeyInteractive,
-  HostKeyMismatchError,
+  type HostKeyCheck,
 } from "./ssh-host-keys";
 
 function withAgentOverride(opts: ConnectConfig): ConnectConfig {
@@ -43,27 +43,26 @@ function withAgentOverride(opts: ConnectConfig): ConnectConfig {
 }
 
 /**
- * Wrap a ConnectConfig so its host-key verifier consults the desktop TOFU
- * store. Captures any mismatch error on `hostKeyErrorRef.value` so the
- * outer Promise reject can surface a meaningful error instead of the
- * generic ssh2 "All configured authentication methods failed".
+ * Wrap a ConnectConfig so its host-key verifier consults `check` (the desktop
+ * TOFU store unless the caller picked a stricter policy). Captures any
+ * rejection on `hostKeyErrorRef.value` so the outer Promise reject can
+ * surface a meaningful error instead of the generic ssh2 "All configured
+ * authentication methods failed".
  */
 function withHostKeyVerifier(
   opts: ConnectConfig,
-  hostKeyErrorRef: { value: HostKeyMismatchError | null },
+  hostKeyErrorRef: { value: Error | null },
+  check: HostKeyCheck = verifyOrPinHostKeyInteractive,
 ): ConnectConfig {
   const host = String(opts.host);
   const port = Number(opts.port);
   return {
     ...opts,
     hostVerifier: (hostKey: Buffer, verify: (matches: boolean) => void) => {
-      verifyOrPinHostKeyInteractive(host, port, hostKey).then(
+      check(host, port, hostKey).then(
         (result) => {
           if (!result.ok) {
-            console.error(
-              `[ssh-tunnel] host key rejected for ${result.error.host}:${result.error.port} ` +
-                `(stored=${result.error.storedFingerprint}, presented=${result.error.presentedFingerprint})`,
-            );
+            console.error(`[ssh-tunnel] host key rejected: ${result.error.message}`);
             hostKeyErrorRef.value = result.error;
             verify(false);
             return;
@@ -87,7 +86,7 @@ export async function openTunnel(
   // separately, so any mismatch will manifest as a connection failure with a
   // message we log above. That's acceptable for tunnels because the IPC
   // caller only sees pass/fail; the console log identifies the cause.
-  const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
+  const hostKeyErrorRef = { value: null as Error | null };
   return coreOpenTunnel<undefined>(config, undefined, {
     configureConnect: (opts) => withHostKeyVerifier(withAgentOverride(opts), hostKeyErrorRef),
   });
@@ -123,7 +122,7 @@ export async function sshExecCommand(
   await ensureHostKeyCacheLoaded();
   return new Promise((resolve, reject) => {
     const client = new SshClient();
-    const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
+    const hostKeyErrorRef = { value: null as Error | null };
     client.once("ready", () => {
       client.exec(command, (err, channel) => {
         if (err) {
@@ -181,10 +180,10 @@ function connectWorkflowSsh(
   config: WorkflowSshConfig,
   onReady: (client: SshClient) => void,
   onError: (err: Error) => void,
-  skipHostKeyCheck = false,
+  hostKeyCheck?: HostKeyCheck,
 ): SshClient {
   const client = new SshClient();
-  const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
+  const hostKeyErrorRef = { value: null as Error | null };
   client.once("ready", () => onReady(client));
   client.once("error", (err) => {
     onError(hostKeyErrorRef.value ?? new Error(`SSH connection failed: ${err.message}`));
@@ -195,12 +194,7 @@ function connectWorkflowSsh(
     username: config.sshUser,
     privateKey: config.privateKey,
   });
-  // skipHostKeyCheck → accept any key without the interactive pin prompt.
-  client.connect(
-    skipHostKeyCheck
-      ? { ...baseOpts, hostVerifier: (_key: Buffer, verify: (ok: boolean) => void) => verify(true) }
-      : withHostKeyVerifier(baseOpts, hostKeyErrorRef),
-  );
+  client.connect(withHostKeyVerifier(baseOpts, hostKeyErrorRef, hostKeyCheck));
   return client;
 }
 
@@ -208,7 +202,7 @@ function connectWorkflowSsh(
 export async function workflowSshExec(
   config: WorkflowSshConfig,
   command: string,
-  skipHostKeyCheck = false,
+  hostKeyCheck?: HostKeyCheck,
 ): Promise<{ stdoutBase64: string; stderrBase64: string; code: number }> {
   await ensureHostKeyCacheLoaded();
   return new Promise((resolve, reject) => {
@@ -236,7 +230,7 @@ export async function workflowSshExec(
         });
       },
       reject,
-      skipHostKeyCheck,
+      hostKeyCheck,
     );
   });
 }
@@ -250,7 +244,7 @@ export async function workflowSshExec(
 export async function workflowSshExecScript(
   config: WorkflowSshConfig,
   script: string,
-  skipHostKeyCheck = false,
+  hostKeyCheck?: HostKeyCheck,
 ): Promise<string> {
   await ensureHostKeyCacheLoaded();
   const { execSshScript } = await import("@infrawrench/ssh-tunnel-core");
@@ -263,7 +257,7 @@ export async function workflowSshExecScript(
           .finally(() => client.end());
       },
       reject,
-      skipHostKeyCheck,
+      hostKeyCheck,
     );
   });
 }
@@ -299,7 +293,7 @@ function wakeStream(state: WorkflowStreamState): void {
 export async function workflowSshStreamStart(
   config: WorkflowSshConfig,
   command: string,
-  skipHostKeyCheck = false,
+  hostKeyCheck?: HostKeyCheck,
 ): Promise<{ streamId: string }> {
   await ensureHostKeyCacheLoaded();
   const streamId = randomUUID();
@@ -341,7 +335,7 @@ export async function workflowSshStreamStart(
         });
       },
       reject,
-      skipHostKeyCheck,
+      hostKeyCheck,
     );
   });
   return { streamId };

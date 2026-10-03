@@ -40,6 +40,7 @@ import { OpenSSHAgent, type ParsedKey } from "ssh2";
 import { resolveBlessedDownloadPath } from "./main-utils";
 import { isPageantRunning } from "./pageant";
 import { get1PasswordAgentPath, is1PasswordAgentRunning } from "./onepassword-agent";
+import { agentHostKeyCheck } from "./agent-host-keys";
 import {
   planAgentSetup,
   syncAgentFiles,
@@ -75,41 +76,50 @@ ipcMain.handle(
 // resolves the connect config (host + key) and passes it through; main runs the
 // ssh2 connection and returns base64 output. The `WorkflowSshConfig` shape
 // lives in agent-setup.ts alongside the agent pipeline that also uses it.
+//
+// Host keys are always verified (the interactive TOFU store). The renderer
+// has no way to ask for verification to be skipped.
 
 ipcMain.handle(
   "workflow_ssh_exec",
-  (
-    _e,
-    {
-      config,
-      command,
-      skipHostKeyCheck,
-    }: { config: WorkflowSshConfig; command: string; skipHostKeyCheck?: boolean },
-  ) => workflowSshExec(config, command, skipHostKeyCheck),
+  (_e, { config, command }: { config: WorkflowSshConfig; command: string }) =>
+    workflowSshExec(config, command),
 );
 
 ipcMain.handle(
   "workflow_ssh_exec_script",
-  (
-    _e,
-    {
-      config,
-      script,
-      skipHostKeyCheck,
-    }: { config: WorkflowSshConfig; script: string; skipHostKeyCheck?: boolean },
-  ) => workflowSshExecScript(config, script, skipHostKeyCheck),
+  (_e, { config, script }: { config: WorkflowSshConfig; script: string }) =>
+    workflowSshExecScript(config, script),
 );
 
 ipcMain.handle(
   "workflow_ssh_stream_start",
-  (
-    _e,
-    {
-      config,
-      command,
-      skipHostKeyCheck,
-    }: { config: WorkflowSshConfig; command: string; skipHostKeyCheck?: boolean },
-  ) => workflowSshStreamStart(config, command, skipHostKeyCheck),
+  (_e, { config, command }: { config: WorkflowSshConfig; command: string }) =>
+    workflowSshStreamStart(config, command),
+);
+
+// Agent VM SSH: the same transports, verified against the agent session's
+// host-key pin (agent-host-keys.ts) instead of the interactive store. The
+// stream is read and closed through the workflow_ssh_stream_* channels.
+
+type AgentSshArgs = { sessionId: string; config: WorkflowSshConfig };
+
+ipcMain.handle(
+  "agent_ssh_exec",
+  (_e, { sessionId, config, command }: AgentSshArgs & { command: string }) =>
+    workflowSshExec(config, command, agentHostKeyCheck(sessionId)),
+);
+
+ipcMain.handle(
+  "agent_ssh_exec_script",
+  (_e, { sessionId, config, script }: AgentSshArgs & { script: string }) =>
+    workflowSshExecScript(config, script, agentHostKeyCheck(sessionId)),
+);
+
+ipcMain.handle(
+  "agent_ssh_stream_start",
+  (_e, { sessionId, config, command }: AgentSshArgs & { command: string }) =>
+    workflowSshStreamStart(config, command, agentHostKeyCheck(sessionId)),
 );
 
 ipcMain.handle("workflow_ssh_stream_read", (_e, { streamId }: { streamId: string }) =>
@@ -173,12 +183,14 @@ ipcMain.handle(
   async (
     _e,
     {
+      sessionId,
       config,
       tool,
       remoteHome,
       projectDir,
       repoPath,
     }: {
+      sessionId: string;
       config: WorkflowSshConfig;
       tool: "codex" | "claude-code";
       remoteHome: string;
@@ -187,6 +199,7 @@ ipcMain.handle(
     },
   ) =>
     syncAgentFiles({
+      sessionId,
       config,
       tool,
       remoteHome,
@@ -200,17 +213,19 @@ ipcMain.handle(
   async (
     _e,
     {
+      sessionId,
       config,
       workspaceName,
       branchName,
       repoPath,
     }: {
+      sessionId: string;
       config: WorkflowSshConfig;
       workspaceName: string;
       branchName: string;
       repoPath: string;
     },
-  ) => reconcileAgentBranch({ config, workspaceName, branchName, repoPath }),
+  ) => reconcileAgentBranch({ sessionId, config, workspaceName, branchName, repoPath }),
 );
 
 ipcMain.handle("ssh_shell_spawn", (event, config: SshShellConfig) =>

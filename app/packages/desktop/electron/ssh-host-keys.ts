@@ -79,6 +79,36 @@ export async function ensureHostKeyCacheLoaded(): Promise<void> {
 }
 
 /**
+ * A host-key policy: decides whether the key a server presents is acceptable.
+ * `verifyOrPinHostKeyInteractive` is the default; the agent VM pipeline swaps
+ * in its per-session pin (agent-host-keys.ts). Chosen in main, never by the
+ * renderer.
+ */
+export type HostKeyCheck = (
+  host: string,
+  port: number,
+  hostKey: Buffer,
+) => Promise<{ ok: true } | { ok: false; error: Error }>;
+
+/** The pinned fingerprint for host:port, if any. */
+export async function lookupHostKeyPin(host: string, port: number): Promise<string | undefined> {
+  await ensureCacheLoaded();
+  return cache.get(cacheKey(host, port));
+}
+
+/**
+ * Record (or replace) the pin for host:port without asking. Only for keys
+ * main has already verified by other means, such as an agent VM's
+ * per-session pin, so the terminal and SFTP to that VM don't prompt again.
+ */
+export async function pinHostKey(host: string, port: number, fingerprint: string): Promise<void> {
+  await ensureCacheLoaded();
+  if (cache.get(cacheKey(host, port)) === fingerprint) return;
+  cache.set(cacheKey(host, port), fingerprint);
+  await persistPin(host, port, fingerprint);
+}
+
+/**
  * Async verifier suitable for ssh2's HostVerifier callback form. Prompts the
  * user (via the renderer) when the host is unknown or the key changed.
  *

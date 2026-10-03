@@ -927,19 +927,13 @@ export async function runWorkflowById(
     // config (host + key) and bridges the exec/stream/probe to main via IPC.
     sshExec: async (params) => {
       const config = await resolveDesktopSshConfig(params);
-      return invoke("workflow_ssh_exec", {
-        config,
-        command: params.command,
-        skipHostKeyCheck: params.skipHostKeyCheck,
-      });
+      // `skipHostKeyCheck` is honoured by cloud runs only: on the desktop
+      // the key is always verified, and a changed key asks the user.
+      return invoke("workflow_ssh_exec", { config, command: params.command });
     },
     sshStreamStart: async (params) => {
       const config = await resolveDesktopSshConfig(params);
-      return invoke("workflow_ssh_stream_start", {
-        config,
-        command: params.command,
-        skipHostKeyCheck: params.skipHostKeyCheck,
-      });
+      return invoke("workflow_ssh_stream_start", { config, command: params.command });
     },
     sshStreamRead: (streamId) => invoke("workflow_ssh_stream_read", { streamId }),
     sshStreamClose: async (streamId) => {

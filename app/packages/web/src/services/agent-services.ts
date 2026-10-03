@@ -6,6 +6,7 @@ import { db } from "../db/client";
 import { agentSessions } from "../db/schema";
 import { getClientForAccount } from "./plugin-clients";
 import { listSshInstallAccounts, refreshInstallerAccount } from "./ssh-install";
+import { makeAgentHostVerifier } from "./agent-host-keys";
 
 /**
  * Services attached to an agent session: accounts whose plugin installs
@@ -46,23 +47,38 @@ export async function resolveAgentServiceAccounts(
  * Open one SSH connection to the agent VM for a plugin's install. Scripts go
  * over stdin (`execSshScript`) because installers carry short-lived secrets
  * such as enrollment keys, which must never appear in remote argv. Like the
- * rest of the agent pipeline, the VM's host key is not pinned: the VM was
- * created moments ago by this same pipeline (see `agentSshExec`).
+ * rest of the agent pipeline, the VM's host key is checked against the
+ * session's pin (agent-host-keys.ts).
  */
-function connectAgentServiceTransport(target: AgentSshTarget, privateKey: string) {
+function connectAgentServiceTransport(
+  row: SessionRow,
+  organizationId: string,
+  target: AgentSshTarget,
+  privateKey: string,
+) {
   return new Promise<{ exec(script: string): Promise<string>; close(): void }>(
     (resolve, reject) => {
       const client = new ssh2.Client();
+      const hostKeyError = { value: null as Error | null };
       client.once("ready", () =>
         resolve({ exec: (script) => execSshScript(client, script), close: () => client.end() }),
       );
-      client.once("error", (err) => reject(new Error(`SSH connection failed: ${err.message}`)));
+      client.once("error", (err) =>
+        reject(hostKeyError.value ?? new Error(`SSH connection failed: ${err.message}`)),
+      );
       client.connect({
         host: target.host,
         port: target.port,
         username: target.username,
         privateKey,
         readyTimeout: AGENT_SERVICE_SSH_READY_TIMEOUT_MS,
+        hostVerifier: makeAgentHostVerifier(
+          row.id,
+          organizationId,
+          target.host,
+          target.port,
+          hostKeyError,
+        ),
       });
     },
   );
@@ -92,7 +108,7 @@ export async function installAgentServices(
       continue;
     }
     await log(`Installing ${manifest.displayName} on the VM.`);
-    const transport = await connectAgentServiceTransport(target, privateKey);
+    const transport = await connectAgentServiceTransport(row, organizationId, target, privateKey);
     let result;
     try {
       result = await ctx.client.installOnSsh(transport);

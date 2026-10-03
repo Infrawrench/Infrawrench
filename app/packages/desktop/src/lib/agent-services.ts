@@ -70,8 +70,7 @@ export async function installLocalAgentServices(
     let result;
     try {
       result = await client.installOnSsh({
-        exec: (script) =>
-          invoke<string>("workflow_ssh_exec_script", { config, script, skipHostKeyCheck: true }),
+        exec: (script) => invoke<string>("agent_ssh_exec_script", { sessionId, config, script }),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -393,3 +393,16 @@ ALTER TABLE agent_settings ADD COLUMN t3_access TEXT NOT NULL DEFAULT 't3-connec
 `;
 
 MIGRATIONS.push(AGENT_SERVICE_ACCOUNTS_MIGRATION);
+
+// The agent VM's SSH host-key pin (SHA256 fingerprint), recorded on the first
+// connection while the session is fresh and enforced strictly after, and the
+// host:port the user approved uploading their tool logins and config to.
+// Both are written by the main process (electron/agent-host-keys.ts,
+// electron/agent-setup.ts). The cloud keeps its pin in
+// 0123_agent_host_key_pin.
+const AGENT_HOST_KEY_PIN_MIGRATION = `
+ALTER TABLE agent_sessions ADD COLUMN host_key_fingerprint TEXT;
+ALTER TABLE agent_sessions ADD COLUMN sync_approved_host TEXT;
+`;
+
+MIGRATIONS.push(AGENT_HOST_KEY_PIN_MIGRATION);

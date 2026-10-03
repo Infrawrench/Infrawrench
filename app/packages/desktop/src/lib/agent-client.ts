@@ -531,6 +531,7 @@ export function createDesktopAgentClient(): AgentClient {
       const resource = await loadAgentVmResource(row);
       const target = await resolveAgentSshTarget(row, resource);
       const result = await invoke<{ message: string }>("agent_reconcile_fetch", {
+        sessionId: row.id,
         config: {
           sshHost: target.host,
           sshPort: target.port,
@@ -777,7 +778,7 @@ async function ensureAgentVmSetup(
   const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
   const target = await waitForAgentSshTarget(row);
   await appendAgentSessionLog(db, row.id, AGENT_SETUP_WAIT_SSH_LOG, "setting-up");
-  const remoteHome = await resolveAgentRemoteHome(target, privateKey);
+  const remoteHome = await resolveAgentRemoteHome(row.id, target, privateKey);
   // The launch command and the repo setup script both source this env file;
   // it must land before either can run, so upload it ahead of the parallel
   // bootstrap/sync pair (it is tiny).
@@ -812,6 +813,7 @@ async function ensureAgentVmSetup(
   const bootstrapPromise = (async () => {
     try {
       return await runAgentSetupCommand(
+        row.id,
         target,
         privateKey,
         t3Code
@@ -881,7 +883,7 @@ async function ensureAgentVmSetup(
     (message) => appendAgentSessionLog(db, row.id, message, "setting-up"),
   );
   if (opts?.launchReadyToken) {
-    await markAgentLaunchReady(target, privateKey, opts.launchReadyToken);
+    await markAgentLaunchReady(row.id, target, privateKey, opts.launchReadyToken);
   }
   await appendAgentSessionLog(db, row.id, AGENT_SETUP_COMPLETE_LOG, "up");
 }
@@ -901,6 +903,7 @@ async function revokeT3CodeLinkOnVm(row: SessionRow): Promise<void> {
   const agentKey = await ensureAgentSshKey();
   const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
   await agentSshExecCommand(
+    row.id,
     {
       sshHost: target.host,
       sshPort: target.port,
@@ -935,6 +938,7 @@ async function waitForAgentSshTarget(row: SessionRow): Promise<AgentSshTarget> {
 }
 
 async function runAgentSetupCommand(
+  sessionId: string,
   target: AgentSshTarget,
   privateKey: string,
   command: string,
@@ -945,6 +949,7 @@ async function runAgentSetupCommand(
   while (Date.now() - startedAt < AGENT_SETUP_TIMEOUT_MS) {
     try {
       const result = await agentSshStreamCommand(
+        sessionId,
         {
           sshHost: target.host,
           sshPort: target.port,
@@ -986,6 +991,7 @@ function retryReason(message: string): string {
 }
 
 async function runAgentSshCommandWithRetry(
+  sessionId: string,
   target: AgentSshTarget,
   privateKey: string,
   command: string,
@@ -996,6 +1002,7 @@ async function runAgentSshCommandWithRetry(
   while (Date.now() - startedAt < AGENT_SETUP_TIMEOUT_MS) {
     try {
       const result = await agentSshExecCommand(
+        sessionId,
         {
           sshHost: target.host,
           sshPort: target.port,
@@ -1017,8 +1024,13 @@ async function runAgentSshCommandWithRetry(
   throw new Error(`Timed out ${action} over SSH: ${lastError}`);
 }
 
-async function resolveAgentRemoteHome(target: AgentSshTarget, privateKey: string): Promise<string> {
+async function resolveAgentRemoteHome(
+  sessionId: string,
+  target: AgentSshTarget,
+  privateKey: string,
+): Promise<string> {
   const result = await runAgentSshCommandWithRetry(
+    sessionId,
     target,
     privateKey,
     `printf '%s' "$HOME"`,
@@ -1037,6 +1049,7 @@ async function syncAgentFiles(
   opts?: { syncLocalRepo?: boolean },
 ): Promise<AgentSyncFilesResult> {
   return invoke<AgentSyncFilesResult>("agent_sync_files", {
+    sessionId: row.id,
     config: {
       sshHost: target.host,
       sshPort: target.port,
@@ -1163,24 +1176,34 @@ async function uploadAgentEnvFile(
   const env = parseJson<Record<string, string>>(row.setup_env_json ?? "{}", {});
   if (Object.keys(env).length === 0) return;
   const remotePath = `${remoteHome}/${AGENT_ENV_REMOTE_PATH}`;
-  const config = {
-    sshHost: target.host,
-    sshPort: target.port,
-    sshUser: target.username,
-    privateKey,
-  };
-  const mkdir = await agentSshExecCommand(
-    config,
-    `mkdir -p "$HOME/.infrawrench-agent" && chmod 700 "$HOME/.infrawrench-agent"`,
-  );
-  if (mkdir.code !== 0) throw new Error(formatCommandFailure(mkdir));
-  await invoke("sftp_upload", {
-    config: { host: target.host, port: target.port, username: target.username, privateKey },
-    remotePath,
-    data: new TextEncoder().encode(buildAgentEnvFile(env)),
+  // One script over the session's pinned SSH channel (the env values are
+  // secrets, so no unverified SFTP hop). The script travels on stdin and the
+  // content is base64, so neither shows up in the remote process list.
+  const content = bytesToBase64(new TextEncoder().encode(buildAgentEnvFile(env)));
+  await invoke<string>("agent_ssh_exec_script", {
+    sessionId: row.id,
+    config: {
+      sshHost: target.host,
+      sshPort: target.port,
+      sshUser: target.username,
+      privateKey,
+    },
+    script: [
+      "set -e",
+      "umask 077",
+      `mkdir -p "$HOME/.infrawrench-agent" && chmod 700 "$HOME/.infrawrench-agent"`,
+      `printf '%s' ${shellQuote(content)} | base64 -d > ${shellQuote(remotePath)}`,
+      `chmod 600 ${shellQuote(remotePath)}`,
+    ].join("\n"),
   });
-  const chmod = await agentSshExecCommand(config, `chmod 600 ${shellQuote(remotePath)}`);
-  if (chmod.code !== 0) throw new Error(formatCommandFailure(chmod));
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
 }
 
 /** Run the repo's `.infrawrench/agent-setup.sh` on the VM (no-op if absent). */
@@ -1194,6 +1217,7 @@ async function runAgentRepoSetupScript(
   const result = await (async () => {
     try {
       return await agentSshStreamCommand(
+        row.id,
         {
           sshHost: target.host,
           sshPort: target.port,
@@ -1227,6 +1251,7 @@ async function checkoutAgentWorkspaceBranch(
 ): Promise<void> {
   const workspaceName = workspaceNameForRow(row);
   const result = await agentSshExecCommand(
+    row.id,
     {
       sshHost: target.host,
       sshPort: target.port,
@@ -1244,11 +1269,13 @@ async function checkoutAgentWorkspaceBranch(
 }
 
 async function markAgentLaunchReady(
+  sessionId: string,
   target: AgentSshTarget,
   privateKey: string,
   launchReadyToken: string,
 ): Promise<void> {
   const result = await agentSshExecCommand(
+    sessionId,
     {
       sshHost: target.host,
       sshPort: target.port,
@@ -1260,7 +1287,13 @@ async function markAgentLaunchReady(
   if (result.code !== 0) throw new Error(formatCommandFailure(result));
 }
 
+/**
+ * Agent VM commands go through the agent_ssh_* channels: main verifies the
+ * VM's host key against this session's pin (trusted on first use while the
+ * session is fresh, refused on any change after).
+ */
 async function agentSshExecCommand(
+  sessionId: string,
   config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string },
   command: string,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
@@ -1268,10 +1301,10 @@ async function agentSshExecCommand(
     stdoutBase64: string;
     stderrBase64: string;
     code: number;
-  }>("workflow_ssh_exec", {
+  }>("agent_ssh_exec", {
+    sessionId,
     config,
     command,
-    skipHostKeyCheck: true,
   });
   return {
     stdout: decodeBase64(result.stdoutBase64),
@@ -1281,15 +1314,16 @@ async function agentSshExecCommand(
 }
 
 async function agentSshStreamCommand(
+  sessionId: string,
   config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string },
   command: string,
   logger: AgentSetupOutputLogger,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   let streamId: string | null = null;
-  const started = await invoke<{ streamId: string }>("workflow_ssh_stream_start", {
+  const started = await invoke<{ streamId: string }>("agent_ssh_stream_start", {
+    sessionId,
     config,
     command,
-    skipHostKeyCheck: true,
   });
   streamId = started.streamId;
   let stdout = "";

@@ -79,6 +79,9 @@ const INVOKE_CHANNELS = [
   "workflow_sftp_mkdir",
   "workflow_sftp_delete",
   "agent_plan_setup",
+  "agent_ssh_exec",
+  "agent_ssh_exec_script",
+  "agent_ssh_stream_start",
   "agent_sync_files",
   "agent_reconcile_fetch",
   // sftp

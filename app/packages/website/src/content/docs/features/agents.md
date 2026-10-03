@@ -27,6 +27,14 @@ Agents can target either Codex or Claude Code. The selected tool is stored on th
 
 Local-only desktop sessions also copy your `~/.gitconfig` so commits from the VM carry your identity. Settings that only work on your own machine are stripped on the way: GPG signing (the keys aren't there, and `commit.gpgsign=true` would fail every commit), credential helpers like `osxkeychain`, and **`url.*.insteadOf` rewrites that point at SSH**. That last one matters if you rewrite `https://github.com/` to SSH locally — the VM has no key registered with GitHub, so the rewrite would turn every HTTPS clone into a failing SSH one, including clones of public repositories. Rewrites to a non-SSH target (an internal HTTPS mirror) are kept.
 
+Before a local session copies any of those files, the desktop app asks once: a system dialog names the VM's address and lists the files about to leave your machine. **Upload** remembers the answer for that session and address; **Don't upload** still syncs the repository but skips your logins and config, so you sign in on the VM yourself.
+
+### Host keys
+
+Every connection to an agent VM checks its SSH host key, on both the desktop app and the cloud. The first connection after the VM is created, which setup makes on its own while the VM boots, records the key on the session; from then on a different key is refused outright, with a message naming both fingerprints, rather than offered for approval. That covers the address being reassigned to someone else's machine after a VM is deleted, as well as an attacker on the network path. If you rebuilt the VM yourself, delete the session and start a new one. The key is also trusted for the session's terminal, so opening it doesn't ask again.
+
+Sessions created before host keys were recorded pick theirs up on the next connection: the desktop app shows the usual host-key prompt, and the cloud accepts the key only if your organization already trusts it for that address, so open the VM's terminal once and confirm the key, then **Retry setup**.
+
 Agent VMs use a dedicated Infrawrench-managed SSH key named `infrawrench-agent`. Organization sessions create or reuse that key inside the organization, whichever surface you drive them from — so a desktop terminal opened against an org session connects with the org's key, whose private half stays server-side, rather than anything in your local key store. Local-only desktop sessions create or reuse the key in the local app key store. The key is injected into the provider's VM create field declared by the plugin, so providers such as DigitalOcean attach it during VM creation instead of falling back to password access.
 
 ## Choosing a repository

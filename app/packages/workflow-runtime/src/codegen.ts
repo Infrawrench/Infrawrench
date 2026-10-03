@@ -108,6 +108,7 @@ function renderSshExecOptions(sshKeyNames: string[]): string {
    * Skip SSH host-key verification (accept whatever key the host presents and
    * don't pin it). Use for ephemeral/recreated hosts whose key changes; it
    * disables MITM protection, so only set it when you trust the network path.
+   * Cloud runs only: the desktop app always verifies, and asks on a changed key.
    */
   skipHostKeyCheck?: boolean;
 }`;

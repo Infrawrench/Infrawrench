@@ -20,25 +20,23 @@ import type { SftpConfig } from "@infrawrench/plugin-base" with {
 import {
   ensureHostKeyCacheLoaded,
   verifyOrPinHostKeyInteractive,
-  HostKeyMismatchError,
+  type HostKeyCheck,
 } from "./ssh-host-keys";
 
 function withHostKeyVerifier(
   opts: ConnectConfig,
-  hostKeyErrorRef: { value: HostKeyMismatchError | null },
+  hostKeyErrorRef: { value: Error | null },
+  check: HostKeyCheck,
 ): ConnectConfig {
   const host = String(opts.host);
   const port = Number(opts.port);
   return {
     ...opts,
     hostVerifier: (hostKey: Buffer, verify: (matches: boolean) => void) => {
-      verifyOrPinHostKeyInteractive(host, port, hostKey).then(
+      check(host, port, hostKey).then(
         (result) => {
           if (!result.ok) {
-            console.error(
-              `[sftp] host key rejected for ${result.error.host}:${result.error.port} ` +
-                `(stored=${result.error.storedFingerprint}, presented=${result.error.presentedFingerprint})`,
-            );
+            console.error(`[sftp] host key rejected: ${result.error.message}`);
             hostKeyErrorRef.value = result.error;
             verify(false);
             return;
@@ -54,38 +52,26 @@ function withHostKeyVerifier(
   };
 }
 
-async function buildOptions(): Promise<{
+/**
+ * `hostKeyCheck` defaults to the interactive TOFU store; main-process callers
+ * with a stricter policy (the agent VM pipeline's per-session pin) pass
+ * their own. Never chosen by the renderer.
+ */
+async function buildOptions(hostKeyCheck: HostKeyCheck = verifyOrPinHostKeyInteractive): Promise<{
   options: WithSftpOptions;
-  hostKeyErrorRef: { value: HostKeyMismatchError | null };
+  hostKeyErrorRef: { value: Error | null };
 }> {
   await ensureHostKeyCacheLoaded();
-  const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
+  const hostKeyErrorRef = { value: null as Error | null };
   const options: WithSftpOptions = {
-    configureConnect: (opts) => withHostKeyVerifier(opts, hostKeyErrorRef),
+    configureConnect: (opts) => withHostKeyVerifier(opts, hostKeyErrorRef, hostKeyCheck),
   };
   return { options, hostKeyErrorRef };
 }
 
-async function buildOptionsWithSkip(skipHostKeyCheck = false): Promise<{
-  options: WithSftpOptions;
-  hostKeyErrorRef: { value: HostKeyMismatchError | null };
-}> {
-  if (!skipHostKeyCheck) return buildOptions();
-  const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
-  return {
-    hostKeyErrorRef,
-    options: {
-      configureConnect: (opts) => ({
-        ...opts,
-        hostVerifier: (_hostKey: Buffer, verify: (matches: boolean) => void) => verify(true),
-      }),
-    },
-  };
-}
-
 async function withMismatchRethrow<T>(
   fn: () => Promise<T>,
-  ref: { value: HostKeyMismatchError | null },
+  ref: { value: Error | null },
 ): Promise<T> {
   try {
     return await fn();
@@ -121,9 +107,9 @@ export async function sftpUpload(
   config: SftpConfig,
   remotePath: string,
   data: Buffer,
-  opts?: { skipHostKeyCheck?: boolean },
+  opts?: { hostKeyCheck?: HostKeyCheck },
 ): Promise<void> {
-  const { options, hostKeyErrorRef } = await buildOptionsWithSkip(Boolean(opts?.skipHostKeyCheck));
+  const { options, hostKeyErrorRef } = await buildOptions(opts?.hostKeyCheck);
   return withMismatchRethrow(
     () => sftpUploadImpl(config, remotePath, data, options),
     hostKeyErrorRef,
@@ -145,8 +131,9 @@ export async function sftpDownload(
 export async function sftpDownloadToBuffer(
   config: SftpConfig,
   remotePath: string,
+  opts?: { hostKeyCheck?: HostKeyCheck },
 ): Promise<Buffer> {
-  const { options, hostKeyErrorRef } = await buildOptions();
+  const { options, hostKeyErrorRef } = await buildOptions(opts?.hostKeyCheck);
   return withMismatchRethrow(
     () => sftpDownloadToBufferImpl(config, remotePath, options),
     hostKeyErrorRef,

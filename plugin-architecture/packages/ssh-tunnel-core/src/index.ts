@@ -164,3 +164,9 @@ export function findTunnel<E = unknown>(
   return null;
 }
 export { execSshScript } from "./exec-script.js";
+export {
+  AGENT_HOST_KEY_TOFU_WINDOW_MS,
+  agentHostKeyMismatchMessage,
+  decideAgentHostKey,
+  type AgentHostKeyDecision,
+} from "./agent-host-key.js";
