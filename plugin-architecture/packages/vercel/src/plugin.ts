@@ -7,6 +7,8 @@ import { VercelDeploymentResourceType } from "./resources/deployment.js";
 import { VercelDomainResourceType } from "./resources/domain.js";
 import { VercelEnvironmentVariableResourceType } from "./resources/environment-variable.js";
 import { VercelTeamResourceType } from "./resources/team.js";
+import { VercelDnsRecordResourceType } from "./resources/dns-record.js";
+import { VercelWebhookResourceType } from "./resources/webhook.js";
 import { vercelTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
@@ -53,6 +55,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   VercelDomainResourceType,
   VercelEnvironmentVariableResourceType,
   VercelTeamResourceType,
+  VercelDnsRecordResourceType,
+  VercelWebhookResourceType,
 ];
 
 export const plugin: Plugin = {

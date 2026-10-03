@@ -49,7 +49,7 @@ describe("constructor", () => {
   it("sends Authorization header and base url", async () => {
     installFetch(() => jsonResponse({ projects: [] }));
     await client().listResources("vercel-project", ACCOUNT);
-    expect(calls[0]!.url).toContain("https://api.vercel.com/v9/projects");
+    expect(calls[0]!.url).toContain("https://api.vercel.com/v10/projects");
     const headers = calls[0]!.init?.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("Bearer tok");
   });
@@ -75,7 +75,7 @@ describe("caCert + host http service path", () => {
       url: string;
       caCert?: string;
     };
-    expect(arg.url).toContain("/v9/projects");
+    expect(arg.url).toContain("/v10/projects");
     expect(arg.caCert).toBe("PEM");
     expect(spy).not.toHaveBeenCalled();
   });
@@ -122,7 +122,7 @@ describe("listResources dispatch + mappers", () => {
     expect(p.fields["live"]).toBe(true);
     // second page fetched then stopped
     expect(calls.length).toBe(2);
-    expect(calls[1]!.url).toContain("until=1699999999999");
+    expect(calls[1]!.url).toContain("from=1699999999999");
   });
 
   it("falls back to latestDeployments url when no alias", async () => {
@@ -249,7 +249,7 @@ describe("listResources dispatch + mappers", () => {
 
   it("lists env vars across projects, skips projects that error", async () => {
     installFetch((url) => {
-      if (url.includes("/v9/projects")) {
+      if (url.includes("/v10/projects?")) {
         return jsonResponse({
           projects: [
             { id: "p1", name: "one", createdAt: 1 },
@@ -287,7 +287,7 @@ describe("listResources dispatch + mappers", () => {
 
   it("env var falls back to composite id and string target", async () => {
     installFetch((url) => {
-      if (url.includes("/v9/projects")) {
+      if (url.includes("/v10/projects?")) {
         return jsonResponse({
           projects: [{ id: "p1", name: "one", createdAt: 1 }],
           pagination: { next: null },
@@ -302,7 +302,7 @@ describe("listResources dispatch + mappers", () => {
 
   it("env var handles missing envs array and undefined target", async () => {
     installFetch((url) => {
-      if (url.includes("/v9/projects")) {
+      if (url.includes("/v10/projects?")) {
         return jsonResponse({
           projects: [{ id: "p1", name: "one", createdAt: 1 }],
           pagination: { next: null },
@@ -428,12 +428,7 @@ describe("resolveOutput", () => {
 
   it("resolves deployment url and inspectorUrl", async () => {
     installFetch(() =>
-      jsonResponse({
-        deployments: [
-          { uid: "d1", name: "n", url: "u.app", created: 1, inspectorUrl: "https://i" },
-        ],
-        pagination: { next: null },
-      }),
+      jsonResponse({ uid: "d1", name: "n", url: "u.app", created: 1, inspectorUrl: "https://i" }),
     );
     expect(
       await client().resolveOutput(
@@ -492,7 +487,7 @@ describe("resolveOutput", () => {
 
   it("resolves env-var outputs", async () => {
     installFetch((url) => {
-      if (url.includes("/v9/projects"))
+      if (url.includes("/v10/projects?"))
         return jsonResponse({
           projects: [{ id: "p1", name: "one", createdAt: 1 }],
           pagination: { next: null },
@@ -510,7 +505,7 @@ describe("resolveOutput", () => {
       ),
     ).toBe("K");
     installFetch((url) => {
-      if (url.includes("/v9/projects"))
+      if (url.includes("/v10/projects?"))
         return jsonResponse({
           projects: [{ id: "p1", name: "one", createdAt: 1 }],
           pagination: { next: null },
@@ -594,10 +589,12 @@ describe("fetchDashboardStats", () => {
   it("deployment stats with target", async () => {
     installFetch(() =>
       jsonResponse({
-        deployments: [
-          { uid: "d1", name: "n", url: "u", readyState: "BUILDING", target: "preview", created: 1 },
-        ],
-        pagination: { next: null },
+        uid: "d1",
+        name: "n",
+        url: "u",
+        readyState: "BUILDING",
+        target: "preview",
+        created: 1,
       }),
     );
     const stats = await client().fetchDashboardStats(
@@ -611,10 +608,7 @@ describe("fetchDashboardStats", () => {
 
   it("deployment stats error/unknown variants", async () => {
     installFetch(() =>
-      jsonResponse({
-        deployments: [{ uid: "d1", name: "n", url: "u", readyState: "ERROR", created: 1 }],
-        pagination: { next: null },
-      }),
+      jsonResponse({ uid: "d1", name: "n", url: "u", readyState: "ERROR", created: 1 }),
     );
     let stats = await client().fetchDashboardStats(
       "vercel-deployment",
@@ -624,10 +618,7 @@ describe("fetchDashboardStats", () => {
     expect(stats[0]!.variant).toBe("status-error");
 
     installFetch(() =>
-      jsonResponse({
-        deployments: [{ uid: "d1", name: "n", url: "u", readyState: "WEIRD", created: 1 }],
-        pagination: { next: null },
-      }),
+      jsonResponse({ uid: "d1", name: "n", url: "u", readyState: "WEIRD", created: 1 }),
     );
     stats = await client().fetchDashboardStats(
       "vercel-deployment",
@@ -667,7 +658,7 @@ describe("fetchDashboardStats", () => {
 
   it("returns empty for env-var type", async () => {
     installFetch((url) => {
-      if (url.includes("/v9/projects"))
+      if (url.includes("/v10/projects?"))
         return jsonResponse({
           projects: [{ id: "p1", name: "one", createdAt: 1 }],
           pagination: { next: null },
@@ -711,7 +702,7 @@ describe("renderDetail", () => {
   it("renders project detail with production url + visit action", () => {
     const view = client({ accessToken: "t", teamId: "team_x" }).renderDetail(project() as never);
     expect(view.title).toBe("proj");
-    expect(view.subtitle).toContain("nextjs");
+    expect(view.subtitle).toContain("Next.js");
     const actionLabels = (view.headerActions ?? []).map((a) => a.label);
     expect(actionLabels).toContain("Visit Site");
     const open = view.headerActions?.find((a) => a.label === "Open in Vercel");
@@ -755,7 +746,7 @@ describe("renderDetail", () => {
     };
     const view = client().renderDetail(r as never);
     const labels = (view.headerActions ?? []).map((a) => a.label);
-    expect(labels).toEqual(["Refresh"]);
+    expect(labels).toEqual(["Redeploy", "Refresh"]);
   });
 
   it("renders domain detail", () => {
@@ -896,7 +887,7 @@ describe("createResource", () => {
       rootDirectory: "root",
     });
     expect(r.externalId).toBe("p1");
-    expect(calls[0]!.url).toContain("/v10/projects");
+    expect(calls[0]!.url).toContain("/v11/projects");
     expect(calls[0]!.init?.method).toBe("POST");
     const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body).toEqual({
@@ -1073,18 +1064,14 @@ describe("attachResource", () => {
 
   it("imports a deployment URL as a project env var", async () => {
     installFetch((url) => {
-      if (url.includes("/v6/deployments")) {
+      if (url.includes("/v13/deployments/d1")) {
         return jsonResponse({
-          deployments: [
-            {
-              uid: "d1",
-              name: "proj",
-              url: "proj-abc.vercel.app",
-              readyState: "READY",
-              projectId: "p1",
-              created: 1,
-            },
-          ],
+          id: "d1",
+          name: "proj",
+          url: "proj-abc.vercel.app",
+          readyState: "READY",
+          projectId: "p1",
+          created: 1,
         });
       }
       if (url.includes("/v9/projects/p1")) {
@@ -1131,5 +1118,379 @@ describe("error handling", () => {
     await expect(client().listResources("vercel-project", ACCOUNT)).rejects.toThrow(
       /Vercel API error 500/,
     );
+  });
+});
+
+describe("deployment actions", () => {
+  const DEP = {
+    id: "dpl_1",
+    name: "proj",
+    url: "proj-abc.vercel.app",
+    readyState: "READY",
+    target: "production",
+    projectId: "prj_1",
+    created: 1,
+  };
+
+  it("cancels with PATCH /v12/deployments/{id}/cancel", async () => {
+    installFetch(() => jsonResponse({}));
+    await client().invokeAction(
+      "vercel-deployment",
+      "acct-1:vercel-deployment:dpl_1",
+      "cancel",
+      ACCOUNT,
+    );
+    expect(calls[0]!.url).toContain("/v12/deployments/dpl_1/cancel");
+    expect(calls[0]!.init?.method).toBe("PATCH");
+  });
+
+  it("redeploys from the existing deployment, keeping the production target", async () => {
+    installFetch((url) => jsonResponse(url.includes("/v13/deployments/dpl_1") ? DEP : {}));
+    await client().invokeAction(
+      "vercel-deployment",
+      "acct-1:vercel-deployment:dpl_1",
+      "redeploy",
+      ACCOUNT,
+    );
+    const post = calls.find((c) => c.init?.method === "POST")!;
+    expect(post.url).toContain("/v13/deployments");
+    expect(JSON.parse(String(post.init?.body))).toEqual({
+      name: "proj",
+      deploymentId: "dpl_1",
+      project: "prj_1",
+      target: "production",
+    });
+  });
+
+  it("promotes and rolls back through the project routes", async () => {
+    installFetch((url) => jsonResponse(url.includes("/v13/deployments/dpl_1") ? DEP : {}));
+    await client().invokeAction(
+      "vercel-deployment",
+      "acct-1:vercel-deployment:dpl_1",
+      "promote",
+      ACCOUNT,
+    );
+    await client().invokeAction(
+      "vercel-deployment",
+      "acct-1:vercel-deployment:dpl_1",
+      "rollback",
+      ACCOUNT,
+    );
+    const posts = calls.filter((c) => c.init?.method === "POST").map((c) => c.url);
+    expect(posts[0]).toContain("/v10/projects/prj_1/promote/dpl_1");
+    expect(posts[1]).toContain("/v1/projects/prj_1/rollback/dpl_1");
+  });
+
+  it("offers rollback only for a production rollback candidate", () => {
+    const view = client().renderDetail({
+      resourceTypeId: "vercel-deployment",
+      displayName: "d",
+      externalId: "dpl_1",
+      fields: { state: "READY", target: "production", projectId: "prj_1", rollbackCandidate: true },
+    } as never);
+    const labels = (view.headerActions ?? []).map((a) => a.label);
+    expect(labels).toContain("Instant Rollback");
+    expect(labels).not.toContain("Promote to Production");
+    expect(view.logs).toBeTruthy();
+
+    const building = client().renderDetail({
+      resourceTypeId: "vercel-deployment",
+      displayName: "d",
+      externalId: "dpl_1",
+      fields: { state: "BUILDING" },
+    } as never);
+    expect((building.headerActions ?? []).map((a) => a.label)).toContain("Cancel");
+  });
+
+  it("reads build output from the events endpoint", async () => {
+    installFetch(() =>
+      jsonResponse([
+        { type: "stdout", created: 2000, payload: { text: "Compiled", date: 2000 } },
+        { type: "command", created: 1000, text: "npm run build" },
+        { type: "deployment-state", created: 3000, payload: { text: "ignored" } },
+      ]),
+    );
+    const logs = await client().getLogs(
+      "vercel-deployment",
+      "acct-1:vercel-deployment:dpl_1",
+      ACCOUNT,
+      {
+        tailLines: 100,
+      },
+    );
+    expect(calls[0]!.url).toContain("/v3/deployments/dpl_1/events");
+    expect(calls[0]!.url).toContain("builds=1");
+    const lines = logs.text.trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain("npm run build");
+    expect(lines[1]).toContain("Compiled");
+  });
+});
+
+describe("project editing and actions", () => {
+  it("PATCHes settings, clearing blank overrides to null", async () => {
+    installFetch(() => jsonResponse({ id: "p1", name: "proj", createdAt: 1, nodeVersion: "22.x" }));
+    const res = await client().updateResource(
+      "vercel-project",
+      "acct-1:vercel-project:p1",
+      ACCOUNT,
+      {
+        nodeVersion: "22.x",
+        buildCommand: "",
+        serverlessFunctionRegion: "fra1",
+      },
+    );
+    expect(calls[0]!.url).toContain("/v9/projects/p1");
+    expect(calls[0]!.init?.method).toBe("PATCH");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+      nodeVersion: "22.x",
+      buildCommand: null,
+      serverlessFunctionRegion: "fra1",
+    });
+    expect(res.fields["nodeVersion"]).toBe("22.x");
+  });
+
+  it("pauses, unpauses, and toggles attack challenge mode", async () => {
+    installFetch(() => jsonResponse({}));
+    await client().invokeAction("vercel-project", "acct-1:vercel-project:p1", "pause", ACCOUNT);
+    await client().invokeAction("vercel-project", "acct-1:vercel-project:p1", "unpause", ACCOUNT);
+    await client().invokeAction(
+      "vercel-project",
+      "acct-1:vercel-project:p1",
+      "attack-mode-on",
+      ACCOUNT,
+    );
+    expect(calls[0]!.url).toContain("/v1/projects/p1/pause");
+    expect(calls[1]!.url).toContain("/v1/projects/p1/unpause");
+    expect(calls[2]!.url).toContain("/v1/security/attack-mode");
+    expect(JSON.parse(String(calls[2]!.init?.body))).toEqual({
+      projectId: "p1",
+      attackModeEnabled: true,
+    });
+  });
+
+  it("maps paused, attack mode, and install command", async () => {
+    installFetch(() =>
+      jsonResponse({
+        id: "p1",
+        name: "proj",
+        createdAt: 1,
+        paused: true,
+        installCommand: "pnpm i",
+        security: { attackModeEnabled: true },
+      }),
+    );
+    const res = await client().getResource("vercel-project", "acct-1:vercel-project:p1", ACCOUNT);
+    expect(res.fields).toMatchObject({
+      paused: true,
+      attackModeEnabled: true,
+      installCommand: "pnpm i",
+    });
+    const labels = (client().renderDetail(res).headerActions ?? []).map((a) => a.label);
+    expect(labels).toEqual(expect.arrayContaining(["Resume", "Disable Attack Mode"]));
+  });
+});
+
+describe("env var editing", () => {
+  it("PATCHes value, type, and targets", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "PATCH") return jsonResponse({});
+      if (url.includes("/v10/projects?")) {
+        return jsonResponse({
+          projects: [{ id: "p1", name: "one", createdAt: 1 }],
+          pagination: { next: null },
+        });
+      }
+      return jsonResponse({
+        envs: [{ id: "e1", key: "K", type: "sensitive", target: ["preview"] }],
+      });
+    });
+    await client().updateResource("vercel-env-var", "acct-1:vercel-env-var:p1/e1", ACCOUNT, {
+      newValue: "v2",
+      type: "sensitive",
+      target: "preview, development",
+    });
+    const patch = calls.find((c) => c.init?.method === "PATCH")!;
+    expect(patch.url).toContain("/v9/projects/p1/env/e1");
+    expect(JSON.parse(String(patch.init?.body))).toEqual({
+      value: "v2",
+      type: "sensitive",
+      target: ["preview", "development"],
+    });
+  });
+});
+
+describe("domains", () => {
+  it("toggles auto-renew through the registrar API", async () => {
+    installFetch((_url, init) =>
+      init?.method === "PATCH"
+        ? jsonResponse({}, 204)
+        : jsonResponse({
+            domains: [
+              { name: "d.com", verified: true, createdAt: 1, expiresAt: null, boughtAt: null },
+            ],
+          }),
+    );
+    await client().updateResource("vercel-domain", "acct-1:vercel-domain:d.com", ACCOUNT, {
+      renew: "false",
+    });
+    const patch = calls.find((c) => c.init?.method === "PATCH")!;
+    expect(patch.url).toContain("/v1/registrar/domains/d.com/auto-renew");
+    expect(JSON.parse(String(patch.init?.body))).toEqual({ autoRenew: false });
+  });
+
+  it("enriches the detail view with the DNS configuration check", async () => {
+    installFetch(() => jsonResponse({ misconfigured: true, configuredBy: null }));
+    const enriched = await client().enrichDetail({
+      resourceTypeId: "vercel-domain",
+      displayName: "d.com",
+      externalId: "d.com",
+      fields: { name: "d.com", verified: "true" },
+    } as never);
+    expect(calls[0]!.url).toContain("/v6/domains/d.com/config");
+    const json = JSON.stringify(client().renderDetail(enriched));
+    expect(json).toContain("DNS Configuration");
+    expect(json).toMatch(/Misconfigured/);
+  });
+});
+
+describe("DNS records", () => {
+  it("lists records for every domain, skipping domains that error", async () => {
+    installFetch((url) => {
+      if (url.includes("/v5/domains?")) {
+        return jsonResponse({
+          domains: [{ name: "a.com" }, { name: "b.com" }],
+          pagination: { next: null },
+        });
+      }
+      if (url.includes("/v5/domains/a.com/records")) {
+        return jsonResponse({
+          records: [
+            {
+              id: "rec_1",
+              name: "www",
+              type: "CNAME",
+              value: "cname.vercel-dns.com",
+              ttl: 60,
+              createdAt: 1,
+            },
+            { id: "rec_2", name: "", type: "MX", value: "mx.a.com", mxPriority: 10 },
+          ],
+          pagination: { next: null },
+        });
+      }
+      return jsonResponse("not on vercel ns", 400);
+    });
+    const res = await client().listResources("vercel-dns-record", ACCOUNT);
+    expect(res.map((r) => r.id)).toEqual([
+      "acct-1:vercel-dns-record:a.com/rec_1",
+      "acct-1:vercel-dns-record:a.com/rec_2",
+    ]);
+    expect(res[0]!.fields).toMatchObject({
+      name: "www",
+      type: "CNAME",
+      content: "cname.vercel-dns.com",
+      domain: "a.com",
+    });
+    expect(res[1]!.fields["priority"]).toBe(10);
+    expect(res[0]!.parentResourceId).toBe("acct-1:vercel-domain:a.com");
+  });
+
+  it("creates an MX record under the parent domain", async () => {
+    installFetch(() => jsonResponse({ uid: "rec_9" }));
+    const res = await client().createResource(
+      "vercel-dns-record",
+      ACCOUNT,
+      { type: "MX", name: "", value: "mx.a.com", mxPriority: "20", ttl: "300" },
+      "acct-1:vercel-domain:a.com",
+    );
+    expect(calls[0]!.url).toContain("/v2/domains/a.com/records");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+      type: "MX",
+      name: "",
+      value: "mx.a.com",
+      ttl: 300,
+      mxPriority: 20,
+    });
+    expect(res.id).toBe("acct-1:vercel-dns-record:a.com/rec_9");
+  });
+
+  it("updates and deletes a record", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "PATCH" || init?.method === "DELETE") return jsonResponse({});
+      return jsonResponse({
+        records: [{ id: "rec_1", name: "www", type: "A", value: "1.1.1.1" }],
+        pagination: { next: null },
+      });
+    });
+    await client().updateResource(
+      "vercel-dns-record",
+      "acct-1:vercel-dns-record:a.com/rec_1",
+      ACCOUNT,
+      {
+        content: "2.2.2.2",
+        ttl: "120",
+      },
+    );
+    const patch = calls.find((c) => c.init?.method === "PATCH")!;
+    expect(patch.url).toContain("/v1/domains/records/rec_1");
+    expect(JSON.parse(String(patch.init?.body))).toEqual({ value: "2.2.2.2", ttl: 120 });
+    await client().deleteResource(
+      "vercel-dns-record",
+      "acct-1:vercel-dns-record:a.com/rec_1",
+      ACCOUNT,
+    );
+    expect(calls.find((c) => c.init?.method === "DELETE")!.url).toContain(
+      "/v2/domains/a.com/records/rec_1",
+    );
+  });
+});
+
+describe("webhooks", () => {
+  it("lists webhooks", async () => {
+    installFetch(() =>
+      jsonResponse([
+        {
+          id: "hook_1",
+          url: "https://x.dev/h",
+          events: ["deployment.ready"],
+          projectIds: ["p1"],
+          createdAt: 1,
+        },
+      ]),
+    );
+    const res = await client().listResources("vercel-webhook", ACCOUNT);
+    expect(res[0]!.id).toBe("acct-1:vercel-webhook:hook_1");
+    expect(res[0]!.fields).toMatchObject({ events: "deployment.ready", projects: "p1" });
+  });
+
+  it("creates a webhook from picker values and keeps the one-time secret", async () => {
+    installFetch(() =>
+      jsonResponse({
+        id: "hook_2",
+        url: "https://x.dev/h",
+        events: ["deployment.error"],
+        secret: "whsec",
+      }),
+    );
+    const res = await client().createResource("vercel-webhook", ACCOUNT, {
+      url: "https://x.dev/h",
+      events: JSON.stringify(["deployment.error"]),
+      projectIds: "[]",
+    });
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+      url: "https://x.dev/h",
+      events: ["deployment.error"],
+    });
+    expect(res.resolvedOutputs["secret"]).toBe("whsec");
+  });
+
+  it("requires at least one event and deletes by id", async () => {
+    installFetch(() => jsonResponse({}));
+    await expect(
+      client().createResource("vercel-webhook", ACCOUNT, { url: "https://x", events: "[]" }),
+    ).rejects.toThrow(/at least one/);
+    await client().deleteResource("vercel-webhook", "acct-1:vercel-webhook:hook_1", ACCOUNT);
+    expect(calls[0]!.url).toContain("/v1/webhooks/hook_1");
   });
 });

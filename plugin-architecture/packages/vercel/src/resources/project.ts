@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { FRAMEWORK_IDS, FUNCTION_REGIONS, NODE_VERSIONS } from "../catalog.js";
 
 export const VercelProjectResourceType = rt({
   name: "Project",
@@ -6,18 +7,37 @@ export const VercelProjectResourceType = rt({
   description: "A Vercel project — deploys from Git or CLI",
   fields: [
     f("name", "Name"),
-    f("framework", "Framework", { required: false }),
-    f("nodeVersion", "Node Version", { required: false }),
-    f("serverlessFunctionRegion", "Region", { required: false }),
+    f("framework", "Framework", { kind: "enum", enumValues: FRAMEWORK_IDS, required: false }),
+    f("nodeVersion", "Node Version", { kind: "enum", enumValues: NODE_VERSIONS, required: false }),
+    f("serverlessFunctionRegion", "Region", {
+      kind: "enum",
+      enumValues: FUNCTION_REGIONS.map((r) => r.id),
+      required: false,
+      description: "Default region Vercel Functions run in",
+    }),
     f("rootDirectory", "Root Directory", { required: false }),
     f("buildCommand", "Build Command", { required: false }),
+    f("installCommand", "Install Command", { required: false }),
+    f("devCommand", "Development Command", { required: false }),
     f("outputDirectory", "Output Directory", { required: false }),
-    f("productionUrl", "Production URL", { required: false }),
-    f("gitRepo", "Git Repository", { required: false }),
-    f("ownerId", "Owner", { required: false }),
-    f("createdAt", "Created At", { required: false }),
-    f("updatedAt", "Updated At", { required: false }),
-    f("live", "Live", { required: false }),
+    f("productionUrl", "Production URL", { required: false, editable: false }),
+    f("gitRepo", "Git Repository", { required: false, editable: false }),
+    f("ownerId", "Owner", { required: false, editable: false }),
+    f("createdAt", "Created At", { required: false, editable: false }),
+    f("updatedAt", "Updated At", { required: false, editable: false }),
+    f("live", "Live", { required: false, editable: false }),
+    f("paused", "Paused", {
+      kind: "boolean",
+      required: false,
+      editable: false,
+      description: "A paused project serves a 503 for every request until it is resumed",
+    }),
+    f("attackModeEnabled", "Attack Challenge Mode", {
+      kind: "boolean",
+      required: false,
+      editable: false,
+      description: "Every visitor must pass a browser challenge before reaching the site",
+    }),
   ],
   outputs: [
     o("projectId", "Project ID"),
@@ -29,6 +49,7 @@ export const VercelProjectResourceType = rt({
   // finds nothing on personal accounts.
   dependsOn: [{ fieldKey: "ownerId", targetTypeId: "vercel-team", label: "owned by" }],
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "vercel",
   // Stable alias is `<project>.vercel.app`; git-branch aliases are
   // `<project>-git-<branch>-<scope>.vercel.app`. Capture group 1 is the

@@ -5,16 +5,22 @@ export const VercelDomainResourceType = rt({
   id: "vercel-domain",
   description: "A domain registered or configured in Vercel",
   fields: [
-    f("name", "Domain Name"),
-    f("verified", "Verified", { required: false }),
-    f("serviceType", "Service Type", { required: false }),
-    f("nameservers", "Nameservers", { required: false }),
-    f("intendedNameservers", "Intended Nameservers", { required: false }),
-    f("renew", "Auto-Renew", { required: false }),
-    f("expiresAt", "Expires At", { required: false }),
-    f("boughtAt", "Bought At", { required: false }),
-    f("teamId", "Team", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("name", "Domain Name", { editable: false }),
+    f("verified", "Verified", { required: false, editable: false }),
+    f("serviceType", "Service Type", { required: false, editable: false }),
+    f("nameservers", "Nameservers", { required: false, editable: false }),
+    f("intendedNameservers", "Intended Nameservers", { required: false, editable: false }),
+    f("renew", "Auto-Renew", {
+      kind: "enum",
+      enumValues: ["true", "false"],
+      required: false,
+      description:
+        "Renew automatically before expiry. Only applies to domains bought through Vercel.",
+    }),
+    f("expiresAt", "Expires At", { required: false, editable: false }),
+    f("boughtAt", "Bought At", { required: false, editable: false }),
+    f("teamId", "Team", { required: false, editable: false }),
+    f("createdAt", "Created At", { required: false, editable: false }),
   ],
   outputs: [o("domainName", "Domain Name"), o("nameservers", "Nameservers")],
   // `GET /v5/domains` reports the owning team but no project link: a
@@ -25,9 +31,9 @@ export const VercelDomainResourceType = rt({
     { fieldKey: "expiresAt", from: "expiry", kind: "domain", label: "Registration expires" },
   ],
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "domain",
-  // Vercel's API lists domains but not their records, so the domain shows on
-  // the Domains surface as a zone with no records of its own.
+  // Records are their own type (`vercel-dns-record`), linked by `domain`.
   dnsRole: { role: "zone", domainKey: "name" },
   attachTargets: [
     {

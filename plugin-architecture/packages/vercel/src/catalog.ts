@@ -1,0 +1,221 @@
+/**
+ * Static option lists for Vercel pickers, taken from the REST API's
+ * OpenAPI document (https://openapi.vercel.sh/) and the regions page
+ * (https://vercel.com/docs/regions).
+ */
+
+/** `framework` values accepted by `POST /v11/projects` and `PATCH /v9/projects/{id}`. */
+export const FRAMEWORK_IDS = [
+  "nextjs",
+  "react-router",
+  "remix",
+  "astro",
+  "sveltekit",
+  "sveltekit-1",
+  "nuxtjs",
+  "vite",
+  "tanstack-start",
+  "vue",
+  "svelte",
+  "angular",
+  "solidstart-1",
+  "solidstart",
+  "gatsby",
+  "hydrogen",
+  "create-react-app",
+  "preact",
+  "ember",
+  "docusaurus-2",
+  "docusaurus",
+  "vitepress",
+  "vuepress",
+  "eleventy",
+  "hugo",
+  "jekyll",
+  "zola",
+  "hexo",
+  "gridsome",
+  "redwoodjs",
+  "blitzjs",
+  "storybook",
+  "sanity",
+  "sanity-v2",
+  "nitro",
+  "hono",
+  "express",
+  "h3",
+  "koa",
+  "nestjs",
+  "elysia",
+  "fastify",
+  "fastapi",
+  "flask",
+  "fasthtml",
+  "django",
+  "mastra",
+  "xmcp",
+  "python",
+  "ruby",
+  "rust",
+  "axum",
+  "actix-web",
+  "bun",
+  "node",
+  "go",
+  "container",
+  "services",
+  "ionic-angular",
+  "ionic-react",
+  "dojo",
+  "scully",
+  "polymer",
+  "umijs",
+  "sapper",
+  "saber",
+  "stencil",
+  "brunch",
+  "middleman",
+  "parcel",
+  "ash",
+  "eve",
+  "factory-eve",
+  "tanstack-start-lovable",
+];
+
+const FRAMEWORK_LABELS: Record<string, string> = {
+  nextjs: "Next.js",
+  "react-router": "React Router",
+  remix: "Remix",
+  astro: "Astro",
+  sveltekit: "SvelteKit",
+  "sveltekit-1": "SvelteKit (v1)",
+  nuxtjs: "Nuxt",
+  vite: "Vite",
+  "tanstack-start": "TanStack Start",
+  vue: "Vue",
+  svelte: "Svelte",
+  angular: "Angular",
+  "solidstart-1": "SolidStart (v1)",
+  solidstart: "SolidStart",
+  gatsby: "Gatsby",
+  hydrogen: "Hydrogen",
+  "create-react-app": "Create React App",
+  preact: "Preact",
+  "docusaurus-2": "Docusaurus 2",
+  vitepress: "VitePress",
+  vuepress: "VuePress",
+  eleventy: "Eleventy",
+  hugo: "Hugo",
+  jekyll: "Jekyll",
+  redwoodjs: "RedwoodJS",
+  nitro: "Nitro",
+  hono: "Hono",
+  express: "Express",
+  nestjs: "NestJS",
+  fastify: "Fastify",
+  fastapi: "FastAPI",
+  flask: "Flask",
+  django: "Django",
+  python: "Python",
+  node: "Node.js",
+  go: "Go",
+  rust: "Rust",
+  bun: "Bun",
+};
+
+export function frameworkLabel(id: string): string {
+  return FRAMEWORK_LABELS[id] ?? id;
+}
+
+export const FRAMEWORK_OPTIONS = FRAMEWORK_IDS.map((id) => ({ id, label: frameworkLabel(id) }));
+
+/**
+ * Node.js versions offered for builds and functions. The API enum still
+ * lists older majors, but Vercel no longer builds on them.
+ */
+export const NODE_VERSIONS = ["24.x", "22.x", "20.x"];
+
+/** Compute regions (`serverlessFunctionRegion`), per vercel.com/docs/regions. */
+export const FUNCTION_REGIONS: Array<{ id: string; location: string; flag: string }> = [
+  { id: "iad1", location: "Washington, D.C., USA", flag: "\u{1F1FA}\u{1F1F8}" },
+  { id: "cle1", location: "Cleveland, USA", flag: "\u{1F1FA}\u{1F1F8}" },
+  { id: "pdx1", location: "Portland, USA", flag: "\u{1F1FA}\u{1F1F8}" },
+  { id: "sfo1", location: "San Francisco, USA", flag: "\u{1F1FA}\u{1F1F8}" },
+  { id: "yul1", location: "Montréal, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
+  { id: "gru1", location: "São Paulo, Brazil", flag: "\u{1F1E7}\u{1F1F7}" },
+  { id: "dub1", location: "Dublin, Ireland", flag: "\u{1F1EE}\u{1F1EA}" },
+  { id: "lhr1", location: "London, United Kingdom", flag: "\u{1F1EC}\u{1F1E7}" },
+  { id: "cdg1", location: "Paris, France", flag: "\u{1F1EB}\u{1F1F7}" },
+  { id: "fra1", location: "Frankfurt, Germany", flag: "\u{1F1E9}\u{1F1EA}" },
+  { id: "arn1", location: "Stockholm, Sweden", flag: "\u{1F1F8}\u{1F1EA}" },
+  { id: "cpt1", location: "Cape Town, South Africa", flag: "\u{1F1FF}\u{1F1E6}" },
+  { id: "bom1", location: "Mumbai, India", flag: "\u{1F1EE}\u{1F1F3}" },
+  { id: "sin1", location: "Singapore", flag: "\u{1F1F8}\u{1F1EC}" },
+  { id: "hkg1", location: "Hong Kong", flag: "\u{1F1ED}\u{1F1F0}" },
+  { id: "icn1", location: "Seoul, South Korea", flag: "\u{1F1F0}\u{1F1F7}" },
+  { id: "hnd1", location: "Tokyo, Japan", flag: "\u{1F1EF}\u{1F1F5}" },
+  { id: "kix1", location: "Osaka, Japan", flag: "\u{1F1EF}\u{1F1F5}" },
+  { id: "syd1", location: "Sydney, Australia", flag: "\u{1F1E6}\u{1F1FA}" },
+];
+
+/** DNS record types `POST /v2/domains/{domain}/records` accepts with a plain `value`. */
+export const DNS_RECORD_TYPES = ["A", "AAAA", "ALIAS", "CAA", "CNAME", "MX", "TXT", "NS"];
+
+/**
+ * Webhook events offered in the create form: the documented account-level
+ * events most teams subscribe to. The full enum (marketplace, comments,
+ * integration lifecycle) is longer; these cover deploys, projects,
+ * domains, env vars, firewall, and budgets.
+ */
+export const WEBHOOK_EVENTS: Array<{ id: string; label: string; category: string }> = [
+  { id: "deployment.created", label: "Deployment created", category: "Deployments" },
+  { id: "deployment.succeeded", label: "Deployment succeeded", category: "Deployments" },
+  { id: "deployment.ready", label: "Deployment ready", category: "Deployments" },
+  { id: "deployment.error", label: "Deployment failed", category: "Deployments" },
+  { id: "deployment.canceled", label: "Deployment canceled", category: "Deployments" },
+  { id: "deployment.promoted", label: "Deployment promoted", category: "Deployments" },
+  { id: "deployment.rollback", label: "Deployment rolled back", category: "Deployments" },
+  { id: "deployment.checks.failed", label: "Deployment checks failed", category: "Deployments" },
+  {
+    id: "deployment.checks.succeeded",
+    label: "Deployment checks succeeded",
+    category: "Deployments",
+  },
+  { id: "project.created", label: "Project created", category: "Projects" },
+  { id: "project.removed", label: "Project removed", category: "Projects" },
+  { id: "project.renamed", label: "Project renamed", category: "Projects" },
+  { id: "project.env-variable.created", label: "Env var created", category: "Projects" },
+  { id: "project.env-variable.updated", label: "Env var updated", category: "Projects" },
+  { id: "project.env-variable.deleted", label: "Env var deleted", category: "Projects" },
+  { id: "project.domain.created", label: "Project domain added", category: "Projects" },
+  { id: "project.domain.verified", label: "Project domain verified", category: "Projects" },
+  { id: "project.domain.deleted", label: "Project domain removed", category: "Projects" },
+  {
+    id: "project.rolling-release.started",
+    label: "Rolling release started",
+    category: "Projects",
+  },
+  {
+    id: "project.rolling-release.completed",
+    label: "Rolling release completed",
+    category: "Projects",
+  },
+  { id: "domain.created", label: "Domain created", category: "Domains" },
+  {
+    id: "domain.dns.records.changed",
+    label: "DNS records changed",
+    category: "Domains",
+  },
+  { id: "domain.certificate.add", label: "Certificate added", category: "Domains" },
+  { id: "domain.certificate.renew", label: "Certificate renewed", category: "Domains" },
+  {
+    id: "domain.certificate.renew.failed",
+    label: "Certificate renewal failed",
+    category: "Domains",
+  },
+  { id: "domain.renewal", label: "Domain renewed", category: "Domains" },
+  { id: "domain.renewal.failed", label: "Domain renewal failed", category: "Domains" },
+  { id: "firewall.attack", label: "Attack detected", category: "Security" },
+  { id: "alerts.triggered", label: "Alert triggered", category: "Observability" },
+  { id: "budget.reached", label: "Budget reached", category: "Billing" },
+];
