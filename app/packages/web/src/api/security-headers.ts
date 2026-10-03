@@ -62,6 +62,33 @@ import { createMiddleware } from "hono/factory";
 import type { ServerResponse } from "node:http";
 
 /**
+ * Where the page may load images from. This is the backstop for the chat's
+ * zero-click exfiltration path: an image URL is fetched the moment it renders,
+ * so any surface that ends up rendering a model- or attacker-chosen `<img>`
+ * (ChatMarkdown no longer does, but it is one component among many) would
+ * otherwise send whatever is in that URL to whoever runs the host.
+ *
+ * Every image the app legitimately shows is same-origin, a `data:` URI (the 2FA
+ * QR code, Linux app icons), a `blob:` URL, or a profile picture: WorkOS serves
+ * those from its own CDN, with the Google and GitHub hosts listed for accounts
+ * whose picture is still the identity provider's original URL. Plugin logos are
+ * inline SVG and need no entry.
+ *
+ * Only `img-src` is set, not `connect-src`: the set of hosts the SPA's own
+ * `fetch`/WebSocket code may legitimately reach has not been audited, a wrong
+ * guess there breaks features silently, and `img-src` is the directive that
+ * matters for a request a rendered message fires without a click.
+ */
+const IMG_SRC = [
+  "'self'",
+  "data:",
+  "blob:",
+  "https://workoscdn.com",
+  "https://*.googleusercontent.com",
+  "https://avatars.githubusercontent.com",
+] as const;
+
+/**
  * HSTS is production-only. On `http://localhost:3000` browsers ignore the
  * header over plain HTTP anyway, but a developer who once reaches the dev
  * server through a local HTTPS proxy would pin `localhost` to HTTPS for two
@@ -73,7 +100,7 @@ function buildHeaders(): ReadonlyArray<readonly [string, string]> {
     // `X-Frame-Options` covers anything that predates it. This app drives SSH
     // terminals and resource deletion from a session cookie, so being framed at
     // all is the risk.
-    ["content-security-policy", "frame-ancestors 'none'"],
+    ["content-security-policy", `frame-ancestors 'none'; img-src ${IMG_SRC.join(" ")}`],
     ["x-frame-options", "DENY"],
     ["x-content-type-options", "nosniff"],
     // Origin cross-site, full path same-origin. Resource and org ids live in
