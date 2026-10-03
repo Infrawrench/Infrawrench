@@ -16,6 +16,11 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  *
  * Cancel is `POST /v1beta/batches/{id}:cancel`; delete is
  * `DELETE /v1beta/batches/{id}`.
+ *
+ * Create is `POST /v1beta/models/{model}:batchGenerateContent` with an
+ * uploaded JSONL file as input; display name and priority are editable
+ * afterwards through `PATCH /v1beta/batches/{id}:updateGenerateContentBatch`
+ * (verified 2026-10-03 against the v1beta discovery document).
  */
 export const BatchResourceType = rt({
   name: "Batch",
@@ -23,20 +28,38 @@ export const BatchResourceType = rt({
   plural: "Batches",
   description: "An asynchronous batch inference job, billed at half the interactive rate",
   fields: [
-    f("name", "Operation Name"),
+    f("name", "Operation Name", { editable: false }),
     f("displayName", "Display Name", { required: false }),
-    f("model", "Model", { required: false }),
-    f("state", "State", { required: false }),
-    f("done", "Done", { kind: "boolean", required: false }),
-    f("createTime", "Created", { required: false }),
-    f("updateTime", "Updated", { required: false }),
-    f("endTime", "Ended", { required: false }),
-    f("requestCount", "Total Requests", { kind: "number", required: false }),
-    f("pendingRequestCount", "Pending Requests", { kind: "number", required: false }),
-    f("successfulRequestCount", "Successful Requests", { kind: "number", required: false }),
-    f("failedRequestCount", "Failed Requests", { kind: "number", required: false }),
-    f("outputFileName", "Output File", { required: false }),
-    f("errorMessage", "Error", { required: false }),
+    f("priority", "Priority", {
+      kind: "number",
+      required: false,
+      description: "Higher-priority batches are processed first. Negative values are allowed.",
+    }),
+    f("model", "Model", { required: false, editable: false }),
+    f("state", "State", { required: false, editable: false }),
+    f("done", "Done", { kind: "boolean", required: false, editable: false }),
+    f("createTime", "Created", { required: false, editable: false }),
+    f("updateTime", "Updated", { required: false, editable: false }),
+    f("endTime", "Ended", { required: false, editable: false }),
+    f("requestCount", "Total Requests", { kind: "number", required: false, editable: false }),
+    f("pendingRequestCount", "Pending Requests", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("successfulRequestCount", "Successful Requests", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("failedRequestCount", "Failed Requests", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("inputFileName", "Input File", { required: false, editable: false }),
+    f("outputFileName", "Output File", { required: false, editable: false }),
+    f("errorMessage", "Error", { required: false, editable: false }),
   ],
   outputs: [
     o("batchName", "Batch Name", { description: 'e.g. "batches/abc123"' }),
@@ -49,7 +72,10 @@ export const BatchResourceType = rt({
   // Model and File rows carry in their own `name` field.
   dependsOn: [
     { fieldKey: "model", targetTypeId: "model", targetKey: "name", label: "runs" },
+    { fieldKey: "inputFileName", targetTypeId: "file", targetKey: "name", label: "reads" },
     { fieldKey: "outputFileName", targetTypeId: "file", targetKey: "name", label: "writes" },
   ],
+  supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "batch",
 });

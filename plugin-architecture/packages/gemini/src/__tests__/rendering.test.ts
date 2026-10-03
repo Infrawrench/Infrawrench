@@ -57,12 +57,27 @@ describe("model detail — speech panel", () => {
     expect(detail().speechPanel!.defaultVoice).toBe("Kore");
   });
 
-  it("offers the three TTS models and defaults to one of them", () => {
+  it("offers the current TTS models and defaults to Gemini 3.8 Flash TTS", () => {
     const ids = detail().speechPanel!.models!.map((m) => m.id);
+    expect(ids).toContain("gemini-3.8-flash-tts");
+    expect(ids).toContain("gemini-3.8-flash-lite-tts");
     expect(ids).toContain("gemini-3.1-flash-tts-preview");
-    expect(ids).toContain("gemini-2.5-flash-preview-tts");
     expect(ids).toContain("gemini-2.5-pro-preview-tts");
-    expect(detail().speechPanel!.defaultModel).toBe("gemini-3.1-flash-tts-preview");
+    expect(ids).not.toContain("gemini-2.5-flash-preview-tts");
+    expect(detail().speechPanel!.defaultModel).toBe("gemini-3.8-flash-tts");
+  });
+
+  it("lists stashed custom voices ahead of the prebuilt catalogue", () => {
+    const withVoices = client().renderDetail(
+      resource("model", { name: "models/gemini-2.5-flash" }, "gemini-2.5-flash", {
+        __customVoices__: JSON.stringify([
+          { id: "voice_abc", label: "Astronomer", description: "Custom prompted" },
+        ]),
+      }),
+    );
+    const voices = withVoices.speechPanel!.voices!.map((v) => v.id);
+    expect(voices[0]).toBe("voice_abc");
+    expect(voices).toContain("Kore");
   });
 
   it("defaults the model picker to the model itself when it is a TTS model", () => {
@@ -114,9 +129,10 @@ describe("model detail — speech panel", () => {
       }),
     );
     const ids = withStash.speechPanel!.models!.map((m) => m.id);
-    expect(ids.slice(0, 3)).toEqual([
+    expect(ids.slice(0, 4)).toEqual([
+      "gemini-3.8-flash-tts",
+      "gemini-3.8-flash-lite-tts",
       "gemini-3.1-flash-tts-preview",
-      "gemini-2.5-flash-preview-tts",
       "gemini-2.5-pro-preview-tts",
     ]);
     expect(ids).toContain("gemini-4.0-flash");

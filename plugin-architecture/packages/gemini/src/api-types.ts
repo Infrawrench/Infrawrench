@@ -338,3 +338,46 @@ interface RpcStatus {
   message?: string;
   details?: unknown[];
 }
+
+/**
+ * A webhook. Verified: https://ai.google.dev/api/webhooks
+ * This surface is snake_case, unlike the camelCase resources above.
+ */
+export interface Webhook {
+  id?: string;
+  name?: string;
+  uri?: string;
+  subscribed_events?: string[];
+  state?: "enabled" | "disabled" | "disabled_due_to_failed_deliveries";
+  signing_secrets?: Array<{ expire_time?: string; truncated_secret?: string }>;
+  new_signing_secret?: string;
+  create_time?: string;
+  update_time?: string;
+}
+
+export interface ListWebhooksResponse {
+  webhooks?: Webhook[];
+  next_page_token?: string;
+}
+
+/** A stored voice. Verified: https://ai.google.dev/api/voices (snake_case). */
+export interface Voice {
+  id?: string;
+  display_name?: string;
+  type?: "prompted" | "replicated" | "prebuilt";
+  model?: string;
+  language_code?: string;
+  gender?: string;
+  accent?: string;
+  persona?: string;
+  pitch?: string;
+  context?: string;
+  description?: string;
+  expire_time?: string;
+  prompted?: { input?: string; region_code?: string };
+}
+
+export interface ListVoicesResponse {
+  voices?: Voice[];
+  next_page_token?: string;
+}
