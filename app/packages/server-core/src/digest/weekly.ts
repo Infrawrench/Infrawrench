@@ -797,8 +797,8 @@ async function recordAttempt(
         lastAttemptAt: now,
         // `lastSentAt` means "a digest actually reached someone", so it moves
         // for a full or partial success and stays put on a failure. Claiming
-        // no longer touches it: the old behaviour reported a send that had
-        // not happened yet.
+        // must not touch it, or it would report a send that has not happened
+        // yet.
         ...(outcome.status === "succeeded" || outcome.status === "partial"
           ? { lastSentAt: now }
           : {}),

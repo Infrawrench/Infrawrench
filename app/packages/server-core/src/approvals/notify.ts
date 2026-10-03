@@ -1,8 +1,8 @@
 /**
  * The approval fan-out, shared by every kind of approval request.
  *
- * Extracted from `workflows/approvals.ts` when break-glass access requests
- * became the second caller. The mechanics are genuinely the same regardless of
+ * Callers are workflow approvals (`workflows/approvals.ts`) and break-glass
+ * access requests. The mechanics are genuinely the same regardless of
  * what is being approved: push, Slack (with Approve/Deny buttons, tracked so a
  * decision can retire every copy in place), Microsoft Teams (same text without
  * the markup; the Adaptive Card escaper turns `*` into a literal asterisk),

@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 /**
- * Potential savings used to be its own page; it is now a section of Costs.
+ * Potential savings is a section of Costs, not a page of its own.
  * The route is kept as a redirect so existing bookmarks and links land on the
  * content rather than a 404.
  */

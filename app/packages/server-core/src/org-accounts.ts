@@ -1,7 +1,6 @@
 /**
  * Resolve an org account row into an instantiated plugin client. Shared by
- * the workflow runner (server-core/poller) and the cloud web host, which
- * previously kept identical copies of this function.
+ * the workflow runner (server-core/poller) and the cloud web host.
  */
 import { and, eq } from "drizzle-orm";
 

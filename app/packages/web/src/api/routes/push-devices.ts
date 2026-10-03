@@ -118,11 +118,10 @@ const pushOrgRoutes = new Hono();
 /**
  * A member's mutes for this org.
  *
- * One array in place of eleven booleans. The shape change is the whole point of
- * the routing refactor at this layer: a new trigger no longer needs a column, a
- * payload field, a default, an insert value, an upsert branch and an audit key
- * (six edits in this file alone) because "not muted" is the default for any
- * name the member has not written down.
+ * One array rather than a boolean per trigger, so a new trigger needs no
+ * column, payload field, default, insert value, upsert branch or audit key
+ * here, because "not muted" is the default for any name the member has not
+ * written down.
  */
 interface PreferencesPayload {
   mutedTriggers: AlertTrigger[];

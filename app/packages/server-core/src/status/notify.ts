@@ -130,8 +130,8 @@ async function notifyOneOrg(
     const title = `${providerName}: ${impactLabel.toLowerCase()} upstream`;
     const url = incident.url ?? undefined;
 
-    // Transport isolation used to be three try/catch blocks here; it is
-    // `routeAlert`'s contract now: it never throws and a failing channel is
+    // Transport isolation is `routeAlert`'s contract: it never throws and a
+    // failing channel is
     // counted rather than propagated, so a Slack outage still cannot skip
     // Teams. Only unclaim when *nothing* landed, so a later tick can retry
     // once the org has a working channel.

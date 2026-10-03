@@ -5,16 +5,15 @@
  * OAuth flow; we keep the resulting bot token and post into whichever channels
  * the org picked.
  *
- * This module knows nothing about triggers. It used to: every channel row
- * carried a boolean per trigger and every send filtered on the matching column.
- * Routing now lives in `alert_rules` (see `alerts/route.ts`), and a channel is
+ * This module knows nothing about triggers. Routing lives in `alert_rules`
+ * (see `alerts/route.ts`), and a channel is
  * addressed here by its stored row id, so "which alerts go to #incidents" is a
  * question asked once, in one place, for all four transports.
  *
  * Config (env):
  *   SLACK_CLIENT_ID      - the Slack app's client id
  *   SLACK_CLIENT_SECRET  - the Slack app's client secret
- *   SLACK_SIGNING_SECRET: verifies inbound requests (slash commands, buttons)
+ *   SLACK_SIGNING_SECRET - verifies inbound requests (slash commands, buttons)
  *
  * Without the first two, `isSlackConfigured()` is false, the settings UI says
  * so, and every send here is a no-op. That is the same shape as the GitHub
