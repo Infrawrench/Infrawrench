@@ -28,6 +28,7 @@ Scaleway Console → **Identity and Access Management → API keys → Generate 
 
 - **Access Key** and **Secret Key** — from the generated API key.
 - **Default Project ID** — the project resources will be scoped to.
+- **Cockpit Query Token** (optional): a Cockpit token with metrics query access (and logs query access for Logs tabs), from **Observability → Tokens**.
 
 ![Scaleway Add-account form with access / secret / project fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/scaleway/add-account.png)
 
@@ -39,6 +40,8 @@ Scaleway Console → **Identity and Access Management → API keys → Generate 
 - **Block volume attachment** to instances in the same zone.
 - Zone / region picker on resource creation.
 - **Instance actions**: power on/off, reboot, stop in place, and back up (snapshots every volume into a new image).
+- **Metrics**: Managed RDB charts CPU, memory, disk usage and connections (per node on HA and replica setups) straight from the RDB API. With the optional Cockpit query token, instances chart CPU and network, Kapsule charts nodes, pods and API-server load, and Serverless Functions and Containers chart CPU, memory usage and utilization, and running instances.
+- **Logs** on Serverless Functions, Serverless Containers and Managed RDB, tailed from Cockpit's Scaleway logs data source. Needs the Cockpit token with the logs query permission as well as metrics.
 - **Right-sizing** for instances, driven by the Cockpit CPU series (needs the optional Cockpit query token). Scaleway only changes an instance's type while it is stopped.
 - **Managed RDB create form** lists the engine versions and node types the API currently offers, so retired versions and out-of-stock node types never appear. Automatic backup status and retention are shown and count towards backup coverage.
 - **Kapsule** shows whether an upgrade is available. Upgrading upgrades the control plane and every pool; changing the node count resizes the first pool.

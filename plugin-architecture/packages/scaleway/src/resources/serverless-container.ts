@@ -42,5 +42,7 @@ export const ServerlessContainerResourceType = rt({
   outputs: [o("endpoint", "Endpoint URL")],
   // Edit = `PATCH /containers/{id}`: image, scaling bounds and limits.
   supportsUpdate: true,
+  // CPU, memory and instance count from Cockpit (needs the Cockpit token).
+  supportsMetrics: true,
   iconKey: "container",
 });
