@@ -228,9 +228,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                       {r.monthlyKgCo2eSaving !== null && r.monthlyKgCo2eSaving > 0 && (
                         <div
                           className="text-xs text-on-surface-faint"
-                          title={gt("Estimated, from published grid figures for {region}", {
-                            region: r.region ?? "",
-                          })}
+                          title={gt("Estimated, not measured")}
                         >
                           {gt("~{amount} CO2e/mo", { amount: formatCo2e(r.monthlyKgCo2eSaving) })}
                         </div>

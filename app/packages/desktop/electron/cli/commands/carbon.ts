@@ -109,7 +109,9 @@ export async function cmdCarbon(ctx: CliContext, range: RangeFlags): Promise<voi
 
   println();
   const a = estimate.assumptions;
-  println(c.dim(`Assumes ${Math.round(a.cpuUtilization * 100)}% average CPU utilisation.`));
-  println(c.dim(`Grid figures: ${a.coefficientSource} (${a.coefficientVintage}).`));
-  println(c.dim(a.scope));
+  println(
+    c.dim(
+      `Estimated, not measured. ${Math.round(a.cpuUtilization * 100)}% CPU utilisation assumed; grid figures ${a.coefficientVintage}; processors only.`,
+    ),
+  );
 }

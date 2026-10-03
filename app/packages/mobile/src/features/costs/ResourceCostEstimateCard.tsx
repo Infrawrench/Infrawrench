@@ -1,7 +1,6 @@
 import { Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ASSUMED_CPU_UTILIZATION,
   fetchResourceFootprint,
   formatCo2e,
   formatMonthlyEstimate,
@@ -52,10 +51,9 @@ export function ResourceCostEstimateCard({
         <Text style={{ color: colors.textMuted, fontSize: 14, fontWeight: "400" }}>/mo</Text>
       </Text>
       <Text style={{ color: colors.textFaint, fontSize: 12 }}>
-        Estimated: {carbon.count === 1 ? "" : `${carbon.count} × `}
-        {carbon.vcpus} vCPU in {carbon.gridZone} at {Math.round(carbon.gridIntensity)} g/kWh, PUE{" "}
-        {carbon.pue}, {Math.round(ASSUMED_CPU_UTILIZATION * 100)}% assumed utilisation. Processors
-        only.
+        {carbon.count === 1 ? "" : `${carbon.count} × `}
+        {carbon.vcpus} vCPU · {carbon.gridZone} · {Math.round(carbon.gridIntensity)} g/kWh.
+        Estimated, not measured.
       </Text>
     </View>
   ) : null;

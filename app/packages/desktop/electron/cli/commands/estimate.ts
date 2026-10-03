@@ -135,8 +135,10 @@ export async function cmdEstimate(ctx: CliContext, resourceArg: string): Promise
   if (ctx.flags.local) {
     throw new CliError("`estimate` is cloud-only — drop --local, or pass --org <id|name>.");
   }
-  const { accountId, resourceTypeId, resourceId } = await resolveEstimateTarget(ctx, resourceArg);
-  const org = await resolveOrg(ctx);
+  const [{ accountId, resourceTypeId, resourceId }, org] = await Promise.all([
+    resolveEstimateTarget(ctx, resourceArg),
+    resolveOrg(ctx),
+  ]);
 
   const { estimate, carbon } = await orgFetch<{
     estimate: CostEstimate | null;
@@ -189,23 +191,20 @@ function printCarbon(carbon: ResourceCarbonEstimate | null): void {
   const f = carbon.estimate;
   if (!f) {
     const why: Record<string, string> = {
-      "unsupported-provider": "no published grid figures for this provider",
-      "unknown-region": "this region is not in the published coefficient set",
-      "unknown-size": "no vCPU count is known for this size",
+      "unsupported-provider": "no grid data for this provider",
+      "unknown-region": "region not covered",
+      "unknown-size": "size unknown",
     };
-    println(c.dim(`No carbon estimate: ${why[carbon.reason ?? ""] ?? "it could not be placed"}.`));
+    println(c.dim(`No carbon estimate: ${why[carbon.reason ?? ""] ?? "not placeable"}.`));
     return;
   }
   const units = f.count === 1 ? `${f.vcpus} vCPU` : `${f.count} × ${f.vcpus} vCPU`;
   println(`${c.bold(`~${formatCo2e(f.kgCo2e)} CO2e/month`)} ${c.dim("· estimated")}`);
   println(
     c.dim(
-      `  ${units} in ${f.gridZone} at ${Math.round(f.gridIntensity)} g/kWh, PUE ${f.pue}, ${Math.round(
-        carbon.assumptions.cpuUtilization * 100,
-      )}% assumed utilisation`,
+      `  ${units} · ${f.gridZone} · ${Math.round(f.gridIntensity)} g/kWh · PUE ${f.pue}${
+        carbon.role === "aggregate" ? " · nodes counted on their own" : ""
+      }`,
     ),
   );
-  if (carbon.role === "aggregate") {
-    println(c.dim("  Its machines are listed in their own right and counted there, not here."));
-  }
 }

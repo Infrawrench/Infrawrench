@@ -64,42 +64,27 @@ export function CarbonEstimateChip({
       {open && (
         <div
           id={panelId}
-          className="absolute right-0 top-full z-20 mt-1 w-80 rounded-lg border border-border-strong bg-surface-raised p-3 text-xs shadow-2xl space-y-1.5 text-on-surface-tertiary"
+          className="absolute right-0 top-full z-20 mt-1 w-80 rounded-lg border border-border-strong bg-surface-raised p-3 text-xs shadow-2xl space-y-1 text-on-surface-tertiary"
         >
           <p className="text-on-surface">
             {footprint.count === 1
-              ? gt("{vcpus} vCPU in {zone}", { vcpus: footprint.vcpus, zone: footprint.gridZone })
-              : gt("{count} × {vcpus} vCPU in {zone}", {
+              ? gt("{vcpus} vCPU · {zone}", { vcpus: footprint.vcpus, zone: footprint.gridZone })
+              : gt("{count} × {vcpus} vCPU · {zone}", {
                   count: footprint.count,
                   vcpus: footprint.vcpus,
                   zone: footprint.gridZone,
                 })}
           </p>
           <p>
-            {gt("Grid: {grams} g CO2e/kWh ({source})", {
+            {gt("{grams} g/kWh ({source}) · PUE {pue} · {percent}% utilisation", {
               grams: Math.round(footprint.gridIntensity),
               source: basis,
-            })}
-          </p>
-          <p>{gt("Datacentre overhead (PUE): {pue}", { pue: footprint.pue })}</p>
-          <p>
-            {gt("Assumed average CPU utilisation: {percent}%", {
+              pue: footprint.pue,
               percent: Math.round(ASSUMED_CPU_UTILIZATION * 100),
             })}
           </p>
-          <p>{gt("{kwh} kWh a month", { kwh: footprint.kwh.toFixed(1) })}</p>
-          {aggregate && (
-            <p>
-              {gt(
-                "Its machines are listed in their own right, so the Costs page counts them there rather than here.",
-              )}
-            </p>
-          )}
-          <p className="text-on-surface-faint">
-            {gt(
-              "An estimate of processor power only: no storage, memory, network or manufacturing emissions.",
-            )}
-          </p>
+          {aggregate && <p>{gt("Nodes are counted on their own, not here.")}</p>}
+          <p className="text-on-surface-faint">{gt("Processors only. Not measured.")}</p>
         </div>
       )}
     </div>

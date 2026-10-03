@@ -169,10 +169,10 @@ export interface ResourceCarbonEstimate {
 }
 
 export const CARBON_COEFFICIENT_SOURCE =
-  "Cloud Carbon Footprint coefficients (Apache-2.0) for AWS, GCP and Azure; Ember 2024 country figures elsewhere";
+  "Cloud Carbon Footprint (AWS, GCP, Azure); Ember 2024 elsewhere";
 export const CARBON_COEFFICIENT_VINTAGE = "CCF April 2026, Ember 2024";
 export const CARBON_SCOPE =
-  "Operational emissions of the processors in virtual machines, Kubernetes nodes and sized managed services. Storage, memory, network egress and embodied (manufacturing) emissions are not included.";
+  "Processors only; storage, memory, network and manufacturing are not included.";
 
 export const CARBON_LIMITS = {
   defaultWindowDays: 30,
@@ -683,9 +683,9 @@ export function formatMonthlyCo2eDelta(kg: number): string {
 
 /** Human label for why a resource has no estimate. */
 export const CARBON_UNESTIMATED_LABELS: Record<CarbonUnestimatedReason, string> = {
-  "unsupported-provider": "No published grid figures for this provider",
-  "unknown-region": "This region is not in the published coefficient set",
-  "unknown-size": "No vCPU count synced for this resource",
+  "unsupported-provider": "No grid data for this provider",
+  "unknown-region": "Region not covered",
+  "unknown-size": "Size unknown",
 };
 
 /** One sentence on what a footprint rests on, for a tooltip or CLI line. */

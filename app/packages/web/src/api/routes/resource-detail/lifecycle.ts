@@ -384,14 +384,13 @@ export function registerLifecycleRoutes(app: Hono): void {
     if (!ctx.client.getCreateConfig)
       return c.json({ error: "Plugin does not support dynamic create config" }, 400);
 
-    const config = await ctx.client.getCreateConfig(input.resourceTypeId, input.parentResourceId);
     // The host, not the plugin, attaches the carbon hint: it is read from the
     // type's declaration, so the form can show CO2e beside each size's price
     // without another request.
-    const carbon = await carbonHintFor(
-      input.pluginId ?? ctx.account.pluginId,
-      input.resourceTypeId,
-    );
+    const [config, carbon] = await Promise.all([
+      ctx.client.getCreateConfig(input.resourceTypeId, input.parentResourceId),
+      carbonHintFor(input.pluginId ?? ctx.account.pluginId, input.resourceTypeId),
+    ]);
     return c.json(carbon ? { ...config, carbon } : config);
   });
 

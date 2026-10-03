@@ -12,7 +12,7 @@ a resource's header, in the create and edit forms, in
 [CLI](./cli.md), to agents over [MCP](./mcp.md), and from
 [workflows](./workflows.md) and [custom graphs](./custom-graphs.md).
 
-<insert [The Estimated carbon section on the Costs page, showing total kg CO2e over 30 days, the resources-estimated and could-not-be-estimated counts, the by-provider list and the "What this rests on" assumptions box] here>
+<insert [The Estimated carbon section on the Costs page, showing total kg CO2e over 30 days, the Estimated and Not estimated counts, the by-provider list and the one-line assumptions footnote] here>
 
 ## It is an estimate, and it is built to say so
 

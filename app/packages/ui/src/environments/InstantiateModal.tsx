@@ -266,11 +266,8 @@ export function InstantiateModal({
             </p>
           )}
           {estimate && estimate.monthlyKgCo2e !== null && (
-            <p
-              className="text-xs text-on-surface-tertiary"
-              title={gt("Estimated from published grid figures; processors only")}
-            >
-              {gt("Estimated carbon: ~{amount} CO2e/month", {
+            <p className="text-xs text-on-surface-tertiary" title={gt("Estimated, not measured")}>
+              {gt("~{amount} CO2e/month", {
                 amount: formatCo2e(estimate.monthlyKgCo2e),
               })}
               {estimate.uncarbonedCount > 0 && (

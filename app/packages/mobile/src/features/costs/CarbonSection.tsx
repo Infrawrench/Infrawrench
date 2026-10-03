@@ -54,7 +54,7 @@ export function CarbonSection() {
                 <Text style={[styles.big, data.unestimatedCount > 0 && styles.warningText]}>
                   {data.unestimatedCount}
                 </Text>
-                <Text style={styles.muted}>could not be estimated</Text>
+                <Text style={styles.muted}>not estimated</Text>
               </View>
             </View>
           </Card>
@@ -72,11 +72,11 @@ export function CarbonSection() {
           )}
           {data.rows.length > 0 && (
             <Card list>
-              {data.rows.slice(0, 8).map((row) => (
+              {data.rows.slice(0, 5).map((row) => (
                 <Row
                   key={row.resourceId}
                   title={row.displayName}
-                  subtitle={`${row.pluginId} · ${row.region} · ${Math.round(row.gridIntensity)} g/kWh`}
+                  subtitle={`${row.pluginId} · ${row.gridZone}`}
                   right={<Text style={styles.value}>{formatCo2e(row.kgCo2e)}</Text>}
                 />
               ))}
@@ -84,7 +84,7 @@ export function CarbonSection() {
           )}
           {data.unestimated.length > 0 && (
             <Card list>
-              {data.unestimated.slice(0, 8).map((row) => (
+              {data.unestimated.slice(0, 5).map((row) => (
                 <Row
                   key={row.resourceId}
                   title={row.displayName}
@@ -94,9 +94,8 @@ export function CarbonSection() {
             </Card>
           )}
           <Text style={styles.footnote}>
-            Not measured. Assumes {Math.round(data.assumptions.cpuUtilization * 100)}% average CPU
-            utilisation; grid figures from {data.assumptions.coefficientSource} (
-            {data.assumptions.coefficientVintage}). {data.assumptions.scope}
+            Processors only, not measured. Assumes{" "}
+            {Math.round(data.assumptions.cpuUtilization * 100)}% CPU utilisation.
           </Text>
         </>
       ) : null}

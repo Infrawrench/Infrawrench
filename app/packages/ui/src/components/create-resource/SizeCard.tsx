@@ -92,7 +92,7 @@ export function SizeCard({
       {monthlyKgCo2e !== null && (
         <p
           className="mt-1 text-right text-[10px] text-on-surface-faint"
-          title={gt("Estimated from published grid figures for the picked region")}
+          title={gt("Estimated, not measured")}
         >
           {gt("~{amount} CO2e/mo", { amount: formatCo2e(monthlyKgCo2e) })}
         </p>

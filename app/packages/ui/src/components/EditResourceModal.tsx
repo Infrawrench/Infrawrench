@@ -259,7 +259,7 @@ export function EditResourceModal({
           {carbonDelta && (
             <p
               className="mb-3 text-xs text-on-surface-tertiary"
-              title={gt("Estimated from published grid figures; processors only")}
+              title={gt("Estimated, not measured")}
             >
               {gt("Estimated carbon: {delta}", { delta: carbonDelta })}
             </p>
