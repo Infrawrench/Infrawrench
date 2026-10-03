@@ -62,7 +62,7 @@ describe("renderDetail — account", () => {
   it("carries the Speech tab on an account with no jobs and no usage", () => {
     // Jobs are purged after 7 days; the account is what keeps the tab reachable.
     const detail = client().renderDetail(account());
-    expect(detail.speechPanel?.modes).toEqual(["stt"]);
+    expect(detail.speechPanel?.modes).toEqual(["stt", "tts"]);
     expect(detail.speechPanel?.maxAudioBytes).toBe(25 * 1024 * 1024);
     expect(detail.speechPanel?.defaultModel).toBe("enhanced");
     // Discovery was never stashed, so the picker falls back rather than emptying.
@@ -106,7 +106,7 @@ describe("renderDetail — account", () => {
     );
     expect(
       JSON.stringify(client().renderDetail(account({ managementToken: true })).sections),
-    ).toContain("mp.api.speechmatics.com");
+    ).toContain("mp.speechmatics.com");
   });
 
   it("labels the sidebar entry with the region rather than a job status", () => {
@@ -119,13 +119,13 @@ describe("renderDetail — account", () => {
 });
 
 describe("renderDetail — job", () => {
-  it("declares an stt-only speech panel with the documented limits", () => {
+  it("declares an stt + tts speech panel with the documented limits", () => {
     const detail = client().renderDetail(job({ status: "done" }));
     const panel = detail.speechPanel;
     expect(panel).toBeDefined();
-    expect(panel?.modes).toEqual(["stt"]);
-    // Speechmatics does no synthesis.
-    expect(panel?.modes).not.toContain("tts");
+    expect(panel?.modes).toEqual(["stt", "tts"]);
+    // Synthesis runs on the TTS preview's four documented voices.
+    expect(panel?.voices?.map((v) => v.id)).toEqual(["sarah", "theo", "megan", "jack"]);
     // Capped by our base64-over-JSON transport (ingress proxy-body-size 36m
     // ⇒ ~27 MB of raw audio), not by what the provider would accept.
     expect(panel?.maxAudioBytes).toBe(25 * 1024 * 1024);

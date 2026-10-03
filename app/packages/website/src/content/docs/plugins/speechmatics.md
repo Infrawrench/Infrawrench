@@ -1,15 +1,15 @@
 ---
 title: Speechmatics
-description: Batch transcription jobs on a regional endpoint, plus workspace projects and API keys through the Management API, and a Speech tab that transcribes in one request.
+description: Batch transcription jobs on a regional endpoint, plus workspace projects and API keys through the Management API, and a Speech tab that transcribes in one request and previews Speechmatics text to speech.
 sidebar_order: 45
 ---
 
 ## What you can manage
 
 - **Account** — one per added account, always present. It shows the region and batch endpoint, a 30-day usage summary read from `GET /v2/usage`, and the language packs the batch engine currently offers — and it is where the [Speech tab](#the-speech-tab) lives. Jobs are purged after seven days and projects need a management token, so this is the only resource guaranteed to exist.
-- **Transcription jobs** — the batch jobs on this account's region, with status, audio file, duration, language pack and model. Each job's detail page carries a copyable transcript URL. Delete a job to purge it early.
-- **Projects** — the isolation boundary for API keys, transcripts and usage. Read-only, and only visible with a management token.
-- **API keys** — the keys issued inside a project, as metadata (delete). Only visible with a management token.
+- **Transcription jobs** — the batch jobs on this account's region, with status, audio file, duration, language pack and model. Each job's detail page carries a copyable transcript URL and a **Logs** tab with the transcriber's own log for that job. Delete a job to purge it early.
+- **Projects** — the isolation boundary for API keys, transcripts and usage. Create one with a name and description, rename it, or delete it. Only visible with a management token.
+- **API keys** — the keys issued inside a project. Create one by picking its project, the product it may call (batch, realtime or text to speech) and an optional client reference; the key value is shown **once**, on the create response. Delete a key to revoke it. Only visible with a management token.
 
 ## Credentials
 
@@ -19,7 +19,9 @@ Three fields, because Speechmatics splits its API across two hosts and three reg
 
 **Region** (required, defaults to `eu1`) — `eu1`, `us1` or `au1`. Pick the region your API key was created in.
 
-**Management Token** (optional) — Portal → **Manage workspace › Management tokens**. A **different credential on a different host**: the Management API is served from `https://mp.api.speechmatics.com/v1`, not the regional ASR endpoint. Without it the **Projects** and **API Keys** lists stay empty; transcription jobs, metrics and the Speech tab are entirely unaffected.
+**Management Token** (optional) — Portal → **Manage workspace › Management tokens**. A **different credential on a different host**: the Management API is served from `https://mp.speechmatics.com/v1`, not the regional ASR endpoint. Without it the **Projects** and **API Keys** lists stay empty; transcription jobs, metrics and the Speech tab are entirely unaffected.
+
+Each management token carries its own permissions, so grant the ones for what you want to do here: **View projects** and **View API keys** to list, **Manage projects** to create, rename and delete projects, and **Create API key** / **Delete API keys** for the key actions. A token without **View projects** still lists keys, just without the project each one belongs to.
 
 ![Speechmatics Add-account form showing the API key, the region picker with eu1/us1/au1, and the optional Management Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/speechmatics/add-account.png)
 
@@ -32,6 +34,8 @@ The same tab is offered on an individual job, where it doubles as "run this one 
 The happy path is a single request: the clip is submitted as a batch job with `?wait=60`, so the transcript comes back in the same response. Longer clips fall back to polling, capped at two minutes total.
 
 Language packs and models are read live from `GET /v1/discovery/features` on your region — which is unauthenticated, so the pickers are populated even before the key is validated. The default model is **enhanced**.
+
+The **Synthesize** half calls Speechmatics' text-to-speech preview (`POST https://preview.tts.speechmatics.com/generate/{voice}`) and plays back a 16 kHz WAV. The four documented voices are offered: Sarah and Theo (UK English) and Megan and Jack (US English). The preview is free while it lasts, and it needs a key that is allowed to call text to speech; if the account's key is refused, create one from the **API Keys** list with **Product** set to **Text to speech**.
 
 ![Speechmatics Speech tab on the Account resource, with the language-pack picker populated from discovery and a completed transcript](https://agent-assets.infrawrench.com/docs-screenshots/plugins/speechmatics/speech-tab-language-packs.png)
 
@@ -85,4 +89,7 @@ Treat the graph as a shape-of-spend signal and the Speechmatics Portal as the in
 - **The transcript format is a query parameter, not an `Accept` header.** Append `?format=txt`, `?format=srt` or `?format=json-v2` to the transcript URL. The detail page shows the URL and says this next to it.
 - **Melia-1 is multilingual only** — picking it forces the language to `multi`.
 - **A `rejected` job was accepted and then failed to process.** It is a distinct state from a failed submission, and `GET /v2/jobs/{id}/log` usually explains why.
-- **API keys are listed and deleted, never created.** The secret is only ever revealed once at creation in the Portal, so only metadata is shown here.
+- **A new API key's value exists in exactly one place: the create response.** Speechmatics never returns it again, so copy it when it is shown. Listed keys show metadata only.
+- **Only a project's name can change after creation.** `PUT /projects/{id}` accepts nothing else, so the description is set once.
+- **Deleting a project can be refused** with `403` while the workspace has outstanding payments.
+- **Job logs expire with the job.** After seven days the Logs tab says the log is gone rather than showing an error.
