@@ -803,3 +803,63 @@ describe("fetchQuotas", () => {
     ]);
   });
 });
+
+describe("fetchMetricSeries", () => {
+  const HOUR = 60 * 60 * 1000;
+  const start = Date.parse("2026-10-01T00:00:00Z");
+  const end = start + 60 * HOUR;
+  const file = (key: string, status: string, size: number, uploadedAt: number) => ({
+    id: key,
+    customId: null,
+    key,
+    name: `${key}.bin`,
+    status,
+    size,
+    uploadedAt,
+  });
+
+  it("buckets upload activity from the file list and keeps a running stored total", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v6/listFiles")) {
+        return jsonResponse({
+          hasMore: false,
+          files: [
+            file("old", "Uploaded", 100, start - 5 * HOUR),
+            file("a", "Uploaded", 10, start + 30 * 60 * 1000),
+            file("b", "Uploading", 20, start + 40 * 60 * 1000),
+            file("c", "Failed", 0, start + 2 * HOUR),
+            file("d", "Uploaded", 5, start + 3 * HOUR),
+            file("future", "Uploaded", 999, end + HOUR),
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const series = await client().fetchMetricSeries(
+      "ut-app",
+      `${ACCOUNT}:ut-app:${APP_ID}`,
+      ACCOUNT,
+      { startMs: start, endMs: end },
+    );
+    const byLabel = Object.fromEntries(series.map((s) => [s.label, s]));
+    expect(byLabel["Uploads"]!.points[0]).toEqual({ timestamp: start, value: 2 });
+    expect(byLabel["Bytes uploaded"]!.unit).toBe("bytes");
+    expect(byLabel["Bytes uploaded"]!.points[0]!.value).toBe(30);
+    expect(byLabel["Failed uploads"]!.points[2]!.value).toBe(1);
+    const stored = byLabel["Stored bytes"]!.points;
+    expect(stored[0]!.value).toBe(110);
+    expect(stored[stored.length - 1]!.value).toBe(115);
+  });
+
+  it("declares the Metrics tab on the app only", async () => {
+    installReadFetch();
+    const c = client();
+    const [app] = await c.listResources("ut-app", ACCOUNT);
+    expect(c.renderDetail(app!).metricsCapability).toEqual({
+      defaultTimeRangeMs: 30 * 24 * HOUR,
+    });
+    const [f] = await c.listResources("ut-file", ACCOUNT);
+    expect(c.renderDetail(f!).metricsCapability).toBeUndefined();
+    expect(await c.fetchMetricSeries("ut-file", f!.id, ACCOUNT)).toEqual([]);
+  });
+});
