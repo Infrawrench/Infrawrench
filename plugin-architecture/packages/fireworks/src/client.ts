@@ -5,6 +5,8 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
   MetricSeries,
   PluginClient,
   ResourceCreateResult,
@@ -15,6 +17,14 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { CostSetupError, jsonRestFetch, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  formatAuditLogEntry,
+  histogramQuantile,
+  parsePromText,
+  sumSamples,
+  type AuditLogEntry,
+  type PromSample,
+} from "./observability.js";
 
 const HOST = "https://api.fireworks.ai";
 /** The account is encoded in the model string on this plane, not in the path. */
@@ -378,6 +388,71 @@ function lastSegment(name: string | undefined): string {
   return parts[parts.length - 1] ?? "";
 }
 
+function splitLines(text: string): string[] {
+  const lines = text.split(/\r?\n/);
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+/**
+ * Current values for one deployment, from the recording rules documented at
+ * https://docs.fireworks.ai/deployments/exporting-metrics. Latencies are ms,
+ * rates per second, the `generator_*_fraction` gauges 0 to 1.
+ */
+interface LiveDeploymentMetrics {
+  requestsPerSec?: number | undefined;
+  errorsPerSec?: number | undefined;
+  promptTokensPerSec?: number | undefined;
+  cachedPromptPct?: number | undefined;
+  ttftP50?: number | undefined;
+  ttftP99?: number | undefined;
+  e2eP50?: number | undefined;
+  e2eP99?: number | undefined;
+  perTokenP50?: number | undefined;
+  generationQueueP50?: number | undefined;
+  prefillP50?: number | undefined;
+  prefillQueueP50?: number | undefined;
+  concurrentRequests?: number | undefined;
+  kvBlocksPct?: number | undefined;
+  kvSlotsPct?: number | undefined;
+}
+
+function liveDeploymentMetrics(samples: PromSample[]): LiveDeploymentMetrics | null {
+  if (samples.length === 0) return null;
+  const q = (metric: string, quantile: number) =>
+    histogramQuantile(samples, `${metric}_bucket:sum_by_deployment`, quantile);
+  const mean = (name: string): number | undefined => {
+    const values = samples.filter((s) => s.name === name).map((s) => s.value);
+    return values.length ? values.reduce((a, b) => a + b, 0) / values.length : undefined;
+  };
+  const prompt = sumSamples(samples, "tokens_prompt_total:sum_by_deployment");
+  const cached = sumSamples(samples, "tokens_cached_prompt_total:sum_by_deployment");
+  const kvBlocks = mean("generator_kv_blocks_fraction:avg_by_deployment");
+  const kvSlots = mean("generator_kv_slots_fraction:avg_by_deployment");
+  const live: LiveDeploymentMetrics = {
+    requestsPerSec: sumSamples(samples, "request_counter_total:sum_by_deployment"),
+    errorsPerSec: sumSamples(samples, "requests_error_total:sum_by_deployment"),
+    promptTokensPerSec: prompt,
+    cachedPromptPct: prompt && cached !== undefined ? (100 * cached) / prompt : undefined,
+    ttftP50: q("latency_to_first_token_ms", 0.5),
+    ttftP99: q("latency_to_first_token_ms", 0.99),
+    e2eP50: q("latency_overall_ms", 0.5),
+    e2eP99: q("latency_overall_ms", 0.99),
+    perTokenP50: q("latency_generation_per_token_ms", 0.5),
+    generationQueueP50: q("latency_generation_queue_ms", 0.5),
+    prefillP50: q("latency_prefill_ms", 0.5),
+    prefillQueueP50: q("latency_prefill_queue_ms", 0.5),
+    concurrentRequests: sumSamples(
+      samples,
+      "requests_coordinator_concurrent_count:avg_by_deployment",
+    ),
+    kvBlocksPct: kvBlocks === undefined ? undefined : kvBlocks * 100,
+    kvSlotsPct: kvSlots === undefined ? undefined : kvSlots * 100,
+  };
+  // JSON drops the undefined keys, so only what was reported is stashed.
+  return Object.values(live).some((v) => v !== undefined) ? live : null;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -581,6 +656,34 @@ export class FireworksClient implements PluginClient {
       ...(this.services?.http ? { http: this.services.http } : {}),
       ...(this.caCert ? { caCert: this.caCert } : {}),
     });
+  }
+
+  /**
+   * A plain-text GET: the Prometheus exposition, or a signed log-file URL.
+   * Signed URLs carry their own authorization, so the API key is only sent
+   * to Fireworks' own host.
+   */
+  private async fetchText(url: string): Promise<string> {
+    const headers: Record<string, string> = { Accept: "text/plain, */*" };
+    if (url.startsWith(HOST)) headers["Authorization"] = `Bearer ${this.apiKey}`;
+    const label = url.startsWith(HOST) ? url.slice(HOST.length).split("?")[0] : "signed log URL";
+    if (this.services?.http) {
+      const result = await this.services.http.request({
+        url,
+        method: "GET",
+        headers,
+        ...(this.caCert && url.startsWith(HOST) ? { caCert: this.caCert } : {}),
+      });
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(`Fireworks API error ${result.status} for ${label}: ${result.body}`);
+      }
+      return result.body;
+    }
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      throw new Error(`Fireworks API error ${res.status} for ${label}: ${await res.text()}`);
+    }
+    return res.text();
   }
 
   /**
@@ -2083,6 +2186,134 @@ export class FireworksClient implements PluginClient {
     return series;
   }
 
+  // -------------------------------------------------------------------------
+  // Logs and live metrics
+  // -------------------------------------------------------------------------
+
+  /**
+   * Logs tabs:
+   * - evaluation jobs: the execution log, via a short-lived signed URL from
+   *   `GET …/evaluationJobs/{id}:getExecutionLogEndpoint`
+   * - evaluators: the build log, via `GET …/evaluators/{id}:getBuildLogEndpoint`
+   * - deployments and users: the account audit log (`GET …/auditLogs`),
+   *   filtered to the deployment's resource name or the user's email
+   * https://docs.fireworks.ai/api-reference/get-evaluation-job-log-endpoint
+   * https://docs.fireworks.ai/api-reference/get-evaluator-build-log-endpoint
+   * https://docs.fireworks.ai/api-reference/list-audit-logs
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    const id = encodeURIComponent(externalIdOf(resourceId));
+    const tail = params.tailLines && params.tailLines > 0 ? params.tailLines : 500;
+    let lines: string[];
+    switch (typeId) {
+      case "evaluation-job": {
+        const res = await this.request<{ executionLogSignedUri?: string }>(
+          this.accountPath(`/evaluationJobs/${id}:getExecutionLogEndpoint`),
+        );
+        lines = res.executionLogSignedUri
+          ? splitLines(await this.fetchText(res.executionLogSignedUri))
+          : ["No execution log yet: the job has not started writing one."];
+        break;
+      }
+      case "evaluator": {
+        const res = await this.request<{ buildLogSignedUri?: string }>(
+          this.accountPath(`/evaluators/${id}:getBuildLogEndpoint`),
+        );
+        lines = res.buildLogSignedUri
+          ? splitLines(await this.fetchText(res.buildLogSignedUri))
+          : ["No build log yet."];
+        break;
+      }
+      case "deployment":
+        lines = await this.auditLogLines(
+          `resource:"deployments/${externalIdOf(resourceId)}"`,
+          tail,
+        );
+        break;
+      case "user": {
+        const user = await this.getResource("user", resourceId, accountId);
+        const email = String(user.fields["email"] ?? "");
+        lines = email
+          ? await this.auditLogLines(`email=${JSON.stringify(email)}`, tail)
+          : ["This user has no email address, which is what the audit log is keyed by."];
+        break;
+      }
+      default:
+        throw new Error(`Fireworks plugin: logs not supported for type "${typeId}"`);
+    }
+    return {
+      text: lines
+        .slice(-tail)
+        .map((line) => `${line}\n`)
+        .join(""),
+      containers: [],
+      activeContainer: "",
+    };
+  }
+
+  /**
+   * Audit log entries matching an AIP-160 filter, oldest first. Pages can come
+   * back empty with a `nextPageToken` while the scan catches up, so the walk
+   * stops on the entry count or the page cap, never on a short page.
+   */
+  private async auditLogLines(filter: string, want: number): Promise<string[]> {
+    const entries: AuditLogEntry[] = [];
+    let pageToken: string | undefined;
+    try {
+      for (let page = 0; page < 10 && entries.length < want; page += 1) {
+        const qs = new URLSearchParams({ pageSize: "200", filter });
+        if (pageToken) qs.set("pageToken", pageToken);
+        const data = await this.request<{ auditLogs?: AuditLogEntry[]; nextPageToken?: string }>(
+          this.accountPath(`/auditLogs?${qs.toString()}`),
+        );
+        entries.push(...(data.auditLogs ?? []));
+        if (!data.nextPageToken) break;
+        pageToken = data.nextPageToken;
+      }
+    } catch (err) {
+      if (/API error 403\b/.test(String((err as Error).message))) {
+        return [
+          "Fireworks refused the audit log request. Audit logs are only available on Enterprise accounts.",
+        ];
+      }
+      throw err;
+    }
+    if (entries.length === 0) return ["No audit log entries in the last 30 days."];
+    // Newest first on the wire; logs read oldest first.
+    return entries.slice(0, want).reverse().map(formatAuditLogEntry);
+  }
+
+  /**
+   * A deployment's current performance from the account's Prometheus
+   * endpoint (`GET /v1/accounts/{id}/metrics`), stashed for `renderDetail`.
+   * The endpoint serves pre-aggregated one-minute rates, not history, and is
+   * limited to 6 requests a minute per account, so it is read once per detail
+   * view and any failure (429, no dedicated traffic) just omits the section.
+   * https://docs.fireworks.ai/deployments/exporting-metrics
+   */
+  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    if (resource.resourceTypeId !== "deployment") return resource;
+    const deploymentId = resource.externalId ?? externalIdOf(resource.id);
+    let text: string;
+    try {
+      text = await this.fetchText(this.accountPath("/metrics"));
+    } catch {
+      return resource;
+    }
+    const samples = parsePromText(text).filter((s) => s.labels["deployment_id"] === deploymentId);
+    const live = liveDeploymentMetrics(samples);
+    if (!live) return resource;
+    return {
+      ...resource,
+      resolvedOutputs: { ...resource.resolvedOutputs, __live__: JSON.stringify(live) },
+    };
+  }
+
   async fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
@@ -2431,7 +2662,10 @@ export class FireworksClient implements PluginClient {
       });
     }
 
+    sections.splice(1, 0, ...this.renderLiveSection(resource));
+
     return {
+      logs: { defaultTailLines: 200 },
       title: resource.displayName,
       subtitle: `Deployment · ${modelString}`,
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },
@@ -2439,6 +2673,61 @@ export class FireworksClient implements PluginClient {
       metricsCapability: { defaultTimeRangeMs: 14 * 24 * 60 * 60 * 1000 },
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
+  }
+
+  /** The Prometheus snapshot stashed by `enrichDetail`; nothing if it failed. */
+  private renderLiveSection(resource: ResourceInstance): SectionNode[] {
+    const raw = resource.resolvedOutputs["__live__"];
+    if (!raw) return [];
+    let live: LiveDeploymentMetrics;
+    try {
+      live = JSON.parse(raw) as LiveDeploymentMetrics;
+    } catch {
+      return [];
+    }
+    const rate = (v: number | undefined, unit: string) =>
+      v === undefined
+        ? ""
+        : `${v < 10 ? v.toFixed(2) : Math.round(v).toLocaleString("en-US")} ${unit}`;
+    const ms = (v: number | undefined) =>
+      v === undefined ? "" : `${v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString("en-US")} ms`;
+    const pct = (v: number | undefined) => (v === undefined ? "" : `${v.toFixed(1)}%`);
+    const pair = (a: number | undefined, b: number | undefined) =>
+      a === undefined && b === undefined ? "" : `${ms(a) || "–"} / ${ms(b) || "–"}`;
+    const items = [
+      { key: "Requests", value: rate(live.requestsPerSec, "req/s") },
+      { key: "Errors", value: rate(live.errorsPerSec, "req/s") },
+      { key: "Prompt Tokens", value: rate(live.promptTokensPerSec, "tokens/s") },
+      { key: "Cached Prompt Share", value: pct(live.cachedPromptPct) },
+      { key: "Time to First Token p50 / p99", value: pair(live.ttftP50, live.ttftP99) },
+      { key: "End-to-end Latency p50 / p99", value: pair(live.e2eP50, live.e2eP99) },
+      { key: "Per-token Generation p50", value: ms(live.perTokenP50) },
+      { key: "Generation Queue p50", value: ms(live.generationQueueP50) },
+      { key: "Prefill p50", value: ms(live.prefillP50) },
+      { key: "Prefill Queue p50", value: ms(live.prefillQueueP50) },
+      {
+        key: "Concurrent Requests",
+        value: live.concurrentRequests === undefined ? "" : live.concurrentRequests.toFixed(1),
+      },
+      { key: "KV Cache Blocks in Use", value: pct(live.kvBlocksPct) },
+      { key: "KV Cache Slots in Use", value: pct(live.kvSlotsPct) },
+    ].filter((item) => item.value);
+    if (items.length === 0) return [];
+    return [
+      {
+        kind: "section",
+        title: "Live performance",
+        children: [
+          { kind: "key-value-list", items },
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              "One-minute rates and percentiles from Fireworks' Prometheus metrics endpoint, read when this page opened. Fireworks serves only the current window, not history; scrape the same endpoint into your own Prometheus or Grafana for charts.",
+          },
+        ],
+      },
+    ];
   }
 
   private renderModelDetail(resource: ResourceInstance): DetailViewSchema {
@@ -3172,6 +3461,7 @@ export class FireworksClient implements PluginClient {
     const fields = resource.fields;
     const mapped = mapEvaluatorState(String(fields["state"] ?? ""));
     return {
+      logs: { defaultTailLines: 500 },
       title: resource.displayName,
       subtitle: "Evaluator",
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },
@@ -3226,6 +3516,7 @@ export class FireworksClient implements PluginClient {
       metrics = [];
     }
     return {
+      logs: { defaultTailLines: 500 },
       title: resource.displayName,
       subtitle: "Evaluation job",
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },
@@ -3268,6 +3559,7 @@ export class FireworksClient implements PluginClient {
     const fields = resource.fields;
     const mapped = mapDeploymentState(String(fields["state"] ?? ""));
     return {
+      logs: { defaultTailLines: 200 },
       title: resource.displayName,
       subtitle: fields["serviceAccount"] ? "Service account" : "User",
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },

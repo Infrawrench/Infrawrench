@@ -59,6 +59,18 @@ Two caveats:
 
 Deployments get a **Metrics** tab charting accelerator-seconds per day. Models chart prompt and completion tokens per day. Both come from the daily billing-usage export, so the window is capped at 31 days.
 
+A deployment's detail page also shows **Live performance**, read from Fireworks' Prometheus metrics endpoint (`/v1/accounts/{account}/metrics`) when the page opens: requests and errors per second, prompt tokens per second and the share served from the prompt cache, time to first token and end-to-end latency at p50 and p99, per-token generation time, generation and prefill queue time, prefill time, concurrent requests, and KV cache block and slot utilization. These are Fireworks' one-minute windows as of now, not history, so they are not charted; Fireworks limits the endpoint to six requests a minute per account, and the section is simply left out when a request is throttled or the deployment has had no traffic. To chart them over time, point your own Prometheus or Grafana at the same endpoint.
+
+<insert [Fireworks deployment detail page showing the Live performance section with request rate, time to first token and KV cache utilization] here>
+
+## Logs
+
+- **Evaluation jobs**: the **Logs** tab shows the job's execution log, downloaded from the short-lived signed URL Fireworks issues for it. Before the job starts writing, the tab says so.
+- **Evaluators**: the **Logs** tab shows the build log, which is where a `BUILD_FAILED` evaluator explains itself.
+- **Deployments** and **users**: the **Logs** tab shows the account audit log from the last 30 days, filtered to that deployment, or to actions taken by that user's email: time, outcome, who, the API method, the resource and the client IP. Audit logs are only available on Enterprise accounts; elsewhere the tab explains that instead of failing.
+
+<insert [Fireworks deployment Logs tab showing audit entries for creating and scaling the deployment] here>
+
 ## Notable flows
 
 - **Scale a deployment** by editing its replica count. Fireworks exposes scaling as a dedicated RPC separate from editing the min/max window, and the plugin sends whichever of the two your edit implies.
