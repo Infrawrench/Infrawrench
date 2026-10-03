@@ -170,7 +170,7 @@ describe("listResources", () => {
     const dictionaries = await client().listResources("pronunciation-dictionary", ACCOUNT);
 
     expect(calls[0]?.url).toBe(
-      "https://api.elevenlabs.io/v1/pronunciation-dictionaries?page_size=100",
+      "https://api.elevenlabs.io/v1/pronunciation-dictionaries?page_size=100&include_archived=false",
     );
     expect(dictionaries[0]?.fields["ruleCount"]).toBe(7);
     expect(dictionaries[0]?.resolvedOutputs["latestVersionId"]).toBe("ver1");
@@ -505,5 +505,313 @@ describe("transcribeAudio", () => {
         mimeType: "audio/wav",
       }),
     ).rejects.toThrow(/ElevenLabs API error 422 for \/v1\/speech-to-text/);
+  });
+});
+
+const AGENT_DETAIL = {
+  agent_id: "agent_1",
+  name: "Support Bot",
+  tags: ["support", "tier1"],
+  conversation_config: {
+    agent: {
+      first_message: "Hi, how can I help?",
+      language: "en",
+      prompt: { prompt: "You are helpful.", llm: "gemini-2.5-flash", temperature: 0.3 },
+    },
+    tts: { voice_id: "v1", model_id: "eleven_flash_v2_5" },
+  },
+  metadata: { created_at_unix_secs: 1_700_000_000, updated_at_unix_secs: 1_700_000_500 },
+  phone_numbers: [{ phone_number: "+15551234567", phone_number_id: "pn_1" }],
+};
+
+function bodyOf(call: FetchCall | undefined): Record<string, unknown> {
+  return JSON.parse(String(call?.init?.body ?? "{}")) as Record<string, unknown>;
+}
+
+describe("agents", () => {
+  it("lists agents and hydrates each one's conversation config", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/convai/agents?")) {
+        return jsonResponse({
+          agents: [
+            { agent_id: "agent_1", name: "Support Bot", last_call_time_unix_secs: 1_700_001_000 },
+          ],
+          has_more: false,
+        });
+      }
+      if (url.endsWith("/v1/convai/agents/agent_1")) return jsonResponse(AGENT_DETAIL);
+      throw new Error(`unexpected ${url}`);
+    });
+
+    const [agent] = await client().listResources("agent", ACCOUNT);
+
+    expect(agent?.id).toBe(`${ACCOUNT}:agent:agent_1`);
+    expect(agent?.fields["llm"]).toBe("gemini-2.5-flash");
+    expect(agent?.fields["voiceId"]).toBe("v1");
+    expect(agent?.fields["systemPrompt"]).toBe("You are helpful.");
+    expect(agent?.fields["tags"]).toBe("support, tier1");
+    expect(agent?.fields["phoneNumbers"]).toBe("+15551234567");
+    expect(agent?.fields["lastCallAt"]).toBe(new Date(1_700_001_000_000).toISOString());
+  });
+
+  it("keeps the summary when an agent's detail route fails", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/convai/agents?")) {
+        return jsonResponse({ agents: [{ agent_id: "agent_1", name: "Bot" }], has_more: false });
+      }
+      return jsonResponse({ detail: "nope" }, 500);
+    });
+    const [agent] = await client().listResources("agent", ACCOUNT);
+    expect(agent?.displayName).toBe("Bot");
+    expect(agent?.fields["llm"]).toBeUndefined();
+  });
+
+  it("creates an agent with the nested conversation_config", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/convai/agents/create")) return jsonResponse({ agent_id: "agent_1" });
+      return jsonResponse(AGENT_DETAIL);
+    });
+
+    const created = await client().createResource("agent", ACCOUNT, {
+      name: "Support Bot",
+      voiceId: "v1",
+      llm: "gemini-2.5-flash",
+      language: "de",
+      firstMessage: "Hallo",
+      systemPrompt: "Be brief.",
+      tags: "a, b, a",
+    });
+
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect(bodyOf(calls[0])).toEqual({
+      name: "Support Bot",
+      conversation_config: {
+        agent: {
+          language: "de",
+          first_message: "Hallo",
+          prompt: { prompt: "Be brief.", llm: "gemini-2.5-flash" },
+        },
+        tts: { voice_id: "v1" },
+      },
+      tags: ["a", "b"],
+    });
+    expect("id" in created && created.id).toBe(`${ACCOUNT}:agent:agent_1`);
+  });
+
+  it("patches only the changed agent settings", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "PATCH") return jsonResponse(AGENT_DETAIL);
+      if (url.includes("/v1/convai/conversations")) return jsonResponse({ conversations: [] });
+      return jsonResponse(AGENT_DETAIL);
+    });
+
+    await client().updateResource("agent", `${ACCOUNT}:agent:agent_1`, ACCOUNT, {
+      firstMessage: "Hello again",
+      tags: "vip",
+    });
+
+    const patch = calls.find((call) => call.init?.method === "PATCH");
+    expect(patch?.url).toBe("https://api.elevenlabs.io/v1/convai/agents/agent_1");
+    expect(bodyOf(patch)).toEqual({
+      tags: ["vip"],
+      conversation_config: { agent: { first_message: "Hello again" } },
+    });
+  });
+
+  it("buckets conversations into daily metric series", async () => {
+    const day = Date.UTC(2026, 8, 1);
+    installFetch(() =>
+      jsonResponse({
+        conversations: [
+          {
+            conversation_id: "c1",
+            start_time_unix_secs: day / 1000 + 60,
+            call_duration_secs: 120,
+            call_successful: "success",
+          },
+          {
+            conversation_id: "c2",
+            start_time_unix_secs: day / 1000 + 3600,
+            call_duration_secs: 60,
+            call_successful: "failure",
+          },
+        ],
+        has_more: false,
+      }),
+    );
+
+    const series = await client().fetchMetricSeries("agent", `${ACCOUNT}:agent:agent_1`, ACCOUNT, {
+      startMs: day,
+      endMs: day + 2 * 24 * 60 * 60 * 1000 - 1,
+    });
+
+    expect(calls[0]?.url).toContain("agent_id=agent_1");
+    expect(calls[0]?.url).toContain(`call_start_after_unix=${day / 1000}`);
+    const byLabel = Object.fromEntries(series.map((s) => [s.label, s.points]));
+    expect(byLabel["Conversations"]?.[0]).toEqual({ timestamp: day, value: 2 });
+    expect(byLabel["Successful Conversations"]?.[0]?.value).toBe(1);
+    expect(byLabel["Average Call Duration"]?.[0]?.value).toBe(90);
+    expect(byLabel["Conversations"]?.[1]?.value).toBe(0);
+  });
+
+  it("offers live voice and LLM pickers on the create form", async () => {
+    installFetch((url) => {
+      if (url.includes("/v2/voices"))
+        return jsonResponse({ voices: [{ voice_id: "v1", name: "Rachel" }] });
+      if (url.includes("/v1/models"))
+        return jsonResponse([{ model_id: "eleven_flash_v2_5", can_do_text_to_speech: true }]);
+      if (url.includes("/v1/convai/llm/list")) {
+        return jsonResponse({
+          llms: [
+            { llm: "gemini-2.5-flash", max_context_limit: 1_000_000 },
+            { llm: "old-model", deprecation_info: { is_deprecated: true } },
+          ],
+        });
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+
+    const config = await client().getCreateConfig("agent");
+    const byKey = Object.fromEntries(config.fields.map((field) => [field.key, field]));
+    expect(byKey["voiceId"]?.options?.map((o) => o.id)).toEqual(["v1"]);
+    expect(byKey["llm"]?.options?.map((o) => o.id)).toEqual(["gemini-2.5-flash"]);
+    expect(byKey["ttsModelId"]?.options?.map((o) => o.id)).toEqual(["eleven_flash_v2_5"]);
+  });
+});
+
+describe("phone numbers and knowledge base", () => {
+  it("lists phone numbers from the bare array and links the assigned agent", async () => {
+    installFetch(() =>
+      jsonResponse([
+        {
+          phone_number_id: "pn_1",
+          phone_number: "+15551234567",
+          label: "Main line",
+          provider: "twilio",
+          assigned_agent: { agent_id: "agent_1", agent_name: "Support Bot" },
+        },
+      ]),
+    );
+    const [phone] = await client().listResources("phone-number", ACCOUNT);
+    expect(phone?.displayName).toBe("Main line (+15551234567)");
+    expect(phone?.fields["agentId"]).toBe("agent_1");
+  });
+
+  it("relabels a phone number with PATCH", async () => {
+    installFetch(() => jsonResponse([{ phone_number_id: "pn_1", phone_number: "+1555" }]));
+    await client().updateResource("phone-number", `${ACCOUNT}:phone-number:pn_1`, ACCOUNT, {
+      label: "Sales",
+    });
+    expect(calls[0]?.url).toBe("https://api.elevenlabs.io/v1/convai/phone-numbers/pn_1");
+    expect(calls[0]?.init?.method).toBe("PATCH");
+    expect(bodyOf(calls[0])).toEqual({ label: "Sales" });
+  });
+
+  it("lists knowledge base documents and deletes without force", async () => {
+    installFetch((_url, init) => {
+      if (init?.method === "DELETE") return jsonResponse({});
+      return jsonResponse({
+        documents: [
+          {
+            id: "doc_1",
+            name: "FAQ",
+            type: "url",
+            metadata: { created_at_unix_secs: 1_700_000_000, size_bytes: 2048 },
+            dependent_agents: [{ id: "agent_1" }],
+          },
+        ],
+        has_more: false,
+      });
+    });
+    const [doc] = await client().listResources("knowledge-base-document", ACCOUNT);
+    expect(doc?.fields["dependentAgents"]).toBe(1);
+    expect(doc?.fields["sizeBytes"]).toBe(2048);
+
+    await client().deleteResource(
+      "knowledge-base-document",
+      `${ACCOUNT}:knowledge-base-document:doc_1`,
+      ACCOUNT,
+    );
+    const del = calls.at(-1);
+    expect(del?.url).toBe("https://api.elevenlabs.io/v1/convai/knowledge-base/doc_1");
+    expect(del?.init?.method).toBe("DELETE");
+  });
+});
+
+describe("pronunciation dictionary and voice edits", () => {
+  it("creates a dictionary from text = replacement lines", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/add-from-rules")) return jsonResponse({ id: "pd_1" });
+      return jsonResponse({
+        pronunciation_dictionaries: [{ id: "pd_1", name: "Brands" }],
+        has_more: false,
+      });
+    });
+
+    await client().createResource("pronunciation-dictionary", ACCOUNT, {
+      name: "Brands",
+      ruleType: "phoneme",
+      alphabet: "cmu-arpabet",
+      caseSensitive: "false",
+      rules: "tomato = T AH0 M EY1 T OW0\n\n",
+    });
+
+    expect(bodyOf(calls[0])).toEqual({
+      name: "Brands",
+      rules: [
+        {
+          type: "phoneme",
+          string_to_replace: "tomato",
+          phoneme: "T AH0 M EY1 T OW0",
+          alphabet: "cmu-arpabet",
+          case_sensitive: false,
+        },
+      ],
+    });
+  });
+
+  it("rejects a malformed rule line", async () => {
+    installFetch(() => jsonResponse({}));
+    await expect(
+      client().createResource("pronunciation-dictionary", ACCOUNT, {
+        name: "Brands",
+        ruleType: "alias",
+        rules: "no separator here",
+      }),
+    ).rejects.toThrow(/line 1/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("archives a dictionary instead of deleting it", async () => {
+    installFetch(() => jsonResponse({}));
+    await client().deleteResource(
+      "pronunciation-dictionary",
+      `${ACCOUNT}:pronunciation-dictionary:pd_1`,
+      ACCOUNT,
+    );
+    expect(calls[0]?.url).toBe("https://api.elevenlabs.io/v1/pronunciation-dictionaries/pd_1");
+    expect(calls[0]?.init?.method).toBe("PATCH");
+    expect(bodyOf(calls[0])).toEqual({ archived: true });
+  });
+
+  it("edits a voice through the multipart edit route, resending the name", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "POST") return jsonResponse({ status: "ok" });
+      if (url.includes("/v2/voices")) {
+        return jsonResponse({ voices: [{ voice_id: "v1", name: "Rachel" }], has_more: false });
+      }
+      return jsonResponse([]);
+    });
+
+    await client().updateResource("voice", `${ACCOUNT}:voice:v1`, ACCOUNT, {
+      description: "Calm narrator",
+    });
+
+    const edit = calls.find((call) => call.init?.method === "POST");
+    expect(edit?.url).toBe("https://api.elevenlabs.io/v1/voices/v1/edit");
+    expect(headerOf(edit?.init, "Content-Type")).toMatch(/^multipart\/form-data; boundary=/);
+    const text = new TextDecoder().decode(edit?.init?.body as Uint8Array);
+    expect(text).toContain('name="name"\r\n\r\nRachel');
+    expect(text).toContain('name="description"\r\n\r\nCalm narrator');
   });
 });
