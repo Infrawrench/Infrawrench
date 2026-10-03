@@ -2,6 +2,7 @@ export { plugin } from "./plugin.js";
 export { GladiaClient } from "./client.js";
 export { WorkspaceResourceType } from "./resources/workspace.js";
 export { TranscriptionResourceType } from "./resources/transcription.js";
+export { LiveSessionResourceType } from "./resources/live-session.js";
 export {
   GLADIA_AUTO_LANGUAGE,
   GLADIA_DEFAULT_MODEL,

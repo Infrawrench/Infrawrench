@@ -3,6 +3,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { GladiaClient } from "./client.js";
 import { TranscriptionResourceType } from "./resources/transcription.js";
 import { WorkspaceResourceType } from "./resources/workspace.js";
+import { LiveSessionResourceType } from "./resources/live-session.js";
 
 // Mark taken verbatim from Gladia's own https://www.gladia.io/favicon.svg
 // (identical geometry to the logo they ship at /logos/comparison/gladia.svg).
@@ -26,7 +27,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your Gladia API key, sent as the x-gladia-key header (Gladia does not use Bearer auth). Find it in the Gladia dashboard at app.gladia.io under Account → API Keys. A single key covers uploads, pre-recorded transcription and the job history — there is no separate admin or usage key.",
+        "Your Gladia API key, sent as the x-gladia-key header (Gladia does not use Bearer auth). Find it in the Gladia dashboard at app.gladia.io under Account → API Keys. A single key covers uploads, pre-recorded transcription, live sessions and the job history — there is no separate admin or usage key.",
       sensitive: true,
       placeholder: "0123abcd-4567-89ef-0123-456789abcdef",
       helpLink: { label: "Open the Gladia dashboard", url: "https://app.gladia.io/" },
@@ -35,7 +36,11 @@ const manifest: PluginManifest = {
   ],
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [WorkspaceResourceType, TranscriptionResourceType];
+const resourceTypes: ResourceTypeDefinition[] = [
+  WorkspaceResourceType,
+  TranscriptionResourceType,
+  LiveSessionResourceType,
+];
 
 export const plugin: Plugin = {
   manifest,

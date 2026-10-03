@@ -1,13 +1,14 @@
 ---
 title: Gladia
-description: Gladia pre-recorded transcription jobs and their results, with a Speech tab that uploads, submits and polls a clip in one step.
+description: Gladia pre-recorded transcription jobs, live streaming sessions and their results, with a Speech tab that uploads, submits and polls a clip in one step.
 sidebar_order: 48
 ---
 
 ## What you can manage
 
 - **Workspace** — the API key as a single navigable resource, carrying an activity summary derived from recent jobs and the Speech playground. Read-only.
-- **Transcriptions** — pre-recorded transcription jobs with status, file name, audio duration, **billed** time, processing time, detected languages and channel count. The full transcript is fetched inline (delete).
+- **Transcriptions** — pre-recorded transcription jobs with status, model, file name, audio duration, **billed** time, processing time, detected languages and channel count. The full transcript is fetched inline (delete).
+- **Live sessions** — real-time streaming sessions from `GET /v2/live`, with the same timings and transcript plus the stream format each session was opened with (encoding, sample rate, bit depth, channels). Sessions are opened by whatever app does the streaming, so there is no create here; delete one to purge it.
 
 ## Credentials
 
@@ -21,15 +22,15 @@ The key is sent as the `x-gladia-key` header — Gladia does not use Bearer auth
 
 Open the workspace for a **Speech** tab. It is transcription only. See [Speech testing](../features/speech-testing.md) for the panel in general.
 
-Gladia is asynchronous, so one press uploads the clip, creates a job, and polls it for up to two minutes. Diarization is on, so speaker labels appear in the word table. Two models are offered: **Solaria-1** (the default, 100+ languages) and **Solaria-3** (latest generation, pre-recorded only).
+Gladia is asynchronous, so one press uploads the clip, creates a job, and polls it for up to two minutes. Diarization is on, so speaker labels appear in the word table. Three models are offered: **Solaria-1** (the default, 100+ languages), **Solaria-3** (latest generation, pre-recorded only) and **Solaria Fusion** (pre-recorded only).
 
 ![Gladia Speech tab on the workspace, showing the Solaria model picker and a diarised transcript with speaker labels](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gladia/speech-tab-solaria.png)
 
 ## Tips & limits
 
-- **There is no usage or quota endpoint.** The workspace's activity panel is deliberately not called "Usage": it sums the most recent jobs returned by `/v2/pre-recorded`, which is a **lower bound** on real usage, not a billing figure. The panel says so in as many words, and Infrawrench charts no Gladia spend.
+- **There is no usage or quota endpoint.** The workspace's activity panel is deliberately not called "Usage": it sums the most recent jobs returned by `/v2/pre-recorded` and the most recent sessions from `/v2/live`, which is a **lower bound** on real usage, not a billing figure. The panel says so in as many words, and Infrawrench charts no Gladia spend.
 - **Billed time and audio duration are different numbers**, and both are shown on every job. Billed time is the one that costs money.
 - **The Speech tab caps clips at 25 MB**, well below what Gladia itself accepts (135 minutes and 1,000 MB). The panel sends audio base64-encoded inside a JSON request, and base64 inflates by a third — 25 MB is what survives that round trip. Send anything larger through Gladia's own API directly.
 - **The Speech tab gives up after two minutes.** Long recordings are better submitted from Gladia's own dashboard and read back from the Transcriptions list here.
 - **The list endpoint reports no total.** `/v2/pre-recorded` returns `{first, current, next, items}` with no count, so paging walks `next` until it runs out — there is no "N of M" to show.
-- **Deleting a transcription returns `202 Accepted`**, so the row may linger for a moment before the next sync clears it.
+- **Deleting a transcription or live session returns `202 Accepted`**, so the row may linger for a moment before the next sync clears it. A session that is still streaming cannot be deleted (`403`).

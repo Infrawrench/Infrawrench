@@ -133,7 +133,7 @@ export const GLADIA_LANGUAGE_OPTIONS: SpeechPanelOption[] = [
 ];
 
 /**
- * Transcription models, verified 2026-07-28 against the request schema of
+ * Transcription models, verified 2026-10-03 against the request schema of
  * https://docs.gladia.io/api-reference/v2/pre-recorded/init: the served
  * OpenAPI document has historically omitted `model` even though the endpoint
  * accepts it, so this list tracks the API reference rather than the spec file.
@@ -148,6 +148,11 @@ export const GLADIA_MODEL_OPTIONS: SpeechPanelOption[] = [
     id: "solaria-3",
     label: "Solaria-3",
     description: "Latest generation, pre-recorded (async) only",
+  },
+  {
+    id: "solaria-fusion",
+    label: "Solaria Fusion",
+    description: "Pre-recorded (async) only",
   },
 ];
 
