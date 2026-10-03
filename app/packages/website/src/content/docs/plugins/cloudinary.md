@@ -38,6 +38,11 @@ Cloudinary console → **Settings → Access Keys**. Paste:
 
 The product environment reports what Cloudinary's usage API says for the current billing cycle. On the [Quota radar](../features/quota-radar.md) surface each used/limit pair becomes a reading: monthly credits on credit-based plans, transformation, storage and bandwidth limits on older plans, every add-on allowance the environment has (AI tagging, background removal and so on), and the Admin API's hourly request budget.
 
+## Metrics
+
+- **Product environment**: daily storage, bandwidth, transformations, credits used, requests, and original and derived asset counts, over the last 14 days by default. Each day is one call to Cloudinary's usage report for that date, which only reaches three months back; ranges longer than 30 days are sampled down to 30 evenly spaced days. Storage and asset counts are the total as of that day; the other figures are what the report gives for that date.
+- **Video assets**: views and watch time from Cloudinary's Video Analytics API, over the last 7 days by default. Views are only recorded when the video is played through the Cloudinary Video Player (1.9.9 or later) or a player wired up with the `cloudinary-video-analytics` library, so a video served any other way charts nothing. Images and raw files have no view data. Up to 5,000 views are read per chart; past that, the chart starts at the oldest view read.
+
 ## Tips & limits
 
 - Large libraries paginate; search is server-side.

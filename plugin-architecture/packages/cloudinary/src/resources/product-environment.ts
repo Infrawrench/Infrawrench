@@ -29,5 +29,7 @@ export const ProductEnvironmentResourceType = rt({
   ],
   outputs: [o("cloudName", "Cloud Name")],
   supportsDelete: false,
+  // Daily usage history from `GET /usage?date=`.
+  supportsMetrics: true,
   iconKey: "dashboard",
 });

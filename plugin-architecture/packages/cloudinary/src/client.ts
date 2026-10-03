@@ -7,6 +7,7 @@ import type {
   SectionNode,
   DashboardStat,
   HostServices,
+  MetricSeries,
   QuotaUsage,
 } from "@infrawrench/plugin-base";
 import {
@@ -14,8 +15,11 @@ import {
   joinSubtitle,
   jsonRestFetch,
   normalizeQuotaUsage,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { TRIGGER_AUTH_SCHEMES, TRIGGER_EVENT_TYPES } from "./resources/trigger.js";
+import { MediaAssetResourceType } from "./resources/media-asset.js";
+import { ProductEnvironmentResourceType } from "./resources/product-environment.js";
 
 /** Minimal shapes for the Cloudinary API responses we use. */
 
@@ -158,6 +162,45 @@ const CORE_USAGE_KEYS = new Set([
 ]);
 
 const GIB = 1024 * 1024 * 1024;
+
+/** The two types with a Metrics tab, for `withMetricsCapability`. */
+const METRIC_RESOURCE_TYPES = [MediaAssetResourceType, ProductEnvironmentResourceType];
+
+/**
+ * Product environment usage history: one `GET /usage?date=yyyy-mm-dd` per day,
+ * which Cloudinary answers for dates up to three months back. Longer ranges
+ * are sampled down to {@link USAGE_MAX_DAYS} evenly spaced days so a 90-day
+ * chart costs 30 Admin API calls rather than 90.
+ * https://cloudinary.com/documentation/admin_api#usage
+ */
+const USAGE_METRICS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const USAGE_HISTORY_DAYS = 90;
+const USAGE_MAX_DAYS = 30;
+const USAGE_CONCURRENCY = 5;
+
+/**
+ * Video views from the Video Analytics API, which records views played through
+ * the Cloudinary Video Player (1.9.9+) or the `cloudinary-video-analytics`
+ * library. Results come back newest first, up to 500 a page.
+ * https://cloudinary.com/documentation/video_analytics
+ */
+const VIEWS_METRICS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const VIEWS_PAGE_SIZE = 500;
+const VIEWS_MAX_PAGES = 10;
+const VIEWS_BUCKETS = 48;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** `GET /video/analytics/views`. */
+interface CloudinaryVideoViews {
+  next_cursor?: string | null;
+  data?: Array<{
+    video_public_id?: string;
+    video_duration?: number;
+    view_watch_time?: number;
+    /** ISO 8601 in responses; the `expression` filter takes Unix seconds. */
+    view_ended_at?: string | number;
+  }>;
+}
 
 function titleCase(value: string): string {
   return value
@@ -986,10 +1029,162 @@ export class CloudinaryClient implements PluginClient {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Metrics
+  // -------------------------------------------------------------------------
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId === "product-environment") return this.fetchUsageSeries(timeRange);
+    if (resourceTypeId === "media-asset") return this.fetchVideoViewSeries(resourceId, timeRange);
+    return [];
+  }
+
+  /**
+   * Daily usage as `GET /usage?date=` reports it. Storage and the asset counts
+   * are a snapshot as of each date; bandwidth, transformations, requests and
+   * credits are the figures Cloudinary's report gives for that date. A day
+   * the API refuses (too old, not yet reported) is a gap, not a zero.
+   */
+  private async fetchUsageSeries(timeRange?: {
+    startMs: number;
+    endMs: number;
+  }): Promise<MetricSeries[]> {
+    const endMs = Math.min(timeRange?.endMs ?? Date.now(), Date.now());
+    const earliest = endMs - USAGE_HISTORY_DAYS * DAY_MS;
+    const startMs = Math.max(timeRange?.startMs ?? endMs - USAGE_METRICS_WINDOW_MS, earliest);
+    const firstDay = Math.floor(startMs / DAY_MS) * DAY_MS;
+    const lastDay = Math.floor(endMs / DAY_MS) * DAY_MS;
+    const totalDays = Math.floor((lastDay - firstDay) / DAY_MS) + 1;
+    const stride = Math.max(1, Math.ceil(totalDays / USAGE_MAX_DAYS));
+    const days: number[] = [];
+    for (let day = lastDay; day >= firstDay; day -= stride * DAY_MS) days.unshift(day);
+
+    const reports: Array<{ day: number; usage: CloudinaryUsage }> = [];
+    for (let i = 0; i < days.length; i += USAGE_CONCURRENCY) {
+      const batch = await Promise.all(
+        days.slice(i, i + USAGE_CONCURRENCY).map(async (day) => {
+          const date = new Date(day).toISOString().slice(0, 10);
+          const usage = await this.fetch<CloudinaryUsage>(`/usage?date=${date}`).catch(() => null);
+          return usage ? { day, usage } : null;
+        }),
+      );
+      for (const entry of batch) if (entry) reports.push(entry);
+    }
+
+    const series = (
+      label: string,
+      unit: string,
+      pick: (usage: CloudinaryUsage) => unknown,
+    ): MetricSeries => ({
+      label,
+      unit,
+      points: reports.flatMap(({ day, usage }) => {
+        const value = pick(usage);
+        return typeof value === "number" && Number.isFinite(value)
+          ? [{ timestamp: day, value }]
+          : [];
+      }),
+    });
+    return [
+      series("Storage", "bytes", (u) => u.storage?.usage),
+      series("Bandwidth", "bytes", (u) => u.bandwidth?.usage),
+      series("Transformations", "count", (u) => u.transformations?.usage),
+      series("Credits used", "credits", (u) => u.credits?.usage),
+      series("Requests", "count", (u) => u.requests),
+      series("Assets", "count", (u) => u.resources),
+      series("Derived assets", "count", (u) => u.derived_resources),
+    ].filter((s) => s.points.length > 0);
+  }
+
+  /**
+   * Views and watch time for a video asset. Images and raw files have no
+   * view data, so they answer no series and the tab stays empty.
+   */
+  private async fetchVideoViewSeries(
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    // resourceId format: "{accountId}:media-asset:{resource_type}/{type}/{public_id}"
+    const assetPath = resourceId.split(":").slice(2).join(":");
+    const [resourceType, , ...rest] = assetPath.split("/");
+    const publicId = rest.join("/");
+    if (resourceType !== "video" || !publicId) return [];
+
+    const endMs = timeRange?.endMs ?? Date.now();
+    let startMs = timeRange?.startMs ?? endMs - VIEWS_METRICS_WINDOW_MS;
+    const expression = [
+      `video_public_id=${publicId}`,
+      `view_ended_at>${Math.floor(startMs / 1000)}`,
+      `view_ended_at<${Math.ceil(endMs / 1000)}`,
+    ].join(" AND ");
+
+    const views: NonNullable<CloudinaryVideoViews["data"]> = [];
+    let cursor: string | undefined;
+    let truncated = false;
+    for (let page = 0; ; page += 1) {
+      if (page >= VIEWS_MAX_PAGES) {
+        truncated = true;
+        break;
+      }
+      const qs = new URLSearchParams({ expression, max_results: String(VIEWS_PAGE_SIZE) });
+      if (cursor) qs.set("next_cursor", cursor);
+      const data = await this.fetch<CloudinaryVideoViews>(`/video/analytics/views?${qs}`);
+      views.push(...(data.data ?? []));
+      cursor = data.next_cursor ?? undefined;
+      if (!cursor || (data.data ?? []).length === 0) break;
+    }
+    const endedAt = (raw: string | number | undefined): number =>
+      typeof raw === "number" ? raw * 1000 : Date.parse(raw ?? "");
+    if (truncated) {
+      // Newest first, so the last one read is the oldest the chart can vouch for.
+      const oldest = endedAt(views[views.length - 1]?.view_ended_at);
+      if (Number.isFinite(oldest) && oldest > startMs) startMs = oldest;
+    }
+
+    const bucketMs = Math.max(60 * 60 * 1000, Math.ceil((endMs - startMs) / VIEWS_BUCKETS));
+    const firstBucket = Math.floor(startMs / bucketMs) * bucketMs;
+    const counts: number[] = [];
+    const watch: number[] = [];
+    for (let t = firstBucket; t < endMs; t += bucketMs) {
+      counts.push(0);
+      watch.push(0);
+    }
+    for (const view of views) {
+      const at = endedAt(view.view_ended_at);
+      if (!Number.isFinite(at) || at < startMs || at >= endMs) continue;
+      const index = Math.floor((at - firstBucket) / bucketMs);
+      if (index < 0 || index >= counts.length) continue;
+      counts[index] = (counts[index] ?? 0) + 1;
+      watch[index] = (watch[index] ?? 0) + (Number(view.view_watch_time) || 0);
+    }
+    return [
+      {
+        label: "Views",
+        unit: "count",
+        points: counts.map((value, i) => ({ timestamp: firstBucket + i * bucketMs, value })),
+      },
+      {
+        label: "Watch time",
+        unit: "s",
+        points: watch.map((value, i) => ({ timestamp: firstBucket + i * bucketMs, value })),
+      },
+    ];
+  }
+
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
       case "media-asset":
-        return this.renderMediaAssetDetail(resource);
+        return withMetricsCapability(
+          this.renderMediaAssetDetail(resource),
+          METRIC_RESOURCE_TYPES,
+          "media-asset",
+          VIEWS_METRICS_WINDOW_MS,
+        );
       case "folder":
         return this.renderFolderDetail(resource);
       case "upload-preset":
@@ -1001,7 +1196,12 @@ export class CloudinaryClient implements PluginClient {
       case "upload-mapping":
         return this.renderUploadMappingDetail(resource);
       case "product-environment":
-        return this.renderProductEnvironmentDetail(resource);
+        return withMetricsCapability(
+          this.renderProductEnvironmentDetail(resource),
+          METRIC_RESOURCE_TYPES,
+          "product-environment",
+          USAGE_METRICS_WINDOW_MS,
+        );
       default:
         return this.renderGenericDetail(resource);
     }
