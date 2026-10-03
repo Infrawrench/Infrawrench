@@ -5,10 +5,13 @@ export const NeonDatabaseResourceType = rt({
   id: "neon-database",
   description: "A PostgreSQL database within a Neon branch",
   fields: [
-    f("name", "Name"),
-    f("projectId", "Project ID"),
-    f("branchId", "Branch ID"),
-    f("ownerName", "Owner", { required: false }),
+    f("name", "Name", { editable: false }),
+    f("projectId", "Project ID", { editable: false }),
+    f("branchId", "Branch ID", { editable: false }),
+    f("ownerName", "Owner", {
+      required: false,
+      description: "Role that owns the database. Must be an existing role on the branch.",
+    }),
   ],
   outputs: [
     o("connectionString", "Connection String", { sensitive: true }),
@@ -23,6 +26,7 @@ export const NeonDatabaseResourceType = rt({
   ],
   parentTypeId: "neon-branch",
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "neon",
   peerIntegrations: [
     {

@@ -12,16 +12,16 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle, externalIdOf } from "@infrawrench/plugin-base";
+import { decodePromptArgs, joinSubtitle, externalIdOf } from "@infrawrench/plugin-base";
 import {
   createApiClient,
   type Api,
   type Branch,
   type Database,
   type DataAPIReponse,
+  type Endpoint,
   type ProjectListItem,
   type Role,
-  ConsumptionHistoryGranularity,
   EndpointType,
   BucketAccessLevel,
   CredentialScope,
@@ -29,6 +29,8 @@ import {
   NeonAuthSupportedAuthProvider,
 } from "@neondatabase/api-client";
 import { fetchNeonCostData } from "./cost-data.js";
+import { fetchBranchUsageSeries, fetchProjectUsageSeries } from "./metrics.js";
+import { COMPUTE_UNITS } from "./resources/endpoint.js";
 import { parseBranchExternalId, type BranchRef } from "./services/common.js";
 import {
   listAllSnapshots,
@@ -58,6 +60,7 @@ import {
   listAllOauthProviders,
 } from "./services/auth.js";
 
+/** Fallback region table, used when `GET /regions` can't be read. */
 const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
   "aws-us-east-1": { location: "Virginia, USA", flag: "🇺🇸" },
   "aws-us-east-2": { location: "Ohio, USA", flag: "🇺🇸" },
@@ -72,6 +75,19 @@ const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
   "azure-eastus2": { location: "East US 2 (Azure)", flag: "🇺🇸" },
   "azure-westeurope": { location: "West Europe (Azure)", flag: "🇪🇺" },
 };
+
+/** Scale-to-zero choices; Free plans can't change it and Launch can only toggle it. */
+const SUSPEND_OPTIONS = [
+  { id: "", label: "Plan default" },
+  { id: "300", label: "5 minutes" },
+  { id: "900", label: "15 minutes" },
+  { id: "3600", label: "1 hour" },
+  { id: "86400", label: "1 day" },
+  { id: "-1", label: "Never (always on)" },
+];
+
+/** Postgres versions Neon offers for new projects; 18 is the API default. */
+const PG_VERSIONS = ["18", "17", "16", "15", "14"];
 
 /**
  * `fetchMetricSeries` asks Neon's consumption API for the last 24 hours when
@@ -316,68 +332,32 @@ export class NeonClient implements PluginClient {
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    // Neon metrics are project-scoped: resolve the project ID
+    // Neon meters usage per project, and per branch on the v2 API. Both need
+    // the owning organization.
     let projectId: string;
+    let branchId = "";
     if (resourceTypeId === "neon-project") {
       projectId = resourceId.split(":").pop() ?? "";
     } else {
-      // For branches/endpoints/databases, extract project ID from the resource
       const resource = await this.getResource(resourceTypeId, resourceId, accountId);
       projectId = String(resource.fields["projectId"] ?? resourceId.split(":")[2] ?? "");
+      if (resourceTypeId === "neon-branch") branchId = String(resource.externalId ?? "");
     }
     if (!projectId) return [];
 
-    const now = Date.now();
-    const startMs = timeRange?.startMs ?? now - 24 * 3_600_000; // last 24h
-    const endMs = timeRange?.endMs ?? now;
-    const from = new Date(startMs).toISOString();
-    const to = new Date(endMs).toISOString();
+    const orgId = await this.resolveOrgId(projectId);
+    return branchId
+      ? fetchBranchUsageSeries(this.api, orgId, projectId, branchId, timeRange)
+      : fetchProjectUsageSeries(this.api, orgId, projectId, timeRange);
+  }
 
+  /** The organization a project belongs to; empty when it can't be read. */
+  private async resolveOrgId(projectId: string): Promise<string> {
     try {
-      const resp = await this.api.getConsumptionHistoryPerProject({
-        project_ids: [projectId],
-        from,
-        to,
-        granularity: ConsumptionHistoryGranularity.Hourly,
-      });
-      const projectEntry = (resp.data.projects ?? []).find((p) => p.project_id === projectId);
-      const periods = projectEntry?.periods ?? [];
-      if (periods.length === 0) return [];
-
-      // Flatten timeframes across all returned periods.
-      const timeframes = periods.flatMap((p) => p.consumption ?? []);
-      if (timeframes.length === 0) return [];
-
-      const activeTimeSeries: MetricSeries = {
-        label: "Active Time",
-        unit: "s",
-        points: timeframes.map((t) => ({
-          timestamp: new Date(t.timeframe_start).getTime(),
-          value: t.active_time_seconds,
-        })),
-      };
-
-      const storageSeries: MetricSeries = {
-        label: "Storage",
-        unit: "bytes",
-        points: timeframes.map((t) => ({
-          timestamp: new Date(t.timeframe_start).getTime(),
-          value: t.synthetic_storage_size_bytes,
-        })),
-      };
-
-      const writtenSeries: MetricSeries = {
-        label: "Data Written",
-        unit: "bytes",
-        points: timeframes.map((t) => ({
-          timestamp: new Date(t.timeframe_start).getTime(),
-          value: t.written_data_bytes,
-        })),
-      };
-
-      return [activeTimeSeries, storageSeries, writtenSeries];
+      const resp = await this.api.getProject(projectId);
+      return resp.data.project.org_id ?? "";
     } catch {
-      return [];
+      return "";
     }
   }
 
@@ -616,12 +596,9 @@ export class NeonClient implements PluginClient {
     }
 
     if (typeId === "neon-project") {
-      const regions = Object.entries(NEON_REGIONS).map(([id, info]) => ({
-        id,
-        label: id,
-        location: info.location,
-        flag: info.flag,
-      }));
+      const regions = await this.fetchRegionOptions();
+      const defaultRegion =
+        regions.find((r) => r.id === "aws-us-east-2")?.id ?? regions[0]?.id ?? "aws-us-east-2";
 
       return {
         fields: [
@@ -632,20 +609,31 @@ export class NeonClient implements PluginClient {
             kind: "region-picker",
             required: true,
             regions,
-            defaultValue: "aws-us-east-2",
+            defaultValue: defaultRegion,
           },
           {
             key: "pgVersion",
             label: "PostgreSQL Version",
             kind: "select",
             required: true,
+            options: PG_VERSIONS.map((v) => ({ id: v, label: `PostgreSQL ${v}` })),
+            defaultValue: "18",
+          },
+          {
+            key: "historyRetentionSeconds",
+            label: "Restore Window",
+            kind: "select",
+            required: false,
+            description: "How far back branches can be restored. Your plan caps the maximum.",
             options: [
-              { id: "17", label: "PostgreSQL 17" },
-              { id: "16", label: "PostgreSQL 16" },
-              { id: "15", label: "PostgreSQL 15" },
-              { id: "14", label: "PostgreSQL 14" },
+              { id: "", label: "Plan default" },
+              { id: "21600", label: "6 hours" },
+              { id: "86400", label: "1 day" },
+              { id: "604800", label: "7 days" },
+              { id: "1209600", label: "14 days" },
+              { id: "2592000", label: "30 days" },
             ],
-            defaultValue: "17",
+            defaultValue: "",
           },
         ],
       };
@@ -653,6 +641,7 @@ export class NeonClient implements PluginClient {
 
     if (typeId === "neon-branch") {
       const fields: CreateResourceConfig["fields"] = [];
+      let scopedProjectId = parentResourceId ? externalIdOf(parentResourceId) : "";
       if (!parentResourceId) {
         // List projects so the user can pick which one to branch from
         const projects = await this.fetchAllProjects();
@@ -668,8 +657,73 @@ export class NeonClient implements PluginClient {
           options: projectOptions,
           ...(projectOptions[0] ? { defaultValue: projectOptions[0].id } : {}),
         });
+        scopedProjectId = projectOptions[0]?.id ?? "";
       }
-      fields.push({ key: "name", label: "Branch Name", kind: "text", required: true });
+
+      // Branch-from picker for the scoped project; the empty choice lets Neon
+      // use the project's default branch, which is right for any project.
+      let parentOptions: Array<{ id: string; label: string }> = [];
+      if (scopedProjectId) {
+        try {
+          const branches = await this.api.listProjectBranches({ projectId: scopedProjectId });
+          parentOptions = branches.data.branches.map((b) => ({
+            id: b.id,
+            label: `${b.name}${isDefaultBranch(b) ? " (default)" : ""}`,
+          }));
+        } catch {
+          /* the default-branch choice still works */
+        }
+      }
+
+      fields.push(
+        { key: "name", label: "Branch Name", kind: "text", required: true },
+        {
+          key: "parentId",
+          label: "Branch From",
+          kind: "select",
+          required: false,
+          options: [{ id: "", label: "Default branch" }, ...parentOptions],
+          defaultValue: "",
+        },
+        {
+          key: "initSource",
+          label: "Contents",
+          kind: "select",
+          required: false,
+          options: [
+            { id: "parent-data", label: "Schema and data" },
+            { id: "schema-only", label: "Schema only (no data)" },
+          ],
+          defaultValue: "parent-data",
+        },
+        {
+          key: "parentTimestamp",
+          label: "As Of",
+          kind: "datetime",
+          required: false,
+          description:
+            "Branch from the parent's state at this moment instead of now. Must fall inside the project's restore window.",
+          showWhen: { fieldKey: "initSource", fieldValue: "parent-data" },
+        },
+        {
+          key: "expiresAt",
+          label: "Delete Automatically At",
+          kind: "datetime",
+          required: false,
+          description: "Neon deletes the branch at this time (at most 30 days ahead).",
+        },
+        {
+          key: "protected",
+          label: "Protected",
+          kind: "select",
+          required: false,
+          options: [
+            { id: "false", label: "No" },
+            { id: "true", label: "Yes (paid plans)" },
+          ],
+          defaultValue: "false",
+        },
+      );
       return { fields };
     }
 
@@ -812,6 +866,34 @@ export class NeonClient implements PluginClient {
         ],
         defaultValue: "read_write",
       });
+      const cuOptions = COMPUTE_UNITS.map((cu) => ({ id: cu, label: `${cu} CU` }));
+      fields.push(
+        {
+          key: "autoscalingMinCu",
+          label: "Min Compute",
+          kind: "select",
+          required: false,
+          options: [{ id: "", label: "Project default" }, ...cuOptions],
+          defaultValue: "",
+        },
+        {
+          key: "autoscalingMaxCu",
+          label: "Max Compute",
+          kind: "select",
+          required: false,
+          description: "At most 8 CU above the minimum; sizes above 16 CU are fixed.",
+          options: [{ id: "", label: "Project default" }, ...cuOptions],
+          defaultValue: "",
+        },
+        {
+          key: "suspendTimeout",
+          label: "Scale to Zero After",
+          kind: "select",
+          required: false,
+          options: SUSPEND_OPTIONS,
+          defaultValue: "",
+        },
+      );
       return { fields };
     }
 
@@ -983,33 +1065,17 @@ export class NeonClient implements PluginClient {
     //   neon-branch  → `{accountId}:neon-branch:{projectId}/{branchId}`
     const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
     if (typeId === "neon-project") {
-      const pgVersion = Number(fields["pgVersion"] ?? 17);
+      const pgVersion = Number(fields["pgVersion"] || 18);
+      const retention = fields["historyRetentionSeconds"];
       const response = await this.api.createProject({
         project: {
           name: fields["name"] ?? "",
           region_id: fields["region"] ?? "",
           pg_version: pgVersion,
+          ...(retention ? { history_retention_seconds: Number(retention) } : {}),
         },
       });
-      const p = response.data.project;
-      return {
-        id: `${accountId}:neon-project:${p.id}`,
-        pluginId: "neon",
-        resourceTypeId: "neon-project",
-        accountId,
-        displayName: p.name,
-        fields: {
-          name: p.name,
-          region: p.region_id,
-          pgVersion: String(p.pg_version),
-          createdAt: p.created_at,
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: p.id,
-        createdAt: p.created_at,
-        updatedAt: p.updated_at,
-      };
+      return this.buildProjectResource(accountId, response.data.project);
     }
 
     if (typeId === "neon-branch") {
@@ -1018,31 +1084,20 @@ export class NeonClient implements PluginClient {
       const projectId = fields["projectId"] || parentExternalId;
       if (!projectId) throw new Error("Neon plugin: projectId is required to create a branch");
 
+      const schemaOnly = fields["initSource"] === "schema-only";
+      const parentTimestamp = schemaOnly ? "" : (fields["parentTimestamp"] ?? "");
       const response = await this.api.createProjectBranch(projectId, {
-        branch: { name: fields["name"] ?? "" },
+        branch: {
+          name: fields["name"] ?? "",
+          ...(fields["parentId"] ? { parent_id: fields["parentId"] } : {}),
+          ...(schemaOnly ? { init_source: "schema-only" } : {}),
+          ...(parentTimestamp ? { parent_timestamp: parentTimestamp } : {}),
+          ...(fields["expiresAt"] ? { expires_at: fields["expiresAt"] } : {}),
+          ...(fields["protected"] === "true" ? { protected: true } : {}),
+        },
         endpoints: [{ type: EndpointType.ReadWrite }],
       });
-      const b = response.data.branch;
-      return {
-        id: `${accountId}:neon-branch:${projectId}/${b.id}`,
-        pluginId: "neon",
-        resourceTypeId: "neon-branch",
-        accountId,
-        displayName: b.name,
-        fields: {
-          name: b.name,
-          projectId: b.project_id,
-          primary: isDefaultBranch(b),
-          currentState: b.current_state,
-          createdAt: b.created_at,
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: b.id,
-        parentResourceId: `${accountId}:neon-project:${projectId}`,
-        createdAt: b.created_at,
-        updatedAt: b.updated_at,
-      };
+      return this.buildBranchResource(accountId, projectId, response.data.branch);
     }
 
     if (typeId === "neon-database") {
@@ -1126,32 +1181,10 @@ export class NeonClient implements PluginClient {
         endpoint: {
           branch_id: branchId,
           type: endpointType,
+          ...endpointSettings(fields),
         },
       });
-      const ep = response.data.endpoint;
-      return {
-        id: `${accountId}:neon-endpoint:${projectId}/${ep.id}`,
-        pluginId: "neon",
-        resourceTypeId: "neon-endpoint",
-        accountId,
-        displayName: ep.host,
-        fields: {
-          host: ep.host,
-          projectId: ep.project_id,
-          branchId: ep.branch_id,
-          currentState: ep.current_state,
-          type: ep.type,
-          autoscalingMinCu: String(ep.autoscaling_limit_min_cu),
-          autoscalingMaxCu: String(ep.autoscaling_limit_max_cu),
-          suspendTimeout: String(ep.suspend_timeout_seconds),
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: ep.id,
-        parentResourceId: `${accountId}:neon-branch:${projectId}/${branchId}`,
-        createdAt: ep.created_at,
-        updatedAt: ep.updated_at,
-      };
+      return this.buildEndpointResource(accountId, projectId, response.data.endpoint);
     }
 
     if (typeId === "neon-data-api") {
@@ -1377,6 +1410,133 @@ export class NeonClient implements PluginClient {
     return locateBucket(this.api, "", await this.fetchAllProjects(), this.bucketLocator, bucket);
   }
 
+  /**
+   * Parameterised branch actions, posted by `prompt-nosql-command` forms as a
+   * single JSON-encoded record.
+   */
+  async executeNoSqlCommand(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    command: string,
+    args: (string | number)[],
+  ): Promise<unknown> {
+    if (typeId === "neon-branch" && command === "restore") {
+      const [projectId, branchId] = externalIdOf(resourceId).split("/");
+      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
+      const values = decodePromptArgs(args);
+      const timestamp = (values["timestamp"] ?? "").trim();
+      if (!timestamp) throw new Error("Neon plugin: pick the moment to restore to");
+      // Restoring a branch onto its own history requires keeping the current
+      // state as a backup branch.
+      const preserveName =
+        (values["preserveUnderName"] ?? "").trim() ||
+        `${branchId}-before-restore-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}`;
+      await this.api.restoreProjectBranch(projectId, branchId, {
+        source_branch_id: branchId,
+        source_timestamp: timestamp,
+        preserve_under_name: preserveName,
+      });
+      return null;
+    }
+    throw new Error(`Neon plugin: unknown command "${command}" for type "${typeId}"`);
+  }
+
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId === "neon-project") {
+      const projectId = externalIdOf(resourceId);
+      const retention = fields["historyRetentionSeconds"];
+      const resp = await this.api.updateProject(projectId, {
+        project: {
+          ...(fields["name"] ? { name: fields["name"] } : {}),
+          ...(retention !== undefined && retention !== ""
+            ? { history_retention_seconds: Number(retention) }
+            : {}),
+        },
+      });
+      return this.buildProjectResource(accountId, resp.data.project);
+    }
+
+    if (typeId === "neon-branch") {
+      const [projectId, branchId] = externalIdOf(resourceId).split("/");
+      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
+      const branch: { name?: string; protected?: boolean; expires_at?: string | null } = {};
+      if (fields["name"]) branch.name = fields["name"];
+      if (fields["protected"] !== undefined && fields["protected"] !== "") {
+        branch.protected = fields["protected"] === "true";
+      }
+      if (fields["expiresAt"] !== undefined) {
+        // An emptied field removes the expiry.
+        branch.expires_at = fields["expiresAt"].trim() || null;
+      }
+      const resp = await this.api.updateProjectBranch(projectId, branchId, { branch });
+      return this.buildBranchResource(accountId, projectId, resp.data.branch);
+    }
+
+    if (typeId === "neon-endpoint") {
+      const [projectId, endpointId] = externalIdOf(resourceId).split("/");
+      if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
+      const settings = endpointSettings(fields);
+      const resp = await this.api.updateProjectEndpoint(projectId, endpointId, {
+        endpoint: {
+          ...settings,
+          ...(fields["name"] !== undefined && fields["name"] !== ""
+            ? { name: fields["name"] }
+            : {}),
+        },
+      });
+      return this.buildEndpointResource(accountId, projectId, resp.data.endpoint);
+    }
+
+    if (typeId === "neon-database") {
+      const parts = externalIdOf(resourceId).split("/");
+      const [projectId, branchId, ...dbParts] = parts;
+      const databaseName = dbParts.join("/");
+      if (!projectId || !branchId || !databaseName) {
+        throw new Error("Neon plugin: cannot parse database ID");
+      }
+      const owner = fields["ownerName"]?.trim();
+      if (!owner) throw new Error("Neon plugin: a database needs an owner role");
+      const resp = await this.api.updateProjectBranchDatabase(projectId, branchId, databaseName, {
+        database: { owner_name: owner },
+      });
+      return this.buildDatabaseResource(accountId, projectId, branchId, resp.data.database);
+    }
+
+    throw new Error(`Neon plugin: updateResource not supported for type "${typeId}"`);
+  }
+
+  /** Active regions from Neon, falling back to the static table. */
+  private async fetchRegionOptions(): Promise<
+    Array<{ id: string; label: string; location: string; flag?: string }>
+  > {
+    try {
+      const resp = await this.api.getActiveRegions({});
+      const regions = resp.data.regions ?? [];
+      if (regions.length > 0) {
+        return regions.map((r) => ({
+          id: r.region_id,
+          label: r.region_id,
+          location: NEON_REGIONS[r.region_id]?.location ?? r.name,
+          ...(NEON_REGIONS[r.region_id] ? { flag: NEON_REGIONS[r.region_id]!.flag } : {}),
+        }));
+      }
+    } catch {
+      /* fall back below */
+    }
+    return Object.entries(NEON_REGIONS).map(([id, info]) => ({
+      id,
+      label: id,
+      location: info.location,
+      flag: info.flag,
+    }));
+  }
+
   async invokeAction(
     typeId: string,
     resourceId: string,
@@ -1390,13 +1550,35 @@ export class NeonClient implements PluginClient {
       return;
     }
 
-    if (typeId === "neon-endpoint" && (actionId === "start" || actionId === "suspend")) {
+    if (
+      typeId === "neon-endpoint" &&
+      (actionId === "start" || actionId === "suspend" || actionId === "restart")
+    ) {
       // resource ID format: {accountId}:neon-endpoint:{projectId}/{endpointId}
       const [projectId, endpointId] = externalIdOf(resourceId).split("/");
       if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
       if (actionId === "start") await this.api.startProjectEndpoint(projectId, endpointId);
-      else await this.api.suspendProjectEndpoint(projectId, endpointId);
+      else if (actionId === "suspend") await this.api.suspendProjectEndpoint(projectId, endpointId);
+      else await this.api.restartProjectEndpoint(projectId, endpointId);
       return;
+    }
+
+    if (typeId === "neon-branch") {
+      const [projectId, branchId] = externalIdOf(resourceId).split("/");
+      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
+      if (actionId === "set-default") {
+        await this.api.setDefaultProjectBranch(projectId, branchId);
+        return;
+      }
+      if (actionId === "reset-from-parent") {
+        // Neon has no separate reset endpoint: restoring from the parent's
+        // head is the documented way to reset a branch to its parent.
+        const branch = await this.api.getProjectBranch(projectId, branchId);
+        const parentId = branch.data.branch.parent_id;
+        if (!parentId) throw new Error("Neon plugin: a root branch has no parent to reset from");
+        await this.api.restoreProjectBranch(projectId, branchId, { source_branch_id: parentId });
+        return;
+      }
     }
 
     throw new Error(`Neon plugin: unknown action "${actionId}" for type "${typeId}"`);
@@ -1422,7 +1604,23 @@ export class NeonClient implements PluginClient {
 
   private async listProjects(accountId: string): Promise<ResourceInstance[]> {
     const projects = await this.fetchAllProjects();
-    return projects.map((p) => ({
+    return projects.map((p) => this.buildProjectResource(accountId, p));
+  }
+
+  private buildProjectResource(
+    accountId: string,
+    p: Pick<
+      ProjectListItem,
+      "id" | "name" | "region_id" | "pg_version" | "created_at" | "updated_at"
+    > &
+      Partial<
+        Pick<
+          ProjectListItem,
+          "org_id" | "proxy_host" | "compute_last_active_at" | "history_retention_seconds"
+        >
+      >,
+  ): ResourceInstance {
+    return {
       id: `${accountId}:neon-project:${p.id}`,
       pluginId: "neon",
       resourceTypeId: "neon-project",
@@ -1432,6 +1630,12 @@ export class NeonClient implements PluginClient {
         name: p.name,
         region: p.region_id,
         pgVersion: String(p.pg_version),
+        orgId: p.org_id ?? "",
+        proxyHost: p.proxy_host ?? "",
+        computeLastActiveAt: p.compute_last_active_at ?? "",
+        ...(p.history_retention_seconds !== undefined
+          ? { historyRetentionSeconds: p.history_retention_seconds }
+          : {}),
         createdAt: p.created_at,
       },
       resolvedOutputs: {},
@@ -1439,7 +1643,7 @@ export class NeonClient implements PluginClient {
       externalId: p.id,
       createdAt: p.created_at,
       updatedAt: p.updated_at,
-    }));
+    };
   }
 
   private async listAllBranches(accountId: string): Promise<ResourceInstance[]> {
@@ -1449,32 +1653,42 @@ export class NeonClient implements PluginClient {
       try {
         const resp = await this.api.listProjectBranches({ projectId: p.id });
         for (const b of resp.data.branches) {
-          results.push({
-            id: `${accountId}:neon-branch:${p.id}/${b.id}`,
-            pluginId: "neon",
-            resourceTypeId: "neon-branch",
-            accountId,
-            displayName: b.name,
-            fields: {
-              name: b.name,
-              projectId: b.project_id,
-              primary: isDefaultBranch(b),
-              currentState: b.current_state,
-              createdAt: b.created_at,
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            externalId: b.id,
-            parentResourceId: `${accountId}:neon-project:${p.id}`,
-            createdAt: b.created_at,
-            updatedAt: b.updated_at,
-          });
+          results.push(this.buildBranchResource(accountId, p.id, b));
         }
       } catch {
         /* skip projects we can't read branches for */
       }
     }
     return results;
+  }
+
+  private buildBranchResource(accountId: string, projectId: string, b: Branch): ResourceInstance {
+    return {
+      id: `${accountId}:neon-branch:${projectId}/${b.id}`,
+      pluginId: "neon",
+      resourceTypeId: "neon-branch",
+      accountId,
+      displayName: b.name,
+      fields: {
+        name: b.name,
+        projectId: b.project_id ?? projectId,
+        parentId: b.parent_id ?? "",
+        primary: isDefaultBranch(b),
+        currentState: b.current_state,
+        ...(b.logical_size !== undefined ? { logicalSize: b.logical_size } : {}),
+        initSource: b.init_source ?? "",
+        lastResetAt: b.last_reset_at ?? "",
+        protected: b.protected === true,
+        expiresAt: b.expires_at ?? "",
+        createdAt: b.created_at,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: b.id,
+      parentResourceId: `${accountId}:neon-project:${projectId}`,
+      createdAt: b.created_at,
+      updatedAt: b.updated_at,
+    };
   }
 
   private async listAllEndpoints(accountId: string): Promise<ResourceInstance[]> {
@@ -1484,35 +1698,46 @@ export class NeonClient implements PluginClient {
       try {
         const resp = await this.api.listProjectEndpoints(p.id);
         for (const ep of resp.data.endpoints) {
-          results.push({
-            id: `${accountId}:neon-endpoint:${p.id}/${ep.id}`,
-            pluginId: "neon",
-            resourceTypeId: "neon-endpoint",
-            accountId,
-            displayName: ep.host,
-            fields: {
-              host: ep.host,
-              projectId: ep.project_id,
-              branchId: ep.branch_id,
-              currentState: ep.current_state,
-              type: ep.type,
-              autoscalingMinCu: String(ep.autoscaling_limit_min_cu),
-              autoscalingMaxCu: String(ep.autoscaling_limit_max_cu),
-              suspendTimeout: String(ep.suspend_timeout_seconds),
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            externalId: ep.id,
-            parentResourceId: `${accountId}:neon-branch:${p.id}/${ep.branch_id}`,
-            createdAt: ep.created_at,
-            updatedAt: ep.updated_at,
-          });
+          results.push(this.buildEndpointResource(accountId, p.id, ep));
         }
       } catch {
         /* skip */
       }
     }
     return results;
+  }
+
+  private buildEndpointResource(
+    accountId: string,
+    projectId: string,
+    ep: Endpoint,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:neon-endpoint:${projectId}/${ep.id}`,
+      pluginId: "neon",
+      resourceTypeId: "neon-endpoint",
+      accountId,
+      displayName: ep.host,
+      fields: {
+        host: ep.host,
+        name: ep.name ?? "",
+        projectId: ep.project_id,
+        branchId: ep.branch_id,
+        currentState: ep.current_state,
+        type: ep.type,
+        regionId: ep.region_id ?? "",
+        lastActive: ep.last_active ?? "",
+        autoscalingMinCu: String(ep.autoscaling_limit_min_cu),
+        autoscalingMaxCu: String(ep.autoscaling_limit_max_cu),
+        suspendTimeout: String(ep.suspend_timeout_seconds),
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: ep.id,
+      parentResourceId: `${accountId}:neon-branch:${projectId}/${ep.branch_id}`,
+      createdAt: ep.created_at,
+      updatedAt: ep.updated_at,
+    };
   }
 
   private async listAllDatabases(accountId: string): Promise<ResourceInstance[]> {
@@ -1830,6 +2055,21 @@ export class NeonClient implements PluginClient {
                 { key: "Project ID", value: String(resource.externalId ?? "—") },
                 { key: "Region", value: regionLabel },
                 { key: "PostgreSQL Version", value: String(resource.fields["pgVersion"] ?? "—") },
+                {
+                  key: "Restore Window",
+                  value: formatDuration(resource.fields["historyRetentionSeconds"]),
+                },
+                ...(resource.fields["proxyHost"]
+                  ? [{ key: "Proxy Host", value: String(resource.fields["proxyHost"]) }]
+                  : []),
+                ...(resource.fields["computeLastActiveAt"]
+                  ? [
+                      {
+                        key: "Compute Last Active",
+                        value: String(resource.fields["computeLastActiveAt"]),
+                      },
+                    ]
+                  : []),
                 { key: "Created", value: String(resource.fields["createdAt"] ?? "—") },
               ],
             },
@@ -1852,8 +2092,65 @@ export class NeonClient implements PluginClient {
   }
 
   private renderBranchDetail(resource: ResourceInstance): DetailViewSchema {
-    const isPrimary = resource.fields["primary"] === true;
-    const state = String(resource.fields["currentState"] ?? "unknown");
+    const f = resource.fields;
+    const isPrimary = f["primary"] === true;
+    const isProtected = f["protected"] === true;
+    const state = String(f["currentState"] ?? "unknown");
+
+    const headerActions: NonNullable<DetailViewSchema["headerActions"]> = [
+      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      {
+        kind: "action",
+        label: "Restore to Point in Time",
+        action: {
+          type: "prompt-nosql-command",
+          command: "restore",
+          title: "Restore branch",
+          description:
+            "Rewind this branch to an earlier moment inside the project's restore window. The current state is kept as a separate branch, and connections drop briefly.",
+          danger: true,
+          submitLabel: "Restore",
+          fields: [
+            { key: "timestamp", label: "Restore To", kind: "datetime", required: true },
+            {
+              key: "preserveUnderName",
+              label: "Keep Current State As",
+              kind: "text",
+              required: false,
+              placeholder: "Leave blank for an automatic name",
+            },
+          ],
+        },
+      },
+    ];
+    if (!isPrimary) {
+      headerActions.push({
+        kind: "action",
+        label: "Set as Default",
+        action: {
+          type: "plugin-action",
+          actionId: "set-default",
+          confirmMessage:
+            "Make this the project's default branch? Connections that don't name a branch go here from now on.",
+          successMessage: "Default branch changed.",
+        },
+      });
+    }
+    if (f["parentId"] && !isProtected) {
+      headerActions.push({
+        kind: "action",
+        label: "Reset from Parent",
+        action: {
+          type: "plugin-action",
+          actionId: "reset-from-parent",
+          confirmMessage:
+            "Reset this branch to the latest state of its parent? Every change made on this branch is lost.",
+          successMessage: "Reset started.",
+          destructive: true,
+        },
+        variant: "danger",
+      });
+    }
 
     return {
       title: resource.displayName,
@@ -1868,19 +2165,30 @@ export class NeonClient implements PluginClient {
               kind: "key-value-list",
               items: [
                 { key: "Branch ID", value: String(resource.externalId ?? "—") },
-                { key: "Project ID", value: String(resource.fields["projectId"] ?? "—") },
+                { key: "Project ID", value: String(f["projectId"] ?? "—") },
                 { key: "Primary", value: isPrimary ? "Yes" : "No" },
                 { key: "State", value: state },
-                { key: "Created", value: String(resource.fields["createdAt"] ?? "—") },
+                ...(f["parentId"] ? [{ key: "Parent", value: String(f["parentId"]) }] : []),
+                ...(typeof f["logicalSize"] === "number"
+                  ? [{ key: "Logical Size", value: formatBytes(f["logicalSize"]) }]
+                  : []),
+                { key: "Protected", value: isProtected ? "Yes" : "No" },
+                { key: "Expires", value: String(f["expiresAt"] ?? "") || "Never" },
+                ...(f["initSource"] === "schema-only"
+                  ? [{ key: "Created From", value: "Schema only" }]
+                  : []),
+                ...(f["lastResetAt"]
+                  ? [{ key: "Last Reset", value: String(f["lastResetAt"]) }]
+                  : []),
+                { key: "Created", value: String(f["createdAt"] ?? "—") },
               ],
             },
           ],
         },
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
-      // Branch metrics are the project's: `fetchMetricSeries` resolves the
-      // parent project id from the branch and asks for the same consumption
-      // series. Both types declare `supportsMetrics`, so both need the tab.
+      headerActions,
+      // Branch usage comes from the per-branch consumption history (falling
+      // back to the project's), so the branch gets its own Metrics tab.
       metricsCapability: NEON_METRICS,
     };
   }
@@ -1905,8 +2213,14 @@ export class NeonClient implements PluginClient {
               items: [
                 { key: "Host", value: String(resource.fields["host"] ?? "—"), copyable: true },
                 { key: "Endpoint ID", value: String(resource.externalId ?? "—") },
+                ...(resource.fields["name"]
+                  ? [{ key: "Name", value: String(resource.fields["name"]) }]
+                  : []),
                 { key: "Type", value: String(resource.fields["type"] ?? "—") },
                 { key: "State", value: state },
+                ...(resource.fields["lastActive"]
+                  ? [{ key: "Last Active", value: String(resource.fields["lastActive"]) }]
+                  : []),
               ],
             },
           ],
@@ -1922,7 +2236,14 @@ export class NeonClient implements PluginClient {
                 { key: "Max Compute Units", value: maxCu },
                 {
                   key: "Suspend Timeout",
-                  value: suspendTimeout === "—" ? "—" : `${suspendTimeout}s`,
+                  value:
+                    suspendTimeout === "—"
+                      ? "—"
+                      : suspendTimeout === "-1"
+                        ? "Never"
+                        : suspendTimeout === "0"
+                          ? "Plan default"
+                          : `${suspendTimeout}s`,
                 },
               ],
             },
@@ -1961,6 +2282,21 @@ export class NeonClient implements PluginClient {
                 },
               ]
             : []),
+        ...(state === "active"
+          ? [
+              {
+                kind: "action" as const,
+                label: "Restart",
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "restart",
+                  confirmMessage:
+                    "Restart this compute? Open connections drop and reconnect once it is back, which also applies pending configuration changes.",
+                  successMessage: "Restart requested.",
+                },
+              },
+            ]
+          : []),
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
       ],
     };
@@ -2114,6 +2450,58 @@ export class NeonClient implements PluginClient {
  */
 function isDefaultBranch(branch: Branch | { default?: boolean; primary?: boolean }): boolean {
   return branch.default === true || branch.primary === true;
+}
+
+/**
+ * Autoscaling limits and scale-to-zero from a create or edit form. Blank
+ * values are left out so Neon keeps (or applies) the project default.
+ */
+function endpointSettings(fields: Record<string, string>): {
+  autoscaling_limit_min_cu?: number;
+  autoscaling_limit_max_cu?: number;
+  suspend_timeout_seconds?: number;
+} {
+  const out: {
+    autoscaling_limit_min_cu?: number;
+    autoscaling_limit_max_cu?: number;
+    suspend_timeout_seconds?: number;
+  } = {};
+  const min = Number(fields["autoscalingMinCu"]);
+  const max = Number(fields["autoscalingMaxCu"]);
+  if (fields["autoscalingMinCu"] && Number.isFinite(min)) out.autoscaling_limit_min_cu = min;
+  if (fields["autoscalingMaxCu"] && Number.isFinite(max)) out.autoscaling_limit_max_cu = max;
+  if (
+    out.autoscaling_limit_min_cu !== undefined &&
+    out.autoscaling_limit_max_cu !== undefined &&
+    out.autoscaling_limit_max_cu < out.autoscaling_limit_min_cu
+  ) {
+    throw new Error("Neon plugin: max compute must be at least the min compute");
+  }
+  const suspend = fields["suspendTimeout"];
+  if (suspend !== undefined && suspend !== "" && Number.isFinite(Number(suspend))) {
+    out.suspend_timeout_seconds = Number(suspend);
+  }
+  return out;
+}
+
+function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let n = bytes;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i += 1;
+  }
+  return `${i === 0 ? n : n.toFixed(1)} ${units[i]}`;
+}
+
+function formatDuration(seconds: unknown): string {
+  const n = Number(seconds);
+  if (seconds === undefined || seconds === "" || !Number.isFinite(n)) return "—";
+  if (n === 0) return "Off";
+  if (n % 86400 === 0) return `${n / 86400} day${n === 86400 ? "" : "s"}`;
+  if (n % 3600 === 0) return `${n / 3600} hour${n === 3600 ? "" : "s"}`;
+  return `${n}s`;
 }
 
 function parseCsv(value: string | undefined): string[] {

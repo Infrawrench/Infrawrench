@@ -6,8 +6,9 @@ sidebar_order: 12
 
 ## What you can manage
 
-- Projects
-- Branches (create, delete, switch primary)
+- Projects, including their restore window
+- Branches (create, edit, delete, set as default, reset, restore to a point in time)
+- Compute endpoints, with autoscaling and scale-to-zero settings
 - Databases within a branch
 - Connection strings (as outputs, referenceable from the [Postgres plugin](./postgres.md))
 - [Snapshots](#snapshots) — point-in-time copies of a branch
@@ -25,7 +26,13 @@ Neon console → **Account → API keys → New API key**.
 
 ## Notable flows
 
-- **Branch creation** — point-and-click; infrawrench shows the parent branch and new branch name.
+- **Project creation**: pick a region from the ones Neon currently offers, a Postgres version (18 by default), and optionally the restore window. **Edit** renames a project or changes its restore window (how far back branches can be restored; your plan caps it).
+- **Branch creation**: pick the branch to fork from (or the project's default), whether to copy schema and data or schema only, an optional earlier moment to branch from, an automatic deletion time (at most 30 days ahead), and protection.
+- **Branch editing**: **Edit** renames a branch, protects it, or sets or clears its expiry.
+- **Branch actions**: **Set as Default** makes a branch the project's default. **Reset from Parent** throws away a child branch's changes and resets it to its parent's latest state. **Restore to Point in Time** rewinds a branch to an earlier moment inside the restore window, keeping its current state as a separate branch you can name.
+- **Compute endpoints**: create read-write or read-only computes with autoscaling limits and a scale-to-zero delay; **Edit** changes them later. Autoscaling covers 0.25 to 16 CU with at most 8 CU between the minimum and maximum; larger sizes are fixed. Active computes also have **Restart**, which applies pending configuration changes.
+- **Database owner**: **Edit** on a database hands it to another role on the branch.
+- **Usage charts**: projects and branches have a Metrics tab charting compute (CU-hours), root, child and instant-restore storage, and public and private network transfer from Neon's usage-based consumption API. Branches use per-branch history where Neon provides it and fall back to the project's. Organizations still on a legacy plan see active time, compute time, and data written instead.
 - **Password resolution** — infrawrench requests a fresh connection string for a branch when needed.
 - **Secret export to K8s** — branches export their connection strings as K8s secrets.
 - **SQL editor** per-branch (via the Postgres plugin’s output reference).

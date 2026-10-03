@@ -6,9 +6,18 @@ export const NeonProjectResourceType = rt({
   description: "A Neon project — contains branches, endpoints, and databases",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false }),
-    f("pgVersion", "PostgreSQL Version", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("region", "Region", { required: false, editable: false }),
+    f("pgVersion", "PostgreSQL Version", { required: false, editable: false }),
+    f("orgId", "Organization", { required: false, editable: false }),
+    f("proxyHost", "Proxy Host", { required: false, editable: false }),
+    f("computeLastActiveAt", "Compute Last Active", { required: false, editable: false }),
+    f("historyRetentionSeconds", "Restore Window (s)", {
+      kind: "number",
+      required: false,
+      description:
+        "How far back branches can be restored, in seconds (0 to 2592000). Plan limits: Free 6 h, Launch 7 days, Scale 30 days.",
+    }),
+    f("createdAt", "Created At", { required: false, editable: false }),
   ],
   outputs: [
     o("projectId", "Project ID"),
@@ -17,6 +26,7 @@ export const NeonProjectResourceType = rt({
     o("connectionString", "Connection String (default database)", { sensitive: true }),
   ],
   supportsCreate: true,
+  supportsUpdate: true,
   supportsMetrics: true,
   iconKey: "neon",
   peerIntegrations: [
