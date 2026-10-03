@@ -9,9 +9,9 @@ sidebar_order: 36
 - **Models** — the full catalogue across every modality, with per-million-token pricing, context length, tokenizer and knowledge cutoff.
 - **Model endpoints** — the thing that is genuinely unique to OpenRouter: each provider's own serving endpoint for a model, with its own price, uptime over 5 minutes / 30 minutes / 1 day, latency p50–p99 and throughput. This is how you tell whether "GPT-4 on OpenRouter" is the cheap slow one or the fast expensive one today.
 - **Providers** — every upstream OpenRouter routes to, with headquarters and datacenter regions for data-residency checks.
-- **API keys**: full CRUD, including per-key credit limits, reset interval (daily/weekly/monthly), expiry, whether BYOK usage counts against the limit, and the workspace the key belongs to.
+- **API keys**: full CRUD, including per-key credit limits, reset interval (daily/weekly/monthly), expiry, whether BYOK usage counts against the limit, the workspace the key belongs to, and a Metrics tab of its requests, spend, tokens and latency.
 - **Guardrails**: spend limits and routing policy (allowed and blocked providers and models, data regions, zero data retention, training opt-ins), with the API keys they apply to. Full CRUD.
-- **Workspaces**: default models and provider sort, observability logging settings, daily, weekly, monthly and lifetime budgets, and member count. Full CRUD.
+- **Workspaces**: default models and provider sort, observability logging settings, daily, weekly, monthly and lifetime budgets, member count, and a Metrics tab. Full CRUD.
 - **BYOK credentials**: your own keys for upstream providers, with fallback and BYOK-only routing. Create, edit and delete.
 
 ## Credentials
@@ -57,7 +57,18 @@ Editing a guardrail changes its limit, reset interval, flags and policy lists. T
 
 ## Costs and metrics
 
-Spend comes from `GET /activity`, broken down by day, model and upstream provider, so the cost page attributes spend to the provider that actually served the request. Each model's **Metrics** tab charts its daily spend and request count.
+Spend comes from `GET /activity`, broken down by day, model and upstream provider, so the cost page attributes spend to the provider that actually served the request.
+
+Models, API keys and workspaces each get a **Metrics** tab, read from OpenRouter's Analytics API (`POST /analytics/query`, the same data as the Activity dashboard) and filtered to that model, key or workspace:
+
+- requests, spend and BYOK spend
+- prompt, completion and reasoning tokens
+- prompt cache hit rate
+- provider time to first token at p50 and p90, and throughput (completion tokens per second) at p50
+
+Buckets are per minute for ranges up to six hours, hourly up to a week, and daily beyond that. OpenRouter only computes the latency and throughput percentiles for ranges up to 31 days, so wider ranges chart the usage series alone. A model is matched on both its catalogue id and its canonical slug, because analytics records requests under the dated permaslug. If the Analytics API refuses the key, a model's tab falls back to the daily spend, requests and tokens from `GET /activity`.
+
+<insert [OpenRouter API key Metrics tab showing requests, spend and time to first token over the last 30 days] here>
 
 Remaining account credit is read from `GET /credits` and shown on API key cards.
 
@@ -68,6 +79,5 @@ Remaining account credit is read from `GET /credits` and shown on API key cards.
 - **`GET /models` defaults to text-only.** Image, speech, transcription and embedding models only appear when you ask for every modality, which the plugin does. Dedicated audio models report `speech` and `transcription` as their output modality, not `audio` — `audio` is reserved for omni chat models.
 - **Prices arrive as decimal strings in USD per token.** The app normalizes everything to dollars per million tokens so models are comparable without mental arithmetic.
 - **Uploads are capped at 25 MB.**
-- **Analytics are not charted yet.** OpenRouter's `/analytics/query` takes metric and dimension names from `/analytics/meta` at runtime, so per-key series need a live account to map against.
 - **The plaintext of a new API key is shown once.** `POST /keys` is the only response that ever contains it; OpenRouter cannot return it again.
 - **Mid-stream errors are not HTTP errors.** Once a streamed response emits its first token the `200` is already committed, so a failure arrives as an SSE event with `finish_reason: "error"` rather than a status code. Nothing in this plugin streams, but it is worth knowing if you are debugging your own OpenRouter integration alongside it.

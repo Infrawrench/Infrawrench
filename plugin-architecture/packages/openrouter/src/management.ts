@@ -796,6 +796,8 @@ export function renderWorkspaceDetail(resource: ResourceInstance): DetailViewSch
   const f = resource.fields;
   const hasBudgets = f["budgetMonthly"] !== undefined;
   return {
+    // Analytics API series filtered to this workspace; see `fetchMetricSeries`.
+    metricsCapability: { defaultTimeRangeMs: 30 * 24 * 60 * 60 * 1000 },
     title: resource.displayName,
     subtitle: joinParts("OpenRouter Workspace", f["slug"]),
     status: { kind: "status-dot", status: "healthy" },

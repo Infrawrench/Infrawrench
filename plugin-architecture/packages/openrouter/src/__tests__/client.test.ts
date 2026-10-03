@@ -350,16 +350,44 @@ describe("fetchCostData", () => {
 });
 
 describe("fetchMetricSeries", () => {
-  it("returns spend and request series for one model", async () => {
-    installFetch(() =>
-      jsonResponse({
-        data: [
-          { date: "2026-07-20", model: "openai/gpt-4.1", usage: 1.5, requests: 10 },
-          { date: "2026-07-21", model: "openai/gpt-4.1", usage: 2.5, requests: 20 },
-          { date: "2026-07-21", model: "other/model", usage: 99, requests: 99 },
-        ],
-      }),
-    );
+  it("queries the analytics API filtered to the model and its permaslug", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    installFetch((url, init) => {
+      if (url.includes("/models?")) {
+        return jsonResponse({
+          data: [{ id: "openai/gpt-4.1", canonical_slug: "openai/gpt-4.1-2025-04-14" }],
+        });
+      }
+      if (url.endsWith("/analytics/query")) {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        bodies.push(body);
+        const metrics = body["metrics"] as string[];
+        if (metrics.includes("request_count")) {
+          return jsonResponse({
+            data: {
+              data: [
+                {
+                  date__day: "2026-07-21T00:00:00.000Z",
+                  request_count: "20",
+                  total_usage: 2.5,
+                  byok_usage: null,
+                  cache_hit_rate: 0.25,
+                },
+                { created_at__day: "2026-07-20", request_count: 10, total_usage: 1.5 },
+              ],
+              metadata: { query_time_ms: 5, row_count: 2, truncated: false },
+            },
+          });
+        }
+        return jsonResponse({
+          data: {
+            data: [{ date__day: "2026-07-20", p50_latency: 412, p50_throughput: 88.5 }],
+            metadata: { query_time_ms: 5, row_count: 1, truncated: false },
+          },
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
 
     const series = await client().fetchMetricSeries(
       "model",
@@ -367,9 +395,98 @@ describe("fetchMetricSeries", () => {
       ACCOUNT,
       { startMs: Date.parse("2026-07-01T00:00:00Z"), endMs: Date.parse("2026-07-28T00:00:00Z") },
     );
-    expect(series.map((s) => s.unit)).toEqual(["USD", "Requests"]);
+
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toMatchObject({
+      granularity: "day",
+      filters: [
+        { field: "model", operator: "in", value: ["openai/gpt-4.1", "openai/gpt-4.1-2025-04-14"] },
+      ],
+      time_range: { start: "2026-07-01T00:00:00.000Z", end: "2026-07-28T00:00:00.000Z" },
+    });
+    expect(bodies[1]?.["metrics"]).toEqual(["p50_latency", "p90_latency", "p50_throughput"]);
+
+    const byLabel = Object.fromEntries(series.map((s) => [s.label, s]));
+    expect(byLabel["Requests"]?.points.map((p) => p.value)).toEqual([10, 20]);
+    expect(byLabel["Spend"]?.unit).toBe("USD");
+    expect(byLabel["Cache hit rate"]?.points).toEqual([
+      { timestamp: Date.parse("2026-07-21T00:00:00Z"), value: 25 },
+    ]);
+    expect(byLabel["Time to first token p50"]?.unit).toBe("ms");
+    expect(byLabel["Throughput p50"]?.points[0]?.value).toBe(88.5);
+    // Null metrics are skipped, not charted as zero.
+    expect(byLabel["BYOK spend"]).toBeUndefined();
+  });
+
+  it("skips the latency query beyond 31 days and uses hourly buckets for a week", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    installFetch((url, init) => {
+      if (url.endsWith("/analytics/query")) {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return jsonResponse({ data: { data: [], metadata: { row_count: 0, truncated: false } } });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const end = Date.parse("2026-07-28T00:00:00Z");
+    await client().fetchMetricSeries("api-key", `${ACCOUNT}:api-key:abc123`, ACCOUNT, {
+      startMs: end - 60 * 24 * 60 * 60 * 1000,
+      endMs: end,
+    });
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]?.["filters"]).toEqual([
+      { field: "api_key_id", operator: "eq", value: "abc123" },
+    ]);
+
+    bodies.length = 0;
+    await client().fetchMetricSeries("workspace", `${ACCOUNT}:workspace:ws-1`, ACCOUNT, {
+      startMs: end - 7 * 24 * 60 * 60 * 1000,
+      endMs: end,
+    });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]?.["granularity"]).toBe("hour");
+    expect(bodies[0]?.["filters"]).toEqual([{ field: "workspace", operator: "eq", value: "ws-1" }]);
+  });
+
+  it("falls back to /activity for a model when the analytics API refuses the key", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/analytics/query")) {
+        return jsonResponse({ error: { code: 403, message: "forbidden" } }, 403);
+      }
+      if (url.includes("/models?")) return jsonResponse({ data: [] });
+      return jsonResponse({
+        data: [
+          {
+            date: "2026-07-20",
+            model: "openai/gpt-4.1",
+            usage: 1.5,
+            requests: 10,
+            prompt_tokens: 100,
+          },
+          { date: "2026-07-21", model: "openai/gpt-4.1", usage: 2.5, requests: 20 },
+          { date: "2026-07-21", model: "other/model", usage: 99, requests: 99 },
+        ],
+      });
+    });
+
+    const series = await client().fetchMetricSeries(
+      "model",
+      `${ACCOUNT}:model:openai/gpt-4.1`,
+      ACCOUNT,
+      { startMs: Date.parse("2026-07-01T00:00:00Z"), endMs: Date.parse("2026-07-28T00:00:00Z") },
+    );
+    expect(series.map((s) => s.label)).toEqual(["Spend", "Requests", "Prompt tokens"]);
     expect(series[0]?.points.map((p) => p.value)).toEqual([1.5, 2.5]);
     expect(series[1]?.points.map((p) => p.value)).toEqual([10, 20]);
+  });
+
+  it("returns nothing for an API key when the analytics API refuses the key", async () => {
+    installFetch(() => jsonResponse({ error: { code: 403, message: "forbidden" } }, 403));
+    const series = await client().fetchMetricSeries(
+      "api-key",
+      `${ACCOUNT}:api-key:abc123`,
+      ACCOUNT,
+    );
+    expect(series).toEqual([]);
   });
 });
 
