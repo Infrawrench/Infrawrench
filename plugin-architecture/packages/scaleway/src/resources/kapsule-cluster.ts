@@ -1,6 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
-
-const REGIONS = ["fr-par", "nl-ams", "pl-waw"];
+import { SCW_REGIONS as REGIONS } from "../locations.js";
 
 export const KapsuleClusterResourceType = rt({
   id: "kapsule-cluster",
@@ -8,16 +7,33 @@ export const KapsuleClusterResourceType = rt({
   description: "A managed Kubernetes cluster on Scaleway",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { kind: "enum", enumValues: REGIONS }),
-    f("version", "Kubernetes Version", { description: "e.g. 1.30.2" }),
-    f("nodeType", "Node Type", { description: "Node commercial type, e.g. DEV1-M, GP1-S" }),
-    f("nodeCount", "Node Count", { kind: "number" }),
+    f("region", "Region", { kind: "enum", enumValues: REGIONS, editable: false }),
+    f("version", "Kubernetes Version", {
+      description:
+        "e.g. 1.33.4. Changing it upgrades the control plane and every pool, one minor version at a time",
+    }),
+    f("nodeType", "Node Type", {
+      description: "Node commercial type of the first pool, e.g. DEV1-M, POP2-2C-8G",
+      editable: false,
+    }),
+    f("nodeCount", "Node Count", {
+      kind: "number",
+      description: "Total nodes. Editing it resizes the first pool",
+    }),
+    f("upgradeAvailable", "Upgrade Available", {
+      kind: "boolean",
+      required: false,
+      editable: false,
+    }),
+    f("poolCount", "Pools", { kind: "number", required: false, editable: false }),
+    f("cni", "CNI", { required: false, editable: false }),
     f("diskSizeGb", "Disk Size (GB)", {
       kind: "number",
       required: false,
       description: "Root volume size of the first node pool",
+      editable: false,
     }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { required: false, editable: false }),
   ],
   outputs: [
     o("kubeconfig", "Kubeconfig", {
@@ -37,6 +53,9 @@ export const KapsuleClusterResourceType = rt({
   ],
   iconKey: "kubernetes",
   supportsCreate: true,
+  // Edit = version upgrade (`POST /upgrade` with upgrade_pools) and the
+  // first pool's size (`PATCH /pools/{id}`).
+  supportsUpdate: true,
   supportsMetrics: true,
   peerIntegrations: [
     {

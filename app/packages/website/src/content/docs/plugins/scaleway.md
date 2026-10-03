@@ -1,16 +1,26 @@
 ---
 title: Scaleway
-description: Manage Scaleway Compute instances, Kapsule, managed RDB, Object Storage, and Block Storage.
+description: Manage Scaleway Instances, Kapsule, managed RDB, Object Storage, Block Storage, Load Balancers, networking, Serverless, Container Registry, DNS and Secret Manager.
 sidebar_order: 6
 ---
 
 ## What you can manage
 
-- Compute instances
-- Kapsule clusters (managed Kubernetes)
-- Managed RDB (Postgres / MySQL)
+- Compute instances (edit to rename, change the commercial type, toggle delete protection or set tags)
+- Kapsule clusters (managed Kubernetes; edit to upgrade the Kubernetes version or resize)
+- Managed RDB (Postgres / MySQL; edit to rename, move to a bigger node type or grow the volume)
 - Object Storage (S3-compatible)
 - Block Storage volumes
+- Flexible IPs (create, attach to an instance in the same zone, edit reverse DNS and tags)
+- Load Balancers (create with a type picker; edit name, description, tags and TLS compatibility level)
+- VPC Private Networks (create with optional subnets; rename)
+- Serverless Containers (edit image, scaling and limits; redeploy)
+- Serverless Functions (edit handler, scaling and memory; deploy)
+- Container Registry namespaces (create; edit description and visibility)
+- DNS zones and records (Scaleway Domains and DNS)
+- Secret Manager secrets (metadata only: names, paths, version counts; secret values are never read)
+
+Every region and zone is covered, including Milan (`it-mil`, zone `it-mil-1`), which opened in March 2026. Products Scaleway does not offer in a location are skipped there.
 
 ## Credentials
 
@@ -28,6 +38,12 @@ Scaleway Console → **Identity and Access Management → API keys → Generate 
 - **File browser** on Object Storage.
 - **Block volume attachment** to instances in the same zone.
 - Zone / region picker on resource creation.
+- **Instance actions**: power on/off, reboot, stop in place, and back up (snapshots every volume into a new image).
+- **Right-sizing** for instances, driven by the Cockpit CPU series (needs the optional Cockpit query token). Scaleway only changes an instance's type while it is stopped.
+- **Managed RDB create form** lists the engine versions and node types the API currently offers, so retired versions and out-of-stock node types never appear. Automatic backup status and retention are shown and count towards backup coverage.
+- **Kapsule** shows whether an upgrade is available. Upgrading upgrades the control plane and every pool; changing the node count resizes the first pool.
+- **DNS** records are created and edited one record at a time; leave the name empty (or `@`) for the zone apex.
+- A public Container Registry namespace is flagged on the security posture page.
 
 ## Tips & limits
 

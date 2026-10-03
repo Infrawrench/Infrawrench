@@ -1,16 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
-
-const ZONES = [
-  "fr-par-1",
-  "fr-par-2",
-  "fr-par-3",
-  "nl-ams-1",
-  "nl-ams-2",
-  "nl-ams-3",
-  "pl-waw-1",
-  "pl-waw-2",
-  "pl-waw-3",
-];
+import { SCW_ZONES as ZONES } from "../locations.js";
 
 export const InstanceResourceType = rt({
   id: "instance",
@@ -19,16 +8,21 @@ export const InstanceResourceType = rt({
   description: "A Scaleway virtual machine",
   fields: [
     f("name", "Name"),
-    f("zone", "Zone", { kind: "enum", enumValues: ZONES }),
+    f("zone", "Zone", { kind: "enum", enumValues: ZONES, editable: false }),
     f("commercialType", "Commercial Type", {
-      description: "Instance type, e.g. DEV1-S, GP1-S, PRO2-S",
+      description:
+        "Instance type, e.g. DEV1-S, POP2-2C-8G, PRO2-S. Changing it requires the instance to be stopped",
     }),
-    f("image", "Image", { description: "Image ID or name" }),
+    f("image", "Image", { description: "Image ID or name", editable: false }),
     f("state", "State", {
       kind: "enum",
       required: false,
-      enumValues: ["running", "stopped", "stopped in place", "starting", "stopping"],
+      enumValues: ["running", "stopped", "stopped in place", "starting", "stopping", "locked"],
+      editable: false,
     }),
+    f("protected", "Delete Protection", { kind: "boolean", required: false }),
+    f("securityGroupId", "Security Group", { required: false, editable: false }),
+    f("tags", "Tags", { required: false, description: "Comma-separated" }),
   ],
   outputs: [o("publicIp", "Public IP"), o("privateIp", "Private IP")],
   iconKey: "instance",
@@ -64,5 +58,17 @@ export const InstanceResourceType = rt({
     hiddenFieldKeys: ["sshPublicKey"],
   },
   supportsCreate: true,
+  // Edit = `PATCH /servers/{id}`: name, commercial type (stopped only),
+  // delete protection and tags.
+  supportsUpdate: true,
   supportsMetrics: true,
+  rightsizing: {
+    sizeFieldKey: "commercialType",
+    regionFieldKey: "zone",
+    cpuMetric: { seriesLabel: "CPU Usage" },
+    priceCurrency: "EUR",
+    sizeFamilyPattern: "^([A-Z0-9]+)-",
+    resizeNote:
+      "Scaleway only changes an Instance's type while it is stopped, and not while it is in a placement group.",
+  },
 });
