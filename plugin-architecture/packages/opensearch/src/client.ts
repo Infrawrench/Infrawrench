@@ -18,6 +18,22 @@ import type {
 } from "@infrawrench/plugin-base";
 import { decodePromptArgs } from "@infrawrench/plugin-base";
 import { osRequest, parseConfig, type OpenSearchConfig } from "./api.js";
+import {
+  buildAliasesSection,
+  buildDataStreamsSection,
+  buildIsmPoliciesSection,
+  buildSmPoliciesSection,
+  buildSnapshotsSection,
+  buildTopQueriesSection,
+  buildUnassignedShardsSection,
+  type CatAlias,
+  type CatShard,
+  type DataStreamInfo,
+  type IsmPolicyEntry,
+  type SmPolicyEntry,
+  type SnapshotInfo,
+  type TopQuery,
+} from "./admin.js";
 
 interface ClusterHealth {
   cluster_name: string;
@@ -58,7 +74,11 @@ interface NodeInfo {
   name: string;
   roles?: string[];
   ip?: string;
-  os?: { available_processors?: number };
+  os?: { available_processors?: number; cpu?: { percent?: number } };
+  indices?: {
+    search?: { query_total?: number };
+    indexing?: { index_total?: number };
+  };
   jvm?: { mem?: { heap_used_percent?: number; heap_max_in_bytes?: number } };
   fs?: { total?: { total_in_bytes?: number; available_in_bytes?: number } };
 }
@@ -199,6 +219,9 @@ export class OpenSearchClient implements PluginClient {
       }),
       osRequest<Record<string, unknown>>(this.config, http, "/_snapshot/_all"),
     ]);
+    const extras = await this.fetchAdminExtras(
+      reposR.status === "fulfilled" ? Object.keys(reposR.value.body ?? {}) : [],
+    );
 
     const root = rootR.status === "fulfilled" ? rootR.value.body : undefined;
     const health = healthR.status === "fulfilled" ? healthR.value.body : undefined;
@@ -222,7 +245,55 @@ export class OpenSearchClient implements PluginClient {
         __nodes: JSON.stringify(nodes),
         __indices: JSON.stringify(indices),
         __repos: JSON.stringify(repos),
+        ...extras,
       },
+    };
+  }
+
+  /**
+   * Best-effort reads for the admin tabs. Each value is JSON, or "" when the
+   * endpoint refused (plugin missing, no permission), which renders as "not
+   * available" rather than as an empty list.
+   */
+  private async fetchAdminExtras(repoNames: string[]): Promise<Record<string, string>> {
+    const http = this.services?.http;
+    const [aliasesR, streamsR, shardsR, ismR, smR, topR, ...snapshotRs] = await Promise.allSettled([
+      osRequest<CatAlias[]>(this.config, http, "/_cat/aliases", { query: { format: "json" } }),
+      osRequest<{ data_streams?: DataStreamInfo[] }>(this.config, http, "/_data_stream"),
+      osRequest<CatShard[]>(this.config, http, "/_cat/shards", {
+        query: { format: "json", h: "index,shard,prirep,state,unassigned.reason,node" },
+      }),
+      osRequest<{ policies?: IsmPolicyEntry[] }>(this.config, http, "/_plugins/_ism/policies", {
+        query: { size: 100 },
+      }),
+      osRequest<{ policies?: SmPolicyEntry[] }>(this.config, http, "/_plugins/_sm/policies"),
+      osRequest<{ top_queries?: TopQuery[] }>(this.config, http, "/_insights/top_queries", {
+        query: { type: "latency" },
+      }),
+      ...repoNames.map((repo) =>
+        osRequest<{ snapshots?: SnapshotInfo[] }>(
+          this.config,
+          http,
+          `/_snapshot/${encodeURIComponent(repo)}/_all`,
+        ),
+      ),
+    ]);
+    const json = <T>(r: PromiseSettledResult<{ body: T }>, pick: (body: T) => unknown): string =>
+      r.status === "fulfilled" ? JSON.stringify(pick(r.value.body) ?? []) : "";
+    const snapshots: Record<string, SnapshotInfo[] | null> = {};
+    repoNames.forEach((repo, i) => {
+      const r = snapshotRs[i];
+      const list = r?.status === "fulfilled" ? r.value.body?.snapshots : null;
+      snapshots[repo] = Array.isArray(list) ? list : r?.status === "fulfilled" ? [] : null;
+    });
+    return {
+      __aliases: json(aliasesR, (b) => b),
+      __dataStreams: json(streamsR, (b) => b?.data_streams),
+      __shards: json(shardsR, (b) => b),
+      __ismPolicies: json(ismR, (b) => b?.policies),
+      __smPolicies: json(smR, (b) => b?.policies),
+      __topQueries: json(topR, (b) => b?.top_queries),
+      __snapshots: JSON.stringify(snapshots),
     };
   }
 
@@ -233,6 +304,34 @@ export class OpenSearchClient implements PluginClient {
     const indices = parseJson<CatIndex[]>(resource.fields["__indices"]) ?? [];
     const repos = parseJson<Record<string, { type: string }>>(resource.fields["__repos"]) ?? {};
     const status = healthToStatus(health?.status);
+    const aliases = parseJsonArray<CatAlias>(resource.fields["__aliases"]);
+    const dataStreams = parseJsonArray<DataStreamInfo>(resource.fields["__dataStreams"]);
+    const shards = parseJsonArray<CatShard>(resource.fields["__shards"]) ?? [];
+    const ismPolicies = parseJsonArray<IsmPolicyEntry>(resource.fields["__ismPolicies"]);
+    const smPolicies = parseJsonArray<SmPolicyEntry>(resource.fields["__smPolicies"]);
+    const topQueries = parseJsonArray<TopQuery>(resource.fields["__topQueries"]);
+    const snapshotsByRepo =
+      parseJson<Record<string, SnapshotInfo[] | null>>(resource.fields["__snapshots"]) ?? {};
+    const indexOptions = indices
+      .map((i) => i.index)
+      .sort()
+      .map((name) => ({ id: name, label: name }));
+    const repoOptions = Object.keys(repos).map((name) => ({ id: name, label: name }));
+    const ismOptions = (ismPolicies ?? [])
+      .map((p) => p.policy?.policy_id ?? p._id ?? "")
+      .filter((id) => id.length > 0)
+      .map((id) => ({ id, label: id }));
+    const indexField = (key: string, label: string) =>
+      indexOptions.length > 0
+        ? {
+            key,
+            label,
+            kind: "select" as const,
+            required: true,
+            options: indexOptions,
+            defaultValue: indexOptions[0]!.id,
+          }
+        : { key, label, kind: "text" as const, required: true };
 
     const overviewSection: SectionNode = {
       kind: "section",
@@ -322,8 +421,78 @@ export class OpenSearchClient implements PluginClient {
                   },
                 ],
         },
+        ...Object.keys(repos).map((repo) =>
+          buildSnapshotsSection(repo, snapshotsByRepo[repo] ?? undefined),
+        ),
+        buildSmPoliciesSection(smPolicies),
       ],
       headerActions: [
+        ...(repoOptions.length > 0 && smPolicies
+          ? [
+              {
+                kind: "action" as const,
+                label: "Create snapshot policy",
+                action: {
+                  type: "prompt-nosql-command" as const,
+                  command: "create-sm-policy",
+                  title: "Create snapshot policy",
+                  description:
+                    "Take snapshots on a schedule and delete old ones automatically (Snapshot Management).",
+                  fields: [
+                    { key: "name", label: "Policy name", kind: "text" as const, required: true },
+                    {
+                      key: "repository",
+                      label: "Repository",
+                      kind: "select" as const,
+                      required: true,
+                      options: repoOptions,
+                      defaultValue: repoOptions[0]!.id,
+                    },
+                    {
+                      key: "schedule",
+                      label: "Take a snapshot",
+                      kind: "select" as const,
+                      required: true,
+                      options: SM_SCHEDULES.map((s) => ({ id: s.cron, label: s.label })),
+                      defaultValue: "0 2 * * *",
+                    },
+                    {
+                      key: "maxAge",
+                      label: "Delete snapshots older than",
+                      kind: "select" as const,
+                      required: false,
+                      options: [
+                        { id: "", label: "Never" },
+                        { id: "7d", label: "7 days" },
+                        { id: "14d", label: "14 days" },
+                        { id: "30d", label: "30 days" },
+                        { id: "90d", label: "90 days" },
+                        { id: "365d", label: "1 year" },
+                      ],
+                      defaultValue: "30d",
+                    },
+                    {
+                      key: "minCount",
+                      label: "Always keep at least",
+                      kind: "number" as const,
+                      required: false,
+                      minValue: 1,
+                      defaultValue: "7",
+                    },
+                    {
+                      key: "indices",
+                      label: "Indices",
+                      kind: "text" as const,
+                      required: false,
+                      defaultValue: "*",
+                      description: "Index pattern to include; * takes every index.",
+                    },
+                  ],
+                  submitLabel: "Create",
+                },
+              },
+            ]
+          : []),
         {
           kind: "action",
           label: "Register repository",
@@ -391,10 +560,16 @@ export class OpenSearchClient implements PluginClient {
           command: "reindex",
           title: "Reindex documents",
           description:
-            "Copy documents from one index to another. Source and destination can live on the same cluster.",
+            "Copy documents from one index to another on this cluster. Runs as a background task; large copies keep going after the dialog closes.",
           fields: [
-            { key: "source", label: "Source index", kind: "text", required: true },
-            { key: "dest", label: "Destination index", kind: "text", required: true },
+            indexField("source", "Source index"),
+            {
+              key: "dest",
+              label: "Destination index",
+              kind: "text",
+              required: true,
+              description: "Created if it does not exist.",
+            },
           ],
           submitLabel: "Reindex",
         },
@@ -408,7 +583,7 @@ export class OpenSearchClient implements PluginClient {
           title: "Run search query",
           description: "Run a query against an index. Returns the first 10 hits.",
           fields: [
-            { key: "index", label: "Index", kind: "text", required: true },
+            indexField("index", "Index"),
             {
               key: "query",
               label: "Query DSL (JSON)",
@@ -430,13 +605,163 @@ export class OpenSearchClient implements PluginClient {
       },
     ];
 
+    const unassignedSection = buildUnassignedShardsSection(shards);
+    if (unassignedSection) {
+      headerActions.push({
+        kind: "action",
+        label: "Retry allocation",
+        action: {
+          type: "plugin-action",
+          actionId: "retry-allocation",
+          confirmMessage:
+            "Ask the cluster to retry shards whose allocation failed too many times? Do this after fixing the cause (disk space, node count).",
+          successMessage: "Allocation retry requested.",
+        },
+      });
+    }
+
+    const aliasesTab: DetailViewTab = {
+      id: "aliases",
+      label: "Aliases & streams",
+      sections: [buildAliasesSection(aliases), buildDataStreamsSection(dataStreams)],
+      headerActions:
+        indexOptions.length > 0
+          ? [
+              {
+                kind: "action",
+                label: "Add alias",
+                action: {
+                  type: "prompt-nosql-command",
+                  command: "add-alias",
+                  title: "Add alias",
+                  fields: [
+                    indexField("index", "Index"),
+                    { key: "alias", label: "Alias name", kind: "text", required: true },
+                    {
+                      key: "writeIndex",
+                      label: "Write index",
+                      kind: "select",
+                      required: false,
+                      options: [
+                        { id: "", label: "Not set" },
+                        { id: "true", label: "Yes: writes to the alias land here" },
+                        { id: "false", label: "No" },
+                      ],
+                      defaultValue: "",
+                    },
+                  ],
+                  submitLabel: "Add",
+                },
+              },
+            ]
+          : [],
+    };
+
+    const lifecycleTab: DetailViewTab = {
+      id: "lifecycle",
+      label: "Index lifecycle",
+      sections: [buildIsmPoliciesSection(ismPolicies)],
+      headerActions: ismPolicies
+        ? [
+            {
+              kind: "action",
+              label: "Create retention policy",
+              action: {
+                type: "prompt-nosql-command",
+                command: "create-ism-policy",
+                title: "Create retention policy",
+                description:
+                  "An ISM policy that deletes indices once they reach an age. New indices matching the pattern pick it up automatically.",
+                fields: [
+                  { key: "policyId", label: "Policy ID", kind: "text", required: true },
+                  {
+                    key: "pattern",
+                    label: "Index pattern",
+                    kind: "text",
+                    required: true,
+                    placeholder: "logs-*",
+                    description: "Avoid a bare *: it would also match system indices.",
+                  },
+                  {
+                    key: "deleteAfter",
+                    label: "Delete indices older than",
+                    kind: "select",
+                    required: true,
+                    options: [
+                      { id: "1d", label: "1 day" },
+                      { id: "7d", label: "7 days" },
+                      { id: "14d", label: "14 days" },
+                      { id: "30d", label: "30 days" },
+                      { id: "90d", label: "90 days" },
+                      { id: "365d", label: "1 year" },
+                    ],
+                    defaultValue: "30d",
+                  },
+                ],
+                submitLabel: "Create",
+              },
+            },
+            ...(ismOptions.length > 0 && indexOptions.length > 0
+              ? [
+                  {
+                    kind: "action" as const,
+                    label: "Apply policy to index",
+                    action: {
+                      type: "prompt-nosql-command" as const,
+                      command: "attach-ism-policy",
+                      title: "Apply ISM policy",
+                      description:
+                        "Put an existing index under an ISM policy. An index that already has a policy keeps it; detach it first.",
+                      fields: [
+                        indexField("index", "Index"),
+                        {
+                          key: "policyId",
+                          label: "Policy",
+                          kind: "select" as const,
+                          required: true,
+                          options: ismOptions,
+                          defaultValue: ismOptions[0]!.id,
+                        },
+                      ],
+                      submitLabel: "Apply",
+                    },
+                  },
+                  {
+                    kind: "action" as const,
+                    label: "Detach policy",
+                    action: {
+                      type: "prompt-nosql-command" as const,
+                      command: "detach-ism-policy",
+                      title: "Detach ISM policy",
+                      fields: [indexField("index", "Index")],
+                      submitLabel: "Detach",
+                    },
+                  },
+                ]
+              : []),
+          ]
+        : [],
+    };
+
+    const insightsTab: DetailViewTab = {
+      id: "query-insights",
+      label: "Query insights",
+      sections: [buildTopQueriesSection(topQueries)],
+    };
+
     return {
       title: resource.displayName,
       subtitle: `${this.endpointHost()} · ${resource.fields["version"] ?? "OpenSearch"}`,
       status: { kind: "status-dot", status },
-      sections: [overviewSection, healthSection, nodesSection, indicesSection],
+      sections: [
+        overviewSection,
+        healthSection,
+        ...(unassignedSection ? [unassignedSection] : []),
+        nodesSection,
+        indicesSection,
+      ],
       headerActions,
-      customTabs: [snapshotsTab],
+      customTabs: [snapshotsTab, aliasesTab, lifecycleTab, insightsTab],
       metricsCapability: { defaultTimeRangeMs: 60 * 60 * 1000 },
     };
   }
@@ -523,7 +848,7 @@ export class OpenSearchClient implements PluginClient {
         osRequest<{ nodes: Record<string, NodeInfo> }>(
           this.config,
           this.services?.http,
-          "/_nodes/stats/jvm,fs",
+          "/_nodes/stats/jvm,fs,os,indices",
         ),
       ]);
       const health = healthResp.body;
@@ -549,7 +874,32 @@ export class OpenSearchClient implements PluginClient {
           ? fsUsedPctValues.reduce((a, b) => a + b, 0) / fsUsedPctValues.length
           : 0;
 
+      const cpuValues = nodes
+        .map((n) => n.os?.cpu?.percent)
+        .filter((v): v is number => typeof v === "number");
+      const avgCpu =
+        cpuValues.length > 0 ? cpuValues.reduce((a, b) => a + b, 0) / cpuValues.length : 0;
+      const sum = (pick: (n: NodeInfo) => number | undefined) =>
+        nodes.reduce((total, n) => total + (pick(n) ?? 0), 0);
+
       return [
+        {
+          label: "Avg CPU %",
+          unit: "%",
+          points: [{ timestamp: ts, value: Math.round(avgCpu) }],
+        },
+        {
+          label: "Pending tasks",
+          points: [{ timestamp: ts, value: health?.number_of_pending_tasks ?? 0 }],
+        },
+        {
+          label: "Search queries (cumulative)",
+          points: [{ timestamp: ts, value: sum((n) => n.indices?.search?.query_total) }],
+        },
+        {
+          label: "Indexing operations (cumulative)",
+          points: [{ timestamp: ts, value: sum((n) => n.indices?.indexing?.index_total) }],
+        },
         {
           label: "Active shards %",
           unit: "%",
@@ -654,11 +1004,22 @@ export class OpenSearchClient implements PluginClient {
       case "restore-snapshot": {
         const [repo, snap] = arg.split("/");
         if (!repo || !snap) throw new Error(`restore-snapshot: expected repo/snapshot, got ${arg}`);
+        // A plain restore fails on any index that still exists, which is
+        // nearly always the case; restore beside the originals instead.
+        // System (dot) indices and global state are left alone.
         await osRequest(
           this.config,
           this.services?.http,
           `/_snapshot/${encodeURIComponent(repo)}/${encodeURIComponent(snap)}/_restore`,
-          { method: "POST", body: {} },
+          {
+            method: "POST",
+            body: {
+              indices: "*,-.*",
+              include_global_state: false,
+              rename_pattern: "(.+)",
+              rename_replacement: "restored-$1",
+            },
+          },
         );
         return;
       }
@@ -678,6 +1039,61 @@ export class OpenSearchClient implements PluginClient {
         );
         return;
       }
+      case "remove-alias": {
+        const slash = arg.indexOf("/");
+        if (slash <= 0) throw new Error(`remove-alias: expected index/alias, got ${arg}`);
+        await osRequest(this.config, this.services?.http, "/_aliases", {
+          method: "POST",
+          body: {
+            actions: [{ remove: { index: arg.slice(0, slash), alias: arg.slice(slash + 1) } }],
+          },
+        });
+        return;
+      }
+      case "rollover":
+        await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}/_rollover`, {
+          method: "POST",
+        });
+        return;
+      case "delete-data-stream":
+        await osRequest(
+          this.config,
+          this.services?.http,
+          `/_data_stream/${encodeURIComponent(arg)}`,
+          { method: "DELETE" },
+        );
+        return;
+      case "delete-ism-policy":
+        await osRequest(
+          this.config,
+          this.services?.http,
+          `/_plugins/_ism/policies/${encodeURIComponent(arg)}`,
+          { method: "DELETE" },
+        );
+        return;
+      case "start-sm-policy":
+      case "stop-sm-policy":
+        await osRequest(
+          this.config,
+          this.services?.http,
+          `/_plugins/_sm/policies/${encodeURIComponent(arg)}/${verb === "start-sm-policy" ? "_start" : "_stop"}`,
+          { method: "POST" },
+        );
+        return;
+      case "delete-sm-policy":
+        await osRequest(
+          this.config,
+          this.services?.http,
+          `/_plugins/_sm/policies/${encodeURIComponent(arg)}`,
+          { method: "DELETE" },
+        );
+        return;
+      case "retry-allocation":
+        await osRequest(this.config, this.services?.http, "/_cluster/reroute", {
+          method: "POST",
+          query: { retry_failed: true },
+        });
+        return;
       default:
         throw new Error(`OpenSearch plugin: unknown action "${actionId}"`);
     }
@@ -744,16 +1160,123 @@ export class OpenSearchClient implements PluginClient {
       case "reindex": {
         const source = required(form["source"], "source");
         const dest = required(form["dest"], "dest");
-        const r = await osRequest<{ took?: number; created?: number }>(
+        // Asynchronous: a large reindex outlives the request timeout. The
+        // response carries the task id to follow in the Tasks API.
+        const r = await osRequest<{ task?: string }>(
           this.config,
           this.services?.http,
           `/_reindex`,
           {
             method: "POST",
+            query: { wait_for_completion: false },
             body: { source: { index: source }, dest: { index: dest } },
           },
         );
-        return { ok: true, took: r.body?.took, created: r.body?.created };
+        return { ok: true, task: r.body?.task };
+      }
+      case "add-alias": {
+        const index = required(form["index"], "index");
+        const alias = required(form["alias"], "alias");
+        const add: Record<string, unknown> = { index, alias };
+        if (form["writeIndex"] === "true" || form["writeIndex"] === "false") {
+          add["is_write_index"] = form["writeIndex"] === "true";
+        }
+        await osRequest(this.config, this.services?.http, "/_aliases", {
+          method: "POST",
+          body: { actions: [{ add }] },
+        });
+        return { ok: true };
+      }
+      case "attach-ism-policy": {
+        const index = required(form["index"], "index");
+        const policyId = required(form["policyId"], "policyId");
+        const r = await osRequest<{
+          failures?: boolean;
+          failed_indices?: Array<{ reason?: string }>;
+        }>(this.config, this.services?.http, `/_plugins/_ism/add/${encodeURIComponent(index)}`, {
+          method: "POST",
+          body: { policy_id: policyId },
+        });
+        // A 200 can still carry per-index failures (e.g. the index already
+        // has a policy); surface those instead of reporting success.
+        if (r.body?.failures) {
+          throw new Error(r.body.failed_indices?.[0]?.reason ?? "The policy was not applied");
+        }
+        return { ok: true };
+      }
+      case "detach-ism-policy": {
+        const index = required(form["index"], "index");
+        await osRequest(
+          this.config,
+          this.services?.http,
+          `/_plugins/_ism/remove/${encodeURIComponent(index)}`,
+          { method: "POST" },
+        );
+        return { ok: true };
+      }
+      case "create-ism-policy": {
+        const policyId = required(form["policyId"], "policyId");
+        const pattern = required(form["pattern"], "pattern");
+        if (pattern === "*") {
+          throw new Error("Use a narrower pattern than * so system indices are not deleted");
+        }
+        const deleteAfter = required(form["deleteAfter"], "deleteAfter");
+        await osRequest(
+          this.config,
+          this.services?.http,
+          `/_plugins/_ism/policies/${encodeURIComponent(policyId)}`,
+          {
+            method: "PUT",
+            body: {
+              policy: {
+                description: `Delete ${pattern} indices older than ${deleteAfter}`,
+                default_state: "hot",
+                states: [
+                  {
+                    name: "hot",
+                    actions: [],
+                    transitions: [
+                      { state_name: "delete", conditions: { min_index_age: deleteAfter } },
+                    ],
+                  },
+                  { name: "delete", actions: [{ delete: {} }], transitions: [] },
+                ],
+                ism_template: [{ index_patterns: [pattern], priority: 100 }],
+              },
+            },
+          },
+        );
+        return { ok: true };
+      }
+      case "create-sm-policy": {
+        const name = required(form["name"], "name");
+        const repository = required(form["repository"], "repository");
+        const cron = required(form["schedule"], "schedule");
+        const condition: Record<string, unknown> = {};
+        if (form["maxAge"]) condition["max_age"] = form["maxAge"];
+        if (form["minCount"]) condition["min_count"] = Number(form["minCount"]);
+        const body: Record<string, unknown> = {
+          description: `Snapshots to ${repository}`,
+          creation: { schedule: { cron: { expression: cron, timezone: "UTC" } } },
+          snapshot_config: {
+            repository,
+            indices: form["indices"]?.trim() || "*",
+            include_global_state: "false",
+          },
+        };
+        if (Object.keys(condition).length > 0 && condition["max_age"]) {
+          body["deletion"] = {
+            schedule: { cron: { expression: "0 3 * * *", timezone: "UTC" } },
+            condition,
+          };
+        }
+        await osRequest(
+          this.config,
+          this.services?.http,
+          `/_plugins/_sm/policies/${encodeURIComponent(name)}`,
+          { method: "POST", body },
+        );
+        return { ok: true };
       }
       case "search": {
         const index = required(form["index"], "index");
@@ -960,6 +1483,14 @@ function buildReposTable(repos: Record<string, { type: string }>): TableNode {
   };
 }
 
+const SM_SCHEDULES = [
+  { cron: "0 * * * *", label: "Every hour" },
+  { cron: "0 */6 * * *", label: "Every 6 hours" },
+  { cron: "0 */12 * * *", label: "Every 12 hours" },
+  { cron: "0 2 * * *", label: "Daily at 02:00 UTC" },
+  { cron: "0 2 * * 0", label: "Weekly, Sunday 02:00 UTC" },
+];
+
 function required(v: string | undefined, name: string): string {
   if (!v || !v.trim()) throw new Error(`Missing required field: ${name}`);
   return v.trim();
@@ -972,6 +1503,12 @@ function parseJson<T>(v: unknown): T | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Like parseJson, but anything other than an array reads as "not available". */
+function parseJsonArray<T>(v: unknown): T[] | undefined {
+  const parsed = parseJson<unknown>(v);
+  return Array.isArray(parsed) ? (parsed as T[]) : undefined;
 }
 
 function formatBytes(bytes: number): string {

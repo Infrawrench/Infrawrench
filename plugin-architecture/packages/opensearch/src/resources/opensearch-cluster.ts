@@ -4,7 +4,7 @@ export const OpenSearchClusterResourceType = rt({
   name: "OpenSearch Cluster",
   id: "opensearch-cluster",
   description:
-    "An OpenSearch (or Elasticsearch-compatible) cluster — browse indices, run searches, manage snapshots",
+    "An OpenSearch (or Elasticsearch-compatible) cluster: browse indices, run searches, manage snapshots, aliases, data streams and lifecycle policies",
   fields: [
     f("endpoint", "Endpoint"),
     f("version", "Version", { required: false }),
