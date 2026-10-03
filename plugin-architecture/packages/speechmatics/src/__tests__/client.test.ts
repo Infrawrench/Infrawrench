@@ -131,7 +131,7 @@ describe("account (the singleton that hosts the Speech tab)", () => {
     expect(resources).toHaveLength(1);
     const account = resources[0]!;
     expect(account.id).toBe(`${ACCOUNT}:account:default`);
-    expect(c.renderDetail(account).speechPanel?.modes).toEqual(["stt"]);
+    expect(c.renderDetail(account).speechPanel?.modes).toEqual(["stt", "tts"]);
     expect(c.renderDetail(account).speechPanel?.languages?.map((l) => l.id)).toEqual([
       "en",
       "multi",
@@ -226,7 +226,7 @@ describe("management API", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("hits mp.api.speechmatics.com with the management token", async () => {
+  it("hits mp.speechmatics.com with the management token", async () => {
     installFetch((url) => {
       if (url.endsWith("/projects")) {
         return response([{ project_id: 42, name: "Prod", is_default: true, is_active: true }]);
@@ -238,9 +238,9 @@ describe("management API", () => {
     const [project] = await c.listResources("project", ACCOUNT);
     const [key] = await c.listResources("api-key", ACCOUNT);
 
-    expect(calls[0]?.url).toBe("https://mp.api.speechmatics.com/v1/projects");
+    expect(calls[0]?.url).toBe("https://mp.speechmatics.com/v1/projects");
     expect(authHeader(calls[0]?.init)).toBe("Bearer mgmt-token");
-    expect(calls[1]?.url).toBe("https://mp.api.speechmatics.com/v1/api-keys");
+    expect(calls[2]?.url).toBe("https://mp.speechmatics.com/v1/api-keys?project_id=42");
     expect(project?.fields["projectId"]).toBe("42");
     expect(key?.fields["apiKeyId"]).toBe("ak_1");
   });
@@ -261,7 +261,7 @@ describe("deleteResource", () => {
       `${ACCOUNT}:api-key:ak_1`,
       ACCOUNT,
     );
-    expect(calls[0]?.url).toBe("https://mp.api.speechmatics.com/v1/api-keys/ak_1");
+    expect(calls[0]?.url).toBe("https://mp.speechmatics.com/v1/api-keys/ak_1");
     expect(calls[0]?.init?.method).toBe("DELETE");
   });
 });
@@ -653,5 +653,144 @@ describe("resolveOutput", () => {
       "https://us1.asr.api.speechmatics.com/v2/jobs/xyz/transcript?format=txt",
     );
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("management API writes", () => {
+  const token = { managementToken: "mgmt-token" };
+
+  it("lists keys project by project so each one knows its project", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/projects")) return response([{ project_id: 7, name: "Prod" }]);
+      return response([{ apikey_id: "ak_9", name: "ci" }]);
+    });
+    const [key] = await client(token).listResources("api-key", ACCOUNT);
+    expect(calls[1]?.url).toBe("https://mp.speechmatics.com/v1/api-keys?project_id=7");
+    expect(key?.fields["projectId"]).toBe("7");
+    expect(key?.fields["projectName"]).toBe("Prod");
+  });
+
+  it("falls back to the unfiltered key list when projects cannot be read", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/projects")) return response({ code: 403, error: "Forbidden" }, 403);
+      return response([{ apikey_id: "ak_1" }]);
+    });
+    const keys = await client(token).listResources("api-key", ACCOUNT);
+    expect(calls[1]?.url).toBe("https://mp.speechmatics.com/v1/api-keys");
+    expect(keys).toHaveLength(1);
+  });
+
+  it("creates a project with its name and description", async () => {
+    installFetch(() => response({ project_id: 12, name: "Staging", description: "QA" }, 201));
+    const project = await client(token).createResource("project", ACCOUNT, {
+      name: "Staging",
+      description: "QA",
+    });
+    expect(calls[0]?.url).toBe("https://mp.speechmatics.com/v1/projects");
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      name: "Staging",
+      description: "QA",
+    });
+    expect(project.id).toBe(`${ACCOUNT}:project:12`);
+  });
+
+  it("renames a project with PUT and only the name", async () => {
+    installFetch(() => response({ project_id: 12, name: "Renamed" }));
+    const project = await client(token).updateResource(
+      "project",
+      `${ACCOUNT}:project:12`,
+      ACCOUNT,
+      {
+        name: "Renamed",
+        description: "ignored",
+      },
+    );
+    expect(calls[0]?.url).toBe("https://mp.speechmatics.com/v1/projects/12");
+    expect(calls[0]?.init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ name: "Renamed" });
+    expect(project.displayName).toBe("Renamed");
+  });
+
+  it("deletes a project through the management host", async () => {
+    installFetch(() => response({}, 200));
+    await client(token).deleteResource("project", `${ACCOUNT}:project:12`, ACCOUNT);
+    expect(calls[0]?.url).toBe("https://mp.speechmatics.com/v1/projects/12");
+    expect(calls[0]?.init?.method).toBe("DELETE");
+  });
+
+  it("creates a permanent key and surfaces key_value once", async () => {
+    installFetch(() => response({ apikey_id: "ak_new", key_value: "secret-value" }, 201));
+    const key = await client(token).createResource("api-key", ACCOUNT, {
+      projectId: "12",
+      name: "deploy",
+      type: "rt",
+      clientRef: "",
+    });
+    expect(calls[0]?.url).toBe("https://mp.speechmatics.com/v1/api-keys?type=rt");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ project_id: 12, name: "deploy" });
+    expect(key.resolvedOutputs["apiKey"]).toBe("secret-value");
+    expect(key.fields["projectId"]).toBe("12");
+  });
+
+  it("offers a project picker defaulting to the default project", async () => {
+    installFetch(() =>
+      response([
+        { project_id: 1, name: "Other" },
+        { project_id: 2, name: "Main", is_default: true },
+      ]),
+    );
+    const config = await client(token).getCreateConfig("api-key");
+    const picker = config.fields.find((f) => f.key === "projectId");
+    expect(picker?.defaultValue).toBe("2");
+    expect(picker?.options?.map((o) => o.id)).toEqual(["1", "2"]);
+  });
+});
+
+describe("getLogs", () => {
+  it("tails the job log as plain text", async () => {
+    installFetch(() => response("line 1\nline 2\nline 3\n"));
+    const logs = await client().getLogs("job", `${ACCOUNT}:job:j1`, ACCOUNT, { tailLines: 2 });
+    expect(calls[0]?.url).toBe("https://eu1.asr.api.speechmatics.com/v2/jobs/j1/log");
+    expect(logs.text).toBe("line 2\nline 3\n");
+  });
+
+  it("explains an expired log instead of throwing", async () => {
+    installFetch(() => response({ code: 410, error: "File Expired" }, 410));
+    const logs = await client().getLogs("job", `${ACCOUNT}:job:j1`, ACCOUNT, {});
+    expect(logs.text).toMatch(/seven days/);
+  });
+});
+
+describe("synthesizeSpeech", () => {
+  it("posts the text to the TTS preview host and returns WAV", async () => {
+    const wav = new Uint8Array(44 + 32_000);
+    vi.spyOn(globalThis, "fetch").mockImplementation((async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), ...(init !== undefined && { init }) });
+      return { ok: true, status: 200, arrayBuffer: async () => wav.buffer } as unknown as Response;
+    }) as unknown as typeof fetch);
+    const result = await client().synthesizeSpeech(
+      "account",
+      `${ACCOUNT}:account:default`,
+      ACCOUNT,
+      {
+        text: "Hello",
+        voiceId: "jack",
+      },
+    );
+    expect(calls[0]?.url).toBe(
+      "https://preview.tts.speechmatics.com/generate/jack?output_format=wav_16000",
+    );
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ text: "Hello" });
+    expect(authHeader(calls[0]?.init)).toBe("Bearer sm-key");
+    expect(result.mimeType).toBe("audio/wav");
+    expect(result.summary).toContain("1.0 s audio");
+  });
+
+  it("explains a key that is not allowed to call text to speech", async () => {
+    installFetch(() => response({ error: "forbidden" }, 403));
+    await expect(
+      client().synthesizeSpeech("account", `${ACCOUNT}:account:default`, ACCOUNT, { text: "Hi" }),
+    ).rejects.toThrow(/Text to speech/);
   });
 });

@@ -1,9 +1,12 @@
 import type {
   CostFetchRange,
   CostRow,
+  CreateResourceConfig,
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
   MetricSeries,
   PluginClient,
   ResourceInstance,
@@ -11,11 +14,13 @@ import type {
   SidebarItemSchema,
   SpeechPanelCapability,
   SpeechPanelOption,
+  SynthesizeSpeechPayload,
+  SynthesizeSpeechResult,
   TranscribeAudioPayload,
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
 import { fetchSpeechmaticsCostData } from "./cost-data.js";
 
 /* -------------------------------------------------------------------------- */
@@ -167,6 +172,15 @@ interface ManagementApiKey {
   client_ref?: string;
 }
 
+/**
+ * `POST /api-keys` (`CreateApiKeysResponse`): the key material comes back
+ * once, as `key_value`, and is never readable again.
+ */
+interface CreatedApiKey {
+  apikey_id: string;
+  key_value: string;
+}
+
 /** Condensed discovery data stashed on the resource for the synchronous renderer. */
 interface StashedDiscovery {
   languages: SpeechPanelOption[];
@@ -194,7 +208,42 @@ interface StashedUsage {
 /* -------------------------------------------------------------------------- */
 
 const VENDOR = "Speechmatics";
-const MANAGEMENT_BASE_URL = "https://mp.api.speechmatics.com/v1";
+/**
+ * The Management API's server, as declared by every operation in the
+ * reference (https://docs.speechmatics.com/api-ref/management/management-api).
+ * The older `mp.api.speechmatics.com` spelling no longer resolves.
+ */
+const MANAGEMENT_BASE_URL = "https://mp.speechmatics.com/v1";
+
+/**
+ * `type` query parameter on `POST /api-keys`: the product a new key can call.
+ * `batch` is the API's own default.
+ */
+const API_KEY_PRODUCTS = [
+  { id: "batch", label: "Batch transcription" },
+  { id: "rt", label: "Realtime transcription" },
+  { id: "tts", label: "Text to speech" },
+] as const;
+
+/**
+ * Text to speech, currently a free preview on its own host:
+ * `POST https://preview.tts.speechmatics.com/generate/{voice_id}` with
+ * `{"text": …}`, answering a 16 kHz mono WAV.
+ * https://docs.speechmatics.com/text-to-speech/quickstart
+ */
+const TTS_BASE_URL = "https://preview.tts.speechmatics.com";
+
+/** The voices the TTS quickstart documents; there is no voice-listing endpoint. */
+const TTS_VOICES: SpeechPanelOption[] = [
+  { id: "sarah", label: "Sarah", description: "English female (UK)" },
+  { id: "theo", label: "Theo", description: "English male (UK)" },
+  { id: "megan", label: "Megan", description: "English female (US)" },
+  { id: "jack", label: "Jack", description: "English male (US)" },
+];
+const DEFAULT_TTS_VOICE = "sarah";
+
+/** Lines of a job log shown when the Logs tab first opens. */
+const DEFAULT_LOG_LINES = 500;
 const VALID_REGIONS = ["eu1", "us1", "au1"] as const;
 
 /**
@@ -304,7 +353,7 @@ const TERMINAL_STATUSES = new Set(["done", "rejected", "deleted", "expired"]);
  * Two distinct APIs, two distinct credentials:
  *  - the regional ASR REST API (`https://{region}.asr.api.speechmatics.com/v2`)
  *    authenticated with the batch API key, and
- *  - the Management API (`https://mp.api.speechmatics.com/v1`) authenticated
+ *  - the Management API (`https://mp.speechmatics.com/v1`) authenticated
  *    with a workspace management token.
  */
 export class SpeechmaticsClient implements PluginClient {
@@ -629,10 +678,33 @@ export class SpeechmaticsClient implements PluginClient {
     return (projects ?? []).map((project) => this.mapProject(project, accountId));
   }
 
+  /**
+   * Keys are listed project by project (`GET /api-keys?project_id=`) so each
+   * one knows which project it belongs to: the unfiltered list carries no
+   * project id at all. A token without the "View projects" permission falls
+   * back to that unfiltered list rather than showing nothing.
+   */
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
     if (!this.managementToken) return [];
-    const keys = await this.managementFetch<ManagementApiKey[]>("/api-keys");
-    return (keys ?? []).map((key) => this.mapApiKey(key, accountId));
+    const projects = await this.managementFetch<ManagementProject[]>("/projects").catch(
+      () => undefined,
+    );
+    if (!projects || projects.length === 0) {
+      const keys = await this.managementFetch<ManagementApiKey[]>("/api-keys");
+      return (keys ?? []).map((key) => this.mapApiKey(key, accountId));
+    }
+    const seen = new Set<string>();
+    const out: ResourceInstance[] = [];
+    for (const project of projects) {
+      const params = new URLSearchParams({ project_id: String(project.project_id) });
+      const keys = await this.managementFetch<ManagementApiKey[]>(`/api-keys?${params.toString()}`);
+      for (const key of keys ?? []) {
+        if (seen.has(key.apikey_id)) continue;
+        seen.add(key.apikey_id);
+        out.push(this.mapApiKey(key, accountId, project));
+      }
+    }
+    return out;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -755,7 +827,11 @@ export class SpeechmaticsClient implements PluginClient {
     };
   }
 
-  private mapApiKey(key: ManagementApiKey, accountId: string): ResourceInstance {
+  private mapApiKey(
+    key: ManagementApiKey,
+    accountId: string,
+    project?: ManagementProject,
+  ): ResourceInstance {
     const name = key.name ?? key.apikey_id;
     return {
       id: `${accountId}:api-key:${key.apikey_id}`,
@@ -767,7 +843,8 @@ export class SpeechmaticsClient implements PluginClient {
         apiKeyId: key.apikey_id,
         name,
         clientRef: key.client_ref ?? "",
-        projectId: "",
+        projectId: project ? String(project.project_id) : "",
+        projectName: project?.name ?? "",
         createdAt: key.created_at ?? "",
       },
       resolvedOutputs: { apiKeyId: key.apikey_id, apiKeyName: name },
@@ -808,6 +885,15 @@ export class SpeechmaticsClient implements PluginClient {
       const instance = this.mapJob(detail.job, accountId);
       instance.resolvedOutputs[DISCOVERY_STASH_KEY] = JSON.stringify(discovery);
       return instance;
+    }
+
+    if (typeId === "project") {
+      // `GET /projects/{project_id}` on the Management API.
+      const projectId = this.externalId(resourceId);
+      const project = await this.managementFetch<ManagementProject>(
+        `/projects/${encodeURIComponent(projectId)}`,
+      );
+      return this.mapProject(project, accountId);
     }
 
     const all = await this.listResources(typeId, accountId);
@@ -998,7 +1084,170 @@ export class SpeechmaticsClient implements PluginClient {
   /* Mutations                                                                */
   /* ---------------------------------------------------------------------- */
 
+  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
+    if (typeId === "project") {
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "description",
+            label: "Description",
+            kind: "text",
+            required: false,
+            description: "What the project is for. Speechmatics only accepts this at creation.",
+          },
+        ],
+      };
+    }
+
+    if (typeId === "api-key") {
+      const projectField: CreateResourceConfig["fields"] = [];
+      if (!parentResourceId) {
+        const projects = await this.managementFetch<ManagementProject[]>("/projects").catch(
+          () => [] as ManagementProject[],
+        );
+        const options = (projects ?? []).map((p) => ({
+          id: String(p.project_id),
+          label: p.is_default
+            ? `${p.name ?? p.project_id} (default)`
+            : (p.name ?? String(p.project_id)),
+        }));
+        const preferred = (projects ?? []).find((p) => p.is_default) ?? projects?.[0];
+        projectField.push({
+          key: "projectId",
+          label: "Project",
+          kind: "select",
+          required: true,
+          options,
+          ...(preferred ? { defaultValue: String(preferred.project_id) } : {}),
+        });
+      }
+      return {
+        fields: [
+          ...projectField,
+          {
+            key: "name",
+            label: "Name",
+            kind: "text",
+            required: false,
+            description: "Display name shown in the Portal (up to 120 characters).",
+          },
+          {
+            key: "type",
+            label: "Product",
+            kind: "select",
+            required: true,
+            options: API_KEY_PRODUCTS.map((p) => ({ id: p.id, label: p.label })),
+            defaultValue: "batch",
+            description:
+              "Which Speechmatics product the key can call. The au1 region is batch-only, so a realtime key cannot be used there.",
+          },
+          {
+            key: "clientRef",
+            label: "Client Reference",
+            kind: "text",
+            required: false,
+            description:
+              "Optional end-user reference. A batch key with one can only see jobs created with the same reference, and cannot read usage.",
+          },
+        ],
+      };
+    }
+
+    throw new Error(`Speechmatics plugin: no create config for type "${typeId}"`);
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+    parentResourceId?: string,
+  ): Promise<ResourceInstance> {
+    if (typeId === "project") {
+      // `POST /projects` (`CreateProjectRequest`: `name` required).
+      const name = (fields["name"] ?? "").trim();
+      if (!name) throw new Error("Speechmatics plugin: a project name is required");
+      const body: Record<string, unknown> = { name };
+      const description = (fields["description"] ?? "").trim();
+      if (description) body["description"] = description;
+      const project = await this.managementFetch<ManagementProject>("/projects", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return this.mapProject(project, accountId);
+    }
+
+    if (typeId === "api-key") {
+      // `POST /api-keys?type=`: a permanent key, because `ttl` is omitted.
+      const projectId = parentResourceId
+        ? this.externalId(parentResourceId)
+        : (fields["projectId"] ?? "");
+      const numericProject = Number(projectId);
+      if (!projectId || !Number.isInteger(numericProject)) {
+        throw new Error("Speechmatics plugin: pick the project the key belongs to");
+      }
+      const type = API_KEY_PRODUCTS.some((p) => p.id === fields["type"])
+        ? (fields["type"] as string)
+        : "batch";
+      const body: Record<string, unknown> = { project_id: numericProject };
+      const name = (fields["name"] ?? "").trim();
+      if (name) body["name"] = name.slice(0, 120);
+      const clientRef = (fields["clientRef"] ?? "").trim();
+      if (clientRef) body["client_ref"] = clientRef;
+      const created = await this.managementFetch<CreatedApiKey>(
+        `/api-keys?${new URLSearchParams({ type }).toString()}`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
+      const instance = this.mapApiKey(
+        {
+          apikey_id: created.apikey_id,
+          ...(name ? { name } : {}),
+          ...(clientRef ? { client_ref: clientRef } : {}),
+          created_at: new Date().toISOString(),
+        },
+        accountId,
+        { project_id: numericProject },
+      );
+      instance.fields["product"] = type;
+      // The key value is returned exactly once, on this response.
+      instance.resolvedOutputs["apiKey"] = created.key_value;
+      return instance;
+    }
+
+    throw new Error(`Speechmatics plugin: cannot create type "${typeId}"`);
+  }
+
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId === "project") {
+      // `PUT /projects/{project_id}` (`UpdateProjectRequest`): `name` is the
+      // only property the API accepts.
+      const projectId = this.externalId(resourceId);
+      const name = (fields["name"] ?? "").trim();
+      if (!name) return this.getResource("project", resourceId, accountId);
+      const project = await this.managementFetch<ManagementProject>(
+        `/projects/${encodeURIComponent(projectId)}`,
+        { method: "PUT", body: JSON.stringify({ name }) },
+      );
+      return this.mapProject(project, accountId);
+    }
+    throw new Error(`Speechmatics plugin: cannot update type "${typeId}"`);
+  }
+
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+    if (typeId === "project") {
+      // `DELETE /projects/{project_id}`: 204, or 403 when the workspace has
+      // outstanding payments.
+      const projectId = this.externalId(resourceId);
+      await this.managementFetch<unknown>(`/projects/${encodeURIComponent(projectId)}`, {
+        method: "DELETE",
+      });
+      return;
+    }
     if (typeId === "job") {
       // `DELETE /v2/jobs/{jobid}?force=true`: without `force` a still-running
       // job answers HTTP 423 Locked instead of being removed.
@@ -1017,6 +1266,106 @@ export class SpeechmaticsClient implements PluginClient {
       return;
     }
     throw new Error(`Speechmatics plugin: deleteResource not supported for type "${typeId}"`);
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Text to speech                                                           */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * `POST /generate/{voice_id}` on the TTS preview host. The response is
+   * binary WAV, so this goes through the global `fetch` rather than
+   * `jsonRestFetch` (which would try to parse it) and therefore bypasses
+   * bastion egress and any custom CA, the same trade the other speech
+   * plugins make for their playground calls.
+   */
+  async synthesizeSpeech(
+    typeId: string,
+    _resourceId: string,
+    _accountId: string,
+    payload: SynthesizeSpeechPayload,
+  ): Promise<SynthesizeSpeechResult> {
+    if (typeId !== ACCOUNT_TYPE && typeId !== "job") {
+      throw new Error(`Speechmatics plugin: speech synthesis is not available on "${typeId}"`);
+    }
+    const text = payload.text.trim();
+    if (!text) throw new Error("Speechmatics plugin: nothing to synthesize");
+    const voice = TTS_VOICES.some((v) => v.id === payload.voiceId)
+      ? (payload.voiceId as string)
+      : DEFAULT_TTS_VOICE;
+
+    const started = Date.now();
+    const res = await fetch(
+      `${TTS_BASE_URL}/generate/${encodeURIComponent(voice)}?output_format=wav_16000`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      },
+    );
+    if (!res.ok) {
+      const body = await res.text();
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          `Speechmatics refused text to speech for this key (HTTP ${res.status}). Text to speech needs a key created for that product; create one from the API Keys list with Product set to "Text to speech". ${body}`,
+        );
+      }
+      throw new Error(`${VENDOR} API error ${res.status} for /generate/${voice}: ${body}`);
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const elapsedMs = Date.now() - started;
+    // 16-bit mono at 16 kHz after the 44-byte WAV header.
+    const seconds = Math.max(0, bytes.byteLength - 44) / 2 / 16_000;
+    return {
+      audioBase64: bytesToBase64(bytes),
+      mimeType: "audio/wav",
+      fileName: `speechmatics-${voice}-${started}.wav`,
+      summary: `${text.length.toLocaleString()} characters · ${voice} · ${seconds.toFixed(1)} s audio · ${elapsedMs} ms`,
+      characters: text.length,
+    };
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Job log                                                                  */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * `GET /v2/jobs/{jobid}/log`: the transcriber's own log for one job, as
+   * plain text. This is where a `rejected` job says why. The file expires
+   * with the job (404/410 after seven days), which is reported as text rather
+   * than thrown so the tab explains itself.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    if (typeId !== "job") {
+      throw new Error(`Speechmatics plugin: logs are not available on "${typeId}"`);
+    }
+    const jobId = this.externalId(resourceId);
+    let text: string;
+    try {
+      text = await this.fetchText(`/jobs/${encodeURIComponent(jobId)}/log`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/API error (404|410)/.test(message)) {
+        text =
+          "No log is available for this job. Speechmatics deletes job logs with the job, seven days after it ran.\n";
+      } else {
+        throw error;
+      }
+    }
+    const tail = params.tailLines && params.tailLines > 0 ? params.tailLines : undefined;
+    const lines = text.split("\n");
+    if (lines[lines.length - 1] === "") lines.pop();
+    const kept = tail ? lines.slice(-tail) : lines;
+    return {
+      text: kept.length > 0 ? `${kept.join("\n")}\n` : "",
+      containers: ["job"],
+      activeContainer: "job",
+    };
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1335,6 +1684,8 @@ export class SpeechmaticsClient implements PluginClient {
         },
       ],
       metricsCapability: { defaultTimeRangeMs: 30 * 86_400_000 },
+      // The transcriber's own log, from GET /v2/jobs/{id}/log.
+      logs: { defaultTailLines: DEFAULT_LOG_LINES },
       // Also offered here, where it reads as "run this one again with different
       // settings". The account copy is the one that survives the 7-day purge.
       speechPanel: this.speechPanel(discovery, region),
@@ -1344,13 +1695,20 @@ export class SpeechmaticsClient implements PluginClient {
   /** One panel definition, shared by the account and job detail views. */
   private speechPanel(discovery: StashedDiscovery, region: string): SpeechPanelCapability {
     return {
-      modes: ["stt"],
+      modes: ["stt", "tts"],
       tabLabel: "Speech",
       subtitle: `Speechmatics batch transcription · ${region} · results are kept for 7 days`,
       helpText:
         "Record or upload a clip and it is submitted as a batch job with ?wait=60, so the " +
         "transcript comes back in the same request. Longer clips fall back to polling, capped " +
-        "at two minutes. Melia-1 is multilingual only — picking it forces the language to “multi”.",
+        "at two minutes. Melia-1 is multilingual only — picking it forces the language to “multi”. " +
+        "Synthesis uses Speechmatics' text-to-speech preview, which answers 16 kHz WAV and needs " +
+        "a key that is allowed to call text to speech.",
+      voices: TTS_VOICES,
+      defaultVoice: DEFAULT_TTS_VOICE,
+      voiceLabel: "Voice",
+      defaultText: "Speechmatics turns this sentence into speech.",
+      synthesizeLabel: "Synthesize",
       languages: discovery.languages,
       defaultLanguage: "en",
       languageLabel: "Language pack",
@@ -1403,7 +1761,7 @@ export class SpeechmaticsClient implements PluginClient {
             variant: "muted",
             content: hasManagementToken
               ? "Projects and API keys are read from the Management API " +
-                "(https://mp.api.speechmatics.com/v1) with this account's management token — a " +
+                "(https://mp.speechmatics.com/v1) with this account's management token — a " +
                 "different credential on a different host to the batch API key."
               : "No management token is set, so the Projects and API Keys lists stay empty. " +
                 "Transcription jobs, usage and the Speech tab are unaffected — add one from " +
@@ -1510,9 +1868,11 @@ export class SpeechmaticsClient implements PluginClient {
               kind: "text",
               variant: "muted",
               content:
-                "Projects isolate API keys, transcripts and usage from each other. They are read " +
-                "through the Management API (https://mp.api.speechmatics.com/v1) using the account's " +
-                "management token — the batch API key cannot see them.",
+                "Projects isolate API keys, transcripts and usage from each other. They are managed " +
+                "through the Management API (https://mp.speechmatics.com/v1) using the account's " +
+                "management token; the batch API key cannot see them. Only the name can be changed " +
+                "after creation, and Speechmatics refuses to delete a project while the workspace " +
+                "has outstanding payments.",
             },
           ],
         },
@@ -1522,6 +1882,7 @@ export class SpeechmaticsClient implements PluginClient {
 
   private renderApiKeyDetail(resource: ResourceInstance): DetailViewSchema {
     const f = resource.fields;
+    const secret = resource.resolvedOutputs["apiKey"];
     return {
       title: resource.displayName,
       subtitle: "Speechmatics API key",
@@ -1536,6 +1897,10 @@ export class SpeechmaticsClient implements PluginClient {
               items: [
                 { key: "Key ID", value: String(f["apiKeyId"] ?? ""), copyable: true },
                 { key: "Name", value: String(f["name"] ?? "") },
+                ...(f["projectName"] || f["projectId"]
+                  ? [{ key: "Project", value: String(f["projectName"] || f["projectId"]) }]
+                  : []),
+                ...(f["product"] ? [{ key: "Product", value: String(f["product"]) }] : []),
                 { key: "Client reference", value: String(f["clientRef"] || "—") },
                 { key: "Created", value: String(f["createdAt"] || "—") },
               ],
@@ -1543,10 +1908,21 @@ export class SpeechmaticsClient implements PluginClient {
             {
               kind: "text",
               variant: "muted",
-              content:
-                "Speechmatics only reveals the key value once, when it is created, so only metadata " +
-                "is shown here. Deleting a key takes effect immediately for every client using it.",
+              content: secret
+                ? "The key below is shown once. Speechmatics never returns it again, so copy it now."
+                : "Speechmatics only reveals the key value once, when it is created, so only metadata " +
+                  "is shown here. Deleting a key takes effect immediately for every client using it.",
             },
+            ...(secret
+              ? [
+                  {
+                    kind: "text" as const,
+                    content: secret,
+                    variant: "mono" as const,
+                    copyable: true,
+                  },
+                ]
+              : []),
           ],
         },
       ],

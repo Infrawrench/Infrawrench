@@ -59,7 +59,7 @@ const manifest: PluginManifest = {
       key: "managementToken",
       label: "Management Token (optional)",
       description:
-        "Optional. A management token from the Portal — Manage workspace › Management tokens. This is a *different* credential to the API key above, and it talks to a different host: the Management API is served from https://mp.api.speechmatics.com/v1, not the regional ASR endpoint. Without it the Projects and API Keys resource types stay empty; transcription jobs and the Speech tab are unaffected.",
+        "Optional. A management token from the Portal — Manage workspace › Management tokens. This is a *different* credential to the API key above, and it talks to a different host: the Management API is served from https://mp.speechmatics.com/v1, not the regional ASR endpoint. Without it the Projects and API Keys resource types stay empty; transcription jobs and the Speech tab are unaffected. Each token carries its own permissions: View projects and View API keys to list, Manage projects to create, rename and delete projects, Create API key and Delete API keys for the key actions.",
       sensitive: true,
       optional: true,
       placeholder: "your-speechmatics-management-token",
