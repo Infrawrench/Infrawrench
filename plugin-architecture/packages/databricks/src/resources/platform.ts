@@ -291,6 +291,15 @@ export const AppResourceType = rt({
     f("budgetPolicyId", "Budget Policy", { required: false }),
   ],
   outputs: [o("appName", "App Name"), o("appUrl", "App URL")],
+  // Sleep/wake schedules: POST /api/2.0/apps/{name}/start and /stop act on
+  // the app's compute; a stopped app bills nothing.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "computeStatus",
+    runningValues: ["ACTIVE", "STARTING", "UPDATING"],
+    stoppedValues: ["STOPPED", "STOPPING"],
+  },
   iconKey: "app",
 });
 

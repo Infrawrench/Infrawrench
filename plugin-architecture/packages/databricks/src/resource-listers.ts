@@ -84,9 +84,13 @@ export async function listClusters(
         nodeTypeId,
         driverNodeTypeId,
         numWorkers,
+        minWorkers: autoscale ? Number(autoscale["min_workers"] ?? 0) : 0,
+        maxWorkers: autoscale ? Number(autoscale["max_workers"] ?? 0) : 0,
         autoterminationMinutes: Number(c["autotermination_minutes"] ?? 0),
+        dataSecurityMode: String(c["data_security_mode"] ?? ""),
         clusterSource: String(c["cluster_source"] ?? ""),
         creatorUserName: String(c["creator_user_name"] ?? ""),
+        stateMessage: String(c["state_message"] ?? ""),
       },
       resolvedOutputs: {
         clusterId,
@@ -133,11 +137,13 @@ export async function listSqlWarehouses(
         maxNumClusters: Number(w["max_num_clusters"] ?? 1),
         autoStopMinutes: Number(w["auto_stop_mins"] ?? 0),
         warehouseType: String(w["warehouse_type"] ?? "PRO"),
+        enableServerlessCompute: w["enable_serverless_compute"] === true,
         enablePhoton: w["enable_photon"] === true,
-        numActiveSessions: Number(
-          (w["health"] as Record<string, unknown> | undefined)?.["details"] ? 0 : 0,
-        ),
-        numRunningQueries: Number(w["num_active_sessions"] ?? 0),
+        spotInstancePolicy: String(w["spot_instance_policy"] ?? ""),
+        channel: String((w["channel"] as Record<string, unknown> | undefined)?.["name"] ?? ""),
+        health: String((w["health"] as Record<string, unknown> | undefined)?.["status"] ?? ""),
+        numActiveSessions: Number(w["num_active_sessions"] ?? 0),
+        numClusters: Number(w["num_clusters"] ?? 0),
         creatorName: String(w["creator_name"] ?? ""),
       },
       resolvedOutputs: {
@@ -204,6 +210,7 @@ export async function listJobs(ctx: ListerContext, accountId: string): Promise<R
 
     const schedule = settings["schedule"] as Record<string, unknown> | undefined;
     const scheduleStr = schedule ? String(schedule["quartz_cron_expression"] ?? "") : "";
+    const scheduleStatus = schedule ? String(schedule["pause_status"] ?? "UNPAUSED") : "";
 
     const tasks = settings["tasks"] as unknown[] | undefined;
     const taskCount = tasks?.length ?? 0;
@@ -234,6 +241,7 @@ export async function listJobs(ctx: ListerContext, accountId: string): Promise<R
         lastRunState,
         lastRunResult,
         schedule: scheduleStr,
+        scheduleStatus,
         taskCount,
         maxConcurrentRuns: Number(settings["max_concurrent_runs"] ?? 1),
       },
@@ -944,6 +952,110 @@ export async function listSecretScopes(
       externalId: name,
       createdAt: ctx.now(),
       updatedAt: ctx.now(),
+    };
+  });
+}
+
+/** "3600s" (protobuf Duration JSON) to seconds. */
+function durationSeconds(value: unknown): number {
+  const match = /^(\d+(?:\.\d+)?)s$/.exec(String(value ?? ""));
+  return match ? Number(match[1]) : 0;
+}
+
+/** Last segment of a `projects/{id}` / `projects/{p}/branches/{b}` resource name. */
+function resourceNameId(name: unknown): string {
+  return lastPathSegment(String(name ?? ""));
+}
+
+export function lakebaseProjectToResource(
+  ctx: ListerContext,
+  accountId: string,
+  p: Record<string, unknown>,
+): ResourceInstance {
+  const status = (p["status"] as Record<string, unknown> | undefined) ?? {};
+  const settings =
+    (status["default_endpoint_settings"] as Record<string, unknown> | undefined) ?? {};
+  const projectName = String(p["name"] ?? "");
+  const projectId = String(p["project_id"] ?? status["project_id"] ?? resourceNameId(projectName));
+  const displayName = String(status["display_name"] ?? projectId);
+  return {
+    id: ctx.id(accountId, "databricks-lakebase-project", projectId),
+    pluginId: "databricks",
+    resourceTypeId: "databricks-lakebase-project",
+    accountId,
+    displayName: displayName || projectId,
+    fields: {
+      projectId,
+      displayName,
+      pgVersion: Number(status["pg_version"] ?? 0),
+      owner: String(status["owner"] ?? ""),
+      minCu: Number(settings["autoscaling_limit_min_cu"] ?? 0),
+      maxCu: Number(settings["autoscaling_limit_max_cu"] ?? 0),
+      suspendTimeoutSeconds: settings["no_suspension"]
+        ? 0
+        : durationSeconds(settings["suspend_timeout_duration"]),
+      historyRetentionHours: Math.round(
+        durationSeconds(status["history_retention_duration"]) / 3600,
+      ),
+      defaultBranch: resourceNameId(status["default_branch"]),
+      storageBytes: Number(status["synthetic_storage_size_bytes"] ?? 0),
+      lastActive: String(status["compute_last_active_time"] ?? ""),
+      budgetPolicyId: String(status["budget_policy_id"] ?? ""),
+    },
+    resolvedOutputs: { projectId, projectName: projectName || `projects/${projectId}` },
+    secretStates: [],
+    externalId: projectId,
+    createdAt: timestamp(p["create_time"], ctx.now()),
+    updatedAt: timestamp(p["update_time"], ctx.now()),
+  };
+}
+
+export async function listLakebaseProjects(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const projects = await listPaginated(ctx, "/api/2.0/postgres/projects?page_size=100", "projects");
+  return projects.map((p) => lakebaseProjectToResource(ctx, accountId, p));
+}
+
+export async function listLakebaseBranches(
+  ctx: ListerContext,
+  accountId: string,
+  projectId: string,
+): Promise<ResourceInstance[]> {
+  const branches = await listPaginated(
+    ctx,
+    `/api/2.0/postgres/projects/${encodeURIComponent(projectId)}/branches?page_size=100`,
+    "branches",
+  );
+  return branches.map((b) => {
+    const status = (b["status"] as Record<string, unknown> | undefined) ?? {};
+    const name = String(b["name"] ?? "");
+    const branchId = String(b["branch_id"] ?? status["branch_id"] ?? resourceNameId(name));
+    const externalId = `${projectId}/${branchId}`;
+    return {
+      id: ctx.id(accountId, "databricks-lakebase-branch", externalId),
+      pluginId: "databricks",
+      resourceTypeId: "databricks-lakebase-branch",
+      accountId,
+      displayName: branchId,
+      parentResourceId: ctx.id(accountId, "databricks-lakebase-project", projectId),
+      fields: {
+        branchId,
+        projectId,
+        state: String(status["current_state"] ?? ""),
+        isDefault: status["default"] === true,
+        isProtected: status["is_protected"] === true,
+        sourceBranch: resourceNameId(status["source_branch"]),
+        logicalSizeBytes: Number(status["logical_size_bytes"] ?? 0),
+        expireTime: String(status["expire_time"] ?? ""),
+        createdAt: String(b["create_time"] ?? ""),
+      },
+      resolvedOutputs: { branchName: name || `projects/${projectId}/branches/${branchId}` },
+      secretStates: [],
+      externalId,
+      createdAt: timestamp(b["create_time"], ctx.now()),
+      updatedAt: timestamp(b["update_time"], ctx.now()),
     };
   });
 }

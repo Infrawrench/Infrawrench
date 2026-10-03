@@ -1,5 +1,7 @@
 import type {
+  ActionNode,
   PluginClient,
+  SectionNode,
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
@@ -44,7 +46,11 @@ import {
   listVectorSearchIndexes,
   listVolumes,
   listWorkspaceObjects,
+  lakebaseProjectToResource,
+  listLakebaseBranches,
+  listLakebaseProjects,
 } from "./resource-listers.js";
+import { WAREHOUSE_SIZES } from "./resources/sql-warehouse.js";
 
 export class DatabricksClient implements PluginClient {
   private readonly host: string;
@@ -156,6 +162,7 @@ export class DatabricksClient implements PluginClient {
     "databricks-vector-search-endpoint": listVectorSearchEndpoints,
     "databricks-app": listApps,
     "databricks-secret-scope": listSecretScopes,
+    "databricks-lakebase-project": listLakebaseProjects,
   };
 
   private static resourceField(resource: ResourceInstance, fieldKey: string): string {
@@ -284,6 +291,21 @@ export class DatabricksClient implements PluginClient {
         }
       }
       return results;
+    }
+
+    if (typeId === "databricks-lakebase-branch") {
+      const projects = await listLakebaseProjects(this.ctx, accountId);
+      const perProject = await Promise.all(
+        projects.map(async (project) => {
+          try {
+            return await listLakebaseBranches(this.ctx, accountId, String(project.externalId));
+          } catch {
+            // Skip projects whose branches this principal cannot read.
+            return [];
+          }
+        }),
+      );
+      return perProject.flat();
     }
 
     if (typeId === "databricks-model-version") {
@@ -477,6 +499,22 @@ export class DatabricksClient implements PluginClient {
           ...(f.computeSize ? [{ label: "Size", value: String(f.computeSize) }] : []),
         ];
       }
+      case "databricks-lakebase-project": {
+        return [
+          { label: "Postgres", value: String(f.pgVersion ?? "") },
+          { label: "Compute", value: `${String(f.minCu ?? 0)}-${String(f.maxCu ?? 0)} CU` },
+          {
+            label: "Scale to zero",
+            value: f.suspendTimeoutSeconds ? `${Number(f.suspendTimeoutSeconds) / 60} min` : "Off",
+          },
+        ];
+      }
+      case "databricks-lakebase-branch": {
+        return [
+          { label: "State", value: String(f.state ?? "") },
+          ...(f.isDefault ? [{ label: "Default", value: "Yes" }] : []),
+        ];
+      }
       case "databricks-secret-scope": {
         return [
           { label: "Backend", value: String(f.backendType ?? "") },
@@ -510,6 +548,9 @@ export class DatabricksClient implements PluginClient {
       DELETING: "error",
       SUCCEEDED: "healthy",
       SUCCESS: "healthy",
+      READY: "healthy",
+      INIT: "provisioning",
+      ARCHIVED: "degraded",
     };
     const dotStatus = statusMap[state] ?? "info";
 
@@ -535,6 +576,8 @@ export class DatabricksClient implements PluginClient {
       "databricks-vector-search-index": "Vector Search Index",
       "databricks-app": "App",
       "databricks-secret-scope": "Secret Scope",
+      "databricks-lakebase-project": "Lakebase Project",
+      "databricks-lakebase-branch": "Lakebase Branch",
     };
     const typeLabel = typeLabels[resource.resourceTypeId] ?? resource.resourceTypeId;
 
@@ -572,8 +615,14 @@ export class DatabricksClient implements PluginClient {
             : [];
         })(),
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      headerActions: [
+        ...this.lifecycleActions(resource),
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      ],
     };
+
+    const runsSection = this.recentRunsSection(fields);
+    if (runsSection) detail.sections.push(runsSection);
 
     if (resource.resourceTypeId === "databricks-serving-endpoint") {
       const ready = String(fields["state"] ?? "") === "READY";
@@ -592,6 +641,358 @@ export class DatabricksClient implements PluginClient {
     }
 
     return detail;
+  }
+
+  /**
+   * State-dependent operational buttons. Each dispatches to `invokeAction`;
+   * the cluster/warehouse/app start and stop ids double as the `lifecycle`
+   * pair the sleep/wake scheduler uses.
+   */
+  private lifecycleActions(resource: ResourceInstance): ActionNode[] {
+    const f = resource.fields;
+    const action = (
+      label: string,
+      actionId: string,
+      opts: { confirm?: string; success?: string; danger?: boolean } = {},
+    ): ActionNode => ({
+      kind: "action",
+      label,
+      ...(opts.danger ? { variant: "danger" as const } : {}),
+      action: {
+        type: "plugin-action",
+        actionId,
+        ...(opts.confirm ? { confirmMessage: opts.confirm } : {}),
+        successMessage: opts.success ?? `${label} requested.`,
+      },
+    });
+    switch (resource.resourceTypeId) {
+      case "databricks-cluster": {
+        const state = String(f["state"] ?? "");
+        if (state === "TERMINATED" || state === "ERROR") return [action("Start", "start")];
+        if (state === "RUNNING" || state === "RESIZING") {
+          return [
+            action("Restart", "restart", {
+              confirm: "Restart this cluster? Running notebooks and jobs on it are interrupted.",
+            }),
+            action("Terminate", "terminate", {
+              confirm:
+                "Terminate this cluster? Its configuration is kept and it can be started again.",
+              danger: true,
+            }),
+          ];
+        }
+        return [];
+      }
+      case "databricks-sql-warehouse": {
+        const state = String(f["state"] ?? "");
+        if (state === "STOPPED") return [action("Start", "start")];
+        if (state === "RUNNING" || state === "STARTING") {
+          return [
+            action("Stop", "stop", {
+              confirm: "Stop this warehouse? Running queries are cancelled.",
+              danger: true,
+            }),
+          ];
+        }
+        return [];
+      }
+      case "databricks-job":
+        return [
+          action("Run now", "run-now", { success: "Run started." }),
+          action("Cancel runs", "cancel-all-runs", {
+            confirm: "Cancel every active run of this job?",
+            success: "Cancellation requested.",
+          }),
+        ];
+      case "databricks-pipeline": {
+        const state = String(f["state"] ?? "");
+        if (state === "RUNNING") {
+          return [
+            action("Stop", "stop", {
+              confirm: "Stop the active update of this pipeline?",
+              danger: true,
+            }),
+          ];
+        }
+        return [
+          action("Start update", "start-update", { success: "Update started." }),
+          action("Full refresh", "full-refresh", {
+            confirm:
+              "Run a full refresh? Every table in the pipeline is truncated and recomputed from the source data.",
+            success: "Full refresh started.",
+          }),
+        ];
+      }
+      case "databricks-app": {
+        const compute = String(f["computeStatus"] ?? "");
+        if (compute === "STOPPED" || compute === "ERROR") return [action("Start", "start")];
+        if (compute === "ACTIVE" || compute === "UPDATING") {
+          return [
+            action("Stop", "stop", {
+              confirm: "Stop this app? Its URL stops serving until the app is started again.",
+              danger: true,
+            }),
+          ];
+        }
+        return [];
+      }
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Recent runs of a job, read by `enrichDetail` from
+   * `GET /api/2.2/jobs/runs/list` and stashed as JSON in `__recentRuns`.
+   */
+  private recentRunsSection(fields: Record<string, unknown>): SectionNode | null {
+    const raw = fields["__recentRuns"];
+    if (typeof raw !== "string" || !raw) return null;
+    let runs: Array<Record<string, unknown>> = [];
+    try {
+      runs = JSON.parse(raw) as Array<Record<string, unknown>>;
+    } catch {
+      return null;
+    }
+    return {
+      kind: "section",
+      title: `Recent runs (${runs.length})`,
+      children:
+        runs.length === 0
+          ? [{ kind: "text", variant: "muted", content: "This job has not run yet." }]
+          : [
+              {
+                kind: "table",
+                columns: [
+                  { key: "run", label: "Run" },
+                  { key: "state", label: "State" },
+                  { key: "result", label: "Result" },
+                  { key: "trigger", label: "Trigger" },
+                  { key: "started", label: "Started" },
+                  { key: "duration", label: "Duration" },
+                ],
+                rows: runs.map((r) => ({
+                  cells: {
+                    run: String(r["runId"] ?? ""),
+                    state: String(r["state"] ?? ""),
+                    result: String(r["result"] || "-"),
+                    trigger: String(r["trigger"] || "-"),
+                    started: String(r["started"] || "-"),
+                    duration: String(r["duration"] || "-"),
+                  },
+                })),
+                emphasizeFirstColumn: true,
+              },
+            ],
+    };
+  }
+
+  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    if (resource.resourceTypeId !== "databricks-job") return resource;
+    const jobId = String(resource.fields["jobId"] ?? resource.externalId ?? "");
+    if (!jobId) return resource;
+    try {
+      const data = await this.api<{ runs?: Array<Record<string, unknown>> }>(
+        "GET",
+        `/api/2.2/jobs/runs/list?job_id=${encodeURIComponent(jobId)}&limit=10`,
+      );
+      const runs = (data.runs ?? []).map((r) => {
+        const state = (r["state"] as Record<string, unknown> | undefined) ?? {};
+        const status = (r["status"] as Record<string, unknown> | undefined) ?? {};
+        const termination =
+          (status["termination_details"] as Record<string, unknown> | undefined) ?? {};
+        const start = Number(r["start_time"] ?? 0);
+        const end = Number(r["end_time"] ?? 0);
+        const durationMs = Number(r["run_duration"] ?? 0) || (start && end ? end - start : 0);
+        return {
+          runId: String(r["run_id"] ?? ""),
+          state: String(status["state"] ?? state["life_cycle_state"] ?? ""),
+          result: String(termination["code"] ?? state["result_state"] ?? ""),
+          trigger: String(r["trigger"] ?? ""),
+          started: start ? new Date(start).toISOString().replace("T", " ").slice(0, 19) : "",
+          duration: durationMs ? formatDuration(durationMs) : "",
+        };
+      });
+      return { ...resource, fields: { ...resource.fields, __recentRuns: JSON.stringify(runs) } };
+    } catch {
+      return resource;
+    }
+  }
+
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    _accountId: string,
+  ): Promise<void> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    if (!externalId) throw new Error("Databricks plugin: cannot determine the resource id");
+    const id = encodeURIComponent(externalId);
+    switch (`${typeId}:${actionId}`) {
+      case "databricks-cluster:start":
+        await this.api("POST", "/api/2.1/clusters/start", { cluster_id: externalId });
+        return;
+      case "databricks-cluster:restart":
+        await this.api("POST", "/api/2.1/clusters/restart", { cluster_id: externalId });
+        return;
+      case "databricks-cluster:terminate":
+        // /clusters/delete terminates; /clusters/permanent-delete removes it.
+        await this.api("POST", "/api/2.1/clusters/delete", { cluster_id: externalId });
+        return;
+      case "databricks-sql-warehouse:start":
+        await this.api("POST", `/api/2.0/sql/warehouses/${id}/start`);
+        return;
+      case "databricks-sql-warehouse:stop":
+        await this.api("POST", `/api/2.0/sql/warehouses/${id}/stop`);
+        return;
+      case "databricks-job:run-now":
+        await this.api("POST", "/api/2.2/jobs/run-now", { job_id: Number(externalId) });
+        return;
+      case "databricks-job:cancel-all-runs":
+        await this.api("POST", "/api/2.2/jobs/runs/cancel-all", { job_id: Number(externalId) });
+        return;
+      case "databricks-pipeline:start-update":
+        await this.api("POST", `/api/2.0/pipelines/${id}/updates`, { cause: "API_CALL" });
+        return;
+      case "databricks-pipeline:full-refresh":
+        await this.api("POST", `/api/2.0/pipelines/${id}/updates`, {
+          full_refresh: true,
+          cause: "API_CALL",
+        });
+        return;
+      case "databricks-pipeline:stop":
+        await this.api("POST", `/api/2.0/pipelines/${id}/stop`);
+        return;
+      case "databricks-app:start":
+        await this.api("POST", `/api/2.0/apps/${id}/start`);
+        return;
+      case "databricks-app:stop":
+        await this.api("POST", `/api/2.0/apps/${id}/stop`);
+        return;
+      default:
+        throw new Error(
+          `Databricks plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
+        );
+    }
+  }
+
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    const has = (key: string) => fields[key] !== undefined && fields[key] !== "";
+    switch (typeId) {
+      case "databricks-cluster": {
+        // Resize is the one cluster change that needs no full spec and no
+        // restart; other settings go through /clusters/edit in the console.
+        if (has("minWorkers") || has("maxWorkers")) {
+          const current = await this.getResource(typeId, resourceId, accountId);
+          const min = Number(
+            has("minWorkers") ? fields["minWorkers"] : current.fields["minWorkers"],
+          );
+          const max = Number(
+            has("maxWorkers") ? fields["maxWorkers"] : current.fields["maxWorkers"],
+          );
+          if (!(max >= min && min >= 0 && max > 0)) {
+            throw new Error("Max workers must be at least min workers and greater than 0");
+          }
+          await this.api("POST", "/api/2.1/clusters/resize", {
+            cluster_id: externalId,
+            autoscale: { min_workers: min, max_workers: max },
+          });
+        } else if (has("numWorkers")) {
+          await this.api("POST", "/api/2.1/clusters/resize", {
+            cluster_id: externalId,
+            num_workers: Number(fields["numWorkers"]),
+          });
+        }
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "databricks-sql-warehouse": {
+        // /edit takes the warehouse's settings as a whole; start from the
+        // current definition so untouched settings (tags, channel) survive.
+        const current = await this.api<Record<string, unknown>>(
+          "GET",
+          `/api/2.0/sql/warehouses/${encodeURIComponent(externalId)}`,
+        );
+        const body: Record<string, unknown> = {};
+        for (const key of [
+          "name",
+          "cluster_size",
+          "min_num_clusters",
+          "max_num_clusters",
+          "auto_stop_mins",
+          "enable_photon",
+          "enable_serverless_compute",
+          "warehouse_type",
+          "spot_instance_policy",
+          "channel",
+          "tags",
+        ]) {
+          if (current[key] !== undefined) body[key] = current[key];
+        }
+        if (has("name")) body["name"] = fields["name"];
+        if (has("clusterSize")) {
+          if (!WAREHOUSE_SIZES.includes(fields["clusterSize"]!)) {
+            throw new Error(`Unknown warehouse size "${fields["clusterSize"]}"`);
+          }
+          body["cluster_size"] = fields["clusterSize"];
+        }
+        if (has("minNumClusters")) body["min_num_clusters"] = Number(fields["minNumClusters"]);
+        if (has("maxNumClusters")) body["max_num_clusters"] = Number(fields["maxNumClusters"]);
+        if (has("autoStopMinutes")) body["auto_stop_mins"] = Number(fields["autoStopMinutes"]);
+        if (has("enablePhoton")) body["enable_photon"] = fields["enablePhoton"] === "true";
+        if (has("spotInstancePolicy")) body["spot_instance_policy"] = fields["spotInstancePolicy"];
+        await this.api(
+          "POST",
+          `/api/2.0/sql/warehouses/${encodeURIComponent(externalId)}/edit`,
+          body,
+        );
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "databricks-lakebase-project": {
+        const spec: Record<string, unknown> = {};
+        const mask: string[] = [];
+        if (has("displayName")) {
+          spec["display_name"] = fields["displayName"];
+          mask.push("spec.display_name");
+        }
+        if (has("historyRetentionHours")) {
+          const hours = Number(fields["historyRetentionHours"]);
+          if (!(hours >= 48 && hours <= 840)) {
+            throw new Error("The restore window must be between 48 and 840 hours");
+          }
+          spec["history_retention_duration"] = `${Math.round(hours * 3600)}s`;
+          mask.push("spec.history_retention_duration");
+        }
+        if (has("minCu") || has("maxCu") || has("suspendTimeoutSeconds")) {
+          const current = await this.getResource(typeId, resourceId, accountId);
+          const pick = (key: string) => Number(has(key) ? fields[key] : (current.fields[key] ?? 0));
+          const settings: Record<string, unknown> = {
+            autoscaling_limit_min_cu: pick("minCu"),
+            autoscaling_limit_max_cu: pick("maxCu"),
+          };
+          const suspend = pick("suspendTimeoutSeconds");
+          if (suspend > 0) settings["suspend_timeout_duration"] = `${Math.round(suspend)}s`;
+          else settings["no_suspension"] = true;
+          spec["default_endpoint_settings"] = settings;
+          mask.push("spec.default_endpoint_settings");
+        }
+        if (mask.length > 0) {
+          await this.api(
+            "PATCH",
+            `/api/2.0/postgres/projects/${encodeURIComponent(externalId)}?update_mask=${mask.join(",")}`,
+            { name: `projects/${externalId}`, spec },
+          );
+        }
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      default:
+        throw new Error(`Databricks plugin: update not supported for type "${typeId}"`);
+    }
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
@@ -971,12 +1372,91 @@ export class DatabricksClient implements PluginClient {
         await this.api("DELETE", `/api/2.1/unity-catalog/tables/${encodeURIComponent(fullName)}`);
         break;
       }
+      case "databricks-lakebase-project": {
+        const projectId = resource.externalId ?? "";
+        if (!projectId) throw new Error("Missing Lakebase project id");
+        await this.api("DELETE", `/api/2.0/postgres/projects/${encodeURIComponent(projectId)}`);
+        break;
+      }
+      case "databricks-lakebase-branch": {
+        if (resource.fields["isDefault"]) {
+          throw new Error(
+            "The default branch cannot be deleted; make another branch the default first",
+          );
+        }
+        const projectId = String(resource.fields["projectId"] ?? "");
+        const branchId = String(resource.fields["branchId"] ?? "");
+        await this.api(
+          "DELETE",
+          `/api/2.0/postgres/projects/${encodeURIComponent(projectId)}/branches/${encodeURIComponent(branchId)}`,
+        );
+        break;
+      }
       default:
         throw new Error(`Databricks plugin: delete not supported for type "${typeId}"`);
     }
   }
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
+    if (typeId === "databricks-lakebase-project") {
+      return {
+        fields: [
+          { key: "displayName", label: "Project Name", kind: "text", required: true },
+          {
+            key: "projectId",
+            label: "Project ID",
+            kind: "text",
+            required: true,
+            description:
+              "Permanent identifier: 1-63 lowercase letters, digits and hyphens, starting with a letter.",
+            placeholder: "orders-db",
+          },
+          {
+            key: "pgVersion",
+            label: "Postgres Version",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "18", label: "Postgres 18" },
+              { id: "17", label: "Postgres 17", description: "Default" },
+              { id: "16", label: "Postgres 16" },
+            ],
+            defaultValue: "17",
+          },
+          {
+            key: "minCu",
+            label: "Min Compute (CU)",
+            kind: "number",
+            required: false,
+            minValue: 0.5,
+            stepValue: 0.5,
+            defaultValue: "0.5",
+          },
+          {
+            key: "maxCu",
+            label: "Max Compute (CU)",
+            kind: "number",
+            required: false,
+            minValue: 0.5,
+            stepValue: 0.5,
+            defaultValue: "2",
+          },
+          {
+            key: "suspendTimeoutSeconds",
+            label: "Scale to zero after",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "300", label: "5 minutes" },
+              { id: "900", label: "15 minutes" },
+              { id: "3600", label: "1 hour" },
+              { id: "0", label: "Never (always on)" },
+            ],
+            defaultValue: "300",
+          },
+        ],
+      };
+    }
     if (typeId === "databricks-cluster") {
       const sparkVersionOptions = await this.api<{
         versions?: Array<{ key?: string; name?: string }>;
@@ -1066,15 +1546,7 @@ export class DatabricksClient implements PluginClient {
             label: "Cluster Size",
             kind: "select",
             required: true,
-            options: [
-              { id: "2X-Small", label: "2X-Small" },
-              { id: "X-Small", label: "X-Small" },
-              { id: "Small", label: "Small" },
-              { id: "Medium", label: "Medium" },
-              { id: "Large", label: "Large" },
-              { id: "X-Large", label: "X-Large" },
-              { id: "2X-Large", label: "2X-Large" },
-            ],
+            options: WAREHOUSE_SIZES.map((size) => ({ id: size, label: size })),
             defaultValue: "Small",
           },
           {
@@ -1111,7 +1583,7 @@ export class DatabricksClient implements PluginClient {
             options: [
               { id: "PRO", label: "Pro" },
               { id: "CLASSIC", label: "Classic" },
-              { id: "TYPE_UNSPECIFIED", label: "Serverless" },
+              { id: "SERVERLESS", label: "Serverless" },
             ],
             defaultValue: "PRO",
           },
@@ -1292,6 +1764,49 @@ export class DatabricksClient implements PluginClient {
     const now = new Date().toISOString();
     const host = this.host.replace(/^https?:\/\//, "");
 
+    if (typeId === "databricks-lakebase-project") {
+      const projectId = (fields["projectId"] ?? "").trim();
+      if (!/^[a-z][a-z0-9-]{0,62}$/.test(projectId)) {
+        throw new Error(
+          "Project ID must be 1-63 lowercase letters, digits and hyphens, starting with a letter",
+        );
+      }
+      const minCu = Number(fields["minCu"] || 0.5);
+      const maxCu = Number(fields["maxCu"] || 2);
+      if (!(minCu >= 0.5 && maxCu >= minCu)) {
+        throw new Error("Max compute must be at least min compute, and min at least 0.5 CU");
+      }
+      const suspend = Number(fields["suspendTimeoutSeconds"] ?? 300);
+      const endpointSettings: Record<string, unknown> = {
+        autoscaling_limit_min_cu: minCu,
+        autoscaling_limit_max_cu: maxCu,
+        ...(suspend > 0 ? { suspend_timeout_duration: `${suspend}s` } : { no_suspension: true }),
+      };
+      // Creation is a long-running operation; the project appears in the
+      // listing once it finishes provisioning.
+      await this.api(
+        "POST",
+        `/api/2.0/postgres/projects?project_id=${encodeURIComponent(projectId)}`,
+        {
+          spec: {
+            display_name: fields["displayName"] || projectId,
+            pg_version: Number(fields["pgVersion"] || 17),
+            default_endpoint_settings: endpointSettings,
+          },
+        },
+      );
+      return lakebaseProjectToResource(this.ctx, accountId, {
+        name: `projects/${projectId}`,
+        project_id: projectId,
+        create_time: now,
+        status: {
+          display_name: fields["displayName"] || projectId,
+          pg_version: Number(fields["pgVersion"] || 17),
+          default_endpoint_settings: endpointSettings,
+        },
+      });
+    }
+
     if (typeId === "databricks-cluster") {
       const data = await this.api<{ cluster_id: string }>("POST", "/api/2.1/clusters/create", {
         cluster_name: fields["clusterName"] ?? "",
@@ -1332,13 +1847,16 @@ export class DatabricksClient implements PluginClient {
     }
 
     if (typeId === "databricks-sql-warehouse") {
+      const serverless = fields["warehouseType"] === "SERVERLESS";
       const data = await this.api<{ id: string }>("POST", "/api/2.0/sql/warehouses", {
         name: fields["name"] ?? "",
         cluster_size: fields["clusterSize"] ?? "Small",
         max_num_clusters: Number(fields["maxNumClusters"] ?? 1),
         auto_stop_mins: Number(fields["autoStopMinutes"] ?? 15),
         enable_photon: fields["enablePhoton"] !== "false",
-        warehouse_type: fields["warehouseType"] ?? "PRO",
+        // Serverless is a PRO warehouse with serverless compute switched on.
+        warehouse_type: serverless ? "PRO" : (fields["warehouseType"] ?? "PRO"),
+        ...(serverless ? { enable_serverless_compute: true } : {}),
       });
       const warehouseId = data.id;
       const httpPath = `/sql/1.0/warehouses/${warehouseId}`;
@@ -1356,10 +1874,11 @@ export class DatabricksClient implements PluginClient {
           minNumClusters: 1,
           maxNumClusters: Number(fields["maxNumClusters"] ?? 1),
           autoStopMinutes: Number(fields["autoStopMinutes"] ?? 15),
-          warehouseType: fields["warehouseType"] ?? "PRO",
+          warehouseType: serverless ? "PRO" : (fields["warehouseType"] ?? "PRO"),
+          enableServerlessCompute: serverless,
           enablePhoton: fields["enablePhoton"] !== "false",
           numActiveSessions: 0,
-          numRunningQueries: 0,
+          numClusters: 0,
           creatorName: "",
         },
         resolvedOutputs: {
@@ -1603,4 +2122,14 @@ export class DatabricksClient implements PluginClient {
 
     throw new Error(`Databricks plugin: createResource not supported for type "${typeId}"`);
   }
+}
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const sec = totalSeconds % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
 }

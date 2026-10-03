@@ -25,6 +25,7 @@ import {
   VolumeResourceType,
   WorkspaceObjectResourceType,
 } from "./resources/platform.js";
+import { LakebaseBranchResourceType, LakebaseProjectResourceType } from "./resources/lakebase.js";
 import { databricksTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
@@ -32,7 +33,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Databricks",
   description:
-    "Manage Databricks workspaces — compute, workflows, SQL, AI/BI, apps, workspace assets, model serving, vector search, and Unity Catalog.",
+    "Manage Databricks workspaces: compute, workflows, SQL, AI/BI, apps, workspace assets, model serving, vector search, Lakebase Postgres, and Unity Catalog.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#FF3621"/>
     <g transform="translate(14,10) scale(3)" fill="#fff">
@@ -89,6 +90,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   VectorSearchIndexResourceType,
   AppResourceType,
   SecretScopeResourceType,
+  LakebaseProjectResourceType,
+  LakebaseBranchResourceType,
 ];
 
 export const plugin: Plugin = {

@@ -14,6 +14,7 @@ export const JobResourceType = rt({
     f("schedule", "Schedule", { required: false }),
     f("taskCount", "Tasks", { kind: "number", required: false }),
     f("maxConcurrentRuns", "Max Concurrent Runs", { kind: "number", required: false }),
+    f("scheduleStatus", "Schedule Status", { required: false }),
   ],
   outputs: [o("jobId", "Job ID"), o("jobUrl", "Job URL")],
   attachTargets: [
