@@ -60,7 +60,10 @@ export async function cloudSftpDownload(params: {
   orgId: string;
   accountId: string;
   remotePath: string;
-  localPath: string;
+  /** Folder the user picked via `show_open_dialog`; main rejects anything else. */
+  destFolder: string;
+  /** Path beneath `destFolder`, `/`-separated; main rejects `..`, `\\`, `:` and absolutes. */
+  relativePath: string;
   sshKeyId?: string;
   sshHost?: string;
   sshUsername?: string;

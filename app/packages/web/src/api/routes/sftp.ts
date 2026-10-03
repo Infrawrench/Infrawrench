@@ -7,6 +7,7 @@ import { resolveSshConfig } from "../../services/ssh";
 import { HostKeyTrustRequiredError } from "../../services/ssh-host-keys";
 import { hostKeyTrustResponse } from "./ssh-host-keys";
 import archiver from "archiver";
+import { safeRelativePathSegments } from "@infrawrench/client-core";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
@@ -109,11 +110,21 @@ app.get("/download", async (c) => {
     }
   }
 
+  // Zip entry names come from remote file names, which a hostile server
+  // controls. A `..` or `\\` entry would be a zip-slip for whatever extracts
+  // the archive, so only plain relative paths make it in.
+  const normalizedBase = basePath.endsWith("/") ? basePath : basePath ? `${basePath}/` : "";
+  const relPath = (p: string): string =>
+    normalizedBase && p.startsWith(normalizedBase)
+      ? p.slice(normalizedBase.length)
+      : path.posix.basename(p);
+  const entries = paths.filter((p) => !p.endsWith("/") && safeRelativePathSegments(relPath(p)));
+
   // Pre-flight the first file synchronously so a host-key trust failure
   // surfaces as a 409 before we commit to a `Content-Type: application/zip`
   // response. Once the zip stream is open, the client only sees a truncated
   // archive on error.
-  const firstPath = paths.find((p) => !p.endsWith("/"));
+  const firstPath = entries[0];
   if (!firstPath) return c.json({ error: "No file paths in selection" }, 400);
   let firstBuffer: Buffer;
   try {
@@ -128,16 +139,11 @@ app.get("/download", async (c) => {
   const archive = archiver("zip", { zlib: { level: 6 } });
   archive.pipe(passthrough);
 
-  const normalizedBase = basePath.endsWith("/") ? basePath : basePath ? `${basePath}/` : "";
-  const relPath = (p: string): string =>
-    normalizedBase && p.startsWith(normalizedBase)
-      ? p.slice(normalizedBase.length)
-      : path.basename(p);
   archive.append(firstBuffer, { name: relPath(firstPath) });
   (async () => {
     try {
-      for (const remotePath of paths) {
-        if (remotePath === firstPath || remotePath.endsWith("/")) continue;
+      for (const remotePath of entries) {
+        if (remotePath === firstPath) continue;
         const data = await sftpDownloadToBuffer(organizationId, sshConfig, remotePath);
         archive.append(data, { name: relPath(remotePath) });
       }

@@ -27,7 +27,8 @@ One listing, not a tree beside a grid. Across the top is a **Path** box you can 
 - **Navigate** by clicking a folder row, or by typing a path.
 - **Upload** with **Files**, or **Folder** where the backend supports it. There is no drag-and-drop target.
 - **+ Folder** creates one (for object stores, a zero-byte marker).
-- **Download** with the download icon on a row. Tick several rows and the toolbar offers **Download**, which streams them as a zip — on web that opens one download per batch, so allow pop-ups.
+- **Download** with the download icon on a row. Tick several rows and the toolbar offers **Download**, which streams them as a zip — on web that opens one download per batch, so allow pop-ups. On desktop, SFTP downloads go into the folder you pick, keeping the layout of any selected folders beneath it.
+- **Skipped files on SFTP download.** A remote file whose name could land outside the download folder (one containing `..`, `\`, `:` or a NUL character) is skipped rather than saved, and a warning lists the skipped names. Rename it on the server to download it.
 - **Delete** — the **X** icon on a row, or the toolbar's **Delete** for a selection. Both ask to confirm inline.
 
 Shift-click selects a range. Sorting is fixed: folders first, then files.

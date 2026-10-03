@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import { getAccessToken } from "../cloud-auth";
 import { CLOUD_URL } from "../../env";
+import { resolveBlessedDownloadPath } from "../main-utils";
 import { cloudFetch, fetchWithHostKeyPrompt } from "./shared";
 
 ipcMain.handle("cloud_sftp_list", async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
@@ -83,7 +84,8 @@ ipcMain.handle(
       orgId,
       accountId,
       remotePath,
-      localPath,
+      destFolder,
+      relativePath,
       sshKeyId,
       sshHost,
       sshUsername,
@@ -91,12 +93,16 @@ ipcMain.handle(
       orgId: string;
       accountId: string;
       remotePath: string;
-      localPath: string;
+      destFolder: string;
+      relativePath: string;
       sshKeyId?: string;
       sshHost?: string;
       sshUsername?: string;
     },
   ) => {
+    // Validate before fetching: the destination must sit inside a folder the
+    // user picked, and the relative path comes from remote names.
+    const localPath = await resolveBlessedDownloadPath(destFolder, relativePath);
     const token = await getAccessToken();
     if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
     const params = new URLSearchParams({
@@ -114,7 +120,9 @@ ipcMain.handle(
     if (!res.ok)
       throw new Error(`Download failed: ${res.status} ${await res.text().catch(() => "")}`);
     const buf = Buffer.from(await res.arrayBuffer());
-    const { writeFile } = await import("node:fs/promises");
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { dirname } = await import("node:path");
+    await mkdir(dirname(localPath), { recursive: true });
     await writeFile(localPath, buf);
     return { ok: true };
   },

@@ -1184,10 +1184,7 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-export async function ensureLocalPathAllowed(
-  localPath: string,
-  description: string,
-): Promise<void> {
+async function ensureLocalPathAllowed(localPath: string, description: string): Promise<void> {
   if (isDialogBlessedPath(localPath)) return;
   const choice = await dialog.showMessageBox({
     type: "warning",

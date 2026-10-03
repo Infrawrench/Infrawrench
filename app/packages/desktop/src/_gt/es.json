@@ -11328,5 +11328,6 @@
   "fdc2bedfdcdb298e": "Todos los informes",
   "066f907c267c4ea6": "Todos los incidentes",
   "18afcdb93ecdf4d0": "Todas las facturas",
-  "94520dbbca1d7863": "Corrige una factura anterior y anulada"
+  "94520dbbca1d7863": "Corrige una factura anterior y anulada",
+  "3ae5faf47d1cef31": "Se omitieron {count} archivo(s) con nombres que no se pueden guardar localmente de forma segura"
 }

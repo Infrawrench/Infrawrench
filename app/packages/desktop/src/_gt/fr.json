@@ -11328,5 +11328,6 @@
   "fdc2bedfdcdb298e": "Tous les rapports",
   "066f907c267c4ea6": "Tous les incidents",
   "18afcdb93ecdf4d0": "Toutes les factures",
-  "94520dbbca1d7863": "Corrige une facture antérieure, annulée"
+  "94520dbbca1d7863": "Corrige une facture antérieure, annulée",
+  "3ae5faf47d1cef31": "{count} fichier(s) ignoré(s) : leurs noms ne peuvent pas être enregistrés localement en toute sécurité"
 }
