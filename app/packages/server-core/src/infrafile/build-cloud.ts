@@ -256,7 +256,7 @@ const SIGNED_URL_TTL_SECONDS = 3600;
 /** Something that can produce an RSA-SHA256 signature as our service account. */
 interface UrlSigner {
   email: string;
-  sign: (data: Uint8Array) => Promise<Uint8Array>;
+  sign: (data: Uint8Array<ArrayBuffer>) => Promise<Uint8Array>;
 }
 
 let cachedSigner: UrlSigner | null = null;
@@ -325,7 +325,7 @@ interface SignedUrlInput {
   email: string;
   now: Date;
   expiresSeconds: number;
-  sign: (data: Uint8Array) => Promise<Uint8Array>;
+  sign: (data: Uint8Array<ArrayBuffer>) => Promise<Uint8Array>;
 }
 
 /**
