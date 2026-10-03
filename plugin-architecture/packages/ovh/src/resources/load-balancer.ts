@@ -3,7 +3,8 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const LoadBalancerResourceType = rt({
   id: "load-balancer",
   name: "Load Balancer",
-  description: "An OVHcloud Public Cloud load balancer",
+  description:
+    "An OVHcloud Public Cloud load balancer from the older, configuration-versioned API (still in beta); new deployments use the Public Cloud Load Balancer type",
   fields: [
     f("name", "Name"),
     f("region", "Region"),

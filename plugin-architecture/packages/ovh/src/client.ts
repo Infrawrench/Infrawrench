@@ -1,4 +1,5 @@
 import type {
+  ActionNode,
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -21,6 +22,8 @@ import {
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { fetchOvhCostData } from "./cost-data.js";
+import * as extras from "./extras.js";
+import type { OvhApi } from "./extras.js";
 
 function ovhSshUsername(imageName: string): string {
   const lower = imageName.toLowerCase();
@@ -147,6 +150,11 @@ export class OvhClient implements PluginClient {
     UK1: { location: "London, United Kingdom", flag: "🇬🇧" },
     SGP1: { location: "Singapore", flag: "🇸🇬" },
     SYD1: { location: "Sydney, Australia", flag: "🇦🇺" },
+    // 3-AZ regions (`type: "region-3-az"`) and Local Zones (`localzone`).
+    "EU-WEST-PAR": { location: "Paris, France (3 AZ)", flag: "🇫🇷" },
+    "EU-SOUTH-MIL": { location: "Milan, Italy (3 AZ)", flag: "🇮🇹" },
+    "EU-WEST-LZ-LUX-A": { location: "Luxembourg (Local Zone)", flag: "🇱🇺" },
+    "EU-SOUTH-LZ-MAD-A": { location: "Madrid, Spain (Local Zone)", flag: "🇪🇸" },
   };
 
   private readonly resourceTypes: ResourceTypeDefinition[];
@@ -287,6 +295,15 @@ export class OvhClient implements PluginClient {
     return `/cloud/project/${this.projectId}${suffix}`;
   }
 
+  /** The request surface handed to `extras.ts`. */
+  private get api(): OvhApi {
+    return {
+      fetch: (path, init) => this.ovhFetch(path, init),
+      cloudPath: (suffix) => this.cloudPath(suffix),
+      listUpRegions: () => this.listUpRegions(),
+    };
+  }
+
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
       case "instance":
@@ -307,6 +324,12 @@ export class OvhClient implements PluginClient {
         return this.listFloatingIps(accountId);
       case "gateway":
         return this.listGateways(accountId);
+      case "octavia-load-balancer":
+        return extras.listOctaviaLoadBalancers(this.api, accountId);
+      case "volume-snapshot":
+        return extras.listVolumeSnapshots(this.api, accountId);
+      case "container-registry":
+        return extras.listRegistries(this.api, accountId);
       default:
         throw new Error(`OVH plugin: unknown resource type "${typeId}"`);
     }
@@ -400,6 +423,14 @@ export class OvhClient implements PluginClient {
       return resource.resolvedOutputs[outputKey] ?? "";
     }
 
+    if (
+      (typeId === "octavia-load-balancer" || typeId === "container-registry") &&
+      outputKey in OUTPUT_KEYS_BY_TYPE
+    ) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return resource.resolvedOutputs[outputKey] ?? "";
+    }
+
     if (typeId === "floating-ip" && outputKey === "ip") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       return resource.resolvedOutputs[outputKey] ?? "";
@@ -413,19 +444,10 @@ export class OvhClient implements PluginClient {
       const [flavorsData, imagesData, regionsData] = await Promise.all([
         this.ovhFetch<OvhFlavor[]>(this.cloudPath("/flavor")),
         this.ovhFetch<OvhImage[]>(this.cloudPath("/image")),
-        this.ovhFetch<OvhRegion[]>(this.cloudPath("/region")),
+        this.listUpRegions(),
       ]);
 
-      const regions = regionsData
-        .filter((r) => r.status === "UP")
-        .map((r) => {
-          const info = OvhClient.REGION_INFO[r.name];
-          return {
-            id: r.name,
-            label: r.name,
-            ...(info ? { location: info.location, flag: info.flag } : {}),
-          };
-        });
+      const regions = this.toRegionOptions(regionsData);
 
       // Group flavors by type (e.g. "General Purpose", "CPU", "RAM", "GPU")
       const sizesByCategory = new Map<string, SizeOption[]>();
@@ -499,19 +521,10 @@ export class OvhClient implements PluginClient {
 
     if (typeId === "managed-kube") {
       const [regionsData, flavorsData] = await Promise.all([
-        this.ovhFetch<OvhRegion[]>(this.cloudPath("/region")),
+        this.listUpRegions(),
         this.ovhFetch<OvhFlavor[]>(this.cloudPath("/flavor")).catch(() => [] as OvhFlavor[]),
       ]);
-      const regions = regionsData
-        .filter((r) => r.status === "UP")
-        .map((r) => {
-          const info = OvhClient.REGION_INFO[r.name];
-          return {
-            id: r.name,
-            label: r.name,
-            ...(info ? { location: info.location, flag: info.flag } : {}),
-          };
-        });
+      const regions = this.toRegionOptions(regionsData);
 
       // Group flavors by name (across regions) so the picker shows one row per
       // commercial type. OVH's node pool API takes `flavorName` (e.g. "b3-8"),
@@ -550,12 +563,20 @@ export class OvhClient implements PluginClient {
             label: "Kubernetes Version",
             kind: "select",
             required: true,
+            options: extras.KUBE_VERSIONS.map((v) => ({ id: v, label: v })),
+            defaultValue: extras.KUBE_VERSIONS[0]!,
+          },
+          {
+            key: "updatePolicy",
+            label: "Update Policy",
+            kind: "select",
+            required: false,
+            defaultValue: "ALWAYS_UPDATE",
             options: [
-              { id: "1.31", label: "1.31" },
-              { id: "1.30", label: "1.30" },
-              { id: "1.29", label: "1.29" },
+              { id: "ALWAYS_UPDATE", label: "Always update (security patches applied promptly)" },
+              { id: "MINIMAL_DOWNTIME", label: "Minimal downtime" },
+              { id: "NEVER_UPDATE", label: "Never update automatically" },
             ],
-            defaultValue: "1.31",
           },
           {
             key: "flavor",
@@ -579,7 +600,13 @@ export class OvhClient implements PluginClient {
       };
     }
 
+    if (typeId === "container-registry") return extras.registryCreateConfig(this.api);
+
     if (typeId === "managed-db") {
+      // Prefer the live capabilities catalogue; the static form below is the
+      // fallback when the consumer key cannot read it.
+      const live = await extras.databaseCreateConfig(this.api);
+      if (live) return live;
       return {
         fields: [
           { key: "description", label: "Name / Description", kind: "text", required: true },
@@ -654,17 +681,8 @@ export class OvhClient implements PluginClient {
     }
 
     if (typeId === "volume") {
-      const regionsData = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
-      const regions = regionsData
-        .filter((r) => r.status === "UP")
-        .map((r) => {
-          const info = OvhClient.REGION_INFO[r.name];
-          return {
-            id: r.name,
-            label: r.name,
-            ...(info ? { location: info.location, flag: info.flag } : {}),
-          };
-        });
+      const regionsData = await this.listUpRegions();
+      const regions = this.toRegionOptions(regionsData);
       const defaultRegion = regions[0]?.id;
       return {
         fields: [
@@ -700,6 +718,7 @@ export class OvhClient implements PluginClient {
               { id: "classic-luks", label: "Classic · LUKS encrypted" },
               { id: "high-speed-luks", label: "High Speed · LUKS encrypted" },
               { id: "high-speed-gen2-luks", label: "High Speed Gen2 · LUKS encrypted" },
+              { id: "classic-multiattach", label: "Classic · Multi-attach" },
             ],
           },
         ],
@@ -707,17 +726,8 @@ export class OvhClient implements PluginClient {
     }
 
     if (typeId === "object-storage-bucket") {
-      const regionsData = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
-      const regions = regionsData
-        .filter((r) => r.status === "UP")
-        .map((r) => {
-          const info = OvhClient.REGION_INFO[r.name];
-          return {
-            id: r.name,
-            label: r.name,
-            ...(info ? { location: info.location, flag: info.flag } : {}),
-          };
-        });
+      const regionsData = await this.listUpRegions();
+      const regions = this.toRegionOptions(regionsData);
       const defaultRegion = regions[0]?.id;
       return {
         fields: [
@@ -738,8 +748,7 @@ export class OvhClient implements PluginClient {
       const regions = await this.ovhFetch<string[]>(
         this.cloudPath("/capabilities/loadbalancer/region"),
       ).catch(async () => {
-        const regionsData = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
-        return regionsData.filter((r) => r.status === "UP").map((r) => r.name);
+        return this.listUpRegions();
       });
       const regionOptions = regions.map((id) => {
         const info = OvhClient.REGION_INFO[id];
@@ -779,17 +788,8 @@ export class OvhClient implements PluginClient {
     }
 
     if (typeId === "private-network") {
-      const regionsData = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
-      const regions = regionsData
-        .filter((r) => r.status === "UP")
-        .map((r) => {
-          const info = OvhClient.REGION_INFO[r.name];
-          return {
-            id: r.name,
-            label: r.name,
-            ...(info ? { location: info.location, flag: info.flag } : {}),
-          };
-        });
+      const regionsData = await this.listUpRegions();
+      const regions = this.toRegionOptions(regionsData);
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
@@ -900,7 +900,8 @@ export class OvhClient implements PluginClient {
       const body = {
         name: clusterName,
         region: fields["region"],
-        version: fields["version"] ?? "1.31",
+        version: fields["version"] ?? extras.KUBE_VERSIONS[0],
+        ...(fields["updatePolicy"] ? { updatePolicy: fields["updatePolicy"] } : {}),
       };
 
       const cluster = await this.ovhFetch<OvhKubeCluster>(this.cloudPath("/kube"), {
@@ -1081,6 +1082,8 @@ export class OvhClient implements PluginClient {
       return this.mapLoadBalancer(data, accountId);
     }
 
+    if (typeId === "container-registry") return extras.createRegistry(this.api, accountId, fields);
+
     if (typeId === "private-network") {
       const region = fields["region"] ?? "";
       const vlanId = fields["vlanId"];
@@ -1164,6 +1167,15 @@ export class OvhClient implements PluginClient {
         );
         break;
       }
+      case "octavia-load-balancer":
+        await extras.deleteOctaviaLoadBalancer(this.api, resourceId);
+        break;
+      case "volume-snapshot":
+        await extras.deleteVolumeSnapshot(this.api, resourceId);
+        break;
+      case "container-registry":
+        await extras.deleteRegistry(this.api, resourceId);
+        break;
       default:
         throw new Error(`OVH plugin: deleteResource not supported for type "${typeId}"`);
     }
@@ -1202,6 +1214,47 @@ export class OvhClient implements PluginClient {
     throw new Error(
       `OVH plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
     );
+  }
+
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    _accountId: string,
+  ): Promise<void> {
+    if (typeId === "instance" && extras.INSTANCE_ACTIONS.has(actionId)) {
+      return extras.invokeInstanceAction(this.api, resourceId, actionId);
+    }
+    if (typeId === "volume" && actionId === "snapshot") {
+      return extras.snapshotVolume(this.api, resourceId);
+    }
+    if (typeId === "managed-kube" && extras.KUBE_ACTIONS.has(actionId)) {
+      return extras.invokeKubeAction(this.api, resourceId, actionId);
+    }
+    throw new Error(`OVH plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+  }
+
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const current = await this.getResource(typeId, resourceId, accountId);
+    switch (typeId) {
+      case "instance":
+        return extras.updateInstance(this.api, current, fields);
+      case "volume":
+        return extras.updateVolume(this.api, current, fields);
+      case "managed-kube":
+        return extras.updateKube(this.api, current, fields);
+      case "managed-db":
+        return extras.updateDatabase(this.api, current, fields);
+      case "octavia-load-balancer":
+        return extras.updateOctaviaLoadBalancer(this.api, current, fields);
+      default:
+        throw new Error(`OVH plugin: updateResource not supported for type "${typeId}"`);
+    }
   }
 
   // Managed databases are the only OVH Public Cloud resources with a metrics API:
@@ -1293,6 +1346,9 @@ export class OvhClient implements PluginClient {
     resourceId: string,
     accountId: string,
   ): Promise<DashboardStat[]> {
+    if (resourceTypeId === "octavia-load-balancer") {
+      return extras.octaviaStats(this.api, resourceId);
+    }
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     const f = resource.fields;
     const ro = resource.resolvedOutputs ?? {};
@@ -1450,6 +1506,11 @@ export class OvhClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
 
+    detail.headerActions = [
+      ...this.typeActions(resource, statusStr),
+      ...(detail.headerActions ?? []),
+    ];
+
     // MongoDB-engined OVH managed databases used to also surface a separate
     // inline "Documents" tab via the host's `mongodb-peer` browser. That
     // duplicated the MongoDB peer-pane tab declared by this resource type's
@@ -1458,6 +1519,108 @@ export class OvhClient implements PluginClient {
     // databases and opens each in the existing MongoDocumentBrowser.
 
     return detail;
+  }
+
+  /** Header actions per type; the action ids are handled by `invokeAction`. */
+  private typeActions(resource: ResourceInstance, statusStr: string): ActionNode[] {
+    const action = (
+      label: string,
+      actionId: string,
+      successMessage: string,
+      confirmMessage?: string,
+      danger = false,
+    ): ActionNode => ({
+      kind: "action",
+      label,
+      action: {
+        type: "plugin-action",
+        actionId,
+        successMessage,
+        ...(confirmMessage ? { confirmMessage } : {}),
+      },
+      ...(danger ? { variant: "danger" as const } : {}),
+    });
+    const out: ActionNode[] = [];
+    if (resource.resourceTypeId === "instance") {
+      if (statusStr === "ACTIVE") {
+        out.push(
+          action(
+            "Stop",
+            "stop",
+            "Stop requested.",
+            "Stop this instance? OVHcloud keeps billing a stopped instance at its full rate; shelve it to stop the compute charge.",
+            true,
+          ),
+          action("Reboot", "reboot", "Reboot requested.", "Soft-reboot this instance?"),
+          action(
+            "Hard reboot",
+            "reboot_hard",
+            "Hard reboot requested.",
+            "Hard-reboot this instance? This is a power cycle; unsaved data in memory is lost.",
+            true,
+          ),
+          action(
+            "Shelve",
+            "shelve",
+            "Shelve requested.",
+            "Shelve this instance? Its disk is kept as a snapshot and compute billing stops; unshelving takes a few minutes.",
+          ),
+        );
+      } else if (statusStr === "SHUTOFF" || statusStr === "STOPPED") {
+        out.push(action("Start", "start", "Start requested."));
+      } else if (statusStr === "SHELVED" || statusStr === "SHELVED_OFFLOADED") {
+        out.push(action("Unshelve", "unshelve", "Unshelve requested."));
+      }
+      out.push(
+        action(
+          "Take snapshot",
+          "snapshot",
+          "Snapshot requested.",
+          "Snapshot this instance's boot disk? Snapshots are billed per GB until deleted.",
+        ),
+      );
+    }
+    if (resource.resourceTypeId === "volume") {
+      out.push(
+        action(
+          "Take snapshot",
+          "snapshot",
+          "Snapshot requested. It appears under Volume Snapshots when ready.",
+          "Snapshot this volume? Snapshots are billed per GB until deleted.",
+        ),
+      );
+    }
+    if (resource.resourceTypeId === "managed-kube") {
+      out.push(
+        action(
+          "Update to latest patch",
+          "update_patch",
+          "Patch update requested.",
+          "Roll the control plane and nodes to the latest patch release of this minor version? Nodes are replaced one by one.",
+        ),
+      );
+      if (String(resource.fields["nextUpgradeVersions"] ?? "")) {
+        out.push(
+          action(
+            "Upgrade minor version",
+            "update_minor",
+            "Minor upgrade requested.",
+            "Upgrade the cluster to the next Kubernetes minor version? This cannot be undone.",
+            true,
+          ),
+        );
+      }
+      out.push(
+        action(
+          "Reset kubeconfig",
+          "reset_kubeconfig",
+          "Kubeconfig reset. Fetch it again to reconnect.",
+          "Reset the cluster's admin kubeconfig? Every existing kubeconfig stops working.",
+          true,
+        ),
+      );
+    }
+    return out;
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
@@ -1479,9 +1642,29 @@ export class OvhClient implements PluginClient {
     };
   }
 
+  /**
+   * Names of the project's activated regions. `GET /region` returns plain
+   * names (`string[]` in https://eu.api.ovh.com/1.0/cloud.json); an object
+   * entry is tolerated too and kept only while its status is `UP`.
+   */
   private async listUpRegions(): Promise<string[]> {
-    const regions = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
-    return regions.filter((r) => r.status === "UP").map((r) => r.name);
+    const regions = await this.ovhFetch<Array<string | OvhRegion>>(this.cloudPath("/region"));
+    return regions
+      .filter((r) => typeof r === "string" || r.status === "UP")
+      .map((r) => (typeof r === "string" ? r : r.name));
+  }
+
+  private toRegionOptions(
+    names: string[],
+  ): Array<{ id: string; label: string; location?: string; flag?: string }> {
+    return names.map((name) => {
+      const info = OvhClient.REGION_INFO[name];
+      return {
+        id: name,
+        label: name,
+        ...(info ? { location: info.location, flag: info.flag } : {}),
+      };
+    });
   }
 
   private async listObjectStorageBuckets(accountId: string): Promise<ResourceInstance[]> {
@@ -1690,6 +1873,8 @@ export class OvhClient implements PluginClient {
       Array<{
         id: string;
         name?: string;
+        description?: string;
+        availabilityZone?: string | null;
         region: string;
         size: number;
         type: string;
@@ -1707,6 +1892,8 @@ export class OvhClient implements PluginClient {
       displayName: v.name ?? v.id,
       fields: {
         name: v.name ?? "",
+        description: v.description ?? "",
+        availabilityZone: v.availabilityZone ?? "",
         region: v.region,
         sizeGb: v.size,
         type: v.type,
@@ -1753,6 +1940,11 @@ export class OvhClient implements PluginClient {
           status: inst.status,
           sshUsername: ovhSshUsername(inst.image?.name ?? ""),
           networkIds: networkIds.join(", "),
+          monthlyBilling: inst.monthlyBilling != null,
+          outgoingTrafficGb:
+            inst.currentMonthOutgoingTraffic != null
+              ? Math.round((inst.currentMonthOutgoingTraffic / 1e9) * 100) / 100
+              : 0,
         },
         resolvedOutputs: { ipv4: publicIp, ipv6: publicIpv6, ipv4Private: privateIp },
         secretStates: [],
@@ -1775,10 +1967,14 @@ export class OvhClient implements PluginClient {
         } catch {
           // No permission to list node pools: leave fields empty
         }
-        return { cluster, pools };
+        // The only metric the MKS API exposes: etcd usage against its quota.
+        const etcd = await this.ovhFetch<{ quota?: number; usage?: number }>(
+          this.cloudPath(`/kube/${id}/metrics/etcdUsage`),
+        ).catch(() => null);
+        return { cluster, pools, etcd };
       }),
     );
-    return clusters.map(({ cluster: c, pools }) => {
+    return clusters.map(({ cluster: c, pools, etcd }) => {
       const firstPool = pools[0];
       const totalNodes = pools.reduce(
         (sum, p) => sum + Number(p.desiredNodes ?? p.currentNodes ?? 0),
@@ -1795,10 +1991,17 @@ export class OvhClient implements PluginClient {
           region: c.region ?? "",
           version: c.version ?? "",
           status: c.status ?? "",
-          flavor: firstPool?.flavorName ?? "",
+          // The read model names it `flavor`; `flavorName` is the create field.
+          flavor: firstPool?.flavor ?? firstPool?.flavorName ?? "",
           nodeCount: totalNodes,
           nodePoolCount: pools.length,
           nodesUrl: c.nodesUrl ?? "",
+          updatePolicy: c.updatePolicy ?? "",
+          isUpToDate: c.isUpToDate ?? false,
+          nextUpgradeVersions: (c.nextUpgradeVersions ?? []).join(", "),
+          plan: c.plan ?? "",
+          etcdUsagePercent:
+            etcd?.quota && etcd.quota > 0 ? Math.round((etcd.usage! / etcd.quota) * 1000) / 10 : 0,
           // The OpenStack id of the private network the cluster's nodes sit
           // in: matched against a private network's per-region
           // `regions[].openstackId`, not its OVH `pn-…` id.
@@ -1839,6 +2042,16 @@ export class OvhClient implements PluginClient {
         flavor: svc.flavor ?? "",
         nodeCount: svc.nodeNumber ?? svc.nodes?.length ?? 1,
         status: svc.status ?? "",
+        storageSizeGb:
+          svc.storage?.size?.value != null
+            ? (svc.storage.size.unit ?? "GB").toUpperCase() === "MB"
+              ? Math.round(svc.storage.size.value / 1024)
+              : svc.storage.size.value
+            : 0,
+        deletionProtection: svc.deletionProtection ?? false,
+        backupTime: svc.backups?.time ?? svc.backupTime ?? "",
+        backupRetentionDays: svc.backups?.retentionDays ?? 0,
+        maintenanceTime: svc.maintenanceTime ?? "",
       },
       resolvedOutputs: {},
       secretStates: [],
@@ -1867,6 +2080,10 @@ interface OvhInstance {
   image?: { id: string; name: string };
   ipAddresses?: OvhIpAddress[];
   sshKey?: { id: string; name: string };
+  /** Present (with `since`/`status`) once monthly billing is activated. */
+  monthlyBilling?: { since?: string; status?: string } | null;
+  /** Bytes sent this month. */
+  currentMonthOutgoingTraffic?: number | null;
 }
 
 interface OvhKubeCluster {
@@ -1883,6 +2100,10 @@ interface OvhKubeCluster {
   privateNetworkId?: string;
   nodesSubnetId?: string;
   loadBalancersSubnetId?: string;
+  updatePolicy?: string;
+  isUpToDate?: boolean;
+  nextUpgradeVersions?: string[];
+  plan?: string;
 }
 
 interface OvhStorageContainer {
@@ -1939,6 +2160,9 @@ interface OvhGateway {
 interface OvhKubeNodePool {
   id: string;
   name?: string;
+  /** Read model field. */
+  flavor?: string;
+  /** Create-body field; kept as a fallback for older payloads. */
   flavorName?: string;
   desiredNodes?: number;
   currentNodes?: number;
@@ -1968,6 +2192,11 @@ interface OvhDatabaseService {
   nodeNumber?: number;
   nodes?: Array<{ region: string }>;
   endpoints?: Array<{ uri?: string; domain?: string; port?: number; scheme?: string }>;
+  storage?: { size?: { unit?: string; value?: number }; type?: string };
+  deletionProtection?: boolean;
+  backups?: { time?: string; retentionDays?: number; regions?: string[] } | null;
+  backupTime?: string;
+  maintenanceTime?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1998,3 +2227,6 @@ interface OvhRegion {
   status: string;
   services?: Array<{ name: string; status: string }>;
 }
+
+/** Output keys resolved straight from `resolvedOutputs` for the newer types. */
+const OUTPUT_KEYS_BY_TYPE: Record<string, true> = { vipAddress: true, floatingIp: true, url: true };
