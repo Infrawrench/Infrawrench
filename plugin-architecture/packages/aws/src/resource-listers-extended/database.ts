@@ -419,3 +419,90 @@ export async function listDBSubnetGroups(
     };
   });
 }
+
+/**
+ * ElastiCache Serverless caches via `DescribeServerlessCaches`
+ * (https://docs.aws.amazon.com/AmazonElastiCache/latest/APIReference/API_DescribeServerlessCaches.html).
+ * A separate API from `DescribeCacheClusters`, which never returns them.
+ * Every serverless cache requires TLS, so the connection string is `rediss://`
+ * for Valkey and Redis OSS; Memcached gets none (there is no URI scheme the
+ * Memcached peer understands for TLS).
+ */
+export async function listElastiCacheServerlessCaches(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const caches: Record<string, unknown>[] = [];
+  let nextToken: string | undefined;
+  for (let page = 0; page < 50; page++) {
+    const data = await ctx.ec2Query<Record<string, unknown>>(
+      "elasticache",
+      "DescribeServerlessCaches",
+      "2015-02-02",
+      { MaxResults: "100", ...(nextToken ? { NextToken: nextToken } : {}) },
+    );
+    const result = (data["DescribeServerlessCachesResult"] ?? data) as Record<string, unknown>;
+    const container = result["ServerlessCaches"] as Record<string, unknown> | undefined;
+    caches.push(
+      ...(ensureArray(container?.["member"] ?? container?.["ServerlessCache"]) as Record<
+        string,
+        unknown
+      >[]),
+    );
+    nextToken = result["NextToken"] ? String(result["NextToken"]) : undefined;
+    if (!nextToken) break;
+  }
+
+  return caches.map((c) => {
+    const name = String(c["ServerlessCacheName"] ?? "");
+    const engine = String(c["Engine"] ?? "");
+    const endpoint = c["Endpoint"] as Record<string, unknown> | undefined;
+    const reader = c["ReaderEndpoint"] as Record<string, unknown> | undefined;
+    const limits = c["CacheUsageLimits"] as Record<string, unknown> | undefined;
+    const storage = limits?.["DataStorage"] as Record<string, unknown> | undefined;
+    const ecpu = limits?.["ECPUPerSecond"] as Record<string, unknown> | undefined;
+    const subnets = ensureArray(
+      (c["SubnetIds"] as Record<string, unknown> | undefined)?.["SubnetId"],
+    );
+    const groups = ensureArray(
+      (c["SecurityGroupIds"] as Record<string, unknown> | undefined)?.["SecurityGroupId"],
+    );
+    const address = String(endpoint?.["Address"] ?? "");
+    const port = String(endpoint?.["Port"] ?? "");
+    return {
+      id: ctx.id(accountId, "elasticache-serverless-cache", name),
+      pluginId: "aws",
+      resourceTypeId: "elasticache-serverless-cache",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        region: ctx.region,
+        engine,
+        engineVersion: String(c["FullEngineVersion"] ?? c["MajorEngineVersion"] ?? ""),
+        status: String(c["Status"] ?? ""),
+        description: String(c["Description"] ?? ""),
+        maxDataStorageGb: Number(storage?.["Maximum"] ?? 0),
+        maxEcpuPerSecond: Number(ecpu?.["Maximum"] ?? 0),
+        snapshotRetentionLimit: Number(c["SnapshotRetentionLimit"] ?? 0),
+        dailySnapshotTime: String(c["DailySnapshotTime"] ?? ""),
+        connectionType: String(c["ConnectionType"] ?? "vpc"),
+        networkType: String(c["NetworkType"] ?? ""),
+        subnetIds: joinIds(subnets),
+        securityGroupIds: joinIds(groups),
+      },
+      resolvedOutputs: {
+        endpoint: address,
+        readerEndpoint: String(reader?.["Address"] ?? ""),
+        port,
+        connectionString:
+          address && engine !== "memcached" ? `rediss://${address}:${port || "6379"}` : "",
+        arn: String(c["ARN"] ?? ""),
+      },
+      secretStates: [],
+      externalId: name,
+      createdAt: String(c["CreateTime"] ?? ctx.now()),
+      updatedAt: ctx.now(),
+    };
+  });
+}

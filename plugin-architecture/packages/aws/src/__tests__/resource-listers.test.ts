@@ -355,6 +355,61 @@ describe("listLambdaFunctions", () => {
     });
     const out = await listLambdaFunctions(ctx, "acct");
     expect(out[0]!.resolvedOutputs.functionArn).toBe("arn:fn");
+    // Functions that predate arm64 omit Architectures; they run on x86_64.
+    expect(out[0]!.fields.architecture).toBe("x86_64");
+    expect(out[0]!.fields.logGroup).toBe("/aws/lambda/fn");
+    expect(out[0]!.fields.ephemeralStorageMb).toBe(512);
+  });
+
+  it("follows NextMarker and maps the newer configuration blocks", async () => {
+    const paths: string[] = [];
+    const ctx = makeCtx({
+      jsonGet: (_s, path) => {
+        paths.push(path);
+        if (!path.includes("Marker=")) {
+          return { Functions: [{ FunctionName: "a" }], NextMarker: "m 2" };
+        }
+        return {
+          Functions: [
+            {
+              FunctionName: "b",
+              Architectures: ["arm64"],
+              PackageType: "Image",
+              EphemeralStorage: { Size: 2048 },
+              LoggingConfig: {
+                LogFormat: "JSON",
+                ApplicationLogLevel: "WARN",
+                SystemLogLevel: "INFO",
+                LogGroup: "/custom/b",
+              },
+              SnapStart: { ApplyOn: "PublishedVersions", OptimizationStatus: "On" },
+              CapacityProviderConfig: {
+                LambdaManagedInstancesCapacityProviderConfig: {
+                  CapacityProviderArn: "arn:aws:lambda:us-east-1:1:capacity-provider:cp",
+                },
+              },
+              DurableConfig: { ExecutionTimeout: 3600 },
+            },
+          ],
+          NextMarker: null,
+        };
+      },
+    });
+    const out = await listLambdaFunctions(ctx, "acct");
+    expect(out.map((r) => r.fields.name)).toEqual(["a", "b"]);
+    expect(paths[1]).toContain("Marker=m%202");
+    const b = out[1]!.fields;
+    expect(b.architecture).toBe("arm64");
+    expect(b.packageType).toBe("Image");
+    expect(b.ephemeralStorageMb).toBe(2048);
+    expect(b.logFormat).toBe("JSON");
+    expect(b.applicationLogLevel).toBe("WARN");
+    expect(b.systemLogLevel).toBe("INFO");
+    expect(b.logGroup).toBe("/custom/b");
+    expect(b.snapStart).toBe("PublishedVersions");
+    expect(b.capacityProviderArn).toBe("arn:aws:lambda:us-east-1:1:capacity-provider:cp");
+    expect(b.durableExecution).toBe(true);
+    expect(out[0]!.fields.durableExecution).toBe(false);
   });
 });
 
@@ -468,6 +523,25 @@ describe("listElastiCacheClusters", () => {
     });
     const out = await listElastiCacheClusters(ctx, "acct");
     expect(out[0]!.resolvedOutputs.connectionString).toBe("redis://r.host:6379");
+  });
+
+  it("gives Valkey clusters a redis:// connection string", async () => {
+    const ctx = makeCtx({
+      ec2Query: () => ({
+        DescribeCacheClustersResult: {
+          CacheClusters: {
+            CacheCluster: {
+              CacheClusterId: "vk",
+              Engine: "valkey",
+              CacheNodes: { CacheNode: { Endpoint: { Address: "v.host", Port: "6379" } } },
+            },
+          },
+        },
+      }),
+    });
+    const out = await listElastiCacheClusters(ctx, "acct");
+    expect(out[0]!.fields.engine).toBe("valkey");
+    expect(out[0]!.resolvedOutputs.connectionString).toBe("redis://v.host:6379");
   });
 });
 

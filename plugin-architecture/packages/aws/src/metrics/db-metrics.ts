@@ -227,6 +227,58 @@ export async function elastiCacheClusterMetrics(
   return results;
 }
 
+export async function elastiCacheServerlessCacheMetrics(
+  ctx: MetricsContext,
+  resource: ResourceInstance,
+): Promise<MetricSeries[]> {
+  // Verified against
+  // https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/serverless-metrics-events-redis.html
+  // Serverless caches publish under the lowercase `clusterId` dimension (the
+  // cache name), not the node-based `CacheClusterId`. Latencies are in
+  // microseconds. Memcached caches share most of these names; the ones that
+  // do not apply simply come back empty and are dropped.
+  const name = String(resource.fields.name ?? resource.externalId ?? "");
+  if (!name) return [];
+  const dims = [{ Name: "clusterId", Value: name }];
+  const specs: Array<{ metric: string; stat: string; label: string; unit?: string }> = [
+    { metric: "ElastiCacheProcessingUnits", stat: "Sum", label: "ECPUs Consumed" },
+    { metric: "BytesUsedForCache", stat: "Maximum", label: "Data Stored", unit: "bytes" },
+    { metric: "CacheHitRate", stat: "Average", label: "Hit Rate", unit: "%" },
+    { metric: "CacheHits", stat: "Sum", label: "Cache Hits" },
+    { metric: "CacheMisses", stat: "Sum", label: "Cache Misses" },
+    { metric: "TotalCmdsCount", stat: "Sum", label: "Commands" },
+    { metric: "ThrottledCmds", stat: "Sum", label: "Throttled Commands" },
+    {
+      metric: "SuccessfulReadRequestLatency",
+      stat: "Average",
+      label: "Read Latency",
+      unit: "μs",
+    },
+    {
+      metric: "SuccessfulWriteRequestLatency",
+      stat: "Average",
+      label: "Write Latency",
+      unit: "μs",
+    },
+    { metric: "CurrConnections", stat: "Maximum", label: "Current Connections" },
+    { metric: "CurrItems", stat: "Maximum", label: "Items" },
+    { metric: "Evictions", stat: "Sum", label: "Evictions" },
+    { metric: "NetworkBytesIn", stat: "Sum", label: "Network In", unit: "bytes" },
+    { metric: "NetworkBytesOut", stat: "Sum", label: "Network Out", unit: "bytes" },
+  ];
+  const series = await Promise.all(
+    specs.map((s) => ctx.fetchCw("AWS/ElastiCache", s.metric, dims, s.stat).catch(() => null)),
+  );
+  const results: MetricSeries[] = [];
+  series.forEach((m, i) => {
+    const spec = specs[i]!;
+    if (m && m.points.length > 0) {
+      results.push({ ...m, label: spec.label, ...(spec.unit ? { unit: spec.unit } : {}) });
+    }
+  });
+  return results;
+}
+
 export async function redshiftClusterMetrics(
   ctx: MetricsContext,
   resource: ResourceInstance,

@@ -97,6 +97,8 @@ const TEMPLATE_ACTIONS: Record<string, string[]> = {
     "autoscaling:Describe*",
     "backup:ListBackupVaults",
     "batch:DescribeJobQueues",
+    "bedrock:ListFoundationModels",
+    "bedrock:ListInferenceProfiles",
     "cloudformation:DescribeStacks",
     "cloudformation:ListStacks",
     "cloudfront:ListDistributions",

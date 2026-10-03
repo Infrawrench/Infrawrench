@@ -275,7 +275,7 @@ export function renderDetail(
             tabLabel: "Playground",
             subtitle: `Chat with ${String(fields["modelName"] ?? resource.displayName)}`,
             greeting:
-              "Send a prompt to try this Bedrock foundation model via the Converse API. " +
+              "Send a prompt to try this Bedrock model via the Converse API. " +
               "Responses come back as a single whole message (non-streaming), and the full " +
               "conversation history is sent on each turn.",
             inputPlaceholder: "Send a message…",

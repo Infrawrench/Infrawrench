@@ -160,6 +160,11 @@ export async function deleteResource(
         CacheClusterId: externalId,
       });
       break;
+    case "elasticache-serverless-cache":
+      await queryPostCall(creds, "elasticache", "DeleteServerlessCache", "2015-02-02", {
+        ServerlessCacheName: externalId,
+      });
+      break;
     case "rds-instance":
       await queryPostCall(creds, "rds", "DeleteDBInstance", "2014-10-31", {
         DBInstanceIdentifier: externalId,

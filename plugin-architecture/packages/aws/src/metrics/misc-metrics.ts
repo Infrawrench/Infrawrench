@@ -2,8 +2,8 @@ import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
 import type { MetricsContext } from "./cw-helpers.js";
 
 /**
- * Smaller-service metric handlers: SageMaker endpoints, CodeBuild,
- * CloudWatch Log Groups, WAFv2.
+ * Smaller-service metric handlers: SageMaker endpoints, Bedrock models,
+ * CodeBuild, CloudWatch Log Groups, WAFv2.
  */
 
 export async function sageMakerEndpointMetrics(
@@ -37,6 +37,44 @@ export async function sageMakerEndpointMetrics(
     results.push({ ...overheadLatency, label: "Overhead Latency", unit: "μs" });
   if (errors4xx && errors4xx.points.length > 0) results.push({ ...errors4xx, label: "4xx Errors" });
   if (errors5xx && errors5xx.points.length > 0) results.push({ ...errors5xx, label: "5xx Errors" });
+  return results;
+}
+
+export async function bedrockModelMetrics(
+  ctx: MetricsContext,
+  resource: ResourceInstance,
+): Promise<MetricSeries[]> {
+  // Verified against
+  // https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-runtime-metrics.html
+  // `AWS/Bedrock`, dimension `ModelId`. Calls made through an inference
+  // profile are recorded under the profile id, which is exactly the id an
+  // inference-profile entry carries, so one lookup covers both kinds.
+  const modelId = String(resource.fields.modelId ?? "");
+  if (!modelId) return [];
+  const dims = [{ Name: "ModelId", Value: modelId }];
+  const specs: Array<{ metric: string; stat: string; label: string; unit?: string }> = [
+    { metric: "Invocations", stat: "Sum", label: "Invocations" },
+    { metric: "InvocationLatency", stat: "Average", label: "Latency", unit: "ms" },
+    { metric: "TimeToFirstToken", stat: "Average", label: "Time to First Token", unit: "ms" },
+    { metric: "InputTokenCount", stat: "Sum", label: "Input Tokens" },
+    { metric: "OutputTokenCount", stat: "Sum", label: "Output Tokens" },
+    { metric: "CacheReadInputTokenCount", stat: "Sum", label: "Cache Read Tokens" },
+    { metric: "CacheWriteInputTokenCount", stat: "Sum", label: "Cache Write Tokens" },
+    { metric: "InvocationClientErrors", stat: "Sum", label: "Client Errors" },
+    { metric: "InvocationServerErrors", stat: "Sum", label: "Server Errors" },
+    { metric: "InvocationThrottles", stat: "Sum", label: "Throttles" },
+    { metric: "EstimatedTPMQuotaUsage", stat: "Sum", label: "Estimated TPM Quota Usage" },
+  ];
+  const series = await Promise.all(
+    specs.map((s) => ctx.fetchCw("AWS/Bedrock", s.metric, dims, s.stat).catch(() => null)),
+  );
+  const results: MetricSeries[] = [];
+  series.forEach((m, i) => {
+    const spec = specs[i]!;
+    if (m && m.points.length > 0) {
+      results.push({ ...m, label: spec.label, ...(spec.unit ? { unit: spec.unit } : {}) });
+    }
+  });
   return results;
 }
 

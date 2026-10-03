@@ -118,14 +118,28 @@ export async function databaseGetCreateConfig(
           kind: "select",
           required: true,
           options: [
+            { id: "db.t4g.micro", label: "db.t4g.micro (2 vCPU, 1 GB, Graviton)" },
+            { id: "db.t4g.small", label: "db.t4g.small (2 vCPU, 2 GB, Graviton)" },
+            { id: "db.t4g.medium", label: "db.t4g.medium (2 vCPU, 4 GB, Graviton)" },
+            { id: "db.t4g.large", label: "db.t4g.large (2 vCPU, 8 GB, Graviton)" },
             { id: "db.t3.micro", label: "db.t3.micro (2 vCPU, 1 GB)" },
             { id: "db.t3.small", label: "db.t3.small (2 vCPU, 2 GB)" },
             { id: "db.t3.medium", label: "db.t3.medium (2 vCPU, 4 GB)" },
             { id: "db.t3.large", label: "db.t3.large (2 vCPU, 8 GB)" },
+            { id: "db.m8g.large", label: "db.m8g.large (2 vCPU, 8 GB, Graviton4)" },
+            { id: "db.m8g.xlarge", label: "db.m8g.xlarge (4 vCPU, 16 GB, Graviton4)" },
+            { id: "db.m8g.2xlarge", label: "db.m8g.2xlarge (8 vCPU, 32 GB, Graviton4)" },
+            { id: "db.r8g.large", label: "db.r8g.large (2 vCPU, 16 GB, Graviton4)" },
+            { id: "db.r8g.xlarge", label: "db.r8g.xlarge (4 vCPU, 32 GB, Graviton4)" },
+            { id: "db.r8g.2xlarge", label: "db.r8g.2xlarge (8 vCPU, 64 GB, Graviton4)" },
+            { id: "db.m7g.large", label: "db.m7g.large (2 vCPU, 8 GB, Graviton3)" },
+            { id: "db.r7g.large", label: "db.r7g.large (2 vCPU, 16 GB, Graviton3)" },
             { id: "db.r6g.large", label: "db.r6g.large (2 vCPU, 16 GB)" },
             { id: "db.r6g.xlarge", label: "db.r6g.xlarge (4 vCPU, 32 GB)" },
           ],
-          defaultValue: "db.t3.micro",
+          defaultValue: "db.t4g.micro",
+          description:
+            "Graviton4 (m8g/r8g) classes need PostgreSQL 13.8+, MySQL 8.0.32+ or MariaDB 10.4.29+, and are not offered in every region yet",
         },
         {
           key: "allocatedStorage",
@@ -173,10 +187,12 @@ export async function databaseGetCreateConfig(
           kind: "select",
           required: true,
           options: [
-            { id: "redis", label: "Redis" },
+            { id: "redis", label: "Redis OSS" },
             { id: "memcached", label: "Memcached" },
           ],
           defaultValue: "redis",
+          description:
+            "For Valkey, create an ElastiCache Serverless Cache instead: single-node CreateCacheCluster only accepts Redis OSS and Memcached",
         },
         {
           key: "cacheNodeType",
@@ -184,13 +200,20 @@ export async function databaseGetCreateConfig(
           kind: "select",
           required: true,
           options: [
+            { id: "cache.t4g.micro", label: "cache.t4g.micro (Graviton)" },
+            { id: "cache.t4g.small", label: "cache.t4g.small (Graviton)" },
+            { id: "cache.t4g.medium", label: "cache.t4g.medium (Graviton)" },
             { id: "cache.t3.micro", label: "cache.t3.micro" },
             { id: "cache.t3.small", label: "cache.t3.small" },
             { id: "cache.t3.medium", label: "cache.t3.medium" },
+            { id: "cache.m7g.large", label: "cache.m7g.large (Graviton3)" },
+            { id: "cache.m7g.xlarge", label: "cache.m7g.xlarge (Graviton3)" },
+            { id: "cache.r7g.large", label: "cache.r7g.large (Graviton3)" },
+            { id: "cache.r7g.xlarge", label: "cache.r7g.xlarge (Graviton3)" },
             { id: "cache.r6g.large", label: "cache.r6g.large" },
             { id: "cache.r6g.xlarge", label: "cache.r6g.xlarge" },
           ],
-          defaultValue: "cache.t3.micro",
+          defaultValue: "cache.t4g.micro",
         },
         {
           key: "numCacheNodes",
@@ -200,6 +223,68 @@ export async function databaseGetCreateConfig(
           defaultValue: "1",
           minValue: 1,
           maxValue: 40,
+        },
+      ],
+    };
+  }
+  if (typeId === "elasticache-serverless-cache") {
+    return {
+      fields: [
+        {
+          key: "name",
+          label: "Cache Name",
+          kind: "text",
+          required: true,
+          description: "Stored in lowercase. Letters, digits and hyphens, starting with a letter",
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
+          key: "engine",
+          label: "Engine",
+          kind: "select",
+          required: true,
+          options: [
+            { id: "valkey", label: "Valkey" },
+            { id: "redis", label: "Redis OSS" },
+            { id: "memcached", label: "Memcached" },
+          ],
+          defaultValue: "valkey",
+          description: "Valkey is the lowest-priced serverless engine and is Redis OSS compatible",
+        },
+        {
+          key: "maxDataStorageGb",
+          label: "Max Data Storage (GB)",
+          kind: "number",
+          required: false,
+          minValue: 1,
+          description: "Optional ceiling on stored data. Leave blank for no limit",
+        },
+        {
+          key: "maxEcpuPerSecond",
+          label: "Max ECPU per Second",
+          kind: "number",
+          required: false,
+          minValue: 1,
+          description: "Optional ceiling on ElastiCache Processing Units per second",
+        },
+        {
+          key: "securityGroup",
+          label: "Security Group",
+          kind: "resource-picker",
+          required: false,
+          description:
+            "Security group for the cache's VPC endpoint. Defaults to the VPC's default group; the cache is placed in the default VPC's subnets",
+          associationSources: [
+            { pluginId: "aws", resourceTypeId: "security-group", outputKey: "groupId" },
+          ],
+          scopeFromFieldKey: "region",
         },
       ],
     };
@@ -256,13 +341,18 @@ export async function databaseGetCreateConfig(
           kind: "select",
           required: true,
           options: [
-            { id: "dc2.large", label: "dc2.large" },
-            { id: "dc2.8xlarge", label: "dc2.8xlarge" },
-            { id: "ra3.xlplus", label: "ra3.xlplus" },
-            { id: "ra3.4xlarge", label: "ra3.4xlarge" },
-            { id: "ra3.16xlarge", label: "ra3.16xlarge" },
+            { id: "ra3.large", label: "ra3.large (2 vCPU, 16 GB)" },
+            { id: "ra3.xlplus", label: "ra3.xlplus (4 vCPU, 32 GB)" },
+            { id: "ra3.4xlarge", label: "ra3.4xlarge (12 vCPU, 96 GB, 2+ nodes)" },
+            { id: "ra3.16xlarge", label: "ra3.16xlarge (48 vCPU, 384 GB, 2+ nodes)" },
+            { id: "rg.large", label: "rg.large (2 vCPU, 16 GB, Graviton)" },
+            { id: "rg.xlarge", label: "rg.xlarge (4 vCPU, 32 GB, Graviton, 2+ nodes)" },
+            { id: "rg.4xlarge", label: "rg.4xlarge (16 vCPU, 128 GB, Graviton, 2+ nodes)" },
+            { id: "rg.12xlarge", label: "rg.12xlarge (48 vCPU, 384 GB, Graviton, 2+ nodes)" },
           ],
-          defaultValue: "dc2.large",
+          defaultValue: "ra3.large",
+          description:
+            "DC2 nodes are retired and can no longer be created. RG (Graviton) nodes are not offered in every region yet",
         },
         {
           key: "masterUsername",
@@ -319,9 +409,17 @@ export async function databaseGetCreateConfig(
           options: [
             { id: "t3.small.search", label: "t3.small.search" },
             { id: "t3.medium.search", label: "t3.medium.search" },
-            { id: "m6g.large.search", label: "m6g.large.search" },
-            { id: "r6g.large.search", label: "r6g.large.search" },
+            { id: "m8g.medium.search", label: "m8g.medium.search (Graviton4)" },
+            { id: "m8g.large.search", label: "m8g.large.search (Graviton4)" },
+            { id: "r8g.medium.search", label: "r8g.medium.search (Graviton4)" },
+            { id: "r8g.large.search", label: "r8g.large.search (Graviton4)" },
+            { id: "m7g.medium.search", label: "m7g.medium.search (Graviton3)" },
+            { id: "m7g.large.search", label: "m7g.large.search (Graviton3)" },
+            { id: "r7g.medium.search", label: "r7g.medium.search (Graviton3)" },
+            { id: "r7g.large.search", label: "r7g.large.search (Graviton3)" },
           ],
+          description:
+            "Graviton3 and Graviton4 types support gp3 storage, which is what this form provisions. T3 domains are limited to 10 nodes and no standby",
           defaultValue: "t3.small.search",
         },
         {
@@ -464,7 +562,7 @@ export async function databaseCreateResource(
       {
         DBInstanceIdentifier: dbId,
         Engine: fields["engine"] ?? "postgres",
-        DBInstanceClass: fields["instanceClass"] ?? "db.t3.micro",
+        DBInstanceClass: fields["instanceClass"] ?? "db.t4g.micro",
         AllocatedStorage: String(fields["allocatedStorage"] ?? "20"),
         MasterUsername: fields["masterUsername"] ?? "admin",
         MasterUserPassword: fields["masterPassword"] ?? "",
@@ -483,7 +581,7 @@ export async function databaseCreateResource(
         region,
         engine: fields["engine"] ?? "postgres",
         engineVersion: "",
-        instanceClass: fields["instanceClass"] ?? "db.t3.micro",
+        instanceClass: fields["instanceClass"] ?? "db.t4g.micro",
         status: String(inst["DBInstanceStatus"] ?? "creating"),
         allocatedStorage: Number(fields["allocatedStorage"] ?? 20),
         availabilityZone: String(inst["AvailabilityZone"] ?? ""),
@@ -511,7 +609,7 @@ export async function databaseCreateResource(
       {
         CacheClusterId: clusterId,
         Engine: fields["engine"] ?? "redis",
-        CacheNodeType: fields["cacheNodeType"] ?? "cache.t3.micro",
+        CacheNodeType: fields["cacheNodeType"] ?? "cache.t4g.micro",
         NumCacheNodes: String(fields["numCacheNodes"] ?? "1"),
       },
     );
@@ -526,7 +624,7 @@ export async function databaseCreateResource(
         region,
         engine: fields["engine"] ?? "redis",
         engineVersion: "",
-        nodeType: fields["cacheNodeType"] ?? "cache.t3.micro",
+        nodeType: fields["cacheNodeType"] ?? "cache.t4g.micro",
         numNodes: Number(fields["numCacheNodes"] ?? "1"),
         status: "creating",
         availabilityZone: "",
@@ -588,6 +686,59 @@ export async function databaseCreateResource(
       updatedAt: new Date().toISOString(),
     };
   }
+  if (typeId === "elasticache-serverless-cache") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
+    const name = (fields["name"] ?? "").toLowerCase();
+    const engine = fields["engine"] || "valkey";
+    const params: Record<string, string> = { ServerlessCacheName: name, Engine: engine };
+    const storage = Number(fields["maxDataStorageGb"] ?? "");
+    if (fields["maxDataStorageGb"] && storage > 0) {
+      params["CacheUsageLimits.DataStorage.Maximum"] = String(Math.trunc(storage));
+      params["CacheUsageLimits.DataStorage.Unit"] = "GB";
+    }
+    const ecpu = Number(fields["maxEcpuPerSecond"] ?? "");
+    if (fields["maxEcpuPerSecond"] && ecpu > 0) {
+      params["CacheUsageLimits.ECPUPerSecond.Maximum"] = String(Math.trunc(ecpu));
+    }
+    if (fields["securityGroup"]) {
+      params["SecurityGroupIds.SecurityGroupId.1"] = fields["securityGroup"];
+    }
+    const data = await rctx.queryPost<Record<string, unknown>>(
+      "elasticache",
+      "CreateServerlessCache",
+      "2015-02-02",
+      params,
+    );
+    const result = data["CreateServerlessCacheResult"] as Record<string, unknown> | undefined;
+    const cache = (result?.["ServerlessCache"] as Record<string, unknown> | undefined) ?? {};
+    const now = new Date().toISOString();
+    return {
+      id: ctx.makeId(accountId, "elasticache-serverless-cache", name),
+      pluginId: "aws",
+      resourceTypeId: "elasticache-serverless-cache",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        region,
+        engine,
+        engineVersion: String(cache["FullEngineVersion"] ?? cache["MajorEngineVersion"] ?? ""),
+        status: String(cache["Status"] ?? "creating"),
+        maxDataStorageGb: storage > 0 ? Math.trunc(storage) : 0,
+        maxEcpuPerSecond: ecpu > 0 ? Math.trunc(ecpu) : 0,
+        connectionType: "vpc",
+        securityGroupIds: fields["securityGroup"] ?? "",
+      },
+      // The endpoint only exists once the cache is available; the next sync
+      // fills it in.
+      resolvedOutputs: { arn: String(cache["ARN"] ?? "") },
+      secretStates: [],
+      externalId: name,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
   if (typeId === "redshift-cluster") {
     const region = fields["region"] ?? ctx.creds.region;
     const rctx = ctx.withRegion(region);
@@ -597,7 +748,7 @@ export async function databaseCreateResource(
       "RedshiftServiceVersion20121201.CreateCluster",
       {
         ClusterIdentifier: clusterId,
-        NodeType: fields["nodeType"] ?? "dc2.large",
+        NodeType: fields["nodeType"] ?? "ra3.large",
         MasterUsername: fields["masterUsername"] ?? "admin",
         MasterUserPassword: fields["masterPassword"] ?? "",
         NumberOfNodes: Number(fields["numberOfNodes"] ?? "1"),
@@ -616,7 +767,7 @@ export async function databaseCreateResource(
       fields: {
         clusterIdentifier: clusterId,
         region,
-        nodeType: fields["nodeType"] ?? "dc2.large",
+        nodeType: fields["nodeType"] ?? "ra3.large",
         status: String(c["ClusterStatus"] ?? "creating"),
         numberOfNodes: Number(fields["numberOfNodes"] ?? "1"),
         dbName: String(c["DBName"] ?? "dev"),

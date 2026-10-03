@@ -169,6 +169,12 @@ describe("AWSClient.listResources", () => {
     // DescribeRegions not called for global types
     expect(ec2Call).not.toHaveBeenCalled();
   });
+  it("lists Bedrock models from the home region only", async () => {
+    const c = new AWSClient(credMap);
+    await c.listResources("bedrock-model", "acct");
+    // Same model ids exist in every region; a fan-out would only duplicate them.
+    expect(ec2Call).not.toHaveBeenCalled();
+  });
   it("honors regionHint without fan-out", async () => {
     listEC2Instances.mockResolvedValue([inst()]);
     const c = new AWSClient(credMap);

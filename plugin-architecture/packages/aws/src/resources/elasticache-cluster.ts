@@ -3,10 +3,10 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const ElastiCacheClusterResourceType = rt({
   name: "ElastiCache Cluster",
   id: "elasticache-cluster",
-  description: "An Amazon ElastiCache Redis or Memcached cluster",
+  description: "An Amazon ElastiCache Valkey, Redis OSS or Memcached cluster",
   fields: [
     f("clusterId", "Cluster ID"),
-    f("engine", "Engine", { kind: "enum", enumValues: ["redis", "memcached"] }),
+    f("engine", "Engine", { kind: "enum", enumValues: ["valkey", "redis", "memcached"] }),
     f("engineVersion", "Engine Version"),
     f("nodeType", "Node Type"),
     f("numNodes", "Number of Nodes", { kind: "number" }),
@@ -22,7 +22,8 @@ export const ElastiCacheClusterResourceType = rt({
     o("port", "Port"),
     o("connectionString", "Connection String", {
       sensitive: true,
-      description: "Redis/Memcached connection URI (constructed from endpoint + port)",
+      description:
+        "Redis/Memcached connection URI (constructed from endpoint + port; Valkey uses redis://)",
     }),
   ],
   dependsOn: [
@@ -32,6 +33,21 @@ export const ElastiCacheClusterResourceType = rt({
   supportsCreate: true,
   supportsMetrics: true,
   peerIntegrations: [
+    {
+      // Valkey speaks the Redis protocol, so the Redis plugin drives it.
+      pluginId: "redis",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Valkey",
+      showWhen: { fieldKey: "engine", equals: "valkey" },
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Cluster endpoint is not reachable from this host.",
+        suggestions: [
+          "ElastiCache clusters are VPC-only; connect from inside the VPC or via an SSH tunnel.",
+          "Use an EC2 bastion in the same VPC.",
+        ],
+      },
+    },
     {
       pluginId: "redis",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
@@ -65,7 +81,7 @@ export const ElastiCacheClusterResourceType = rt({
     {
       id: "redis-url",
       displayName: "Redis URL",
-      description: "REDIS_URL for Redis-engine clusters",
+      description: "REDIS_URL for Valkey and Redis OSS clusters",
       entries: [
         {
           envKey: "REDIS_URL",

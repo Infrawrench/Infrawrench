@@ -21,6 +21,18 @@ export const AWS_REGIONS: RegionOption[] = [
     location: "Montreal, Canada",
     flag: "\u{1F1E8}\u{1F1E6}",
   },
+  {
+    id: "ca-west-1",
+    label: "ca-west-1",
+    location: "Calgary, Canada",
+    flag: "\u{1F1E8}\u{1F1E6}",
+  },
+  {
+    id: "mx-central-1",
+    label: "mx-central-1",
+    location: "Querétaro, Mexico",
+    flag: "\u{1F1F2}\u{1F1FD}",
+  },
   { id: "eu-west-1", label: "eu-west-1", location: "Ireland", flag: "\u{1F1EE}\u{1F1EA}" },
   { id: "eu-west-2", label: "eu-west-2", location: "London, UK", flag: "\u{1F1EC}\u{1F1E7}" },
   { id: "eu-west-3", label: "eu-west-3", location: "Paris, France", flag: "\u{1F1EB}\u{1F1F7}" },
@@ -63,6 +75,30 @@ export const AWS_REGIONS: RegionOption[] = [
     flag: "\u{1F1EE}\u{1F1E9}",
   },
   {
+    id: "ap-southeast-4",
+    label: "ap-southeast-4",
+    location: "Melbourne, Australia",
+    flag: "\u{1F1E6}\u{1F1FA}",
+  },
+  {
+    id: "ap-southeast-5",
+    label: "ap-southeast-5",
+    location: "Malaysia",
+    flag: "\u{1F1F2}\u{1F1FE}",
+  },
+  {
+    id: "ap-southeast-6",
+    label: "ap-southeast-6",
+    location: "New Zealand",
+    flag: "\u{1F1F3}\u{1F1FF}",
+  },
+  {
+    id: "ap-southeast-7",
+    label: "ap-southeast-7",
+    location: "Thailand",
+    flag: "\u{1F1F9}\u{1F1ED}",
+  },
+  {
     id: "ap-northeast-1",
     label: "ap-northeast-1",
     location: "Tokyo, Japan",
@@ -93,6 +129,7 @@ export const AWS_REGIONS: RegionOption[] = [
     flag: "\u{1F1EE}\u{1F1F3}",
   },
   { id: "ap-east-1", label: "ap-east-1", location: "Hong Kong", flag: "\u{1F1ED}\u{1F1F0}" },
+  { id: "ap-east-2", label: "ap-east-2", location: "Taipei, Taiwan", flag: "\u{1F1F9}\u{1F1FC}" },
   {
     id: "sa-east-1",
     label: "sa-east-1",
@@ -588,3 +625,32 @@ export const EC2_SIZES: SizeOption[] = [
  * constant: copy drift would silently disarm the check.
  */
 export const EC2_SSH_WORLD_OPEN = "Port 22 open to the world (0.0.0.0/0).";
+
+/**
+ * Lambda managed runtimes that are still supported (not deprecated), per
+ * https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html as of
+ * October 2026. Every id here is also in the `Runtime` enum of
+ * UpdateFunctionConfiguration; the `*.al2023` Java variants the runtimes
+ * table lists are left out because that enum does not accept them. Preview
+ * runtimes (nodejs26.x, python3.15) are excluded: they carry no SLA.
+ */
+export const LAMBDA_RUNTIME_IDS: string[] = [
+  "nodejs24.x",
+  "nodejs22.x",
+  "python3.14",
+  "python3.13",
+  "python3.12",
+  "python3.11",
+  "python3.10",
+  "ruby4.0",
+  "ruby3.4",
+  "ruby3.3",
+  "java25",
+  "java21",
+  "java17",
+  "java11",
+  "java8.al2",
+  "dotnet10",
+  "dotnet8",
+  "provided.al2023",
+];
