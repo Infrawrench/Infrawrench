@@ -95,29 +95,64 @@ afterEach(() => {
 });
 
 describe("install state", () => {
-  it("round-trips the org and the installing user", async () => {
+  it("round-trips the org, the installing user and the nonce", async () => {
     const { signSlackState, verifySlackState } = await import("../slack");
-    const state = signSlackState(ORG, "user1");
-    expect(verifySlackState(state)).toEqual({ organizationId: ORG, userId: "user1" });
+    const state = signSlackState(ORG, "user1", "nonce1");
+    expect(verifySlackState(state)).toEqual({
+      organizationId: ORG,
+      userId: "user1",
+      nonce: "nonce1",
+    });
   });
 
-  it("round-trips without a user id", async () => {
-    const { signSlackState, verifySlackState } = await import("../slack");
-    expect(verifySlackState(signSlackState(ORG))).toEqual({ organizationId: ORG, userId: null });
+  it("mints a distinct nonce each time", async () => {
+    const { newSlackStateNonce } = await import("../slack");
+    const a = newSlackStateNonce();
+    expect(a.length).toBeGreaterThanOrEqual(43);
+    expect(newSlackStateNonce()).not.toBe(a);
   });
 
   it("rejects a tampered payload", async () => {
     const { signSlackState, verifySlackState } = await import("../slack");
-    const [, mac] = signSlackState(ORG).split(".");
-    const forged = Buffer.from(JSON.stringify({ o: "other-org" })).toString("base64url");
+    const [, mac] = signSlackState(ORG, "user1", "n").split(".");
+    const forged = Buffer.from(
+      JSON.stringify({ o: "other-org", u: "user1", n: "n", e: Date.now() + 60_000 }),
+    ).toString("base64url");
     expect(verifySlackState(`${forged}.${mac}`)).toBeNull();
   });
 
   it("rejects a state signed with a different client secret", async () => {
     const { signSlackState, verifySlackState } = await import("../slack");
-    const state = signSlackState(ORG);
+    const state = signSlackState(ORG, "user1", "n");
     process.env["SLACK_CLIENT_SECRET"] = "rotated";
     expect(verifySlackState(state)).toBeNull();
+  });
+
+  it("expires after the TTL", async () => {
+    const { signSlackState, verifySlackState, SLACK_STATE_TTL_MS } = await import("../slack");
+    const now = 1_700_000_000_000;
+    const state = signSlackState(ORG, "user1", "n", now);
+    expect(verifySlackState(state, now + SLACK_STATE_TTL_MS - 1)).not.toBeNull();
+    expect(verifySlackState(state, now + SLACK_STATE_TTL_MS)).toBeNull();
+  });
+
+  it("rejects the old never-expiring {o, u} shape even when correctly signed", async () => {
+    const { verifySlackState } = await import("../slack");
+    const payload = JSON.stringify({ o: ORG, u: "user1" });
+    const key = (await import("node:crypto")).createHash("sha256").update("csecret").digest();
+    const mac = createHmac("sha256", key).update(payload).digest("base64url");
+    expect(verifySlackState(`${Buffer.from(payload).toString("base64url")}.${mac}`)).toBeNull();
+  });
+
+  it("matches the nonce cookie only on an exact value", async () => {
+    const { signSlackState, verifySlackState, slackStateNonceMatches } = await import("../slack");
+    const verified = verifySlackState(signSlackState(ORG, "user1", "nonce1"));
+    expect(verified).not.toBeNull();
+    expect(slackStateNonceMatches(verified!, "nonce1")).toBe(true);
+    expect(slackStateNonceMatches(verified!, "nonce2")).toBe(false);
+    expect(slackStateNonceMatches(verified!, "nonce")).toBe(false);
+    expect(slackStateNonceMatches(verified!, undefined)).toBe(false);
+    expect(slackStateNonceMatches(verified!, "")).toBe(false);
   });
 
   it("rejects malformed states", async () => {

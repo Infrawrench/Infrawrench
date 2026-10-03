@@ -24,12 +24,18 @@ vi.mock("@infrawrench/server-core/slack", () => ({
   exchangeSlackCode: vi.fn(),
   isSlackConfigured: () => true,
   listSlackChannels: vi.fn(),
+  newSlackStateNonce: vi.fn(),
   recordSlackInstall: vi.fn(),
   sendSlackTest: vi.fn(),
   signSlackState: vi.fn(),
+  SLACK_STATE_TTL_MS: 0,
   slackAuthorizeUrl: vi.fn(),
+  slackStateNonceMatches: vi.fn(),
   verifySlackState: vi.fn(),
 }));
+
+// Only the OAuth `start` hop uses it; keep the real one (and WorkOS) out.
+vi.mock("@/api/auth-middleware", () => ({ sessionMiddleware: vi.fn() }));
 
 const { slackRoutes } = await import("@/api/routes/slack");
 const buildApp = () => buildTestApp(slackRoutes);

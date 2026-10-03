@@ -75,8 +75,10 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
     try {
       const { url } = await api.get<{ url: string }>(`/api/org/${orgId}/slack/install-url`);
       // Web: same-tab redirect (the OAuth callback lands back on this page).
-      // Desktop: system browser; the callback finishes on the web app, and
-      // this card shows the connected state on the next load.
+      // Desktop: system browser, which signs in to the web app first if it
+      // has no session (the install is bound to this user's browser); the
+      // callback finishes there, and this card shows the connected state on
+      // the next load.
       openExternal(url, { sameTab: true });
       setBusy(false);
     } catch (e) {
