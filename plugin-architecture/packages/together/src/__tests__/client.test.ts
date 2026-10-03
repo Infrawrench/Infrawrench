@@ -343,3 +343,342 @@ describe("evaluations", () => {
     expect(items[0]?.fields["model"]).toBe("m");
   });
 });
+
+describe("billing usage costs", () => {
+  it("walks each month, follows next_cursor, and merges duplicate line items", async () => {
+    installFetch((url) => {
+      if (url.includes("month=2026-05") && !url.includes("after=")) {
+        return jsonResponse({
+          object: "list",
+          currency: "USD",
+          data: [
+            {
+              date: "2026-05-30",
+              line_items: [
+                // Before the requested range: dropped.
+                { product_name: "Serverless Inference - Input Tokens", cost: "9.00" },
+              ],
+            },
+            {
+              date: "2026-05-31",
+              line_items: [
+                {
+                  product_name: "Serverless Inference - Input Tokens",
+                  quantity: "1000000",
+                  unit_price: "0.00000088",
+                  cost: "0.88",
+                  pricing_dimensions: { model: "meta/llama" },
+                  attributes: { api_key_id: "key-1" },
+                },
+                {
+                  product_name: "Serverless Inference - Input Tokens",
+                  cost: "0.12",
+                  pricing_dimensions: { model: "meta/llama" },
+                  attributes: { api_key_id: "key-1" },
+                },
+                { product_name: "Zero", cost: "0" },
+              ],
+            },
+          ],
+          next_cursor: "cur-2",
+        });
+      }
+      if (url.includes("month=2026-05") && url.includes("after=cur-2")) {
+        return jsonResponse({
+          data: [{ date: "2026-05-31", line_items: [{ product_name: "GPU Clusters", cost: "5" }] }],
+          next_cursor: null,
+        });
+      }
+      if (url.includes("month=2026-06")) {
+        return jsonResponse({
+          data: [
+            { date: "2026-06-01", line_items: [{ product_name: "Fine-tuning", cost: "2.5" }] },
+          ],
+          next_cursor: null,
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const rows = await client().fetchCostData(ACCOUNT, {
+      fromDate: "2026-05-31",
+      toDate: "2026-06-01",
+    });
+    expect(calls[0]?.url).toBe(
+      "https://api.together.ai/v1/billing/usage?month=2026-05&granularity=day&limit=1000",
+    );
+    expect(calls.map((c) => c.url)).toHaveLength(3);
+    const inference = rows.find((r) => r.service === "Serverless Inference - Input Tokens");
+    expect(inference).toMatchObject({
+      date: "2026-05-31",
+      resourceId: "meta/llama",
+      tags: { model: "meta/llama", api_key_id: "key-1" },
+      currency: "USD",
+    });
+    expect(inference?.amount).toBeCloseTo(1.0);
+    expect(rows.find((r) => r.service === "GPU Clusters")?.amount).toBe(5);
+    expect(rows.find((r) => r.service === "Fine-tuning")?.date).toBe("2026-06-01");
+    expect(rows.some((r) => r.service === "Zero")).toBe(false);
+    expect(rows).toHaveLength(3);
+  });
+
+  it("turns the beta 404 into a setup error rather than a failure", async () => {
+    installFetch(() => jsonResponse({ error: { message: "not found", type: "x" } }, 404));
+    await expect(
+      client().fetchCostData(ACCOUNT, { fromDate: "2026-01-01", toDate: "2026-01-02" }),
+    ).rejects.toMatchObject({ name: "CostSetupError" });
+  });
+});
+
+describe("managed endpoint analytics", () => {
+  it("requests a time series and emits one series per metric key", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.includes("/analytics")) {
+        return jsonResponse({
+          timeSeries: [
+            { timestamp: "2026-06-01T01:00:00Z", values: { ttftP50Ms: 120, errorRate: 0.5 } },
+            { timestamp: "2026-06-01T00:00:00Z", values: { ttftP50Ms: 100, customThing: 3 } },
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const start = Date.parse("2026-06-01T00:00:00Z");
+    const series = await client().fetchMetricSeries(
+      "managed-endpoint",
+      `${ACCOUNT}:managed-endpoint:e1`,
+      ACCOUNT,
+      { startMs: start, endMs: start + 2 * 24 * 60 * 60 * 1000 },
+    );
+    const url = new URL(calls[1]!.url);
+    expect(url.pathname).toBe("/v2/projects/proj-1/endpoints/e1/analytics");
+    expect(url.searchParams.get("includeTimeSeries")).toBe("true");
+    expect(url.searchParams.get("granularity")).toBe("1h");
+    expect(url.searchParams.get("startTime")).toBe("2026-06-01T00:00:00.000Z");
+
+    const ttft = series.find((s) => s.label === "TTFT p50");
+    expect(ttft?.unit).toBe("ms");
+    expect(ttft?.points.map((p) => p.value)).toEqual([100, 120]);
+    expect(series.find((s) => s.label === "Error Rate")?.unit).toBe("%");
+    expect(series.find((s) => s.label === "Custom Thing")).toBeDefined();
+  });
+
+  it("renders the 24-hour aggregate on the detail page and advertises metrics", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.includes("/analytics")) {
+        expect(url).not.toContain("includeTimeSeries");
+        return jsonResponse({
+          metrics: {
+            requestMetrics: { totalRequests: "12345" },
+            latencyMetrics: { ttftP50Ms: 80, ttftP90Ms: 150, ttftP99Ms: 400 },
+            errorMetrics: { errorRate: 1.25 },
+            resourceUtilization: { gpuUtilization: 72.4 },
+            tokenMetrics: { totalInputTokens: "1000", totalOutputTokens: "2000" },
+          },
+        });
+      }
+      return jsonResponse({ data: [{ id: "e1", name: "acme/one" }] });
+    });
+    const c = client();
+    const resource = await c.getResource(
+      "managed-endpoint",
+      `${ACCOUNT}:managed-endpoint:e1`,
+      ACCOUNT,
+    );
+    const detail = c.renderDetail(await c.enrichDetail(resource));
+    expect(detail.metricsCapability).toBeDefined();
+    const json = JSON.stringify(detail.sections);
+    expect(json).toContain("12,345");
+    expect(json).toContain("80 ms / 150 ms / 400 ms");
+    expect(json).toContain("1.3%");
+    expect(json).toContain("72.4%");
+  });
+});
+
+describe("GPU clusters", () => {
+  const cluster = {
+    cluster_id: "c-1",
+    cluster_name: "trainer",
+    cluster_type: "KUBERNETES",
+    region: "us-central-8",
+    gpu_type: "H100_SXM",
+    status: "Ready",
+    num_gpus: 16,
+    billing_type: "ON_DEMAND",
+    cuda_version: "12.8",
+    nvidia_driver_version: "570",
+    kube_config: "apiVersion: v1\nkind: Config",
+    volumes: [{ volume_id: "v-1", volume_name: "data", size_tib: 2, status: "bound" }],
+    control_plane_nodes: [{ node_id: "cp" }],
+    gpu_worker_nodes: [{ node_id: "n1", host_name: "gpu-1", num_gpus: 8, status: "Ready" }],
+  };
+
+  it("maps clusters without ever storing the kubeconfig on the listing", async () => {
+    installFetch(() => jsonResponse({ clusters: [cluster] }));
+    const [item] = await client().listResources("gpu-cluster", ACCOUNT);
+    expect(calls[0]?.url).toBe("https://api.together.ai/v1/compute/clusters");
+    expect(item?.fields).toMatchObject({
+      clusterId: "c-1",
+      numGpus: 16,
+      gpuWorkerCount: 1,
+      controlPlaneCount: 1,
+      volumeId: "v-1",
+    });
+    expect(JSON.stringify(item)).not.toContain("kind: Config");
+  });
+
+  it("serves the kubeconfig on demand through resolveOutput", async () => {
+    installFetch(() => jsonResponse(cluster));
+    const value = await client().resolveOutput(
+      "gpu-cluster",
+      `${ACCOUNT}:gpu-cluster:c-1`,
+      "kubeconfig",
+      ACCOUNT,
+    );
+    expect(calls[0]?.url).toBe("https://api.together.ai/v1/compute/clusters/c-1");
+    expect(value).toContain("kind: Config");
+  });
+
+  it("offers region-scoped driver pickers built from /compute/regions", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/compute/regions")) {
+        return jsonResponse({
+          regions: [
+            {
+              name: "us-central-8",
+              supported_instance_types: ["H100_SXM", "H200_SXM"],
+              driver_versions: [
+                {
+                  id: "nv-570",
+                  cuda_version: "12.8",
+                  nvidia_driver_version: "570",
+                  os: "ubuntu-22.04",
+                },
+              ],
+            },
+          ],
+        });
+      }
+      return jsonResponse({ volumes: [{ volume_id: "v-1", volume_name: "data", size_tib: 2 }] });
+    });
+    const config = await client().getCreateConfig("gpu-cluster");
+    const byKey = new Map(config.fields.map((field) => [field.key, field]));
+    expect(byKey.get("gpu_type")?.options?.map((o) => o.id)).toEqual(["H100_SXM", "H200_SXM"]);
+    expect(byKey.get("region")?.regions?.[0]).toMatchObject({
+      id: "us-central-8",
+      availableFor: ["H100_SXM", "H200_SXM"],
+    });
+    const driver = byKey.get("nvidia_version_id@us-central-8");
+    expect(driver?.options?.[0]?.id).toBe("nv-570");
+    expect(driver?.showWhen).toEqual({ fieldKey: "region", fieldValue: "us-central-8" });
+    expect(byKey.get("shared_volume")?.options?.map((o) => o.id)).toEqual(["none", "new", "v-1"]);
+  });
+
+  it("builds the create body with the region's driver id and an inline volume", async () => {
+    installFetch(() => jsonResponse(cluster));
+    await client().createResource("gpu-cluster", ACCOUNT, {
+      cluster_name: "trainer",
+      gpu_type: "H100_SXM",
+      region: "us-central-8",
+      "nvidia_version_id@us-central-8": "nv-570",
+      "nvidia_version_id@eu-north-1": "other",
+      num_gpus: "16",
+      cluster_type: "SLURM",
+      slurm_shm_size_gib: "64",
+      billing_type: "RESERVED",
+      duration_days: "30",
+      shared_volume: "new",
+      volume_name: "data",
+      volume_size_tib: "2",
+    });
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+      cluster_name: "trainer",
+      region: "us-central-8",
+      gpu_type: "H100_SXM",
+      num_gpus: 16,
+      cluster_type: "SLURM",
+      billing_type: "RESERVED",
+      nvidia_version_id: "nv-570",
+      slurm_shm_size_gib: 64,
+      duration_days: 30,
+      shared_volume: { volume_name: "data", size_tib: 2, region: "us-central-8" },
+    });
+  });
+
+  it("rejects a GPU count that is not a multiple of 8 before calling Together", async () => {
+    installFetch(() => jsonResponse(cluster));
+    await expect(
+      client().createResource("gpu-cluster", ACCOUNT, {
+        cluster_name: "x",
+        gpu_type: "H100_SXM",
+        region: "us-central-8",
+        "nvidia_version_id@us-central-8": "nv-570",
+        num_gpus: "12",
+        billing_type: "ON_DEMAND",
+      }),
+    ).rejects.toThrow(/multiple of 8/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("PUTs only the fields that changed", async () => {
+    installFetch((_url, init) =>
+      jsonResponse(init?.method === "PUT" ? { ...cluster, num_gpus: 24 } : cluster),
+    );
+    await client().updateResource("gpu-cluster", `${ACCOUNT}:gpu-cluster:c-1`, ACCOUNT, {
+      clusterType: "KUBERNETES",
+      numGpus: "24",
+      desiredPreemptibleGpus: "",
+    });
+    const put = calls.find((c) => c.init?.method === "PUT");
+    expect(put?.url).toBe("https://api.together.ai/v1/compute/clusters/c-1");
+    expect(JSON.parse(put!.init!.body as string)).toEqual({ num_gpus: 24 });
+  });
+});
+
+describe("shared volumes", () => {
+  it("resizes by PUT to the collection with the id in the body", async () => {
+    installFetch(() => jsonResponse({ volume_id: "v-1", volume_name: "data", size_tib: 4 }));
+    const updated = await client().updateResource(
+      "shared-volume",
+      `${ACCOUNT}:shared-volume:v-1`,
+      ACCOUNT,
+      { sizeTib: "4" },
+    );
+    expect(calls[0]?.url).toBe("https://api.together.ai/v1/compute/clusters/storage/volumes");
+    expect(calls[0]?.init?.method).toBe("PUT");
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({ volume_id: "v-1", size_tib: 4 });
+    expect(updated.fields["sizeTib"]).toBe(4);
+  });
+});
+
+describe("fine-tune detail", () => {
+  it("shows checkpoints and the newest events first", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/events")) {
+        return jsonResponse({
+          data: [
+            { created_at: "2026-06-01T00:00:00Z", type: "job_start", message: "started" },
+            { created_at: "2026-06-01T02:00:00Z", type: "job_complete", message: "done" },
+          ],
+        });
+      }
+      if (url.endsWith("/checkpoints")) {
+        return jsonResponse({
+          data: [{ step: 100, checkpoint_type: "Final", object_name: "acme/tuned-final" }],
+        });
+      }
+      return jsonResponse({ id: "ft-1", status: "completed" });
+    });
+    const c = client();
+    const resource = await c.getResource("fine-tune", `${ACCOUNT}:fine-tune:ft-1`, ACCOUNT);
+    const detail = c.renderDetail(await c.enrichDetail(resource));
+    const titles = detail.sections.map((section) => section.title);
+    expect(titles).toContain("Checkpoints");
+    const events = detail.sections.find((section) => section.title === "Events");
+    const table = events?.children[0] as { rows: Array<{ cells: Record<string, string> }> };
+    expect(table.rows[0]?.cells["message"]).toBe("done");
+  });
+});

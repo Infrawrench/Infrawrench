@@ -22,5 +22,7 @@ export const ManagedEndpointResourceType = rt({
       description: "`<project_slug>/<endpoint_name>` — the value you pass as `model`",
     }),
   ],
+  // `GET /v2/projects/{projectId}/endpoints/{id}/analytics` time series.
+  supportsMetrics: true,
   iconKey: "load-balancer",
 });

@@ -8,3 +8,5 @@ export { ManagedEndpointResourceType } from "./resources/managed-endpoint.js";
 export { HardwareResourceType } from "./resources/hardware.js";
 export { BatchResourceType } from "./resources/batch.js";
 export { EvaluationResourceType } from "./resources/evaluation.js";
+export { GpuClusterResourceType } from "./resources/gpu-cluster.js";
+export { SharedVolumeResourceType } from "./resources/shared-volume.js";

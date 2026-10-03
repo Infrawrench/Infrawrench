@@ -1,8 +1,12 @@
 import type {
+  CostFetchRange,
+  CostRow,
+  CreateFieldConfig,
   CreateResourceConfig,
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  MetricSeries,
   PluginClient,
   ResourceInstance,
   ResourceStatus,
@@ -18,13 +22,16 @@ import type {
   TranscriptWord,
 } from "@infrawrench/plugin-base";
 import {
+  CostSetupError,
   base64ToBytes,
   bytesToBase64,
   joinSubtitle,
   jsonRestFetch,
   externalIdOf,
   formatBytes,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
+import { ManagedEndpointResourceType } from "./resources/managed-endpoint.js";
 
 const API_BASE = "https://api.together.ai/v1";
 /**
@@ -325,6 +332,184 @@ interface TranscriptionResponse {
   }>;
 }
 
+/**
+ * `GET /v1/billing/usage`. Every money and quantity value is a decimal
+ * string, and `product_name` is a display name Together may rename.
+ * https://docs.together.ai/reference/billing-usage
+ */
+interface BillingUsageLineItem {
+  product_name?: string;
+  quantity?: string;
+  unit_price?: string;
+  cost?: string;
+  pricing_dimensions?: Record<string, string> | null;
+  attributes?: Record<string, string> | null;
+}
+
+interface BillingUsageWindow {
+  /** `YYYY-MM-DD`, UTC, for both granularities. */
+  date?: string;
+  start_time?: string;
+  end_time?: string;
+  line_items?: BillingUsageLineItem[];
+}
+
+interface BillingUsageReport {
+  object?: string;
+  organization_id?: string;
+  billing_period?: string;
+  currency?: string;
+  data?: BillingUsageWindow[];
+  next_cursor?: string | null;
+}
+
+/**
+ * `GET /v2/projects/{projectId}/endpoints/{id}/analytics`. Counts are int64
+ * and therefore strings on the wire; rates, percentiles and percentages are
+ * numbers. https://docs.together.ai/reference/dmi/endpoints-analytics
+ */
+interface DmiEndpointMetrics {
+  requestMetrics?: {
+    totalRequests?: string;
+    successfulRequests?: string;
+    failedRequests?: string;
+    requestsPerSecond?: number;
+    requestsByStatusCode?: Record<string, string>;
+  } | null;
+  latencyMetrics?: {
+    ttftP50Ms?: number;
+    ttftP90Ms?: number;
+    ttftP99Ms?: number;
+    latencyP50Ms?: number;
+    latencyP90Ms?: number;
+    latencyP99Ms?: number;
+    itlP50Ms?: number;
+    itlP90Ms?: number;
+    itlP99Ms?: number;
+  } | null;
+  throughputMetrics?: {
+    tokensPerSecond?: number;
+    requestsPerSecond?: number;
+    avgBatchSize?: number;
+    avgBatchDepth?: number;
+  } | null;
+  /** `errorRate` is a percentage in [0, 100], not a fraction. */
+  errorMetrics?: { errorRate?: number; errorsByType?: Record<string, string> } | null;
+  resourceUtilization?: {
+    cpuUtilization?: number;
+    gpuUtilization?: number;
+    memoryUtilization?: number;
+    gpuMemoryUtilization?: number;
+    networkBandwidthMbps?: number;
+  } | null;
+  tokenMetrics?: {
+    totalInputTokens?: string;
+    totalOutputTokens?: string;
+    avgInputTokens?: number;
+    avgOutputTokens?: number;
+  } | null;
+}
+
+interface DmiAnalytics {
+  endpointId?: string;
+  timeRange?: { startTime?: string; endTime?: string } | null;
+  metrics?: DmiEndpointMetrics | null;
+  /** Only present with `includeTimeSeries=true`. Metric names are not enumerated. */
+  timeSeries?: Array<{ timestamp?: string; values?: Record<string, number> }>;
+}
+
+/** `GPUClusterInfo`, from `/v1/compute/clusters`. */
+interface GpuCluster {
+  cluster_id?: string;
+  cluster_name?: string;
+  cluster_type?: string;
+  region?: string;
+  gpu_type?: string;
+  status?: string;
+  num_gpus?: number;
+  num_reserved_gpus?: number;
+  num_capacity_pool_gpus?: number;
+  desired_preemptible_gpus?: number;
+  allocated_preemptible_gpus?: number;
+  num_cpu_workers?: number;
+  billing_type?: string;
+  cuda_version?: string;
+  nvidia_driver_version?: string;
+  /** Never mapped onto the listing: served only through `resolveOutput`. */
+  kube_config?: string;
+  duration_hours?: number;
+  reservation_start_time?: string;
+  reservation_end_time?: string;
+  created_at?: string;
+  volumes?: Array<{ volume_id?: string; volume_name?: string; size_tib?: number; status?: string }>;
+  control_plane_nodes?: GpuClusterNode[];
+  gpu_worker_nodes?: GpuClusterNode[];
+}
+
+interface GpuClusterNode {
+  node_id?: string;
+  status?: string;
+  host_name?: string;
+  num_cpu_cores?: number;
+  num_gpus?: number;
+  memory_gib?: number;
+}
+
+/** `GET /v1/compute/regions`. */
+interface ComputeRegion {
+  name?: string;
+  supported_instance_types?: string[];
+  driver_versions?: Array<{
+    id?: string;
+    cuda_version?: string;
+    nvidia_driver_version?: string;
+    os?: string;
+  }>;
+}
+
+/** `/v1/compute/clusters/storage/volumes`. The object carries no region. */
+interface SharedVolume {
+  volume_id?: string;
+  volume_name?: string;
+  size_tib?: number;
+  status?: string;
+}
+
+/** `GET /v1/fine-tunes/{id}/events`. */
+interface FineTuneEvent {
+  created_at?: string;
+  level?: string | null;
+  message?: string;
+  type?: string;
+  step?: number;
+}
+
+/** `GET /v1/fine-tunes/{id}/checkpoints`. */
+interface FineTuneCheckpoint {
+  step?: number;
+  created_at?: string;
+  path?: string;
+  checkpoint_type?: string;
+  object_name?: string;
+}
+
+/** Shape stashed under the `__workers__` resolved output of a GPU cluster. */
+interface StashedNode {
+  host: string;
+  status: string;
+  gpus: number | null;
+  cpus: number | null;
+  memoryGib: number | null;
+}
+
+/** Shape stashed under the `__volumes__` resolved output of a GPU cluster. */
+interface StashedVolume {
+  id: string;
+  name: string;
+  sizeTib: number | null;
+  status: string;
+}
+
 /** Shape stashed under the `__voices__` resolved output. */
 interface StashedVoice {
   model: string;
@@ -437,6 +622,156 @@ function mapEvaluationStatus(status: string | undefined): {
   }
 }
 
+/** `GPUClusterInfo.status`, an eleven-value enum. */
+function mapClusterStatus(status: string | undefined): { status: ResourceStatus; label: string } {
+  switch (status) {
+    case "Ready":
+      return { status: "healthy", label: "Ready" };
+    case "WaitingForControlPlaneNodes":
+    case "WaitingForDataPlaneNodes":
+    case "WaitingForSubnet":
+    case "WaitingForSharedVolume":
+    case "InstallingDrivers":
+    case "RunningAcceptanceTests":
+      return { status: "provisioning", label: splitPascal(status) };
+    case "Paused":
+    case "OnDemandComputePaused":
+      return { status: "info", label: splitPascal(status) };
+    case "Degraded":
+      return { status: "degraded", label: "Degraded" };
+    case "Deleting":
+      return { status: "degraded", label: "Deleting" };
+    default:
+      return { status: "info", label: status ? splitPascal(status) : "Unknown" };
+  }
+}
+
+/** `GPUClustersSharedVolume.status`. `bound` means attached to a cluster. */
+function mapVolumeStatus(status: string | undefined): { status: ResourceStatus; label: string } {
+  switch (status) {
+    case "available":
+    case "bound":
+      return { status: "healthy", label: titleCase(status) };
+    case "scheduled":
+    case "provisioning":
+      return { status: "provisioning", label: titleCase(status) };
+    case "deleting":
+      return { status: "degraded", label: "Deleting" };
+    case "failed":
+    case "access_revoked":
+      return { status: "error", label: titleCase(status) };
+    default:
+      return { status: "unknown", label: status ? titleCase(status) : "Unknown" };
+  }
+}
+
+/** `WaitingForControlPlaneNodes` → `Waiting For Control Plane Nodes`. */
+function splitPascal(value: string): string {
+  return value.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+/** Cluster GPU enum → a readable label: `H100_SXM` → `H100 SXM`. */
+function gpuTypeLabel(value: string): string {
+  return value.replace(/_/g, " ");
+}
+
+/** The `gpu_type` enum documented on `GPUClusterCreateRequest`. */
+const CLUSTER_GPU_TYPES = [
+  "H100_SXM",
+  "H200_SXM",
+  "B200_SXM",
+  "B300_SXM",
+  "H100_SXM_INF",
+  "L40_PCIE",
+  "RTX_6000_PCI",
+];
+
+/** Billing usage amounts and analytics token totals are decimal strings. */
+function decimal(value: string | number | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Every `YYYY-MM` touched by an inclusive `YYYY-MM-DD` range. */
+function monthsInRange(fromDate: string, toDate: string): string[] {
+  const months: string[] = [];
+  let year = Number(fromDate.slice(0, 4));
+  let month = Number(fromDate.slice(5, 7));
+  const lastYear = Number(toDate.slice(0, 4));
+  const lastMonth = Number(toDate.slice(5, 7));
+  while (year < lastYear || (year === lastYear && month <= lastMonth)) {
+    months.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return months;
+}
+
+/**
+ * Analytics buckets come in `1m`, `1h` or `1d`. Pick the finest that keeps a
+ * chart to a few hundred points.
+ */
+function analyticsGranularity(spanMs: number): "1m" | "1h" | "1d" {
+  if (spanMs <= 6 * 60 * 60 * 1000) return "1m";
+  if (spanMs <= 14 * 24 * 60 * 60 * 1000) return "1h";
+  return "1d";
+}
+
+/**
+ * Labels and units for the analytics time-series keys. The spec leaves the
+ * keys open (`additionalProperties: number`); these are the documented
+ * aggregate names, and anything else is labelled from its own name.
+ */
+const ANALYTICS_SERIES: Record<string, { label: string; unit?: string }> = {
+  requestsPerSecond: { label: "Requests / s", unit: "req/s" },
+  tokensPerSecond: { label: "Tokens / s", unit: "tokens/s" },
+  totalRequests: { label: "Requests", unit: "requests" },
+  successfulRequests: { label: "Successful Requests", unit: "requests" },
+  failedRequests: { label: "Failed Requests", unit: "requests" },
+  errorRate: { label: "Error Rate", unit: "%" },
+  ttftP50Ms: { label: "TTFT p50", unit: "ms" },
+  ttftP90Ms: { label: "TTFT p90", unit: "ms" },
+  ttftP99Ms: { label: "TTFT p99", unit: "ms" },
+  latencyP50Ms: { label: "Latency p50", unit: "ms" },
+  latencyP90Ms: { label: "Latency p90", unit: "ms" },
+  latencyP99Ms: { label: "Latency p99", unit: "ms" },
+  itlP50Ms: { label: "Inter-token Latency p50", unit: "ms" },
+  itlP90Ms: { label: "Inter-token Latency p90", unit: "ms" },
+  itlP99Ms: { label: "Inter-token Latency p99", unit: "ms" },
+  cpuUtilization: { label: "CPU Utilization", unit: "%" },
+  gpuUtilization: { label: "GPU Utilization", unit: "%" },
+  memoryUtilization: { label: "Memory Utilization", unit: "%" },
+  gpuMemoryUtilization: { label: "GPU Memory Utilization", unit: "%" },
+  networkBandwidthMbps: { label: "Network Bandwidth", unit: "Mbps" },
+  avgBatchSize: { label: "Average Batch Size" },
+  avgBatchDepth: { label: "Average Batch Depth" },
+  totalInputTokens: { label: "Input Tokens", unit: "tokens" },
+  totalOutputTokens: { label: "Output Tokens", unit: "tokens" },
+  avgInputTokens: { label: "Average Input Tokens", unit: "tokens" },
+  avgOutputTokens: { label: "Average Output Tokens", unit: "tokens" },
+};
+
+function analyticsSeriesMeta(key: string): { label: string; unit?: string } {
+  const known = ANALYTICS_SERIES[key];
+  if (known) return known;
+  const label = titleCase(key.replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
+  if (/Ms$/.test(key)) return { label: label.replace(/ Ms$/, ""), unit: "ms" };
+  if (/(Utilization|Rate)$/.test(key)) return { label, unit: "%" };
+  return { label };
+}
+
+function formatMs(value: number | undefined): string {
+  return value == null ? "" : `${value.toFixed(value < 10 ? 1 : 0)} ms`;
+}
+
+function formatPercent(value: number | undefined): string {
+  return value == null ? "" : `${value.toFixed(1)}%`;
+}
+
 function parseJsonStash<T>(raw: string | undefined): T[] {
   if (!raw) return [];
   try {
@@ -480,10 +815,10 @@ function extensionForMime(mimeType: string): string {
 /**
  * Together AI plugin client. One instance per account (per API key).
  *
- * Together publishes **no usage or cost API and no key-management API**: the
- * only account endpoint is `GET /v1/whoami`, which returns identity. This
- * plugin therefore implements no `fetchCostData` and says so in the UI rather
- * than rendering an empty spend chart.
+ * Spend comes from `GET /v1/billing/usage` (beta, enabled per organization;
+ * a 404 means it is not switched on yet). There is still **no key-management
+ * API**: keys are created and revoked in the Together dashboard only.
+ * https://docs.together.ai/reference/billing-usage
  * https://docs.together.ai/reference/whoami
  */
 export class TogetherClient implements PluginClient {
@@ -565,6 +900,19 @@ export class TogetherClient implements PluginClient {
         return (Array.isArray(batches) ? batches : []).map((batch) =>
           this.mapBatch(batch, accountId),
         );
+      }
+      case "gpu-cluster": {
+        // `{ clusters: [...] }`, no pagination params.
+        // https://docs.together.ai/reference/clusters-list
+        const data = await this.fetch<{ clusters?: GpuCluster[] }>("/compute/clusters");
+        return (data.clusters ?? []).map((cluster) => this.mapCluster(cluster, accountId));
+      }
+      case "shared-volume": {
+        // `{ volumes: [...] }`. https://docs.together.ai/reference/clusters_storages-list
+        const data = await this.fetch<{ volumes?: SharedVolume[] }>(
+          "/compute/clusters/storage/volumes",
+        );
+        return (data.volumes ?? []).map((volume) => this.mapVolume(volume, accountId));
       }
       case "evaluation": {
         // Path is `/evaluation`, singular. Also a bare array.
@@ -803,6 +1151,104 @@ export class TogetherClient implements PluginClient {
     };
   }
 
+  private mapCluster(cluster: GpuCluster, accountId: string): ResourceInstance {
+    const id = cluster.cluster_id ?? "";
+    const createdAt = cluster.created_at ?? nowIso();
+    const name = cluster.cluster_name ?? id;
+    const volumes: StashedVolume[] = (cluster.volumes ?? []).map((volume) => ({
+      id: volume.volume_id ?? "",
+      name: volume.volume_name ?? volume.volume_id ?? "",
+      sizeTib: volume.size_tib ?? null,
+      status: volume.status ?? "",
+    }));
+    const workers: StashedNode[] = (cluster.gpu_worker_nodes ?? []).map((node) => ({
+      host: node.host_name ?? node.node_id ?? "",
+      status: node.status ?? "",
+      gpus: node.num_gpus ?? null,
+      cpus: node.num_cpu_cores ?? null,
+      memoryGib: node.memory_gib ?? null,
+    }));
+    return {
+      id: `${accountId}:gpu-cluster:${id}`,
+      pluginId: "together",
+      resourceTypeId: "gpu-cluster",
+      accountId,
+      displayName: name,
+      fields: {
+        clusterName: name,
+        clusterId: id,
+        ...(cluster.status ? { status: cluster.status } : {}),
+        ...(cluster.cluster_type ? { clusterType: cluster.cluster_type } : {}),
+        ...(cluster.region ? { region: cluster.region } : {}),
+        ...(cluster.gpu_type ? { gpuType: cluster.gpu_type } : {}),
+        ...(cluster.num_gpus != null ? { numGpus: cluster.num_gpus } : {}),
+        ...(cluster.num_reserved_gpus != null
+          ? { numReservedGpus: cluster.num_reserved_gpus }
+          : {}),
+        ...(cluster.desired_preemptible_gpus != null
+          ? { desiredPreemptibleGpus: cluster.desired_preemptible_gpus }
+          : {}),
+        ...(cluster.allocated_preemptible_gpus != null
+          ? { allocatedPreemptibleGpus: cluster.allocated_preemptible_gpus }
+          : {}),
+        ...(cluster.billing_type ? { billingType: cluster.billing_type } : {}),
+        ...(cluster.cuda_version ? { cudaVersion: cluster.cuda_version } : {}),
+        ...(cluster.nvidia_driver_version
+          ? { nvidiaDriverVersion: cluster.nvidia_driver_version }
+          : {}),
+        ...(cluster.num_cpu_workers != null ? { numCpuWorkers: cluster.num_cpu_workers } : {}),
+        gpuWorkerCount: cluster.gpu_worker_nodes?.length ?? 0,
+        controlPlaneCount: cluster.control_plane_nodes?.length ?? 0,
+        ...(volumes[0]?.id ? { volumeId: volumes[0].id } : {}),
+        ...(cluster.reservation_start_time
+          ? { reservationStartTime: cluster.reservation_start_time }
+          : {}),
+        ...(cluster.reservation_end_time
+          ? { reservationEndTime: cluster.reservation_end_time }
+          : {}),
+        createdAt,
+      },
+      // `kube_config` is deliberately absent: `resolveOutput` fetches it on
+      // demand so the credential is never written alongside the listing.
+      resolvedOutputs: {
+        clusterId: id,
+        clusterName: name,
+        region: cluster.region ?? "",
+        __workers__: JSON.stringify(workers),
+        __volumes__: JSON.stringify(volumes),
+      },
+      secretStates: [],
+      externalId: id,
+      createdAt,
+      updatedAt: createdAt,
+    };
+  }
+
+  private mapVolume(volume: SharedVolume, accountId: string): ResourceInstance {
+    const id = volume.volume_id ?? "";
+    const name = volume.volume_name ?? id;
+    // The volume object carries no timestamps at all.
+    const now = nowIso();
+    return {
+      id: `${accountId}:shared-volume:${id}`,
+      pluginId: "together",
+      resourceTypeId: "shared-volume",
+      accountId,
+      displayName: name,
+      fields: {
+        volumeName: name,
+        volumeId: id,
+        ...(volume.size_tib != null ? { sizeTib: volume.size_tib } : {}),
+        ...(volume.status ? { status: volume.status } : {}),
+      },
+      resolvedOutputs: { volumeId: id, volumeName: name },
+      secretStates: [],
+      externalId: id,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
   private mapHardware(hardware: TogetherHardware, accountId: string): ResourceInstance {
     const id = hardware.id ?? "";
     const specs = hardware.specs ?? {};
@@ -936,6 +1382,20 @@ export class TogetherClient implements PluginClient {
         );
         return this.mapEvaluation(evaluation, accountId);
       }
+      case "gpu-cluster": {
+        // https://docs.together.ai/reference/clusters-get
+        const cluster = await this.fetch<GpuCluster>(
+          `/compute/clusters/${encodeURIComponent(externalId)}`,
+        );
+        return this.mapCluster(cluster, accountId);
+      }
+      case "shared-volume": {
+        // https://docs.together.ai/reference/clusters_storages-get
+        const volume = await this.fetch<SharedVolume>(
+          `/compute/clusters/storage/volumes/${encodeURIComponent(externalId)}`,
+        );
+        return this.mapVolume(volume, accountId);
+      }
       case "model": {
         // There is no `GET /v1/models/{id}`: pick the entry out of the list.
         const models = await this.fetchModels();
@@ -965,6 +1425,17 @@ export class TogetherClient implements PluginClient {
     outputKey: string,
     accountId: string,
   ): Promise<string> {
+    if (typeId === "gpu-cluster" && outputKey === "kubeconfig") {
+      const cluster = await this.fetch<GpuCluster>(
+        `/compute/clusters/${encodeURIComponent(externalIdOf(resourceId))}`,
+      );
+      if (!cluster.kube_config) {
+        throw new Error(
+          "Together plugin: this cluster has no kubeconfig yet; it is issued once the control plane is ready",
+        );
+      }
+      return cluster.kube_config;
+    }
     const resource = await this.getResource(typeId, resourceId, accountId);
     const value = resource.resolvedOutputs[outputKey];
     if (value !== undefined) return value;
@@ -1131,7 +1602,302 @@ export class TogetherClient implements PluginClient {
       };
     }
 
+    if (typeId === "gpu-cluster") return this.clusterCreateConfig();
+
+    if (typeId === "shared-volume") {
+      const regions = await this.fetchRegions().catch((): ComputeRegion[] => []);
+      return {
+        fields: [
+          {
+            key: "volume_name",
+            label: "Name",
+            kind: "text",
+            required: true,
+            placeholder: "training-data",
+          },
+          this.regionField(regions, false),
+          {
+            key: "size_tib",
+            label: "Size (TiB)",
+            kind: "number",
+            required: true,
+            description: "Whole tebibytes. You can grow the volume later.",
+            defaultValue: "1",
+            minValue: 1,
+            stepValue: 1,
+          },
+        ],
+      };
+    }
+
     throw new Error(`Together plugin: createResource not supported for type "${typeId}"`);
+  }
+
+  /**
+   * `GET /v1/compute/regions`: each region's GPU types and the NVIDIA
+   * driver/CUDA catalogue entries it offers.
+   * https://docs.together.ai/reference/clusters-list-regions
+   */
+  private async fetchRegions(): Promise<ComputeRegion[]> {
+    const data = await this.fetch<{ regions?: ComputeRegion[] }>("/compute/regions");
+    return (data.regions ?? []).filter((region) => Boolean(region.name));
+  }
+
+  /**
+   * A region picker built from `/compute/regions`. On the cluster form it is
+   * narrowed by the chosen GPU type, because `supported_instance_types` holds
+   * the same enum values the create body's `gpu_type` takes. Falls back to a
+   * text box when the regions call fails, so the form still works.
+   */
+  private regionField(regions: ComputeRegion[], filterByGpu: boolean): CreateFieldConfig {
+    if (!regions.length) {
+      return {
+        key: "region",
+        label: "Region",
+        kind: "text",
+        required: true,
+        description: "Together could not list regions just now; type one, e.g. us-central-8.",
+      };
+    }
+    return {
+      key: "region",
+      label: "Region",
+      kind: "region-picker",
+      required: true,
+      regions: regions.map((region) => ({
+        id: region.name ?? "",
+        label: region.name ?? "",
+        ...(filterByGpu && region.supported_instance_types?.length
+          ? { availableFor: region.supported_instance_types }
+          : {}),
+      })),
+      ...(filterByGpu ? { filterByFieldKey: "gpu_type" } : {}),
+      ...(regions[0]?.name ? { defaultValue: regions[0].name } : {}),
+    };
+  }
+
+  /**
+   * `POST /v1/compute/clusters`. The driver picker is one select per region,
+   * each shown only while that region is chosen, so only catalogue entries
+   * the chosen region offers can be submitted. It sends `nvidia_version_id`,
+   * which the spec prefers over the legacy driver/CUDA pair.
+   * https://docs.together.ai/reference/clusters-create
+   */
+  private async clusterCreateConfig(): Promise<CreateResourceConfig> {
+    const [regions, volumes] = await Promise.all([
+      this.fetchRegions().catch((): ComputeRegion[] => []),
+      this.fetch<{ volumes?: SharedVolume[] }>("/compute/clusters/storage/volumes").catch(
+        (): { volumes?: SharedVolume[] } => ({}),
+      ),
+    ]);
+    const offered = new Set(regions.flatMap((region) => region.supported_instance_types ?? []));
+    const gpuTypes = [
+      ...CLUSTER_GPU_TYPES.filter((type) => !offered.size || offered.has(type)),
+      ...[...offered].filter((type) => !CLUSTER_GPU_TYPES.includes(type)),
+    ];
+    const gpuOptions = gpuTypes.map((type) => {
+      const where = regions
+        .filter((region) => region.supported_instance_types?.includes(type))
+        .map((region) => region.name ?? "");
+      return {
+        id: type,
+        label: gpuTypeLabel(type),
+        ...(where.length ? { description: where.join(", ") } : {}),
+      };
+    });
+
+    const driverFields: CreateFieldConfig[] = regions.length
+      ? regions.map((region) => {
+          const options = (region.driver_versions ?? [])
+            .filter((version) => Boolean(version.id))
+            .map((version) => ({
+              id: version.id ?? "",
+              label: `Driver ${version.nvidia_driver_version ?? "?"} · CUDA ${version.cuda_version ?? "?"}`,
+              ...(version.os ? { description: version.os } : {}),
+            }));
+          return {
+            key: `nvidia_version_id@${region.name ?? ""}`,
+            label: "NVIDIA Driver",
+            kind: "select" as const,
+            required: false,
+            description: `Driver and CUDA combinations offered in ${region.name ?? "this region"}.`,
+            options,
+            ...(options.at(-1) ? { defaultValue: options.at(-1)?.id ?? "" } : {}),
+            showWhen: { fieldKey: "region", fieldValue: region.name ?? "" },
+          };
+        })
+      : [
+          {
+            key: "nvidia_driver_version",
+            label: "NVIDIA Driver Version",
+            kind: "text",
+            required: true,
+            placeholder: "570",
+          },
+          {
+            key: "cuda_version",
+            label: "CUDA Version",
+            kind: "text",
+            required: true,
+            placeholder: "12.8",
+          },
+        ];
+
+    const volumeOptions = [
+      { id: "none", label: "No shared volume" },
+      { id: "new", label: "Create a new volume" },
+      ...(volumes.volumes ?? [])
+        .filter((volume) => Boolean(volume.volume_id))
+        .map((volume) => ({
+          id: volume.volume_id ?? "",
+          label: volume.volume_name ?? volume.volume_id ?? "",
+          description: [
+            volume.size_tib != null ? `${volume.size_tib} TiB` : "",
+            volume.status ? titleCase(volume.status) : "",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        })),
+    ];
+
+    return {
+      fields: [
+        {
+          key: "cluster_name",
+          label: "Name",
+          kind: "text",
+          required: true,
+          placeholder: "training-cluster",
+        },
+        {
+          key: "gpu_type",
+          label: "GPU Type",
+          kind: "select",
+          required: true,
+          description: "The regions offering each type are listed under it.",
+          options: gpuOptions,
+          ...(gpuOptions[0] ? { defaultValue: gpuOptions[0].id } : {}),
+        },
+        this.regionField(regions, true),
+        ...driverFields,
+        {
+          key: "num_gpus",
+          label: "GPUs",
+          kind: "number",
+          required: true,
+          description: "Allocated in whole nodes of 8.",
+          defaultValue: "8",
+          minValue: 8,
+          stepValue: 8,
+        },
+        {
+          key: "cluster_type",
+          label: "Cluster Type",
+          kind: "select",
+          required: true,
+          options: [
+            { id: "KUBERNETES", label: "Kubernetes" },
+            { id: "SLURM", label: "Slurm" },
+          ],
+          defaultValue: "KUBERNETES",
+        },
+        {
+          key: "slurm_shm_size_gib",
+          label: "Slurm Shared Memory (GiB)",
+          kind: "number",
+          required: false,
+          description: "Shared memory per node. Together requires it for Slurm clusters.",
+          defaultValue: "64",
+          minValue: 1,
+          stepValue: 1,
+          showWhen: { fieldKey: "cluster_type", fieldValue: "SLURM" },
+        },
+        {
+          key: "billing_type",
+          label: "Billing",
+          kind: "select",
+          required: true,
+          options: [
+            {
+              id: "ON_DEMAND",
+              label: "On demand",
+              description: "Yours until you delete it",
+            },
+            {
+              id: "RESERVED",
+              label: "Reserved",
+              description: "Prepaid for a fixed number of days",
+            },
+            {
+              id: "SCHEDULED_CAPACITY",
+              label: "Scheduled capacity",
+              description: "Reserved for a future time window",
+            },
+          ],
+          defaultValue: "ON_DEMAND",
+        },
+        {
+          key: "duration_days",
+          label: "Reservation Length (days)",
+          kind: "number",
+          required: false,
+          defaultValue: "30",
+          minValue: 1,
+          stepValue: 1,
+          showWhen: { fieldKey: "billing_type", fieldValue: "RESERVED" },
+        },
+        {
+          key: "reservation_start_time",
+          label: "Reservation Start",
+          kind: "datetime",
+          required: false,
+          showWhen: { fieldKey: "billing_type", fieldValue: "SCHEDULED_CAPACITY" },
+        },
+        {
+          key: "reservation_end_time",
+          label: "Reservation End",
+          kind: "datetime",
+          required: false,
+          showWhen: { fieldKey: "billing_type", fieldValue: "SCHEDULED_CAPACITY" },
+        },
+        {
+          key: "num_preemptible_gpus",
+          label: "Preemptible GPUs",
+          kind: "number",
+          required: false,
+          description:
+            "Optional discounted GPUs that Together can reclaim when it needs the capacity. Multiples of 8.",
+          minValue: 0,
+          stepValue: 8,
+        },
+        {
+          key: "shared_volume",
+          label: "Shared Volume",
+          kind: "select",
+          required: true,
+          description: "Volumes are regional: an existing one must be in the cluster's region.",
+          options: volumeOptions,
+          defaultValue: "none",
+        },
+        {
+          key: "volume_name",
+          label: "New Volume Name",
+          kind: "text",
+          required: false,
+          showWhen: { fieldKey: "shared_volume", fieldValue: "new" },
+        },
+        {
+          key: "volume_size_tib",
+          label: "New Volume Size (TiB)",
+          kind: "number",
+          required: false,
+          defaultValue: "1",
+          minValue: 1,
+          stepValue: 1,
+          showWhen: { fieldKey: "shared_volume", fieldValue: "new" },
+        },
+      ],
+    };
   }
 
   async createResource(
@@ -1179,6 +1945,29 @@ export class TogetherClient implements PluginClient {
       return this.mapBatch(job, accountId);
     }
 
+    if (typeId === "gpu-cluster") {
+      const created = await this.fetch<GpuCluster>("/compute/clusters", {
+        method: "POST",
+        body: JSON.stringify(buildClusterCreateBody(fields)),
+      });
+      return this.mapCluster(created, accountId);
+    }
+
+    if (typeId === "shared-volume") {
+      // https://docs.together.ai/reference/clusters_storages-create
+      const size = toInt(fields["size_tib"], 0);
+      if (size < 1) throw new Error("Together plugin: a shared volume needs at least 1 TiB");
+      const created = await this.fetch<SharedVolume>("/compute/clusters/storage/volumes", {
+        method: "POST",
+        body: JSON.stringify({
+          volume_name: fields["volume_name"] ?? "",
+          size_tib: size,
+          region: fields["region"] ?? "",
+        }),
+      });
+      return this.mapVolume(created, accountId);
+    }
+
     throw new Error(`Together plugin: createResource not supported for type "${typeId}"`);
   }
 
@@ -1192,6 +1981,8 @@ export class TogetherClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    if (typeId === "gpu-cluster") return this.updateCluster(resourceId, accountId, fields);
+    if (typeId === "shared-volume") return this.updateVolume(resourceId, accountId, fields);
     if (typeId !== "endpoint") {
       throw new Error(`Together plugin: updateResource not supported for type "${typeId}"`);
     }
@@ -1223,6 +2014,98 @@ export class TogetherClient implements PluginClient {
     return this.mapEndpoint(updated, accountId);
   }
 
+  /**
+   * `PUT /v1/compute/clusters/{cluster_id}`. Every field is optional and an
+   * omitted one keeps its current value, so only what the user changed is
+   * sent. https://docs.together.ai/reference/clusters-update
+   */
+  private async updateCluster(
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const id = externalIdOf(resourceId);
+    const path = `/compute/clusters/${encodeURIComponent(id)}`;
+    const current = await this.fetch<GpuCluster>(path);
+    const body: Record<string, unknown> = {};
+    const changedInt = (key: string, existing: number | undefined): number | undefined => {
+      const raw = fields[key];
+      if (raw === undefined || raw === "") return undefined;
+      const value = toInt(raw, Number.NaN);
+      if (!Number.isFinite(value)) {
+        throw new Error(`Together plugin: "${key}" must be a whole number (got "${raw}")`);
+      }
+      return value === existing ? undefined : value;
+    };
+
+    const clusterType = fields["clusterType"]?.toUpperCase();
+    if (clusterType && clusterType !== current.cluster_type) {
+      if (clusterType !== "KUBERNETES" && clusterType !== "SLURM") {
+        throw new Error(
+          `Together plugin: cluster type must be KUBERNETES or SLURM (got "${fields["clusterType"]}")`,
+        );
+      }
+      body["cluster_type"] = clusterType;
+    }
+    const numGpus = changedInt("numGpus", current.num_gpus);
+    if (numGpus !== undefined) {
+      assertMultipleOf8("GPU count", numGpus);
+      body["num_gpus"] = numGpus;
+    }
+    const reserved = changedInt("numReservedGpus", current.num_reserved_gpus);
+    if (reserved !== undefined) {
+      if (current.billing_type !== "RESERVED") {
+        throw new Error("Together plugin: reserved GPUs only apply to RESERVED clusters");
+      }
+      body["num_reserved_gpus"] = reserved;
+    }
+    const preemptible = changedInt("desiredPreemptibleGpus", current.desired_preemptible_gpus);
+    if (preemptible !== undefined) {
+      assertMultipleOf8("Preemptible GPU count", preemptible);
+      body["num_preemptible_gpus"] = preemptible;
+    }
+    const endTime = fields["reservationEndTime"]?.trim();
+    if (endTime && endTime !== current.reservation_end_time) {
+      if (Number.isNaN(Date.parse(endTime))) {
+        throw new Error(
+          `Together plugin: reservation end must be an RFC 3339 timestamp (got "${endTime}")`,
+        );
+      }
+      body["reservation_end_time"] = new Date(endTime).toISOString();
+    }
+
+    if (Object.keys(body).length === 0) return this.mapCluster(current, accountId);
+    const updated = await this.fetch<GpuCluster>(path, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    return this.mapCluster(updated, accountId);
+  }
+
+  /**
+   * `PUT /v1/compute/clusters/storage/volumes`: note the id travels in the
+   * body, not the path. Size is the only mutable property.
+   * https://docs.together.ai/reference/clusters_storages-update
+   */
+  private async updateVolume(
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const id = externalIdOf(resourceId);
+    const raw = fields["sizeTib"];
+    if (raw === undefined || raw === "") {
+      return this.getResource("shared-volume", resourceId, accountId);
+    }
+    const size = toInt(raw, 0);
+    if (size < 1) throw new Error("Together plugin: a shared volume needs at least 1 TiB");
+    const updated = await this.fetch<SharedVolume>("/compute/clusters/storage/volumes", {
+      method: "PUT",
+      body: JSON.stringify({ volume_id: id, size_tib: size }),
+    });
+    return this.mapVolume(updated, accountId);
+  }
+
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     const externalId = externalIdOf(resourceId);
     if (!externalId) throw new Error(`Together plugin: cannot parse resource id "${resourceId}"`);
@@ -1243,6 +2126,21 @@ export class TogetherClient implements PluginClient {
         return;
       case "managed-endpoint":
         await this.deleteManagedEndpoint(externalId);
+        return;
+      case "gpu-cluster":
+        // https://docs.together.ai/reference/clusters-delete
+        await this.fetch<unknown>(`/compute/clusters/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      case "shared-volume":
+        // Fails while the volume is attached to a cluster; Together's error
+        // says so and is surfaced as-is.
+        // https://docs.together.ai/reference/clusters_storages-delete
+        await this.fetch<unknown>(
+          `/compute/clusters/storage/volumes/${encodeURIComponent(externalId)}`,
+          { method: "DELETE" },
+        );
         return;
       default:
         throw new Error(`Together plugin: deleteResource not supported for type "${typeId}"`);
@@ -1306,6 +2204,178 @@ export class TogetherClient implements PluginClient {
       return;
     }
     throw new Error(`Together plugin: unknown action "${actionId}"`);
+  }
+
+  // -------------------------------------------------------------------------
+  // Costs, metrics and detail enrichment
+  // -------------------------------------------------------------------------
+
+  /**
+   * `GET /v1/billing/usage`, one month per request series at daily
+   * granularity, following `next_cursor`. The route is beta and switched on
+   * per organization: a 404 means "not enabled here", which is a setup step
+   * for the user rather than a failure to retry.
+   * https://docs.together.ai/reference/billing-usage
+   */
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    const merged = new Map<string, CostRow>();
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    for (const month of monthsInRange(range.fromDate, range.toDate)) {
+      if (month > currentMonth) break;
+      let after: string | undefined;
+      for (let page = 0; page < 50; page += 1) {
+        const query =
+          `?month=${month}&granularity=day&limit=1000` +
+          (after ? `&after=${encodeURIComponent(after)}` : "");
+        let report: BillingUsageReport;
+        try {
+          report = await this.fetch<BillingUsageReport>(`/billing/usage${query}`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/API error 404/.test(message)) {
+            throw new CostSetupError(
+              "Together's billing usage API is in beta and has not been enabled for this organization yet. Ask Together support to turn it on; spend appears here on the next collection.",
+              {
+                label: "Request access",
+                url: "https://portal.usepylon.com/together-ai/forms/support-request",
+              },
+            );
+          }
+          if (/API error 40[13]/.test(message)) {
+            throw new CostSetupError(
+              "Together refused the billing usage request for this API key. Use a key from a project in the organization you want to report on.",
+              { label: "Together API keys", url: "https://api.together.ai/settings/api-keys" },
+            );
+          }
+          throw error;
+        }
+
+        const currency = report.currency || "USD";
+        for (const window of report.data ?? []) {
+          const date = window.date || window.start_time?.slice(0, 10) || "";
+          if (!date || date < range.fromDate || date > range.toDate) continue;
+          for (const item of window.line_items ?? []) {
+            const amount = decimal(item.cost);
+            if (amount == null || amount === 0) continue;
+            const row = costRowFor(date, currency, item);
+            const key = costRowKey(row);
+            const existing = merged.get(key);
+            if (existing) existing.amount += amount;
+            else merged.set(key, { ...row, amount });
+          }
+        }
+        if (!report.next_cursor) break;
+        after = report.next_cursor;
+      }
+    }
+    return [...merged.values()];
+  }
+
+  /**
+   * Managed endpoint analytics as time series: one series per metric name in
+   * the buckets. https://docs.together.ai/reference/dmi/endpoints-analytics
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "managed-endpoint") return [];
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = timeRange?.startMs ?? endMs - 24 * 60 * 60 * 1000;
+    const analytics = await this.fetchAnalytics(externalIdOf(resourceId), startMs, endMs, true);
+
+    const byKey = new Map<string, MetricSeries>();
+    for (const bucket of analytics.timeSeries ?? []) {
+      const timestamp = Date.parse(bucket.timestamp ?? "");
+      if (!Number.isFinite(timestamp)) continue;
+      for (const [key, value] of Object.entries(bucket.values ?? {})) {
+        if (typeof value !== "number" || !Number.isFinite(value)) continue;
+        let series = byKey.get(key);
+        if (!series) {
+          const meta = analyticsSeriesMeta(key);
+          series = { label: meta.label, ...(meta.unit ? { unit: meta.unit } : {}), points: [] };
+          byKey.set(key, series);
+        }
+        series.points.push({ timestamp, value });
+      }
+    }
+    for (const series of byKey.values()) series.points.sort((a, b) => a.timestamp - b.timestamp);
+    return [...byKey.values()];
+  }
+
+  /** `GET /v2/projects/{projectId}/endpoints/{id}/analytics`. */
+  private async fetchAnalytics(
+    endpointId: string,
+    startMs: number,
+    endMs: number,
+    includeTimeSeries: boolean,
+  ): Promise<DmiAnalytics> {
+    const { project_id: projectId } = await this.whoami();
+    if (!projectId) {
+      throw new Error("Together plugin: could not resolve project id from /v1/whoami");
+    }
+    const params = new URLSearchParams({
+      startTime: new Date(startMs).toISOString(),
+      endTime: new Date(endMs).toISOString(),
+    });
+    if (includeTimeSeries) {
+      params.set("includeTimeSeries", "true");
+      params.set("granularity", analyticsGranularity(endMs - startMs));
+    }
+    return this.request<DmiAnalytics>(
+      `${API_BASE_V2}/projects/${encodeURIComponent(projectId)}/endpoints/${encodeURIComponent(endpointId)}/analytics?${params.toString()}`,
+    );
+  }
+
+  /**
+   * Extra calls for the detail page only: the last 24 hours of analytics on a
+   * managed endpoint, and the event log and checkpoints of a fine-tune. Each
+   * is stashed under a `__`-prefixed resolved output for `renderDetail`.
+   */
+  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    const externalId = resource.externalId ?? externalIdOf(resource.id);
+    if (resource.resourceTypeId === "managed-endpoint") {
+      const endMs = Date.now();
+      const analytics = await this.fetchAnalytics(
+        externalId,
+        endMs - 24 * 60 * 60 * 1000,
+        endMs,
+        false,
+      ).catch((): DmiAnalytics | null => null);
+      if (!analytics?.metrics) return resource;
+      return {
+        ...resource,
+        resolvedOutputs: {
+          ...resource.resolvedOutputs,
+          __analytics__: JSON.stringify(analytics.metrics),
+        },
+      };
+    }
+    if (resource.resourceTypeId === "fine-tune") {
+      // https://docs.together.ai/reference/get-fine-tunes-id-events
+      // https://docs.together.ai/reference/get-fine-tunes-id-checkpoint
+      const id = encodeURIComponent(externalId);
+      const [events, checkpoints] = await Promise.all([
+        this.fetch<{ data?: FineTuneEvent[] }>(`/fine-tunes/${id}/events`).catch(
+          (): { data?: FineTuneEvent[] } => ({}),
+        ),
+        this.fetch<{ data?: FineTuneCheckpoint[] }>(`/fine-tunes/${id}/checkpoints`).catch(
+          (): { data?: FineTuneCheckpoint[] } => ({}),
+        ),
+      ]);
+      return {
+        ...resource,
+        resolvedOutputs: {
+          ...resource.resolvedOutputs,
+          __events__: JSON.stringify(events.data ?? []),
+          __checkpoints__: JSON.stringify(checkpoints.data ?? []),
+        },
+      };
+    }
+    return resource;
   }
 
   // -------------------------------------------------------------------------
@@ -1432,6 +2502,56 @@ export class TogetherClient implements PluginClient {
       }
       case "managed-endpoint": {
         stats.push({ label: "Deployments", value: String(fields["deploymentCount"] ?? 0) });
+        const endMs = Date.now();
+        const analytics = await this.fetchAnalytics(
+          resource.externalId ?? externalIdOf(resourceId),
+          endMs - 24 * 60 * 60 * 1000,
+          endMs,
+          false,
+        ).catch((): DmiAnalytics | null => null);
+        const metrics = analytics?.metrics;
+        const total = decimal(metrics?.requestMetrics?.totalRequests);
+        if (total != null) stats.push({ label: "Requests (24h)", value: formatNumber(total) });
+        const errorRate = metrics?.errorMetrics?.errorRate;
+        if (errorRate != null) {
+          stats.push({
+            label: "Error Rate",
+            value: formatPercent(errorRate),
+            variant:
+              errorRate >= 5 ? "status-error" : errorRate > 0 ? "status-degraded" : "default",
+          });
+        }
+        const p50 = metrics?.latencyMetrics?.latencyP50Ms;
+        if (p50 != null) stats.push({ label: "Latency p50", value: formatMs(p50) });
+        break;
+      }
+      case "gpu-cluster": {
+        const mapped = mapClusterStatus(String(fields["status"] ?? ""));
+        stats.push({
+          label: "Status",
+          value: mapped.label,
+          variant:
+            mapped.status === "healthy"
+              ? "status-healthy"
+              : mapped.status === "error" || mapped.status === "degraded"
+                ? "status-degraded"
+                : "default",
+        });
+        if (fields["numGpus"] != null) {
+          stats.push({
+            label: "GPUs",
+            value: `${fields["numGpus"]}× ${gpuTypeLabel(String(fields["gpuType"] ?? ""))}`.trim(),
+          });
+        }
+        if (fields["region"]) stats.push({ label: "Region", value: String(fields["region"]) });
+        break;
+      }
+      case "shared-volume": {
+        const mapped = mapVolumeStatus(String(fields["status"] ?? ""));
+        stats.push({ label: "Status", value: mapped.label });
+        if (fields["sizeTib"] != null) {
+          stats.push({ label: "Size", value: `${fields["sizeTib"]} TiB` });
+        }
         break;
       }
       default:
@@ -1627,6 +2747,14 @@ export class TogetherClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    return withMetricsCapability(
+      this.renderDetailBody(resource),
+      [ManagedEndpointResourceType],
+      resource.resourceTypeId,
+    );
+  }
+
+  private renderDetailBody(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
       case "model":
         return this.renderModelDetail(resource);
@@ -1644,6 +2772,10 @@ export class TogetherClient implements PluginClient {
         return this.renderEvaluationDetail(resource);
       case "hardware":
         return this.renderHardwareDetail(resource);
+      case "gpu-cluster":
+        return this.renderClusterDetail(resource);
+      case "shared-volume":
+        return this.renderVolumeDetail(resource);
       default:
         return this.renderGenericDetail(resource);
     }
@@ -1719,6 +2851,22 @@ export class TogetherClient implements PluginClient {
           },
         };
       }
+      case "gpu-cluster": {
+        const mapped = mapClusterStatus(String(fields["status"] ?? ""));
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: { kind: "status-dot", status: mapped.status, label: mapped.label },
+        };
+      }
+      case "shared-volume": {
+        const mapped = mapVolumeStatus(String(fields["status"] ?? ""));
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: { kind: "status-dot", status: mapped.status, label: mapped.label },
+        };
+      }
       default:
         return {
           id: resource.id,
@@ -1780,9 +2928,8 @@ export class TogetherClient implements PluginClient {
           { kind: "key-value-list", items: priceItems },
           {
             kind: "text",
-            // Together has no usage API, so this is rate-card data only.
             content:
-              "These are Together's published rates, not your spend. Together exposes no usage or cost API — actual charges are only visible in the Together dashboard.",
+              "These are Together's published rates, not your spend. Actual charges come from Together's billing usage API and appear in Costs once it is enabled for your organization.",
             variant: "muted",
           },
         ],
@@ -2038,6 +3185,7 @@ export class TogetherClient implements PluginClient {
             },
           ],
         },
+        ...this.renderAnalyticsSections(resource),
         {
           kind: "section",
           title: "Deleting this endpoint",
@@ -2046,6 +3194,275 @@ export class TogetherClient implements PluginClient {
               kind: "text",
               content:
                 "Together refuses to delete a managed endpoint that still has deployments. Deleting from here removes its deployments first, then the endpoint itself — the traffic split disappears with them.",
+              variant: "muted",
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  /** The 24-hour aggregate stashed by `enrichDetail`; nothing if it failed. */
+  private renderAnalyticsSections(resource: ResourceInstance): SectionNode[] {
+    const raw = resource.resolvedOutputs["__analytics__"];
+    if (!raw) return [];
+    let metrics: DmiEndpointMetrics;
+    try {
+      metrics = JSON.parse(raw) as DmiEndpointMetrics;
+    } catch {
+      return [];
+    }
+    const items = (pairs: Array<[string, string]>) =>
+      pairs.filter(([, value]) => value !== "").map(([key, value]) => ({ key, value }));
+    const count = (value: string | undefined) => {
+      const parsed = decimal(value);
+      return parsed == null ? "" : formatNumber(parsed);
+    };
+    const rate = (value: number | undefined) => (value == null ? "" : value.toFixed(2));
+    const requests = metrics.requestMetrics ?? {};
+    const latency = metrics.latencyMetrics ?? {};
+    const throughput = metrics.throughputMetrics ?? {};
+    const utilization = metrics.resourceUtilization ?? {};
+    const tokens = metrics.tokenMetrics ?? {};
+    const percentiles = (p50?: number, p90?: number, p99?: number) =>
+      [p50, p90, p99].some((value) => value != null)
+        ? [formatMs(p50), formatMs(p90), formatMs(p99)].map((value) => value || "n/a").join(" / ")
+        : "";
+
+    const groups: Array<[string, Array<{ key: string; value: string }>]> = [
+      [
+        "Traffic (last 24 hours)",
+        items([
+          ["Requests", count(requests.totalRequests)],
+          ["Successful", count(requests.successfulRequests)],
+          ["Failed", count(requests.failedRequests)],
+          ["Error Rate", formatPercent(metrics.errorMetrics?.errorRate)],
+          ["Requests / s", rate(requests.requestsPerSecond ?? throughput.requestsPerSecond)],
+          ["Tokens / s", rate(throughput.tokensPerSecond)],
+          ["Average Batch Size", rate(throughput.avgBatchSize)],
+        ]),
+      ],
+      [
+        "Latency (p50 / p90 / p99)",
+        items([
+          [
+            "Time to First Token",
+            percentiles(latency.ttftP50Ms, latency.ttftP90Ms, latency.ttftP99Ms),
+          ],
+          [
+            "End to End",
+            percentiles(latency.latencyP50Ms, latency.latencyP90Ms, latency.latencyP99Ms),
+          ],
+          ["Inter-token", percentiles(latency.itlP50Ms, latency.itlP90Ms, latency.itlP99Ms)],
+        ]),
+      ],
+      [
+        "Utilization",
+        items([
+          ["GPU", formatPercent(utilization.gpuUtilization)],
+          ["GPU Memory", formatPercent(utilization.gpuMemoryUtilization)],
+          ["CPU", formatPercent(utilization.cpuUtilization)],
+          ["Memory", formatPercent(utilization.memoryUtilization)],
+          [
+            "Network",
+            utilization.networkBandwidthMbps == null
+              ? ""
+              : `${utilization.networkBandwidthMbps.toFixed(1)} Mbps`,
+          ],
+        ]),
+      ],
+      [
+        "Tokens",
+        items([
+          ["Input", count(tokens.totalInputTokens)],
+          ["Output", count(tokens.totalOutputTokens)],
+          ["Average Input / Request", rate(tokens.avgInputTokens)],
+          ["Average Output / Request", rate(tokens.avgOutputTokens)],
+        ]),
+      ],
+    ];
+    return groups
+      .filter(([, list]) => list.length)
+      .map(([title, list]) => ({
+        kind: "section" as const,
+        title,
+        children: [{ kind: "key-value-list" as const, items: list }],
+      }));
+  }
+
+  private renderClusterDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const mapped = mapClusterStatus(String(fields["status"] ?? ""));
+    const text = (key: string) =>
+      fields[key] != null && fields[key] !== "" ? String(fields[key]) : "";
+    const kv = (pairs: Array<[string, string, boolean?]>) =>
+      pairs
+        .filter(([, value]) => value !== "")
+        .map(([key, value, copyable]) => ({ key, value, ...(copyable ? { copyable: true } : {}) }));
+
+    const sections: SectionNode[] = [
+      {
+        kind: "section",
+        title: "Cluster",
+        children: [
+          {
+            kind: "key-value-list",
+            items: kv([
+              ["Cluster ID", text("clusterId"), true],
+              ["Name", text("clusterName")],
+              ["Status", mapped.label],
+              ["Type", text("clusterType") ? titleCase(text("clusterType")) : ""],
+              ["Region", text("region")],
+              ["Billing", text("billingType") ? titleCase(text("billingType")) : ""],
+              ["Created", text("createdAt")],
+            ]),
+          },
+        ],
+      },
+      {
+        kind: "section",
+        title: "Capacity",
+        children: [
+          {
+            kind: "key-value-list",
+            items: kv([
+              ["GPU Type", text("gpuType") ? gpuTypeLabel(text("gpuType")) : ""],
+              ["GPUs", text("numGpus")],
+              ["Reserved GPUs", text("numReservedGpus")],
+              ["Preemptible GPUs (requested)", text("desiredPreemptibleGpus")],
+              ["Preemptible GPUs (allocated)", text("allocatedPreemptibleGpus")],
+              ["GPU Worker Nodes", text("gpuWorkerCount")],
+              ["CPU Worker Nodes", text("numCpuWorkers")],
+              ["Control Plane Nodes", text("controlPlaneCount")],
+            ]),
+          },
+        ],
+      },
+      {
+        kind: "section",
+        title: "Software",
+        children: [
+          {
+            kind: "key-value-list",
+            items: kv([
+              ["NVIDIA Driver", text("nvidiaDriverVersion")],
+              ["CUDA", text("cudaVersion")],
+            ]),
+          },
+        ],
+      },
+    ];
+
+    if (text("reservationStartTime") || text("reservationEndTime")) {
+      sections.push({
+        kind: "section",
+        title: "Reservation",
+        children: [
+          {
+            kind: "key-value-list",
+            items: kv([
+              ["Starts", text("reservationStartTime")],
+              ["Ends", text("reservationEndTime")],
+            ]),
+          },
+        ],
+      });
+    }
+
+    const workers = parseJsonStash<StashedNode>(resource.resolvedOutputs["__workers__"]);
+    if (workers.length) {
+      sections.push({
+        kind: "section",
+        title: "GPU Worker Nodes",
+        children: [
+          {
+            kind: "table",
+            emphasizeFirstColumn: true,
+            columns: [
+              { key: "host", label: "Host", mono: true },
+              { key: "status", label: "Status" },
+              { key: "gpus", label: "GPUs", width: "narrow" },
+              { key: "cpus", label: "CPU Cores", width: "narrow" },
+              { key: "memory", label: "Memory", width: "narrow" },
+            ],
+            rows: workers.map((node) => ({
+              cells: {
+                host: node.host,
+                status: node.status ? splitPascal(node.status) : "",
+                gpus: node.gpus != null ? String(node.gpus) : "",
+                cpus: node.cpus != null ? String(node.cpus) : "",
+                memory: node.memoryGib != null ? `${node.memoryGib} GiB` : "",
+              },
+            })),
+          },
+        ],
+      });
+    }
+
+    const volumes = parseJsonStash<StashedVolume>(resource.resolvedOutputs["__volumes__"]);
+    if (volumes.length) {
+      sections.push({
+        kind: "section",
+        title: "Shared Volumes",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "name", label: "Name" },
+              { key: "id", label: "Volume ID", mono: true },
+              { key: "size", label: "Size", width: "narrow" },
+              { key: "status", label: "Status" },
+            ],
+            rows: volumes.map((volume) => ({
+              cells: {
+                name: volume.name,
+                id: volume.id,
+                size: volume.sizeTib != null ? `${volume.sizeTib} TiB` : "",
+                status: volume.status ? titleCase(volume.status) : "",
+              },
+            })),
+          },
+        ],
+      });
+    }
+
+    return {
+      title: resource.displayName,
+      subtitle: joinSubtitle("GPU cluster", fields["region"]),
+      status: { kind: "status-dot", status: mapped.status, label: mapped.label },
+      sections,
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderVolumeDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const mapped = mapVolumeStatus(String(fields["status"] ?? ""));
+    return {
+      title: resource.displayName,
+      subtitle: "Shared volume",
+      status: { kind: "status-dot", status: mapped.status, label: mapped.label },
+      sections: [
+        {
+          kind: "section",
+          title: "Volume",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Volume ID", value: String(fields["volumeId"] ?? ""), copyable: true },
+                { key: "Name", value: String(fields["volumeName"] ?? resource.displayName) },
+                ...(fields["sizeTib"] != null
+                  ? [{ key: "Size", value: `${fields["sizeTib"]} TiB` }]
+                  : []),
+                { key: "Status", value: mapped.label },
+              ],
+            },
+            {
+              kind: "text",
+              content:
+                "Together refuses to delete a volume that is still attached to a cluster, so delete the cluster using it first.",
               variant: "muted",
             },
           ],
@@ -2131,12 +3548,72 @@ export class TogetherClient implements PluginClient {
           {
             kind: "text",
             content:
-              "This is the price of this single job, reported by the fine-tuning API. Together publishes no account-wide usage or cost API, so overall spend lives only in the Together dashboard.",
+              "This is the price of this single job, reported by the fine-tuning API. Account-wide spend, fine-tuning included, is in Costs.",
             variant: "muted",
           },
         ],
       },
     ];
+
+    const checkpoints = parseJsonStash<FineTuneCheckpoint>(
+      resource.resolvedOutputs["__checkpoints__"],
+    );
+    if (checkpoints.length) {
+      sections.push({
+        kind: "section",
+        title: "Checkpoints",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "step", label: "Step", width: "narrow" },
+              { key: "type", label: "Checkpoint" },
+              { key: "name", label: "Model Name", mono: true, width: "wide" },
+              { key: "created", label: "Created" },
+            ],
+            rows: checkpoints.map((checkpoint) => ({
+              cells: {
+                step: checkpoint.step != null ? String(checkpoint.step) : "",
+                type: checkpoint.checkpoint_type ?? "",
+                name: checkpoint.object_name ?? checkpoint.path ?? "",
+                created: checkpoint.created_at ?? "",
+              },
+            })),
+          },
+        ],
+      });
+    }
+
+    // Newest first, capped: a long job logs an event per checkpoint and epoch.
+    const events = parseJsonStash<FineTuneEvent>(resource.resolvedOutputs["__events__"])
+      .slice()
+      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+      .slice(0, 50);
+    if (events.length) {
+      sections.push({
+        kind: "section",
+        title: "Events",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "time", label: "Time" },
+              { key: "level", label: "Level", width: "narrow" },
+              { key: "type", label: "Event" },
+              { key: "message", label: "Message", width: "wide" },
+            ],
+            rows: events.map((event) => ({
+              cells: {
+                time: event.created_at ?? "",
+                level: event.level ? titleCase(event.level.replace(/^legacy_i?/, "")) : "",
+                type: event.type ? titleCase(event.type) : "",
+                message: event.message ?? "",
+              },
+            })),
+          },
+        ],
+      });
+    }
 
     return {
       title: resource.displayName,
@@ -2440,4 +3917,120 @@ function fallbackVoices(): StashedVoice[] {
 function toInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? "", 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function assertMultipleOf8(label: string, value: number): void {
+  if (value < 0 || value % 8 !== 0) {
+    throw new Error(`Together plugin: ${label} must be a multiple of 8 (got ${value})`);
+  }
+}
+
+/**
+ * Turn the cluster create form into a `GPUClusterCreateRequest`. Validates
+ * the conditional requirements the spec states in prose (Slurm shared
+ * memory, the scheduled-capacity window, the driver selector) so they fail
+ * here with a readable message instead of as a 400.
+ * https://docs.together.ai/reference/clusters-create
+ */
+export function buildClusterCreateBody(fields: Record<string, string>): Record<string, unknown> {
+  const region = fields["region"] ?? "";
+  const numGpus = toInt(fields["num_gpus"], 8);
+  assertMultipleOf8("GPU count", numGpus);
+  if (numGpus < 8) throw new Error("Together plugin: a cluster needs at least 8 GPUs");
+  const clusterType = fields["cluster_type"] === "SLURM" ? "SLURM" : "KUBERNETES";
+  const billingType = ["RESERVED", "SCHEDULED_CAPACITY"].includes(fields["billing_type"] ?? "")
+    ? (fields["billing_type"] as string)
+    : "ON_DEMAND";
+
+  const body: Record<string, unknown> = {
+    cluster_name: fields["cluster_name"] ?? "",
+    region,
+    gpu_type: fields["gpu_type"] ?? "",
+    num_gpus: numGpus,
+    cluster_type: clusterType,
+    billing_type: billingType,
+  };
+
+  const versionId = fields[`nvidia_version_id@${region}`];
+  if (versionId) {
+    body["nvidia_version_id"] = versionId;
+  } else if (fields["nvidia_driver_version"] && fields["cuda_version"]) {
+    body["nvidia_driver_version"] = fields["nvidia_driver_version"];
+    body["cuda_version"] = fields["cuda_version"];
+  } else {
+    throw new Error(`Together plugin: pick an NVIDIA driver offered in ${region || "the region"}`);
+  }
+
+  if (clusterType === "SLURM") {
+    const shm = toInt(fields["slurm_shm_size_gib"], 0);
+    if (shm < 1) throw new Error("Together plugin: Slurm clusters need a shared memory size");
+    body["slurm_shm_size_gib"] = shm;
+  }
+
+  if (billingType === "RESERVED") {
+    const days = toInt(fields["duration_days"], 0);
+    if (days < 1) throw new Error("Together plugin: reserved clusters need a duration in days");
+    body["duration_days"] = days;
+  }
+  if (billingType === "SCHEDULED_CAPACITY") {
+    const start = fields["reservation_start_time"];
+    const end = fields["reservation_end_time"];
+    if (!start || !end) {
+      throw new Error("Together plugin: scheduled capacity needs a reservation start and end");
+    }
+    body["reservation_start_time"] = start;
+    body["reservation_end_time"] = end;
+  }
+
+  const preemptible = toInt(fields["num_preemptible_gpus"], 0);
+  if (preemptible > 0) {
+    assertMultipleOf8("Preemptible GPU count", preemptible);
+    body["num_preemptible_gpus"] = preemptible;
+  }
+
+  const volume = fields["shared_volume"] ?? "none";
+  if (volume === "new") {
+    const size = toInt(fields["volume_size_tib"], 0);
+    if (!fields["volume_name"] || size < 1) {
+      throw new Error(
+        "Together plugin: a new shared volume needs a name and a size of 1 TiB or more",
+      );
+    }
+    body["shared_volume"] = { volume_name: fields["volume_name"], size_tib: size, region };
+  } else if (volume && volume !== "none") {
+    body["volume_id"] = volume;
+  }
+
+  return body;
+}
+
+/**
+ * One line item → one cost row. `product_name` is the service. The spec
+ * leaves `pricing_dimensions` and `attributes` open per product, so every
+ * key is kept as a tag, and a model named in either becomes the resource.
+ */
+function costRowFor(date: string, currency: string, item: BillingUsageLineItem): CostRow {
+  const dimensions = item.pricing_dimensions ?? {};
+  const attributes = item.attributes ?? {};
+  const tags: Record<string, string> = {};
+  for (const [key, value] of Object.entries({ ...dimensions, ...attributes })) {
+    if (typeof value === "string" && value) tags[key] = value;
+  }
+  const resource = attributes["model"] || dimensions["model"] || "";
+  return {
+    date,
+    ...(item.product_name ? { service: item.product_name } : {}),
+    ...(resource ? { resourceId: resource } : {}),
+    ...(Object.keys(tags).length ? { tags } : {}),
+    currency,
+    amount: 0,
+  };
+}
+
+function costRowKey(row: CostRow): string {
+  const tags = Object.entries(row.tags ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+  return [row.date, row.service ?? "", row.resourceId ?? "", tags, row.currency].join("|");
 }
