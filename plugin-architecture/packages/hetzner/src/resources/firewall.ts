@@ -6,20 +6,23 @@ export const FirewallResourceType = rt({
   description: "A Hetzner Cloud firewall with inbound/outbound rules",
   fields: [
     f("name", "Name"),
-    f("rulesCount", "Rules", { kind: "number", required: false }),
+    f("rulesCount", "Rules", { kind: "number", required: false, editable: false }),
     f("appliedToCount", "Applied To", {
       kind: "number",
       required: false,
       description: "Number of servers/label selectors this firewall is applied to",
+      editable: false,
     }),
     f("appliedToServerIds", "Applied To Servers", {
       required: false,
       description:
         "Comma-separated IDs of the servers this firewall is applied to, including those resolved from label selectors",
+      editable: false,
     }),
     f("appliedToLabelSelectors", "Label Selectors", {
       required: false,
       description: "Comma-separated label selectors this firewall is applied through",
+      editable: false,
     }),
   ],
   outputs: [o("id", "Firewall ID")],
@@ -27,6 +30,8 @@ export const FirewallResourceType = rt({
   // externalId is that same numeric id stringified.
   dependsOn: [{ fieldKey: "appliedToServerIds", targetTypeId: "server", label: "applied to" }],
   supportsCreate: true,
+  // Edit = `PUT` on the object itself (name, plus the fields left editable).
+  supportsUpdate: true,
   iconKey: "firewall",
   attachTargets: [{ pluginId: "hetzner", resourceTypeId: "server", verb: "Apply firewall" }],
 });

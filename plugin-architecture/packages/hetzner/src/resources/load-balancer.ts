@@ -6,21 +6,27 @@ export const LoadBalancerResourceType = rt({
   description: "A Hetzner Cloud Load Balancer with services, targets, and public IPs",
   fields: [
     f("name", "Name"),
-    f("status", "Status", { kind: "enum", enumValues: ["running", "initializing", "unknown"] }),
-    f("type", "Type", { required: false }),
-    f("location", "Location", { required: false }),
-    f("ipv4", "IPv4", { required: false }),
-    f("ipv6", "IPv6", { required: false }),
-    f("targetCount", "Targets", { kind: "number", required: false }),
-    f("serviceCount", "Services", { kind: "number", required: false }),
+    f("status", "Status", {
+      kind: "enum",
+      enumValues: ["running", "initializing", "unknown"],
+      editable: false,
+    }),
+    f("type", "Type", { required: false, editable: false }),
+    f("location", "Location", { required: false, editable: false }),
+    f("ipv4", "IPv4", { required: false, editable: false }),
+    f("ipv6", "IPv6", { required: false, editable: false }),
+    f("targetCount", "Targets", { kind: "number", required: false, editable: false }),
+    f("serviceCount", "Services", { kind: "number", required: false, editable: false }),
     f("targetServerIds", "Target Servers", {
       required: false,
       description:
         "Comma-separated IDs of the servers traffic is routed to, including those resolved from label selectors",
+      editable: false,
     }),
     f("networkIds", "Networks", {
       required: false,
       description: "Comma-separated IDs of the private networks this load balancer is attached to",
+      editable: false,
     }),
   ],
   outputs: [o("ipv4", "IPv4"), o("ipv6", "IPv6"), o("loadBalancerId", "Load Balancer ID")],
@@ -30,6 +36,9 @@ export const LoadBalancerResourceType = rt({
     { fieldKey: "targetServerIds", targetTypeId: "server", label: "routes to" },
     { fieldKey: "networkIds", targetTypeId: "network", label: "attached to" },
   ],
+  supportsCreate: true,
+  // Edit = `PUT` on the object itself (name, plus the fields left editable).
+  supportsUpdate: true,
   iconKey: "load-balancer",
   supportsMetrics: true,
   attachTargets: [

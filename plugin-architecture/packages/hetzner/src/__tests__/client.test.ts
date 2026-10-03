@@ -87,7 +87,7 @@ describe("listResources", () => {
     expect(s.pluginId).toBe("hetzner");
     expect(s.fields["serverType"]).toBe("cx22");
     expect(s.fields["location"]).toBe("fsn1");
-    expect(s.fields["datacenter"]).toBe("fsn1-dc14");
+    expect(s.fields["datacenter"]).toBeUndefined();
     expect(s.resolvedOutputs).toEqual({
       ipv4: "1.2.3.4",
       ipv6: "::1",
@@ -1354,7 +1354,7 @@ describe("updateResource (server rename + change_type)", () => {
   });
 
   it("rejects unsupported types", async () => {
-    await expect(makeClient().updateResource("volume", "a:volume:1", ACCOUNT, {})).rejects.toThrow(
+    await expect(makeClient().updateResource("image", "a:image:1", ACCOUNT, {})).rejects.toThrow(
       /not supported/,
     );
   });
@@ -1481,5 +1481,297 @@ describe("caCert routing via host http service", () => {
     expect(request).toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(request.mock.calls[0]![0]).toMatchObject({ caCert: "PEM" });
+  });
+});
+
+describe("server actions", () => {
+  it.each([
+    ["shutdown", "/servers/7/actions/shutdown", undefined],
+    ["reboot", "/servers/7/actions/reboot", undefined],
+    ["reset", "/servers/7/actions/reset", undefined],
+    ["enable_backup", "/servers/7/actions/enable_backup", undefined],
+    ["disable_backup", "/servers/7/actions/disable_backup", undefined],
+    ["enable_protection", "/servers/7/actions/change_protection", { delete: true, rebuild: true }],
+    [
+      "disable_protection",
+      "/servers/7/actions/change_protection",
+      { delete: false, rebuild: false },
+    ],
+  ])("%s posts to the matching action", async (actionId, path, body) => {
+    fetchMock.mockResolvedValueOnce(okJson({ action: { id: 1 } }));
+    await makeClient().invokeAction("server", `${ACCOUNT}:server:7`, actionId, ACCOUNT);
+    const [url, init] = lastCall();
+    expect(String(url)).toBe(`https://api.hetzner.cloud/v1${path}`);
+    expect(init.method).toBe("POST");
+    if (body) expect(JSON.parse(String(init.body))).toEqual(body);
+  });
+
+  it("create_snapshot posts create_image with type snapshot", async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ image: { id: 9 }, action: { id: 1 } }));
+    await makeClient().invokeAction("server", `${ACCOUNT}:server:7`, "create_snapshot", ACCOUNT);
+    const [url, init] = lastCall();
+    expect(String(url)).toContain("/servers/7/actions/create_image");
+    const body = JSON.parse(String(init.body)) as { type: string; description: string };
+    expect(body.type).toBe("snapshot");
+    expect(body.description).toMatch(/^infrawrench-/);
+  });
+
+  it("maps backup window and protection off the server payload", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        servers: [
+          {
+            id: 7,
+            name: "db",
+            status: "running",
+            created: "2026-01-01T00:00:00Z",
+            backup_window: "22-02",
+            protection: { delete: true, rebuild: true },
+            rescue_enabled: false,
+          },
+        ],
+      }),
+    );
+    const [s] = await makeClient().listResources("server", ACCOUNT);
+    expect(s!.fields).toMatchObject({
+      backupWindow: "22-02",
+      deleteProtection: true,
+      rescueEnabled: false,
+    });
+    const detail = makeClient().renderDetail(s!);
+    const labels = (detail.headerActions ?? []).map((a) => ("label" in a ? a.label : ""));
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        "Reboot",
+        "Reset",
+        "Shut down",
+        "Disable backups",
+        "Disable protection",
+      ]),
+    );
+  });
+});
+
+describe("updateResource (volume and rename-only types)", () => {
+  const volumeList = {
+    volumes: [
+      {
+        id: 5,
+        name: "data",
+        size: 20,
+        created: "2026-01-01T00:00:00Z",
+        server: null,
+        location: { name: "fsn1" },
+        format: "ext4",
+        linux_device: null,
+      },
+    ],
+  };
+
+  it("renames and grows a volume", async () => {
+    const calls: Array<[string, string | undefined, string | undefined]> = [];
+    fetchMock.mockImplementation(async (input, init) => {
+      calls.push([String(input), init?.method, init?.body ? String(init.body) : undefined]);
+      if (String(input).includes("/volumes?")) return okJson(volumeList);
+      return okJson({});
+    });
+    const r = await makeClient().updateResource("volume", `${ACCOUNT}:volume:5`, ACCOUNT, {
+      name: "data-2",
+      sizeGb: "50",
+    });
+    expect(calls).toContainEqual([
+      "https://api.hetzner.cloud/v1/volumes/5",
+      "PUT",
+      JSON.stringify({ name: "data-2" }),
+    ]);
+    expect(calls).toContainEqual([
+      "https://api.hetzner.cloud/v1/volumes/5/actions/resize",
+      "POST",
+      JSON.stringify({ size: 50 }),
+    ]);
+    expect(r.fields["sizeGb"]).toBe(50);
+    expect(r.displayName).toBe("data-2");
+  });
+
+  it("refuses to shrink a volume", async () => {
+    fetchMock.mockResolvedValue(okJson(volumeList));
+    await expect(
+      makeClient().updateResource("volume", `${ACCOUNT}:volume:5`, ACCOUNT, { sizeGb: "10" }),
+    ).rejects.toThrow(/can only grow/);
+  });
+
+  it("updates a primary IP's name and auto_delete with one PUT", async () => {
+    const puts: string[] = [];
+    fetchMock.mockImplementation(async (input, init) => {
+      if (init?.method === "PUT") {
+        expect(String(input)).toBe("https://api.hetzner.cloud/v1/primary_ips/3");
+        puts.push(String(init.body));
+        return okJson({});
+      }
+      return okJson({
+        primary_ips: [
+          {
+            id: 3,
+            name: "ip",
+            ip: "1.1.1.1",
+            type: "ipv4",
+            created: "2026-01-01T00:00:00Z",
+            assignee_id: null,
+            assignee_type: null,
+            blocked: false,
+            auto_delete: true,
+          },
+        ],
+      });
+    });
+    await makeClient().updateResource("primary-ip", `${ACCOUNT}:primary-ip:3`, ACCOUNT, {
+      name: "edge",
+      autoDelete: "true",
+    });
+    expect(puts).toEqual([JSON.stringify({ name: "edge", auto_delete: true })]);
+  });
+
+  it("renames a firewall", async () => {
+    const puts: string[] = [];
+    fetchMock.mockImplementation(async (input, init) => {
+      if (init?.method === "PUT") {
+        expect(String(input)).toBe("https://api.hetzner.cloud/v1/firewalls/8");
+        puts.push(String(init.body));
+        return okJson({});
+      }
+      return okJson({ firewalls: [{ id: 8, name: "fw", created: "2026-01-01T00:00:00Z" }] });
+    });
+    await makeClient().updateResource("firewall", `${ACCOUNT}:firewall:8`, ACCOUNT, {
+      name: "edge-fw",
+    });
+    expect(puts).toEqual([JSON.stringify({ name: "edge-fw" })]);
+  });
+});
+
+describe("2025-2026 API migrations", () => {
+  it("reads the server's location from `location` (datacenter was removed)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        servers: [
+          { id: 2, name: "a", status: "running", created: "x", location: { name: "hel1" } },
+        ],
+      }),
+    );
+    const [s] = await makeClient().listResources("server", ACCOUNT);
+    expect(s!.fields["location"]).toBe("hel1");
+  });
+
+  it("reads a primary IP's location", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        primary_ips: [
+          {
+            id: 4,
+            name: "p",
+            ip: "1.1.1.1",
+            type: "ipv4",
+            created: "x",
+            location: { name: "nbg1" },
+            assignee_id: null,
+            assignee_type: "unassigned",
+            blocked: false,
+            auto_delete: false,
+          },
+        ],
+      }),
+    );
+    const [ip] = await makeClient().listResources("primary-ip", ACCOUNT);
+    expect(ip!.fields["location"]).toBe("nbg1");
+  });
+
+  it("offers only server types orderable in some location, grouped by category", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/locations")) return okJson({ locations: [] });
+      if (url.includes("/images")) return okJson({ images: [] });
+      return okJson({
+        server_types: [
+          {
+            id: 104,
+            name: "cx22",
+            cores: 2,
+            memory: 4,
+            disk: 40,
+            category: "Cost-Optimized",
+            architecture: "x86",
+            locations: [{ name: "fsn1", deprecation: { unavailable_after: "2026-01-01" } }],
+          },
+          {
+            id: 114,
+            name: "cx23",
+            cores: 2,
+            memory: 4,
+            disk: 40,
+            category: "Cost-Optimized",
+            architecture: "x86",
+            locations: [{ name: "fsn1", deprecation: null, available: true }],
+          },
+          {
+            id: 45,
+            name: "cax11",
+            cores: 2,
+            memory: 4,
+            disk: 40,
+            category: "Cost-Optimized",
+            architecture: "arm",
+            locations: [{ name: "fsn1", deprecation: null, available: false }],
+          },
+        ],
+      });
+    });
+    const cfg = await makeClient().getCreateConfig("server");
+    const sizeField = cfg.fields.find((f) => f.key === "serverType") as {
+      sizes: Array<{ id: string; category?: string }>;
+    };
+    expect(sizeField.sizes.map((s) => s.id)).toEqual(["cx23"]);
+    expect(sizeField.sizes[0]!.category).toBe("Cost-Optimized (x86)");
+  });
+
+  it("normalises per-vCPU CPU metrics and maps disk bandwidth and packet series", async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/metrics")) {
+        return okJson({
+          metrics: {
+            time_series: {
+              cpu: { values: [[1, "200"]] },
+              "disk.0.bandwidth.read": { values: [[1, "10"]] },
+              "network.0.pps.in": { values: [[1, "5"]] },
+            },
+          },
+        });
+      }
+      return okJson({ server: { id: 3, server_type: { name: "cx33", cores: 4 } } });
+    });
+    const series = await makeClient().fetchMetricSeries("server", `${ACCOUNT}:server:3`, ACCOUNT);
+    expect(series.find((s) => s.label === "CPU Utilization")!.points[0]!.value).toBe(50);
+    expect(series.map((s) => s.label)).toEqual(["CPU Utilization", "Disk Read", "Packets In"]);
+  });
+
+  it("requests every load-balancer metric type", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        metrics: {
+          time_series: {
+            requests_per_second: { values: [[1, "3"]] },
+            connections_per_second: { values: [[1, "2"]] },
+          },
+        },
+      }),
+    );
+    const series = await makeClient().fetchMetricSeries(
+      "load-balancer",
+      `${ACCOUNT}:load-balancer:9`,
+      ACCOUNT,
+    );
+    expect(String(lastCall()[0])).toContain(
+      "type=open_connections,connections_per_second,requests_per_second,bandwidth",
+    );
+    expect(series.map((s) => s.label)).toEqual(["New Connections", "Requests"]);
   });
 });

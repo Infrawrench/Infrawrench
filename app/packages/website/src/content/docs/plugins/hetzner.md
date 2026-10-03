@@ -1,29 +1,34 @@
 ---
 title: Hetzner Cloud
-description: Manage Hetzner servers, volumes, networks, load balancers, images, and IP resources, with estimated spend priced from the published rate card.
+description: Manage Hetzner Cloud servers, volumes, networks, load balancers, certificates, DNS zones, Storage Boxes, images, and IP resources, with estimated spend priced from the published rate card.
 sidebar_order: 5
 ---
 
 ## What you can manage
 
-- Servers (create with image + size + datacenter + SSH key)
-- Volumes
+- Servers (create with image + size + location + SSH key; edit to rename or change the server type)
+- Volumes (create; edit to rename or grow)
 - Floating IPs
 - Firewalls
-- Networks
-- Load balancers
-- Primary IPs
+- Networks (create with a first subnet in a network zone)
+- Load balancers (create with a type and balancing algorithm)
+- Primary IPs (create unassigned in a location; edit the name and auto-delete setting)
 - SSH keys
 - Images, including snapshots and backups returned by the Hetzner API
 - Placement groups
+- Certificates for load balancers: managed (Hetzner issues and renews them through Let's Encrypt) or uploaded
+- DNS zones and record sets on Hetzner DNS
+- Storage Boxes
+
+Floating IPs, primary IPs, firewalls, networks, load balancers, placement groups, SSH keys and certificates can all be renamed from the **Edit** button.
 
 ## Credentials
 
-Hetzner Cloud Console → select a project → **Security → API tokens → Generate API token**. Read + write.
+Hetzner Console → select a project → **Security → API tokens → Generate API token**. Read + write.
 
 ![Hetzner Add-account form with API token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/hetzner/add-account.png)
 
-Each API token is project-scoped. Add one infrawrench account per Hetzner project.
+Each API token is project-scoped. Add one infrawrench account per Hetzner project. The same token reaches the Cloud API, Hetzner DNS and the Storage Box API, so no second credential is needed.
 
 ## Notable flows
 
@@ -31,6 +36,11 @@ Each API token is project-scoped. Add one infrawrench account per Hetzner projec
 - Idempotent SSH key upload: when you pick a key from infrawrench during server creation, it is uploaded to Hetzner if not already present.
 - **Load balancer and network inventory** so service topology is visible without leaving the app.
 - **Secret export to K8s** is not supported for Hetzner resources directly (they do not hold secrets).
+- **Server actions**: power on/off, graceful shutdown, reboot, hard reset, take a snapshot, enable or disable daily backups, and toggle delete/rebuild protection, all from the server's header.
+- **Server metrics**: CPU (normalised to 0-100% of the whole server; Hetzner reports it per vCPU), disk IOPS and throughput, and network bandwidth and packets. **Load balancer metrics**: open connections, new connections per second, requests per second and bandwidth.
+- **Certificates**: a managed certificate's issuance and renewal status are shown, a failed issuance can be retried from the header, and expiry dates feed the expiry radar. Managed certificates only work for domains hosted on Hetzner DNS.
+- **DNS**: zones show their record count, assigned nameservers and whether the registrar delegates to them. Records are edited as Hetzner models them, one record set per name and type holding every value; enter several values one per row (quote TXT values). Leave a record's TTL empty to use the zone default.
+- **Storage Boxes**: capacity, usage, snapshot usage and the snapshot plan; edit to rename, change the type, or toggle SSH, Samba, WebDAV, the ZFS snapshot folder and external reachability. Header actions take a snapshot, toggle delete protection and switch off the snapshot plan. A box with Samba enabled and reachable from outside Hetzner is flagged on the security posture page.
 
 ## Cost
 
@@ -55,7 +65,7 @@ Nothing extra to set up — the same project API token you already added is all 
 | Snapshot      | Compressed size × price per GB-month, spread across the month                                |
 | Traffic       | Outgoing traffic beyond the server or load balancer's included allowance, at the per-TB rate |
 
-Networks, firewalls, placement groups and SSH keys are free and are not priced.
+Networks, firewalls, placement groups, SSH keys, certificates and DNS zones are free and are not priced. Storage Boxes are billed separately from Cloud resources and are not included in the estimate.
 
 A powered-off server is still billed in full, and infrawrench reports it that way. Hetzner allocates a server's resources regardless of its power state and charges for as long as it exists, so stopping a server does not reduce this figure — only deleting it does.
 
@@ -74,4 +84,6 @@ Amounts are reported in the currency the project's rate card is denominated in �
 ## Tips & limits
 
 - Hetzner is cheap and fast, but its API has global rate limits (3600 requests per hour per project). A single large account refresh may briefly throttle.
+- The server type picker only offers types that can still be ordered in at least one location. Since January 2026 the older CX22-CX52 types and, in Europe and Singapore, CPX11-CPX51 can no longer be ordered; existing servers keep running and can still be resized.
+- Volumes can only grow. Primary and floating IPs must be unassigned before Hetzner lets you delete them.
 - Cost collection is a handful of listing requests per day against that same budget, and it skips the requests entirely when there is nothing new to price.

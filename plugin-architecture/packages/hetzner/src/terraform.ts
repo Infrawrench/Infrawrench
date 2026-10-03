@@ -23,7 +23,14 @@ export const hetznerTerraformExport: TerraformExportCapability = {
       sensitive: true,
     },
   ],
-  supportedResourceTypeIds: ["server", "volume"],
+  supportedResourceTypeIds: [
+    "server",
+    "volume",
+    "network",
+    "load-balancer",
+    "floating-ip",
+    "placement-group",
+  ],
   mapResource(resource): TerraformExportResult | null {
     if (resource.resourceTypeId === "server") {
       const name = fieldString(resource, "name") || resource.displayName;
@@ -77,6 +84,79 @@ export const hetznerTerraformExport: TerraformExportCapability = {
           attributes,
           importId: resource.externalId,
           ...(comments.length > 0 ? { comments } : {}),
+        },
+      };
+    }
+    // Attribute names per registry.terraform.io/providers/hetznercloud/hcloud:
+    // hcloud_network (name, ip_range), hcloud_load_balancer (name,
+    // load_balancer_type, location), hcloud_floating_ip (type, home_location,
+    // name) and hcloud_placement_group (name, type). Subnets, services,
+    // targets and assignments are separate resources and are left to the user.
+    if (resource.resourceTypeId === "network") {
+      const name = fieldString(resource, "name") || resource.displayName;
+      const ipRange = fieldString(resource, "ipRange");
+      if (!name || !ipRange) return null;
+      return {
+        resource: {
+          type: "hcloud_network",
+          name,
+          attributes: { name: tf.str(name), ip_range: tf.str(ipRange) },
+          importId: resource.externalId,
+          comments: ["Subnets and routes are separate hcloud_network_subnet / _route resources."],
+        },
+      };
+    }
+    if (resource.resourceTypeId === "load-balancer") {
+      const name = fieldString(resource, "name") || resource.displayName;
+      const type = fieldString(resource, "type");
+      const location = fieldString(resource, "location");
+      if (!name || !type) return null;
+      const attributes: Record<string, TerraformValue> = {
+        name: tf.str(name),
+        load_balancer_type: tf.str(type),
+      };
+      if (location) attributes["location"] = tf.str(location);
+      return {
+        resource: {
+          type: "hcloud_load_balancer",
+          name,
+          attributes,
+          importId: resource.externalId,
+          comments: [
+            "Services, targets and network attachments are separate hcloud_load_balancer_* resources.",
+          ],
+        },
+      };
+    }
+    if (resource.resourceTypeId === "floating-ip") {
+      const type = fieldString(resource, "type");
+      const location = fieldString(resource, "location");
+      if (!type || !location) return null;
+      const name = fieldString(resource, "name") || fieldString(resource, "ip");
+      const attributes: Record<string, TerraformValue> = {
+        type: tf.str(type),
+        home_location: tf.str(location),
+      };
+      if (fieldString(resource, "name")) attributes["name"] = tf.str(fieldString(resource, "name"));
+      return {
+        resource: {
+          type: "hcloud_floating_ip",
+          name: name || resource.externalId || "floating_ip",
+          attributes,
+          importId: resource.externalId,
+        },
+      };
+    }
+    if (resource.resourceTypeId === "placement-group") {
+      const name = fieldString(resource, "name") || resource.displayName;
+      const type = fieldString(resource, "type") || "spread";
+      if (!name) return null;
+      return {
+        resource: {
+          type: "hcloud_placement_group",
+          name,
+          attributes: { name: tf.str(name), type: tf.str(type) },
+          importId: resource.externalId,
         },
       };
     }
