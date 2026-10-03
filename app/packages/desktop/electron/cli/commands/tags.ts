@@ -10,20 +10,9 @@ import type {
   UntaggedSpendReport,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { RangeFlags } from "../args";
-import { parseLastDays } from "../args";
+import { resolveDateRange } from "../args";
 import { c, printJson, println, printTable, formatMoney } from "../output";
 import { barChart } from "../charts";
-
-function isoDay(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
-
-function resolveRange(range: RangeFlags): { from: string; to: string } {
-  const days = range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30;
-  const to = range.to ?? isoDay(Date.now());
-  const from = range.from ?? isoDay(Date.parse(to) - (days - 1) * 86_400_000);
-  return { from, to };
-}
 
 /**
  * Tag policy + compliance + untagged spend, in one screen: what the org
@@ -36,7 +25,7 @@ export async function cmdTags(ctx: CliContext, range: RangeFlags): Promise<void>
     );
   }
   const org = await resolveOrg(ctx);
-  const { from, to } = resolveRange(range);
+  const { from, to } = resolveDateRange(range);
 
   const [compliance, untagged] = await Promise.all([
     orgFetch<TagComplianceReport>(org.id, "/tag-policy/compliance"),
@@ -126,7 +115,7 @@ export async function cmdShowback(ctx: CliContext, range: RangeFlags): Promise<v
     throw new CliError("Showback runs over your org's collected cloud spend — cloud mode only.");
   }
   const org = await resolveOrg(ctx);
-  const { from, to } = resolveRange(range);
+  const { from, to } = resolveDateRange(range);
 
   const report = await orgFetch<ShowbackReport>(org.id, `/costs/showback?from=${from}&to=${to}`);
 

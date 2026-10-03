@@ -24,16 +24,12 @@ import type {
   UnitCostQueryResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { RangeFlags } from "../args";
-import { parseLastDays } from "../args";
+import { resolveDateRange } from "../args";
 import { c, printJson, println, printTable, formatNumber } from "../output";
 import { formatUnitCostRatio, unitCostRatioLabel } from "../format";
 import { sparkline } from "../charts";
 
 const COST_BASES = ["cash", "amortized"] as const;
-
-function isoDay(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
 
 /** `--basis cash|amortized`, defaulting to cash. */
 function parseBasis(raw: string | undefined): CostBasis | undefined {
@@ -149,9 +145,7 @@ export async function cmdUnitCosts(
     );
   }
 
-  const days = range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30;
-  const to = range.to ?? isoDay(Date.now());
-  const from = range.from ?? isoDay(Date.parse(to) - (days - 1) * 86_400_000);
+  const { from, to } = resolveDateRange(range);
 
   const basis = parseBasis(range.basis);
   const displayCurrency = parseCurrency(range.currency);

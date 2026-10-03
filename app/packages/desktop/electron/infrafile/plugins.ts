@@ -1,71 +1,16 @@
 /**
- * Plugin loader for the Electron main process.
+ * Plugin loader for the Electron main process (deploy's plugin host and the
+ * CLI peer client).
  *
- * The renderer has its own (`src/plugins/loader.ts`) but that module is part of
- * the bundler-resolved ESM tree: importing it from here drags a static
- * `@infrawrench/plugin-base` value import into the CommonJS main tree, which
- * `node16` resolution rejects outright. The plugin list is the same; only the
- * module semantics differ.
- *
- * Every entry is a dynamic import, so a CLI invocation that never touches a
- * plugin (login, orgs, costs) pays nothing for this file existing.
+ * Deliberately lighter than the renderer's `src/plugins/loader.ts`: it skips
+ * manifest validation and the ENABLED_RESOURCE_TYPES filter, and only honours
+ * DISABLED_PLUGINS. The plugin list itself is shared (`src/plugins/modules.ts`)
+ * so the two cannot drift apart.
  */
 import type { Plugin } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
 
 import { DISABLED_PLUGINS } from "../../env";
-
-const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
-  () => import("@infrawrench/plugin-aws"),
-  () => import("@infrawrench/plugin-digitalocean"),
-  () => import("@infrawrench/plugin-docker"),
-  () => import("@infrawrench/plugin-gcp"),
-  () => import("@infrawrench/plugin-hetzner"),
-  () => import("@infrawrench/plugin-kafka"),
-  () => import("@infrawrench/plugin-kubernetes"),
-  () => import("@infrawrench/plugin-memcached"),
-  () => import("@infrawrench/plugin-mongodb"),
-  () => import("@infrawrench/plugin-mysql"),
-  () => import("@infrawrench/plugin-mssql"),
-  () => import("@infrawrench/plugin-neon"),
-  () => import("@infrawrench/plugin-postgres"),
-  () => import("@infrawrench/plugin-redis"),
-  () => import("@infrawrench/plugin-scaleway"),
-  () => import("@infrawrench/plugin-ssh"),
-  () => import("@infrawrench/plugin-tailscale"),
-  () => import("@infrawrench/plugin-cloudflare"),
-  () => import("@infrawrench/plugin-ovh"),
-  () => import("@infrawrench/plugin-databricks"),
-  () => import("@infrawrench/plugin-turso"),
-  () => import("@infrawrench/plugin-planetscale"),
-  () => import("@infrawrench/plugin-azure"),
-  () => import("@infrawrench/plugin-fly"),
-  () => import("@infrawrench/plugin-vercel"),
-  () => import("@infrawrench/plugin-netlify"),
-  () => import("@infrawrench/plugin-cloudinary"),
-  () => import("@infrawrench/plugin-clickhouse"),
-  () => import("@infrawrench/plugin-opensearch"),
-  () => import("@infrawrench/plugin-anthropic"),
-  () => import("@infrawrench/plugin-assemblyai"),
-  () => import("@infrawrench/plugin-cartesia"),
-  () => import("@infrawrench/plugin-cohere"),
-  () => import("@infrawrench/plugin-deepgram"),
-  () => import("@infrawrench/plugin-deepseek"),
-  () => import("@infrawrench/plugin-elevenlabs"),
-  () => import("@infrawrench/plugin-fireworks"),
-  () => import("@infrawrench/plugin-gemini"),
-  () => import("@infrawrench/plugin-gladia"),
-  () => import("@infrawrench/plugin-groq"),
-  () => import("@infrawrench/plugin-mistral"),
-  () => import("@infrawrench/plugin-openai"),
-  () => import("@infrawrench/plugin-openrouter"),
-  () => import("@infrawrench/plugin-replicate"),
-  () => import("@infrawrench/plugin-revai"),
-  () => import("@infrawrench/plugin-speechmatics"),
-  () => import("@infrawrench/plugin-together"),
-  () => import("@infrawrench/plugin-xai"),
-  () => import("@infrawrench/plugin-uploadthing"),
-  () => import("@infrawrench/plugin-workos"),
-];
+import { PLUGIN_MODULES } from "../../src/plugins/modules";
 
 export interface LoadedPlugin {
   plugin: Plugin;

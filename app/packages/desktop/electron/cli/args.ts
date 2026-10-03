@@ -442,6 +442,22 @@ export function parseLastDays(text: string): number {
 }
 
 /**
+ * The `from`/`to` days (YYYY-MM-DD, inclusive, UTC) for the cost-style
+ * commands: explicit `--from`/`--to` win, `--last` sizes the window ending at
+ * `to`, and neither means the last 30 days ending today.
+ */
+export function resolveDateRange(range: RangeFlags): { from: string; to: string } {
+  const days = range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30;
+  const to = range.to ?? isoDay(Date.now());
+  const from = range.from ?? isoDay(Date.parse(to) - (days - 1) * 86_400_000);
+  return { from, to };
+}
+
+function isoDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/**
  * The day window a command should ask the server for: an explicit `--days`
  * wins, `--last` is converted, and neither means the caller's default. Bounds
  * are the endpoint's own, checked here so a typo fails before the round trip.

@@ -21,13 +21,9 @@ import type {
   CostScenarioModel,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { RangeFlags } from "../args";
-import { parseLastDays } from "../args";
+import { resolveDateRange } from "../args";
 import { c, printJson, println, printTable, formatMoney } from "../output";
 import { lineChart, resample, timeAxis } from "../charts";
-
-function isoDay(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
 
 /** "+$40,000 on 2026-09-12", "-20% from 2026-10-01 until 2026-12-31". */
 function describeAdjustment(adjustment: CostScenarioAdjustment, currency: string): string {
@@ -148,9 +144,7 @@ export async function cmdApplyScenario(
   const org = await resolveOrg(ctx);
   const model = resolveModel(await loadModels(org.id), wanted);
 
-  const days = range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30;
-  const to = range.to ?? isoDay(Date.now());
-  const from = range.from ?? isoDay(Date.parse(to) - (days - 1) * 86_400_000);
+  const { from, to } = resolveDateRange(range);
 
   const query: CostQueryRequest = {
     from,

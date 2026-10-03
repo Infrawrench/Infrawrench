@@ -20,7 +20,7 @@ import type {
   SavedCostFilter,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { RangeFlags } from "../args";
-import { parseLastDays, resolveDayWindow } from "../args";
+import { resolveDayWindow, resolveDateRange } from "../args";
 import { c, printJson, println, printTable, formatMoney, seriesColor } from "../output";
 import { anomalyDeltaPercent } from "../format";
 import { barChart, sparkline } from "../charts";
@@ -250,10 +250,6 @@ function printCollectionWarnings({ failing, empty, estimated }: CollectionState)
   if (failing.length > 0 || empty.length > 0 || estimated.length > 0) println();
 }
 
-function isoDay(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
-
 export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError("Cost data lives in Infrawrench Cloud — there is no local cost history.");
@@ -273,9 +269,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   const filters = await parseWhere(range.where);
   const savedFilter = await resolveSavedFilterFlag(org.id, range.filter);
 
-  const days = range.last ? Math.max(1, Math.round(parseLastDays(range.last))) : 30;
-  const to = range.to ?? isoDay(Date.now());
-  const from = range.from ?? isoDay(Date.parse(to) - (days - 1) * 86_400_000);
+  const { from, to } = resolveDateRange(range);
 
   const query: CostQueryRequest = {
     from,
