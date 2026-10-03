@@ -18,4 +18,5 @@ export const WorkflowResourceType = rt({
     { fieldKey: "serviceAccount", targetTypeId: "gcp-service-account", label: "runs as" },
   ],
   supportsCreate: true,
+  supportsMetrics: true,
 });

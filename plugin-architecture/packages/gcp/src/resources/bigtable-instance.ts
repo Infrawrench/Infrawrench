@@ -16,4 +16,5 @@ export const BigtableInstanceResourceType = rt({
   ],
   outputs: [],
   supportsCreate: true,
+  supportsMetrics: true,
 });

@@ -499,7 +499,9 @@ describe("monitoring-client", () => {
     });
     const series = await fetchMetricSeries(ctx, "gce-instance", "rid", "acct");
     expect(series.length).toBeGreaterThan(0);
-    expect(series[0]!.points[0]!.value).toBe(0.5);
+    // cpu/utilization is a 0..1 fraction, charted as percent.
+    expect(series[0]!.label).toBe("CPU Utilization");
+    expect(series[0]!.points[0]!.value).toBe(50);
   });
 
   it("fetchMetricSeries returns [] when no numericId", async () => {
@@ -520,7 +522,7 @@ describe("monitoring-client", () => {
     expect(res.text).toContain("line1");
     expect(res.activeContainer).toBe("service");
 
-    await expect(getLogs(makeCtx(), "gce-instance", "rid", "acct", {})).rejects.toThrow(
+    await expect(getLogs(makeCtx(), "gcs-bucket", "rid", "acct", {})).rejects.toThrow(
       "not supported",
     );
   });

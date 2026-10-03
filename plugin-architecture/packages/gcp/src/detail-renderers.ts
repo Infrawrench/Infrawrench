@@ -27,6 +27,7 @@ import {
 } from "./network-detail-renderers.js";
 import { renderPubsubSubscription, renderPubsubTopic } from "./pubsub-detail-renderers.js";
 import type { GcpDetailContext } from "./detail-context.js";
+import { GCP_LOG_TYPES } from "./monitoring-client.js";
 
 export function gcpRenderDetail(
   ctx: GcpDetailContext,
@@ -323,6 +324,12 @@ export function gcpRenderDetail(
         "Send a prompt — the full conversation history is included on each turn.",
       inputPlaceholder: "Send a message…",
     };
+  }
+
+  // Every type `getLogs` can scope gets a Logs tab; the per-service
+  // renderers above that already set one keep their own settings.
+  if (!base.logs && GCP_LOG_TYPES.has(resource.resourceTypeId)) {
+    base.logs = { defaultTailLines: 200 };
   }
 
   return base;

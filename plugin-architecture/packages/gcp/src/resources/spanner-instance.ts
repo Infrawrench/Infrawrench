@@ -14,4 +14,5 @@ export const SpannerInstanceResourceType = rt({
   ],
   outputs: [],
   supportsCreate: true,
+  supportsMetrics: true,
 });

@@ -69,4 +69,5 @@ export const GcsBucketResourceType = rt({
         "Public access prevention is not enforced on this bucket, so a single IAM binding or ACL can make objects world-readable. Enforce it unless the bucket intentionally serves public content.",
     },
   ],
+  supportsMetrics: true,
 });

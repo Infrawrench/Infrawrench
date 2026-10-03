@@ -11,4 +11,5 @@ export const AppEngineServiceResourceType = rt({
     f("trafficSplit", "Traffic Split", { required: false }),
   ],
   outputs: [o("url", "Service URL")],
+  supportsMetrics: true,
 });

@@ -13,4 +13,5 @@ export const ComposerEnvironmentResourceType = rt({
     f("dagGcsPrefix", "DAG GCS Prefix", { required: false }),
   ],
   outputs: [o("airflowUri", "Airflow Web UI")],
+  supportsMetrics: true,
 });
