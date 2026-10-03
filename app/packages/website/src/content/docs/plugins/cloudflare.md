@@ -62,7 +62,7 @@ Workflow settings (class, script, step limits, schedules) are deploy-time config
 - **Edit** to rotate the value, change the comment, or toggle which services can use it. Cloudflare never returns a stored value, so the **Value** field stays blank; leave it empty to keep the current secret.
 - The detail page shows the store, scopes, status, and how many of the account's secrets are in use, plus a copyable `[[secrets_store_secrets]]` binding snippet for `wrangler.toml`. The store id and secret name are output references and a `SECRETS_STORE_ID` / `SECRET_NAME` credentials export.
 
-Needs the **Secrets Store** permission (Read to list, Edit to create, change, or delete). The "Create a token with these scopes" link doesn't include it yet, so add **Account · Secrets Store:Edit** to the token by hand.
+Needs the **Secrets Store** permission (Read to list, Edit to create, change, or delete), which the "Create a token with these scopes" link includes.
 
 ## Basin (Pipelines, Catalog and SQL)
 
@@ -105,7 +105,7 @@ Needs **Account Analytics: Read**, which the "Create a token with these scopes" 
 
 The API token field in the **Add account** and **Update credentials** forms shows a **“Create a token with these scopes”** link. Click it to open Cloudflare's token creator with the scopes this plugin uses already selected — review them, create the token, and paste it back into the field. (Cloudflare only ever shows the token value once, at creation time.)
 
-If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My Profile → API Tokens → Create Token** and grant the permissions matching the resources you plan to manage.
+If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My Profile → API Tokens → Create Token** and grant the permissions matching the resources you plan to manage. A resource type the token can't read shows the exact permission to add (for example **Account · Hyperdrive:Read**) instead of an empty list. Spectrum has no permission of its own; the **Zone** permission covers it.
 
 ![Cloudflare Add-account form with the API token field and the "Create a token with these scopes" link highlighted](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cloudflare/add-account.png)
 
@@ -166,7 +166,7 @@ Workers Observability is Cloudflare's store for a Worker's logs and traces. Turn
 - **Logs tab**: the newest Workers Logs events, oldest first, with timestamp, level and message. Each invocation gets one summary line with its trigger (`GET /path`, cron, queue…), HTTP status, outcome, CPU and wall time, and the data center that ran it; a short request id ties console lines back to their invocation. The dropdown filters to errors, warnings and errors, failed invocations (any outcome other than `ok`), invocations only, or console logs only. The tab looks back 24 hours, then the full retention window (7 days, 3 on the Free plan) if that's empty. When nothing comes back it tells you whether logging is off for the Worker or the Worker has just been quiet. Workers also show up in the [log workspace](../features/log-workspace.md), so you can tail them alongside other services and alert on a match.
 - **Traces tab**: the most recent traces from the last 24 hours, each with its root span, span count, duration, the Workers it crossed, and any errors. It needs Workers Traces turned on; until then the tab says how to enable it.
 
-Both read Cloudflare's Workers Observability telemetry query API (`POST /accounts/{account_id}/workers/observability/telemetry/query`). Cloudflare's API reference lists **Workers Observability Write** as the permission this endpoint accepts, even for read-only queries, so add **Account · Workers Observability:Edit** to the token by hand; the "Create a token with these scopes" link doesn't include it yet. Without it, the Logs tab shows a missing-permission message and the log-level and span charts are left out of the Metrics tab.
+Both read Cloudflare's Workers Observability telemetry query API (`POST /accounts/{account_id}/workers/observability/telemetry/query`). Cloudflare's API reference lists **Workers Observability Write** as the permission this endpoint accepts, even for read-only queries, which is why the "Create a token with these scopes" link asks for **Account · Workers Observability:Edit**. A token without it still works: the Logs tab shows a missing-permission message and the log-level and span charts are left out of the Metrics tab.
 
 <insert [Cloudflare Worker detail page with the Logs tab open, the filter dropdown set to "failed invocations", showing invocation summary lines with status, outcome, CPU and wall time] here>
 

@@ -72,6 +72,17 @@ export const cloudflarePreflight: PreflightDeclaration = {
  * Token-creator `permissionGroupKeys` entries per capability. The
  * `resources` set mirrors the manifest's create-token deep link (edit
  * scopes: the plugin can create and delete resources).
+ *
+ * Cloudflare does not document these keys and silently drops one it does not
+ * recognise, so a typo only shows up as an unticked row in the token creator.
+ * A key is the dashboard's permission-group label minus its `_read`/`_write`
+ * suffix, which is often not the display name: Hyperdrive is `query_cache`,
+ * Turnstile `challenge_widgets`, AI Gateway `aig`, Workers AI `ai`. The
+ * Cloudflare-Datamining project's `data/account/token_permission_groups_dash.json`
+ * lists the labels; keys newer than that file (Basin, Secrets Store, Workers
+ * Observability) were confirmed by opening the generated link. Spectrum has no
+ * permission group of its own (the Zone permission covers it). After changing
+ * this list, open the link and check every row is pre-filled.
  */
 const TEMPLATE_SCOPES: Record<string, Array<{ key: string; type: string; name: string }>> = {
   resources: [
@@ -83,27 +94,35 @@ const TEMPLATE_SCOPES: Record<string, Array<{ key: string; type: string; name: s
     { key: "load_balancers", type: "edit", name: "Load Balancing" },
     { key: "access", type: "edit", name: "Access: Apps and Policies" },
     { key: "workers_scripts", type: "edit", name: "Workers Scripts" },
-    { key: "workers_ai", type: "read", name: "Workers AI" },
+    { key: "ai", type: "read", name: "Workers AI" },
     { key: "workers_kv_storage", type: "edit", name: "Workers KV Storage" },
     { key: "workers_r2", type: "edit", name: "Workers R2 Storage" },
     { key: "workers_routes", type: "edit", name: "Workers Routes" },
     { key: "d1", type: "edit", name: "D1" },
     { key: "queues", type: "edit", name: "Queues" },
-    { key: "hyperdrive", type: "edit", name: "Hyperdrive" },
+    { key: "query_cache", type: "edit", name: "Hyperdrive" },
     { key: "argotunnel", type: "edit", name: "Cloudflare Tunnel" },
     { key: "waiting_rooms", type: "edit", name: "Waiting Rooms" },
     { key: "firewall_services", type: "edit", name: "Firewall Services" },
-    { key: "spectrum", type: "edit", name: "Spectrum" },
     { key: "logs", type: "edit", name: "Logs" },
-    { key: "transform_rules", type: "edit", name: "Transform Rules" },
-    { key: "health_checks", type: "edit", name: "Health Checks" },
-    { key: "turnstile", type: "edit", name: "Turnstile" },
+    { key: "healthcheck", type: "edit", name: "Health Checks" },
+    { key: "challenge_widgets", type: "edit", name: "Turnstile" },
     { key: "notifications", type: "edit", name: "Notifications" },
     { key: "vectorize", type: "edit", name: "Vectorize" },
-    { key: "ai_gateway", type: "edit", name: "AI Gateway" },
+    { key: "aig", type: "edit", name: "AI Gateway" },
     { key: "pipelines", type: "edit", name: "Pipelines" },
     { key: "r2_catalog", type: "edit", name: "Workers R2 Data Catalog" },
     { key: "r2_catalog_sql", type: "read", name: "Workers R2 SQL" },
+    { key: "cache", type: "purge", name: "Cache Purge" },
+    { key: "cache_settings", type: "edit", name: "Cache Settings" },
+    { key: "ai_search", type: "edit", name: "AI Search" },
+    { key: "zone_waf", type: "edit", name: "Zone WAF" },
+    { key: "dynamic_redirect", type: "edit", name: "Single Redirect" },
+    { key: "email_routing_rule", type: "edit", name: "Email Routing Rules" },
+    { key: "secrets_store", type: "edit", name: "Secrets Store" },
+    // Worker Logs and Traces: the telemetry query endpoint demands the Edit
+    // permission even though the plugin only reads through it.
+    { key: "workers_observability", type: "edit", name: "Workers Observability" },
   ],
   metrics: [
     { key: "analytics", type: "read", name: "Analytics" },
@@ -111,6 +130,15 @@ const TEMPLATE_SCOPES: Record<string, Array<{ key: string; type: string; name: s
   ],
   costs: [{ key: "billing", type: "read", name: "Billing" }],
 };
+
+/**
+ * Every scope the plugin uses, once each: the manifest's "create token" link
+ * asks for all of them, so it can never drift from the per-capability lists.
+ */
+export const ALL_TOKEN_SCOPES: Array<{ key: string; type: string }> = Object.values(TEMPLATE_SCOPES)
+  .flat()
+  .filter((s, i, all) => all.findIndex((o) => o.key === s.key) === i)
+  .map(({ key, type }) => ({ key, type }));
 
 /** Build the token template: permission-group list + prefilled creator link. */
 export function buildCloudflarePolicyTemplate(capabilityIds: string[]): PolicyTemplate {

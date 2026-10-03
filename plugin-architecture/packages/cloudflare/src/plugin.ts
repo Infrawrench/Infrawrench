@@ -2,7 +2,11 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { CloudflareClient } from "./client.js";
 import { cloudflareTerraformExport } from "./terraform.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
-import { cloudflarePreflight, buildCloudflarePolicyTemplate } from "./preflight.js";
+import {
+  ALL_TOKEN_SCOPES,
+  cloudflarePreflight,
+  buildCloudflarePolicyTemplate,
+} from "./preflight.js";
 import { ZoneResourceType } from "./resources/zone.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { WorkerResourceType } from "./resources/worker.js";
@@ -45,59 +49,11 @@ import { BasinCatalogResourceType } from "./resources/basin-catalog.js";
 import { BasinTableResourceType } from "./resources/basin-table.js";
 import { AnalyticsEngineDatasetResourceType } from "./resources/analytics-engine-dataset.js";
 
-// Deep link to Cloudflare's "Create Token" page (user/profile tokens) with the
-// scopes this plugin uses pre-selected. Format per Cloudflare's token-template
-// docs: the profile token page plus a URL-encoded `permissionGroupKeys` JSON
-// array of { key, type }. `accountId=*` / `zoneId=all` apply the token to every
-// account and zone. Edit covers the resources the plugin can create/delete;
-// analytics is read-only (zone/Workers metrics).
-const CREATE_TOKEN_SCOPES = [
-  { key: "zone", type: "edit" },
-  { key: "zone_settings", type: "edit" },
-  { key: "dns", type: "edit" },
-  { key: "ssl_and_certificates", type: "edit" },
-  { key: "page_rules", type: "edit" },
-  { key: "load_balancers", type: "edit" },
-  { key: "access", type: "edit" },
-  { key: "workers_scripts", type: "edit" },
-  { key: "workers_ai", type: "read" },
-  { key: "workers_kv_storage", type: "edit" },
-  { key: "workers_r2", type: "edit" },
-  { key: "workers_routes", type: "edit" },
-  { key: "d1", type: "edit" },
-  { key: "queues", type: "edit" },
-  { key: "hyperdrive", type: "edit" },
-  { key: "pages", type: "edit" },
-  { key: "argotunnel", type: "edit" },
-  { key: "waiting_rooms", type: "edit" },
-  { key: "firewall_services", type: "edit" },
-  { key: "spectrum", type: "edit" },
-  { key: "logs", type: "edit" },
-  { key: "cache_purge", type: "purge" },
-  { key: "cache_settings", type: "edit" },
-  { key: "transform_rules", type: "edit" },
-  { key: "health_checks", type: "edit" },
-  { key: "turnstile", type: "edit" },
-  { key: "notifications", type: "edit" },
-  { key: "vectorize", type: "edit" },
-  { key: "ai_gateway", type: "edit" },
-  { key: "autorag", type: "edit" },
-  // Basin Pipelines, Basin Catalog (formerly R2 Data Catalog) and Basin SQL
-  // (formerly R2 SQL). Keys match the dashboard's "Pipelines", "Workers R2
-  // Data Catalog" and "Workers R2 SQL" permission groups.
-  { key: "pipelines", type: "edit" },
-  { key: "r2_catalog", type: "edit" },
-  { key: "r2_catalog_sql", type: "read" },
-  { key: "analytics", type: "read" },
-  // Account Analytics Read: account-scoped GraphQL datasets (Workers, D1,
-  // Pipelines, Catalog, ...) and the Workers Analytics Engine SQL API.
-  { key: "account_analytics", type: "read" },
-  // Billing Read backs cost graphs via the Billable Usage API.
-  { key: "billing", type: "read" },
-];
-
+// Deep link to Cloudflare's "Create Token" page (user/profile tokens) with every
+// scope the plugin uses pre-selected (see ALL_TOKEN_SCOPES in preflight.ts).
+// `accountId=*` / `zoneId=all` apply the token to every account and zone.
 const CREATE_TOKEN_URL = `https://dash.cloudflare.com/profile/api-tokens?${new URLSearchParams({
-  permissionGroupKeys: JSON.stringify(CREATE_TOKEN_SCOPES),
+  permissionGroupKeys: JSON.stringify(ALL_TOKEN_SCOPES),
   accountId: "*",
   zoneId: "all",
   name: "Infrawrench",
