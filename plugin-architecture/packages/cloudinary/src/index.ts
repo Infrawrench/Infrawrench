@@ -3,4 +3,7 @@ export { FolderResourceType } from "./resources/folder.js";
 export { MediaAssetResourceType } from "./resources/media-asset.js";
 export { UploadPresetResourceType } from "./resources/upload-preset.js";
 export { TransformationResourceType } from "./resources/transformation.js";
+export { TriggerResourceType } from "./resources/trigger.js";
+export { UploadMappingResourceType } from "./resources/upload-mapping.js";
+export { ProductEnvironmentResourceType } from "./resources/product-environment.js";
 export { CloudinaryClient } from "./client.js";

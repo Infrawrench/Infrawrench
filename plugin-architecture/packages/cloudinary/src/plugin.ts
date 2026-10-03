@@ -5,6 +5,9 @@ import { FolderResourceType } from "./resources/folder.js";
 import { MediaAssetResourceType } from "./resources/media-asset.js";
 import { UploadPresetResourceType } from "./resources/upload-preset.js";
 import { TransformationResourceType } from "./resources/transformation.js";
+import { TriggerResourceType } from "./resources/trigger.js";
+import { UploadMappingResourceType } from "./resources/upload-mapping.js";
+import { ProductEnvironmentResourceType } from "./resources/product-environment.js";
 
 const manifest: PluginManifest = {
   id: "cloudinary",
@@ -42,13 +45,23 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  // `GET /usage` reports the plan's credit, storage, bandwidth and add-on
+  // allowances alongside what has been consumed; `fetchQuotas` turns each
+  // used/limit pair into a reading.
+  quotas: {
+    label: "Usage",
+    increaseUrl: "https://console.cloudinary.com/settings/billing/plans",
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
+  ProductEnvironmentResourceType,
   FolderResourceType,
   MediaAssetResourceType,
   UploadPresetResourceType,
   TransformationResourceType,
+  UploadMappingResourceType,
+  TriggerResourceType,
 ];
 
 export const plugin: Plugin = {

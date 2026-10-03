@@ -7,8 +7,15 @@ import type {
   SectionNode,
   DashboardStat,
   HostServices,
+  QuotaUsage,
 } from "@infrawrench/plugin-base";
-import { formatBytes, joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  formatBytes,
+  joinSubtitle,
+  jsonRestFetch,
+  normalizeQuotaUsage,
+} from "@infrawrench/plugin-base";
+import { TRIGGER_AUTH_SCHEMES, TRIGGER_EVENT_TYPES } from "./resources/trigger.js";
 
 /** Minimal shapes for the Cloudinary API responses we use. */
 
@@ -27,6 +34,8 @@ interface CloudinaryResource {
   secure_url: string;
   display_name?: string;
   asset_folder?: string;
+  tags?: string[];
+  access_mode?: string;
 }
 
 interface CloudinaryResourceList {
@@ -44,12 +53,14 @@ interface CloudinaryUploadPreset {
   name: string;
   unsigned: boolean;
   settings: Record<string, unknown>;
+  external_id?: string;
 }
 
 interface CloudinaryTransformation {
   name: string;
   named: boolean;
   used: boolean;
+  allowed_for_strict?: boolean;
   derived?: Array<Record<string, unknown>>;
 }
 
@@ -62,6 +73,125 @@ interface CloudinaryUploadPresetList {
   upload_presets?: CloudinaryUploadPreset[];
   presets?: CloudinaryUploadPreset[];
   next_cursor?: string;
+}
+
+/** `GET /triggers`. https://cloudinary.com/documentation/admin_api#triggers */
+interface CloudinaryTrigger {
+  id: string;
+  uri?: string;
+  uri_type?: string;
+  event_type?: string;
+  additive?: boolean;
+  auth_scheme?: string;
+  filter?: unknown;
+  filter_language?: string;
+  payload_template?: unknown;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** `GET /upload_mappings`. https://cloudinary.com/documentation/admin_api#upload_mappings */
+interface CloudinaryUploadMapping {
+  folder: string;
+  template?: string;
+  external_id?: string;
+}
+
+/** A used/limit pair in `GET /usage`; `limit` is absent on credit-based plans. */
+interface UsageEntry {
+  usage?: number;
+  limit?: number;
+  used_percent?: number;
+  credits_usage?: number;
+}
+
+/**
+ * `GET /usage`. Without a `date` the `credits` block also carries the plan's
+ * monthly `limit` and `used_percent`. Add-on allowances (`cloudinary_ai`,
+ * `google_tagging`, ...) appear as further `{usage, limit}` objects whose keys
+ * depend on what the environment has enabled.
+ * https://cloudinary.com/documentation/admin_api#usage
+ */
+interface CloudinaryUsage {
+  plan?: string;
+  last_updated?: string;
+  credits?: UsageEntry;
+  transformations?: UsageEntry;
+  objects?: UsageEntry;
+  bandwidth?: UsageEntry;
+  storage?: UsageEntry;
+  impressions?: UsageEntry;
+  seconds_delivered?: UsageEntry;
+  requests?: number;
+  resources?: number;
+  derived_resources?: number;
+  media_limits?: Record<string, number>;
+  rate_limit_allowed?: number;
+  rate_limit_remaining?: number;
+  rate_limit_reset_at?: string;
+  [key: string]: unknown;
+}
+
+/** `GET /config?settings=true`: the folder mode lives under `settings`. */
+interface CloudinaryConfig {
+  cloud_name?: string;
+  created_at?: string;
+  settings?: { folder_mode?: string };
+}
+
+/** Top-level `GET /usage` keys that are not add-on allowances. */
+const CORE_USAGE_KEYS = new Set([
+  "plan",
+  "last_updated",
+  "date_requested",
+  "credits",
+  "transformations",
+  "objects",
+  "bandwidth",
+  "storage",
+  "impressions",
+  "seconds_delivered",
+  "requests",
+  "resources",
+  "derived_resources",
+  "media_limits",
+]);
+
+const GIB = 1024 * 1024 * 1024;
+
+function titleCase(value: string): string {
+  return value
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/** JSON objects (filters, payload templates) round-trip through string fields. */
+function stringifyJson(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && Object.keys(value as object).length === 0) return "";
+  return JSON.stringify(value);
+}
+
+function parseJsonObject(raw: string, label: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`Cloudinary plugin: ${label} must be valid JSON`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Cloudinary plugin: ${label} must be a JSON object`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/** A form's yes/no `select` or a boolean edit field, both submitted as strings. */
+function parseBool(raw: string | undefined): boolean | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  return raw === "true" || raw === "yes" || raw === "1";
 }
 
 /**
@@ -135,6 +265,12 @@ export class CloudinaryClient implements PluginClient {
         return this.listUploadPresets(accountId);
       case "transformation":
         return this.listTransformations(accountId);
+      case "upload-mapping":
+        return this.listUploadMappings(accountId);
+      case "trigger":
+        return this.listTriggers(accountId);
+      case "product-environment":
+        return [await this.loadProductEnvironment(accountId)];
       default:
         throw new Error(`Cloudinary plugin: unknown resource type "${typeId}"`);
     }
@@ -191,6 +327,12 @@ export class CloudinaryClient implements PluginClient {
       if (outputKey === "transformationName") return String(resource.fields["name"] ?? "");
     }
 
+    if (typeId === "trigger" || typeId === "upload-mapping" || typeId === "product-environment") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+    }
+
     throw new Error(`Cloudinary plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
@@ -209,6 +351,16 @@ export class CloudinaryClient implements PluginClient {
       };
     }
     if (typeId === "upload-preset") {
+      // Named transformations become `t_<name>` options so the user never
+      // types the prefix convention by hand.
+      const transformations = await this.listTransformations("").catch(
+        (): ResourceInstance[] => [],
+      );
+      const transformationOptions = transformations.map((t) => {
+        const name = String(t.fields["name"] ?? t.displayName);
+        const ref = name.startsWith("t_") ? name : `t_${name}`;
+        return { id: ref, label: name };
+      });
       return {
         fields: [
           { key: "name", label: "Preset Name", kind: "text", required: true },
@@ -223,7 +375,16 @@ export class CloudinaryClient implements PluginClient {
             ],
             defaultValue: "signed",
           },
-          { key: "folder", label: "Target Folder", kind: "text", required: false },
+          {
+            key: "folder",
+            label: "Target Folder",
+            kind: "resource-picker",
+            required: false,
+            description: "Folder uploads made with this preset are stored in.",
+            associationSources: [
+              { pluginId: "cloudinary", resourceTypeId: "folder", outputKey: "path" },
+            ],
+          },
           {
             key: "tags",
             label: "Tags",
@@ -231,6 +392,136 @@ export class CloudinaryClient implements PluginClient {
             required: false,
             placeholder: "tag",
             addLabel: "+ Add tag",
+          },
+          {
+            key: "allowed_formats",
+            label: "Allowed Formats",
+            kind: "string-list",
+            required: false,
+            description: "File extensions this preset accepts. Leave empty to accept any format.",
+            placeholder: "jpg",
+            addLabel: "+ Add format",
+          },
+          ...(transformationOptions.length
+            ? [
+                {
+                  key: "transformation",
+                  label: "Incoming Transformation",
+                  kind: "select" as const,
+                  required: false,
+                  description: "Named transformation applied to every upload before it is stored.",
+                  options: [{ id: "", label: "None" }, ...transformationOptions],
+                  defaultValue: "",
+                },
+              ]
+            : []),
+          {
+            key: "disallow_public_id",
+            label: "Disallow Public ID",
+            kind: "select",
+            required: false,
+            description:
+              "Ignore any public ID passed in the upload call. Recommended for unsigned presets.",
+            options: [
+              { id: "false", label: "No" },
+              { id: "true", label: "Yes" },
+            ],
+            defaultValue: "false",
+          },
+        ],
+      };
+    }
+    if (typeId === "trigger") {
+      return {
+        fields: [
+          {
+            key: "uri",
+            label: "Notification URL",
+            kind: "text",
+            required: true,
+            description: "HTTPS endpoint Cloudinary POSTs the notification to.",
+            placeholder: "https://example.com/cloudinary-webhook",
+          },
+          {
+            key: "event_type",
+            label: "Event Type",
+            kind: "select",
+            required: true,
+            options: TRIGGER_EVENT_TYPES.map((event) => ({
+              id: event,
+              label: event === "all" ? "All events" : titleCase(event),
+            })),
+            defaultValue: "upload",
+          },
+          {
+            key: "additive",
+            label: "Additive",
+            kind: "select",
+            required: false,
+            description:
+              "Also fire when an upload call or preset sets its own notification_url for this event.",
+            options: [
+              { id: "false", label: "No" },
+              { id: "true", label: "Yes" },
+            ],
+            defaultValue: "false",
+          },
+          {
+            key: "auth_scheme",
+            label: "Signature Scheme",
+            kind: "select",
+            required: false,
+            description: "Which webhook signature headers are sent.",
+            options: TRIGGER_AUTH_SCHEMES.map((scheme) => ({
+              id: scheme,
+              label:
+                scheme === "eddsa_v2"
+                  ? "EdDSA (v2)"
+                  : scheme === "legacy_hmac"
+                    ? "Legacy HMAC"
+                    : "Default",
+            })),
+            defaultValue: "default",
+          },
+          {
+            key: "filter",
+            label: "Filter (JSONLogic)",
+            kind: "code",
+            codeLanguage: "json",
+            required: false,
+            description:
+              'Only notify when this JSONLogic rule is true, e.g. {"==": [{"var": "resource_type"}, "image"]}. Supports startsWith, endsWith, contains and matches.',
+          },
+          {
+            key: "payload_template",
+            label: "Payload Template",
+            kind: "code",
+            codeLanguage: "json",
+            required: false,
+            description:
+              'Custom JSON body with Mustache placeholders, e.g. {"id": "{{asset.public_id}}"}. Leave empty for the default body.',
+          },
+        ],
+      };
+    }
+    if (typeId === "upload-mapping") {
+      return {
+        fields: [
+          {
+            key: "folder",
+            label: "Folder",
+            kind: "text",
+            required: true,
+            description:
+              "Name used in delivery URLs. Requesting <folder>/<path> fetches <prefix><path> and stores it.",
+            placeholder: "remote",
+          },
+          {
+            key: "template",
+            label: "Remote URL Prefix",
+            kind: "text",
+            required: true,
+            placeholder: "https://images.example.com/assets/",
           },
         ],
       };
@@ -292,6 +583,9 @@ export class CloudinaryClient implements PluginClient {
       };
       if (fields["folder"]) body["folder"] = fields["folder"];
       if (fields["tags"]) body["tags"] = fields["tags"];
+      if (fields["allowed_formats"]) body["allowed_formats"] = fields["allowed_formats"];
+      if (fields["transformation"]) body["transformation"] = fields["transformation"];
+      if (parseBool(fields["disallow_public_id"])) body["disallow_public_id"] = true;
       await this.fetch<Record<string, unknown>>("/upload_presets", {
         method: "POST",
         body: JSON.stringify(body),
@@ -309,6 +603,8 @@ export class CloudinaryClient implements PluginClient {
           mode,
           ...(fields["folder"] ? { folder: fields["folder"] } : {}),
           ...(fields["tags"] ? { tags: fields["tags"] } : {}),
+          ...(fields["allowed_formats"] ? { allowedFormats: fields["allowed_formats"] } : {}),
+          ...(fields["transformation"] ? { transformation: fields["transformation"] } : {}),
         },
         resolvedOutputs: { presetName, mode },
         secretStates: [],
@@ -339,7 +635,183 @@ export class CloudinaryClient implements PluginClient {
         updatedAt: now,
       };
     }
+    if (typeId === "trigger") {
+      const body: Record<string, unknown> = {
+        uri: (fields["uri"] ?? "").trim(),
+        event_type: fields["event_type"] || "upload",
+      };
+      if (!body["uri"]) throw new Error("Cloudinary plugin: a notification URL is required");
+      const additive = parseBool(fields["additive"]);
+      if (additive !== undefined) body["additive"] = additive;
+      if (fields["auth_scheme"]) body["auth_scheme"] = fields["auth_scheme"];
+      if (fields["filter"]?.trim()) {
+        body["filter"] = parseJsonObject(fields["filter"], "filter");
+      }
+      if (fields["payload_template"]?.trim()) {
+        body["payload_template"] = parseJsonObject(fields["payload_template"], "payload template");
+      }
+      const created = await this.fetch<CloudinaryTrigger>("/triggers", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return this.mapTrigger(created, accountId);
+    }
+    if (typeId === "upload-mapping") {
+      const folder = (fields["folder"] ?? "").trim();
+      const template = (fields["template"] ?? "").trim();
+      if (!folder || !template) {
+        throw new Error("Cloudinary plugin: an upload mapping needs a folder and a URL prefix");
+      }
+      const created = await this.fetch<{ external_id?: string }>("/upload_mappings", {
+        method: "POST",
+        body: JSON.stringify({ folder, template }),
+      });
+      return this.mapUploadMapping(
+        { folder, template, ...(created?.external_id ? { external_id: created.external_id } : {}) },
+        accountId,
+      );
+    }
     throw new Error(`Cloudinary plugin: createResource not supported for type "${typeId}"`);
+  }
+
+  /**
+   * Edits, one Admin API endpoint per type:
+   * - folder: `PUT /folders/:folder?to_folder=` renames or moves it (dynamic
+   *   folder mode only).
+   * - media-asset: `PUT /resources/:asset_id` sets display name, asset folder
+   *   and tags.
+   * - upload-preset: `PUT /upload_presets/:name`.
+   * - transformation: `PUT /transformations/:transformation`; a new definition
+   *   goes in `unsafe_update`.
+   * - trigger: `PUT /triggers/:id` (`new_uri`, not `uri`).
+   * - upload-mapping: `PUT /upload_mappings` with folder + template.
+   * https://cloudinary.com/documentation/admin_api
+   */
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const key = resourceId.split(":").slice(2).join(":");
+    if (!key) throw new Error(`Cloudinary plugin: cannot parse resource id "${resourceId}"`);
+    switch (typeId) {
+      case "folder": {
+        const toFolder = (fields["path"] ?? "").trim().replace(/^\/+|\/+$/g, "");
+        if (!toFolder || toFolder === key) return this.getResource(typeId, resourceId, accountId);
+        const result = await this.fetch<{ to?: { name?: string; path?: string } }>(
+          `/folders/${encodeURIComponent(key)}?to_folder=${encodeURIComponent(toFolder)}`,
+          { method: "PUT" },
+        );
+        const path = result?.to?.path ?? toFolder;
+        const name = result?.to?.name ?? path.split("/").pop() ?? path;
+        const now = new Date().toISOString();
+        return {
+          id: `${accountId}:folder:${path}`,
+          pluginId: "cloudinary",
+          resourceTypeId: "folder",
+          accountId,
+          displayName: name,
+          fields: { name, path },
+          resolvedOutputs: { path, name },
+          secretStates: [],
+          externalId: path,
+          createdAt: now,
+          updatedAt: now,
+        };
+      }
+      case "media-asset": {
+        const current = await this.getResource(typeId, resourceId, accountId);
+        const assetId = current.externalId ?? "";
+        if (!assetId) throw new Error("Cloudinary plugin: asset has no asset_id to update");
+        const body: Record<string, string> = {};
+        if (fields["displayName"] !== undefined)
+          body["display_name"] = fields["displayName"].trim();
+        if (fields["folder"] !== undefined) body["asset_folder"] = fields["folder"].trim();
+        if (fields["tags"] !== undefined) {
+          body["tags"] = fields["tags"]
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+            .join(",");
+        }
+        if (Object.keys(body).length === 0) return current;
+        const updated = await this.fetch<CloudinaryResource>(
+          `/resources/${encodeURIComponent(assetId)}`,
+          { method: "PUT", body: JSON.stringify(body) },
+        );
+        return this.mapMediaAsset(updated, accountId);
+      }
+      case "upload-preset": {
+        const body: Record<string, unknown> = {};
+        if (fields["mode"] !== undefined) body["unsigned"] = fields["mode"] === "unsigned";
+        if (fields["folder"] !== undefined) body["folder"] = fields["folder"].trim();
+        if (fields["tags"] !== undefined) body["tags"] = fields["tags"].trim();
+        if (fields["allowedFormats"] !== undefined) {
+          body["allowed_formats"] = fields["allowedFormats"].replace(/\s+/g, "");
+        }
+        if (fields["transformation"] !== undefined) {
+          body["transformation"] = fields["transformation"].trim();
+        }
+        const disallow = parseBool(fields["disallowPublicId"]);
+        if (disallow !== undefined) body["disallow_public_id"] = disallow;
+        if (Object.keys(body).length) {
+          await this.fetch<unknown>(`/upload_presets/${encodeURIComponent(key)}`, {
+            method: "PUT",
+            body: JSON.stringify(body),
+          });
+        }
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "transformation": {
+        const body: Record<string, unknown> = {};
+        const strict = parseBool(fields["allowedForStrict"]);
+        if (strict !== undefined) body["allowed_for_strict"] = strict;
+        if (fields["definition"]?.trim()) body["unsafe_update"] = fields["definition"].trim();
+        if (Object.keys(body).length) {
+          await this.fetch<unknown>(`/transformations/${encodeURIComponent(key)}`, {
+            method: "PUT",
+            body: JSON.stringify(body),
+          });
+        }
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "trigger": {
+        const body: Record<string, unknown> = {};
+        if (fields["uri"]?.trim()) body["new_uri"] = fields["uri"].trim();
+        const additive = parseBool(fields["additive"]);
+        if (additive !== undefined) body["additive"] = additive;
+        if (fields["authScheme"]) body["auth_scheme"] = fields["authScheme"];
+        if (fields["filter"] !== undefined) {
+          // An empty filter object means "no filter", which is how one is cleared.
+          body["filter"] = fields["filter"].trim()
+            ? parseJsonObject(fields["filter"], "filter")
+            : {};
+        }
+        if (fields["payloadTemplate"]?.trim()) {
+          body["payload_template"] = parseJsonObject(fields["payloadTemplate"], "payload template");
+        }
+        if (Object.keys(body).length) {
+          await this.fetch<unknown>(`/triggers/${encodeURIComponent(key)}`, {
+            method: "PUT",
+            body: JSON.stringify(body),
+          });
+        }
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "upload-mapping": {
+        const template = (fields["template"] ?? "").trim();
+        if (template) {
+          await this.fetch<unknown>("/upload_mappings", {
+            method: "PUT",
+            body: JSON.stringify({ folder: key, template }),
+          });
+        }
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      default:
+        throw new Error(`Cloudinary plugin: updateResource not supported for type "${typeId}"`);
+    }
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
@@ -381,6 +853,20 @@ export class CloudinaryClient implements PluginClient {
       });
       return;
     }
+    if (typeId === "trigger") {
+      const id = resourceId.split(":").slice(2).join(":");
+      if (!id) throw new Error("Cannot parse trigger id");
+      await this.fetch<unknown>(`/triggers/${encodeURIComponent(id)}`, { method: "DELETE" });
+      return;
+    }
+    if (typeId === "upload-mapping") {
+      const folder = resourceId.split(":").slice(2).join(":");
+      if (!folder) throw new Error("Cannot parse upload mapping folder");
+      await this.fetch<unknown>(`/upload_mappings?folder=${encodeURIComponent(folder)}`, {
+        method: "DELETE",
+      });
+      return;
+    }
     throw new Error(`Cloudinary plugin: deleteResource not supported for type "${typeId}"`);
   }
 
@@ -403,7 +889,11 @@ export class CloudinaryClient implements PluginClient {
       if (!transformationName || !presetName) {
         throw new Error("Cannot determine Cloudinary transformation or upload preset identity");
       }
-      const namedReference = `t_${transformationName}`;
+      // Cloudinary's own list sample already reports named transformations
+      // with the `t_` reference prefix; never double it.
+      const namedReference = transformationName.startsWith("t_")
+        ? transformationName
+        : `t_${transformationName}`;
       if (String(preset.fields["transformation"] ?? "") === namedReference) return;
       await this.fetch<Record<string, unknown>>(
         `/upload_presets/${encodeURIComponent(presetName)}`,
@@ -455,6 +945,42 @@ export class CloudinaryClient implements PluginClient {
           { label: "Named", value: f["named"] ? "Yes" : "No" },
           { label: "Used", value: f["used"] ? "Yes" : "No" },
         ];
+      case "trigger":
+        return [
+          { label: "Event", value: String(f["eventType"] ?? "") },
+          { label: "Signature", value: String(f["authScheme"] ?? "default") },
+          { label: "Filtered", value: f["filter"] ? "Yes" : "No" },
+        ];
+      case "upload-mapping":
+        return [
+          { label: "Folder", value: String(f["folder"] ?? "") },
+          { label: "Prefix", value: String(f["template"] ?? "") },
+        ];
+      case "product-environment": {
+        const stats: DashboardStat[] = [];
+        if (f["plan"]) stats.push({ label: "Plan", value: String(f["plan"]) });
+        if (f["creditsUsed"] != null) {
+          const percent = Number(f["creditsUsedPercent"] ?? 0);
+          stats.push({
+            label: "Credits",
+            value:
+              f["creditsLimit"] != null
+                ? `${Number(f["creditsUsed"]).toFixed(2)} / ${String(f["creditsLimit"])}`
+                : Number(f["creditsUsed"]).toFixed(2),
+            variant: percent >= 90 ? "status-error" : percent >= 75 ? "status-degraded" : "default",
+          });
+        }
+        if (f["storageBytes"] != null) {
+          stats.push({ label: "Storage", value: formatBytes(Number(f["storageBytes"])) });
+        }
+        if (f["bandwidthBytes"] != null) {
+          stats.push({ label: "Bandwidth", value: formatBytes(Number(f["bandwidthBytes"])) });
+        }
+        if (f["assets"] != null) {
+          stats.push({ label: "Assets", value: Number(f["assets"]).toLocaleString("en-US") });
+        }
+        return stats;
+      }
       default:
         return [];
     }
@@ -470,6 +996,12 @@ export class CloudinaryClient implements PluginClient {
         return this.renderUploadPresetDetail(resource);
       case "transformation":
         return this.renderTransformationDetail(resource);
+      case "trigger":
+        return this.renderTriggerDetail(resource);
+      case "upload-mapping":
+        return this.renderUploadMappingDetail(resource);
+      case "product-environment":
+        return this.renderProductEnvironmentDetail(resource);
       default:
         return this.renderGenericDetail(resource);
     }
@@ -515,6 +1047,31 @@ export class CloudinaryClient implements PluginClient {
             label: resource.fields["used"] ? "In use" : "Unused",
           },
         };
+      case "trigger":
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: "healthy",
+            label: String(resource.fields["eventType"] ?? ""),
+          },
+        };
+      case "product-environment": {
+        const percent = Number(resource.fields["creditsUsedPercent"] ?? 0);
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: percent >= 90 ? "error" : percent >= 75 ? "degraded" : "healthy",
+            label:
+              resource.fields["creditsUsedPercent"] != null
+                ? `${percent.toFixed(0)}% of credits`
+                : String(resource.fields["plan"] ?? ""),
+          },
+        };
+      }
       default:
         return {
           id: resource.id,
@@ -522,6 +1079,190 @@ export class CloudinaryClient implements PluginClient {
           status: { kind: "status-dot", status: "info" },
         };
     }
+  }
+
+  private renderTriggerDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    const sections: SectionNode[] = [
+      {
+        kind: "section",
+        title: "Webhook",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Trigger ID", value: resource.externalId ?? "", copyable: true },
+              { key: "Notification URL", value: String(f["uri"] ?? ""), copyable: true },
+              { key: "Event Type", value: String(f["eventType"] ?? "") },
+              { key: "Additive", value: f["additive"] ? "Yes" : "No" },
+              { key: "Signature Scheme", value: String(f["authScheme"] ?? "default") },
+              ...(f["createdAt"] ? [{ key: "Created", value: String(f["createdAt"]) }] : []),
+              ...(f["updatedAt"] ? [{ key: "Updated", value: String(f["updatedAt"]) }] : []),
+            ],
+          },
+        ],
+      },
+    ];
+    if (f["filter"]) {
+      sections.push({
+        kind: "section",
+        title: "Filter (JSONLogic)",
+        children: [{ kind: "text", content: String(f["filter"]), variant: "mono", copyable: true }],
+      });
+    }
+    if (f["payloadTemplate"]) {
+      sections.push({
+        kind: "section",
+        title: "Payload Template",
+        children: [
+          { kind: "text", content: String(f["payloadTemplate"]), variant: "mono", copyable: true },
+        ],
+      });
+    }
+    return {
+      title: resource.displayName,
+      subtitle: joinSubtitle("Webhook notification", f["eventType"]),
+      status: { kind: "status-dot", status: "healthy", label: "Active" },
+      sections,
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderUploadMappingDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    const folder = String(f["folder"] ?? "");
+    return {
+      title: resource.displayName,
+      subtitle: "Auto-upload mapping",
+      status: { kind: "status-dot", status: "healthy", label: "Mapped" },
+      sections: [
+        {
+          kind: "section",
+          title: "Mapping",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Folder", value: folder, copyable: true },
+                { key: "Remote URL Prefix", value: String(f["template"] ?? ""), copyable: true },
+              ],
+            },
+            {
+              kind: "text",
+              content: `Requesting https://res.cloudinary.com/${this.cloudName}/image/upload/${folder}/<path> fetches <prefix><path> on first access and stores it as a regular asset.`,
+              variant: "muted",
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderProductEnvironmentDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    const bytes = (key: string): string => formatBytes(Number(f[key] ?? 0));
+    const count = (key: string): string => Number(f[key] ?? 0).toLocaleString("en-US");
+    const percent = Number(f["creditsUsedPercent"] ?? 0);
+    return {
+      title: resource.displayName,
+      subtitle: joinSubtitle("Product environment", f["plan"]),
+      status: {
+        kind: "status-dot",
+        status: percent >= 90 ? "error" : percent >= 75 ? "degraded" : "healthy",
+        ...(f["creditsUsedPercent"] != null
+          ? { label: `${percent.toFixed(1)}% of monthly credits` }
+          : {}),
+      },
+      sections: [
+        {
+          kind: "section",
+          title: "Plan",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Cloud Name", value: String(f["cloudName"] ?? ""), copyable: true },
+                ...(f["plan"] ? [{ key: "Plan", value: String(f["plan"]) }] : []),
+                ...(f["folderMode"]
+                  ? [{ key: "Folder Mode", value: String(f["folderMode"]) }]
+                  : []),
+                ...(f["creditsUsed"] != null
+                  ? [
+                      {
+                        key: "Credits Used",
+                        value:
+                          f["creditsLimit"] != null
+                            ? `${Number(f["creditsUsed"]).toFixed(2)} of ${String(f["creditsLimit"])} (${percent.toFixed(1)}%)`
+                            : Number(f["creditsUsed"]).toFixed(2),
+                      },
+                    ]
+                  : []),
+                ...(f["lastUpdated"]
+                  ? [{ key: "Usage Last Updated", value: String(f["lastUpdated"]) }]
+                  : []),
+              ],
+            },
+          ],
+        },
+        {
+          kind: "section",
+          title: "Usage",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                ...(f["storageBytes"] != null
+                  ? [{ key: "Storage", value: bytes("storageBytes") }]
+                  : []),
+                ...(f["bandwidthBytes"] != null
+                  ? [{ key: "Bandwidth", value: bytes("bandwidthBytes") }]
+                  : []),
+                ...(f["transformations"] != null
+                  ? [{ key: "Transformations", value: count("transformations") }]
+                  : []),
+                ...(f["assets"] != null ? [{ key: "Assets", value: count("assets") }] : []),
+                ...(f["derivedAssets"] != null
+                  ? [{ key: "Derived Assets", value: count("derivedAssets") }]
+                  : []),
+                ...(f["requests"] != null ? [{ key: "Requests", value: count("requests") }] : []),
+              ],
+            },
+          ],
+        },
+        {
+          kind: "section",
+          title: "Upload Limits",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                ...(f["imageMaxBytes"] != null
+                  ? [{ key: "Max Image Size", value: bytes("imageMaxBytes") }]
+                  : []),
+                ...(f["videoMaxBytes"] != null
+                  ? [{ key: "Max Video Size", value: bytes("videoMaxBytes") }]
+                  : []),
+                ...(f["rawMaxBytes"] != null
+                  ? [{ key: "Max Raw File Size", value: bytes("rawMaxBytes") }]
+                  : []),
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [
+        {
+          kind: "action",
+          label: "Open usage in Console",
+          action: {
+            type: "open-url",
+            url: "https://console.cloudinary.com/settings/billing/usage",
+          },
+        },
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      ],
+    };
   }
 
   private renderMediaAssetDetail(resource: ResourceInstance): DetailViewSchema {
@@ -538,7 +1279,15 @@ export class CloudinaryClient implements PluginClient {
             kind: "key-value-list",
             items: [
               { key: "Public ID", value: String(f["publicId"] ?? ""), copyable: true },
+              ...(f["assetId"]
+                ? [{ key: "Asset ID", value: String(f["assetId"]), copyable: true }]
+                : []),
               { key: "Resource Type", value: String(f["resourceType"] ?? "") },
+              ...(f["deliveryType"]
+                ? [{ key: "Delivery Type", value: String(f["deliveryType"]) }]
+                : []),
+              ...(f["accessMode"] ? [{ key: "Access Mode", value: String(f["accessMode"]) }] : []),
+              ...(f["tags"] ? [{ key: "Tags", value: String(f["tags"]) }] : []),
               { key: "Format", value: String(f["format"] ?? "") },
               { key: "Dimensions", value: dimensions },
               { key: "Size", value: formatBytes(Number(f["bytes"] ?? 0)) },
@@ -618,6 +1367,9 @@ export class CloudinaryClient implements PluginClient {
               ...(f["transformation"]
                 ? [{ key: "Transformation", value: String(f["transformation"]) }]
                 : []),
+              ...(f["disallowPublicId"] != null
+                ? [{ key: "Disallow Public ID", value: f["disallowPublicId"] ? "Yes" : "No" }]
+                : []),
             ],
           },
         ],
@@ -653,6 +1405,9 @@ export class CloudinaryClient implements PluginClient {
               { key: "Used", value: f["used"] ? "Yes" : "No" },
               ...(f["usageCount"] != null
                 ? [{ key: "Derived Assets", value: String(f["usageCount"]) }]
+                : []),
+              ...(f["allowedForStrict"] != null
+                ? [{ key: "Allowed for Strict", value: f["allowedForStrict"] ? "Yes" : "No" }]
                 : []),
             ],
           },
@@ -764,7 +1519,7 @@ export class CloudinaryClient implements PluginClient {
         do {
           const cursor = nextCursor ? `&next_cursor=${encodeURIComponent(nextCursor)}` : "";
           const data = await this.fetch<CloudinaryResourceList>(
-            `/resources/${rType}?max_results=500${cursor}`,
+            `/resources/${rType}?max_results=500&tags=true${cursor}`,
           );
           for (const asset of data.resources ?? []) {
             results.push(this.mapMediaAsset(asset, accountId));
@@ -795,7 +1550,11 @@ export class CloudinaryClient implements PluginClient {
         bytes: asset.bytes ?? 0,
         ...(asset.width != null ? { width: asset.width } : {}),
         ...(asset.height != null ? { height: asset.height } : {}),
+        ...(asset.type ? { deliveryType: asset.type } : {}),
         ...(asset.asset_folder ? { folder: asset.asset_folder } : {}),
+        ...(asset.tags?.length ? { tags: asset.tags.join(", ") } : {}),
+        ...(asset.access_mode ? { accessMode: asset.access_mode } : {}),
+        ...(asset.asset_id ? { assetId: asset.asset_id } : {}),
         createdAt: asset.created_at ?? "",
       },
       resolvedOutputs: {
@@ -849,6 +1608,10 @@ export class CloudinaryClient implements PluginClient {
           ...(settings["transformation"]
             ? { transformation: formatTransformationSetting(settings["transformation"]) }
             : {}),
+          ...(settings["disallow_public_id"] != null
+            ? { disallowPublicId: Boolean(settings["disallow_public_id"]) }
+            : {}),
+          ...(preset.external_id ? { externalId: preset.external_id } : {}),
         },
         resolvedOutputs: { presetName: preset.name, mode },
         secretStates: [],
@@ -882,6 +1645,7 @@ export class CloudinaryClient implements PluginClient {
         named: t.named ?? false,
         used: t.used ?? false,
         usageCount: t.derived?.length ?? 0,
+        ...(t.allowed_for_strict != null ? { allowedForStrict: t.allowed_for_strict } : {}),
       },
       resolvedOutputs: { transformationName: t.name },
       secretStates: [],
@@ -889,5 +1653,203 @@ export class CloudinaryClient implements PluginClient {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }));
+  }
+
+  private mapTrigger(trigger: CloudinaryTrigger, accountId: string): ResourceInstance {
+    const now = new Date().toISOString();
+    const event = trigger.event_type ?? "";
+    return {
+      id: `${accountId}:trigger:${trigger.id}`,
+      pluginId: "cloudinary",
+      resourceTypeId: "trigger",
+      accountId,
+      displayName: event ? `${event} → ${trigger.uri ?? ""}` : (trigger.uri ?? trigger.id),
+      fields: {
+        uri: trigger.uri ?? "",
+        eventType: event,
+        additive: trigger.additive ?? false,
+        authScheme: trigger.auth_scheme ?? "default",
+        ...(stringifyJson(trigger.filter) ? { filter: stringifyJson(trigger.filter) } : {}),
+        ...(stringifyJson(trigger.payload_template)
+          ? { payloadTemplate: stringifyJson(trigger.payload_template) }
+          : {}),
+        ...(trigger.created_at ? { createdAt: trigger.created_at } : {}),
+        ...(trigger.updated_at ? { updatedAt: trigger.updated_at } : {}),
+      },
+      resolvedOutputs: { triggerId: trigger.id, uri: trigger.uri ?? "" },
+      secretStates: [],
+      externalId: trigger.id,
+      createdAt: trigger.created_at ?? now,
+      updatedAt: trigger.updated_at ?? trigger.created_at ?? now,
+    };
+  }
+
+  private async listTriggers(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetch<{ triggers?: CloudinaryTrigger[] }>("/triggers");
+    return (data.triggers ?? []).map((trigger) => this.mapTrigger(trigger, accountId));
+  }
+
+  private mapUploadMapping(mapping: CloudinaryUploadMapping, accountId: string): ResourceInstance {
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:upload-mapping:${mapping.folder}`,
+      pluginId: "cloudinary",
+      resourceTypeId: "upload-mapping",
+      accountId,
+      displayName: mapping.folder,
+      fields: {
+        folder: mapping.folder,
+        template: mapping.template ?? "",
+        ...(mapping.external_id ? { externalId: mapping.external_id } : {}),
+      },
+      resolvedOutputs: { folder: mapping.folder, template: mapping.template ?? "" },
+      secretStates: [],
+      externalId: mapping.folder,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private async listUploadMappings(accountId: string): Promise<ResourceInstance[]> {
+    const mappings: CloudinaryUploadMapping[] = [];
+    let nextCursor: string | undefined;
+    do {
+      const cursor = nextCursor ? `&next_cursor=${encodeURIComponent(nextCursor)}` : "";
+      const data = await this.fetch<{ mappings?: CloudinaryUploadMapping[]; next_cursor?: string }>(
+        `/upload_mappings?max_results=500${cursor}`,
+      );
+      mappings.push(...(data.mappings ?? []));
+      nextCursor = data.next_cursor;
+    } while (nextCursor);
+    return mappings.map((mapping) => this.mapUploadMapping(mapping, accountId));
+  }
+
+  /** `GET /usage` plus `GET /config?settings=true` for the folder mode. */
+  private async loadProductEnvironment(accountId: string): Promise<ResourceInstance> {
+    const [usage, config] = await Promise.all([
+      this.fetch<CloudinaryUsage>("/usage"),
+      this.fetch<CloudinaryConfig>("/config?settings=true").catch((): CloudinaryConfig => ({})),
+    ]);
+    const limits = usage.media_limits ?? {};
+    const now = new Date().toISOString();
+    const num = (value: unknown): number | undefined =>
+      typeof value === "number" && Number.isFinite(value) ? value : undefined;
+    const entries: Record<string, number | undefined> = {
+      creditsUsed: num(usage.credits?.usage),
+      creditsLimit: num(usage.credits?.limit),
+      creditsUsedPercent: num(usage.credits?.used_percent),
+      storageBytes: num(usage.storage?.usage),
+      bandwidthBytes: num(usage.bandwidth?.usage),
+      transformations: num(usage.transformations?.usage),
+      assets: num(usage.resources),
+      derivedAssets: num(usage.derived_resources),
+      requests: num(usage.requests),
+      imageMaxBytes: num(limits["image_max_size_bytes"]),
+      videoMaxBytes: num(limits["video_max_size_bytes"]),
+      rawMaxBytes: num(limits["raw_max_size_bytes"]),
+    };
+    const numeric: Record<string, number> = {};
+    for (const [key, value] of Object.entries(entries)) {
+      if (value !== undefined) numeric[key] = value;
+    }
+    return {
+      id: `${accountId}:product-environment:${this.cloudName}`,
+      pluginId: "cloudinary",
+      resourceTypeId: "product-environment",
+      accountId,
+      displayName: this.cloudName,
+      fields: {
+        cloudName: this.cloudName,
+        ...(usage.plan ? { plan: usage.plan } : {}),
+        ...(config.settings?.folder_mode ? { folderMode: config.settings.folder_mode } : {}),
+        ...numeric,
+        ...(usage.last_updated ? { lastUpdated: usage.last_updated } : {}),
+      },
+      resolvedOutputs: { cloudName: this.cloudName },
+      secretStates: [],
+      externalId: this.cloudName,
+      createdAt: config.created_at ?? now,
+      updatedAt: usage.last_updated ?? now,
+    };
+  }
+
+  /**
+   * Every used/limit pair `GET /usage` reports, as quota readings. Credit
+   * plans carry one `credits` allowance; legacy plans carry separate
+   * transformation, storage and bandwidth limits instead. Add-on allowances
+   * (AI tagging, background removal, ...) are whatever extra `{usage, limit}`
+   * objects the environment has, so they are discovered rather than listed.
+   * The Admin API's hourly request budget comes back on the same response.
+   */
+  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
+    const usage = await this.fetch<CloudinaryUsage>("/usage");
+    const readings: QuotaUsage[] = [];
+    const pair = (entry: UsageEntry | undefined): { used: number; limit: number } | null =>
+      entry && typeof entry.usage === "number" && typeof entry.limit === "number"
+        ? { used: entry.usage, limit: entry.limit }
+        : null;
+
+    const credits = pair(usage.credits);
+    if (credits) {
+      readings.push({
+        id: "credits",
+        service: "plan",
+        name: "Monthly credits",
+        ...credits,
+        unit: "credits",
+        adjustable: true,
+      });
+    }
+    const transformations = pair(usage.transformations);
+    if (transformations) {
+      readings.push({
+        id: "transformations",
+        service: "plan",
+        name: "Transformations",
+        ...transformations,
+        adjustable: true,
+      });
+    }
+    for (const key of ["storage", "bandwidth"] as const) {
+      const reading = pair(usage[key]);
+      if (reading) {
+        readings.push({
+          id: key,
+          service: "plan",
+          name: titleCase(key),
+          used: reading.used / GIB,
+          limit: reading.limit / GIB,
+          unit: "GB",
+          adjustable: true,
+        });
+      }
+    }
+    for (const [key, value] of Object.entries(usage)) {
+      if (CORE_USAGE_KEYS.has(key) || !value || typeof value !== "object") continue;
+      const reading = pair(value as UsageEntry);
+      if (reading) {
+        readings.push({
+          id: `addon/${key}`,
+          service: "add-ons",
+          name: titleCase(key),
+          ...reading,
+          adjustable: true,
+        });
+      }
+    }
+    if (
+      typeof usage.rate_limit_allowed === "number" &&
+      typeof usage.rate_limit_remaining === "number"
+    ) {
+      readings.push({
+        id: "admin-api-rate-limit",
+        service: "admin-api",
+        name: "Admin API requests this hour",
+        used: usage.rate_limit_allowed - usage.rate_limit_remaining,
+        limit: usage.rate_limit_allowed,
+        unit: "requests",
+      });
+    }
+    return normalizeQuotaUsage(readings);
   }
 }
