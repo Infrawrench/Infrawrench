@@ -10,6 +10,18 @@ const api = {
   getConnectionUri: vi.fn(),
   getProjectBranchRolePassword: vi.fn(),
   getConsumptionHistoryPerProject: vi.fn(),
+  getConsumptionHistoryPerProjectV2: vi.fn(),
+  getConsumptionHistoryPerBranchV2: vi.fn(),
+  getProject: vi.fn(),
+  getProjectBranch: vi.fn(),
+  getActiveRegions: vi.fn(),
+  updateProject: vi.fn(),
+  updateProjectBranch: vi.fn(),
+  updateProjectEndpoint: vi.fn(),
+  updateProjectBranchDatabase: vi.fn(),
+  restoreProjectBranch: vi.fn(),
+  setDefaultProjectBranch: vi.fn(),
+  restartProjectEndpoint: vi.fn(),
   createProject: vi.fn(),
   createProjectBranch: vi.fn(),
   createProjectBranchDatabase: vi.fn(),
@@ -34,7 +46,7 @@ const createApiClient = vi.fn((..._args: CreateApiClientArgs) => api);
 
 vi.mock("@neondatabase/api-client", () => ({
   createApiClient: (...args: CreateApiClientArgs) => createApiClient(...args),
-  ConsumptionHistoryGranularity: { Hourly: "hourly" },
+  ConsumptionHistoryGranularity: { Hourly: "hourly", Daily: "daily", Monthly: "monthly" },
   EndpointType: { ReadWrite: "read_write", ReadOnly: "read_only" },
   BucketAccessLevel: { Private: "private", PublicRead: "public_read" },
   CredentialScope: {
@@ -610,7 +622,53 @@ describe("fetchDashboardStats", () => {
 });
 
 describe("fetchMetricSeries", () => {
-  it("builds three series for project from consumption history", async () => {
+  it("charts v2 usage for a project", async () => {
+    api.getProject.mockResolvedValue(wrap({ project: { id: "p1", org_id: "org-1" } }));
+    api.getConsumptionHistoryPerProjectV2.mockResolvedValue(
+      wrap({
+        projects: [
+          {
+            project_id: "p1",
+            periods: [
+              {
+                consumption: [
+                  {
+                    timeframe_start: "2026-10-01T00:00:00Z",
+                    metrics: [
+                      { metric_name: "compute_unit_seconds", value: 7200 },
+                      { metric_name: "public_network_transfer_bytes", value: 10 },
+                      { metric_name: "root_branch_bytes_month", value: 0 },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const client = makeClient();
+    const now = Date.now();
+    const series = await client.fetchMetricSeries(
+      "neon-project",
+      "acct1:neon-project:p1",
+      ACCOUNT,
+      {
+        startMs: now - 3_600_000,
+        endMs: now,
+      },
+    );
+    expect(series.map((s) => s.label)).toEqual(["Compute", "Public Egress"]);
+    expect(series[0]).toMatchObject({ unit: "CU-h", points: [{ value: 2 }] });
+    expect(api.getConsumptionHistoryPerProjectV2).toHaveBeenCalledWith(
+      expect.objectContaining({ org_id: "org-1", project_ids: ["p1"], granularity: "hourly" }),
+    );
+    expect(api.getConsumptionHistoryPerProject).not.toHaveBeenCalled();
+  });
+
+  it("falls back to legacy consumption without v2 data", async () => {
+    api.getProject.mockResolvedValue(wrap({ project: { id: "p1", org_id: "org-1" } }));
+    api.getConsumptionHistoryPerProjectV2.mockRejectedValue(new Error("legacy plan"));
     api.getConsumptionHistoryPerProject.mockResolvedValue(
       wrap({
         projects: [
@@ -622,7 +680,7 @@ describe("fetchMetricSeries", () => {
                   {
                     timeframe_start: "2024-01-01T00:00:00Z",
                     active_time_seconds: 10,
-                    synthetic_storage_size_bytes: 100,
+                    compute_time_seconds: 4,
                     written_data_bytes: 5,
                   },
                 ],
@@ -639,8 +697,11 @@ describe("fetchMetricSeries", () => {
       ACCOUNT,
       { startMs: 0, endMs: 1000 },
     );
-    expect(series.map((s) => s.label)).toEqual(["Active Time", "Storage", "Data Written"]);
+    expect(series.map((s) => s.label)).toEqual(["Active Time", "Compute Time", "Data Written"]);
     expect(series[0]!.points[0]!.value).toBe(10);
+    expect(api.getConsumptionHistoryPerProject).toHaveBeenCalledWith(
+      expect.objectContaining({ granularity: "daily" }),
+    );
   });
 
   it("returns empty when projectId missing", async () => {
@@ -677,23 +738,49 @@ describe("fetchMetricSeries", () => {
     ).toEqual([]);
   });
 
-  it("resolves projectId from non-project resource", async () => {
+  it("charts a branch from per-branch history", async () => {
     api.listProjects.mockResolvedValue(
       wrap({ projects: [{ id: "p1", name: "P", pg_version: 16 }] }),
     );
     api.listProjectBranches.mockResolvedValue(
       wrap({ branches: [{ id: "b1", name: "main", project_id: "p1" }] }),
     );
-    api.getConsumptionHistoryPerProject.mockResolvedValue(wrap({ projects: [] }));
+    api.getProject.mockResolvedValue(wrap({ project: { id: "p1", org_id: "org-1" } }));
+    api.getConsumptionHistoryPerBranchV2.mockResolvedValue(
+      wrap({
+        branches: [
+          {
+            project_id: "p1",
+            branch_id: "b1",
+            periods: [
+              {
+                consumption: [
+                  {
+                    timeframe_start: "2026-10-01T00:00:00Z",
+                    metrics: [{ metric_name: "child_branch_bytes_month", value: 2 ** 31 }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
     const client = makeClient();
     const series = await client.fetchMetricSeries(
       "neon-branch",
       "acct1:neon-branch:p1/b1",
       ACCOUNT,
     );
-    expect(series).toEqual([]);
-    expect(api.getConsumptionHistoryPerProject).toHaveBeenCalledWith(
-      expect.objectContaining({ project_ids: ["p1"] }),
+    expect(series).toEqual([
+      {
+        label: "Child Branch Storage",
+        unit: "GB-month",
+        points: [{ timestamp: Date.parse("2026-10-01T00:00:00Z"), value: 2 }],
+      },
+    ]);
+    expect(api.getConsumptionHistoryPerBranchV2).toHaveBeenCalledWith(
+      expect.objectContaining({ org_id: "org-1", project_ids: ["p1"], branch_ids: ["b1"] }),
     );
   });
 });
@@ -892,8 +979,28 @@ describe("renderSidebarItem", () => {
 describe("getCreateConfig", () => {
   it("project config has region picker", async () => {
     const client = makeClient();
+    api.getActiveRegions.mockResolvedValue(
+      wrap({ regions: [{ region_id: "aws-us-east-1", name: "AWS US East (N. Virginia)" }] }),
+    );
     const cfg = await client.getCreateConfig("neon-project");
-    expect(cfg.fields.map((f) => f.key)).toEqual(["name", "region", "pgVersion"]);
+    expect(cfg.fields.map((f) => f.key)).toEqual([
+      "name",
+      "region",
+      "pgVersion",
+      "historyRetentionSeconds",
+    ]);
+    const region = cfg.fields.find((f) => f.key === "region")!;
+    expect(region.regions?.map((r) => r.id)).toEqual(["aws-us-east-1"]);
+    expect(region.defaultValue).toBe("aws-us-east-1");
+    expect(cfg.fields.find((f) => f.key === "pgVersion")?.defaultValue).toBe("18");
+  });
+
+  it("project config falls back to the static region table", async () => {
+    api.getActiveRegions.mockRejectedValue(new Error("x"));
+    const client = makeClient();
+    const cfg = await client.getCreateConfig("neon-project");
+    const region = cfg.fields.find((f) => f.key === "region")!;
+    expect(region.defaultValue).toBe("aws-us-east-2");
   });
 
   it("branch config lists projects when no parent", async () => {
@@ -913,8 +1020,23 @@ describe("getCreateConfig", () => {
 
   it("branch config omits project picker with parent", async () => {
     const client = makeClient();
+    api.listProjectBranches.mockResolvedValue(
+      wrap({ branches: [{ id: "b1", name: "main", default: true }] }),
+    );
     const cfg = await client.getCreateConfig("neon-branch", "acct1:neon-project:p1");
-    expect(cfg.fields.map((f) => f.key)).toEqual(["name"]);
+    expect(cfg.fields.map((f) => f.key)).toEqual([
+      "name",
+      "parentId",
+      "initSource",
+      "parentTimestamp",
+      "expiresAt",
+      "protected",
+    ]);
+    expect(cfg.fields.find((f) => f.key === "parentId")?.options).toEqual([
+      { id: "", label: "Default branch" },
+      { id: "b1", label: "main (default)" },
+    ]);
+    expect(api.listProjectBranches).toHaveBeenCalledWith({ projectId: "p1" });
   });
 
   it("database config with parent branch lists roles", async () => {
@@ -973,7 +1095,13 @@ describe("getCreateConfig", () => {
     api.listProjectBranches.mockResolvedValue(wrap({ branches: [{ id: "b1", name: "main" }] }));
     const client = makeClient();
     const cfg = await client.getCreateConfig("neon-endpoint");
-    expect(cfg.fields.map((f) => f.key)).toEqual(["projectBranch", "type"]);
+    expect(cfg.fields.map((f) => f.key)).toEqual([
+      "projectBranch",
+      "type",
+      "autoscalingMinCu",
+      "autoscalingMaxCu",
+      "suspendTimeout",
+    ]);
   });
 
   it("endpoint config skips branch errors", async () => {
@@ -981,13 +1109,24 @@ describe("getCreateConfig", () => {
     api.listProjectBranches.mockRejectedValue(new Error("x"));
     const client = makeClient();
     const cfg = await client.getCreateConfig("neon-endpoint");
-    expect(cfg.fields.map((f) => f.key)).toEqual(["projectBranch", "type"]);
+    expect(cfg.fields.map((f) => f.key)).toEqual([
+      "projectBranch",
+      "type",
+      "autoscalingMinCu",
+      "autoscalingMaxCu",
+      "suspendTimeout",
+    ]);
   });
 
   it("endpoint config with parent only has type", async () => {
     const client = makeClient();
     const cfg = await client.getCreateConfig("neon-endpoint", "acct1:neon-branch:p1/b1");
-    expect(cfg.fields.map((f) => f.key)).toEqual(["type"]);
+    expect(cfg.fields.map((f) => f.key)).toEqual([
+      "type",
+      "autoscalingMinCu",
+      "autoscalingMaxCu",
+      "suspendTimeout",
+    ]);
   });
 
   it("Data API config with parent exposes API settings", async () => {
@@ -1445,5 +1584,185 @@ describe("rerollOutput", () => {
     await expect(
       client.rerollOutput("neon-endpoint", "x", "connectionString", ACCOUNT),
     ).rejects.toThrow(/rerollOutput not supported/);
+  });
+});
+
+describe("updates and branch actions", () => {
+  it("updates a project's name and restore window", async () => {
+    api.updateProject.mockResolvedValue(
+      wrap({
+        project: {
+          id: "p1",
+          name: "Renamed",
+          region_id: "aws-us-east-2",
+          pg_version: 18,
+          history_retention_seconds: 604800,
+        },
+      }),
+    );
+    const res = await makeClient().updateResource(
+      "neon-project",
+      "acct1:neon-project:p1",
+      ACCOUNT,
+      {
+        name: "Renamed",
+        historyRetentionSeconds: "604800",
+      },
+    );
+    expect(api.updateProject).toHaveBeenCalledWith("p1", {
+      project: { name: "Renamed", history_retention_seconds: 604800 },
+    });
+    expect(res.fields).toMatchObject({ name: "Renamed", historyRetentionSeconds: 604800 });
+  });
+
+  it("updates branch protection and clears its expiry", async () => {
+    api.updateProjectBranch.mockResolvedValue(
+      wrap({ branch: { id: "b1", name: "dev", project_id: "p1", protected: true } }),
+    );
+    await makeClient().updateResource("neon-branch", "acct1:neon-branch:p1/b1", ACCOUNT, {
+      name: "dev",
+      protected: "true",
+      expiresAt: "",
+    });
+    expect(api.updateProjectBranch).toHaveBeenCalledWith("p1", "b1", {
+      branch: { name: "dev", protected: true, expires_at: null },
+    });
+  });
+
+  it("updates endpoint autoscaling and scale-to-zero", async () => {
+    api.updateProjectEndpoint.mockResolvedValue(
+      wrap({
+        endpoint: {
+          id: "ep1",
+          host: "h",
+          project_id: "p1",
+          branch_id: "b1",
+          autoscaling_limit_min_cu: 0.5,
+          autoscaling_limit_max_cu: 4,
+          suspend_timeout_seconds: -1,
+        },
+      }),
+    );
+    const res = await makeClient().updateResource(
+      "neon-endpoint",
+      "acct1:neon-endpoint:p1/ep1",
+      ACCOUNT,
+      { autoscalingMinCu: "0.5", autoscalingMaxCu: "4", suspendTimeout: "-1", name: "" },
+    );
+    expect(api.updateProjectEndpoint).toHaveBeenCalledWith("p1", "ep1", {
+      endpoint: {
+        autoscaling_limit_min_cu: 0.5,
+        autoscaling_limit_max_cu: 4,
+        suspend_timeout_seconds: -1,
+      },
+    });
+    expect(res.fields).toMatchObject({ autoscalingMaxCu: "4", suspendTimeout: "-1" });
+  });
+
+  it("rejects an inverted autoscaling range", async () => {
+    await expect(
+      makeClient().updateResource("neon-endpoint", "acct1:neon-endpoint:p1/ep1", ACCOUNT, {
+        autoscalingMinCu: "4",
+        autoscalingMaxCu: "1",
+      }),
+    ).rejects.toThrow(/max compute/);
+  });
+
+  it("changes a database owner", async () => {
+    api.updateProjectBranchDatabase.mockResolvedValue(
+      wrap({ database: { id: 1, name: "app", branch_id: "b1", owner_name: "alice" } }),
+    );
+    await makeClient().updateResource("neon-database", "acct1:neon-database:p1/b1/app", ACCOUNT, {
+      ownerName: "alice",
+    });
+    expect(api.updateProjectBranchDatabase).toHaveBeenCalledWith("p1", "b1", "app", {
+      database: { owner_name: "alice" },
+    });
+  });
+
+  it("restarts endpoints, sets the default branch and resets from parent", async () => {
+    api.getProjectBranch.mockResolvedValue(wrap({ branch: { id: "b2", parent_id: "b1" } }));
+    const client = makeClient();
+    await client.invokeAction("neon-endpoint", "acct1:neon-endpoint:p1/ep1", "restart", ACCOUNT);
+    await client.invokeAction("neon-branch", "acct1:neon-branch:p1/b2", "set-default", ACCOUNT);
+    await client.invokeAction(
+      "neon-branch",
+      "acct1:neon-branch:p1/b2",
+      "reset-from-parent",
+      ACCOUNT,
+    );
+    expect(api.restartProjectEndpoint).toHaveBeenCalledWith("p1", "ep1");
+    expect(api.setDefaultProjectBranch).toHaveBeenCalledWith("p1", "b2");
+    expect(api.restoreProjectBranch).toHaveBeenCalledWith("p1", "b2", { source_branch_id: "b1" });
+  });
+
+  it("restores a branch to a point in time, keeping its current state", async () => {
+    await makeClient().executeNoSqlCommand(
+      "neon-branch",
+      "acct1:neon-branch:p1/b2",
+      ACCOUNT,
+      "restore",
+      [JSON.stringify({ timestamp: "2026-10-01T12:00:00Z", preserveUnderName: "before" })],
+    );
+    expect(api.restoreProjectBranch).toHaveBeenCalledWith("p1", "b2", {
+      source_branch_id: "b2",
+      source_timestamp: "2026-10-01T12:00:00Z",
+      preserve_under_name: "before",
+    });
+  });
+
+  it("creates a schema-only, expiring branch from a chosen parent", async () => {
+    api.createProjectBranch.mockResolvedValue(
+      wrap({ branch: { id: "b3", name: "ci", project_id: "p1", parent_id: "b1" } }),
+    );
+    const res = await makeClient().createResource(
+      "neon-branch",
+      ACCOUNT,
+      {
+        name: "ci",
+        parentId: "b1",
+        initSource: "schema-only",
+        parentTimestamp: "2026-10-01T00:00:00Z",
+        expiresAt: "2026-10-10T00:00:00Z",
+        protected: "false",
+      },
+      "acct1:neon-project:p1",
+    );
+    expect(api.createProjectBranch).toHaveBeenCalledWith("p1", {
+      branch: {
+        name: "ci",
+        parent_id: "b1",
+        init_source: "schema-only",
+        expires_at: "2026-10-10T00:00:00Z",
+      },
+      endpoints: [{ type: "read_write" }],
+    });
+    expect(res.fields).toMatchObject({ parentId: "b1" });
+  });
+
+  it("offers branch actions that fit the branch", () => {
+    const render = (fields: Record<string, string | number | boolean>) =>
+      (
+        makeClient().renderDetail({
+          id: "acct1:neon-branch:p1/b2",
+          pluginId: "neon",
+          resourceTypeId: "neon-branch",
+          accountId: ACCOUNT,
+          displayName: "dev",
+          externalId: "b2",
+          fields,
+          resolvedOutputs: {},
+          secretStates: [],
+          createdAt: "",
+          updatedAt: "",
+        }).headerActions ?? []
+      ).map((a) => a.label);
+    expect(render({ primary: false, parentId: "b1", protected: false })).toEqual([
+      "Refresh",
+      "Restore to Point in Time",
+      "Set as Default",
+      "Reset from Parent",
+    ]);
+    expect(render({ primary: true })).toEqual(["Refresh", "Restore to Point in Time"]);
   });
 });
