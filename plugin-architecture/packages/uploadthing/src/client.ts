@@ -5,6 +5,7 @@ import type {
   DetailViewSchema,
   HostServices,
   PluginClient,
+  QuotaUsage,
   ResourceInstance,
   SchemaNode,
   SectionNode,
@@ -17,6 +18,7 @@ import {
   jsonRestFetch,
   externalIdOf,
   buildMultipartBody,
+  normalizeQuotaUsage,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -656,6 +658,19 @@ export class UploadThingClient implements PluginClient {
           description:
             "Optional stable identifier. UploadThing serves the file at this id as well as at its generated key.",
         },
+        {
+          key: "contentDisposition",
+          label: "Content Disposition",
+          kind: "select",
+          required: false,
+          defaultValue: "inline",
+          options: [
+            { id: "inline", label: "Inline: display in the browser" },
+            { id: "attachment", label: "Attachment: download as a file" },
+          ],
+          description:
+            "How browsers treat the file when its URL is opened. Attachment forces a download, which suits archives and documents.",
+        },
         ...(info.allowACLOverride
           ? [
               {
@@ -705,9 +720,13 @@ export class UploadThingClient implements PluginClient {
     const name = (fields["fileName"] ?? "").trim() || fileNameFromUrl(sourceUrl);
     const contentType = blob.type || download.headers.get("content-type") || "";
 
+    const disposition = fields["contentDisposition"];
     const key = await this.uploadBlob(blob, name, contentType, {
       ...(fields["customId"] ? { customId: fields["customId"] } : {}),
       ...(fields["acl"] ? { acl: fields["acl"] } : {}),
+      ...(disposition === "inline" || disposition === "attachment"
+        ? { contentDisposition: disposition }
+        : {}),
     });
 
     const info = await this.appInfo();
@@ -752,7 +771,7 @@ export class UploadThingClient implements PluginClient {
     blob: Blob,
     name: string,
     contentType: string,
-    opts: { customId?: string; acl?: string },
+    opts: { customId?: string; acl?: string; contentDisposition?: "inline" | "attachment" },
   ): Promise<string> {
     const prepared = await this.post<UtPreparedUpload>("/v7/prepareUpload", {
       fileName: name,
@@ -760,6 +779,7 @@ export class UploadThingClient implements PluginClient {
       ...(contentType ? { fileType: contentType } : {}),
       ...(opts.customId ? { customId: opts.customId } : {}),
       ...(opts.acl ? { acl: opts.acl } : {}),
+      ...(opts.contentDisposition ? { contentDisposition: opts.contentDisposition } : {}),
     });
 
     // UploadThing's docs use multipart FormData for this PUT
@@ -846,6 +866,10 @@ export class UploadThingClient implements PluginClient {
    * ACL moves. `POST /v6/updateACL` only succeeds when the app was configured
    * to allow per-file overrides, which is why the detail view hides these
    * actions otherwise rather than letting the user discover it as a 400.
+   *
+   * `delete-failed` on the app clears every upload that never completed: such
+   * a file cannot be served, still shows in the listing, and is otherwise only
+   * removable one row at a time.
    */
   async invokeAction(
     typeId: string,
@@ -860,6 +884,17 @@ export class UploadThingClient implements PluginClient {
       await this.post<{ success: boolean; updatedCount: number }>("/v6/updateACL", {
         updates: [{ fileKey: key, acl }],
       });
+      return;
+    }
+    if (typeId === "ut-app" && actionId === "delete-failed") {
+      const files = await this.fetchFiles();
+      const fileKeys = files.filter((f) => f.status === "Failed").map((f) => f.key);
+      for (let i = 0; i < fileKeys.length; i += DELETE_BATCH_SIZE) {
+        await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
+          fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE),
+        });
+      }
+      this.invalidateFiles();
       return;
     }
     throw new Error(`UploadThing plugin: unknown action "${actionId}" for type "${typeId}"`);
@@ -1019,6 +1054,29 @@ export class UploadThingClient implements PluginClient {
     );
   }
 
+  /**
+   * The storage quota as a quota reading. `totalBytes` is what counts against
+   * `limitBytes`: on the free tier that spans every free app on the account,
+   * which is exactly why it, and not `appTotalBytes`, is the used figure.
+   */
+  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
+    const [info, usage] = await Promise.all([
+      this.appInfo(),
+      this.post<UtUsageInfo>("/v6/getUsageInfo"),
+    ]);
+    return normalizeQuotaUsage([
+      {
+        id: `storage/${info.appId}`,
+        service: "storage",
+        name: "Storage",
+        used: usage.totalBytes / (1024 * 1024 * 1024),
+        limit: usage.limitBytes / (1024 * 1024 * 1024),
+        unit: "GB",
+        adjustable: true,
+      },
+    ]);
+  }
+
   // -------------------------------------------------------------------------
   // Rendering
   // -------------------------------------------------------------------------
@@ -1171,6 +1229,18 @@ export class UploadThingClient implements PluginClient {
       storageBrowser: { bucketName: appId },
       headerActions: [
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        {
+          kind: "action",
+          label: "Delete failed uploads",
+          variant: "ghost",
+          action: {
+            type: "plugin-action",
+            actionId: "delete-failed",
+            confirmMessage:
+              "Delete every file whose upload never completed? They cannot be served, so nothing that works today will break.",
+            successMessage: "Failed uploads deleted.",
+          },
+        },
         {
           kind: "action",
           label: "Open dashboard",

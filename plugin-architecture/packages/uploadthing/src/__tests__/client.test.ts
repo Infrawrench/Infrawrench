@@ -732,3 +732,74 @@ describe("renderDetail", () => {
     expect(c.renderSidebarItem(files[1]!).status?.status).toBe("error");
   });
 });
+
+describe("content disposition", () => {
+  it("passes the chosen disposition to prepareUpload", async () => {
+    installReadFetch((url, init) => {
+      if (url === "https://example.com/report.pdf") {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/pdf" }),
+          blob: async () => new Blob([new Uint8Array(8)], { type: "application/pdf" }),
+        } as unknown as Response;
+      }
+      if (url.endsWith("/v7/prepareUpload")) {
+        return jsonResponse({ key: "pdf-key", url: "https://sea1.ingest.uploadthing.com/pdf-key" });
+      }
+      if (url.startsWith("https://sea1.ingest.uploadthing.com/") && init?.method === "PUT") {
+        return jsonResponse({ ok: true });
+      }
+      return undefined;
+    });
+
+    await client().createResource("ut-file", ACCOUNT, {
+      sourceUrl: "https://example.com/report.pdf",
+      contentDisposition: "attachment",
+    });
+
+    const prepare = calls.find((c) => c.url.endsWith("/v7/prepareUpload"));
+    expect(JSON.parse(String(prepare?.init?.body))).toMatchObject({
+      contentDisposition: "attachment",
+    });
+  });
+
+  it("offers inline and attachment on the create form", async () => {
+    installReadFetch();
+    const config = await client().getCreateConfig("ut-file");
+    const field = config.fields.find((f) => f.key === "contentDisposition");
+    expect(field?.options?.map((o) => o.id)).toEqual(["inline", "attachment"]);
+  });
+});
+
+describe("delete failed uploads", () => {
+  it("deletes only the files whose upload failed", async () => {
+    installReadFetch((url) =>
+      url.endsWith("/v6/deleteFiles")
+        ? jsonResponse({ success: true, deletedCount: 1 })
+        : undefined,
+    );
+    await client().invokeAction("ut-app", `${ACCOUNT}:ut-app:${APP_ID}`, "delete-failed", ACCOUNT);
+    const deletes = calls.filter((c) => c.url.endsWith("/v6/deleteFiles"));
+    expect(deletes).toHaveLength(1);
+    expect(JSON.parse(String(deletes[0]?.init?.body))).toEqual({ fileKeys: ["cccc-dddd"] });
+  });
+});
+
+describe("fetchQuotas", () => {
+  it("reports the storage counted against the quota, in GB", async () => {
+    installReadFetch();
+    const quotas = await client().fetchQuotas(ACCOUNT);
+    expect(quotas).toEqual([
+      {
+        id: `storage/${APP_ID}`,
+        service: "storage",
+        name: "Storage",
+        used: 25,
+        limit: 100,
+        unit: "GB",
+        adjustable: true,
+      },
+    ]);
+  });
+});

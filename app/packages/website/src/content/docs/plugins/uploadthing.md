@@ -35,7 +35,8 @@ field — Infrawrench works out which one you gave it:
   UploadThing's own listing. This tab is the file listing; the Overview tab
   deliberately does not repeat it.
 - **Upload from URL** — takes a public URL, downloads it, and pushes the bytes
-  to UploadThing. Optionally set a custom ID and, where the app allows it, the
+  to UploadThing. Optionally set a custom ID, whether browsers show the file
+  inline or download it as an attachment, and, where the app allows it, the
   file's access level.
 - **Make public / Make private** on a file, when the app allows per-file ACL
   overrides. These buttons are hidden when it does not, because the API rejects
@@ -45,7 +46,11 @@ field — Infrawrench works out which one you gave it:
   file is read: the public `https://<app-id>.ufs.sh/f/<key>` URL only works for
   files whose ACL is `public-read`.
 - **Failed uploads** show up on the Potential savings page — an upload that
-  never completed cannot be served and is safe to delete.
+  never completed cannot be served and is safe to delete. **Delete failed
+  uploads** on the app page clears all of them in one go.
+- **Storage quota** feeds the [Quota radar](../features/quota-radar.md): the
+  storage counted against the app's quota is tracked over time, with an alert
+  before uploads start failing.
 
 ![UploadThing app detail page showing the storage quota section, with the file listing on its own Files tab](https://agent-assets.infrawrench.com/docs-screenshots/plugins/uploadthing/app-detail-storage.png)
 
