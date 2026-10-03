@@ -786,7 +786,7 @@ describe("CloudflareClient.fetchMetricSeries", () => {
                   sum: { bytes: 60 },
                 },
               ],
-              queuesBacklogAdaptiveGroups: [
+              queueBacklogAdaptiveGroups: [
                 { dimensions: { datetimeHour: dt }, avg: { messages: 2, bytes: 40 } },
               ],
             },
