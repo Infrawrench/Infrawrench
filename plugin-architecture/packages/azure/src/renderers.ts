@@ -14,6 +14,7 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { azureActionButtons } from "./actions.js";
+import { AZURE_LOG_TYPES } from "./logs.js";
 import {
   joinSubtitle,
   labeledFieldItems,
@@ -125,6 +126,11 @@ export function renderAzureDetail(
   const actionButtons = azureActionButtons(resource);
   if (actionButtons.length > 0) {
     detail.headerActions = [...actionButtons, ...(detail.headerActions ?? [])];
+  }
+
+  // Container log tails and system events: see `logs.ts`.
+  if (AZURE_LOG_TYPES.has(resource.resourceTypeId)) {
+    detail.logs = { defaultTailLines: 200 };
   }
 
   if (resource.resourceTypeId === "azure-storage-account") {

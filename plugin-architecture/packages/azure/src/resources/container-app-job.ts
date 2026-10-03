@@ -46,5 +46,5 @@ export const ContainerAppJobResourceType = rt({
     },
   ],
   iconKey: "batch",
-  supportsMetrics: false,
+  supportsMetrics: true,
 });
