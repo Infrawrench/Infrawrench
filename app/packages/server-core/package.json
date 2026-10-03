@@ -280,7 +280,7 @@
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
     "ssh2": "^1.17.0",
-    "undici": "^7.29.0",
+    "undici": "^7.29.1",
     "ws": "^8.21.3"
   },
   "devDependencies": {

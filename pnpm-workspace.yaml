@@ -5,6 +5,12 @@ packages:
 overrides:
   yaml: ">=2.8.3"
   "@esbuild-kit/core-utils>esbuild": ">=0.25.0"
+  # Parents that pin a vulnerable version exactly. Drop each once the parent
+  # (wrangler's miniflare, the AWS SDK's @smithy/middleware-compression) is
+  # bumped past a release that ships the fixed version itself.
+  "miniflare>sharp": ">=0.35.4"
+  "miniflare>undici": ">=7.29.1 <8"
+  "@smithy/middleware-compression>fflate": ">=0.8.3"
 
 # drizzle-orm has no ClickHouse dialect upstream. The patch adds the built
 # `drizzle-orm/clickhouse-core` (dialect, columns, engines, query builders) and
