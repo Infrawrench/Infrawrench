@@ -1,7 +1,8 @@
 # Keyless CI auth. GitHub Actions presents its OIDC token to GCP's STS, which
 # swaps it for a short-lived credential on the service account below — no JSON
-# key exists to leak or rotate. Only workflows in var.github_repository can do
-# it (attribute_condition), and the account can do exactly two things: push to
+# key exists to leak or rotate. Only main-branch jobs in var.github_repository
+# that run under the var.github_deploy_environment GitHub environment can do it
+# (attribute_condition), and the account can do exactly two things: push to
 # the Artifact Registry repo, and talk to the cluster.
 
 resource "google_service_account" "ci" {
@@ -26,8 +27,20 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository" = "assertion.repository"
   }
 
-  # Without this condition the provider would trust every repository on GitHub.
-  attribute_condition = "assertion.repository == '${var.github_repository}'"
+  # Without the repository check the provider would trust every repository on
+  # GitHub. Without the ref and environment checks it would trust every branch
+  # of this one: anyone who can push a branch could add a workflow that mints
+  # a token, and the CI account can read cluster Secrets and roll out any
+  # image. `ref` is set by GitHub from the triggering event, so a workflow file
+  # cannot forge it; `environment` is only present when the job declares one,
+  # and the environment's deployment branch rule limits which refs may enter
+  # it. A missing claim makes the expression error, which STS treats as a
+  # denial.
+  attribute_condition = join(" && ", [
+    "assertion.repository == '${var.github_repository}'",
+    "assertion.ref == 'refs/heads/main'",
+    "assertion.environment == '${var.github_deploy_environment}'",
+  ])
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

@@ -13,6 +13,9 @@ on:
 jobs:
   purge:
     name: Purge infrawrench.com zone cache
+    # Dispatch can pick any ref, and that ref's copy of this file runs with the
+    # zone token; only main's reviewed copy may.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Purge

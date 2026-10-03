@@ -9,7 +9,13 @@ name: web-deploy
 # credential on the CI service account via Workload Identity Federation, so
 # there is no GCP key in repo secrets.
 #
-# Required repo secrets:
+# Every job runs under the `production` GitHub environment and only from main.
+# The CI service account's Workload Identity condition (infra/terraform/ci.tf)
+# requires both the main ref and that environment, so no other branch can mint
+# GCP credentials; the environment's deployment branch rule (main only) keeps
+# its secrets away from other branches too.
+#
+# Required `production` environment secrets:
 #   PROD_DATABASE_URL — Neon connection string for drizzle migrations
 # Required repo variables (all four are terraform outputs):
 #   GCP_WORKLOAD_IDENTITY_PROVIDER — projects/.../workloadIdentityPools/.../providers/github
@@ -49,7 +55,10 @@ env:
 
 jobs:
   build-push:
+    # workflow_dispatch can target any ref; only main may deploy.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production
     # id-token lets the job mint the OIDC assertion Workload Identity
     # Federation trades for GCP credentials.
     permissions:
@@ -96,7 +105,11 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.service }},mode=max
 
   migrate:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -116,8 +129,10 @@ jobs:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
 
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: [build-push, migrate]
+    environment: production
     permissions:
       contents: read
       id-token: write

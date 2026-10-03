@@ -53,6 +53,8 @@ env:
 jobs:
   gate:
     name: Decide whether to publish
+    # workflow_dispatch can target any ref; only main may publish.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.gate.outputs.version }}

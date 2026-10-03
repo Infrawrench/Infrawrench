@@ -113,14 +113,26 @@ variable "build_service_account" {
 variable "github_repository" {
   description = <<-EOT
     `owner/repo` allowed to impersonate the CI service account through Workload
-    Identity Federation. Only pushes from this repository can push images or
-    reach the cluster — no long-lived JSON key exists to leak.
+    Identity Federation. Only main-branch runs from this repository can push
+    images or reach the cluster — no long-lived JSON key exists to leak.
   EOT
   type        = string
 
   # Case-sensitive: GitHub sends the canonical casing in the OIDC claim, and a
   # mismatch fails the attribute_condition with no useful error on the CI side.
   default = "Infrawrench/Infrawrench"
+}
+
+variable "github_deploy_environment" {
+  description = <<-EOT
+    GitHub environment a job must declare to impersonate the CI service
+    account, on top of running from refs/heads/main. The web-deploy jobs run
+    under it, and its deployment branch rule (main only) is what keeps
+    environment-scoped secrets such as PROD_DATABASE_URL away from other
+    branches.
+  EOT
+  type        = string
+  default     = "production"
 }
 
 variable "vertex_location" {
