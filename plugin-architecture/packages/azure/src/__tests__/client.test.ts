@@ -189,7 +189,7 @@ describe("AzureClient token + HTTP helpers", () => {
     expect(series).toEqual([
       {
         label: "Percentage CPU",
-        unit: "Percent",
+        unit: "%",
         points: [
           { timestamp: Date.parse("2026-06-08T12:00:00Z"), value: 42 },
           { timestamp: Date.parse("2026-06-08T12:05:00Z"), value: 45 },

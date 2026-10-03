@@ -45,7 +45,7 @@ App Service Plans are listed read-only — Infrawrench does not create them. Eac
 
 Web apps and function apps link to the plan they run on in the [dependency graph](../features/dependency-graph.md), so opening a plan shows everything it hosts.
 
-A **Metrics** tab reports the plan-wide CPU and memory percentage, disk and HTTP queue length, and data in/out — these are the numbers to scale on, since an individual app's metrics don't show plan-level saturation.
+A **Metrics** tab reports the plan-wide CPU and memory percentage, disk and HTTP queue length, data in/out, established TCP connections and outbound sockets — these are the numbers to scale on, since an individual app's metrics don't show plan-level saturation.
 
 ![Azure App Service Plan detail page showing the SKU, tier and instance-count fields, with a Dependencies tab listing the web apps that run on the plan](https://agent-assets.infrawrench.com/docs-screenshots/plugins/azure/app-service-plan-detail.png)
 
@@ -57,7 +57,9 @@ Container apps, Container Apps jobs and Container Apps environments are listed f
 
 **Editing an app** changes the image, CPU, memory, and minimum or maximum replicas of its first container. Every other container, probe, volume and scale rule is kept as it is, and Azure rolls the change out as a new revision. Setting min replicas to 0 lets the app scale to zero.
 
-The **Metrics** tab shows CPU and memory (as a percentage of the limit and in absolute terms), requests, response time, replica count, restarts, and network in and out.
+The **Metrics** tab shows CPU and memory (as a percentage of the limit and in absolute terms), requests, response time, replica count, restarts, network in and out, resiliency retries and timeouts, GPU utilization on GPU workload profiles, and JVM memory and garbage collections for Java apps. Jobs chart executions, CPU and memory used against what they requested, restarts, and network traffic. Environments chart workload profile node count and the ingress pods' CPU and memory.
+
+A **Logs** tab streams the same log tails as `az containerapp logs show`. On an app, pick a replica's container from the dropdown for its console output, or **System events** for scaling, revision and probe events; an app scaled to zero has only system events. On an environment the tab shows the environment-wide system event stream. Each fetch returns the last 300 lines at most, the stream's own limit.
 
 Jobs show their trigger (manual, schedule with its cron expression, or event), parallelism, timeout and retry limit. Environments show their default domain, static IP, workload profiles, zone redundancy, whether they are internal-only, and their infrastructure subnet.
 
@@ -80,6 +82,23 @@ Azure AI Foundry, Azure OpenAI and other Azure AI services accounts (`Microsoft.
 The endpoint and an **API key** are outputs, and an **Azure OpenAI** secret export template writes them as `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY`. Accounts with key authentication disabled are Entra ID only, and the key output says so.
 
 The **Metrics** tab shows requests, prompt, completion and total tokens, time to response, availability and provisioned (PTU) utilization for OpenAI and Foundry models, and calls, errors and latency for the other kinds. Posture checks flag accounts that still accept API keys.
+
+## Metrics and logs
+
+Every resource type except resource groups, networking plumbing (VNets, subnets, NSGs, route tables), managed identities and app registrations has a **Metrics** tab backed by Azure Monitor platform metrics, which need nothing beyond the **Reader** role. Counters (requests, errors, bytes moved) are summed per bucket and gauges are averaged or maxed as Azure Monitor itself defaults them. Buckets are 5 minutes for windows up to 6 hours and widen up to 6 hours for 30-day windows. Metrics a resource's SKU or tier doesn't emit are left out rather than shown empty. Highlights beyond CPU and memory:
+
+- **Virtual machines**: available memory percentage, B-series CPU credits, OS and data disk IOPS and bandwidth consumed, disk latency, VM-level cached and uncached IOPS consumed, inbound and outbound flows, and VM availability.
+- **AKS clusters**: node CPU, memory, disk and network, ready pods, node conditions, unschedulable pods, and the managed control plane's API server CPU, memory and inflight requests and etcd database usage.
+- **SQL Database**: CPU, DTU, serverless app CPU and memory, data and log IO, workers, sessions, successful, failed and firewall-blocked connections, deadlocks and availability.
+- **PostgreSQL and MySQL flexible servers**: storage, IOPS and disk queue depth, failed or aborted connections, network in and out, CPU credits, replication lag, backup storage, transaction ID usage (PostgreSQL) and queries and slow queries (MySQL).
+- **Cosmos DB**: requests, request units, normalized RU consumption, throttled requests, server-side latency, availability, provisioned and autoscaled throughput, data, index and document counts.
+- **App Service and Function Apps**: requests, response time, HTTP 2xx/4xx/5xx, data in and out, health check status, queued requests, connections, instance count, and Flex Consumption's on-demand and always-ready executions.
+- **Messaging**: Service Bus active, dead-lettered and scheduled messages, server and user errors, throttling, send latency and namespace CPU and memory; Event Hubs requests, errors, throttling, quota-exceeded errors, connections and Capture bytes and backlog.
+- **Networking**: application gateway requests, failures, healthy hosts, total and backend response time, client RTT and capacity units; load balancer SNAT connections and ports; NAT gateway dropped packets; firewall health, throughput, SNAT port utilization and latency; public IP DDoS status; DNS zone record-set and virtual network link counts.
+- **Storage, registries and vaults**: storage server latency and availability; container registry pulls and pushes (total and successful), data transfer and task run time; Key Vault API results and availability.
+- **Log Analytics workspaces**: ingestion volume and time, query count, failed queries and query availability.
+
+Container instances, container apps and Container Apps environments also have a **Logs** tab. For a container instance it is the tail of the selected container's output with timestamps, read through the ARM `containers/logs` operation; Azure keeps those logs only while the group is running.
 
 ## Tips & limits
 

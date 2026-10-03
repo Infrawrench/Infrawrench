@@ -42,5 +42,5 @@ export const ContainerAppEnvironmentResourceType = rt({
     },
   ],
   iconKey: "layers",
-  supportsMetrics: false,
+  supportsMetrics: true,
 });

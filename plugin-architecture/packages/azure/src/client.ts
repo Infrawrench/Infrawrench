@@ -11,6 +11,7 @@
  *   - app-registration.ts          Graph-based app registration listing
  *   - output-resolver.ts           resolveOutput per type
  *   - dashboard-stats.ts           fetchDashboardStats per type
+ *   - metrics.ts / logs.ts         Azure Monitor series, container log tails
  *   - renderers.ts                 renderDetail / renderSidebarItem
  *   - delete-handlers.ts           deleteResource
  *   - attach-handlers.ts           attachResource (disk/nsg → vm)
@@ -40,6 +41,8 @@ import type {
   CreateSizePricingRequest,
   DashboardStat,
   CredentialExport,
+  LogsFetchParams,
+  LogsFetchResult,
   MetricSeries,
   PublishMessagePayload,
   PublishMessageResult,
@@ -75,6 +78,7 @@ import { makeGraphClient } from "./graph-client.js";
 import { resolveAzureOutput } from "./output-resolver.js";
 import { buildAzureDashboardStats } from "./dashboard-stats.js";
 import { fetchAzureMetricSeries } from "./metrics.js";
+import { fetchAzureLogs } from "./logs.js";
 import { renderAzureDetail, renderAzureSidebarItem } from "./renderers.js";
 import { fetchAzureCostData } from "./cost-data.js";
 import { fetchAzureCommitments } from "./commitments.js";
@@ -470,6 +474,15 @@ export class AzureClient implements PluginClient {
   ): Promise<MetricSeries[]> {
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     return fetchAzureMetricSeries(this.httpCtx, resourceTypeId, resource, timeRange);
+  }
+
+  getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    return fetchAzureLogs(this.httpCtx, typeId, resourceId, params);
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostFetchResult> {
