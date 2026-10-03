@@ -208,18 +208,17 @@ describe("getResource", () => {
 });
 
 describe("resolveOutput", () => {
-  it("resolves branch connection string via password creation", async () => {
+  it("resolves a Vitess branch connection string via password creation", async () => {
     mockFetchSequence(
+      okJson(branchRecord({ name: "main", kind: "mysql" })),
       okJson({
-        data: {
-          id: "pwid",
-          name: "n",
-          access_host_url: "host.psdb.cloud",
-          username: "user name",
-          plain_text: "p@ss",
-          database_branch: { name: "main" },
-          created_at: "",
-        },
+        id: "pwid",
+        name: "n",
+        access_host_url: "host.psdb.cloud",
+        username: "user name",
+        plain_text: "p@ss",
+        database_branch: { name: "main" },
+        created_at: "",
       }),
     );
     const client = makeClient();
@@ -230,10 +229,34 @@ describe("resolveOutput", () => {
       ACCOUNT,
     );
     expect(cs).toBe("mysql://user%20name:p%40ss@host.psdb.cloud/mydb");
-    const [url, init] = fetchMock.mock.calls[0]!;
+    const [url, init] = fetchMock.mock.calls[1]!;
     expect(url).toContain("/databases/mydb/branches/main/passwords");
     expect((init as { method: string }).method).toBe("POST");
     expect(JSON.parse((init as { body: string }).body).name).toMatch(/^infrawrench-/);
+  });
+
+  it("resolves a Postgres branch connection string via role creation", async () => {
+    mockFetchSequence(
+      okJson(branchRecord({ name: "main", kind: "postgresql" })),
+      okJson({
+        id: "role1",
+        name: "infrawrench",
+        username: "pscale_api_x",
+        password: "s3cr/t",
+        access_host_url: "aws.connect.psdb.cloud",
+      }),
+    );
+    const client = makeClient();
+    const cs = await client.resolveOutput(
+      "ps-branch",
+      "acct1:ps-branch:pgdb/main",
+      "connectionString",
+      ACCOUNT,
+    );
+    expect(cs).toBe(
+      "postgresql://pscale_api_x:s3cr%2Ft@aws.connect.psdb.cloud:5432/postgres?sslmode=require",
+    );
+    expect(fetchMock.mock.calls[1]![0]).toContain("/databases/pgdb/branches/main/roles");
   });
 
   it("resolves database simple fields", async () => {
@@ -580,10 +603,47 @@ describe("renderSidebarItem", () => {
 });
 
 describe("getCreateConfig", () => {
-  it("database config has region picker", async () => {
+  it("database config offers engine, live regions and per-engine cluster sizes", async () => {
+    fetchMock.mockImplementation(async (input: string) => {
+      const url = String(input);
+      const body = url.includes("/regions")
+        ? {
+            data: [
+              {
+                slug: "us-east",
+                display_name: "N. Virginia",
+                mysql_supported: true,
+                postgresql_supported: true,
+              },
+              {
+                slug: "eu-west",
+                display_name: "Ireland",
+                mysql_supported: true,
+                postgresql_supported: false,
+              },
+            ],
+          }
+        : url.includes("engine=postgresql")
+          ? [{ name: "PS_5_AWS_X86", display_name: "PS-5", cpu: "1/16", enabled: true }]
+          : [{ name: "PS_10", display_name: "PS-10", cpu: "1/8", enabled: true }];
+      return response(body);
+    });
     const client = makeClient();
     const cfg = await client.getCreateConfig("ps-database");
-    expect(cfg.fields.map((f) => f.key)).toEqual(["name", "region"]);
+    expect(cfg.fields.map((f) => f.key)).toEqual([
+      "name",
+      "kind",
+      "region",
+      "clusterSizeMysql",
+      "clusterSizePostgres",
+    ]);
+    const region = cfg.fields.find((f) => f.key === "region")!;
+    expect(region.filterByFieldKey).toBe("kind");
+    expect(region.regions?.find((r) => r.id === "eu-west")?.availableFor).toEqual(["mysql"]);
+    expect(cfg.fields.find((f) => f.key === "clusterSizePostgres")).toMatchObject({
+      defaultValue: "PS_5_AWS_X86",
+      showWhen: { fieldKey: "kind", fieldValue: "postgresql" },
+    });
   });
 
   it("branch config without parent lists databases + branches, defaults main", async () => {
@@ -593,7 +653,13 @@ describe("getCreateConfig", () => {
     );
     const client = makeClient();
     const cfg = await client.getCreateConfig("ps-branch");
-    expect(cfg.fields.map((f) => f.key)).toEqual(["databaseName", "name", "parentBranch"]);
+    expect(cfg.fields.map((f) => f.key)).toEqual([
+      "databaseName",
+      "name",
+      "parentBranch",
+      "seedData",
+      "deletionProtected",
+    ]);
     const parent = cfg.fields.find((f) => f.key === "parentBranch");
     expect(parent).toMatchObject({ defaultValue: "main" });
   });
@@ -616,7 +682,12 @@ describe("getCreateConfig", () => {
     );
     const client = makeClient();
     const cfg = await client.getCreateConfig("ps-branch", "acct1:ps-database:mydb");
-    expect(cfg.fields.map((f) => f.key)).toEqual(["name", "parentBranch"]);
+    expect(cfg.fields.map((f) => f.key)).toEqual([
+      "name",
+      "parentBranch",
+      "seedData",
+      "deletionProtected",
+    ]);
     // branchSourceDb should be the parent external id "mydb"
     const branchCallUrl = fetchMock.mock.calls[1]![0];
     expect(branchCallUrl).toContain("/databases/mydb/branches");
@@ -630,23 +701,35 @@ describe("getCreateConfig", () => {
     expect(parent).not.toHaveProperty("defaultValue");
   });
 
-  it("password config supports explicit and parent branch creation", async () => {
+  it("password config picks a Vitess branch or inherits the parent", async () => {
+    mockFetchSequence(
+      okJson({
+        data: [
+          dbRecord({ name: "db1", kind: "mysql" }),
+          dbRecord({ name: "pg", kind: "postgresql" }),
+        ],
+      }),
+      okJson({ data: [branchRecord({ name: "main" })] }),
+    );
     const client = makeClient();
     const explicit = await client.getCreateConfig("ps-password");
     expect(explicit.fields.map((f) => f.key)).toEqual([
-      "databaseName",
-      "branchName",
+      "branchRef",
       "name",
       "role",
       "ttl",
+      "replica",
       "cidrs",
+    ]);
+    expect(explicit.fields[0]!.options).toEqual([
+      { id: "db1/main", label: "db1 / main", description: "production" },
     ]);
     expect(explicit.fields.find((f) => f.key === "role")).toMatchObject({
       defaultValue: "reader",
     });
 
     const inherited = await client.getCreateConfig("ps-password", "acct1:ps-branch:mydb/main");
-    expect(inherited.fields.map((f) => f.key)).toEqual(["name", "role", "ttl", "cidrs"]);
+    expect(inherited.fields.map((f) => f.key)).toEqual(["name", "role", "ttl", "replica", "cidrs"]);
   });
 
   it("throws unknown type", async () => {
