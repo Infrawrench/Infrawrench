@@ -10,7 +10,7 @@ sidebar_order: 46
 - **Pronunciation dictionaries**: named sets of text-to-pronunciation overrides applied at synthesis time, with their entries listed inline. Create one, edit its name, description, access and entries, or delete it.
 - **Agents**: your Cartesia Managed Agents, with the voice and language they speak, noise suppression, phone numbers, webhook, the Git repository and branch they deploy from, and a table of recent deployments showing which one is live. Edit the name, description, language and noise suppression, or delete the agent.
 - **Phone numbers**: Cartesia-provisioned, Twilio and SIP trunk numbers, with the agent each one routes to. Read-only.
-- **API keys**: the keys issued for this organization, with who created them and whether that person is still in the org, plus a **Metrics** tab charting each key's daily credits. Read-only, and admin-key only.
+- **API keys**: the keys issued for this organization, with who created them and whether that person is still in the org, plus a **Metrics** tab charting each key's daily credits, in total and split by capability (text to speech, speech to text and so on). Read-only, and admin-key only.
 - **Organization members**: everyone in your Cartesia organization, with their role and when they joined. Remove a member (admins cannot be removed through the API, and removal keeps their Cartesia account). Admin-key only.
 
 ## Credentials
