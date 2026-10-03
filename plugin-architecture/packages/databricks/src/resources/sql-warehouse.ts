@@ -88,6 +88,8 @@ export const SqlWarehouseResourceType = rt({
   },
   supportsCreate: true,
   supportsUpdate: true,
+  // Query volume, failures, duration and bytes read from the query history API.
+  supportsMetrics: true,
   iconKey: "database",
   resourceSqlDriver: {
     driver: "databricks",

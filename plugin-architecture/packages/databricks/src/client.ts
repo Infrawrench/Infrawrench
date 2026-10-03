@@ -15,11 +15,15 @@ import type {
   ChatStreamEvent,
   CostFetchRange,
   CostRow,
+  LogsFetchParams,
+  LogsFetchResult,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 import {
   labeledFieldItems,
   labeledOutputItems,
   streamOpenAiSseChat,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { fetchDatabricksCostData } from "./cost-data.js";
 import type { ListerContext } from "./resource-listers.js";
@@ -51,6 +55,38 @@ import {
   listLakebaseProjects,
 } from "./resource-listers.js";
 import { WAREHOUSE_SIZES } from "./resources/sql-warehouse.js";
+import {
+  CLUSTER_ID,
+  bucketSeconds,
+  clusterEventLines,
+  clusterWorkerSeries,
+  jobRunSeries,
+  nodeTimelineSeries,
+  nodeTimelineSql,
+  pipelineEventLines,
+  servedEntityNames,
+  servingEndpointSeries,
+  warehouseQuerySeries,
+} from "./observability.js";
+import type { ClusterEvent, JobRun, PipelineEvent, QueryInfo } from "./observability.js";
+
+/**
+ * Default Metrics window per type: what `fetchMetricSeries` reads when the
+ * host passes no range. Serving endpoints are a current-value scrape, so they
+ * declare none.
+ */
+const METRIC_WINDOWS: Record<string, number> = {
+  "databricks-cluster": 6 * 3_600_000,
+  "databricks-sql-warehouse": 24 * 3_600_000,
+  "databricks-job": 7 * 86_400_000,
+};
+
+/** Types with a Logs tab; each has a branch in `getLogs`. */
+const LOG_TYPES = new Set([
+  "databricks-cluster",
+  "databricks-serving-endpoint",
+  "databricks-pipeline",
+]);
 
 export class DatabricksClient implements PluginClient {
   private readonly host: string;
@@ -83,6 +119,18 @@ export class DatabricksClient implements PluginClient {
   }
 
   private async api<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T> {
+    // Some endpoints return 200 with empty body
+    const text = await this.request(method, path, body);
+    if (!text) return {} as T;
+    return JSON.parse(text) as T;
+  }
+
+  /** Raw response body, for the endpoints that answer in text (metrics export). */
+  private async request(
+    method: string,
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<string> {
     const url = path.startsWith("http") ? path : `${this.host}${path}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.token}`,
@@ -106,8 +154,7 @@ export class DatabricksClient implements PluginClient {
       if (result.status < 200 || result.status >= 300) {
         throw new Error(`Databricks ${method} ${path} failed: ${result.status} ${result.body}`);
       }
-      if (!result.body) return {} as T;
-      return JSON.parse(result.body) as T;
+      return result.body ?? "";
     }
 
     const init: RequestInit = { method, headers };
@@ -120,11 +167,7 @@ export class DatabricksClient implements PluginClient {
       const text = await res.text().catch(() => "");
       throw new Error(`Databricks ${method} ${path} failed: ${res.status} ${text}`);
     }
-
-    // Some endpoints return 200 with empty body
-    const text = await res.text();
-    if (!text) return {} as T;
-    return JSON.parse(text) as T;
+    return res.text();
   }
 
   private makeId(accountId: string, typeId: string, externalId: string): string {
@@ -640,7 +683,16 @@ export class DatabricksClient implements PluginClient {
       };
     }
 
-    return detail;
+    if (LOG_TYPES.has(resource.resourceTypeId)) {
+      detail.logs = { defaultTailLines: 200 };
+    }
+
+    return withMetricsCapability(
+      detail,
+      this.resourceTypes,
+      resource.resourceTypeId,
+      METRIC_WINDOWS[resource.resourceTypeId],
+    );
   }
 
   /**
@@ -816,6 +868,250 @@ export class DatabricksClient implements PluginClient {
       return { ...resource, fields: { ...resource.fields, __recentRuns: JSON.stringify(runs) } };
     } catch {
       return resource;
+    }
+  }
+
+  /**
+   * Metrics per type; see `observability.ts` for where each series comes
+   * from. A failed source drops its series rather than the whole tab, so a
+   * workspace without system-table grants still charts cluster worker counts.
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    if (!externalId) return [];
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs =
+      timeRange?.startMs ?? endMs - (METRIC_WINDOWS[resourceTypeId] ?? 24 * 3_600_000);
+    const id = encodeURIComponent(externalId);
+    switch (resourceTypeId) {
+      case "databricks-serving-endpoint": {
+        const body = await this.request("GET", `/api/2.0/serving-endpoints/${id}/metrics`);
+        return servingEndpointSeries(body, Date.now());
+      }
+      case "databricks-cluster": {
+        const [events, nodes] = await Promise.allSettled([
+          this.clusterEvents(externalId, startMs, endMs),
+          this.nodeTimeline(externalId, startMs, endMs),
+        ]);
+        return [
+          ...(nodes.status === "fulfilled" ? nodes.value : []),
+          ...(events.status === "fulfilled" ? clusterWorkerSeries(events.value) : []),
+        ];
+      }
+      case "databricks-sql-warehouse": {
+        const queries = await this.queryHistory(externalId, startMs, endMs);
+        return warehouseQuerySeries(queries, startMs, endMs);
+      }
+      case "databricks-job": {
+        const runs: JobRun[] = [];
+        let pageToken = "";
+        // runs/list caps `limit` at 25; eight pages is 200 runs, enough for
+        // an hourly job over a week without walking a busy job's whole history.
+        for (let page = 0; page < 8; page++) {
+          const data = await this.api<{ runs?: JobRun[]; next_page_token?: string }>(
+            "GET",
+            `/api/2.2/jobs/runs/list?job_id=${id}&limit=25&start_time_from=${Math.floor(startMs)}` +
+              `&start_time_to=${Math.ceil(endMs)}` +
+              (pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : ""),
+          );
+          runs.push(...(data.runs ?? []));
+          if (!data.next_page_token) break;
+          pageToken = data.next_page_token;
+        }
+        return jobRunSeries(runs);
+      }
+      default:
+        return [];
+    }
+  }
+
+  /** Cluster activity events in a window, newest first, up to 1,000. */
+  private async clusterEvents(
+    clusterId: string,
+    startMs?: number,
+    endMs?: number,
+    max = 1000,
+  ): Promise<ClusterEvent[]> {
+    const events: ClusterEvent[] = [];
+    let pageToken = "";
+    while (events.length < max) {
+      const data = await this.api<{ events?: ClusterEvent[]; next_page_token?: string }>(
+        "POST",
+        "/api/2.1/clusters/events",
+        {
+          cluster_id: clusterId,
+          order: "DESC",
+          page_size: Math.min(500, max - events.length),
+          ...(startMs !== undefined ? { start_time: Math.floor(startMs) } : {}),
+          ...(endMs !== undefined ? { end_time: Math.ceil(endMs) } : {}),
+          ...(pageToken ? { page_token: pageToken } : {}),
+        },
+      );
+      events.push(...(data.events ?? []));
+      if (!data.next_page_token || (data.events ?? []).length === 0) break;
+      pageToken = data.next_page_token;
+    }
+    return events;
+  }
+
+  /**
+   * Per-node utilisation from `system.compute.node_timeline`. Only runs on a
+   * warehouse that is already RUNNING: the Metrics tab refreshes on its own,
+   * and waking a stopped warehouse for every refresh would bill compute the
+   * user never asked for. No running warehouse, or no grant on
+   * `system.compute`, simply means no utilisation series.
+   */
+  private async nodeTimeline(
+    clusterId: string,
+    startMs: number,
+    endMs: number,
+  ): Promise<MetricSeries[]> {
+    if (!CLUSTER_ID.test(clusterId)) return [];
+    const data = await this.api<{ warehouses?: Array<{ id?: string; state?: string }> }>(
+      "GET",
+      "/api/2.0/sql/warehouses",
+    );
+    const warehouseId = (data.warehouses ?? []).find((w) => w.state === "RUNNING")?.id;
+    if (!warehouseId) return [];
+    const result = await this.api<{
+      status?: { state?: string };
+      manifest?: { schema?: { columns?: Array<{ name: string }> } };
+      result?: { data_array?: unknown[][] };
+    }>("POST", "/api/2.0/sql/statements", {
+      warehouse_id: warehouseId,
+      statement: nodeTimelineSql(clusterId, startMs, endMs, bucketSeconds(startMs, endMs)),
+      wait_timeout: "30s",
+      on_wait_timeout: "CANCEL",
+      disposition: "INLINE",
+      format: "JSON_ARRAY",
+    });
+    if (result.status?.state !== "SUCCEEDED") return [];
+    return nodeTimelineSeries(
+      (result.manifest?.schema?.columns ?? []).map((c) => c.name),
+      result.result?.data_array ?? [],
+    );
+  }
+
+  /** Query history for one warehouse; the API caps a filter window at 30 days. */
+  private async queryHistory(
+    warehouseId: string,
+    startMs: number,
+    endMs: number,
+  ): Promise<QueryInfo[]> {
+    const from = Math.max(Math.floor(startMs), Math.ceil(endMs) - 30 * 86_400_000);
+    const base =
+      `/api/2.0/sql/history/queries?max_results=1000&include_metrics=true` +
+      `&filter_by.warehouse_ids=${encodeURIComponent(warehouseId)}` +
+      `&filter_by.query_start_time_range.start_time_ms=${from}` +
+      `&filter_by.query_start_time_range.end_time_ms=${Math.ceil(endMs)}`;
+    const out: QueryInfo[] = [];
+    let pageToken = "";
+    // Five pages is 5,000 queries; a warehouse busier than that over the
+    // window charts the most recent 5,000.
+    for (let page = 0; page < 5; page++) {
+      const data = await this.api<{
+        res?: QueryInfo[];
+        has_next_page?: boolean;
+        next_page_token?: string;
+      }>("GET", pageToken ? `${base}&page_token=${encodeURIComponent(pageToken)}` : base);
+      out.push(...(data.res ?? []));
+      if (!data.has_next_page || !data.next_page_token) break;
+      pageToken = data.next_page_token;
+    }
+    return out;
+  }
+
+  /**
+   * Logs tab: cluster activity events, served-model server and build logs
+   * (one dropdown entry each), or the pipeline event log.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    const tail = Math.max(1, Math.min(params.tailLines ?? 200, 1000));
+    const id = encodeURIComponent(externalId);
+    switch (typeId) {
+      case "databricks-cluster": {
+        const events = await this.clusterEvents(externalId, undefined, undefined, tail);
+        const text = clusterEventLines(events);
+        return {
+          text: text || "No events recorded for this cluster.\n",
+          containers: ["events"],
+          activeContainer: "events",
+        };
+      }
+      case "databricks-serving-endpoint": {
+        const config = await this.getServingEndpointConfig(externalId);
+        const containers = servedEntityNames(config).flatMap((n) => [n, `${n} (build)`]);
+        if (containers.length === 0) {
+          return {
+            text: "This endpoint has no served entities yet.\n",
+            containers: [],
+            activeContainer: "",
+          };
+        }
+        const active =
+          params.container && containers.includes(params.container)
+            ? params.container
+            : containers[0]!;
+        const build = active.endsWith(" (build)");
+        const entity = build ? active.slice(0, -" (build)".length) : active;
+        try {
+          const data = await this.api<{ logs?: string }>(
+            "GET",
+            `/api/2.0/serving-endpoints/${id}/served-models/${encodeURIComponent(entity)}/${build ? "build-logs" : "logs"}`,
+          );
+          const lines = (data.logs ?? "").split("\n");
+          if (lines[lines.length - 1] === "") lines.pop();
+          const text = lines.slice(-tail).join("\n");
+          return {
+            text: text ? `${text}\n` : "No log output yet.\n",
+            containers,
+            activeContainer: active,
+          };
+        } catch (err) {
+          // Foundation-model and external-model entities have no container,
+          // so there is nothing to read; say so instead of failing the tab.
+          const message = err instanceof Error ? err.message : String(err);
+          return {
+            text: `Couldn't load logs for ${entity}: ${message}\n`,
+            containers,
+            activeContainer: active,
+          };
+        }
+      }
+      case "databricks-pipeline": {
+        const events: PipelineEvent[] = [];
+        let pageToken = "";
+        while (events.length < tail) {
+          const data = await this.api<{ events?: PipelineEvent[]; next_page_token?: string }>(
+            "GET",
+            pageToken
+              ? `/api/2.0/pipelines/${id}/events?page_token=${encodeURIComponent(pageToken)}`
+              : `/api/2.0/pipelines/${id}/events?max_results=${Math.min(tail, 100)}&order_by=${encodeURIComponent("timestamp desc")}`,
+          );
+          events.push(...(data.events ?? []));
+          if (!data.next_page_token || (data.events ?? []).length === 0) break;
+          pageToken = data.next_page_token;
+        }
+        const text = pipelineEventLines(events.slice(0, tail));
+        return {
+          text: text || "No events recorded for this pipeline.\n",
+          containers: ["event log"],
+          activeContainer: "event log",
+        };
+      }
+      default:
+        return { text: "", containers: [], activeContainer: "" };
     }
   }
 

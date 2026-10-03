@@ -30,5 +30,7 @@ export const JobResourceType = rt({
     },
   ],
   supportsCreate: true,
+  // Duration, queue time and outcome per run from jobs/runs/list.
+  supportsMetrics: true,
   iconKey: "workflow",
 });
