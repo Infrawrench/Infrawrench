@@ -4,6 +4,11 @@ import { ClickHouseClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ServiceResourceType } from "./resources/service.js";
 import { DatabaseResourceType } from "./resources/database.js";
+import { BackupResourceType } from "./resources/backup.js";
+import { ClickPipeResourceType } from "./resources/clickpipe.js";
+import { ApiKeyResourceType } from "./resources/api-key.js";
+import { MemberResourceType } from "./resources/member.js";
+import { PostgresResourceType } from "./resources/postgres.js";
 import { clickhouseTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
@@ -11,7 +16,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "ClickHouse",
   description:
-    "Manage ClickHouse Cloud services — view, create, scale, and query your ClickHouse databases.",
+    "Manage ClickHouse Cloud: services, ClickPipes, backups, Managed Postgres, API keys and members. Create, scale, and query your ClickHouse databases.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#FADB14"/>
     <g transform="translate(14,10)">
@@ -87,10 +92,26 @@ const manifest: PluginManifest = {
   // Amounts are CHC credits converted at the $1-per-CHC list price, so
   // committed-spend discounts are not reflected.
   costs: { dimensions: ["service", "resource"], restatementDays: 3 },
+  // creditBalances: active prepaid and trial credit pots, in CHC.
+  credits: {
+    label: "ClickHouse Credits",
+    topUpUrl: "https://console.clickhouse.cloud/billing",
+  },
+  // Organization quotas that report usage (services, Postgres services,
+  // API keys); the Cloud API publishes only these few.
+  quotas: { label: "Quotas", partial: true },
   statusFeed,
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [ServiceResourceType, DatabaseResourceType];
+const resourceTypes: ResourceTypeDefinition[] = [
+  ServiceResourceType,
+  DatabaseResourceType,
+  BackupResourceType,
+  ClickPipeResourceType,
+  PostgresResourceType,
+  ApiKeyResourceType,
+  MemberResourceType,
+];
 
 export const plugin: Plugin = {
   manifest,
