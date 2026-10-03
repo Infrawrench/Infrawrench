@@ -29,6 +29,8 @@ export const VoiceResourceType = rt({
     o("voiceName", "Voice Name"),
     o("previewUrl", "Preview Audio URL", { description: "MP3 sample of this voice" }),
   ],
+  // Daily usage from the workspace analytics query, grouped by voice_id.
+  supportsMetrics: true,
   iconKey: "voice",
   supportsUpdate: true,
 });

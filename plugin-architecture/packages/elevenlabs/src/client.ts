@@ -30,6 +30,13 @@ import {
 } from "@infrawrench/plugin-base";
 import { fetchElevenLabsCostData } from "./cost-data.js";
 import {
+  USAGE_QUERY_PATH,
+  usageQueryBody,
+  usageSeriesFor,
+  type UsageGroup,
+  type UsageQueryResponse,
+} from "./usage-metrics.js";
+import {
   AGENT_LANGUAGES,
   conversationSeries,
   conversationStats,
@@ -922,10 +929,18 @@ export class ElevenLabsClient implements PluginClient {
         }
         break;
       case "agent": {
+        const agentId = externalIdOf(resourceId);
         const weekAgo = Math.floor((Date.now() - 7 * DAY_MS) / 1000);
-        const recent = await this.fetchConversations(externalIdOf(resourceId), weekAgo, 5).catch(
-          (): ConversationWire[] | null => null,
-        );
+        const [recent, live] = await Promise.all([
+          this.fetchConversations(agentId, weekAgo, 5).catch((): ConversationWire[] | null => null),
+          // GET /v1/convai/analytics/live-count: conversations in progress now.
+          this.fetch<{ count?: number }>(
+            `/v1/convai/analytics/live-count?agent_id=${encodeURIComponent(agentId)}`,
+          ).catch(() => null),
+        ]);
+        if (typeof live?.count === "number") {
+          stats.push({ label: "Live Conversations", value: formatNumber(live.count) });
+        }
         if (recent) stats.push(...conversationStats(recent));
         break;
       }
@@ -962,7 +977,9 @@ export class ElevenLabsClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   /**
-   * Agent conversation analytics, bucketed by UTC day from
+   * Voices and models chart their own daily usage (credits and whatever other
+   * measures the warehouse returns) from the workspace analytics query; see
+   * `usage-metrics.ts`. Agents chart conversation analytics, bucketed by UTC day from
    * `GET /v1/convai/conversations`. Capped at 20 pages (2,000 conversations)
    * per range so a busy agent cannot turn a chart refresh into hundreds of
    * requests; the newest conversations come first, so a capped range loses
@@ -974,6 +991,17 @@ export class ElevenLabsClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
+    if (resourceTypeId === "voice" || resourceTypeId === "model") {
+      const group: UsageGroup = resourceTypeId === "voice" ? "voice_id" : "model";
+      const endMs = timeRange?.endMs ?? Date.now();
+      const range = { startMs: timeRange?.startMs ?? endMs - 30 * DAY_MS, endMs };
+      const body = await this.fetch<UsageQueryResponse>(USAGE_QUERY_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(usageQueryBody(group, range)),
+      });
+      return usageSeriesFor(body, group, externalIdOf(resourceId));
+    }
     if (resourceTypeId !== "agent") return [];
     const endMs = timeRange?.endMs ?? Date.now();
     const startMs = timeRange?.startMs ?? endMs - 7 * DAY_MS;
@@ -1673,6 +1701,8 @@ export class ElevenLabsClient implements PluginClient {
       sections,
       speechPanel: this.buildSpeechPanel(voiceId, voices, models, quota),
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // Daily usage attributed to this voice (workspace analytics, grouped by voice_id).
+      metricsCapability: { defaultTimeRangeMs: 30 * DAY_MS },
     };
   }
 
@@ -1838,6 +1868,8 @@ export class ElevenLabsClient implements PluginClient {
       },
       sections,
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // Daily usage attributed to this model (workspace analytics, grouped by model).
+      metricsCapability: { defaultTimeRangeMs: 30 * DAY_MS },
     };
   }
 
