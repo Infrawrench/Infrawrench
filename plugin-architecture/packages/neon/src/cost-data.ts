@@ -134,6 +134,10 @@ function oldestQueryableDay(): string {
   return new Date(Date.now() - 59 * 86_400_000).toISOString().slice(0, 10);
 }
 
+function dayAfter(date: string): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+
 export async function fetchNeonCostData(
   api: Api<unknown>,
   range: CostFetchRange,
@@ -164,10 +168,12 @@ export async function fetchNeonCostData(
     for (let i = 0; i < 100; i++) {
       const resp = await api.getConsumptionHistoryPerProjectV2({
         org_id: org.id,
-        // `to` is rounded to day granularity; over-ask by using end-of-day and
-        // filter rows back to the inclusive range below.
+        // Neon rounds `to` down to the day and treats it as exclusive, so an
+        // end-of-day `to` silently dropped the last day of every range and
+        // turned a single-day range into from == to, which 400s. Ask for the
+        // midnight after `toDate` instead.
         from: `${fromDate}T00:00:00Z`,
-        to: `${range.toDate}T23:59:59Z`,
+        to: `${dayAfter(range.toDate)}T00:00:00Z`,
         granularity: ConsumptionHistoryGranularity.Daily,
         metrics: METRICS,
         limit: 100,

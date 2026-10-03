@@ -36,7 +36,16 @@ describe("fetchNeonCostData retention clamping", () => {
     await fetchNeonCostData(apiClient, { fromDate: "2026-05-08", toDate: "2026-08-06" });
     // 59 days before 2026-08-06 is 2026-06-08; asking for 2026-05-08 would 406.
     expect(api.getConsumptionHistoryPerProjectV2).toHaveBeenCalledWith(
-      expect.objectContaining({ from: "2026-06-08T00:00:00Z", to: "2026-08-06T23:59:59Z" }),
+      expect.objectContaining({ from: "2026-06-08T00:00:00Z", to: "2026-08-07T00:00:00Z" }),
+    );
+  });
+
+  it("asks for a single-day range with an exclusive next-midnight `to`", async () => {
+    // Neon rounds `to` down to the day, so an end-of-day bound made from == to
+    // and failed the whole request with 400.
+    await fetchNeonCostData(apiClient, { fromDate: "2026-07-31", toDate: "2026-07-31" });
+    expect(api.getConsumptionHistoryPerProjectV2).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "2026-07-31T00:00:00Z", to: "2026-08-01T00:00:00Z" }),
     );
   });
 
