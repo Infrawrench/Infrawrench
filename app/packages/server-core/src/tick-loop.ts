@@ -3,7 +3,7 @@
  * `github-watcher`).
  *
  * Both had their own copy of it, and the copies were identical down to the
- * drain deadline — which matters, because the numbers here are load-bearing:
+ * drain deadline, which matters, because the numbers here are load-bearing:
  * ticks are scheduled *after* the previous one settles (never on a fixed
  * interval, so a slow tick can't stack), a tick that overruns is skipped
  * rather than run concurrently, and `stop()` gives an in-flight tick 30s to
@@ -26,8 +26,8 @@ export abstract class TickLoop {
   ) {}
 
   /**
-   * One pass of work. Throwing is safe — `tick()` logs and carries on to the
-   * next interval — but a subclass that wants per-item resilience should
+   * One pass of work. Throwing is safe: `tick()` logs and carries on to the
+   * next interval, but a subclass that wants per-item resilience should
    * catch inside its own loop so one bad row can't skip the rest of the batch.
    */
   protected abstract runTick(): Promise<void>;

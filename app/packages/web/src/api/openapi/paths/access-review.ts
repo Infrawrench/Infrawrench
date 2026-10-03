@@ -99,7 +99,7 @@ export function registerAccessReviewPaths(ctx: BuildContext) {
   }).openapi("AccessPrincipal");
 
   // Kept as a raw shape so `DismissedAccessFinding` can be emitted as one flat
-  // object rather than an `allOf` branch — the posture schemas' reasoning: a
+  // object rather than an `allOf` branch; the posture schemas' reasoning: a
   // branch declaring only `dismissal` while inheriting the rest through a
   // sibling `$ref` is uninhabited under `additionalProperties: false`.
   const accessFindingShape = {

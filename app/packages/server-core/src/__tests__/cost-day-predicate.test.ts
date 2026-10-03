@@ -4,7 +4,7 @@
  *
  * ClickHouse resolves SELECT aliases inside WHERE. Four readers project
  * `toString(day) AS day` so JS gets a "YYYY-MM-DD" string, and in those an
- * unqualified `day` in the WHERE binds to the alias rather than the column —
+ * unqualified `day` in the WHERE binds to the alias rather than the column:
  * `String >= Date`, which ClickHouse refuses to unify ("There is no supertype
  * for types String, Date"). In `cost-reconcile.ts` that throw is not a blank
  * panel: it escapes `collectAccountCosts` and fails the account's entire cost
@@ -42,7 +42,7 @@ describe("cost_daily day-range predicate", () => {
   it("qualifies the column so a SELECT alias cannot capture it", () => {
     const sql = render(dayRange("2026-08-01", "2026-08-10"));
     expect(sql).toContain("`cost_daily`.`day`");
-    // A `Date` bound, not a string one — this is the comparison ClickHouse
+    // A `Date` bound, not a string one: this is the comparison ClickHouse
     // accepts, and the reason the bound goes through the column rather than
     // being interpolated.
     expect(sql).toContain("toDate('2026-08-01')");
@@ -66,7 +66,7 @@ describe("cost_daily day-range predicate", () => {
       filters: [],
     });
     // The projection that makes the hazard live, and the predicate that is
-    // immune to it — both in one statement, which is the real-world pairing.
+    // immune to it: both in one statement, which is the real-world pairing.
     expect(sql).toContain("toString(`day`) as `day`");
     expect(sql).toContain(render(dayRange("2026-08-01", "2026-08-10")));
   });

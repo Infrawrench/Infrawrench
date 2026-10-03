@@ -43,7 +43,7 @@ export function K8sExecTerminal({
       const { WebLinksAddon } = await import("@xterm/addon-web-links");
       if (!containerRef.current || disposed) return;
 
-      // Same link policy as the SSH terminal — a pod shell prints URLs too.
+      // Same link policy as the SSH terminal: a pod shell prints URLs too.
       const linkHandler = createTerminalLinkHandler({ openExternal: openTerminalLinkInNewTab });
       term = new Terminal({ ...getXtermTerminalOptions(), linkHandler });
 

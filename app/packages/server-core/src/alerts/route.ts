@@ -1,5 +1,5 @@
 /**
- * `routeAlert` — the one call every detector makes to tell an org something.
+ * `routeAlert`: the one call every detector makes to tell an org something.
  *
  * Before this module each raise site did the same three things in a row: build a
  * push message, build a Slack alert, build a Teams alert, `await` each of the
@@ -16,7 +16,7 @@
  * ## The contract callers depend on
  *
  * Several detectors gate on whether an alert was delivered, because that is
- * what they stamp their cooldown or claim with — `cost_anomalies.notified_at`,
+ * what they stamp their cooldown or claim with: `cost_anomalies.notified_at`,
  * the drift `releaseUnlessDelivered` guard, `PageCooldownStore.release`. Those
  * protocols are unchanged and must stay unchanged; this module only had to keep
  * giving them an honest answer.
@@ -24,7 +24,7 @@
  * The subtlety quiet hours introduce is that "held" is neither delivered nor
  * lost. A held alert has `succeeded === 0` but *will* go out when the window
  * closes, so treating it as undelivered would roll back the very claim that
- * stops the next pass from raising it again — and the alert would then be
+ * stops the next pass from raising it again, and the alert would then be
  * raised twice, or (worse, for drift) the released window would be re-scanned
  * and the held copy would arrive alongside a duplicate. So the result carries
  * `held` separately and {@link alertReached} is what call sites gate on:
@@ -81,8 +81,8 @@ export interface AlertEvent {
   pushBody?: string;
   /**
    * A Teams-specific rendering, when the two chat transports genuinely differ.
-   * Only the drift digest needs it today — Slack mrkdwn and Adaptive Card
-   * markdown disagree about lists — so it defaults to `body` rather than
+   * Only the drift digest needs it today (Slack mrkdwn and Adaptive Card
+   * markdown disagree about lists) so it defaults to `body` rather than
    * forcing every caller to supply the same string twice.
    */
   teamsBody?: string;
@@ -101,9 +101,9 @@ export interface AlertEvent {
 }
 
 /**
- * Deliveries per transport. Several callers report this back to the user — the
+ * Deliveries per transport. Several callers report this back to the user: the
  * weekly digest's last-attempt status, `infra.page()`'s return value, the drift
- * notifier's outcome — so the aggregate `succeeded` is not enough on its own.
+ * notifier's outcome, so the aggregate `succeeded` is not enough on its own.
  * `push` counts *devices*, matching what `sendPushToOrg` has always returned;
  * the other two count channels.
  */
@@ -124,7 +124,7 @@ export interface AlertRouteResult {
    * routed here" from "every channel failed", which the weekly digest's
    * last-attempt status shows the user. */
   attemptedByTransport: AlertTransportCounts;
-  /** Legs quiet hours parked for later. Counts as reached — see the note above. */
+  /** Legs quiet hours parked for later. Counts as reached: see the note above. */
   held: number;
   /** True when no rule matched, so nothing was even attempted. */
   unrouted: boolean;
@@ -193,8 +193,8 @@ export interface RouteAlertOptions {
    * decision that was already made: a held alert goes to the destinations its
    * rule named *when the alert happened*, not to whatever the table says hours
    * later. Routing it again would make the message depend on when somebody
-   * happened to save the form. Sending it through this function anyway — rather
-   * than a separate send path — is what keeps de-duplication, the channel-only
+   * happened to save the form. Sending it through this function anyway (rather
+   * than a separate send path) is what keeps de-duplication, the channel-only
    * push rule and escalation arming identical for held and immediate copies.
    */
   pinnedLegs?: RoutedLeg[];
@@ -247,7 +247,7 @@ async function deliverDestinations(
         // A channel-only trigger silently drops its push destination rather
         // than erroring: a rule that says "weekly digest → phones" is a
         // mistake, but the right response is to deliver the rest of it. Same
-        // for an event that carries no deep-link payload — there would be
+        // for an event that carries no deep-link payload: there would be
         // nothing for a tap to open.
         if (!def.channelOnly && event.pushData) wantsPush = true;
         break;
@@ -308,7 +308,7 @@ async function deliverDestinations(
     // One personal push per on-call person. `sendPushToOrgUser` applies the
     // same per-member trigger mutes as the org fan-out: an organization rule
     // decides whether the org is told, a member decides whether their phone
-    // rings — and being on call does not override that, because a rotation is
+    // rings, and being on call does not override that, because a rotation is
     // not a licence to bypass somebody's own settings.
     onCallUserIds.size > 0
       ? Promise.all(
@@ -355,7 +355,7 @@ function addCounts(into: AlertTransportCounts, from: AlertTransportCounts): void
 
 /**
  * Record a leg that must be followed up: quiet-hours held, or awaiting an
- * acknowledgement. Returns the row id, or null when the insert failed — a
+ * acknowledgement. Returns the row id, or null when the insert failed: a
  * bookkeeping failure must never propagate into the detector.
  */
 async function recordDelivery(
@@ -397,7 +397,7 @@ async function recordDelivery(
  *
  * The value carries the org alongside the delivery id, in the same
  * `{o, …}` shape the status-disambiguation button uses. It could have carried
- * the id alone — the row knows its org — but the inbound handler has to resolve
+ * the id alone (the row knows its org) but the inbound handler has to resolve
  * the clicking Slack user to a member *of a specific org* before it trusts
  * anything, and reading the row first to find out which org to check would mean
  * touching a row on behalf of an unauthenticated click. The value is not a
@@ -434,7 +434,7 @@ function ackButton(organizationId: string, deliveryId: string): SlackMessageButt
 
 /**
  * Route one alert. Never throws: a routing or transport failure must not break
- * the poller, the budget evaluator, or the workflow that raised the alert —
+ * the poller, the budget evaluator, or the workflow that raised the alert;
  * the same contract every `sendXToOrg` had, kept because the callers rely on it.
  */
 export async function routeAlert(
@@ -464,7 +464,7 @@ export async function routeAlert(
 
     if (decision.legs.length === 0) {
       if (decision.unrouted) {
-        // Not an error — an org can legitimately route a trigger nowhere — but
+        // Not an error (an org can legitimately route a trigger nowhere) but
         // it is the single most likely explanation for "why didn't I get
         // paged", so it is never silent.
         console.log(
@@ -484,8 +484,8 @@ export async function routeAlert(
     const seen = new Set<string>();
 
     for (const leg of decision.legs) {
-      // Two rules can name the same channel — a tee rule above a catch-all is
-      // the ordinary way that happens — and nobody wants the message twice.
+      // Two rules can name the same channel (a tee rule above a catch-all is
+      // the ordinary way that happens) and nobody wants the message twice.
       // De-duplicating across legs rather than within one keeps the first rule
       // that claimed a destination as its owner, which is also the rule whose
       // escalation policy applies.
@@ -542,14 +542,14 @@ export async function routeAlert(
       // escalate *from*, and leaving the row armed would fire a "nobody
       // acknowledged" message about an alert nobody ever saw. Same shape as the
       // `releaseUnlessDelivered` rule the drift notifier uses on its claim.
-      // Only rows this call armed are released — a replay's row belongs to the
+      // Only rows this call armed are released: a replay's row belongs to the
       // pass that owns it and deciding its fate here would race with that pass.
       //
       // A failed delete must not simply be logged: the row would stay in
       // `awaiting_ack` with `escalateAt` set, and the follow-up pass would
       // produce exactly the escalation this block exists to prevent. So there
-      // is a fallback — expire the row in place, which clears both deadlines
-      // and makes it invisible to both claims — and the id is only dropped from
+      // is a fallback (expire the row in place, which clears both deadlines
+      // and makes it invisible to both claims) and the id is only dropped from
       // `deliveryIds` once one of the two disarmed it. If both fail the caller
       // keeps the id and can still settle the row itself.
       if (armed && ackId && out.succeeded === 0) {

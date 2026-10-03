@@ -1,5 +1,5 @@
 /**
- * Chat agent loop — drives the selected model with the shared tool registry,
+ * Chat agent loop: drives the selected model with the shared tool registry,
  * persists conversation history, and bridges the destructive-tool approval flow
  * through the `chat_pending_actions` table.
  *
@@ -71,7 +71,7 @@ const MAX_SLEEP_SECONDS = 300;
 /**
  * Chat-only tool (deliberately NOT in the shared registry, so MCP clients
  * never see it): lets the agent wait before re-checking a slow operation.
- * The wait itself runs on the CLIENT — the server suspends the turn with a
+ * The wait itself runs on the CLIENT: the server suspends the turn with a
  * pre-resolved pending action, the UI shows "Sleeping N seconds…" and posts
  * `resume: true` when the time is up, and the loop continues with the tool
  * result.
@@ -362,7 +362,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
       .set({ updatedAt: new Date() })
       .where(eq(chatConversations.id, conversationId));
   } else {
-    // No user text — assume we're resuming after pending actions resolved.
+    // No user text: assume we're resuming after pending actions resolved.
     const toolResults = await collectResolvedToolResults(conversationId);
     if (toolResults) {
       await db.insert(chatMessages).values({
@@ -376,7 +376,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
 
   // Spend is enforced per model call below via reserveAiSpend (same org lock
   // as workflow infra.ai). Done after writing the user message so the user's
-  // text is not lost when the pool is empty — the model just won't reply.
+  // text is not lost when the pool is empty: the model just won't reply.
 
   const registry = await getToolRegistry();
   // Chat-only web tools (./web) sit alongside the shared registry rather than
@@ -455,7 +455,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     let costMicros = 0;
 
     try {
-      // Keep the hold alive for the whole stream — a 32k-token turn can outlast
+      // Keep the hold alive for the whole stream: a 32k-token turn can outlast
       // the base reservation TTL, and without a refresh concurrent callers would
       // see the budget as free mid-call.
       const touchTimer = setInterval(() => {
@@ -745,7 +745,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
 
     if (suspended) {
       // Even if we auto-ran some tools alongside destructive ones, we cannot
-      // continue this turn until the human approves the pending ones — store
+      // continue this turn until the human approves the pending ones: store
       // auto-results as resolved pending entries so they're included when the
       // turn resumes.
       const toolUsesById = new Map(toolUses.map((tu) => [tu.id, tu]));

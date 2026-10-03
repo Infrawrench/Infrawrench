@@ -17,7 +17,7 @@ import { logAudit } from "@/services/audit";
 
 /**
  * Context recorded on every forwarded sign-request so users can see exactly
- * which key the cloud proxy used to authenticate on their behalf. Optional —
+ * which key the cloud proxy used to authenticate on their behalf. Optional,
  * when omitted, the agent skips audit writes (used by tests / non-cloud paths).
  */
 export interface AgentAuditContext {

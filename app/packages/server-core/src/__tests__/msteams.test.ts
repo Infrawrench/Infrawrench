@@ -34,7 +34,7 @@ vi.mock("../db/client", () => ({ db: pg.db }));
 
 const ORG = "org1";
 
-// Keys in the `msteams_webhooks` column order, values driver-shaped — see
+// Keys in the `msteams_webhooks` column order, values driver-shaped: see
 // helpers/fake-postgres.ts.
 function webhook(overrides: Record<string, unknown> = {}) {
   return {
@@ -244,8 +244,8 @@ describe("fan-out", () => {
     // database failure must return NO_DELIVERY rather than propagate into the
     // poller that raised the alert.
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    // A row the recording driver cannot decode makes the select itself reject
-    // — the closest a canned driver gets to "connection refused".
+    // A row the recording driver cannot decode makes the select itself reject:
+    // the closest a canned driver gets to "connection refused".
     pg.queueRows([null as never]);
     await expect(sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" })).resolves.toEqual({
       attempted: 0,

@@ -141,14 +141,14 @@ import { authMdRoutes } from "../mcp/auth-md";
 
 const api = new Hono();
 
-// First middleware on the stack so every response below — including the ones
-// `onError` synthesizes — carries the baseline headers. `prodApp` in server.ts
+// First middleware on the stack so every response below (including the ones
+// `onError` synthesizes) carries the baseline headers. `prodApp` in server.ts
 // mounts the same middleware for static and SPA responses.
 api.use("*", securityHeaders());
 
 api.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
-  // In production we don't echo the message/stack — they leak schema, paths, secrets.
+  // In production we don't echo the message/stack: they leak schema, paths, secrets.
   const correlationId = randomUUID();
   console.error(`[api] uncaught error correlationId=${correlationId}:`, err);
   if (process.env["NODE_ENV"] === "production") {
@@ -170,7 +170,7 @@ api.route("/api", slackOauthRoute);
 // session-authed account-link landing (it bounces through sign-in itself).
 api.route("/api", slackInboundRoutes);
 api.route("/.well-known", wellKnownRoutes);
-// `auth.md` at the domain root — the agent-registration skill document the
+// `auth.md` at the domain root: the agent-registration skill document the
 // `agent_auth` discovery block points at.
 api.route("/", authMdRoutes);
 
@@ -182,7 +182,7 @@ api.route("/", authMdRoutes);
  */
 const SCALAR_VERSION = "1.63.0";
 
-// Public — the spec describes the API surface, not private data. Internal
+// Public: the spec describes the API surface, not private data. Internal
 // routes (platform admin, webhooks, browser auth, desktop sync, ws-token, push)
 // and the `sessionCookie` scheme are stripped here; see `openapi/public-spec.ts`.
 api.get("/openapi.json", async (c) => c.json(await getPublicOpenApiDocument()));
@@ -193,7 +193,7 @@ api.get(
     pageTitle: "Infrawrench API",
     theme: "default",
     // Pin the standalone bundle. The default CDN URL is unversioned, so the
-    // docs UI would otherwise track upstream releases — which is how the page
+    // docs UI would otherwise track upstream releases, which is how the page
     // ended up rendering a v1 bundle against a v0.5 config shape.
     cdn: `https://cdn.jsdelivr.net/npm/@scalar/api-reference@${SCALAR_VERSION}`,
     // Snippets for languages we can actually vouch for, with curl the default.
@@ -238,7 +238,7 @@ api.get("/api/auth/sign-in", async (c) => {
   });
   // Where to land afterwards. Used by the step-up flow so a user sent back to
   // sign-in mid-settings-change returns to the page they were on. Validated to
-  // a same-origin path — an open redirect here would be a phishing primitive.
+  // a same-origin path: an open redirect here would be a phishing primitive.
   const returnTo = safeReturnPath(c.req.query("return_to"));
   if (returnTo) {
     setCookie(c, RETURN_TO_COOKIE, returnTo, {
@@ -274,18 +274,18 @@ api.route("/api/org/:orgId/pages", pageRoutes);
 
 // Public status pages. Registered outside every auth layer *and* outside the
 // org tree, because the whole point is to answer callers with no account and
-// the URL deliberately contains no org id — only the page's slug, which is its
+// the URL deliberately contains no org id, only the page's slug, which is its
 // sole credential. The handler can reach nothing but the public payload
 // assembler (see routes/status-pages.ts).
 api.route("/api/status", publicStatusRoutes);
 
 // Public iCalendar feeds. Outside every auth layer for the same reason as the
-// status pages above — a calendar client can hold no session — with a 32-byte
+// status pages above (a calendar client can hold no session) with a 32-byte
 // token in the path as the sole credential and no org id anywhere in the URL.
 api.route("/api", publicCalendarRoutes);
 
 // Agent registration and the claim ceremony. Outside every auth layer because
-// its whole purpose is serving a caller with no credentials — the rate limit in
+// its whole purpose is serving a caller with no credentials: the rate limit in
 // `trials/ceremony.ts` is what stands in for authentication here, and it has to,
 // since this is the only route in the product that creates an organization
 // without a person behind it.
@@ -293,7 +293,7 @@ api.route("/api/agent", agentAuthRoutes);
 // The human half of the same ceremony, session-authed on its own router.
 api.route("/api/agent/claim", agentClaimRoutes);
 // Pod-to-pod: run an operation on the replica that holds its session. Outside
-// every auth layer because the caller is another replica, not a person — it
+// every auth layer because the caller is another replica, not a person: it
 // authenticates with INTERNAL_RELAY_SECRET and forwards work it already
 // authorised. See routes/internal-relay.ts for why that is the whole check.
 api.route("/api/internal", relayRoutes);
@@ -302,11 +302,11 @@ const authed = new Hono();
 authed.use("*", sessionMiddleware);
 
 authed.route("/auth", authRoutes);
-// Personal account settings — user-scoped, so it lives outside the org tree.
+// Personal account settings: user-scoped, so it lives outside the org tree.
 authed.route("/profile", profileRoutes);
 authed.route("/orgs", orgManagementRoutes);
 authed.route("/invitations", invitationAcceptRoutes);
-// Platform-admin surface — session-authed here, allowlist-gated inside.
+// Platform-admin surface: session-authed here, allowlist-gated inside.
 authed.route("/admin", adminRoutes);
 // Push devices are user-scoped (a phone registers once across orgs).
 authed.route("/push", pushDeviceRoutes);
@@ -316,8 +316,8 @@ api.route("/api", authed);
 const orgScoped = new Hono();
 // `iwk_` API keys authenticate here, alongside the session cookie and WorkOS
 // bearer tokens the three middlewares below have always handled. The key path
-// leaves the context in the identical shape — session, organizationId,
-// permissions, role, elevations — so every route's `requirePermission` gate
+// leaves the context in the identical shape (session, organizationId,
+// permissions, role, elevations) so every route's `requirePermission` gate
 // applies unchanged, over the key's scopes ∩ its owner's current role. Routes
 // closed to keys whatever they hold are listed in `auth/api-key-route-policy.ts`.
 //
@@ -326,7 +326,7 @@ const orgScoped = new Hono();
 orgScoped.use("*", apiKeyOrgMiddleware);
 // Agent credentials, same contract: pinned to one org, permissions already
 // final, and a denial table of their own on top of the API-key one. Runs after
-// the key middleware because the two never both match — a key is recognised by
+// the key middleware because the two never both match: a key is recognised by
 // prefix and returns early here.
 orgScoped.use("*", unlessApiKey(agentOrgMiddleware));
 orgScoped.use("*", unlessApiKey(sessionMiddleware));

@@ -68,7 +68,7 @@ async function deriveHmacSubKey(label: string): Promise<Buffer> {
  * Compute a keyed digest of `data` using a sub-key derived from
  * `ENCRYPTION_MASTER_KEY`. Suitable for hashing high-entropy bearer tokens
  * (e.g. API keys) so that a DB-only leak does not yield offline-attackable
- * hashes — without the master key, the digest cannot be reproduced.
+ * hashes: without the master key, the digest cannot be reproduced.
  * `domain` separates sub-keys for different uses (e.g. `"api-key"`).
  */
 export async function keyedHash(data: string, domain: string): Promise<string> {
@@ -79,7 +79,7 @@ export async function keyedHash(data: string, domain: string): Promise<string> {
 
 /**
  * Legacy plain SHA-256 of `data` as hex. Used only to look up existing API
- * keys that pre-date keyed hashing — new writes use {@link keyedHash}.
+ * keys that pre-date keyed hashing: new writes use {@link keyedHash}.
  * TODO: drop this once all rows have been rehashed.
  */
 export async function legacySha256Hex(data: string): Promise<string> {
@@ -108,9 +108,9 @@ export async function encrypt(plaintext: string, aad: string | Buffer): Promise<
 
 /**
  * Decrypt a stored ciphertext. Branches on the wire-format version:
- *   - `v2:<base64>` — AAD-bound. Caller MUST supply the same AAD used at
+ *   - `v2:<base64>`: AAD-bound. Caller MUST supply the same AAD used at
  *     encrypt time; an incorrect or missing AAD causes auth-tag failure.
- *   - bare `<base64>` — legacy v1 record with no AAD. The supplied `aad`
+ *   - bare `<base64>`: legacy v1 record with no AAD. The supplied `aad`
  *     is ignored. New writes never produce this format.
  */
 export async function decrypt(

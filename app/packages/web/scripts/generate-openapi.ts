@@ -5,9 +5,9 @@
  * The spec is built from:
  *   - Hand-written Zod schemas for every route (see `src/api/openapi/paths/*`),
  *   - Plus enums for `pluginId` / `resourceTypeId` sourced from the live plugin
- *     registry via `loadPlugins()` — so the spec always matches the running server.
+ *     registry via `loadPlugins()`, so the spec always matches the running server.
  *
- * Then the client SDKs are refreshed from it, but only if they're out of date —
+ * Then the client SDKs are refreshed from it, but only if they're out of date:
  * see `./sdk/generate.ts`. To rebuild them on their own, use `generate:sdk`.
  *
  * Usage:  pnpm --filter @infrawrench/web generate:openapi

@@ -18,7 +18,7 @@ import { accounts, organizations, users } from "./core-schema.js";
  * **This is off by default, and that is not timidity.** Answering "which two
  * things are talking" means running a query against the provider's own log
  * store, and on AWS that query is billed to the *customer's* account per GB
- * scanned — a busy VPC's flow-log group is not small. A monitoring product that
+ * scanned: a busy VPC's flow-log group is not small. A monitoring product that
  * silently puts a recurring line on someone's bill has done something it was
  * not asked to do, so the switch is explicit, the surface says what it costs,
  * and nothing runs until somebody turns it on.
@@ -32,7 +32,7 @@ export const orgNetworkFlowSettings = pgTable("org_network_flow_settings", {
   organizationId: text("organization_id")
     .primaryKey()
     .references(() => organizations.id, { onDelete: "cascade" }),
-  /** Master switch. No row at all reads as disabled — see `network-flow/settings.ts`. */
+  /** Master switch. No row at all reads as disabled: see `network-flow/settings.ts`. */
   enabled: boolean("enabled").notNull().default(false),
   /**
    * How many days of history the first pass for an account walks back through.
@@ -48,7 +48,7 @@ export const orgNetworkFlowSettings = pgTable("org_network_flow_settings", {
 });
 
 /**
- * Per-account collection schedule, watermark and last failure — the
+ * Per-account collection schedule, watermark and last failure; the
  * `account_credit_polls` pattern, for the same reason: flow-capable plugins are
  * a small minority, so a row that exists only for accounts the pass touches
  * keeps the due-work query a scan of a tiny table.
@@ -57,8 +57,8 @@ export const orgNetworkFlowSettings = pgTable("org_network_flow_settings", {
  * codebase is `collectedThrough`, and it is worth stating plainly:
  * **flow collection is forward-only and never restates.** Cost collection
  * re-fetches a trailing window because providers restate billing data for days
- * afterwards; flow logs do not restate — a closed UTC day is final within
- * minutes — and re-running one costs the customer another scan of the same
+ * afterwards; flow logs do not restate (a closed UTC day is final within
+ * minutes) and re-running one costs the customer another scan of the same
  * data for an identical answer. So a day is collected once, the watermark
  * advances past it, and it is never revisited. The consequence to accept: a day
  * collected during an outage stays as collected as it was, and there is no
@@ -80,7 +80,7 @@ export const accountNetworkFlowPolls = pgTable(
      * Who holds the lease `next_poll_at` is counting down: a fresh identifier
      * written by every claim, and null when nobody holds it.
      *
-     * The one thing in this table that is not the account's state — it is the
+     * The one thing in this table that is not the account's state: it is the
      * poller's, and it exists because the lease needs an **identity separate
      * from the deadline it is renewing**. A renewal that matched on the
      * deadline was comparing against a value it was itself in the business of
@@ -104,12 +104,12 @@ export const accountNetworkFlowPolls = pgTable(
      * next success.
      */
     lastError: text("last_error"),
-    /** Set when the plugin threw `NetworkFlowSetupError` — a setup gap, not a fault. */
+    /** Set when the plugin threw `NetworkFlowSetupError`: a setup gap, not a fault. */
     lastErrorHelpUrl: text("last_error_help_url"),
     /**
      * The flow-log sources the last pass discovered, usable or not, as returned
      * by the plugin. Stored so the surface can say "you have three flow logs
-     * and two of them use the default record format" — which is a different
+     * and two of them use the default record format", which is a different
      * screen from "you have no flow logs", and the fix is different too.
      */
     lastSources: jsonb("last_sources").$type<

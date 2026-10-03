@@ -3,14 +3,14 @@
  *
  * **We own the ceremony, and issue our own credential.** The auth.md
  * application spec is explicit that the *service* owns the claim state machine
- * — minting the `user_code`, serving the verification page, matching the user
- * to an account — and that is the half no identity provider can do for you.
+ * (minting the `user_code`, serving the verification page, matching the user
+ * to an account) and that is the half no identity provider can do for you.
  * What WorkOS would additionally provide is the credential itself, and this
  * module does not wait for it: registrations here authenticate with an `iwa_`
  * token hashed exactly like `api_keys.hashed_key`.
  *
  * That choice is reversible by design rather than by accident. `resolveAgentPrincipal`
- * keys on the registration id, not on how the bearer proved it — so a WorkOS
+ * keys on the registration id, not on how the bearer proved it, so a WorkOS
  * agent token whose `sub` is this row's id resolves to the same principal with
  * the same permissions, and `hashedCredential` simply stays null for those. The
  * two can coexist; nothing here has to be unwound to adopt the other.
@@ -44,13 +44,13 @@ export const CLAIM_CODE_TTL_MS = 15 * 60 * 1000;
 /**
  * The `user_code` alphabet and length.
  *
- * Eight characters from an unambiguous 32-symbol alphabet — no I, L, O or U, so
+ * Eight characters from an unambiguous 32-symbol alphabet: no I, L, O or U, so
  * nothing is lost reading a code aloud or retyping it from a terminal. That is
  * 32^8 ≈ 1.1 × 10¹² possibilities.
  *
  * The size is doing real work. A code is submitted to a page that looks it up
- * *globally* — the human confirming has no registration id to scope the search
- * to — so a guessable code is a way to bind somebody else's agent, and their
+ * *globally*: the human confirming has no registration id to scope the search
+ * to, so a guessable code is a way to bind somebody else's agent, and their
  * cloud accounts, to your own account. A 6-digit numeric code (a million
  * possibilities, the shape RFC 8628 suggests for TV sign-in) is not enough for
  * that threat: device flows can scope guesses to a device the attacker already
@@ -66,7 +66,7 @@ const CLAIM_CODE_LENGTH = 8;
  * Each one is a free paid-tier organization, so this is the tap that has to be
  * closed. WorkOS's own published guidance for anonymous agent registration is
  * 5/hour per IP; matching it is a reasonable default, and it is intentionally
- * low enough to be felt — an agent developer registering in a loop should hit
+ * low enough to be felt: an agent developer registering in a loop should hit
  * this and read the message, not discover it at the invoice.
  */
 export const REGISTRATIONS_PER_IP_PER_HOUR = 5;
@@ -160,7 +160,7 @@ export function formatClaimCode(code: string): string {
 
 /**
  * Runs inside `createTrialOrg`'s reservation transaction, behind its advisory
- * lock — that is what makes count-then-insert safe. N concurrent registrations
+ * lock: that is what makes count-then-insert safe. N concurrent registrations
  * serialise on the lock, so each count sees every row the previous one
  * committed; without it, all N would count the same world and all N would pass.
  */
@@ -218,13 +218,13 @@ export interface RegisteredAgent {
  * Open an anonymous registration and the trial org behind it.
  *
  * Rate-limited inside the same locked transaction that creates the org and
- * registration rows — the limit exists to stop orgs being created, so it has
+ * registration rows: the limit exists to stop orgs being created, so it has
  * to be checked where creation is decided, against a world no rival request
  * can change mid-check. The credential hash and source IP are written on the
  * registration row in the statement that creates it: a backfilled row would be
  * invisible to the per-IP count while in flight, and a failure between the
- * insert and the backfill would leave a fully provisioned org that nobody —
- * not even the agent that opened it — could ever authenticate to.
+ * insert and the backfill would leave a fully provisioned org that nobody
+ * (not even the agent that opened it) could ever authenticate to.
  */
 export async function registerAnonymousAgent(
   options: RegisterAgentOptions = {},
@@ -376,7 +376,7 @@ export interface ClaimStatus {
   claimPending: boolean;
 }
 
-/** What the agent polls for — the whole point of the ceremony from its side. */
+/** What the agent polls for: the whole point of the ceremony from its side. */
 export async function getClaimStatus(registrationId: string): Promise<ClaimStatus | null> {
   const [row] = await db
     .select({

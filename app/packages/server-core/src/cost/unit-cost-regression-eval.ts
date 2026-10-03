@@ -1,21 +1,21 @@
 /**
- * Unit-cost regression evaluation — the impure half. Runs from the poller
+ * Unit-cost regression evaluation: the impure half. Runs from the poller
  * after each successful cost collection for an org, the same trigger point as
  * budget, anomaly and change-alert evaluation.
  *
  * The arithmetic lives in `unit-cost-regression.ts` (pure, exhaustively
- * tested — the gap rules, the history minimum, the thresholds); this module
+ * tested: the gap rules, the history minimum, the thresholds); this module
  * reads the numerator from ClickHouse and the denominator from Postgres,
  * converts what the org holds rates for, persists what fired, and notifies
  * through the alert routing layer under the `unitCostRegressionAlerts`
- * trigger. **Nothing here talks to a transport** — routing rules, quiet hours
+ * trigger. **Nothing here talks to a transport**: routing rules, quiet hours
  * and escalation apply exactly as they do to budgets and anomalies.
  *
  * ## The same numerator the chart draws
  *
  * A metric's unit cost is only honest if the spend divided is the spend that
  * serves the metric, so the numerator is the metric's own `costScope`
- * AND-composed with its saved filter — the same composition
+ * AND-composed with its saved filter: the same composition
  * `services/unit-cost-query.ts` performs for the chart. This module cannot
  * call that one (it lives in `@infrawrench/web`, and the poller does not
  * depend on the web app), so it composes the same two inputs from the same
@@ -27,12 +27,12 @@
  * ## Dedup, and why it needs two layers
  *
  * The windows slide daily, so a regression that persists for a fortnight is a
- * fresh `(metric, currency, windowTo)` every morning — the unique index alone
+ * fresh `(metric, currency, windowTo)` every morning: the unique index alone
  * would alert fourteen times about one thing. So `unit_cost_regression_events`
  * carries the row (the list UI shows every firing) and a cross-day cooldown
  * decides whether it *notifies*: a metric notified inside the trailing
  * {@link COOLDOWN_DAYS} stays quiet. That is the `cost_anomalies` protocol,
- * and it counts only *notified* rows for the same two reasons it does there —
+ * and it counts only *notified* rows for the same two reasons it does there:
  * a suppressed row must not extend its own silence into a rolling one, and a
  * row nobody ever received must not suppress the alert that would have told
  * them.
@@ -60,7 +60,7 @@ import type { CostFilter } from "@infrawrench/client-core";
 import { orgAppUrl } from "../app-url";
 
 /**
- * Least time between full evaluations of one org — the anomaly and
+ * Least time between full evaluations of one org: the anomaly and
  * change-alert gate, same shape and same reasoning. Correctness rests on the
  * unique index and the cooldown, never on this.
  */
@@ -137,7 +137,7 @@ interface MetricRow {
 /**
  * The metric's numerator filters: its own scope AND its saved filter.
  *
- * Returns null when the saved filter cannot be resolved — the metric is
+ * Returns null when the saved filter cannot be resolved: the metric is
  * skipped for the pass rather than judged against the whole estate. See the
  * module note.
  */
@@ -164,7 +164,7 @@ async function numeratorFilters(
 
 /**
  * True when this metric was *notified* about within the cooldown window.
- * Stored-but-unnotified rows are ignored on purpose — see the module note.
+ * Stored-but-unnotified rows are ignored on purpose: see the module note.
  */
 async function inCooldown(metricId: string, currency: string, windowTo: string): Promise<boolean> {
   const rows = await db
@@ -324,7 +324,7 @@ async function evaluateMetric(
  * Evaluate every live business metric in an org for a unit-cost regression and
  * notify fresh firings through the alert routing layer.
  *
- * Errors are logged, never thrown — this must not break the poller's cost
+ * Errors are logged, never thrown: this must not break the poller's cost
  * pass. Rate-limited per org (`MIN_EVAL_INTERVAL_MS`); pass `force` to bypass.
  */
 export async function evaluateUnitCostRegressionsForOrg(
@@ -379,7 +379,7 @@ export async function evaluateUnitCostRegressionsForOrg(
   if (metrics.length === 0) return;
 
   // Org currency settings, read once per pass. A failure degrades to
-  // per-currency comparison rather than aborting — the same policy the change
+  // per-currency comparison rather than aborting: the same policy the change
   // evaluator follows.
   let displayCurrency: string | null = null;
   let rates: Awaited<ReturnType<typeof listOrgExchangeRates>> = [];
@@ -390,7 +390,7 @@ export async function evaluateUnitCostRegressionsForOrg(
     console.error(`[unit-cost-regression] currency read failed for org ${organizationId}:`, err);
   }
 
-  // Yesterday is the newest complete day — today is still accruing on both
+  // Yesterday is the newest complete day: today is still accruing on both
   // sides of the ratio and would compare a partial numerator against a partial
   // denominator.
   const windows = unitCostWindows(addDays(isoDay(now), -1), settings.unitCostWindowDays);

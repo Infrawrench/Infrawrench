@@ -9,7 +9,7 @@ import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert"
  *  - the cheap guards, which must not touch the cooldown row;
  *  - the cooldown claim, which is the hard cap of one message per org per
  *    window and must lose gracefully when a second replica wins it;
- *  - the rollback, so a window nobody received is not spent — including when
+ *  - the rollback, so a window nobody received is not spent, including when
  *    the digest *throws*, since a kept claim moves the next digest's `since`
  *    past changes nobody was ever told about;
  *  - the read window, which must start at the previous notification rather
@@ -43,7 +43,7 @@ vi.mock("../db/schema", () => ({
 let changeRows: unknown[] = [];
 /** When set, the window query rejects with this instead of resolving. */
 let changeRowsError: Error | null = null;
-/** What the claim's `returning()` yields — a non-empty array means claimed. */
+/** What the claim's `returning()` yields: a non-empty array means claimed. */
 let claimResult: unknown[] = [];
 /** `limit(n)` argument of the most recent select. */
 let lastLimit: number | undefined;
@@ -115,7 +115,7 @@ vi.mock("../drift/settings", () => ({
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -206,7 +206,7 @@ describe("cheap guards", () => {
   });
 
   it("skips a pass whose only changes are a kind the org muted", async () => {
-    // Field updates are off by default — the volume lever.
+    // Field updates are off by default: the volume lever.
     expect(await notifyResourceDrift(ORG, ACCOUNT, [event("updated")], NOW)).toEqual({
       status: "filtered",
     });
@@ -227,7 +227,7 @@ describe("cooldown claim", () => {
       status: "cooling-down",
     });
     expect(routeAlert).not.toHaveBeenCalled();
-    // A lost claim must not roll anything back — the winner owns the row.
+    // A lost claim must not roll anything back: the winner owns the row.
     expect(releases).toEqual([]);
   });
 
@@ -318,8 +318,8 @@ describe("failure containment", () => {
   }
 
   it("swallows a routing failure rather than failing the sync", async () => {
-    // `routeAlert` never throws — a transport outage comes back as a result
-    // that reached nobody — but the notifier still has to survive one that
+    // `routeAlert` never throws (a transport outage comes back as a result
+    // that reached nobody) but the notifier still has to survive one that
     // does, since it sits on the poller's hot path.
     routeAlert.mockRejectedValue(new Error("routing exploded"));
     const spy = hushErrors();
@@ -345,7 +345,7 @@ describe("failure containment", () => {
 
   it("releases the claimed window when the read throws, so the changes are not lost", async () => {
     // The claim already advanced last_notified_at. Keeping it would move the
-    // next digest's `since` past every change in this window — dropped forever.
+    // next digest's `since` past every change in this window: dropped forever.
     getDriftAlertSettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
     changeRowsError = new Error("window query exploded");
     const spy = hushErrors();

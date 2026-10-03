@@ -11,7 +11,7 @@
  * Reads take `workflows:read`; creating, editing, deleting, and manually
  * running take `workflows:write`. Manual run sits with `write` rather than a
  * permission of its own because anyone who can edit a workflow can already give
- * it a cron or git trigger — a separate `run` would be a lock on an open door.
+ * it a cron or git trigger: a separate `run` would be a lock on an open door.
  * Deciding approval requests is a genuinely different trust level and lives in
  * `workflows:approve` (see routes/workflow-approvals.ts).
  */
@@ -190,7 +190,7 @@ app.put("/:id/schedule", async (c) => {
   if (!body || typeof body.expression !== "string") {
     return c.json({ error: "Body must be JSON with an `expression` string." }, 400);
   }
-  // The cast above is a compile-time convenience, not a check — validate the
+  // The cast above is a compile-time convenience, not a check: validate the
   // optional fields too, or a non-boolean `enabled` reaches the column while
   // `computeSchedule` reads it as truthy (a disabled workflow with a live
   // `next_run_at`).
@@ -220,7 +220,7 @@ app.delete("/:id/schedule", async (c) => {
 
 // Generated TypeScript typings for the editor.
 // Default = static plugin defs + account names (fast). `?enrich=1` hits
-// providers for precise create() field unions — the editor loads static first
+// providers for precise create() field unions: the editor loads static first
 // and upgrades in a second pass.
 app.get("/:id/typings", async (c) => {
   requirePermission(c, "workflows:read");
@@ -260,12 +260,12 @@ app.post("/:id/run", async (c) => {
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   // The sandbox acts with this user's permissions, so `workflows:write` buys
-  // the right to start a run and nothing more — the operations inside it are
+  // the right to start a run and nothing more: the operations inside it are
   // checked against the same role the API would check.
   //
   // Refuse rather than omit when there is no session. `sessionMiddleware` gates
   // this whole tree and only admits a session cookie or a WorkOS bearer token,
-  // so this is unreachable today — but omitting `runAsUserId` silently falls
+  // so this is unreachable today, but omitting `runAsUserId` silently falls
   // back to the workflow's author, and "the principal was unresolvable, so run
   // as someone else" is the exact shape of the bug this permission gate exists
   // to close. Fail closed, and let a future auth path that reaches here fail

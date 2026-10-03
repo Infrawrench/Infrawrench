@@ -24,7 +24,7 @@ interface ApiAuthResult {
   scopes?: string[];
   /**
    * Set when the caller authenticated with an agent-auth credential. Its
-   * presence is what tells a surface it is not talking to a person — the
+   * presence is what tells a surface it is not talking to a person: the
    * `userId` beside it is the agent's own user row, not a human's.
    */
   agentRegistrationId?: string;
@@ -33,8 +33,8 @@ interface ApiAuthResult {
 /**
  * Map deprecated scope strings onto their new equivalents.
  *
- * This is a pure rename — `sync:read`/`sync:write` become
- * `resources:read`/`resources:write` and the old strings disappear — which is
+ * This is a pure rename (`sync:read`/`sync:write` become
+ * `resources:read`/`resources:write` and the old strings disappear) which is
  * why the result is safe to persist back onto the row (see
  * {@link authenticateApiRequest}). Nothing else is expanded here: the one-off
  * `dashboards:*` → `workflows:*` grandfathering was applied to stored scopes by
@@ -83,7 +83,7 @@ export interface WorkosAccessTokenClaims extends JWTPayload {
    * ceremony has completed. `act.sub` names the *user behind the agent*; the
    * token's own `sub` remains the agent registration id.
    *
-   * Read as a cross-check, never as the authority — see
+   * Read as a cross-check, never as the authority: see
    * `server-core/trials/principal.ts`.
    */
   act?: { sub?: string };
@@ -95,15 +95,15 @@ export interface WorkosAccessTokenClaims extends JWTPayload {
  * Verification deliberately pins neither `aud` nor `iss`. Both look like
  * obvious hardening and both are wrong here:
  *
- * - **`aud`** — WorkOS AuthKit access tokens do not carry an audience claim at
+ * - **`aud`**: WorkOS AuthKit access tokens do not carry an audience claim at
  *   all (`sub`, `sid`, `iss`, `org_id`, `role`, `permissions`, `exp`, `iat`).
  *   Passing `audience` to `jwtVerify` would reject *every* token.
- * - **`iss`** — the value is not stable across configurations or SDK versions
+ * - **`iss`**: the value is not stable across configurations or SDK versions
  *   (`https://api.workos.com/`, the same without the trailing slash, or the
  *   custom AuthKit domain when one is set), so pinning it risks locking every
  *   bearer client out for no gain.
  *
- * No gain, because {@link getJwks} resolves to `/sso/jwks/<clientId>` — a
+ * No gain, because {@link getJwks} resolves to `/sso/jwks/<clientId>`: a
  * per-client key set. A token minted for any other WorkOS client fails the
  * signature check outright, which is the isolation an `iss`/`aud` pin would
  * have been standing in for.
@@ -121,7 +121,7 @@ export async function verifyWorkosAccessToken(
 
 /**
  * Build the auth result for an agent registration, whichever way it proved
- * itself — an `iwa_` credential we issued or a WorkOS agent token whose `sub`
+ * itself: an `iwa_` credential we issued or a WorkOS agent token whose `sub`
  * is the registration id. One function, so the two credential formats can never
  * end up granting different things.
  *
@@ -165,7 +165,7 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
 
   if (token.startsWith("iwk_")) {
     // HMAC hash first; legacy SHA-256 fallback for pre-migration rows. A
-    // legacy hit rehashes to HMAC, unless the sunset has elapsed — past
+    // legacy hit rehashes to HMAC, unless the sunset has elapsed: past
     // sunset, a leaked SHA-256 digest must not authenticate.
     // TODO: drop the legacy lookup once all rows have been rehashed.
     const newHash = await keyedHash(token, API_KEY_HASH_DOMAIN);
@@ -196,7 +196,7 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
 
     // The key is only as valid as its owner's membership. Removing someone
     // from an org deletes their membership row but cannot reach into the keys
-    // they minted — and once removed they can no longer see those keys in the
+    // they minted, and once removed they can no longer see those keys in the
     // UI to revoke them. Check here so access ends with the membership.
     const [membership] = await db
       .select({ id: organizationMembers.id })
@@ -264,7 +264,7 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
  * Throws if the bearer-auth principal lacks the required permission. Uses the
  * same wildcard matcher as session auth so wildcard scopes (e.g. `*`,
  * `resources:*:read`) are honoured. WorkOS access tokens (no `scopes` field)
- * pass — they represent the full user, whose permissions are checked via
+ * pass: they represent the full user, whose permissions are checked via
  * `permissionsMiddleware` on org-scoped routes.
  */
 export function requireScope(auth: ApiAuthResult, scope: string): void {

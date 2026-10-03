@@ -3,7 +3,7 @@
  * over an actual HTTP socket. The modern client is the v2 SDK (2026-07-28,
  * per-request envelope, no handshake); the legacy client is the v1 SDK
  * (2025-era `initialize` handshake), loaded out of the pnpm store where it
- * survives as a transitive dependency — the point being that clients written
+ * survives as a transitive dependency: the point being that clients written
  * before the 2026-07-28 revision keep working against the migrated endpoint.
  */
 import { it, expect, vi, afterAll } from "vitest";

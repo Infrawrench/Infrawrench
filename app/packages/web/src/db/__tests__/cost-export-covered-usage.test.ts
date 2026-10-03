@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 /**
- * Guards migration `0091_cost_export_covered_usage` — the one-time data
+ * Guards migration `0091_cost_export_covered_usage`: the one-time data
  * migration that appends `commitment_covered_usage` to stored cost-export
  * queries that were narrowed to `usage`.
  *
@@ -12,7 +12,7 @@ import path from "node:path";
  * learned to stamp it, commitment-covered consumption *was* `usage`, so an
  * export filtered to `["usage"]` meant "consumption". Split it in two and that
  * export keeps running, keeps succeeding, and quietly drops the covered spend
- * from the warehouse — no error, no gap, just a smaller number.
+ * from the warehouse: no error, no gap, just a smaller number.
  *
  * It cannot be executed here (these tests have no database), so what is checked
  * is the shape that makes it safe to run against production data: it appends
@@ -45,7 +45,7 @@ const statements = sql
 
 describe("0091 cost export commitment-covered usage", () => {
   it("is registered in the drizzle journal", () => {
-    // An unregistered file is a file that never runs — and nothing else repairs
+    // An unregistered file is a file that never runs, and nothing else repairs
     // these configs, so every affected export would under-report forever.
     expect(journal.entries.some((e) => e.tag === TAG)).toBe(true);
   });
@@ -59,7 +59,7 @@ describe("0091 cost export commitment-covered usage", () => {
 
   it("appends to the stored array rather than replacing it", () => {
     // An assignment that does not re-read the column would discard whatever
-    // else the author had selected — credits, tax, the lot.
+    // else the author had selected: credits, tax, the lot.
     expect(statements[0]).toContain("(\"query\" -> 'chargeTypes') ||");
     expect(statements[0]).toContain("jsonb_set");
     expect(statements[0]).toContain("'{chargeTypes}'");
@@ -72,7 +72,7 @@ describe("0091 cost export commitment-covered usage", () => {
   });
 
   it("only rewrites an export that was narrowed to usage", () => {
-    // Absent `chargeTypes` already means every charge type — those exports
+    // Absent `chargeTypes` already means every charge type: those exports
     // never lost anything and must not gain a narrowing key.
     expect(statements[0]).toContain("jsonb_typeof(\"query\" -> 'chargeTypes') = 'array'");
     expect(statements[0]).toContain("\"query\" -> 'chargeTypes' @> '[\"usage\"]'::jsonb");

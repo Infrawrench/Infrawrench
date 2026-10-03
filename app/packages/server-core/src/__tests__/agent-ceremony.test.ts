@@ -121,7 +121,7 @@ describe("parseGlobalRegistrationLimit", () => {
 
   it("falls back rather than reading an empty string as zero", () => {
     // `Number("")` is 0, and a ceiling of 0 makes `count >= limit` true for
-    // every request — a permanently 429ing registration route, from a value an
+    // every request: a permanently 429ing registration route, from a value an
     // operator can produce by declaring the key and leaving it blank.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(ceremony.parseGlobalRegistrationLimit("")).toBe(
@@ -132,7 +132,7 @@ describe("parseGlobalRegistrationLimit", () => {
 
   it("falls back rather than reading garbage as NaN", () => {
     // Every comparison against NaN is false, so the kill switch would silently
-    // never fire — during exactly the incident it was set for.
+    // never fire: during exactly the incident it was set for.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     for (const bad of ["500/hr", "lots", "-1", "12.5"]) {
       expect(ceremony.parseGlobalRegistrationLimit(bad)).toBe(
@@ -162,7 +162,7 @@ describe("claim codes", () => {
   it("rejects anything that cannot be a code", () => {
     expect(ceremony.normalizeClaimCode("123")).toBeNull();
     expect(ceremony.normalizeClaimCode("K7MP2Q9XY")).toBeNull();
-    // I, L, O and U are not in the alphabet — a code containing one was
+    // I, L, O and U are not in the alphabet: a code containing one was
     // mistyped from a character that is.
     expect(ceremony.normalizeClaimCode("IIIIIIII")).toBeNull();
   });
@@ -222,7 +222,7 @@ describe("resolveAgentCredential", () => {
     expect(await ceremony.resolveAgentCredential("iwa_abc")).toBeNull();
     const select = pg.queries.find((q) => q.sql.startsWith("select"));
     // Revocation has to be checked here, because the credential itself stays
-    // syntactically valid forever — this query is what ends the access.
+    // syntactically valid forever: this query is what ends the access.
     expect(select?.sql).toContain('"revoked_at" is null');
   });
 

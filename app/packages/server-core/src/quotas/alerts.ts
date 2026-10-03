@@ -4,11 +4,11 @@
  * under the `quotaAlerts` trigger.
  *
  * Invoked from the poller loop (a bounded batch per tick), not from the
- * collection pass — a quota does not get closer to its ceiling because a
+ * collection pass: a quota does not get closer to its ceiling because a
  * collector ran, so the cadence is the wall clock's. The claim/cooldown
  * protocol is the shared engine in `../alerts/daily-window.ts`; this module
  * supplies what is quota's alone: the settings table, the feed, and the
- * message. Never throws — every error is logged with the `[quotas]` prefix.
+ * message. Never throws: every error is logged with the `[quotas]` prefix.
  */
 import { alertableQuotas } from "@infrawrench/client-core";
 import { orgQuotaSettings } from "../db/schema";
@@ -58,7 +58,7 @@ const store = dailyWindowStore<QuotaSettingsRecord>({
   }),
 });
 
-/** The scan-and-deliver body run under a won claim — see the engine's contract. */
+/** The scan-and-deliver body run under a won claim: see the engine's contract. */
 async function deliverWindow(
   organizationId: string,
   _settings: QuotaSettingsRecord,
@@ -68,13 +68,13 @@ async function deliverWindow(
   const feed = await getQuotaFeed(organizationId, now);
   const due = alertableQuotas(feed.rows);
   if (due.length === 0) {
-    // A completed scan consumes the cooldown even when it found nothing —
+    // A completed scan consumes the cooldown even when it found nothing:
     // `last_notified_at` means "last alert scan", and a quiet org re-scanned
     // every tick would only reconfirm the same silence.
     //
     // Note this is deliberately silent about *collection* failures too: an
     // account whose quota read is failing produces no rows and therefore no
-    // alert. That is the right call for this trigger — a broken collector is
+    // alert. That is the right call for this trigger: a broken collector is
     // an operational problem the Quotas page names per account, not a page at
     // 3am about a limit we cannot see.
     delivery.spent = true;

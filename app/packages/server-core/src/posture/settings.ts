@@ -7,7 +7,7 @@
  * means the shipped defaults, so an org that never opens the form still has a
  * well-defined stance (alerts on).
  *
- * Unlike the expiry settings there is no lead time — findings have no clock —
+ * Unlike the expiry settings there is no lead time (findings have no clock)
  * so the only tunable is the on/off switch.
  */
 import { eq } from "drizzle-orm";
@@ -21,7 +21,7 @@ export interface PostureSettingsRecord {
   enabled: boolean;
   /**
    * When this org's posture alert scan last completed; null if never. A
-   * claim, not bookkeeping — see `alerts.ts`. It records the last *scan*, not
+   * claim, not bookkeeping: see `alerts.ts`. It records the last *scan*, not
    * necessarily a delivered message: a scan that found nothing alertable
    * keeps it.
    */

@@ -1,5 +1,5 @@
 /**
- * Personal account settings — the signed-in user's own WorkOS record.
+ * Personal account settings: the signed-in user's own WorkOS record.
  *
  * Everything here is user-scoped, never org-scoped: a user has one WorkOS
  * identity shared across every organization they belong to. WorkOS is the
@@ -12,8 +12,8 @@
  * factors/sessions and refuses ids that aren't in that list.
  *
  * The routes that can convert a borrowed session into permanent control of the
- * account — password-reset links, email changes, MFA enrolment/removal,
- * revoking every other session, and deleting the account — additionally require
+ * account: password-reset links, email changes, MFA enrolment/removal,
+ * revoking every other session, and deleting the account; additionally require
  * a recent sign-in via `requireRecentAuthentication`. See `auth/step-up.ts`.
  */
 
@@ -42,7 +42,7 @@ const TOTP_ISSUER = "Infrawrench";
 
 const app = new Hono();
 
-/** GET /api/profile — the signed-in user's WorkOS profile. */
+/** GET /api/profile: the signed-in user's WorkOS profile. */
 app.get("/", async (c) => {
   const session = c.get("session");
   const user = await workos.userManagement.getUser(session.userId);
@@ -71,7 +71,7 @@ app.get("/", async (c) => {
   });
 });
 
-/** PATCH /api/profile — update the user's name. */
+/** PATCH /api/profile: update the user's name. */
 app.patch("/", async (c) => {
   const session = c.get("session");
   const body = await c.req
@@ -112,7 +112,7 @@ app.patch("/", async (c) => {
 });
 
 /**
- * GET /api/profile/deletion-preview — what deleting this account would do.
+ * GET /api/profile/deletion-preview: what deleting this account would do.
  *
  * Lets the confirmation screen say "this also deletes Acme" up front, and name
  * the organizations that have to be handed over first, instead of the user
@@ -140,7 +140,7 @@ app.get("/deletion-preview", async (c) => {
 });
 
 /**
- * DELETE /api/profile — delete the account and everything personal to it.
+ * DELETE /api/profile: delete the account and everything personal to it.
  *
  * Step-up guarded like the other account-takeover-adjacent routes: a borrowed
  * session must not be able to destroy the account it borrowed.
@@ -178,7 +178,7 @@ async function organizationNames(ids: string[]): Promise<Map<string, string>> {
 }
 
 /**
- * POST /api/profile/password-reset — mint a one-time password reset link.
+ * POST /api/profile/password-reset: mint a one-time password reset link.
  *
  * The link goes to AuthKit's hosted reset page, which is the only surface that
  * handles every case correctly (no password yet, SSO-only user, password
@@ -194,7 +194,7 @@ app.post("/password-reset", async (c) => {
   return c.json({ passwordResetUrl: reset.passwordResetUrl, expiresAt: reset.expiresAt });
 });
 
-/** POST /api/profile/send-verification-email — re-send the email verification code. */
+/** POST /api/profile/send-verification-email: re-send the email verification code. */
 app.post("/send-verification-email", async (c) => {
   const session = c.get("session");
   const user = await workos.userManagement.getUser(session.userId);
@@ -206,7 +206,7 @@ app.post("/send-verification-email", async (c) => {
 });
 
 /**
- * POST /api/profile/email-change — send a confirmation code to the NEW address.
+ * POST /api/profile/email-change: send a confirmation code to the NEW address.
  *
  * WorkOS holds the change pending until the code comes back, so the account
  * only moves once someone has proven they can read mail at the new address. A
@@ -248,7 +248,7 @@ app.post("/email-change", async (c) => {
   }
 });
 
-/** POST /api/profile/email-change/confirm — redeem the code and switch the address. */
+/** POST /api/profile/email-change/confirm: redeem the code and switch the address. */
 app.post("/email-change/confirm", async (c) => {
   await requireRecentAuthentication(c);
   const session = c.get("session");
@@ -270,14 +270,14 @@ app.post("/email-change/confirm", async (c) => {
   }
 
   // Our mirror is what `/api/auth/me` reports, so it has to move in the same
-  // breath — the sealed session cookie still holds the old address until it
+  // breath: the sealed session cookie still holds the old address until it
   // next refreshes.
   await db.update(users).set({ email }).where(eq(users.id, session.userId));
 
   return c.json({ email });
 });
 
-/** GET /api/profile/mfa — the user's enrolled authentication factors. */
+/** GET /api/profile/mfa: the user's enrolled authentication factors. */
 app.get("/mfa", async (c) => {
   const session = c.get("session");
   const factors = await listOwnFactors(session.userId);
@@ -285,11 +285,11 @@ app.get("/mfa", async (c) => {
 });
 
 /**
- * POST /api/profile/mfa — start TOTP enrolment.
+ * POST /api/profile/mfa: start TOTP enrolment.
  *
  * WorkOS creates the factor immediately and returns the secret plus a first
  * challenge; the factor is only usable once that challenge is verified. If the
- * user walks away mid-flow the client is expected to DELETE the factor —
+ * user walks away mid-flow the client is expected to DELETE the factor:
  * `listAuthFactors` cannot distinguish a pending factor from a live one.
  */
 app.post("/mfa", async (c) => {
@@ -314,7 +314,7 @@ app.post("/mfa", async (c) => {
   });
 });
 
-/** POST /api/profile/mfa/:factorId/verify — confirm a code from the authenticator app. */
+/** POST /api/profile/mfa/:factorId/verify: confirm a code from the authenticator app. */
 app.post("/mfa/:factorId/verify", async (c) => {
   const session = c.get("session");
   const factorId = c.req.param("factorId");
@@ -343,7 +343,7 @@ app.post("/mfa/:factorId/verify", async (c) => {
 });
 
 /**
- * POST /api/profile/mfa/:factorId/challenge — issue a fresh challenge.
+ * POST /api/profile/mfa/:factorId/challenge: issue a fresh challenge.
  * Enrolment challenges expire; this lets the client retry without restarting
  * (and re-enrolling) the whole flow.
  */
@@ -357,7 +357,7 @@ app.post("/mfa/:factorId/challenge", async (c) => {
   return c.json({ challengeId: challenge.id });
 });
 
-/** DELETE /api/profile/mfa/:factorId — remove a factor (also the cancel path for enrolment). */
+/** DELETE /api/profile/mfa/:factorId: remove a factor (also the cancel path for enrolment). */
 app.delete("/mfa/:factorId", async (c) => {
   await requireRecentAuthentication(c);
   const session = c.get("session");
@@ -369,7 +369,7 @@ app.delete("/mfa/:factorId", async (c) => {
   return c.json({ ok: true });
 });
 
-/** GET /api/profile/sessions — active sign-ins, current one flagged. */
+/** GET /api/profile/sessions: active sign-ins, current one flagged. */
 app.get("/sessions", async (c) => {
   const session = c.get("session");
   const list = await workos.userManagement.listSessions(session.userId);
@@ -390,7 +390,7 @@ app.get("/sessions", async (c) => {
   );
 });
 
-/** DELETE /api/profile/sessions/:sessionId — sign out one other device. */
+/** DELETE /api/profile/sessions/:sessionId: sign out one other device. */
 app.delete("/sessions/:sessionId", async (c) => {
   const session = c.get("session");
   const sessionId = c.req.param("sessionId");
@@ -407,7 +407,7 @@ app.delete("/sessions/:sessionId", async (c) => {
   return c.json({ ok: true });
 });
 
-/** POST /api/profile/sessions/revoke-others — sign out everywhere but here. */
+/** POST /api/profile/sessions/revoke-others: sign out everywhere but here. */
 app.post("/sessions/revoke-others", async (c) => {
   await requireRecentAuthentication(c);
   const session = c.get("session");
@@ -448,8 +448,8 @@ function isEmail(value: string): boolean {
 }
 
 /**
- * `undefined` — field absent, leave it alone.
- * `null` — present but not a usable name; the caller turns this into a 400.
+ * `undefined`: field absent, leave it alone.
+ * `null`: present but not a usable name; the caller turns this into a 400.
  */
 function normalizeName(value: unknown): string | undefined | null {
   if (value === undefined) return undefined;

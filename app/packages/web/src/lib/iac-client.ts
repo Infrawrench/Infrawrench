@@ -6,7 +6,7 @@ import type {
 } from "@infrawrench/client-core";
 import { apiDelete, apiGet, apiPost } from "./api";
 
-/** Web binding for the shared IaC reconciliation panel — thin `api*` wrappers. */
+/** Web binding for the shared IaC reconciliation panel: thin `api*` wrappers. */
 export function createWebIacClient(orgId: string): IacClient {
   const base = `/api/org/${orgId}/iac`;
   return {

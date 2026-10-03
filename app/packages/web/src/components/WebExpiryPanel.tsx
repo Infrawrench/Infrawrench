@@ -14,7 +14,7 @@ interface WebExpiryPanelProps {
 
 /**
  * Web host for the shared Expiry radar: fetches the org's expiry feed from the
- * API and refreshes when resources change. Same wiring as WebGraphPanel — a
+ * API and refreshes when resources change. Same wiring as WebGraphPanel: a
  * failed *refresh* must not blank a feed that is already drawn, so the last
  * loaded data stays on screen under the section's banner.
  */

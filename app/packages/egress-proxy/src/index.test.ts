@@ -82,7 +82,7 @@ describe("assertAllowedUrl", () => {
     "http://[::1]/",
     "http://[fd00::1]/", // unique-local
     "http://[::ffff:10.0.0.1]/", // IPv4-mapped private
-    // Cluster-internal names — the reason the proxy is outside the cluster.
+    // Cluster-internal names: the reason the proxy is outside the cluster.
     "http://web.default.svc.cluster.local/",
     "http://poller.default.svc/",
     "http://kubernetes.default/",
@@ -263,7 +263,7 @@ describe("worker /probe", () => {
     expect(result.status).toBe(200);
     expect(typeof result.latencyMs).toBe("number");
     expect(result).not.toHaveProperty("error");
-    // The body never comes back — the envelope carries only the verdict.
+    // The body never comes back: the envelope carries only the verdict.
     expect(JSON.stringify(result)).not.toContain("nobody reads");
   });
 

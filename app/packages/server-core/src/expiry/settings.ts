@@ -24,7 +24,7 @@ import { orgExpirySettings } from "../db/schema";
 /**
  * Bounds the API enforces on the tunable numbers. Defined in
  * `@infrawrench/client-core` and re-exported here so existing server imports
- * keep working — the form, the config-as-code schema and this clamp cannot
+ * keep working: the form, the config-as-code schema and this clamp cannot
  * disagree about what a valid lead time is.
  */
 export { EXPIRY_ALERT_LIMITS };
@@ -37,7 +37,7 @@ export interface ExpirySettingsRecord {
   leadDays: number;
   /**
    * When this org's expiry alert scan last completed; null if never. A claim,
-   * not bookkeeping — see `alerts.ts`. It records the last *scan*, not
+   * not bookkeeping: see `alerts.ts`. It records the last *scan*, not
    * necessarily a delivered message: a scan that found nothing due keeps it.
    */
   lastNotifiedAt: Date | null;

@@ -26,7 +26,7 @@ const app = new Hono();
  *
  * The read side is deliberately the *cost* permission rather than a settings
  * one. Anyone who can see a converted total has to be able to see what it was
- * converted at — a rate table you cannot read makes the number on the graph
+ * converted at: a rate table you cannot read makes the number on the graph
  * unauditable, and every cost surface already requires `costs:read`.
  *
  * The write side is deliberately **not** `costs:write` (which tunes anomaly
@@ -34,18 +34,18 @@ const app = new Hono();
  * exchange rate restates every historical total the org reports, in the digest
  * that goes to the whole team and in the budget alerts that page people. That
  * is a finance-governance decision with org-wide blast radius, which is what
- * `org:settings:write` gates — the same permission the tag policy uses, its
+ * `org:settings:write` gates: the same permission the tag policy uses, its
  * nearest sibling in kind. Every write is audit-logged for the same reason.
  */
 
-/** GET /api/org/:orgId/currency — display currency + the whole rate table. */
+/** GET /api/org/:orgId/currency: display currency + the whole rate table. */
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
   return c.json(await getOrgCurrencyConfig(c.get("organizationId")));
 });
 
 /**
- * PUT /api/org/:orgId/currency — set or clear the display currency.
+ * PUT /api/org/:orgId/currency: set or clear the display currency.
  *
  * `null` clears it, which turns conversion off everywhere and restores the
  * per-currency view. Clearing is not a destructive act on the rate table: the
@@ -80,7 +80,7 @@ app.put("/", async (c) => {
 });
 
 /**
- * PUT /api/org/:orgId/currency/rates — create or replace one rate.
+ * PUT /api/org/:orgId/currency/rates: create or replace one rate.
  *
  * An upsert keyed on (from, to, effectiveFrom): the unique index says one rate
  * per pair per day, and correcting a typo means "this is the rate", not "add a
@@ -118,7 +118,7 @@ app.put("/rates", async (c) => {
   }
 });
 
-/** DELETE /api/org/:orgId/currency/rates/:rateId — drop one stated rate. */
+/** DELETE /api/org/:orgId/currency/rates/:rateId: drop one stated rate. */
 app.delete("/rates/:rateId", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");

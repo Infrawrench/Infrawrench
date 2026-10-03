@@ -19,9 +19,9 @@ import { alertReached, routeAlert } from "./alerts/route";
  * open re-page every `cooldownMinutes` until a successful sync closes it.
  *
  * The org's `enabled` flag is the master switch for all four transports, not
- * just Twilio — an org that turns paging off gets no incident alerts anywhere.
+ * just Twilio: an org that turns paging off gets no incident alerts anywhere.
  *
- * Wired from the background poller only — manual sync calls from the UI go
+ * Wired from the background poller only: manual sync calls from the UI go
  * through `syncAccountResources` directly and do not page, by design.
  */
 
@@ -169,7 +169,7 @@ interface SendCallArgs {
 }
 
 async function sendCall({ creds, to, say }: SendCallArgs): Promise<void> {
-  // Inline TwiML — Twilio fetches no callback URL when `Twiml` is provided.
+  // Inline TwiML: Twilio fetches no callback URL when `Twiml` is provided.
   const escaped = say
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -242,14 +242,14 @@ async function fanOutPage(
 }
 
 /**
- * One-shot page that skips the poll-failure incident machinery entirely — for
+ * One-shot page that skips the poll-failure incident machinery entirely, for
  * callers that already deduped upstream (budget alerts via the
  * budget_alert_events unique index; workflow pages via the workflow_pages
  * cooldown row). It still respects the org's Twilio enabled flag and each
  * recipient's SMS/voice opt-ins.
  *
  * Voice is opt-in per call: a budget crossing is not worth a phone call, but a
- * workflow that asked for `voice: true` is. Never throws — a transport failure
+ * workflow that asked for `voice: true` is. Never throws: a transport failure
  * must not fail the run that raised the alert.
  */
 export async function sendOneShotPage(
@@ -277,7 +277,7 @@ export async function sendOneShotPage(
  * enabled for the org, credentials and a from-number stored, and at least one
  * recipient opted into SMS.
  *
- * Answered without decrypting anything — the ciphertext columns being present
+ * Answered without decrypting anything: the ciphertext columns being present
  * is the fact being asked about, and this runs on read paths (the anomaly
  * settings form) that have no business handling credentials. Never throws: a
  * settings screen that cannot answer "can we text you?" should say no rather
@@ -340,7 +340,7 @@ export interface NotePollOutcomeArgs {
  *   pages if either (a) no open incident and the threshold is crossed, or
  *   (b) an open incident's `pagedAt` is older than `cooldownMinutes`.
  *
- * Errors loading settings / talking to Twilio are caught and logged — paging
+ * Errors loading settings / talking to Twilio are caught and logged: paging
  * must never break the poller.
  */
 export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> {
@@ -477,7 +477,7 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
       },
     });
 
-    // Only mark the incident as paged if at least one transport succeeded —
+    // Only mark the incident as paged if at least one transport succeeded,
     // otherwise the cooldown gate would suppress retries even though the
     // recipients never actually heard from us. A push success gates Twilio
     // re-sends too (one cooldown cadence per incident), and vice versa.

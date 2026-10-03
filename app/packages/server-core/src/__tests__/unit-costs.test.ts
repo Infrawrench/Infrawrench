@@ -1,6 +1,6 @@
 /**
  * Exhaustive tests for the pure unit-cost layer. No database, no ClickHouse,
- * no clock — every case is a function of its arguments, which is the whole
+ * no clock: every case is a function of its arguments, which is the whole
  * reason `cost/unit-costs.ts` holds no db import.
  *
  * These are organised around the four rules in that module's header, because
@@ -58,8 +58,8 @@ describe("computeUnitCosts — rule 2: a missing denominator is a gap, never zer
     expect(gap.value).toBeNull();
     expect(gap.gap).toBe("no_metric_value");
     expect(gap.metricValue).toBeNull();
-    // The spend is still reported — the numerator is known, it is the ratio
-    // that is not — so a reader can see what was spent on the unmeasured day.
+    // The spend is still reported (the numerator is known, it is the ratio
+    // that is not) so a reader can see what was spent on the unmeasured day.
     expect(gap.cost).toBe(200);
     expect(result.gapBuckets).toBe(1);
   });
@@ -161,7 +161,7 @@ describe("computeUnitCosts — rule 2: a missing denominator is a gap, never zer
 describe("computeUnitCosts — rule 1: the ratio is computed at the requested bucket", () => {
   it("divides summed spend by summed volume for a weekly bucket", () => {
     // Two days in one Monday-start week: 100/10 = 10 and 300/30 = 10 daily,
-    // but the week is (100+300)/(10+30) = 10 either way — so use numbers where
+    // but the week is (100+300)/(10+30) = 10 either way, so use numbers where
     // the average and the ratio actually differ.
     const result = computeUnitCosts(
       input({
@@ -181,7 +181,7 @@ describe("computeUnitCosts — rule 1: the ratio is computed at the requested bu
 
   it("is not the mean of the daily ratios", () => {
     // Daily: 100/10 = 10 and 100/100 = 1. Mean = 5.5. Correct weekly ratio is
-    // 200/110 ≈ 1.818 — the day with the volume has to dominate.
+    // 200/110 ≈ 1.818: the day with the volume has to dominate.
     const weekly = computeUnitCosts(
       input({
         from: "2026-07-06",
@@ -245,7 +245,7 @@ describe("computeUnitCosts — rule 1: the ratio is computed at the requested bu
         ],
       }),
     );
-    // Bucket ratios are 100, 100, ~1.02 — their mean is ~67. The period unit
+    // Bucket ratios are 100, 100, ~1.02: their mean is ~67. The period unit
     // cost is 300/100 = 3.
     expect(result.series[0]!.overallValue).toBe(3);
     expect(result.series[0]!.overallCost).toBe(300);
@@ -316,8 +316,8 @@ describe("computeUnitCosts — rule 3: numerator and denominator cover the same 
     const point = pointAt(result, "2026-07-06");
     expect(point.reportedDays).toBe(2);
     expect(point.bucketDays).toBe(7);
-    // Still computed — throwing away two real days of volume is its own
-    // distortion — but counted so every surface can say the ratio reads high.
+    // Still computed (throwing away two real days of volume is its own
+    // distortion) but counted so every surface can say the ratio reads high.
     expect(point.value).toBe(35); // 700 / 20
     expect(result.partialBuckets).toBe(1);
   });
@@ -334,7 +334,7 @@ describe("computeUnitCosts — rule 3: numerator and denominator cover the same 
   it("clips bucketDays to the queried range, not the calendar bucket", () => {
     const result = computeUnitCosts(
       input({
-        from: "2026-07-08", // Wednesday — 5 days of that week are in range
+        from: "2026-07-08", // Wednesday: 5 days of that week are in range
         to: "2026-07-12",
         binning: "weekly",
         costGroups: [{ currency: "USD", points: [{ bucket: "2026-07-06", amount: 500 }] }],

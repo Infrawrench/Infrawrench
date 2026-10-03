@@ -3,12 +3,12 @@
  * exported document.
  *
  * Both directions go through here. Export serialises this straight out; apply
- * diffs the incoming document against it. That is deliberate — a round trip is
+ * diffs the incoming document against it. That is deliberate: a round trip is
  * only lossless if "what we have" and "what a document says" are the same
  * shape, computed by the same code.
  *
  * **Key derivation.** The tables have no key column, so a row's key is derived
- * from its name (`uniqueOrgConfigKey`) over a *stable* ordering — created-at,
+ * from its name (`uniqueOrgConfigKey`) over a *stable* ordering: created-at,
  * then id. Not the ordering the list endpoints use: `listWorkflows` sorts by
  * `updatedAt`, so deriving keys from that would rename every key whenever
  * someone saved a workflow, and the next apply would delete-and-recreate the
@@ -62,7 +62,7 @@ export interface OrgConfigEntity<T> {
   key: string;
   /** The database id. Never appears in the document. */
   id: string;
-  /** The row rendered in document shape — what a diff compares against. */
+  /** The row rendered in document shape: what a diff compares against. */
   config: T;
 }
 
@@ -184,7 +184,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
       .from(costAllocationRules)
       .where(eq(costAllocationRules.organizationId, organizationId))
       .orderBy(asc(costAllocationRules.priority), asc(costAllocationRules.id)),
-    // Identity columns only — used to resolve dashboard resource pins at plan
+    // Identity columns only: used to resolve dashboard resource pins at plan
     // time so apply never reports a card as written when the inventory has not
     // synced it yet.
     db
@@ -463,7 +463,7 @@ interface CardMaps {
  *
  * Resource pins, workflow pins and widgets share one `gridX` sequence (see
  * `api/routes/dashboards.ts`), so they are merged and re-sorted into the single
- * ordered `cards` array the document carries — which is also what makes the
+ * ordered `cards` array the document carries, which is also what makes the
  * order reviewable in a diff instead of hidden in integer columns.
  */
 async function loadDashboardCards(
@@ -573,7 +573,7 @@ async function loadDashboardCards(
     if (widgetKind === "budget") {
       budgetKey = maps.budgetKeyById.get(String(config["budgetId"] ?? ""));
       // A card whose target is gone renders as "unavailable" and cannot be
-      // recreated anywhere — leave it out rather than export a broken card.
+      // recreated anywhere: leave it out rather than export a broken card.
       if (!budgetKey) continue;
       delete config["budgetId"];
     }

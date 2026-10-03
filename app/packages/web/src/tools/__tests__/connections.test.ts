@@ -248,7 +248,7 @@ describe("connectionTools", () => {
     });
 
     // MCP exposes every tool regardless of `risk`, so a caller-named host here
-    // is unguarded outbound SSH for anyone holding `resources:execute` — and
+    // is unguarded outbound SSH for anyone holding `resources:execute`, and
     // unlike the rebinding case it needs no DNS control, just the address.
     it("refuses a caller-supplied host in blocked address space", async () => {
       mockGetClientForAccount.mockResolvedValue({ client: {} });
@@ -286,7 +286,7 @@ describe("connectionTools", () => {
 
     // The plugin's own endpoint (Fly, Hetzner, an SSH account's credentials)
     // is configuration written with `accounts:write`, not something the caller
-    // named — `resolveSshConfig` ignores `sshHost` entirely in that case.
+    // named: `resolveSshConfig` ignores `sshHost` entirely in that case.
     it("leaves a plugin-supplied endpoint unpinned", async () => {
       mockGetClientForAccount.mockResolvedValue({ client: {} });
       mockResolveSshConfig.mockResolvedValue({ host: "fly-machine.internal", port: 22 });

@@ -164,7 +164,7 @@ app.post("/import", async (c) => {
   });
 });
 
-// A userauth blob is a session id plus the request fields — a few hundred
+// A userauth blob is a session id plus the request fields: a few hundred
 // bytes. The cap only exists so the endpoint cannot be fed arbitrary payloads.
 const MAX_SIGN_DATA_BYTES = 16 * 1024;
 
@@ -174,7 +174,7 @@ const MAX_SIGN_DATA_BYTES = 16 * 1024;
 // directly from the host instead of hairpinning through the cloud); the key
 // material moves nothing, only signatures do.
 //
-// Deliberately gated on `resources:execute`, not `ssh-keys:read` — producing
+// Deliberately gated on `resources:execute`, not `ssh-keys:read`: producing
 // an auth signature is the same authority as opening a shell, exactly as the
 // `/api/ws` and `/api/apps` proxies are gated. Every call is audited.
 app.post("/:id/sign", async (c) => {

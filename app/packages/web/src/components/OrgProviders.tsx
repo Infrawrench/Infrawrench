@@ -10,7 +10,7 @@ import { apiGet, apiPost } from "@/lib/api";
  * `<Outlet />`, and that placement is the whole point. A tab's panel is drawn
  * by `WebWorkspaceTabsViewport`, which is a *sibling* of the outlet, so a
  * provider mounted by the `/org/$orgId` layout route covers the route-rendered
- * pages (Settings, Moment) and nothing in a tab — which is most of the app.
+ * pages (Settings, Moment) and nothing in a tab, which is most of the app.
  * That gap is what made "File in Jira" / "File in Linear" and the already-filed
  * badges invisible everywhere on web while the identical UI worked on desktop,
  * and what had three tab panels re-reading `/team/me` for themselves instead of
@@ -29,7 +29,7 @@ import { apiGet, apiPost } from "@/lib/api";
 export function OrgProviders({ orgId, children }: { orgId: string | null; children: ReactNode }) {
   // No org (the shell rendering while a redirect to /org/:orgId is in flight):
   // render bare rather than provide contexts scoped to nothing. `usePermissions`
-  // throws without a provider, which is the honest answer — every consumer is
+  // throws without a provider, which is the honest answer: every consumer is
   // inside an org route.
   if (!orgId) return <>{children}</>;
 
@@ -48,7 +48,7 @@ export function OrgProviders({ orgId, children }: { orgId: string | null; childr
  * link once, and each findings row then resolves itself from that. Mounting it
  * per section would turn one handful of requests into a handful per section.
  *
- * Inside `PermissionsProvider` because it needs `has()` — the provider skips a
+ * Inside `PermissionsProvider` because it needs `has()`: the provider skips a
  * tracker's reads entirely without that tracker's `:read`.
  */
 function IssueFiling({ orgId, children }: { orgId: string; children: ReactNode }) {

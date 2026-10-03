@@ -1,10 +1,10 @@
 /**
- * Sleep/wake schedule rows — CRUD + normalization shared by the web API, the
+ * Sleep/wake schedule rows: CRUD + normalization shared by the web API, the
  * MCP tools and the poller pass.
  *
  * Timing validation and next-transition computation come from
  * `@infrawrench/client-core` (`validateScheduleTiming`,
- * `computeNextTransition`), the same functions the editor UIs preview with —
+ * `computeNextTransition`), the same functions the editor UIs preview with:
  * the server and the form can't disagree about when a window opens.
  */
 import { randomUUID } from "node:crypto";
@@ -90,7 +90,7 @@ function timingOf(row: ScheduleRecord): SleepScheduleTiming {
   };
 }
 
-/** Next transition columns for a row's timing — null while paused. */
+/** Next transition columns for a row's timing: null while paused. */
 export function nextTransitionColumns(
   timing: SleepScheduleTiming,
   paused: boolean,
@@ -132,7 +132,7 @@ export async function getScheduleRecord(
 /**
  * Create a schedule for a synced resource. Validates the timing, that the
  * resource exists in this org and account, and that its type declares a
- * lifecycle start/stop pair — eligibility is discovered from the plugin's
+ * lifecycle start/stop pair: eligibility is discovered from the plugin's
  * declaration, never from provider names.
  */
 export async function createScheduleRecord(
@@ -190,7 +190,7 @@ export async function createScheduleRecord(
   // The duplicate check, the per-org limit and the insert run in one
   // transaction under an org-scoped advisory lock, so two concurrent creates
   // can't both pass the checks. The unique index on (organization_id,
-  // resource_id) is the hard backstop — a conflict from it surfaces as the
+  // resource_id) is the hard backstop: a conflict from it surfaces as the
   // same 409 the pre-check gives, never as a raw database error.
   try {
     await db.transaction(async (tx) => {

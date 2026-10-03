@@ -1,11 +1,11 @@
 /**
- * Commitment alert evaluation — the impure half of the two commitment
+ * Commitment alert evaluation: the impure half of the two commitment
  * detectors. Runs from the poller after each successful cost collection for an
  * org, the same trigger point as budget, anomaly and change-alert evaluation,
  * because everything it reads (the collected inventory, the cost rows behind
  * utilization) only changes when collection runs.
  *
- * The judgements live next door in `expiry-detect.ts` and `idle-detect.ts` —
+ * The judgements live next door in `expiry-detect.ts` and `idle-detect.ts`:
  * both pure and exhaustively tested. This module reads the inventory and the
  * ClickHouse aggregates, persists what fired, and notifies through the alert
  * routing layer under the `commitmentExpiryAlerts` and `commitmentIdleAlerts`
@@ -15,8 +15,8 @@
  *
  * ## One pass, two detectors
  *
- * They share every read — the plugin manifests, the account list, the
- * inventory, the days-with-data set, the delivered totals — so they share a
+ * They share every read (the plugin manifests, the account list, the
+ * inventory, the days-with-data set, the delivered totals) so they share a
  * pass. Splitting them into two entry points would double four queries to
  * answer two questions about the same rows.
  *
@@ -24,7 +24,7 @@
  *
  * Both use the `budget_alert_events` protocol: insert with
  * `onConflictDoNothing() … RETURNING`, and only a fresh insert notifies. The
- * period differs because the questions differ — a horizon for expiry (60/30/7
+ * period differs because the questions differ: a horizon for expiry (60/30/7
  * each fire once per term), a calendar month for idleness (a standing
  * condition restated monthly, not daily). See the two table comments in
  * `db/commitment-schema.ts`.
@@ -34,7 +34,7 @@
  * Derived utilization only uses accounts whose plugin declares
  * `costs.chargeTypes`, exactly as `feed.ts` does: for anyone else every cost
  * row reads as plain uncovered usage, delivered reads 0, and a healthy plan
- * would be alerted as idle — the failure that gets a working commitment
+ * would be alerted as idle; the failure that gets a working commitment
  * cancelled. Expiry does *not* need attribution (a term end is a term end), so
  * an unattributed account still gets its expiry warnings; only the money
  * estimate inside them goes unstated.
@@ -72,7 +72,7 @@ import { orgAppUrl } from "../app-url";
  * Least time between full evaluations of one org. Same shape and reasoning as
  * the anomaly and change-alert gates: evaluation is invoked once per collected
  * account, the ClickHouse reads are the expensive half, and correctness never
- * rests on this — the events tables' unique indexes do that.
+ * rests on this; the events tables' unique indexes do that.
  */
 const MIN_EVAL_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -84,8 +84,8 @@ const lastEvaluatedAt = new Map<string, number>();
  * worth one alert.
  *
  * 90 days. Long enough that an org connecting an account mid-quarter still
- * hears about the reservation that quietly ended last month — the case the
- * horizon warnings structurally cannot catch — and short enough that
+ * hears about the reservation that quietly ended last month (the case the
+ * horizon warnings structurally cannot catch) and short enough that
  * connecting an account with years of dead inventory produces one pass of
  * recent news rather than an archive. Not a user knob: it bounds a one-time
  * catch-up, not an ongoing preference.
@@ -105,7 +105,7 @@ function formatAmount(amount: number, currency: string | null): string {
   }
 }
 
-/** "2,000 vCPU, 8,000 GB RAM" — for a commitment that buys units, not money. */
+/** "2,000 vCPU, 8,000 GB RAM", for a commitment that buys units, not money. */
 function formatUnits(units: Array<{ unit: string; amount: number }> | null): string | null {
   if (!units || units.length === 0) return null;
   return units.map((u) => `${u.amount.toLocaleString("en-US")} ${u.unit}`).join(", ");
@@ -135,8 +135,8 @@ interface CommitmentRow {
 /**
  * Everything both detectors need, read once.
  *
- * Returns null when the org has nothing to judge — no commitment-capable
- * plugin, no such account, or no collected holdings — so the caller can stop
+ * Returns null when the org has nothing to judge (no commitment-capable
+ * plugin, no such account, or no collected holdings) so the caller can stop
  * before touching ClickHouse.
  */
 async function loadCommitmentContext(
@@ -199,7 +199,7 @@ async function loadCommitmentContext(
       const account = accountById.get(h.accountId)!;
       const daysWithData = dataDays.get(h.accountId) ?? new Set<string>();
       const deliveredAmount = deliveredByKey.get(`${h.accountId}\x00${h.commitmentId}`) ?? 0;
-      // Only for the expiry exposure estimate — idle-detect recomputes this
+      // Only for the expiry exposure estimate: idle-detect recomputes this
       // itself from the same inputs, because it needs every field and the
       // computation is pure and free.
       const measured = computeCommitmentUtilization({
@@ -247,8 +247,8 @@ function whenPhrase(daysRemaining: number): string {
 }
 
 /**
- * The alert body. Three sentences by design — what it is, what it costs, what
- * to do — because these are read days after they arrive and a reader who has
+ * The alert body. Three sentences by design (what it is, what it costs, what
+ * to do) because these are read days after they arrive and a reader who has
  * to open the panel to find out whether it matters will not open the panel.
  */
 function expiryBody(finding: CommitmentExpiryFinding, accountName: string): string {
@@ -300,13 +300,13 @@ function expiryBody(finding: CommitmentExpiryFinding, accountName: string): stri
 /**
  * The money a routing rule matches on, in cents.
  *
- * The *exposure* — what the covered usage will cost per month once it reverts
- * — rather than the commitment's own price, because "commitment expiries over
+ * The *exposure*: what the covered usage will cost per month once it reverts,
+ * rather than the commitment's own price, because "commitment expiries over
  * $5,000 → #finance" plainly means the size of the problem and not the size of
  * the invoice that is ending. Falls back to the committed amount when nothing
  * could be measured, and is simply absent when neither exists (a unit
  * commitment states no money, and an `amountCents` rule must not match an
- * alert that carries no amount — see `AlertFacts`).
+ * alert that carries no amount: see `AlertFacts`).
  */
 function expiryAmountCents(finding: CommitmentExpiryFinding): number | undefined {
   const amount = finding.monthlyCoveredUsageAmount ?? finding.monthlyCommitmentAmount;
@@ -334,7 +334,7 @@ async function evaluateExpiries(
     currency: r.currency,
     hourlyCommitmentAmount: r.hourlyCommitmentAmount,
     unitCommitments: r.unitCommitments,
-    // Not reported by any collector today — `CommitmentRecord` in
+    // Not reported by any collector today: `CommitmentRecord` in
     // `@infrawrench/plugin-base` carries no renewal flag. Successor detection
     // inside the detector covers the case that matters (a replacement already
     // bought); the day a collector reports Azure's `renew` or GCP's
@@ -375,7 +375,7 @@ async function evaluateExpiries(
         })
         .onConflictDoNothing()
         .returning({ id: commitmentExpiryEvents.id });
-      // Already warned at this horizon for this term — the fire-once rule.
+      // Already warned at this horizon for this term: the fire-once rule.
       if (!inserted) continue;
 
       const title = finding.autoRenewing
@@ -411,7 +411,7 @@ async function evaluateExpiries(
         },
       });
       // `alertReached`, not `succeeded > 0`: a quiet-hours hold is a delivery
-      // that has not happened yet, and the events row already deduplicates —
+      // that has not happened yet, and the events row already deduplicates;
       // `notifiedAt` is bookkeeping for the UI, not a retry gate.
       if (alertReached(routed)) {
         await db
@@ -469,7 +469,7 @@ async function evaluateIdle(
   }));
 
   // The waste floor is stored in USD cents and restated per commitment
-  // currency, the same way the anomaly detector scales its noise floors — one
+  // currency, the same way the anomaly detector scales its noise floors: one
   // org-level "$50" means fifty dollars against a plan priced in KRW too.
   // Judged per currency group so the floor is never compared raw.
   const byCurrency = new Map<string, IdleCommitmentInput[]>();
@@ -514,7 +514,7 @@ async function evaluateIdle(
           })
           .onConflictDoNothing()
           .returning({ id: commitmentIdleEvents.id });
-        // Already said this month — idleness is a standing condition, not a
+        // Already said this month: idleness is a standing condition, not a
         // daily event.
         if (!inserted) continue;
 
@@ -563,7 +563,7 @@ async function evaluateIdle(
  * Evaluate an org's commitments for imminent expiry and for idleness, and
  * notify fresh firings through the alert routing layer.
  *
- * Errors are logged, never thrown — like every other evaluator on this path,
+ * Errors are logged, never thrown: like every other evaluator on this path,
  * this must not break the poller's cost pass.
  *
  * Rate-limited per org (`MIN_EVAL_INTERVAL_MS`); pass `force` to bypass, which

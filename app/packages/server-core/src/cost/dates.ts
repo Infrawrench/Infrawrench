@@ -11,7 +11,7 @@ export function addDays(day: string, delta: number): string {
 }
 
 /**
- * Whole UTC days from `from` to `to` — negative when `to` precedes `from`,
+ * Whole UTC days from `from` to `to`: negative when `to` precedes `from`,
  * and 0 for a malformed input so callers using it as a coverage measure fail
  * closed rather than treating garbage as unlimited history.
  */
@@ -27,7 +27,7 @@ export function daysBetween(from: string, to: string): number {
  * real calendar day.
  *
  * The round-trip comparison is the point. `Date` silently rolls an out-of-range
- * day over — `2024-02-30` parses as March 1st, not as invalid — so a bare
+ * day over (`2024-02-30` parses as March 1st, not as invalid) so a bare
  * NaN check would let a nonsense date through as a plausible one and make a
  * coverage measure read a day *longer* than reality, which fails open. Only a
  * string that survives parse-and-reformat unchanged is a day.

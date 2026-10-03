@@ -1,7 +1,7 @@
 /**
  * Anthropic (Claude) chat provider.
  *
- * Extracted verbatim from the original inline agent loop — the persisted
+ * Extracted verbatim from the original inline agent loop: the persisted
  * content-block format is Anthropic's, so this provider is a thin pass-through
  * apart from prompt-cache markers and usage normalization.
  */
@@ -30,7 +30,7 @@ function toAnthropicTool(t: ProviderTool): Anthropic.Tool {
  * Gemini produced. Anthropic rejects both unknown fields on a content block and
  * thinking signatures it didn't mint, so foreign thinking blocks are dropped
  * (assistant turns without them are accepted) and foreign tool_use blocks are
- * reduced to the fields Anthropic knows. tool_use must survive — dropping one
+ * reduced to the fields Anthropic knows. tool_use must survive: dropping one
  * would orphan its paired tool_result.
  */
 export function sanitizeForAnthropic(blocks: ChatContentBlock[]): ChatContentBlock[] {
@@ -76,7 +76,7 @@ export const anthropicProvider: ChatProvider = {
     ];
     if (tools.length > 0) {
       // Mark the last tool's schema with cache_control to checkpoint the entire
-      // tools array — Anthropic's caching extends from the start of the prompt
+      // tools array: Anthropic's caching extends from the start of the prompt
       // through the most recent cache_control marker.
       const last = tools[tools.length - 1];
       if (last) {

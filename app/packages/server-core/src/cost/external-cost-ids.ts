@@ -11,7 +11,7 @@
 /** Tag key stamped on every API-pushed row. Reserved from user tags. */
 export const EXTERNAL_COST_TAG = "infrawrench:source";
 
-/** `plugin_id` for API-pushed rows — the "External" provider dimension. */
+/** `plugin_id` for API-pushed rows: the "External" provider dimension. */
 export const EXTERNAL_COST_PLUGIN_ID = "external";
 
 /** Prefix of the synthetic `account_id` used when a row names no real account. */

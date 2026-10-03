@@ -1,6 +1,6 @@
 /**
  * The cloud {@link GraphHost}: what a custom-graph script's powers actually do
- * on the web server. Everything is org-scoped at the source — cost queries go
+ * on the web server. Everything is org-scoped at the source: cost queries go
  * through the same `runCostQuery` the dashboards use, resource listings and
  * metric lookups resolve rows by `organization_id`, and the key/value store
  * filters on both org and graph id. `fetch` leaves through the workflow
@@ -34,7 +34,7 @@ import { getClientForResource } from "./plugin-clients";
 /** Rows a `graph.resources.list()` call returns at most. */
 const MAX_RESOURCE_ROWS = 500;
 
-/** Keys one graph may store — the data store is state, not a database. */
+/** Keys one graph may store: the data store is state, not a database. */
 const MAX_DATA_KEYS = 200;
 
 async function listOrgResources(
@@ -71,7 +71,7 @@ async function listOrgResources(
 /**
  * Metric lookup mirrors the resource-detail route: ClickHouse history first
  * (only pinned resources accumulate points), then a live provider fetch. The
- * live path's failure degrades to "no data" — a dead provider must not fail
+ * live path's failure degrades to "no data": a dead provider must not fail
  * the whole render.
  */
 async function metricSeriesForResource(
@@ -174,7 +174,7 @@ export function buildOrgCustomGraphHost(organizationId: string, graphId: string)
     dataSet: async (key, value) => {
       // Stored as an explicit jsonb parameter: drizzle binds a JS null as SQL
       // NULL (bypassing the jsonb encoder), which would violate the column's
-      // NOT NULL — and `graph.data.set(key, null)` is a legitimate write.
+      // NOT NULL, and `graph.data.set(key, null)` is a legitimate write.
       const jsonValue = sql`${JSON.stringify(value ?? null)}::jsonb`;
       const [existing] = await db
         .select({ id: customGraphData.id })
@@ -217,7 +217,7 @@ export function buildOrgCustomGraphHost(organizationId: string, graphId: string)
 }
 
 /* ------------------------------------------------------------------ *
- * infra.* access — read + SSH over the org's accounts, run AS THE
+ * infra.* access: read + SSH over the org's accounts, run AS THE
  * GRAPH'S AUTHOR (definer-style).
  * ------------------------------------------------------------------ */
 
@@ -230,12 +230,12 @@ const INFRA_ACTION_PERMISSION: Record<GraphInfraAction, string> = {
 
 /**
  * Build the `infra.*` half of a graph run, or null when the graph has no
- * recorded source author (pre-feature rows) — the runtime then reports how to
+ * recorded source author (pre-feature rows): the runtime then reports how to
  * fix that instead of running with nobody's authority.
  *
  * The author's effective permissions are resolved fresh per render, so a
  * demoted or removed author's graphs stop reaching infrastructure on the very
- * next render — the render itself is triggered by any viewer with
+ * next render: the render itself is triggered by any viewer with
  * dashboards:read, which is exactly why the check can't be the viewer's.
  */
 export async function buildOrgCustomGraphInfra(

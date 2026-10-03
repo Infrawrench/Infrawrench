@@ -1,9 +1,9 @@
 /**
- * Written updates on a public status page — "we know, we're on it".
+ * Written updates on a public status page: "we know, we're on it".
  *
  * A status page was a purely derived view until incident mode: every word on it
  * came from probe state and uptime rollups, so the one thing a visitor actually
- * arrives for — a sentence from a human — had nowhere to live. A notice is that
+ * arrives for (a sentence from a human) had nowhere to live. A notice is that
  * sentence.
  *
  * The file is separate from `store.ts` for the reason the whole feature is
@@ -135,7 +135,7 @@ export async function updateStatusPageNotice(
   return updated[0] ?? null;
 }
 
-/** Close a notice — used by the incident resolve path. Idempotent. */
+/** Close a notice: used by the incident resolve path. Idempotent. */
 export async function resolveStatusPageNotice(
   noticeId: string,
   resolutionText?: string | null,
@@ -170,8 +170,8 @@ export async function listStatusPageNoticeRows(
  * resolved inside the retention window so a visitor arriving the morning after
  * still sees what happened.
  *
- * Written from scratch into {@link PublicStatusNotice} — never by narrowing the
- * row — for the same reason the rest of the public payload is.
+ * Written from scratch into {@link PublicStatusNotice}, never by narrowing the
+ * row, for the same reason the rest of the public payload is.
  */
 export async function getPublicStatusNotices(
   statusPageId: string,

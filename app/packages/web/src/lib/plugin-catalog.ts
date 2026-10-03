@@ -3,7 +3,7 @@ import type { PluginInfo } from "@infrawrench/ui";
 
 /**
  * The plugin catalog lives on the accounts router (`/accounts/plugins`), not at
- * the org root. Fetch it through here rather than hand-writing the path — the
+ * the org root. Fetch it through here rather than hand-writing the path: the
  * Update Credentials flow shipped with `/api/org/:orgId/plugins`, which 404s.
  */
 export function pluginCatalogUrl(orgId: string): string {

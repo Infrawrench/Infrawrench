@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Budget-triggered workflows: threshold comparison, the once-per-crossing claim
  * on `workflows.budget_last_fired_key`, and the `infra.event` payload handed to
- * the run. The DB and the runner are both mocked — this is about the decision,
+ * the run. The DB and the runner are both mocked: this is about the decision,
  * not the plumbing.
  */
 

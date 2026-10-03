@@ -3,7 +3,7 @@ import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common
 import type { BuildContext } from "../context";
 
 /**
- * **IaC reconciliation** — the ClickOps detector.
+ * **IaC reconciliation**: the ClickOps detector.
  *
  * The org uploads the Terraform state it already has; every synced resource is
  * classified managed / drifted / unmanaged, and the unmanaged ones can be

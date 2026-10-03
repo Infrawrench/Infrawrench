@@ -3,7 +3,7 @@
  *
  * The org is a *real* org, not a sandbox: real tables, real plugin accounts,
  * real syncing. That is what makes the trial worth anything, and it is safe
- * precisely because the agent gets its **own** tenant — there is no other
+ * precisely because the agent gets its **own** tenant: there is no other
  * customer's data inside the boundary for a broad pre-claim scope to reach.
  *
  * Two things separate it from an org a person creates:
@@ -37,7 +37,7 @@ export const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
  *
  * `getAiSpendStatus` computes `exceeded` as `monthToDate >= cap`, so a cap of 0
  * is `exceeded` from the first request with no special case anywhere in the
- * chain — the existing cap error is raised, and it already tells the reader
+ * chain: the existing cap error is raised, and it already tells the reader
  * where the setting lives. A *small* budget would have been worse than either
  * extreme: enough to be worth farming, not enough to be useful.
  */
@@ -68,8 +68,8 @@ export interface CreateTrialOrgOptions {
   /** Source address of the registration request, for the per-IP limit. */
   createdFromIp?: string | null;
   /**
-   * Veto hook, run *inside* the same transaction — and behind the same
-   * advisory lock — that inserts the org and registration rows. This is what
+   * Veto hook, run *inside* the same transaction (and behind the same
+   * advisory lock) that inserts the org and registration rows. This is what
    * makes a count-based rate limit race-free: concurrent registrations
    * serialise on the lock, so every count sees every row a rival committed.
    */
@@ -94,8 +94,8 @@ export { agentUserId, agentUserEmail } from "./identity.js";
  *
  * **The org and registration rows commit together, first, behind an advisory
  * lock.** The registration is the row the rate limiter counts and the row the
- * credential resolves against, so it must become visible — complete, with its
- * credential hash and source IP — the moment anything else about this
+ * credential resolves against, so it must become visible (complete, with its
+ * credential hash and source IP) the moment anything else about this
  * registration exists. The provisioning that follows (roles, user, membership,
  * dashboard) is retried-or-reaped territory: if it fails, the committed rows
  * still count against the caller's rate limit and the reaper deletes the org
@@ -108,8 +108,8 @@ export { agentUserId, agentUserEmail } from "./identity.js";
  * registration is known and the org is being created around it.
  *
  * The membership is a **member, not an owner**, and costs no seat. The agent's
- * authority never comes from this row — `resolveAgentPrincipal` derives it from
- * the registration — so the role only exists to be read by people-shaped code:
+ * authority never comes from this row (`resolveAgentPrincipal` derives it from
+ * the registration) so the role only exists to be read by people-shaped code:
  * the last-owner guard on member removal, seat accounting, the team list. Every
  * one of those must see "not an owner, not a person", or a claimed org's sole
  * human owner could remove themselves because the agent still "owned" it.
@@ -156,7 +156,7 @@ export async function createTrialOrg(options: CreateTrialOrgOptions): Promise<Tr
 
   // The agent's own identity. `onConflictDoNothing` because a registration that
   // is retried after a partial failure must not fail on the user row it already
-  // created — the id is derived from the registration, so a second attempt is
+  // created: the id is derived from the registration, so a second attempt is
   // the same agent, not a different one.
   const userId = agentUserId(options.registrationId);
   await db

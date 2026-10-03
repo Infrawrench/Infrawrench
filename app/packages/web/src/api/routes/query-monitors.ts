@@ -2,7 +2,7 @@
  * Query monitor routes (`/api/org/:orgId/query-monitors*`).
  *
  * Reading takes `resources:read`. **Writing and test-running take
- * `resources:execute`** — the same permission the SQL editor needs — because
+ * `resources:execute`**: the same permission the SQL editor needs, because
  * saving a monitor is arranging for a query to be executed against a customer
  * database on a schedule, forever, and that is a strictly larger act than
  * running one yourself while watching it.
@@ -103,7 +103,7 @@ app.get("/", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/query-monitors/targets — what a monitor can run against.
+ * GET /api/org/:orgId/query-monitors/targets: what a monitor can run against.
  *
  * Powers the editor's target picker: each account with a SQL driver of its
  * own, plus the SQL-capable resources inside it (a ClickHouse service, a D1 or
@@ -116,7 +116,7 @@ app.get("/targets", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/query-monitors/test — run a query once, without saving.
+ * POST /api/org/:orgId/query-monitors/test: run a query once, without saving.
  *
  * The editor's "try it" button. Takes `resources:execute` like the SQL editor,
  * and goes through the same guard as a scheduled run: a query that could not be

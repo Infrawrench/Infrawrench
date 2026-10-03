@@ -4,7 +4,7 @@ import { db } from "../db/client";
 import { wsTokens } from "../db/schema";
 
 /**
- * Short-lived one-time WebSocket handshake tokens, stored hashed in Postgres —
+ * Short-lived one-time WebSocket handshake tokens, stored hashed in Postgres:
  * the web deployment runs multiple replicas, so the upgrade request may land
  * on a different pod than the one that minted the token.
  */

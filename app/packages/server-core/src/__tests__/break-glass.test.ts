@@ -10,8 +10,8 @@ import { fakePostgres } from "./helpers/fake-postgres";
  *
  * The DB is real Drizzle over a recording driver against the real schema, so
  * every statement renders its actual SQL (and shadow-validates under
- * test:postgres:shadow). Each query's rows are queued FIFO in execution order
- * — a select's rows first, then the insert/update RETURNING.
+ * test:postgres:shadow). Each query's rows are queued FIFO in execution order:
+ * a select's rows first, then the insert/update RETURNING.
  */
 const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
@@ -36,8 +36,8 @@ let breakGlass: typeof import("../access/break-glass");
 
 /**
  * A stored row with sensible defaults; override what a test cares about.
- * Keys are in the `access_requests` column order (see helpers/fake-postgres.ts
- * — rows decode positionally). Date values pass through the column mapping
+ * Keys are in the `access_requests` column order (see helpers/fake-postgres.ts:
+ * rows decode positionally). Date values pass through the column mapping
  * unchanged, exactly as the real driver's parsed dates would.
  */
 function row(overrides: Record<string, unknown> = {}) {
@@ -74,7 +74,7 @@ beforeEach(async () => {
 
 describe("createAccessRequest", () => {
   it("rejects a request for permissions the caller already holds", async () => {
-    // Almost always a mistake — the wrong permission string, or a role that
+    // Almost always a mistake: the wrong permission string, or a role that
     // changed. Saying so beats sending an approver a no-op to decide.
     const result = await breakGlass.createAccessRequest(
       {
@@ -194,7 +194,7 @@ describe("decideAccessRequest", () => {
     const update = updates()[0]!;
     // set "status" = $1, "decided_at" = $2, "decided_by_user_id" = $3,
     // "decided_by_name" = $4, "decision_note" = $5, "granted_at" = $6,
-    // "grant_expires_at" = $7 — timestamps render as ISO parameters. (The SET
+    // "grant_expires_at" = $7: timestamps render as ISO parameters. (The SET
     // clause is the assertion target; RETURNING names every column.)
     expect(update.sql.split(" where ")[0]).toContain('"granted_at"');
     const granted = new Date(update.params[5] as string);
@@ -261,7 +261,7 @@ describe("activeElevations", () => {
   });
 
   it("ignores a lapsed grant", async () => {
-    // The window is evaluated, never swept — a grant stops applying the instant
+    // The window is evaluated, never swept: a grant stops applying the instant
     // it lapses rather than whenever a job next runs.
     const now = new Date();
     pg.queueRows([
@@ -277,7 +277,7 @@ describe("activeElevations", () => {
   it("fails closed when the read throws", async () => {
     // Granting authority on a database hiccup is the one outcome this feature
     // must never produce. A row the recording driver cannot decode makes the
-    // select itself reject — the closest a canned driver gets to a lost
+    // select itself reject: the closest a canned driver gets to a lost
     // connection.
     pg.queueRows([null as never]);
     expect(await breakGlass.activeElevations("org1", "requester")).toEqual([]);

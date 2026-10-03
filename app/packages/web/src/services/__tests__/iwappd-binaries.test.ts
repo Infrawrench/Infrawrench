@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { gunzipSync } from "node:zlib";
 
 /**
- * The web server has no build-time copy of the Linux app server binaries — the
+ * The web server has no build-time copy of the Linux app server binaries (the
  * image is built from a pruned workspace that does not contain
- * `linux-appserver/` — so it reads them off the asset downloader at runtime and
+ * `linux-appserver/`) so it reads them off the asset downloader at runtime and
  * caches them. What the cache does when the network misbehaves is the whole
  * point of the module: an enrolment that fails because the downloader had a bad
  * minute is a worse outcome than one that ships the previous build.
@@ -21,7 +21,7 @@ const ARCHIVE_BOTH = Buffer.from(
   "/Td6WFoAAATm1rRGAgAhARYAAAB0L+Wj4CX/AdddABcXwcAN4XBkd8ji0xzZjqGzadoY40D8VACrmZfaGfhzO2tz54QfAJFNWa3XJ3MaAd7MC+4YFvqee+Cm+0ejH42RlIFZF7TVJekLVOjHdHOb4KotMFei1FI0FbzRELaqDwuadytXY4RD7ZlWYpKXoaeoHziB5xuUSs/aKmWXOXbj5X8r+boT4auYJ5xHQVA4SPtItgan80B2xohbv/IfpeIpPIBv+iwaT0lBkMn72uB0RGXnKJnWrL855wOUdUt3uDHKtlPs3sUsOmH/5xl3tujd/XYt4fIhoY2w5oU6UZTa2U8DMXcYchTU1cXMW+vuMm+4385Keq0d5iYU4RDUXmbJpK4oh3iT/yiYMS4jv1r+MbhjqsaHS0TqAKsKk8tHfMy1DQp4LuvW7m4oBUKbn1+s0S02xYZ3K1cMa4BvKzbddfG1eMPpUdkW2dPboUFXMcphCo8yQRSANR6lMMDxE3NTgrlVDYHSyU0dT2h5vELPHeDquDQ7HyEA4fVvIzXHxUCDxe4tzo5sgvZUfALy1chsbHsllYPvZAG8HFgRpICX9lbPxIjMdOnuKd07vkK4P0jP6UoVDl0jZAYDXEpVvVlE66vMyPtYANCOVB+g7Iu9iG2pdzv6AAAAP6eUmtEIyXMAAfMDgEwAACUHKoOxxGf7AgAAAAAEWVo=",
   "base64",
 );
-/** The same archive with the arm64 member left out — a botched publish. */
+/** The same archive with the arm64 member left out: a botched publish. */
 const ARCHIVE_ONLY_X86 = Buffer.from(
   "/Td6WFoAAATm1rRGAgAhARYAAAB0L+Wj4Bn/AZ5dABcXwcAN4XBkd8ji0xzZjqGzadoY40D8VACrmZfaGfhzO2tz54QfAJFNWa3XJ3MaAd7MC+4YFvqee+Cm+0ejH42RlIFZF7TVJekLVOjHdHOb4KotMFei1FI0FbzRELaqDwuadytXY4RD7ZlWYpKXoaeoHziB5xuUSs/aKmWXOXbj5X8r+boT4auYJ5xHQVA4SPtItgan80B2xohbv/IfpeIpPIBv+iwaT0lBkMn72uB0RGXnKJnWrL855wOUdUt3uDHKtlPs3sUsOmH/5xl3tujd/XYyB/J5bcBsEEKYFAHaromqfaZhl+643eD5KIiqAIbxeHyNMa2GUeDtazd1VzxX3Vu3ZQYXVMoiGd3ZWCnpURn6sbPFDEzUAODeYEVa+ceqRWruXF4zY/hp/0Cg/pYaD9HiTA7v10OqAR8Gc4l0QmJuJuyBXpCRvVPa4TjDcLMdcd6Gqok7ckWf397Hm67QEDLl4baFWerGklhZ2K2UPWCihzFp2R4cJLWGBfROOt7anBCl5/Pl55gEawu9sBG9kLtCpgAbhsRYZoNhAAAAAMrdmMsqaN6lAAG6A4A0AABpZZ/xscRn+wIAAAAABFla",
   "base64",
@@ -47,8 +47,8 @@ function ok(body: Buffer | string): Response {
 }
 
 /**
- * Fresh module state per test. The cache lives in module scope on purpose —
- * one set of binaries per instance, not per caller — so resetting the registry
+ * Fresh module state per test. The cache lives in module scope on purpose
+ * (one set of binaries per instance, not per caller) so resetting the registry
  * is the only way to get a cold start.
  */
 async function loadModule() {

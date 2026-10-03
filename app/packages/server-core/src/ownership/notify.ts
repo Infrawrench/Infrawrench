@@ -1,10 +1,10 @@
 /**
- * Owner-routed alerts — "tell the person whose resource this is", in one place.
+ * Owner-routed alerts: "tell the person whose resource this is", in one place.
  *
  * Resource-scoped alerts already fan out to the org (push, Slack, Teams). This
  * module adds the second delivery: when the resource carries a routable owner,
  * that person also gets the alert on their own devices, with the message
- * rewritten in the second person. It is deliberately *additive* — an outage
+ * rewritten in the second person. It is deliberately *additive*: an outage
  * must not become invisible to the team because one owner is unreachable, so
  * nothing here suppresses the org fan-out.
  *
@@ -26,7 +26,7 @@ import type { PushData, PushResult, PushTrigger } from "../push/types";
 import { lookupResourceOwner } from "./store";
 
 export interface OwnerAlert {
-  /** Title for the owner's copy — usually prefixed "Your …". */
+  /** Title for the owner's copy: usually prefixed "Your …". */
   title: string;
   body: string;
   data: PushData;
@@ -49,7 +49,7 @@ export async function notifyResourceOwner(
   if (!resourceId) return none;
   try {
     const owner = await lookupResourceOwner(organizationId, resourceId);
-    // No owner, or an owner that is only a name on a page — nothing to route.
+    // No owner, or an owner that is only a name on a page: nothing to route.
     if (!owner?.userId) return none;
     const alert = build(owner);
     return await sendPushToOrgUser(organizationId, owner.userId, trigger, {
@@ -65,7 +65,7 @@ export async function notifyResourceOwner(
 
 /**
  * The trailing sentence that puts a resource's ownership context into an alert
- * body — "Owner: Sam Reyes · Purpose: staging load tests · ENG-482".
+ * body; "Owner: Sam Reyes · Purpose: staging load tests · ENG-482".
  *
  * Returns an empty string when nothing is recorded, so callers can append it
  * unconditionally. Used for the *org-wide* copy of an alert, which is where

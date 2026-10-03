@@ -2,12 +2,12 @@ import { createMiddleware } from "hono/factory";
 
 /**
  * Platform admins are deployment operators, not an org role. They are the
- * only principals allowed to hit /api/admin — currently used to grant or
+ * only principals allowed to hit /api/admin: currently used to grant or
  * revoke complimentary (never-billed, all paid perks) access for orgs.
  *
  * Membership comes from the INFRAWRENCH_PLATFORM_ADMIN_EMAILS env var:
  * a comma-separated, case-insensitive list of user emails. Unset means
- * nobody — the admin surface is disabled entirely.
+ * nobody: the admin surface is disabled entirely.
  */
 function isPlatformAdmin(email: string): boolean {
   const raw = process.env["INFRAWRENCH_PLATFORM_ADMIN_EMAILS"];

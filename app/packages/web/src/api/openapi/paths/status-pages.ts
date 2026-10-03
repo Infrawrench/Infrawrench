@@ -215,7 +215,7 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     tags: ["Status pages"],
     summary: "Read a public status page",
     // Opts out of the document's global `security`, which would otherwise
-    // advertise bearer/cookie auth this route neither wants nor reads — and
+    // advertise bearer/cookie auth this route neither wants nor reads, and
     // make generated clients attach a token to an anonymous endpoint.
     security: [],
     description:

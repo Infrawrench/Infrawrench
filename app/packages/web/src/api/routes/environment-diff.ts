@@ -23,7 +23,7 @@ const app = new Hono();
  * one and not the other, the per-type count deltas, and the fields on which
  * two corresponding resources disagree.
  *
- * `resources:read` only — this reads the same rows the account pages do and
+ * `resources:read` only: this reads the same rows the account pages do and
  * writes nothing.
  */
 app.get("/", async (c) => {

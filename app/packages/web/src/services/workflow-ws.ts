@@ -32,12 +32,12 @@ function send(ws: WebSocket, msg: unknown): void {
 /**
  * The socket upgrade only established `resources:execute`, which every channel
  * on `/api/ws` shares. A debug run executes the workflow for real, so without a
- * per-frame check the websocket would be a way around `POST /workflows/:id/run`
- * — the same reasoning `deployment-ws.ts` spells out for `deploy:run`.
+ * per-frame check the websocket would be a way around `POST /workflows/:id/run`:
+ * the same reasoning `deployment-ws.ts` spells out for `deploy:run`.
  */
 async function requireRunPermission(organizationId: string, userId?: string): Promise<void> {
   const denied = new Error("You do not have permission to run workflows in this organization.");
-  // No identified user means nothing to resolve a role against — deny rather
+  // No identified user means nothing to resolve a role against: deny rather
   // than fall through to an unchecked run.
   if (!userId) throw denied;
   const granted = await effectivePermissions({ organizationId, userId });

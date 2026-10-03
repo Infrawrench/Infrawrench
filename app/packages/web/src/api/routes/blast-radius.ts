@@ -13,7 +13,7 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * GET /api/org/:orgId/blast-radius?resourceId=… — what breaks if this is
+ * GET /api/org/:orgId/blast-radius?resourceId=…: what breaks if this is
  * deleted.
  *
  * `resourceId` is a query parameter, not a path segment: composite resource
@@ -22,7 +22,7 @@ const app = new Hono();
  *
  * `resources:read`, not `resources:delete`. The report is a read over the
  * dependency graph, the flow warehouse and a dozen org objects the caller can
- * already list — gating it on the delete permission would mean the people who
+ * already list: gating it on the delete permission would mean the people who
  * *cannot* delete a resource also cannot find out what would break, which is
  * exactly backwards for the person writing the change request.
  *

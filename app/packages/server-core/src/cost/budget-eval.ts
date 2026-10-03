@@ -1,6 +1,6 @@
 /**
  * Budget threshold evaluation. Runs from the poller after each successful
- * cost collection for an org — org cost data only changes when collection
+ * cost collection for an org: org cost data only changes when collection
  * runs, so no separate scheduler is needed. The unique index on
  * budget_alert_events (budgetId, month, thresholdType, thresholdPercent)
  * makes each threshold fire at most once per calendar month:
@@ -61,7 +61,7 @@ function formatCents(cents: number, currency: string): string {
  *
  * What the display currency does is narrower, and deliberately so. Today a
  * budget counts only spend already in its own currency and silently discards
- * the rest — so a USD budget in an org that also bills in EUR tracks a number
+ * the rest, so a USD budget in an org that also bills in EUR tracks a number
  * that is not the org's spend. When (and only when) **the budget's currency is
  * the org's display currency**, this function now converts the other
  * currencies' spend into it first, using the org's own stated rates.
@@ -75,22 +75,22 @@ function formatCents(cents: number, currency: string): string {
  *
  * The consequence worth stating plainly: an org that has not set a display
  * currency, or whose budget is in some other currency, gets byte-identical
- * behaviour to before — including the old drop-other-currencies behaviour.
+ * behaviour to before, including the old drop-other-currencies behaviour.
  * Enabling conversion can only ever make a budget count *more* spend, never
  * less, so it cannot silently un-fire an alert that would have fired.
  *
  * `unconvertedCurrencies` names the currencies that were dropped anyway
  * because the org holds no rate for them. A budget is a single number and
  * cannot carry a second currency alongside it, so this is the one place a
- * currency really is excluded from a total — and it is reported rather than
+ * currency really is excluded from a total, and it is reported rather than
  * hidden, so the budget card can say the figure is short.
  */
 /*
  * ## Scenario models and budget thresholds
  *
  * `scenarioModelId` is **opt-in per budget, and null by default.** With it null
- * — which is every budget that existed before scenarios, and every budget
- * nobody deliberately opts in — this function returns exactly what it always
+ * (which is every budget that existed before scenarios, and every budget
+ * nobody deliberately opts in) this function returns exactly what it always
  * returned, and `forecastCents` is the bare trend.
  *
  * That default is a deliberate refusal, not an oversight. A scenario model is a
@@ -104,14 +104,14 @@ function formatCents(cents: number, currency: string): string {
  * stays the unadjusted trend so both numbers can be shown side by side, the
  * adjusted figure comes back separately as `scenarioForecastCents`, and the
  * model's name is carried out so the card and the alert body can name it.
- * `actual` thresholds are never affected — they measure money already spent,
+ * `actual` thresholds are never affected: they measure money already spent,
  * which no scenario can touch.
  *
  * ## Billing rules and budget thresholds
  *
  * `useAdjustedSpend` is the same refusal, and it follows the same precedent:
- * **false by default, opt-in per budget.** With it false — every budget that
- * existed before billing rules, and every budget nobody deliberately opts in —
+ * **false by default, opt-in per budget.** With it false (every budget that
+ * existed before billing rules, and every budget nobody deliberately opts in)
  * this function does not read the rules table and returns exactly what it
  * always returned.
  *
@@ -165,13 +165,13 @@ export async function budgetMonthStatus(
   const month = today.slice(0, 7);
   // A saved filter is resolved here, at evaluation time, so an edit to it
   // re-scopes the budget on the next pass. A reference that fails to resolve
-  // throws — the caller must surface the failure, because evaluating this
+  // throws: the caller must surface the failure, because evaluating this
   // budget over unfiltered spend would fire or suppress alerts it should not.
   const effectiveFilters = savedFilterId
     ? [...(await resolveSavedCostFilters(organizationId, savedFilterId)), ...filters]
     : filters;
 
-  // Read only for a budget that opted in — an un-opted budget never touches the
+  // Read only for a budget that opted in: an un-opted budget never touches the
   // rules table, so a markup cannot reach a threshold it was not invited to.
   const billing = useAdjustedSpend ? await resolveBillingAdjustments(organizationId) : null;
   const adjustments =
@@ -188,7 +188,7 @@ export async function budgetMonthStatus(
   });
 
   // Conversion is attempted only when the budget is denominated in the org's
-  // display currency — see the doc comment above.
+  // display currency: see the doc comment above.
   const settings = await getOrgCurrencySettings(organizationId).catch(() => ({
     displayCurrency: null as string | null,
   }));
@@ -225,7 +225,7 @@ export async function budgetMonthStatus(
   let scenarioForecastCents: number | null = null;
   let scenarioModelName: string | null = null;
   if (scenarioModelId) {
-    // Throws out to the caller when the model no longer resolves — the budget's
+    // Throws out to the caller when the model no longer resolves: the budget's
     // evaluation is skipped and logged rather than quietly falling back to the
     // trend, which would change which thresholds fire with no evidence at all.
     const model = await resolveCostScenarioModel(organizationId, scenarioModelId);
@@ -268,7 +268,7 @@ export async function budgetMonthStatus(
     scenarioModelName,
     // Currencies with no rate are excluded from the figure above, so name them.
     // Without conversion on, every other currency was always excluded and
-    // saying so would be new noise about long-standing behaviour — hence the
+    // saying so would be new noise about long-standing behaviour, hence the
     // empty list rather than "all of them".
     unconvertedCurrencies: conversion?.unconverted ?? [],
     converted: (conversion?.converted.length ?? 0) > 0,
@@ -276,7 +276,7 @@ export async function budgetMonthStatus(
 }
 
 /**
- * Days of `month` still to come after the last observed day — the region a
+ * Days of `month` still to come after the last observed day: the region a
  * scenario may touch, and nothing else. Zero once the month is complete, which
  * is what makes "a scenario never alters recorded history" true for budgets as
  * well as for charts.
@@ -294,8 +294,8 @@ function remainingDaysInMonth(points: DailyPoint[], month: string): number {
  * The trend projection for the rest of the month, in the same shape a chart's
  * forecast has.
  *
- * Mirrors `forecastMonthTotal` exactly — the fit first, the month-to-date daily
- * average as the fallback — so that a scenario with no adjustments active would
+ * Mirrors `forecastMonthTotal` exactly (the fit first, the month-to-date daily
+ * average as the fallback) so that a scenario with no adjustments active would
  * reproduce the trend figure rather than a differently-derived one. Nothing
  * would be more confusing on a budget card than two "forecasts" that disagree
  * before any assumption has been applied.
@@ -322,7 +322,7 @@ function monthBaselineProjection(
 /**
  * Evaluate every budget in an org: fire alert pages for freshly crossed
  * thresholds, and run any workflows triggered by this budget. Errors are
- * logged, never thrown — budget evaluation must not break the poller's cost
+ * logged, never thrown: budget evaluation must not break the poller's cost
  * pass.
  */
 export async function evaluateBudgetsForOrg(
@@ -384,7 +384,7 @@ export async function evaluateBudgetsForOrg(
         const limitCents = Math.round((budget.amountCents * threshold.percent) / 100);
         // `actual` is money already spent, which no scenario can touch.
         // `forecast` uses the adjusted figure **only** for a budget that opted
-        // into a model — `scenarioForecastCents` is null for every other one,
+        // into a model: `scenarioForecastCents` is null for every other one,
         // so this reads as the bare trend exactly as it always did.
         const observedCents =
           threshold.type === "actual"
@@ -441,14 +441,14 @@ export async function evaluateBudgetsForOrg(
         const suffix = caveats.length > 0 ? ` (${caveats.join("; ")})` : "";
         const alertBody = `infrawrench budget "${budget.name}": ${kind} ${formatCents(observedCents, budget.currency)} has reached ${threshold.percent}% of ${formatCents(budget.amountCents, budget.currency)} for ${status.month}${suffix}`;
         const paged = await sendBudgetAlertPage(organizationId, alertBody);
-        // Routing is independent of the org's Twilio settings — dedupe already
+        // Routing is independent of the org's Twilio settings: dedupe already
         // happened via the budget_alert_events insert above.
         const url = orgAppUrl(organizationId, `budgets/${budget.id}`);
         const routed = await routeAlert({
           organizationId,
           trigger: "budgetAlerts",
           // A budget at or past 100% is a different kind of news from one at
-          // 80%, and severity is what a quiet-hours `urgentOverride` keys on —
+          // 80%, and severity is what a quiet-hours `urgentOverride` keys on,
           // so "sleep through warnings, wake me if we actually blew the budget"
           // is expressible without a second rule.
           severity: threshold.percent >= 100 ? "critical" : "warning",

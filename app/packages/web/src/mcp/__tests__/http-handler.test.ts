@@ -130,7 +130,7 @@ describe("handleMcpHttp", () => {
     expect(mockBuildMcpServer).toHaveBeenCalledWith(auth);
     expect(res.statusCode).toBe(200);
     // enableJsonResponse: the body is the JSON-RPC result itself, not an SSE
-    // frame — the behaviour hand-rolled clients depend on.
+    // frame; the behaviour hand-rolled clients depend on.
     expect(res.headers["content-type"]).toContain("application/json");
     const parsed = JSON.parse(res.body ?? "");
     expect(parsed).toMatchObject({ jsonrpc: "2.0", id: 1, result: {} });
@@ -173,7 +173,7 @@ describe("handleMcpHttp", () => {
 
   /*
    * `server.ts` answers /api/mcp at the Node HTTP level in both dev and prod,
-   * ahead of the Hono listener — so the `securityHeaders()` middleware never
+   * ahead of the Hono listener, so the `securityHeaders()` middleware never
    * sees these responses and the handler has to set them itself. Both server
    * modes call this one function, so covering it here covers both.
    */

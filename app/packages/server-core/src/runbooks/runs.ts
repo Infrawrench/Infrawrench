@@ -8,7 +8,7 @@
  *
  * Ticking a step is a single targeted `UPDATE` on one row. Two responders
  * working the same incident tick different steps at the same moment, and the
- * obvious alternative — a jsonb array on the run — loses whichever write lands
+ * obvious alternative (a jsonb array on the run) loses whichever write lands
  * second.
  */
 import { randomUUID } from "node:crypto";
@@ -243,7 +243,7 @@ export interface UpdateRunStepOptions {
  * A closed run refuses updates. Reopening is not offered: a run is a record of
  * what happened, and editing one after it was closed out would make the
  * postmortem it feeds unreliable in exactly the way that matters. Start another
- * run instead — which is cheap, and is the honest description of what a second
+ * run instead, which is cheap, and is the honest description of what a second
  * attempt is.
  */
 export async function updateRunbookRunStep(options: UpdateRunStepOptions): Promise<RunbookRun> {
@@ -270,7 +270,7 @@ export async function updateRunbookRunStep(options: UpdateRunStepOptions): Promi
     .update(runbookRunSteps)
     .set({
       status: options.status,
-      // `undefined` leaves the note alone, `null` clears it — the PATCH
+      // `undefined` leaves the note alone, `null` clears it: the PATCH
       // distinction, which matters because ticking a step you already annotated
       // must not silently erase what you wrote.
       ...(options.note !== undefined ? { note: options.note } : {}),
@@ -300,8 +300,8 @@ export interface CloseRunOptions {
  * Close a run out.
  *
  * Closing does **not** settle the outstanding steps. A run completed with three
- * steps still pending is a true and useful record — it says the incident ended
- * before the checklist did — and quietly marking them done would erase the one
+ * steps still pending is a true and useful record (it says the incident ended
+ * before the checklist did) and quietly marking them done would erase the one
  * thing a postmortem wants to know.
  */
 export async function closeRunbookRun(options: CloseRunOptions): Promise<RunbookRun> {

@@ -1,5 +1,5 @@
 /**
- * Server-side agent-VM setup pipeline — the web counterpart of the desktop
+ * Server-side agent-VM setup pipeline: the web counterpart of the desktop
  * app's `ensureAgentVmSetup` flow (desktop/src/lib/agent-client.ts).
  *
  * After POST /agents/sessions provisions a VM, this service waits for the
@@ -98,7 +98,7 @@ const AGENT_SETUP_LEASE_MS = AGENT_SETUP_TIMEOUT_MS + 5 * 60 * 1000;
 /**
  * Claim the right to run setup for this session across ALL web replicas.
  *
- * `agentSetupInflight` is an in-memory Map, so it only guards one pod's heap —
+ * `agentSetupInflight` is an in-memory Map, so it only guards one pod's heap,
  * and the web deployment runs two. Both pods really did run setup for the same
  * session against the same VM, which the VM-side `flock` then had to untangle;
  * before that lock existed the two runs corrupted each other's `npm install`.
@@ -139,7 +139,7 @@ export function hasAgentSetupComplete(logs: string[] | null | undefined): boolea
  * Downgrade an "up" VM status to "setting-up" until the setup pipeline has
  * recorded completion, mirroring the desktop client's setup-aware status.
  * Conversely, a VM that already completed setup but is no longer running is
- * "stopped" — without this, a powered-off VM reads "Setting up" forever.
+ * "stopped": without this, a powered-off VM reads "Setting up" forever.
  */
 export function setupAwareAgentStatus(
   logs: string[] | null | undefined,
@@ -154,7 +154,7 @@ export function setupAwareAgentStatus(
  * Build the setup plan for a web agent session. Web repos are always clone
  * URLs (there is no local-folder upload path outside the desktop app), so
  * runtime detection is deferred to the VM and only the Node runtime the
- * coding-tool CLI needs is planned up front — the same plan desktop produces
+ * coding-tool CLI needs is planned up front: the same plan desktop produces
  * for git-URL sessions.
  */
 export function createAgentSetupPlanForRepo(
@@ -259,7 +259,7 @@ export async function ensureAgentVmSetupForSession(
     if (hasAgentSetupComplete(row.logs) && !opts?.forceSync) return;
     // Another replica is already setting this session up. Returning is right
     // for every caller: the open route fires this without awaiting, and the
-    // session list polls status, so the work still lands — it just isn't done
+    // session list polls status, so the work still lands; it just isn't done
     // twice against one VM.
     if (!(await claimAgentSetupLease(sessionId, organizationId))) {
       // Operator-facing only: this is normal, expected behaviour, not a
@@ -347,8 +347,8 @@ function sessionTool(row: Pick<SessionRow, "tool">): AgentTool {
 /**
  * The bootstrap for this session's surface.
  *
- * T3 Code servers are provisioned without a repository — T3 Code manages its
- * own projects — so that path neither mints a GitHub installation token nor
+ * T3 Code servers are provisioned without a repository (T3 Code manages its
+ * own projects) so that path neither mints a GitHub installation token nor
  * clones anything; it installs the T3 Code server next to the session's agent
  * CLI. Terminal sessions keep the original clone-on-the-VM behaviour.
  */
@@ -387,7 +387,7 @@ export function setupPlanForRow(
   } catch {
     // fall through to the default plan
   }
-  // The repo-derived fallback can't describe a T3 Code server — it has no repo.
+  // The repo-derived fallback can't describe a T3 Code server: it has no repo.
   if (isT3CodeSurface(row.surface))
     return createT3CodeSetupPlan(sessionTool(row), t3CodeAccessOrDefault(row.t3Access));
   return createAgentSetupPlanForRepo(row.repo, sessionTool(row), row.workspaceName);
@@ -405,7 +405,7 @@ function githubRepoFullName(repo: string): string | null {
  * Credentialed clone URL for the bootstrap, or undefined to clone the session
  * repo as-is. Private GitHub repos can't be cloned anonymously on the VM, so
  * when one of the org's GitHub App installations covers the repo we embed a
- * short-lived installation token (minted fresh on every setup run — they
+ * short-lived installation token (minted fresh on every setup run: they
  * expire after an hour). The bootstrap resets the origin remote to the
  * canonical URL afterwards, so the token never persists on the VM.
  */
@@ -615,7 +615,7 @@ export async function revokeT3CodeLinkOnVm(
 
 /**
  * The VM's SSH endpoint right now, or null when it can't be resolved. Unlike
- * `waitForAgentSshTarget` this does not retry — teardown should not sit for
+ * `waitForAgentSshTarget` this does not retry: teardown should not sit for
  * fifteen minutes waiting for a VM that may already be gone.
  */
 async function resolveAgentSshTargetNow(
@@ -651,8 +651,8 @@ async function markAgentLaunchReady(
 
 /**
  * Execute a command on the agent VM over SSH. Fresh agent VMs have no pinned
- * host key yet, so — mirroring the desktop app, which runs its agent setup
- * with `skipHostKeyCheck: true` — the presented host key is accepted without
+ * host key yet, so: mirroring the desktop app, which runs its agent setup
+ * with `skipHostKeyCheck: true`; the presented host key is accepted without
  * the org-level pinning used for user-initiated SSH connections.
  */
 function agentSshExec(
@@ -792,7 +792,7 @@ export function extractBootstrapWarning(stderr: string): string | null {
 export function isRetryableSshSetupError(message: string): boolean {
   // The dpkg/apt lock patterns cover fresh VMs where unattended-upgrades
   // still holds the package lock on first boot, and "exit 124" is the
-  // bootstrap's own `timeout 420s` expiring on a slow VM — re-running the
+  // bootstrap's own `timeout 420s` expiring on a slow VM: re-running the
   // (idempotent) bootstrap resumes where the previous attempt left off.
   return /ssh connection failed|timed out|timeout|econnrefused|connection refused|handshake|ready timeout|all configured authentication methods failed|could not get lock|dpkg[^\n]*lock|lock[^\n]*\/var\/lib\/(?:dpkg|apt)|command failed with exit 124\b/i.test(
     message,
@@ -800,7 +800,7 @@ export function isRetryableSshSetupError(message: string): boolean {
 }
 
 function formatCommandFailure(result: AgentSshExecResult): string {
-  // Prefer stderr (where the actual error lands) and keep only its tail —
+  // Prefer stderr (where the actual error lands) and keep only its tail:
   // the full transcript would otherwise become one unreadable log line.
   const source = result.stderr.trim() || result.stdout.trim();
   const output = tailLines(source, 40);

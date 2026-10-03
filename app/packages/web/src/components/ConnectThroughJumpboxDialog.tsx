@@ -30,7 +30,7 @@ interface Props {
  *      the private key (or create the account first if no jumpboxes exist).
  *
  * The user picks the SSH key (or pastes a private key) in step 2 just like any
- * other SSH account — there is no separate key-picker here.
+ * other SSH account: there is no separate key-picker here.
  */
 export function ConnectThroughJumpboxDialog({
   sourceDisplayName,
@@ -55,7 +55,7 @@ export function ConnectThroughJumpboxDialog({
   useEffect(() => {
     apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`)
       .then((rows) => setSshAccounts(rows.filter((r) => r.pluginId === "ssh")))
-      // A failed load must not read as "no SSH accounts yet" — that message
+      // A failed load must not read as "no SSH accounts yet": that message
       // sends the user off to create an account they may already have.
       .catch((e: unknown) =>
         setAccountsError(e instanceof Error ? e.message : gt("Failed to load accounts")),

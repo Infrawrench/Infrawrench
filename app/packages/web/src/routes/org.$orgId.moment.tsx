@@ -20,7 +20,7 @@ export const Route = createFileRoute("/org/$orgId/moment")({
 });
 
 /**
- * The moment view — "what changed around 03:14?". The screen itself lives in
+ * The moment view: "what changed around 03:14?". The screen itself lives in
  * `@infrawrench/ui` so desktop renders the identical panel; this route is the
  * web host: an `apiGet`-backed client, URL sync, and the deep links onto each
  * event's native screen.

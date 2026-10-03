@@ -1,5 +1,5 @@
 /**
- * Which days a collection restated — the input to superseded-row
+ * Which days a collection restated: the input to superseded-row
  * reconciliation's second guard.
  *
  * Pure, day-string arithmetic only. No clock, no table, no ClickHouse.
@@ -15,14 +15,14 @@
  * It is not right for a **period-native** plugin. Those report an invoice or a
  * billing-cycle total and date the whole thing to one day of the period, so a
  * month of spend touches exactly one day and the other thirty are, from the
- * plugin's point of view, days it has nothing to say about — not days it
+ * plugin's point of view, days it has nothing to say about, not days it
  * skipped. Guard 2 reads them as skipped, and anything stored inside the
  * period survives untouched forever.
  *
  * That is not hypothetical. Mistral's collector used to date an in-progress
  * month's running total to the month end *clamped into the requested range*,
  * so the 15th held month-to-date-through-15, the 16th held month-to-date-
- * through-16, and the month summed to the sum of its own prefixes — roughly
+ * through-16, and the month summed to the sum of its own prefixes: roughly
  * 15× the real figure by mid-month. Dating the row to the period start fixes
  * the accumulation going forward (one key, replaced on every collection), but
  * the rows already written on days 2..N are stranded: nothing rewrites those
@@ -36,8 +36,8 @@
  * Read as a claim: "this collection has just written the total for this
  * calendar month, so any *other* key stored inside the month that it did not
  * write is intra-period residue". That is true of a month-native plugin by
- * construction — its period total lives on one day and the interior holds
- * nothing else — and it repairs the stranded prefixes on the next collection
+ * construction (its period total lives on one day and the interior holds
+ * nothing else) and it repairs the stranded prefixes on the next collection
  * that covers the month, with no operator step and no plugin-specific code.
  *
  * The restriction to the 1st is deliberate rather than incidental. Not every
@@ -60,7 +60,7 @@ function monthOf(day: string): string {
   return day.slice(0, 7);
 }
 
-/** True for `YYYY-MM-01` — the only day that stands in for a calendar month. */
+/** True for `YYYY-MM-01`: the only day that stands in for a calendar month. */
 function isMonthStart(day: string): boolean {
   return /^\d{4}-\d{2}-01$/.test(day);
 }

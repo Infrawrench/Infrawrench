@@ -32,7 +32,7 @@ function tableName(table: unknown): string {
 /**
  * A chainable stand-in for a drizzle select builder. Every method returns the
  * builder, and awaiting it resolves the rows registered for the table the query
- * started from — which is all this module's reads need.
+ * started from, which is all this module's reads need.
  */
 function builder(name: string): unknown {
   const result: unknown[] = throwing.has(name) ? [] : (rows.get(name) ?? []);
@@ -258,7 +258,7 @@ describe("listCalendarEvents", () => {
   });
 
   it("skips a cron trigger whose expression no longer parses", async () => {
-    // A stored expression can be invalid — it arrived through config as code,
+    // A stored expression can be invalid: it arrived through config as code,
     // or the parser moved. One bad row must not cost the calendar.
     rows.set("workflows", [
       { id: "wf-1", name: "Nightly", trigger: { kind: "cron", cron: "not a cron" } },

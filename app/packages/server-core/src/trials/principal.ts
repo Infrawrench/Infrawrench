@@ -5,7 +5,7 @@
  * fact is the whole reason this module exists: everything else in the auth
  * stack reads `sub` as a WorkOS user and provisions one on sight, which for an
  * agent token would mint a junk `users` row keyed by a registration id. The
- * lookup here is what tells the two apart, and it is authoritative — it asks
+ * lookup here is what tells the two apart, and it is authoritative: it asks
  * our own table rather than trusting the shape of claims we cannot control.
  *
  * Post-claim the token also carries an RFC 8693 `act` claim naming the user
@@ -28,11 +28,11 @@ import { agentUserId } from "./identity.js";
  * The reasoning is `auth/api-key-route-policy.ts`'s, applied to a principal
  * that is even less attended than an API key:
  *
- * - **`apikeys:*`** — a credential that can mint credentials outlives its own
+ * - **`apikeys:*`**: a credential that can mint credentials outlives its own
  *   revocation, which turns "revoke that agent" from a decision into a race.
- * - **`billing:*`** — a trial has no card by definition, and an agent that can
+ * - **`billing:*`**: a trial has no card by definition, and an agent that can
  *   start a subscription can commit its claimer to a bill they never agreed to.
- * - **`org:settings:write`** — includes org deletion. An agent should not be
+ * - **`org:settings:write`**: includes org deletion. An agent should not be
  *   able to destroy the tenant a human just claimed.
  */
 export const AGENT_DENIED_PERMISSIONS: readonly string[] = [
@@ -48,7 +48,7 @@ export const AGENT_DENIED_PERMISSIONS: readonly string[] = [
  *
  * `team:invite` sends email, from our domain, to an address the caller chooses.
  * Behind an anonymous registration that is a spam relay with no accountable
- * human on the other end — the one capability where "it is only their own org"
+ * human on the other end: the one capability where "it is only their own org"
  * stops being a sufficient answer, because the blast radius is other people's
  * inboxes and our sending reputation. It comes back the moment a real user
  * completes the ceremony.
@@ -67,7 +67,7 @@ export interface AgentPrincipal {
   organizationId: string;
   /**
    * The `users.id` to act as. The agent's own user row while unclaimed; still
-   * the agent's own row after a claim — the claim binds *accountability* to a
+   * the agent's own row after a claim: the claim binds *accountability* to a
    * person, it does not turn the agent into them.
    */
   userId: string;
@@ -119,7 +119,7 @@ export async function resolveAgentPrincipal(
   const claimed = row.claimedAt !== null;
 
   // A disagreement here means the token asserts a different actor than the
-  // ceremony recorded. It is not fatal — our record wins either way — but it is
+  // ceremony recorded. It is not fatal (our record wins either way) but it is
   // the signature of a token minted against a registration that was re-claimed,
   // and silence would make that invisible.
   if (options.actorUserId && row.claimedByUserId && options.actorUserId !== row.claimedByUserId) {
@@ -137,7 +137,7 @@ export async function resolveAgentPrincipal(
   if (claimed && row.claimedByUserId) {
     // Mirrors how an API key is scored: the agent may do what its claimer may
     // do, and never more. If the claimer is demoted, the agent narrows with
-    // them on the next call — which is why nothing here is memoized.
+    // them on the next call, which is why nothing here is memoized.
     const access = await resolveEffectivePermissions(
       row.organizationId,
       { kind: "user", userId: row.claimedByUserId },
@@ -168,7 +168,7 @@ export async function resolveAgentPrincipal(
 
 /**
  * How often `lastSeenAt` is actually written. The settings list renders it as
- * "5 minutes ago", so per-request precision buys nothing — and agents poll
+ * "5 minutes ago", so per-request precision buys nothing, and agents poll
  * `GET /api/agent/identity` every few seconds, which would otherwise turn
  * read-only authentication into a row write per request.
  */
@@ -184,8 +184,8 @@ export function resetAgentTouchThrottle(): void {
  * Record that a registration was used, for the settings list's "last seen".
  *
  * Never throws. Both call sites fire-and-forget this (`void touch(...)`), so a
- * rejection here — a pool blip, or the row being cascaded away by the trial
- * reaper mid-request — would be an unhandled promise rejection, and under
+ * rejection here (a pool blip, or the row being cascaded away by the trial
+ * reaper mid-request) would be an unhandled promise rejection, and under
  * Node's default `--unhandled-rejections=throw` that takes the whole server
  * down over bookkeeping. Auth must not fail because "last seen" didn't write.
  */
@@ -196,7 +196,7 @@ export async function touchAgentRegistration(
   const previous = lastTouched.get(registrationId);
   if (previous !== undefined && now.getTime() - previous < TOUCH_INTERVAL_MS) return;
   lastTouched.set(registrationId, now.getTime());
-  // Unbounded only in theory — one entry per registration this process has
+  // Unbounded only in theory: one entry per registration this process has
   // seen. The clear is a cheap backstop against a pathological credential scan.
   if (lastTouched.size > 10_000) lastTouched.clear();
   try {

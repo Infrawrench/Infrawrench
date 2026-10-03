@@ -15,7 +15,7 @@ interface WebPosturePanelProps {
 
 /**
  * Web host for the shared posture checks: fetches the org's findings from the
- * API and refreshes when resources change. Same wiring as WebExpiryPanel — a
+ * API and refreshes when resources change. Same wiring as WebExpiryPanel: a
  * failed *refresh* must not blank findings that are already drawn, so the
  * last loaded data stays on screen under the section's banner.
  */

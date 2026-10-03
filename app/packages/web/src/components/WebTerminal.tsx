@@ -39,7 +39,7 @@ interface WebTerminalProps {
   accountId: string;
   resourceId?: string;
   token: string;
-  /** Enables image paste — pasted clipboard images upload via the org's SFTP route. */
+  /** Enables image paste: pasted clipboard images upload via the org's SFTP route. */
   orgId?: string;
   sshKeyId?: string;
   sshHost?: string;
@@ -97,7 +97,7 @@ export function WebTerminal({
   onSessionRef.current = onSession;
   onShareStateRef.current = onShareState;
   // Connection state mirrored into a visually hidden live region so screen
-  // readers announce it — the xterm buffer writes are not reliably read.
+  // readers announce it: the xterm buffer writes are not reliably read.
   const [statusMessage, setStatusMessage] = useState("");
   const { promptIfNeeded, dialog } = useHostKeyTrust(orgId ?? "");
 
@@ -116,7 +116,7 @@ export function WebTerminal({
      * size scaled to fit rather than resizing the pty out from under them.
      */
     let driverSize: { cols: number; rows: number } | null = null;
-    /** Minted before the socket opens — it has to be in the upgrade URL. */
+    /** Minted before the socket opens: it has to be in the upgrade URL. */
     const routingKey = mintRoutingKey();
 
     async function init() {
@@ -127,7 +127,7 @@ export function WebTerminal({
 
       // URLs printed by the remote host (a `gh auth login` device-code page,
       // the `t3 connect link` authorization URL) open in a new browser tab.
-      // The handler validates the scheme first — terminal output is
+      // The handler validates the scheme first: terminal output is
       // remote-controlled text.
       const linkHandler = createTerminalLinkHandler({
         openExternal: openTerminalLinkInNewTab,
@@ -182,7 +182,7 @@ export function WebTerminal({
           wsRef.current.send(JSON.stringify({ type: "ssh:data", data: base64EncodeUtf8(data) }));
         }
       };
-      // Guard terminal input — only forward after SSH session is ready.
+      // Guard terminal input, only forward after SSH session is ready.
       // Mirrors desktop's `if (shellId)` guard: xterm.js auto-sends device
       // attribute responses which must not reach the shell before it's ready.
       const onData = term.onData(sendToShell);
@@ -192,7 +192,7 @@ export function WebTerminal({
        * Render the driver's geometry, scaled to fit this window.
        *
        * `term.resize` to the announced size, then a CSS transform so the whole
-       * grid fits — never a reflow. Reflowing would show a screen the driver
+       * grid fits, never a reflow. Reflowing would show a screen the driver
        * is not looking at, which for a full-screen editor is not a cosmetic
        * difference, and resizing the pty instead would let a spectator shrink
        * the terminal of the person actually fixing production.
@@ -391,7 +391,7 @@ export function WebTerminal({
       const ro = new ResizeObserver(() => {
         if (disposed || !term) return;
         // Somebody else is driving: our window changed, the pty's did not.
-        // Re-letterbox and say nothing — a resize frame from here would be
+        // Re-letterbox and say nothing: a resize frame from here would be
         // dropped server-side anyway, and sending one would be this client
         // asking for something it has been told it cannot have.
         if (driverSize) {

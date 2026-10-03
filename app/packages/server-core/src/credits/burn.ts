@@ -1,13 +1,13 @@
 /**
  * Burn rate and runway from a series of credit readings.
  *
- * Pure functions — no database, no clock beyond what is passed in — because
+ * Pure functions (no database, no clock beyond what is passed in) because
  * this is the part that must not lie. A wrong runway is worse than no runway:
  * it is the number somebody uses to decide *not* to top up.
  *
  * The central problem is top-ups. A pot that went 500 → 300 → 900 → 700 over
  * four readings has burned 400, not gained 200, and the naive
- * `first - last` answer reports a negative burn and an infinite runway — the
+ * `first - last` answer reports a negative burn and an infinite runway: the
  * most dangerous possible wrong answer, delivered with confidence. So the burn
  * is the sum of the *decreases* between consecutive readings, and increases
  * are recorded as top-ups rather than netted off.
@@ -24,7 +24,7 @@ export interface CreditObservation {
 export interface BurnEstimate {
   /**
    * Spend per day over the observed span, in the pot's currency. Null when
-   * there is not enough history to say — never 0, which would read as
+   * there is not enough history to say, never 0, which would read as
    * "nothing is being spent".
    */
   perDay: number | null;
@@ -95,7 +95,7 @@ export function estimateBurn(observations: readonly CreditObservation[]): BurnEs
 export interface RunwayEstimate {
   /**
    * Days until the pot is empty at the observed burn, or until the credit
-   * expires — whichever comes first. Null when the burn is unknown, and
+   * expires, whichever comes first. Null when the burn is unknown, and
    * `Infinity` is never returned: see `neverEmpties`.
    */
   days: number | null;

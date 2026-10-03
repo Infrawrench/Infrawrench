@@ -1,6 +1,6 @@
 /**
  * Pure capping and rendering for posture alerts. No I/O lives here so the
- * message shape is unit-testable without a database — the same split as
+ * message shape is unit-testable without a database: the same split as
  * `expiry/summary.ts`. `alerts.ts` does the claim, the feed read and the
  * fan-out.
  *
@@ -8,8 +8,8 @@
  * hygiene work for the Posture screen, not something to page a channel about.
  * Volume is structurally bounded before this module runs: the cooldown claim
  * caps the message rate at one per org per 24h, and the feed itself is one
- * bounded computation over stored rows. What this module bounds is the *body*
- * — at most {@link MAX_LISTED_FINDINGS} named findings, worst first, with the
+ * bounded computation over stored rows. What this module bounds is the *body*:
+ * at most {@link MAX_LISTED_FINDINGS} named findings, worst first, with the
  * rest collapsed into a trailing count.
  */
 import type { PostureFinding, PostureSeverity } from "@infrawrench/client-core";
@@ -28,7 +28,7 @@ export interface PostureAlertSummary {
   total: number;
   /** Count per alertable severity; every bucket present, zeros included. */
   counts: Record<PostureAlertSeverity, number>;
-  /** The findings named in the body — the worst, capped. */
+  /** The findings named in the body: the worst, capped. */
   findings: PostureFinding[];
   /** How many findings the body does not name. */
   omitted: number;
@@ -70,10 +70,10 @@ export function postureTitle(summary: PostureAlertSummary): string {
 }
 
 /**
- * `"<name> — <title> (critical)"`.
+ * `"<name>: <title> (critical)"`.
  *
  * `displayName` is synced from the customer's cloud, so a transport that
- * interprets markup has to be handed an `escape` that neutralises it — a
+ * interprets markup has to be handed an `escape` that neutralises it: a
  * resource called `~assets~` would otherwise render struck through, which is
  * what "already dealt with" looks like. The default is identity, for the
  * plain-text transports.
@@ -90,7 +90,7 @@ function countsLine(summary: PostureAlertSummary): string {
 }
 
 /**
- * The body as plain-text lines, shared by every transport — the same split
+ * The body as plain-text lines, shared by every transport: the same split
  * the drift and expiry bodies use. `bold` wraps a fragment in the transport's
  * bold markup, or returns it unchanged for plain text (the Teams Adaptive
  * Card escaper turns `*` into a literal asterisk, so Teams must not receive
@@ -120,7 +120,7 @@ export function formatPostureSlackBody(summary: PostureAlertSummary): string {
   return postureLines(summary, (s) => `*${s}*`, escapeMrkdwnFragment).join("\n");
 }
 
-/** Teams plain-text body — the Adaptive Card escaper strips markdown anyway. */
+/** Teams plain-text body: the Adaptive Card escaper strips markdown anyway. */
 export function formatPostureTeamsBody(summary: PostureAlertSummary): string {
   // The "\n\n" join already separates paragraphs; the empty spacer line the
   // Slack body wants would double up here.
@@ -131,7 +131,7 @@ export function formatPostureTeamsBody(summary: PostureAlertSummary): string {
 
 /**
  * Mobile push body. A notification banner shows two or three lines, so it
- * gets the counts and the single worst finding — the deep link carries the
+ * gets the counts and the single worst finding: the deep link carries the
  * reader to the full screen.
  */
 export function formatPosturePushBody(summary: PostureAlertSummary): string {

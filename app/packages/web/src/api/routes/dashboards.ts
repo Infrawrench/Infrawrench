@@ -51,7 +51,7 @@ const CARD_KINDS = new Set(["resource", "workflow", "widget"]);
  *
  * Resource pins, workflow pins, and widgets share one drag-reorderable
  * sequence, so a new card of any kind has to clear the highest `gridX` across
- * all three tables — placing it at the end of its own table would drop it into
+ * all three tables: placing it at the end of its own table would drop it into
  * the middle of the grid.
  */
 async function nextGridX(dashboardId: string): Promise<number> {
@@ -181,7 +181,7 @@ async function loadWidgets(dashboardId: string): Promise<DashboardWidget[]> {
   }));
 }
 
-/** GET /api/dashboards — list all dashboards */
+/** GET /api/dashboards: list all dashboards */
 app.get("/", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
@@ -193,7 +193,7 @@ app.get("/", async (c) => {
   return c.json(rows);
 });
 
-/** POST /api/dashboards — create a dashboard */
+/** POST /api/dashboards: create a dashboard */
 app.post("/", async (c) => {
   requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
@@ -205,7 +205,7 @@ app.post("/", async (c) => {
   return c.json(created);
 });
 
-/** GET /api/dashboards/:id — get dashboard with pins */
+/** GET /api/dashboards/:id: get dashboard with pins */
 app.get("/:id", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
@@ -251,7 +251,7 @@ app.get("/:id", async (c) => {
   return c.json({ dashboard, pins, workflowPins, widgets });
 });
 
-/** GET /api/dashboards/default/full — get-or-create default dashboard with pins */
+/** GET /api/dashboards/default/full: get-or-create default dashboard with pins */
 app.get("/default/full", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
@@ -302,7 +302,7 @@ app.get("/default/full", async (c) => {
   return c.json({ dashboard: defaultDashboard, pins, workflowPins, widgets });
 });
 
-/** POST /api/dashboards/widgets — add a cost-graph or budget widget. */
+/** POST /api/dashboards/widgets: add a cost-graph or budget widget. */
 app.post("/widgets", async (c) => {
   requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
@@ -352,7 +352,7 @@ app.post("/widgets", async (c) => {
   return c.json(created);
 });
 
-/** PATCH /api/dashboards/widgets/:widgetId — update title/config/layout. */
+/** PATCH /api/dashboards/widgets/:widgetId: update title/config/layout. */
 app.patch("/widgets/:widgetId", async (c) => {
   requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
@@ -400,7 +400,7 @@ app.patch("/widgets/:widgetId", async (c) => {
   return c.json(updated);
 });
 
-/** DELETE /api/dashboards/widgets/:widgetId — soft delete. */
+/** DELETE /api/dashboards/widgets/:widgetId: soft delete. */
 app.delete("/widgets/:widgetId", async (c) => {
   requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
@@ -493,7 +493,7 @@ app.post("/pin", async (c) => {
       gridY: gridY ?? 0,
       syncVersion: nextPinSyncVersion(organizationId),
     })
-    // A conflict means the resource is already pinned here — unpin hard-deletes,
+    // A conflict means the resource is already pinned here: unpin hard-deletes,
     // so no tombstone can be in the way. Leave the existing card's position
     // alone rather than yanking it back to the end of the row.
     .onConflictDoNothing();
@@ -501,7 +501,7 @@ app.post("/pin", async (c) => {
 });
 
 /**
- * POST /api/dashboards/:id/reorder — persist card order.
+ * POST /api/dashboards/:id/reorder: persist card order.
  *
  * `cards` is the whole grid in its new order, mixing all three kinds, and
  * `gridX` is written as the index within that one sequence. `resourceIds` is
@@ -576,7 +576,7 @@ app.post("/unpin", async (c) => {
 
   // Hard delete. A tombstone would be what tells a pulling client the pin went
   // away, but desktop sync is push-only (see electron/cloud-sync.ts) so nothing
-  // consumes one — it would just accumulate rows. Revisit alongside any future
+  // consumes one: it would just accumulate rows. Revisit alongside any future
   // downward apply: deletions are invisible to a puller without it.
   await db
     .delete(dashboardPins)
@@ -586,7 +586,7 @@ app.post("/unpin", async (c) => {
   return c.json({ ok: true });
 });
 
-/** POST /api/dashboards/workflow-pin — pin a workflow's metrics onto a dashboard */
+/** POST /api/dashboards/workflow-pin: pin a workflow's metrics onto a dashboard */
 app.post("/workflow-pin", async (c) => {
   requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
@@ -622,7 +622,7 @@ app.post("/workflow-pin", async (c) => {
   return c.json({ ok: true });
 });
 
-/** POST /api/dashboards/workflow-unpin — remove a pinned workflow */
+/** POST /api/dashboards/workflow-unpin: remove a pinned workflow */
 app.post("/workflow-unpin", async (c) => {
   requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
@@ -649,7 +649,7 @@ app.post("/workflow-unpin", async (c) => {
   return c.json({ ok: true });
 });
 
-/** POST /api/dashboards/validate-tabs — validate which workspace tab targets still exist */
+/** POST /api/dashboards/validate-tabs: validate which workspace tab targets still exist */
 app.post("/validate-tabs", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
@@ -802,7 +802,7 @@ function projectProbeStatus(row: {
   return result;
 }
 
-/** GET /api/dashboards/pin/:pinId — full enriched pin data + probed status */
+/** GET /api/dashboards/pin/:pinId: full enriched pin data + probed status */
 app.get("/pin/:pinId", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
@@ -868,7 +868,7 @@ app.get("/pin/:pinId", async (c) => {
   return c.json({ ...pinFields, pluginLogoSvg, pluginDisplayName, status });
 });
 
-/** GET /api/dashboards/pin/:pinId/range?fromMs=…&toMs=… — historical metric series */
+/** GET /api/dashboards/pin/:pinId/range?fromMs=…&toMs=…: historical metric series */
 app.get("/pin/:pinId/range", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
@@ -903,7 +903,7 @@ app.get("/pin/:pinId/range", async (c) => {
   return c.json({ series });
 });
 
-/** POST /api/dashboards/probe — read cached stats/metrics for dashboard cards */
+/** POST /api/dashboards/probe: read cached stats/metrics for dashboard cards */
 app.post("/probe", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");

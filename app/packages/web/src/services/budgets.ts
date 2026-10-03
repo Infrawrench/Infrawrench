@@ -1,5 +1,5 @@
 /**
- * Org-scoped budget CRUD + status — shared by the HTTP routes
+ * Org-scoped budget CRUD + status: shared by the HTTP routes
  * (api/routes/budgets.ts) and the tool registry (tools/costs.ts).
  */
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -18,7 +18,7 @@ type BudgetRow = typeof budgets.$inferSelect;
  * Which dashboards carry a card for each of `budgetIds`, keyed by budget id.
  *
  * Budget widgets store their target as `config.budgetId`, so this reads the
- * JSONB key rather than a foreign key — there is no referential integrity
+ * JSONB key rather than a foreign key: there is no referential integrity
  * between a budget and the cards pointing at it, which is exactly why a budget
  * can outlive every one of its cards.
  */
@@ -69,7 +69,7 @@ async function toBudgetWithStatus(
 ): Promise<BudgetWithStatus> {
   const costBasis = (b.costBasis ?? "cash") as CostBasis;
   // A saved-filter reference that fails to resolve throws out of here rather
-  // than evaluating the budget over all spend — the error is the honest answer.
+  // than evaluating the budget over all spend: the error is the honest answer.
   const status = await budgetMonthStatus(
     organizationId,
     (b.filters ?? []) as CostFilter[],
@@ -191,7 +191,7 @@ export async function createBudget(
       currency: input.currency,
       filters: input.filters,
       thresholds: input.thresholds,
-      // Absent means cash — the column's own default, restated here so the
+      // Absent means cash: the column's own default, restated here so the
       // insert doesn't depend on which of the two defaults applies.
       costBasis: input.costBasis ?? "cash",
       savedFilterId: input.savedFilterId ?? null,
@@ -222,7 +222,7 @@ export async function updateBudget(
       filters: input.filters,
       thresholds: input.thresholds,
       costBasis: input.costBasis ?? "cash",
-      // A PUT is a full replace, so absent clears the reference — the editor
+      // A PUT is a full replace, so absent clears the reference: the editor
       // always sends the whole object, including the chip it still shows.
       savedFilterId: input.savedFilterId ?? null,
       // Absent clears the opt-in, which is the safe direction: a budget stops
@@ -251,7 +251,7 @@ export async function updateBudget(
  * The cards go with it because nothing else would ever remove them: a budget
  * widget resolves its row by `config.budgetId`, so a card left behind renders
  * as a permanent "budget unavailable" tile that no amount of dashboard editing
- * explains. Removing a *card* still leaves the budget alone — that direction is
+ * explains. Removing a *card* still leaves the budget alone: that direction is
  * the whole point of the Costs panel.
  */
 export async function softDeleteBudget(organizationId: string, budgetId: string): Promise<boolean> {

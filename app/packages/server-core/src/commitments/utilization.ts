@@ -15,8 +15,8 @@
  *     utilization = delivered / obligation
  *
  * **Delivered is amortized, and it has to be.** A provider prices
- * commitment-covered usage at zero on the cash basis — the money left the
- * account when the commitment was bought — so a cash delivered figure is zero
+ * commitment-covered usage at zero on the cash basis (the money left the
+ * account when the commitment was bought) so a cash delivered figure is zero
  * for every commitment that is working perfectly, and every healthy plan would
  * read as 0% used. The obligation is the commitment's own committed rate, which
  * is exactly what an amortized delivered figure is comparable to.
@@ -24,18 +24,18 @@
  * **The days-we-have-data intersection is the whole trick.** Counting a day
  * the cost collection never ran (backfill still in flight, provider export
  * lagging) puts committed hours in the denominator with no chance of matching
- * spend in the numerator — a fully-used plan reads as under-utilized, and
+ * spend in the numerator: a fully-used plan reads as under-utilized, and
  * somebody walks off to cancel a healthy commitment. Days without data are
  * excluded from the obligation and reported separately as `missingDays`, so
  * the number that renders is honest about what it measured. The canonical
  * test: five days of data on a plan fully used each of them → 100%, not 50%.
  *
- * Values above 1 are reported unclamped — spending past the commitment is
+ * Values above 1 are reported unclamped: spending past the commitment is
  * real (usage billed at the discounted rate beyond the committed amount) and
  * clamping it would hide exactly the signal that says "commit more".
  *
  * Unit-denominated commitments (GCP CUDs) return `null` with reason
- * `unit_denominated` — never 0%. Cost rows cannot say how many of the
+ * `unit_denominated`, never 0%. Cost rows cannot say how many of the
  * committed vCPUs ran, and in a table that prints 0%, "unknown" and "unused"
  * are indistinguishable; one of those is a purchase order nobody should sign.
  */
@@ -72,9 +72,9 @@ export interface CommitmentUtilizationResult {
   deliveredAmount: number;
   /** |active ∩ window| in days. */
   activeDays: number;
-  /** |active ∩ window ∩ days-with-data| — what the obligation covers. */
+  /** |active ∩ window ∩ days-with-data| - what the obligation covers. */
   measuredDays: number;
-  /** Active-in-window days with no cost data — reported, never guessed at. */
+  /** Active-in-window days with no cost data: reported, never guessed at. */
   missingDays: number;
 }
 

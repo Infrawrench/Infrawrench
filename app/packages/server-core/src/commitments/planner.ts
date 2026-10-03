@@ -5,7 +5,7 @@
  * Pure and db-free. Callers aggregate uncovered consumption per
  * `(pluginId, service, region)` cell per day over a trailing window (90 days
  * nominal, 60 minimum) and hand the series over. The amounts are **amortized**,
- * the same basis coverage's denominator uses — the two numbers describe the
+ * the same basis coverage's denominator uses: the two numbers describe the
  * same uncovered spend and sit on the same screen, so computing them on
  * different bases would put two contradictory figures side by side.
  *
@@ -18,26 +18,26 @@
  * Cells pass four gates, evaluated **in this order** so the first failure
  * shown is the most actionable one:
  *
- * 1. PRESENCE — spend on ≥90% of window days. A workload that isn't there
+ * 1. PRESENCE: spend on ≥90% of window days. A workload that isn't there
  *    most days has nothing to commit to.
- * 2. NOT IN DECLINE — median of the recent third ≥ 0.85× median of the
+ * 2. NOT IN DECLINE: median of the recent third ≥ 0.85× median of the
  *    earlier two-thirds. Committing to a workload being wound down locks in
  *    its past.
- * 3. FLOOR — p10 ≥ 0.6×p50. A spiky workload's floor is too far below its
+ * 3. FLOOR: p10 ≥ 0.6×p50. A spiky workload's floor is too far below its
  *    typical day for a commitment to capture much.
- * 4. MATERIALITY — p10 × 365 ≥ 1,000 (in the cell's currency). Below that,
+ * 4. MATERIALITY: p10 × 365 ≥ 1,000 (in the cell's currency). Below that,
  *    the saving doesn't pay for the attention.
  *
  * Floor is checked *after* decline, deliberately: a workload that halved
  * mid-window fails the floor test too, and reporting it as "spiky" sends the
  * reader to smooth a workload that is actually disappearing. Keep the order.
  *
- * Published discount rates are "up to" figures — AWS Compute Savings Plans
+ * Published discount rates are "up to" figures: AWS Compute Savings Plans
  * up to 66% (https://aws.amazon.com/savingsplans/compute-pricing/), GCP CUDs
  * up to 55%
  * (https://cloud.google.com/compute/docs/instances/signing-up-committed-use-discounts),
  * Azure reserved instances 36–72%
- * (https://azure.microsoft.com/en-us/pricing/reserved-vm-instances/) — so
+ * (https://azure.microsoft.com/en-us/pricing/reserved-vm-instances/), so
  * each recommendation carries `savingBasis` telling the renderer whether to
  * write "$X–$Y" (`range`) or "up to $X" (`upper_bound`). Never a bare "$X"
  * from an "up to" figure.
@@ -46,7 +46,7 @@
  * exact, not estimates: at discount d, break-even utilization is 1−d, which
  * means the workload can shrink by d before the commitment loses money.
  * `annualLossIfUsageHalves` = max(0, C_annual × (0.5 − d)) at the *shallow*
- * end of the discount — the provider's published floor when there is one,
+ * end of the discount: the provider's published floor when there is one,
  * else 0 (i.e. the bound assumes no discount at all: a ceiling on regret,
  * not an estimate).
  *
@@ -71,9 +71,9 @@ export interface CommitmentRecommendation {
   service: string;
   region: string;
   currency: string;
-  /** p10 of daily uncovered spend — the recommended daily commitment. */
+  /** p10 of daily uncovered spend: the recommended daily commitment. */
   recommendedDailyCommitment: number;
-  /** The same, per hour — the unit AWS/GCP purchase forms ask for. */
+  /** The same, per hour: the unit AWS/GCP purchase forms ask for. */
   recommendedHourlyCommitment: number;
   /** recommendedDailyCommitment × 365. */
   annualCommitment: number;
@@ -87,7 +87,7 @@ export interface CommitmentRecommendation {
   discountRateMax: number;
   /** annualCommitment × discountRateMin, when a floor is published. */
   estimatedAnnualSavingMin?: number;
-  /** annualCommitment × discountRateMax — an "up to" figure. */
+  /** annualCommitment × discountRateMax: an "up to" figure. */
   estimatedAnnualSavingMax: number;
   /**
    * 1 − discountRateMax: below this utilization the commitment loses to
@@ -96,7 +96,7 @@ export interface CommitmentRecommendation {
    */
   breakEvenUtilization: number;
   /**
-   * max(0, annualCommitment × (0.5 − shallowDiscount)) — worst-case annual
+   * max(0, annualCommitment × (0.5 − shallowDiscount)): worst-case annual
    * loss if the workload halves, at the shallow end of the discount (the
    * published floor, or 0 where none is published).
    */
@@ -108,7 +108,7 @@ export interface PlannerRejectedCell {
   service: string;
   region: string;
   currency: string;
-  /** First gate the cell failed — the most actionable objection. */
+  /** First gate the cell failed: the most actionable objection. */
   gate: PlannerGate;
 }
 
@@ -126,7 +126,7 @@ export const PLANNER_MIN_WINDOW_DAYS = 60;
 export const PLANNER_MATERIALITY_ANNUAL = 1_000;
 
 /**
- * Published discount figures per provider — "up to" marketing numbers, which
+ * Published discount figures per provider: "up to" marketing numbers, which
  * is exactly why `basis` exists. Sources in the module header.
  */
 const PROVIDER_DISCOUNTS: Record<
@@ -171,7 +171,7 @@ function evaluateCell(
     return { ...identity, gate: "presence" };
   }
 
-  // 2. NOT IN DECLINE — before the floor test, so a workload that halved
+  // 2. NOT IN DECLINE: before the floor test, so a workload that halved
   // reads as declining, not as "spiky".
   const recentLength = Math.floor(series.length / 3);
   const earlier = series.slice(0, series.length - recentLength);
@@ -196,7 +196,7 @@ function evaluateCell(
   }
 
   const discount = PROVIDER_DISCOUNTS[cell.pluginId] ?? { max: 0, basis: "upper_bound" as const };
-  // Shallow end of the discount: the published floor, else 0 — the loss
+  // Shallow end of the discount: the published floor, else 0; the loss
   // bound is then a ceiling on regret rather than an estimate.
   const shallow = discount.min ?? 0;
 
@@ -220,7 +220,7 @@ function evaluateCell(
 
 /**
  * Evaluate every cell against the gates. `windowDays` is the ordered,
- * inclusive list of ISO days the series cover — its length is the window,
+ * inclusive list of ISO days the series cover: its length is the window,
  * and days missing from a cell's map are zero-spend days in it.
  */
 export function planCommitmentRecommendations(

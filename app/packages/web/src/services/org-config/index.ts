@@ -1,5 +1,5 @@
 /**
- * Org config as code — export the organization's configuration as one JSON
+ * Org config as code: export the organization's configuration as one JSON
  * document, and apply a document back.
  *
  * Shared by the HTTP routes (`api/routes/org-config.ts`) and anything else that
@@ -12,13 +12,13 @@
  *
  * 1. **Read** the org's current configuration once ({@link loadOrgConfigState}),
  *    in exactly the document's shape.
- * 2. **Plan** — match document entities to existing rows by `key`, classify each
+ * 2. **Plan**: match document entities to existing rows by `key`, classify each
  *    as create / update / unchanged, and (in `replace` mode) mark what the
  *    document does not name as delete. References between sections are resolved
  *    here, while nothing has been written; anything that cannot resolve is
  *    reported and dropped, never invented.
  * 3. **Execute** every planned write inside one `db.transaction`. An apply is
- *    all or nothing — a document that fails halfway through would leave an org
+ *    all or nothing: a document that fails halfway through would leave an org
  *    in a state that is neither the old configuration nor the new one, which is
  *    the exact failure disaster recovery exists to avoid.
  *
@@ -105,7 +105,7 @@ interface ExportOrgConfigOptions {
  *
  * Ordering is stable across calls (see `state.ts`) and object keys are emitted
  * in a fixed order, so re-exporting an unchanged org produces a byte-identical
- * file — which is what makes committing the export to git useful rather than
+ * file, which is what makes committing the export to git useful rather than
  * noisy.
  */
 export async function exportOrgConfig(
@@ -350,7 +350,7 @@ async function buildOrgConfigPlan(
             source: entry.source,
             createdByUserId: opts.userId,
             // Same rule as the editor: `infra.*` inside the script runs with
-            // the permissions of whoever last wrote the source — here, whoever
+            // the permissions of whoever last wrote the source; here, whoever
             // applied the document.
             sourceAuthorUserId: opts.userId,
           });
@@ -445,7 +445,7 @@ async function buildOrgConfigPlan(
           })
           .where(eq(workflows.id, id));
         // The git signing secret is write-only by contract (it never leaves the
-        // server, so no document can carry it) — leave whatever is stored.
+        // server, so no document can carry it): leave whatever is stored.
       };
     },
     remove: (entity) => async (tx) => {
@@ -597,7 +597,7 @@ async function buildOrgConfigPlan(
           .update(costCentres)
           .set({ name: entry.name, description: entry.description ?? null, updatedAt: now })
           .where(eq(costCentres.id, id));
-        // Rules are anonymous — the document's list is the whole list, so the
+        // Rules are anonymous: the document's list is the whole list, so the
         // only sound update is to replace it.
         await tx.delete(costAllocationRules).where(eq(costAllocationRules.costCentreId, id));
         await writeAllocationRules(tx, organizationId, id, rules);
@@ -682,7 +682,7 @@ function resolveTrigger(
   const budgetId = budgetIdByKey.get(trigger.budgetKey);
   if (!budgetId) {
     // A budget trigger with no budget would save cleanly and then silently
-    // never fire — the exact failure `validateTrigger` exists to prevent. Fall
+    // never fire: the exact failure `validateTrigger` exists to prevent. Fall
     // back to manual and say so.
     plan.miss(
       "workflows",
@@ -714,7 +714,7 @@ function triggerDerived(
       });
     } catch {
       // An expression that never matches leaves the workflow unscheduled rather
-      // than failing the whole apply — the same stance the editor takes.
+      // than failing the whole apply: the same stance the editor takes.
       nextRunAt = null;
     }
     return { nextRunAt, webhookToken: existingWebhookToken };
@@ -754,7 +754,7 @@ interface DashboardPlanArgs {
  * Dashboards, whose cards are the one part of the document that references
  * everything else.
  *
- * A dashboard's cards are anonymous and ordered, so — like allocation rules —
+ * A dashboard's cards are anonymous and ordered, so (like allocation rules)
  * the only sound update is to replace the whole set. That is done only when the
  * card list actually differs, so an unchanged document does not churn widget
  * ids on every apply.
@@ -830,7 +830,7 @@ async function planDashboards(plan: PlanBuilder, args: DashboardPlanArgs): Promi
     if (named.has(entity.key)) continue;
     if (entity.config.isDefault && !wantsDefault) {
       // The default dashboard is the org's home screen; the hand-editing route
-      // refuses to delete it too. Leaving it is strictly recoverable — deleting
+      // refuses to delete it too. Leaving it is strictly recoverable: deleting
       // it is not.
       plan.miss(
         "dashboards",
@@ -870,8 +870,8 @@ type CardRow =
     };
 
 /**
- * Turn a dashboard's document cards into insertable rows, dropping — and
- * reporting — every card whose target this org does not have.
+ * Turn a dashboard's document cards into insertable rows, dropping (and
+ * reporting) every card whose target this org does not have.
  *
  * The returned `cards` is the document form of what survived, so the diff
  * compares like with like: a pin that can never resolve here must not make the
@@ -1009,7 +1009,7 @@ async function clearCards(
 }
 
 /**
- * Write a dashboard's cards in document order — `gridX` is the index in the one
+ * Write a dashboard's cards in document order: `gridX` is the index in the one
  * sequence all three card tables share.
  */
 async function writeCards(
@@ -1050,7 +1050,7 @@ async function writeCards(
         .limit(1);
       // Planning already required this row to exist. If it is gone now (soft-
       // deleted between plan and write), fail the transaction rather than
-      // commit after clearCards with the pin missing — apply is all-or-nothing.
+      // commit after clearCards with the pin missing: apply is all-or-nothing.
       if (!resource) {
         throw new OrgConfigError(
           `Resource pin ${row.pluginId}/${row.resourceTypeId} "${row.externalId}" disappeared between plan and apply. Re-run plan after the inventory settles, then apply again.`,
@@ -1299,7 +1299,7 @@ function planAlertSettings(plan: PlanBuilder, args: AlertSettingsArgs): void {
     const currentDigest = { ...current.digest, recipients: [...current.digest.recipients].sort() };
     // Enabling marks the current window as already covered, so the first
     // scheduled digest goes out at the next send time rather than the moment a
-    // `config apply` lands — the same rule `updateOrgDigestSettings` follows.
+    // `config apply` lands: the same rule `updateOrgDigestSettings` follows.
     const window = digestWindow(now, digest.timezone);
     singleton("digest", "Weekly digest", next, currentDigest, async (tx) => {
       const values = {
@@ -1346,7 +1346,7 @@ export async function planOrgConfig(
 }
 
 /**
- * Apply a document. Returns the plan that was executed — the same shape
+ * Apply a document. Returns the plan that was executed: the same shape
  * {@link planOrgConfig} returns, so a caller can show the user exactly what
  * happened in the words it used to preview it.
  */

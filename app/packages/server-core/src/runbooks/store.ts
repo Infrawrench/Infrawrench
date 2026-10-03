@@ -1,5 +1,5 @@
 /**
- * Runbook documents — CRUD, shared by the web API and the MCP surface.
+ * Runbook documents: CRUD, shared by the web API and the MCP surface.
  *
  * Validation comes from `@infrawrench/client-core` (`validateRunbookInput`),
  * the same function the editor previews with, so the form and the server can
@@ -220,7 +220,7 @@ export async function deleteRunbook(organizationId: string, runbookId: string): 
  * Turn a unique-violation into the message the user needs.
  *
  * The name uniqueness is enforced by the index rather than by a pre-check,
- * because a check-then-insert loses the race — and the race here is two people
+ * because a check-then-insert loses the race, and the race here is two people
  * writing up the same incident afterwards, which is not a rare event.
  */
 function asNameConflict(err: unknown, name: string): unknown {
@@ -231,7 +231,7 @@ function asNameConflict(err: unknown, name: string): unknown {
   return err;
 }
 
-/** Runbooks the org has, newest run first — the "recently used" ordering. */
+/** Runbooks the org has, newest run first: the "recently used" ordering. */
 export async function listRecentlyRunRunbooks(
   organizationId: string,
   limit = 5,

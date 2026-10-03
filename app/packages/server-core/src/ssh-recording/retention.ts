@@ -8,7 +8,7 @@
  *
  * Only orgs that have a settings row are scanned. An org that never enabled
  * recording has nothing to prune, and the ones that disabled it keep their
- * window — turning recording off must not be a way to make yesterday's tapes
+ * window: turning recording off must not be a way to make yesterday's tapes
  * vanish faster than the policy says.
  */
 import { sql } from "drizzle-orm";
@@ -48,7 +48,7 @@ export interface RecordingRetentionResult {
  * Delete every org's recordings older than that org's window.
  *
  * Replica-safe without a claim: the delete is idempotent and two pollers
- * racing simply find fewer rows each. Never throws — a failing org is logged
+ * racing simply find fewer rows each. Never throws: a failing org is logged
  * and the pass moves on.
  */
 export async function pruneSessionRecordings(now = new Date()): Promise<RecordingRetentionResult> {
@@ -109,7 +109,7 @@ export async function pruneSessionRecordings(now = new Date()): Promise<Recordin
  * Settle rows the recorder never closed, so an operator does not see a
  * week-old session claiming to be live.
  *
- * Last activity is `last_activity_at` — bumped on every chunk flush and by the
+ * Last activity is `last_activity_at`: bumped on every chunk flush and by the
  * recorder's idle heartbeat. A quiet but still-open shell keeps the stamp
  * fresh; only a proxy that died mid-stream stops touching it. The list view
  * derives the same distinction for presentation; this pass makes it durable so

@@ -2,7 +2,7 @@
  * Simple WebSocket send-side backpressure for the streaming proxies
  * (ssh-proxy, kubectl-pty-session, k8s-pf-proxy).
  *
- * `ws.send` never blocks — a fast source (SSH stream, PTY, TCP socket) with a
+ * `ws.send` never blocks: a fast source (SSH stream, PTY, TCP socket) with a
  * slow browser buffers unboundedly in `ws.bufferedAmount`. Call `check()`
  * after each send: when the buffer crosses the high-water mark the source is
  * paused, then polled (ws has no drain event) until it falls below the

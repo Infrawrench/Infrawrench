@@ -4,8 +4,8 @@
  * The arithmetic lives here, in the host, and the *numbers* live in the
  * plugin's `NetworkFlowCapabilityDeclaration.rates`. That split is deliberate:
  * every provider publishes different rates under different names, but they all
- * price the same handful of boundaries the same way — per GB, by boundary, with
- * regional variation — so there is exactly one correct implementation of the
+ * price the same handful of boundaries the same way (per GB, by boundary, with
+ * regional variation) so there is exactly one correct implementation of the
  * multiplication and it should be tested once rather than in every plugin.
  *
  * **What this deliberately does not model**, because modelling it wrong is
@@ -17,7 +17,7 @@
  *   bytes would credit the same 100 GB twice. Every priced byte here is priced.
  * - **Volume tiers.** Internet egress steps down above 10 TB/month. Applying a
  *   tier needs the month's running total *for the whole account*, which is a
- *   billing fact we hold in `cost_daily` and not a flow fact — and mixing the
+ *   billing fact we hold in `cost_daily` and not a flow fact, and mixing the
  *   two would make a flow's price depend on when in the month it was collected.
  *   Everything is priced at the first tier, which over-states large bills.
  * - **Negotiated rates, private pricing, commitment discounts.** Invisible to
@@ -47,7 +47,7 @@ export interface ResolvedRate {
  * A scope the card does not name resolves to **zero**, and that is the right
  * answer rather than a gap: the free boundaries (`intra_zone`,
  * `internet_ingress`) are genuinely free, and a boundary a plugin declines to
- * price is one it has no published number for — charging a guessed rate there
+ * price is one it has no published number for; charging a guessed rate there
  * would put fabricated money on a screen people make decisions from. Bytes for
  * those rows are still stored and still shown; only the money is zero, and the
  * surface distinguishes "free" from "unpriced" by the scope itself.
@@ -75,7 +75,7 @@ export interface PricedBytes {
  *
  * GB here is 10^9 bytes, not 2^30. Every provider's data-transfer pricing page
  * defines it that way, and using GiB would quietly under-report every figure by
- * 7.4% — small enough to look like normal estimate drift and therefore the
+ * 7.4%: small enough to look like normal estimate drift and therefore the
  * worst possible size of error.
  *
  * Negative byte counts are clamped to zero. They should never occur, but the
@@ -104,12 +104,12 @@ export function priceBytes(
  * of a network bill.
  *
  * Derived from the scope rather than stored alongside it, so the two can never
- * disagree — a stored `crossedZone` on a row whose scope later reads
+ * disagree: a stored `crossedZone` on a row whose scope later reads
  * `intra_zone` is a bug with no detectable symptom.
  *
  * `nat_gateway` sets none of them on purpose. A NAT charge is levied for
  * *processing*, and the same bytes then cross whatever boundary they were
- * headed for — counting the NAT hop as "left the cloud" would double the
+ * headed for: counting the NAT hop as "left the cloud" would double the
  * apparent internet egress of every private subnet.
  */
 export function boundaryFlags(scope: NetworkFlowScope): {

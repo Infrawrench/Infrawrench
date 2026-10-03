@@ -3,8 +3,8 @@
  * `/api/org/:orgId/cost-exports`).
  *
  * An export is a saved cost query plus a schedule plus a destination; the
- * poller runs it and writes one object per period. This file is transport only
- * — validation, credential handling and the run itself live in
+ * poller runs it and writes one object per period. This file is transport only:
+ * validation, credential handling and the run itself live in
  * `server-core/src/cost-exports/*` so the poller drives exactly the same code.
  *
  * ## Permissions
@@ -13,7 +13,7 @@
  *
  * Writes are **`org:settings:write`, not `costs:write`**, and that is a
  * deliberate step up. `costs:write` is the "curate the cost surface" scope: it
- * lets someone name a report, define a cost centre, retune anomaly detection —
+ * lets someone name a report, define a cost centre, retune anomaly detection;
  * all of which move numbers around *inside* Infrawrench. Creating an export is
  * a different act. It is standing authorisation to ship the organization's
  * entire billing history, on a schedule, to a bucket or endpoint the creator
@@ -30,7 +30,7 @@
  * built exclusively by `toCostExportView`, which has no branch that emits the
  * ciphertext, the IV or the plaintext. `GET` answers with a redacted
  * `credentialHint` (`AKIA…7F2Q`), and an omitted credential on `PUT` means
- * "keep the stored one" — the same contract the Jira and Twilio sections use.
+ * "keep the stored one": the same contract the Jira and Twilio sections use.
  */
 import { Hono } from "hono";
 import { z } from "zod";
@@ -120,7 +120,7 @@ function inputFailure(err: unknown): { message: string; status: 400 | 404 } | nu
   return null;
 }
 
-/** GET /api/org/:orgId/cost-exports — every export, redacted. */
+/** GET /api/org/:orgId/cost-exports: every export, redacted. */
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
   return c.json(await listCostExports(c.get("organizationId")));
@@ -134,7 +134,7 @@ app.get("/:id", async (c) => {
   return c.json(found);
 });
 
-/** POST /api/org/:orgId/cost-exports — create. Credentials are required here. */
+/** POST /api/org/:orgId/cost-exports: create. Credentials are required here. */
 app.post("/", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -157,7 +157,7 @@ app.post("/", async (c) => {
       action: "cost_export.create",
       entityType: "cost_export",
       entityId: created.id,
-      // Destination and schedule, never the credential — the audit log is
+      // Destination and schedule, never the credential: the audit log is
       // readable by every holder of `audit:read`.
       metadata: {
         name: created.name,
@@ -178,7 +178,7 @@ app.post("/", async (c) => {
   }
 });
 
-/** PUT /api/org/:orgId/cost-exports/:id — replace everything but the credential. */
+/** PUT /api/org/:orgId/cost-exports/:id: replace everything but the credential. */
 app.put("/:id", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -215,7 +215,7 @@ app.put("/:id", async (c) => {
   }
 });
 
-/** DELETE /api/org/:orgId/cost-exports/:id — soft delete; objects already written stay. */
+/** DELETE /api/org/:orgId/cost-exports/:id: soft delete; objects already written stay. */
 app.delete("/:id", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -236,11 +236,11 @@ app.delete("/:id", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/cost-exports/:id/run — run it now.
+ * POST /api/org/:orgId/cost-exports/:id/run: run it now.
  *
  * A write, not a read: it pushes org spend to an external destination, which is
  * the whole thing `org:settings:write` is gating here. Answers 200 with the
- * run's own `status` even when it failed — the caller wants the error rendered,
+ * run's own `status` even when it failed: the caller wants the error rendered,
  * and the same failure is already recorded on the row for the next page load.
  */
 app.post("/:id/run", async (c) => {

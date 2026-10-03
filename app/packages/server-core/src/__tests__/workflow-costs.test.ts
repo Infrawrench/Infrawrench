@@ -16,7 +16,7 @@ vi.mock("../clickhouse/client", () => ({ isClickHouseConfigured }));
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
-// Real Drizzle over a recording driver against the real schema — the
+// Real Drizzle over a recording driver against the real schema: the
 // org-membership check renders its actual SQL (and shadow-validates under
 // test:postgres:shadow). `pg.setRows` feeds the account rows it finds.
 const pg = fakePostgres();
@@ -74,7 +74,7 @@ describe("writeWorkflowCostRows", () => {
     // The membership check ran against accounts, scoped to the org.
     expect(pg.lastQuery().sql).toContain('from "accounts"');
     expect(pg.lastQuery().params).toEqual(["org1", "acc1"]);
-    // Still tagged — this is what keeps the key disjoint from AWS's own rows.
+    // Still tagged: this is what keeps the key disjoint from AWS's own rows.
     expect(inserted()[0]?.["tags"]).toMatchObject({ "infrawrench:workflow": "wf1" });
   });
 

@@ -132,7 +132,7 @@ describe("Billing routes", () => {
       const res = await buildApp().request("/status");
       expect(await res.json()).toEqual({
         complimentary: false,
-        // Prepaid capacity with no subscription at all — the shape a slot-only
+        // Prepaid capacity with no subscription at all: the shape a slot-only
         // org returns, which clients must not read as "free".
         subscription: null,
         capacity: { ...noCapacity, seats: 2, slots: [slot] },
@@ -310,7 +310,7 @@ describe("Billing routes", () => {
 
     it("creates the Stripe customer when the org has never paid for anything", async () => {
       // A slot can be the org's first ever purchase, so the customer has to be
-      // created here too — and it must be the same customer the monthly plan
+      // created here too, and it must be the same customer the monthly plan
       // would use, not a second one.
       selectSequence(orgRow(false), []);
       const values = vi.fn().mockResolvedValue(undefined);

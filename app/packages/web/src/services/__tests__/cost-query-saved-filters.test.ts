@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CostFilter } from "@infrawrench/client-core";
 
 /**
- * `runCostQuery`'s saved-filter semantics — the two properties the feature
+ * `runCostQuery`'s saved-filter semantics: the two properties the feature
  * hangs on:
  *
  * 1. a `savedFilterId` is resolved server-side and **AND-composed** with the
  *    inline filters (structured or query text), so "the saved prod scope,
  *    narrowed to one service" is one reference plus one row; and
- * 2. a reference that fails to resolve **errors the query** — it must never
+ * 2. a reference that fails to resolve **errors the query**: it must never
  *    fall through to unfiltered spend, because unfiltered totals silently
  *    standing in for "prod only" is the one failure the feature exists to
  *    prevent.
@@ -33,7 +33,7 @@ class FakeResolutionError extends Error {
 }
 const mockResolve = vi.fn();
 // The billing-rule resolver reaches Postgres at import time. None of these
-// cases asks for an adjusted query, so it is never called — it only has to
+// cases asks for an adjusted query, so it is never called: it only has to
 // exist for the module graph to load.
 vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({
   resolveBillingAdjustments: vi.fn(),

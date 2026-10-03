@@ -17,13 +17,13 @@ import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 
 /**
- * **IaC reconciliation** — the ClickOps detector.
+ * **IaC reconciliation**: the ClickOps detector.
  *
  * An org uploads the Terraform state it already has; every synced resource is
  * classified managed / drifted / unmanaged, and the unmanaged ones can be
  * turned into `import` blocks. Distinct from the three other Terraform
  * features (eject-to-Terraform, org config as code, and the Infrawrench
- * Terraform provider) — see `KNOWLEDGE.md`.
+ * Terraform provider): see `KNOWLEDGE.md`.
  *
  * The uploaded document is parsed and thrown away: only the redacted,
  * truncated attribute projection is stored. Reading is `iac:read` (members
@@ -55,13 +55,13 @@ function iacErrorResponse(c: Context, err: unknown) {
   return c.json({ error: "IaC reconciliation failed" }, 500);
 }
 
-/** GET /states — every stored state document, newest first. */
+/** GET /states: every stored state document, newest first. */
 app.get("/states", async (c) => {
   requirePermission(c, "iac:read");
   return c.json({ states: await listIacStates(c.get("organizationId")) });
 });
 
-/** POST /states — upload and parse one state document. */
+/** POST /states: upload and parse one state document. */
 app.post("/states", async (c) => {
   requirePermission(c, "iac:write");
   const organizationId = c.get("organizationId");
@@ -134,7 +134,7 @@ app.delete("/states/:stateId", async (c) => {
   }
 });
 
-/** GET /reconciliation?stateId= — the classification. */
+/** GET /reconciliation?stateId= - the classification. */
 app.get("/reconciliation", async (c) => {
   requirePermission(c, "iac:read");
   const stateId = c.req.query("stateId");
@@ -146,7 +146,7 @@ app.get("/reconciliation", async (c) => {
   }
 });
 
-/** POST /import-plan — `import` blocks + resource stanzas for chosen resources. */
+/** POST /import-plan: `import` blocks + resource stanzas for chosen resources. */
 app.post("/import-plan", async (c) => {
   requirePermission(c, "iac:read");
   const raw: unknown = await c.req.json().catch(() => null);
@@ -162,7 +162,7 @@ app.post("/import-plan", async (c) => {
 });
 
 /**
- * GET /resource?resourceId= — the badge on a resource detail page. A query
+ * GET /resource?resourceId= - the badge on a resource detail page. A query
  * param rather than a path segment because composite resource ids contain
  * slashes (same reason as the change feed's `/changes/resource`).
  */

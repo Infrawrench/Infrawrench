@@ -183,7 +183,7 @@ app.post("/env-deploy", async (c) => {
   }>();
 
   // SSRF: `targetSshHost` is request body, so this route lets anyone with
-  // `resources:execute` pick the destination outright — the same exposure the
+  // `resources:execute` pick the destination outright; the same exposure the
   // SSH terminal frame has, and here it also decides where the source
   // resource's secrets get written. Vet it and keep the address: `sshExec`
   // dials what it is given, so nothing downstream re-resolves for us.

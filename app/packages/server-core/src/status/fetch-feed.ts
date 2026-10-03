@@ -5,7 +5,7 @@
  * still leaves through the egress proxy when one is configured, for the same
  * reason workflow fetch does: the poller pod should not be the origin of
  * outbound HTTP (`workflows/fetch.ts` has the full argument). Feed URLs come
- * from plugin manifests — code, not user input — so unlike workflow fetch a
+ * from plugin manifests (code, not user input) so unlike workflow fetch a
  * deployment without a proxy (local dev, self-hosters outside Kubernetes)
  * falls back to a direct fetch instead of failing.
  */
@@ -20,7 +20,7 @@ const FEED_ACCEPT =
 
 /**
  * Decode feed bytes with BOM sniffing. AWS's public health feed is UTF-16 BE
- * with a BOM — a naive UTF-8 decode produces garbage `JSON.parse` chokes on.
+ * with a BOM: a naive UTF-8 decode produces garbage `JSON.parse` chokes on.
  * BOM handling is generic text decoding, not provider knowledge, so it lives
  * here rather than in any plugin.
  */
@@ -37,7 +37,7 @@ export function decodeFeedBody(bytes: Uint8Array): string {
 
 /**
  * Fetch a status feed and return its decoded body. Throws on any transport
- * or HTTP failure — the collector records the error against the feed row so
+ * or HTTP failure: the collector records the error against the feed row so
  * a broken feed is diagnosable rather than silently reporting "no incidents".
  */
 export async function fetchStatusFeedBody(url: string): Promise<string> {
@@ -56,7 +56,7 @@ export async function fetchStatusFeedBody(url: string): Promise<string> {
     return decodeFeedBody(Uint8Array.from(Buffer.from(response.bodyBase64, "base64")));
   }
 
-  // No proxy configured — direct fetch (dev / self-hosted outside k8s).
+  // No proxy configured: direct fetch (dev / self-hosted outside k8s).
   const res = await fetch(url, {
     headers: { accept: FEED_ACCEPT },
     redirect: "follow",

@@ -5,7 +5,7 @@
  * `chat_pending_actions` row and the UI shows Approve/Reject. This module
  * mirrors that request into Slack (under the same `workflowPages` channel
  * opt-in that carries workflow approvals) with interactive buttons, and
- * rewrites the message once the action is decided — from either surface.
+ * rewrites the message once the action is decided: from either surface.
  *
  * The Slack button resolves through the same transitions the web route uses
  * (`chat_pending_actions.status`, `executePendingAction` /
@@ -28,8 +28,8 @@ const INPUT_SUMMARY_MAX_FIELDS = 8;
 
 /**
  * A redacted, non-sensitive shape of a tool's input: field *names* only, never
- * values. Tool inputs routinely carry things a shared channel must not see —
- * connection strings, SQL, key material — and a Slack channel is a much wider
+ * values. Tool inputs routinely carry things a shared channel must not see
+ * (connection strings, SQL, key material) and a Slack channel is a much wider
  * audience than the conversation owner. The full input stays where it always
  * was: the authenticated in-app approval view.
  */
@@ -60,7 +60,7 @@ function chatApprovalText(toolName: string, toolInput: unknown): { title: string
 
 /**
  * Mirror a pending destructive tool call into Slack with Approve/Deny buttons.
- * Never throws — a Slack outage must not fail the agent turn; the in-app
+ * Never throws: a Slack outage must not fail the agent turn; the in-app
  * approval UI is the primary surface and keeps working regardless.
  */
 export async function notifyChatToolApproval(args: {
@@ -119,7 +119,7 @@ export async function notifyChatToolApproval(args: {
 }
 
 /**
- * Rewrite the Slack copies of a chat tool approval once it is decided —
+ * Rewrite the Slack copies of a chat tool approval once it is decided:
  * called for web decisions and Slack-button decisions alike. Never throws.
  */
 export async function noteChatToolApprovalDecided(args: {

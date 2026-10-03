@@ -52,7 +52,7 @@ export function AddAccountModal({
         ),
       )
       .catch((e: unknown) => {
-        // A failed load must not render as "no bastions" — the picker would
+        // A failed load must not render as "no bastions": the picker would
         // silently offer only direct connections.
         toast.error(gt("Failed to load bastions"), {
           description: e instanceof Error ? e.message : String(e),

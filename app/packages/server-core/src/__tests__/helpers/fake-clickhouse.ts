@@ -9,7 +9,7 @@
  *
  * ## Rows go in as objects, in projection order
  *
- * Drizzle asks ClickHouse for `JSONCompact` whenever it knows the projection —
+ * Drizzle asks ClickHouse for `JSONCompact` whenever it knows the projection:
  * each row arrives as an array of values positionally matched to the selected
  * fields. {@link FakeClickHouse.setRows} takes the row objects a test finds
  * readable and converts them with `Object.values`, so **the keys have to be
@@ -21,7 +21,7 @@
  *
  * The one thing the fake cannot know is whether a real server would accept
  * the statement. In shadow mode every captured statement and insert is *also*
- * executed against the server named by CLICKHOUSE_METRICS_* — results are
+ * executed against the server named by CLICKHOUSE_METRICS_*: results are
  * discarded (the canned rows still drive the assertions), but a rejection
  * fails the test with the server's parse error. Run via
  * `pnpm test:clickhouse:shadow` (vitest.shadow-clickhouse.config.ts), which collects
@@ -29,7 +29,7 @@
  * against a scratch server: shadow inserts really write the fixture rows.
  *
  * The shadow client is built directly from `@clickhouse/client`, not from
- * `../../clickhouse/client` — the suites using this helper vi.mock that
+ * `../../clickhouse/client`: the suites using this helper vi.mock that
  * module, and importing it here would hand shadow mode its own fake.
  */
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
@@ -101,7 +101,7 @@ export interface FakeClickHouse {
    * The rows of one insert, drained from its stream.
    *
    * The dialect hands the driver a `Readable` in object mode so a batch never
-   * materialises, which means the rows only exist once something pulls them —
+   * materialises, which means the rows only exist once something pulls them:
    * consuming it here is what a real driver does while writing the body.
    */
   insertedRows(index?: number): Promise<Array<Record<string, unknown>>>;

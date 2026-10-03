@@ -17,7 +17,7 @@ const OPTIONS: IdleCommitmentOptions = {
 
 const DAY_MS = 86_400_000;
 
-/** Every ISO day in an inclusive range — the "we collected this day" set. */
+/** Every ISO day in an inclusive range: the "we collected this day" set. */
 function daysIn(from: string, to: string): string[] {
   const days: string[] = [];
   for (
@@ -90,7 +90,7 @@ describe("idle detection — a null utilization NEVER alerts", () => {
   });
 
   it("skips an account whose rows carry no commitment attribution", () => {
-    // Delivered reads 0 for a plan that may be working perfectly — the
+    // Delivered reads 0 for a plan that may be working perfectly: the
     // failure `feed.ts` reports as `unattributed_rows` rather than 0%.
     const verdict = judgeIdleCommitment(
       commitment({ attributed: false, deliveredAmount: 0 }),
@@ -180,7 +180,7 @@ describe("idle detection — findings", () => {
   });
 
   it("stays quiet when the waste is below the money floor", () => {
-    // 68% used of a $10 obligation — genuinely idle, and worth nothing.
+    // 68% used of a $10 obligation: genuinely idle, and worth nothing.
     const verdict = judgeIdleCommitment(
       commitment({ hourlyCommitmentAmount: 0.01, deliveredAmount: 4.9 }),
       WINDOW,

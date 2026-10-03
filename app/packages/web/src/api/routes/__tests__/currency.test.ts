@@ -13,7 +13,7 @@ const mockDeleteRate = vi.fn();
  * `CurrencySettingsError` is the module's own class, and the route branches on
  * `instanceof`. Re-declaring it in the mock (rather than importing the real
  * module, which reaches server-core's db client and throws at import time
- * without DATABASE_URL) keeps that branch reachable — same reason the anomaly
+ * without DATABASE_URL) keeps that branch reachable: same reason the anomaly
  * and tag-policy modules are mocked in `costs.test.ts`.
  */
 class MockCurrencySettingsError extends Error {}

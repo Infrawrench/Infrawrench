@@ -1,10 +1,10 @@
 /**
- * Log workspace saved queries — CRUD + validation shared by the web API and
+ * Log workspace saved queries: CRUD + validation shared by the web API and
  * the poller's alert pass.
  *
  * Validation and the search compiler come from `@infrawrench/client-core`
  * (`validateLogWorkspaceQuery`, `compileLogSearch`), the same functions the
- * workspace UI filters with — the server and the filter box can't disagree
+ * workspace UI filters with: the server and the filter box can't disagree
  * about what "matches".
  */
 import { randomUUID } from "node:crypto";
@@ -131,9 +131,9 @@ function normalizeSelectors(selectors: LogStreamSelector[]): LogStreamSelector[]
 /**
  * Verify every selector points at a live synced resource in this org whose
  * account matches. For a sidecar selector the peer resource is never a stored
- * row — the *parent* is what must resolve (its outputs mint the peer client's
+ * row: the *parent* is what must resolve (its outputs mint the peer client's
  * credentials), so the same checks apply to `parentResourceId` instead.
- * Best-effort resource-name checks stay out of here — a resource deleted
+ * Best-effort resource-name checks stay out of here: a resource deleted
  * later just shows as gone in the workspace.
  */
 async function assertSelectorsResolve(
@@ -207,7 +207,7 @@ export async function createLogWorkspaceRecord(
   // The duplicate-name check, the per-org limit and the insert run in one
   // transaction under an org-scoped advisory lock, so two concurrent creates
   // can't both pass the checks. The unique index on (organization_id, name)
-  // is the hard backstop — a conflict surfaces as the same 409 the pre-check
+  // is the hard backstop: a conflict surfaces as the same 409 the pre-check
   // gives, never as a raw database error.
   try {
     await db.transaction(async (tx) => {

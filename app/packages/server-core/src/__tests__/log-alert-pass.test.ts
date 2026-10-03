@@ -4,7 +4,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 // --- capture vars, reset per test -----------------------------------------
 
-/** Rows the raw claim UPDATE returns — snake_case, passed through unmapped. */
+/** Rows the raw claim UPDATE returns: snake_case, passed through unmapped. */
 let claimRows: Array<{ id: string; claim_token: string }> = [];
 let queryRow: Record<string, unknown> | undefined;
 /** Rows the stream-name lookup returns, in its projection order. */
@@ -17,7 +17,7 @@ const getClientForResource = vi.fn();
 
 // --- module mocks (before the SUT import) ----------------------------------
 
-// Real Drizzle over a recording driver against the real schema — the claim,
+// Real Drizzle over a recording driver against the real schema: the claim,
 // the post-claim refetch, the stream-name lookup and the completion write all
 // render their actual SQL (and shadow-validate under test:postgres:shadow).
 // `runPass` queues each query's rows FIFO in execution order.
@@ -51,7 +51,7 @@ vi.mock("../peer-clients", () => ({
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -74,7 +74,7 @@ const NOW = Date.parse("2026-08-03T10:00:00.000Z");
 /** A timestamp in the text form the Postgres driver hands back. */
 const pgTs = (d: Date) => d.toISOString().replace("T", " ").replace("Z", "");
 
-// Keys in log_workspace_queries column order, values driver-shaped — see
+// Keys in log_workspace_queries column order, values driver-shaped: see
 // helpers/fake-postgres.ts.
 function baseRow(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {

@@ -3,7 +3,7 @@ import { strict, ErrorResponses, Ok, OrgIdParam, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
 
 /**
- * The detectors a filed issue can come from — the same six as Jira. Kept in
+ * The detectors a filed issue can come from: the same six as Jira. Kept in
  * step with `LINEAR_SOURCE_KINDS` in server-core and the CHECK constraint on
  * `linear_issue_links.source_kind`.
  */

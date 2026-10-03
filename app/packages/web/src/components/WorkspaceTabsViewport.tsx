@@ -79,7 +79,7 @@ interface WebWorkspaceTabsViewportProps {
   /**
    * False until the restored tabs have been validated against this org
    * (see the validate-tabs effect in __root.tsx). While false, only the tab
-   * matching the current URL mounts — tabs persisted from another org must
+   * matching the current URL mounts: tabs persisted from another org must
    * not mount and fetch ids that don't exist here.
    */
   tabsValidated: boolean;
@@ -87,7 +87,7 @@ interface WebWorkspaceTabsViewportProps {
 
 // Web-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
 // per-kind panel components. Each open tab is rendered once and kept mounted
-// across tab switches — see WorkspaceTabsViewport for the rendering rules.
+// across tab switches: see WorkspaceTabsViewport for the rendering rules.
 export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceTabsViewportProps) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -101,10 +101,10 @@ export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceT
 
   // The URL is a "tab URL" when syncWorkspaceRouteFromPath returns a target.
   // On non-tab routes (onboarding) we hide all tab panels so the route's
-  // <Outlet/> renders alone — tabs stay mounted in the DOM. Settings is a
+  // <Outlet/> renders alone: tabs stay mounted in the DOM. Settings is a
   // hybrid: it lives in the tab strip like any other tab, but its content is
   // route-rendered (the section pages are a router subtree), so the viewport
-  // steps aside for the <Outlet/> the same way — and hands the Settings tab's
+  // steps aside for the <Outlet/> the same way, and hands the Settings tab's
   // panel over to the layout route, which is the element that holds what the
   // tab opens (see isRouteHostedTabPanel).
   const routeTarget = syncWorkspaceRouteFromPath(pathname, hash, searchStr);
@@ -260,7 +260,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           client={getWorkflowClient(orgId)}
           orgId={orgId}
           workflowId={t.workflowId}
-          // The URL owns which workflow is open — navigating is what records it
+          // The URL owns which workflow is open: navigating is what records it
           // on the tab, so a reload or a tab switch comes back to it.
           onSelectWorkflow={(workflowId) =>
             void navigate(getWorkspaceNavigateArgs(workflowsTabTarget(workflowId ?? undefined)))
@@ -338,7 +338,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           key={orgId}
           client={getCostReportsClient(orgId)}
           reportId={t.reportId}
-          // The URL owns which report is open — navigating is what records it
+          // The URL owns which report is open: navigating is what records it
           // on the tab, so a reload or a tab switch comes back to it.
           onSelectReport={(reportId) =>
             void navigate(getWorkspaceNavigateArgs(costReportsTabTarget(reportId)))
@@ -356,7 +356,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           key={orgId}
           client={getInvoicesClient(orgId)}
           invoiceId={t.invoiceId}
-          // The URL owns which invoice is open — navigating is what records it
+          // The URL owns which invoice is open: navigating is what records it
           // on the tab, so a reload or a tab switch comes back to it.
           onSelectInvoice={(invoiceId) =>
             void navigate(getWorkspaceNavigateArgs(invoicesTabTarget(invoiceId)))
@@ -640,7 +640,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           key={orgId}
           orgId={orgId}
           incidentId={t.incidentId}
-          // The URL owns which incident is open — navigating is what records it
+          // The URL owns which incident is open: navigating is what records it
           // on the tab, so a reload or a tab switch comes back to it.
           onSelectIncident={(incidentId) =>
             void navigate(getWorkspaceNavigateArgs(incidentsTabTarget(incidentId ?? undefined)))
@@ -650,7 +650,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "settings":
-      // Route-rendered (see showActive above) — the tab only marks the place
+      // Route-rendered (see showActive above): the tab only marks the place
       // in the strip; the settings router subtree draws the content.
       return null;
     case "linux-app":

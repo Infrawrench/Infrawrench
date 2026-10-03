@@ -52,11 +52,11 @@ declare module "hono" {
  * information about a third party. A member who can read a cost graph has not
  * thereby been given the customer book.
  *
- * Preparation rides **`invoices:write`** — create a customer, raise a draft,
+ * Preparation rides **`invoices:write`**: create a customer, raise a draft,
  * edit a period, delete a draft. All of it revisable, none of it visible
  * outside the organisation.
  *
- * Issuing rides **`invoices:issue`** — approve, send, void. Approval freezes
+ * Issuing rides **`invoices:issue`**: approve, send, void. Approval freezes
  * the numbers; sending states that the customer has them; voiding withdraws a
  * document already in their hands. None of the three can be taken back, and the
  * split is what lets an org have a billing clerk prepare a month's invoices
@@ -71,12 +71,12 @@ declare module "hono" {
  *
  * Every transition is audit-logged with who did it. An approval nobody can
  * trace back to a person and a date is the failure mode this feature would
- * otherwise introduce — and it is the one an auditor will ask about first.
+ * otherwise introduce, and it is the one an auditor will ask about first.
  *
  * ## What "sent" means here
  *
  * Two facts, recorded separately and never conflated. `POST /send` records the
- * **release** — the document may go to the customer, and this person said so —
+ * **release**: the document may go to the customer, and this person said so,
  * and then emails it to the customer's contact addresses with the CSV attached.
  * The release is written once; the delivery outcome is written per attempt, and
  * neither can touch a figure frozen at approval.
@@ -111,13 +111,13 @@ function invoiceError(c: Context, e: unknown): Response {
  * Managed accounts
  * ------------------------------------------------------------------ */
 
-/** GET /api/org/:orgId/managed-accounts — customers, name-sorted. */
+/** GET /api/org/:orgId/managed-accounts: customers, name-sorted. */
 accountsApp.get("/", async (c) => {
   requirePermission(c, "invoices:read");
   return c.json(await listManagedAccounts(c.get("organizationId")));
 });
 
-/** GET /api/org/:orgId/managed-accounts/:id — one customer. */
+/** GET /api/org/:orgId/managed-accounts/:id: one customer. */
 accountsApp.get("/:id", async (c) => {
   requirePermission(c, "invoices:read");
   const account = await getManagedAccount(c.get("organizationId"), c.req.param("id"));
@@ -125,7 +125,7 @@ accountsApp.get("/:id", async (c) => {
   return c.json(account);
 });
 
-/** POST /api/org/:orgId/managed-accounts — add a customer. */
+/** POST /api/org/:orgId/managed-accounts: add a customer. */
 accountsApp.post("/", async (c) => {
   requirePermission(c, "invoices:write");
   const organizationId = c.get("organizationId");
@@ -159,7 +159,7 @@ accountsApp.post("/", async (c) => {
 });
 
 /**
- * PUT /api/org/:orgId/managed-accounts/:id — full replace.
+ * PUT /api/org/:orgId/managed-accounts/:id: full replace.
  *
  * Editing the scope changes what future drafts are drawn over and nothing else:
  * every approved invoice holds its own copy of the scope, so moving a cost
@@ -199,11 +199,11 @@ accountsApp.put("/:id", async (c) => {
 });
 
 /**
- * DELETE /api/org/:orgId/managed-accounts/:id — retire a customer.
+ * DELETE /api/org/:orgId/managed-accounts/:id: retire a customer.
  *
  * Soft: an issued invoice names its customer, and an invoice whose customer
  * stopped resolving is exactly the unreconcilable document this feature exists
- * to prevent. Draft invoices go with it — a draft was never issued.
+ * to prevent. Draft invoices go with it: a draft was never issued.
  */
 accountsApp.delete("/:id", async (c) => {
   requirePermission(c, "invoices:write");
@@ -233,11 +233,11 @@ const listQuerySchema = z.object({
 });
 
 /**
- * GET /api/org/:orgId/invoices — summaries, newest period first.
+ * GET /api/org/:orgId/invoices: summaries, newest period first.
  *
  * Summaries, not full invoices: a draft's figures are recomputed on read, and
  * recomputing every draft would make opening the list one ClickHouse scan per
- * draft. A draft's `totals` is therefore null here — null, not zero, because
+ * draft. A draft's `totals` is therefore null here: null, not zero, because
  * zero is a lie the reader cannot detect.
  */
 app.get("/", async (c) => {
@@ -258,7 +258,7 @@ app.get("/", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/invoices/:id — one invoice, with its lines.
+ * GET /api/org/:orgId/invoices/:id: one invoice, with its lines.
  *
  * A **draft recomputes** from live spend on every read; `live: true` says so.
  * An approved, sent or void invoice returns the figures written at approval and
@@ -277,7 +277,7 @@ app.get("/:id", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/invoices/:id/export — the invoice as CSV.
+ * GET /api/org/:orgId/invoices/:id/export: the invoice as CSV.
  *
  * The derivation, not a rendered document: what was collected, what the rules
  * added, the rate and the day it was read, and the final figure. It is the
@@ -302,7 +302,7 @@ app.get("/:id/export", async (c) => {
   });
 });
 
-/** POST /api/org/:orgId/invoices — raise a draft. Always a draft. */
+/** POST /api/org/:orgId/invoices: raise a draft. Always a draft. */
 app.post("/", async (c) => {
   requirePermission(c, "invoices:write");
   const organizationId = c.get("organizationId");
@@ -335,7 +335,7 @@ app.post("/", async (c) => {
   return c.json(invoice);
 });
 
-/** PUT /api/org/:orgId/invoices/:id — edit a draft's period or notes. */
+/** PUT /api/org/:orgId/invoices/:id: edit a draft's period or notes. */
 app.put("/:id", async (c) => {
   requirePermission(c, "invoices:write");
   const organizationId = c.get("organizationId");
@@ -365,7 +365,7 @@ app.put("/:id", async (c) => {
 });
 
 /**
- * DELETE /api/org/:orgId/invoices/:id — delete a draft.
+ * DELETE /api/org/:orgId/invoices/:id: delete a draft.
  *
  * Only a draft. An issued invoice is voided, never deleted, and the service
  * refuses it independently of this route.
@@ -394,7 +394,7 @@ app.delete("/:id", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/invoices/:id/approve — the freeze.
+ * POST /api/org/:orgId/invoices/:id/approve: the freeze.
  *
  * A distinct act from generation, on a distinct permission, with its own audit
  * entry. After this the figures are stored bytes: no restatement of spend, no
@@ -434,12 +434,12 @@ app.post("/:id/approve", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/invoices/:id/send — release it, and email it.
+ * POST /api/org/:orgId/invoices/:id/send: release it, and email it.
  *
  * Still `invoices:issue`, and deliberately so. Sending is irreversible in the
  * way that matters: the customer's mail server has the document and no API call
  * takes it back. That is the same class of act as approving and voiding, and it
- * belongs on the same grant — a billing clerk who may prepare invoices should
+ * belongs on the same grant: a billing clerk who may prepare invoices should
  * not be able to put one in front of a customer.
  */
 app.post("/:id/send", async (c) => {
@@ -483,7 +483,7 @@ app.post("/:id/send", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/invoices/:id/void — withdraw an issued invoice.
+ * POST /api/org/:orgId/invoices/:id/void: withdraw an issued invoice.
  *
  * The original keeps every figure it was sent with. With `supersede`, the
  * corrective draft is raised in the same call and linked both ways, because a

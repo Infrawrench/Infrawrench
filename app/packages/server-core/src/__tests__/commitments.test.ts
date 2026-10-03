@@ -27,9 +27,9 @@ function cell(overrides: Partial<CoverageCell>): CoverageCell {
 describe("computeCommitmentCoverage", () => {
   it("reports a range: broad over everything, narrow over eligible cells", () => {
     const cells = [
-      // EC2 in us-east-1 carried commitments — eligible.
+      // EC2 in us-east-1 carried commitments: eligible.
       cell({ coveredAmount: 60, uncoveredAmount: 20 }),
-      // Data transfer never carried one — in the broad denominator only.
+      // Data transfer never carried one: in the broad denominator only.
       cell({ service: "AWSDataTransfer", coveredAmount: 0, uncoveredAmount: 20 }),
     ];
     const report = computeCommitmentCoverage(cells, [
@@ -40,7 +40,7 @@ describe("computeCommitmentCoverage", () => {
     // broad: 60 / (60 + 40); narrow: 60 / (60 + 20)
     expect(usd.broadRatio).toBeCloseTo(0.6);
     expect(usd.narrowRatio).toBeCloseTo(0.75);
-    // The bounds must bracket, in this order — swapping them would present
+    // The bounds must bracket, in this order: swapping them would present
     // the over-count as the optimistic number.
     expect(usd.broadRatio!).toBeLessThanOrEqual(usd.narrowRatio!);
   });
@@ -252,7 +252,7 @@ describe("planCommitmentRecommendations", () => {
 
   it("reports a halved workload as declining, not spiky — trend before floor", () => {
     // First 60 days at $100, last 30 at $40. p10 (40) < 0.6×p50 too, so the
-    // floor gate would also fail — the decline gate must win.
+    // floor gate would also fail: the decline gate must win.
     const result = planCommitmentRecommendations(
       [plannerCell((_, i) => (i < 60 ? 100 : 40))],
       WINDOW_DAYS,

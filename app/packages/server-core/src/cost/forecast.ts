@@ -1,5 +1,5 @@
 /**
- * Trend forecasting over daily cost totals. Deliberately simple — a
+ * Trend forecasting over daily cost totals. Deliberately simple: a
  * least-squares linear fit over the trailing window, clamped at zero. The UI
  * and docs present forecasts as trend estimates, not billing predictions.
  */

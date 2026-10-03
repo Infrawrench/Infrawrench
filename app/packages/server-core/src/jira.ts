@@ -1,7 +1,7 @@
 /**
  * Jira Cloud as an issue tracker for findings.
  *
- * Infrawrench detects things a human has to act on — cost anomalies, orphaned
+ * Infrawrench detects things a human has to act on: cost anomalies, orphaned
  * and oversized resources, posture findings, expiring credentials, failed
  * probes. This module turns any of them into a Jira issue and remembers the
  * link, so a findings list can render "already filed as OPS-412" instead of
@@ -14,18 +14,18 @@
  * carries `Authorization: Basic base64(email:apiToken)`. Atlassian deprecated
  * passwords for this; the API token is the supported credential and it is a
  * bearer credential for that whole Atlassian account, so it is encrypted at
- * rest with AAD `jira:<orgId>:apiToken` — the same mechanism the Twilio auth
- * token and the Teams webhook URL use — and never leaves the server. The API
+ * rest with AAD `jira:<orgId>:apiToken` (the same mechanism the Twilio auth
+ * token and the Teams webhook URL use) and never leaves the server. The API
  * returns {@link JiraIntegrationRecord.tokenHint} in its place.
  *
  * We speak REST API **v3**, whose distinguishing feature over v2 is that rich
  * text fields (`description`, `environment`, and multi-line custom fields) are
- * Atlassian Document Format — a JSON document, not a string. Passing a plain
+ * Atlassian Document Format: a JSON document, not a string. Passing a plain
  * string to v3 does not error; it writes the raw characters into the field, so
  * {@link toAdf} is not optional politeness, it is what makes the description
  * render at all. See {@link buildCreateIssuePayload}.
  *
- * Config (env): none. Every credential is per-org and lives in the database —
+ * Config (env): none. Every credential is per-org and lives in the database:
  * there is no app to register, so Jira filing works on every deployment,
  * self-hosted included, the moment an org saves its site details.
  *
@@ -35,13 +35,13 @@
  * anything about it. That splits this module in two, and the split is load-
  * bearing rather than stylistic:
  *
- *   Ambient  — {@link isJiraConfigured}, {@link getJiraIntegration},
+ *   Ambient  - {@link isJiraConfigured}, {@link getJiraIntegration},
  *              {@link listJiraIssueLinks}. These run while rendering a list
  *              that is *about something else*; a Jira or database hiccup must
  *              degrade to "no badge, no button", never to a broken cost page.
  *              They log with `[jira]` and return an empty value.
  *
- *   User-initiated — {@link setJiraIntegration}, {@link deleteJiraIntegration},
+ *   User-initiated: {@link setJiraIntegration}, {@link deleteJiraIntegration},
  *              {@link verifyJiraCredentials}, {@link listJiraProjects},
  *              {@link listJiraIssueTypes}, {@link createJiraIssue}. Somebody
  *              pressed a button and is waiting. Swallowing here would report
@@ -56,7 +56,7 @@
  * a plugin: it has no account row, and these requests originate in the web
  * process rather than through a bastion dispatcher, so there is nothing for the
  * registry to key on. The equivalent control lives here instead, as
- * {@link ALLOWED_HOST_SUFFIXES} — without it, "paste a URL" would be an
+ * {@link ALLOWED_HOST_SUFFIXES}: without it, "paste a URL" would be an
  * org-member-triggerable SSRF out of the cluster, exactly as it would be for
  * Teams webhooks.
  */
@@ -75,8 +75,8 @@ const JIRA_REQUEST_TIMEOUT_MS = 15_000;
  * Hosts a Jira site URL is allowed to point at. Jira Cloud sites are issued as
  * `<site>.atlassian.net`; `<site>.jira.com` is the legacy form some long-lived
  * sites still answer on. Atlassian's custom-domain feature covers the Jira
- * Service Management *help centre* only — the REST API stays on the Atlassian
- * host — so this list does not cost anyone a working configuration.
+ * Service Management *help centre* only (the REST API stays on the Atlassian
+ * host) so this list does not cost anyone a working configuration.
  *
  * This is a security control, not a convenience: it is the only thing between
  * a member pasting a URL and an outbound request to an arbitrary address from
@@ -89,7 +89,7 @@ const MAX_SUMMARY_CHARS = 255;
 
 /**
  * Jira text fields cap at 32,767 characters. Findings descriptions are built
- * from provider payloads, so they are truncated well short of the ceiling —
+ * from provider payloads, so they are truncated well short of the ceiling:
  * a rejected issue helps nobody, and nothing past 30k is being read.
  */
 const MAX_DESCRIPTION_CHARS = 30_000;
@@ -107,7 +107,7 @@ const PICKER_PAGE_SIZE = 100;
 
 /**
  * The detectors a filed issue can come from. Mirrored by a CHECK constraint on
- * `jira_issue_links.source_kind` and by the zod enum on the route — these rows
+ * `jira_issue_links.source_kind` and by the zod enum on the route: these rows
  * outlive any one code path, and an unrecognised kind would strand the link
  * where no UI looks for it.
  */
@@ -131,7 +131,7 @@ export function isJiraSourceKind(value: string): value is JiraSourceKind {
 /**
  * A failure a user should see. `status` is the Jira HTTP status where the call
  * reached Jira, or `null` for local failures (bad URL, missing configuration,
- * network error) — the route maps that to 400 vs 502.
+ * network error): the route maps that to 400 vs 502.
  */
 export class JiraApiError extends Error {
   readonly status: number | null;
@@ -197,7 +197,7 @@ function extractJiraErrorDetail(body: string): string {
       if (parts.length > 0) return parts.join("; ").slice(0, 300);
     }
   } catch {
-    // Not JSON — an HTML error page from a proxy, most likely.
+    // Not JSON: an HTML error page from a proxy, most likely.
   }
   return trimmed.slice(0, 200);
 }
@@ -213,7 +213,7 @@ export interface ParsedJiraSite {
 
 /**
  * Validate a pasted Jira site URL and normalize it to a bare origin. Throws
- * with wording meant for the user — this runs on the settings form, so the
+ * with wording meant for the user: this runs on the settings form, so the
  * message is what they will read.
  *
  * Users paste all sorts of things they are looking at: a board URL, an issue
@@ -224,7 +224,7 @@ export function parseJiraSiteUrl(raw: string): ParsedJiraSite {
   const trimmed = raw.trim();
   if (!trimmed) throw new JiraApiError("Jira site URL is required");
 
-  // Accept `acme.atlassian.net` as readily as the full URL — the scheme is not
+  // Accept `acme.atlassian.net` as readily as the full URL: the scheme is not
   // information the user has any decision to make about.
   const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 
@@ -258,7 +258,7 @@ export function issueBrowseUrl(siteUrl: string, issueKey: string): string {
 
 // --- ADF ---
 
-/** An Atlassian Document Format node. Loose by design — we only emit three kinds. */
+/** An Atlassian Document Format node. Loose by design: we only emit three kinds. */
 export interface AdfNode {
   type: string;
   text?: string;
@@ -275,13 +275,13 @@ export interface AdfDocument {
  * Convert plain text into an Atlassian Document Format document.
  *
  * REST API v3 types `description` as an ADF document, so a plain string is
- * written verbatim into the field rather than rendered — the user sees their
+ * written verbatim into the field rather than rendered: the user sees their
  * text but loses every line break, and a JSON-shaped string would be displayed
  * as JSON. We compose descriptions ourselves from finding data, so plain text
  * in, structured document out, is the whole contract: blank lines separate
  * paragraphs, single newlines become hard breaks.
  *
- * Returns `null` for text with no content — a `doc` with an empty `content`
+ * Returns `null` for text with no content: a `doc` with an empty `content`
  * array is not valid ADF, so callers omit the field entirely instead.
  */
 export function toAdf(text: string): AdfDocument | null {
@@ -291,7 +291,7 @@ export function toAdf(text: string): AdfDocument | null {
   const content: AdfNode[] = [];
   for (const block of blocks) {
     // A block that is only whitespace would otherwise become a paragraph whose
-    // sole text node is spaces — visually empty, but enough to make the
+    // sole text node is spaces: visually empty, but enough to make the
     // "no content" check below think there is content.
     if (block.trim().length === 0) continue;
 
@@ -339,8 +339,8 @@ export interface CreateIssueFields {
  * Build the body for `POST /rest/api/3/issue`.
  *
  * Shape per the v3 spec: everything lives under `fields`; the project is
- * `{key}` (or `{id}`), the type is `{id}` — names are not accepted and would
- * break the moment an org renamed a type — and `description` is ADF. Optional
+ * `{key}` (or `{id}`), the type is `{id}` (names are not accepted and would
+ * break the moment an org renamed a type) and `description` is ADF. Optional
  * fields are omitted rather than sent as null, because Jira validates a
  * present-but-empty field against the project's field configuration and can
  * refuse the create over it.
@@ -378,7 +378,7 @@ export function basicAuthHeader(accountEmail: string, apiToken: string): string 
 
 /**
  * One authenticated Jira call. Throws {@link JiraApiError} on anything that is
- * not a 2xx — every caller of this is user-initiated, so a failure has somebody
+ * not a 2xx: every caller of this is user-initiated, so a failure has somebody
  * waiting on it.
  */
 async function jiraFetch<T>(
@@ -455,7 +455,7 @@ function toIntegrationRecord(row: typeof jiraIntegrations.$inferSelect): JiraInt
  *
  * Ambient: never throws. Every caller treats `null` as "show the connect
  * form" / "don't offer the file button", which is the right behaviour for both
- * "not configured" and "the database was briefly unreachable" — the alternative
+ * "not configured" and "the database was briefly unreachable": the alternative
  * is a settings page that 500s instead of degrading.
  */
 export async function getJiraIntegration(
@@ -475,7 +475,7 @@ export async function getJiraIntegration(
 }
 
 /**
- * Whether the org can file issues. Ambient: never throws — this gates a button
+ * Whether the org can file issues. Ambient: never throws; this gates a button
  * on pages that are about something else entirely.
  */
 export async function isJiraConfigured(organizationId: string): Promise<boolean> {
@@ -681,7 +681,7 @@ export type { JiraIssueType };
  * issue type scheme, and offering a type the project does not have would fail
  * the create with a 400 that reads like our bug.
  *
- * Subtasks are filtered out — they require a parent issue, and a finding has no
+ * Subtasks are filtered out: they require a parent issue, and a finding has no
  * parent to hang off.
  *
  * User-initiated: throws.
@@ -732,7 +732,7 @@ export interface CreatedJiraIssue {
 }
 
 /**
- * File an issue. User-initiated: throws, and deliberately so — this is the one
+ * File an issue. User-initiated: throws, and deliberately so; this is the one
  * call in the module where swallowing the error would tell somebody their work
  * is tracked when no issue exists.
  */
@@ -793,7 +793,7 @@ export interface RecordJiraIssueLinkArgs {
 
 /**
  * Remember that a finding was filed. Idempotent on
- * (org, kind, source, issue key) so a retried request cannot double-file — the
+ * (org, kind, source, issue key) so a retried request cannot double-file: the
  * issue already exists in Jira at this point, and the row is what stops the UI
  * offering the button again.
  *
@@ -838,7 +838,7 @@ export interface ListJiraIssueLinksFilter {
  * Links for the org, optionally narrowed to one kind and a set of finding ids.
  *
  * This is the batch lookup a list view calls **once** before rendering, instead
- * of one request per row. Ambient: never throws — a cost page must render even
+ * of one request per row. Ambient: never throws; a cost page must render even
  * if this lookup fails, just without the "already filed" markers.
  */
 export async function listJiraIssueLinks(

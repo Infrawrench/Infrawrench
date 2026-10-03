@@ -3,7 +3,7 @@
  *
  * Three audiences, three auth models, which is why they are one file:
  *
- * - **`POST /api/agent/identity`** is unauthenticated by definition — it is how
+ * - **`POST /api/agent/identity`** is unauthenticated by definition: it is how
  *   an agent with no credentials gets one. It is also the only route in the
  *   product that creates an organization without a person, so the rate limit in
  *   `trials/ceremony.ts` is the whole of its protection.
@@ -71,7 +71,7 @@ async function agentFromRequest(authHeader: string | undefined): Promise<string 
 }
 
 /**
- * POST /api/agent/identity — open an anonymous registration.
+ * POST /api/agent/identity: open an anonymous registration.
  *
  * Returns the credential exactly once. There is no route that can show it
  * again: the row stores an HMAC, and an agent that loses its token registers
@@ -108,7 +108,7 @@ app.post("/identity", async (c) => {
 });
 
 /**
- * POST /api/agent/identity/claim — ask to be claimed.
+ * POST /api/agent/identity/claim: ask to be claimed.
  *
  * The agent shows `user_code` and `verification_uri` to its user in one
  * message. We never email the code: an anonymous registration has no verified
@@ -137,7 +137,7 @@ app.post("/identity/claim", async (c) => {
 });
 
 /**
- * GET /api/agent/identity — what the agent polls.
+ * GET /api/agent/identity: what the agent polls.
  *
  * Carries `trial_expires_in_ms` on every response, not just near the end, so an
  * agent can decide for itself when to start nagging its user. An agent that can
@@ -177,7 +177,7 @@ claimApp.use("*", sessionMiddleware);
  * claim page load a write. The code's own size (32^8) is what makes blind
  * search hopeless; this stops one signed-in person grinding at it.
  *
- * Per-replica, so the effective limit is this times the replica count — which
+ * Per-replica, so the effective limit is this times the replica count, which
  * is why it is set well below what a human could ever need rather than at the
  * true threshold.
  */
@@ -197,7 +197,7 @@ function tooManyClaimAttempts(userId: string): boolean {
 }
 
 /**
- * POST /api/agent/claim/lookup — resolve a code so the page can show what is
+ * POST /api/agent/claim/lookup: resolve a code so the page can show what is
  * about to be claimed.
  *
  * Deliberately a POST rather than a GET with the code in the path: a code in a
@@ -224,8 +224,8 @@ claimApp.post("/lookup", async (c) => {
       .where(eq(organizations.id, status.organizationId))
       .limit(1);
 
-    // The orgs this person could merge into. Only orgs they already belong to
-    // — the claim ceremony must never be a way to push cloud credentials into
+    // The orgs this person could merge into. Only orgs they already belong to:
+    // the claim ceremony must never be a way to push cloud credentials into
     // an organization the claimer cannot already reach.
     const targets = await db
       .select({ id: organizations.id, displayName: organizations.displayName })
@@ -234,7 +234,7 @@ claimApp.post("/lookup", async (c) => {
       .where(eq(organizationMembers.userId, session.userId));
 
     // …and only those they may actually write accounts into. `claimTrialOrg`
-    // enforces this itself — this is the same answer computed early, so the
+    // enforces this itself: this is the same answer computed early, so the
     // page never offers a destination that would 403 on submit.
     const candidates = targets.filter((t) => t.id !== status.organizationId);
     const mergeTargets: typeof candidates = [];
@@ -259,7 +259,7 @@ claimApp.post("/lookup", async (c) => {
 });
 
 /**
- * POST /api/agent/claim — confirm, binding the registration to this person.
+ * POST /api/agent/claim: confirm, binding the registration to this person.
  *
  * The code is re-resolved here rather than trusting a `registrationId` from the
  * lookup response: otherwise the lookup would be an oracle and this route would

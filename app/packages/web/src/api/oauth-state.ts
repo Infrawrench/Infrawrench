@@ -20,8 +20,8 @@ export const OAUTH_RETRY_COOKIE = "iw_oauth_retry";
  * Lifetime of every cookie in the sign-in round trip.
  *
  * This has to outlive the user's whole stay on AuthKit, not just the redirect.
- * A first-time sign-up waits on a verification email — open the inbox, wait for
- * delivery, type the code, answer the passkey prompt — and the earlier
+ * A first-time sign-up waits on a verification email (open the inbox, wait for
+ * delivery, type the code, answer the passkey prompt) and the earlier
  * five-minute budget expired mid-flow, so the callback came back to no state
  * cookie and a dead-end 400. Thirty minutes covers that with room to spare; the
  * real security bound is the WorkOS authorization code's own short TTL, not

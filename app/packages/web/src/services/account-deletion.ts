@@ -3,12 +3,12 @@
  *
  * Apple requires an app that can create an account to be able to delete one
  * (App Store guideline 5.1.1(v)), so this is reachable from every surface that
- * signs a user in — it can't be a support ticket.
+ * signs a user in: it can't be a support ticket.
  *
  * The hard part is not the user row, it's the organizations hanging off it.
  * `organization_members.user_id` cascades, so a naive delete silently bypasses
- * the last-owner guards in `routes/team.ts` and can leave an ownerless — or
- * memberless — organization with a live Stripe subscription still billing. So
+ * the last-owner guards in `routes/team.ts` and can leave an ownerless (or
+ * memberless) organization with a live Stripe subscription still billing. So
  * every membership is classified first:
  *
  * - **only member** → the organization is effectively theirs. It is deleted
@@ -19,7 +19,7 @@
  *   dead end.
  * - **anything else** → they just leave; the membership row cascades.
  *
- * Ordering matters as much as the classification — see {@link deleteAccount}.
+ * Ordering matters as much as the classification: see {@link deleteAccount}.
  */
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../db/client";
@@ -90,9 +90,9 @@ export async function planAccountDeletion(userId: string): Promise<AccountDeleti
  *
  * The order below is deliberate and each step depends on the one before it:
  *
- * 1. **Plan and refuse early** — nothing is touched until we know the whole
+ * 1. **Plan and refuse early**: nothing is touched until we know the whole
  *    deletion can go through.
- * 2. **Audit the organizations being left** — the row is org-scoped and
+ * 2. **Audit the organizations being left**: the row is org-scoped and
  *    FK-cascades, so it has to be written while the membership still exists.
  *    Organizations being deleted are skipped: their audit log goes with them.
  * 3. **Cancel Stripe subscriptions** for the organizations about to be deleted.
@@ -100,10 +100,10 @@ export async function planAccountDeletion(userId: string): Promise<AccountDeleti
  *    keeps charging is the one outcome with no recovery path from the user's
  *    side, and they can always cancel in Billing and retry.
  * 4. **Revoke every WorkOS session.** `sessionMiddleware` calls `provisionUser`
- *    on every authenticated request — an `insert().onConflictDoNothing()` —
+ *    on every authenticated request: an `insert().onConflictDoNothing()`,
  *    so a request in flight after step 5 would quietly re-create the row we
  *    just deleted. Cutting the sessions first closes that window.
- * 5. **Delete the local rows in one transaction** — organizations first, then
+ * 5. **Delete the local rows in one transaction**: organizations first, then
  *    the user, so a failure leaves the account intact rather than half-gone.
  * 6. **Delete the WorkOS user last.** If this is what fails, the local data is
  *    already gone and the user can sign in (getting a fresh empty account) and
@@ -175,7 +175,7 @@ export async function deleteAccount(userId: string): Promise<{ organizationsDele
 
 /**
  * Stop billing for organizations that are about to stop existing. Aborts the
- * deletion on failure — see step 3 above.
+ * deletion on failure: see step 3 above.
  */
 async function cancelSubscriptionsFor(organizationIds: string[]): Promise<void> {
   if (organizationIds.length === 0) return;

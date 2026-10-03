@@ -2,8 +2,8 @@
  * The web app's two surfaces for remote Linux applications: a host's launcher,
  * and one window of one application.
  *
- * The mirror of the desktop's `AppsPanels.tsx` — same components from
- * `@infrawrench/ui`, same session-per-host model — over the WebSocket transport
+ * The mirror of the desktop's `AppsPanels.tsx` (same components from
+ * `@infrawrench/ui`, same session-per-host model) over the WebSocket transport
  * instead of IPC.
  */
 
@@ -78,7 +78,7 @@ function useHostSession(target: AppsConnectTarget | null) {
 
 export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | null }) {
   const gt = useGT();
-  // What the check follows, spelled out rather than left to object identity —
+  // What the check follows, spelled out rather than left to object identity:
   // the login and the address, since what is installed is a property of the
   // host and `privilege` of the user, and neither turns on which key proved it.
   const targetKey = target ? `${target.username}@${target.host}` : null;
@@ -139,7 +139,7 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
       const sessionId = session.sessionId;
       if (!sessionId) return;
       // This listener also fires on every title and icon change, and the
-      // window tab keeps those in step itself — re-pinning here would yank
+      // window tab keeps those in step itself: re-pinning here would yank
       // focus to the window each time Firefox retitles on a page load.
       const already = useUIStore
         .getState()
@@ -151,7 +151,7 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
         );
       if (already) return;
       // The window is the launch's real result; whatever we were saying about
-      // it starting is now answered by a tab appearing — and navigated to,
+      // it starting is now answered by a tab appearing, and navigated to,
       // not just pinned: pinning without routing leaves the URL on the
       // launcher for the route sync to snap the active tab back to.
       setNotice(null);
@@ -163,7 +163,7 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
           sessionId,
           windowId,
           // The window tab is addressed at this host's own URL, which needs
-          // the host's plugin and type — not a guess at them.
+          // the host's plugin and type, not a guess at them.
           pluginId: target.pluginId,
           resourceTypeId: target.resourceTypeId,
           ...(window.appId ? { appId: window.appId } : {}),

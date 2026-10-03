@@ -3,7 +3,7 @@ import { buildTestApp } from "./test-utils";
 
 // The service is mocked, matching cost-report-folders.test.ts: it reaches the
 // Drizzle client, which throws at import time without DATABASE_URL. These
-// tests are about the transport contract — permissions, status codes, and
+// tests are about the transport contract; permissions, status codes, and
 // above all the deletion policy's wire shape: a referenced filter's DELETE is
 // a 409 whose body carries the referents, never a success and never a silent
 // detach. The input rules (filters XOR query, non-empty, tag keys) are pure
@@ -129,7 +129,7 @@ describe("DELETE /:id", () => {
     const res = await buildApp().request("/sf-1", { method: "DELETE" });
     expect(res.status).toBe(409);
     const bodyJson = (await res.json()) as { error: string; referents: unknown[] };
-    // The referents ARE the answer — the client names what must be detached.
+    // The referents ARE the answer: the client names what must be detached.
     expect(bodyJson.referents).toEqual(referents);
     expect(mockLogAudit).not.toHaveBeenCalled();
   });

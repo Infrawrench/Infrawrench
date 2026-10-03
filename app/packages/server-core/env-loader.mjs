@@ -7,7 +7,7 @@
  * The web package owns the canonical `.env` / `.env.local` (see
  * `app/packages/web/.env.example`), so that directory is always searched first;
  * the process's own cwd is searched second so a package can override a value
- * locally. Existing `process.env` entries always win — this never clobbers what
+ * locally. Existing `process.env` entries always win: this never clobbers what
  * the shell or the container already set.
  *
  * Production does not use this: there the values come from the `infrawrench-env`
@@ -36,7 +36,7 @@ for (const base of [webDir, process.cwd()]) {
         if (!(key in process.env)) process.env[key] = val;
       }
     } catch {
-      /* file doesn't exist — skip */
+      /* file doesn't exist: skip */
     }
   }
 }

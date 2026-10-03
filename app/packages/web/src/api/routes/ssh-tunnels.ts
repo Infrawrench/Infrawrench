@@ -62,7 +62,7 @@ app.post("/create-account", async (c) => {
     return c.json({ error: e instanceof Error ? e.message : "Invalid SSH host" }, 400);
   }
 
-  // Restricted to keys owned by the caller — same-org peers cannot use
+  // Restricted to keys owned by the caller: same-org peers cannot use
   // another user's private key.
   const [keyRow] = await db
     .select({
@@ -171,7 +171,7 @@ app.post("/open", async (c) => {
 
   // SSRF guard on the stored bastion endpoint. The create-account flow
   // validates this at write time, but DNS records can change. As above, the
-  // address is `openTunnel`'s to pin — this is the early 400.
+  // address is `openTunnel`'s to pin: this is the early 400.
   try {
     await resolveSafeHost(config.sshHost);
   } catch (e) {
@@ -245,7 +245,7 @@ app.get("/active", async (c) => {
  *    is an arbitrary "run any command as any user on any host with any
  *    available key" primitive.
  *  - The SSH key must be OWNED by the caller (sshKeys.userId === caller).
- *  - Every exec attempt — success or failure — is audit-logged.
+ *  - Every exec attempt (success or failure) is audit-logged.
  */
 app.post("/exec", async (c) => {
   requirePermission(c, "resources:execute");
@@ -260,8 +260,8 @@ app.post("/exec", async (c) => {
   }>();
 
   // SSRF guard on the bastion host the server is about to dial. Unlike the
-  // two tunnel routes above, nothing downstream re-resolves for us — `sshExec`
-  // dials what it is given — so the cleared address is kept and handed to it,
+  // two tunnel routes above, nothing downstream re-resolves for us (`sshExec`
+  // dials what it is given) so the cleared address is kept and handed to it,
   // and the name is resolved exactly once.
   let dialAddress: string;
   try {

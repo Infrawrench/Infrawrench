@@ -13,7 +13,7 @@ import type {
 import { getClientForAccount } from "./plugin-clients";
 import { resolveSshConfig, sshExec } from "./ssh";
 
-// Canonical wire shapes live in `@infrawrench/ui` (TunnelSshAttachModal) —
+// Canonical wire shapes live in `@infrawrench/ui` (TunnelSshAttachModal):
 // the modal renders exactly what this service produces.
 
 interface TunnelSshAttachInput {
@@ -60,7 +60,7 @@ function buildCloudflaredInstallScript(token: string): string {
   ].join("\n");
 }
 
-/** How to reach the service once the tunnel is up — depends on the protocol. */
+/** How to reach the service once the tunnel is up: depends on the protocol. */
 function tunnelConnectCommand(
   serviceType: TunnelServiceType,
   hostname: string,
@@ -70,7 +70,7 @@ function tunnelConnectCommand(
   switch (serviceType) {
     case "http":
     case "https":
-      // HTTP(S) is reachable directly in a browser — Cloudflare terminates TLS.
+      // HTTP(S) is reachable directly in a browser: Cloudflare terminates TLS.
       return `https://${hostname}`;
     case "tcp":
       return `cloudflared access tcp --hostname ${hostname} --url localhost:${port}`;
@@ -127,7 +127,7 @@ export async function runTunnelSshAttach(
       ok: true,
     });
   } catch (e) {
-    // A pre-existing record is fine — surface but don't abort the install.
+    // A pre-existing record is fine: surface but don't abort the install.
     steps.push({ label: "Create routing DNS record", ok: false, detail: errMsg(e) });
   }
 

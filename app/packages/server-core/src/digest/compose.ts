@@ -1,7 +1,7 @@
 import type { CostConversion } from "@infrawrench/client-core";
 import { emailButton, emailDocument, escapeHtml } from "../email-html";
 /**
- * Weekly digest composition — pure functions only. Everything here takes data
+ * Weekly digest composition: pure functions only. Everything here takes data
  * in and returns data out, so the whole module is unit-testable without a
  * database, a clock, or a network. Gathering the inputs and delivering the
  * result live in `./weekly.ts`.
@@ -52,7 +52,7 @@ export interface DigestProjection {
   /** Monthly run-rate of the resources deleted during the week. */
   removedMonthly: number;
   /**
-   * Resources in the week's churn that could not be priced at all — no
+   * Resources in the week's churn that could not be priced at all: no
    * `estimateCost` for their plugin, or no rate for their type. Surfaced so
    * a small number is never read as "nothing else changed".
    */
@@ -68,7 +68,7 @@ export interface DigestProjection {
  * Different again from both figures above: {@link DigestTotal} is what was
  * billed, {@link DigestProjection} is what the plugins *think* the churn will
  * cost, and this is what the provider's own daily cost says a specific edit
- * actually did — a before/after comparison on one resource (see
+ * actually did; a before/after comparison on one resource (see
  * `cost/change-impact.ts`).
  *
  * Only ever a `measured` impact with real confidence gets here. The line is
@@ -109,7 +109,7 @@ export interface DigestInput {
    */
   providerIncidents: number;
   /**
-   * Deadlines currently inside the org's expiry lead time — expiring certs,
+   * Deadlines currently inside the org's expiry lead time: expiring certs,
    * domains, tokens and keys past their rotation budget (from the expiry
    * feed, severity expired/critical/warning/upcoming).
    */
@@ -124,7 +124,7 @@ export interface DigestInput {
    */
   quotasAtRisk: number;
   /**
-   * Open access-review findings on the customer's cloud principals — stale or
+   * Open access-review findings on the customer's cloud principals: stale or
    * admin IAM users, service accounts, bindings and long-lived keys. Distinct
    * from `postureCritical`/`postureHigh`, which are about resources.
    */
@@ -133,7 +133,7 @@ export interface DigestInput {
   accessFindingsSevere: number;
   /**
    * Stateful resources with no backup we can see (from the backup coverage
-   * feed). Orphaned snapshots are deliberately excluded from this line — they
+   * feed). Orphaned snapshots are deliberately excluded from this line: they
    * are spend, and the digest already has a spend half.
    */
   backupsUnprotected: number;
@@ -141,7 +141,7 @@ export interface DigestInput {
   backupsRpoBreached: number;
   /**
    * Set when the spend figures above were converted into the org's display
-   * currency. Every renderer turns this into a caveat line — a converted total
+   * currency. Every renderer turns this into a caveat line: a converted total
    * that does not say so is worse than the several totals it replaced.
    */
   conversion?: CostConversion;
@@ -152,7 +152,7 @@ export interface DigestInput {
   projection?: DigestProjection | null;
   /**
    * The week's largest measured cost-moving change. Null when nothing in the
-   * week could be measured — which is not the same as nothing having moved.
+   * week could be measured, which is not the same as nothing having moved.
    */
   costMover?: DigestCostMover | null;
 }
@@ -215,18 +215,18 @@ const MIN_MOVER_DELTA = 0.01;
 
 // --- Schedule and week-boundary math ---
 //
-// Everything below works on *civil* values — a `YYYY-MM-DD` date plus an
-// integer local hour — and never on instants. That is the whole trick, and it
+// Everything below works on *civil* values (a `YYYY-MM-DD` date plus an
+// integer local hour) and never on instants. That is the whole trick, and it
 // is what makes DST structurally irrelevant rather than something to patch
 // around:
 //
 //   * The window is a run of calendar dates. Day arithmetic happens on the
-//     Y/M/D triple, so a 23- or 25-hour local day cannot shift it — a week is
+//     Y/M/D triple, so a 23- or 25-hour local day cannot shift it: a week is
 //     always seven dated days, whatever their length in milliseconds.
 //   * "Is it due" compares (localDate, localHour) against (dueDate, sendHour)
 //     lexicographically. On a spring-forward day the local hour skips 02:00
-//     entirely, so a `sendHour` of 2 is reached the moment the clock reads 03
-//     — late, never skipped. On a fall-back day the hour repeats, and the
+//     entirely, so a `sendHour` of 2 is reached the moment the clock reads 03:
+//     late, never skipped. On a fall-back day the hour repeats, and the
 //     `last_sent_week_start` claim absorbs the duplicate.
 //   * `last_sent_week_start` is the window's own `weekStart`, so the claim key,
 //     the composed window, and the due check are all derived from one local
@@ -258,7 +258,7 @@ export const DEFAULT_DIGEST_SCHEDULE: DigestSchedule = {
 /**
  * Whether `tz` is a zone this runtime knows. `Intl.DateTimeFormat` throws a
  * `RangeError` on an unknown identifier, which is the only check that stays
- * correct as the tz database grows — an allowlist would go stale.
+ * correct as the tz database grows: an allowlist would go stale.
  */
 export function isValidTimeZone(tz: string): boolean {
   if (!tz) return false;
@@ -291,7 +291,7 @@ export interface CivilMoment {
 
 /**
  * Read the wall clock in `timeZone`. Uses `Intl.DateTimeFormat` rather than a
- * timezone library — the platform already ships the tz database, and the repo
+ * timezone library: the platform already ships the tz database, and the repo
  * has no date dependency to reuse. `hourCycle: "h23"` avoids the "24" that
  * `hour12: false` reports at midnight in some ICU versions.
  *
@@ -331,7 +331,7 @@ export function civilMoment(now: Date, timeZone: string): CivilMoment {
   };
 }
 
-/** Shift an ISO calendar date by whole days. Pure Y/M/D arithmetic — no DST. */
+/** Shift an ISO calendar date by whole days. Pure Y/M/D arithmetic: no DST. */
 export function addDays(isoDate: string, days: number): string {
   const [y, m, d] = isoDate.split("-").map((n) => Number.parseInt(n, 10));
   // Date.UTC is used only as a civil-calendar calculator here (leap years,
@@ -343,7 +343,7 @@ export function addDays(isoDate: string, days: number): string {
 /**
  * The digest window as of `now`: the last complete Monday-to-Sunday week in
  * `timeZone`, and the week before it. On the org's Monday this is the week
- * that just ended — which is when the default schedule fires.
+ * that just ended, which is when the default schedule fires.
  *
  * The window is always Monday-to-Sunday regardless of `sendDay`: the send day
  * chooses *when the message arrives*, not what a week is. An org that reads its
@@ -374,7 +374,7 @@ export function digestDueDate(window: DigestWindow, sendDay: IsoWeekday): string
 
 /**
  * Whether a digest covering `window` is due at `now`. True from the org's
- * chosen local day and hour onward — so a poller that was down at the send
+ * chosen local day and hour onward, so a poller that was down at the send
  * time still sends later that week, and the conditional-UPDATE claim in
  * `weekly.ts` keeps it to once per week regardless.
  */
@@ -584,10 +584,10 @@ const BLANK: DigestLine = [];
 /**
  * The digest body as structured lines, shared by every transport. Every
  * renderer builds from this, so the three transports can never drift in what
- * they report — and none of them has to guess which part of a line is markup.
+ * they report, and none of them has to guess which part of a line is markup.
  *
  * `narrative` is the optional AI-written paragraph; it goes above the
- * deterministic content as a single non-bold segment and is strictly additive —
+ * deterministic content as a single non-bold segment and is strictly additive:
  * omitting it changes nothing else about the message.
  */
 export function digestSegments(digest: WeeklyDigest, narrative?: string | null): DigestLine[] {
@@ -705,7 +705,7 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
  * The forward-looking line: what last week's churn does to the monthly bill.
  *
  * Deliberately phrased as a run-rate rather than folded into the spend total
- * above — one is billed history, the other is a projection, and a reader has
+ * above: one is billed history, the other is a projection, and a reader has
  * to be able to tell which they are looking at.
  */
 function projectionSegments(projection: DigestProjection | null): DigestLine | null {
@@ -740,9 +740,9 @@ function projectionSegments(projection: DigestProjection | null): DigestLine | n
 /**
  * The week's biggest measured cost-moving change.
  *
- * Three things are on the line on purpose. The **basis** — an unlabelled delta
+ * Three things are on the line on purpose. The **basis**: an unlabelled delta
  * cannot be read, because cash and amortized answer different questions. The
- * **window** — a two-day comparison and a two-week one are not the same claim.
+ * **window**: a two-day comparison and a two-week one are not the same claim.
  * And "**other changes overlapped**" when they did, because a delta is
  * correlation: naming the resource without that caveat would be blaming it.
  */
@@ -786,14 +786,14 @@ export function digestLines(
  * up, which is what keeps narrative text from forging a Slack link or a
  * `<!channel>` mention; the `*` this adds survives because mrkdwn has no escape
  * for it. A narrative that contains a stray asterisk can therefore only
- * mis-emphasise its own paragraph — it cannot reach out of the text.
+ * mis-emphasise its own paragraph: it cannot reach out of the text.
  */
 export function formatDigestSlackBody(digest: WeeklyDigest, narrative?: string | null): string {
   return digestLines(digest, (s) => `*${s}*`, narrative).join("\n");
 }
 
 /**
- * Teams plain-text body — no markup added here at all, because `msteams.ts`
+ * Teams plain-text body: no markup added here at all, because `msteams.ts`
  * escapes `\ * _ [ ]` on the whole card text. That escaper is also what
  * neutralises card markdown in narrative text; it is applied to the body
  * wholesale, so it cannot be stepped around from in here.

@@ -15,7 +15,7 @@ vi.mock("../clickhouse/cost-readers", () => ({ queryCosts }));
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
-// Real Drizzle over a recording driver against the real schema — the budget
+// Real Drizzle over a recording driver against the real schema: the budget
 // select, the alert-event insert and the notifiedAt update render their actual
 // SQL (and shadow-validate under test:postgres:shadow). Results are queued in
 // execution order via `arrange` below.
@@ -25,7 +25,7 @@ vi.mock("../db/client", () => ({ db: pg.db }));
 /**
  * Queue one evaluation pass's query results in execution order: the budget
  * select, the (real) budget-trigger-workflow lookup, the (real) org currency
- * settings lookup, then the alert-event insert's RETURNING —
+ * settings lookup, then the alert-event insert's RETURNING;
  * [{id}] = fresh crossing, [] = dupe.
  */
 function arrange(
@@ -44,7 +44,7 @@ const notifiedUpdates = () =>
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -69,7 +69,7 @@ function routed(over: Record<string, unknown> = {}) {
     unrouted: false,
     matchedRuleIds: ["rule1"],
     // The tracked-Slack half of the result. Present by default because
-    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // `byTransport.slack` is 1: a result claiming a Slack delivery with no
     // message to show for it is a shape the real function never returns.
     slackMessages: [],
     deliveryIds: [],
@@ -77,7 +77,7 @@ function routed(over: Record<string, unknown> = {}) {
   };
 }
 
-/** A delivery that reached nobody — no rule matched, or every channel failed. */
+/** A delivery that reached nobody: no rule matched, or every channel failed. */
 function unroutedResult() {
   return routed({
     attempted: 0,
@@ -95,7 +95,7 @@ let budgetEval: typeof import("../cost/budget-eval");
 const NOW = new Date("2026-07-15T12:00:00Z");
 
 // The select has no projection, so keys are in the budgets table's column
-// order — see helpers/fake-postgres.ts.
+// order: see helpers/fake-postgres.ts.
 function budget(over: Partial<Record<string, unknown>> = {}) {
   return {
     id: "b1",
@@ -121,7 +121,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   pg.reset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
-  // $600 on July 1st — over a 50% threshold of a $1000 budget.
+  // $600 on July 1st: over a 50% threshold of a $1000 budget.
   queryCosts.mockResolvedValue([
     { currency: "USD", points: [{ bucket: "2026-07-01", amount: 600 }] },
   ]);
@@ -167,7 +167,7 @@ describe("evaluateBudgetsForOrg — notification fan-out", () => {
 
   it("sets notifiedAt when quiet hours hold the alert rather than sending it", async () => {
     // A held alert has not gone out yet but will, so the crossing counts as
-    // notified — leaving `notifiedAt` unset would re-fire it next pass and
+    // notified: leaving `notifiedAt` unset would re-fire it next pass and
     // deliver twice.
     arrange([budget()], [{ id: "evt1" }]);
     sendBudgetAlertPage.mockResolvedValueOnce(false);

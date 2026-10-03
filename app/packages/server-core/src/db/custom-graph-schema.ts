@@ -1,5 +1,5 @@
 /**
- * Custom graphs — org-authored scripts (run in the workflow isolate) that
+ * Custom graphs: org-authored scripts (run in the workflow isolate) that
  * describe a dashboard chart, its controls, and its refresh policy.
  *
  * Kept in its own module with self-contained imports; re-exported from
@@ -23,7 +23,7 @@ export const customGraphs = pgTable(
     source: text("source").notNull().default(""),
     createdByUserId: text("created_by_user_id"),
     /**
-     * Who last wrote `source` — the user whose role permissions the script's
+     * Who last wrote `source`: the user whose role permissions the script's
      * `infra.*` access runs as at render time (definer-style, since any viewer
      * with dashboards:read can trigger a render). Updated on every source
      * change, so editing someone else's graph makes it run as YOU. Null on
@@ -42,7 +42,7 @@ export const customGraphs = pgTable(
 /**
  * The graph's private key/value store (`graph.data.*`). Scoped by graph id;
  * `organization_id` is denormalized on so a leaked graph id from another org
- * still can't be read — every query filters on both.
+ * still can't be read: every query filters on both.
  */
 export const customGraphData = pgTable(
   "custom_graph_data",

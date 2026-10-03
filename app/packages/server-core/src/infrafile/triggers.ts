@@ -19,7 +19,7 @@ export interface DueTrigger {
   branch: string;
   env: string;
   answers: Record<string, string>;
-  /** The commit that moved the branch — what this run should deploy. */
+  /** The commit that moved the branch: what this run should deploy. */
   sha: string;
 }
 
@@ -36,7 +36,7 @@ function splitRepo(repo: string): { owner: string; name: string } | null {
  * Two properties are load-bearing:
  *
  * 1. **First sight records the SHA without firing.** Enabling a trigger should
- *    not immediately ship whatever happens to be at HEAD — the user asked to
+ *    not immediately ship whatever happens to be at HEAD: the user asked to
  *    deploy on the *next* push, not this instant.
  * 2. **The claim is a conditional UPDATE.** Competing watcher replicas race for
  *    the row and only the one that actually changed `last_sha` gets to deploy,

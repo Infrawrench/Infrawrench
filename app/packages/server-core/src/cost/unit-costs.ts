@@ -1,5 +1,5 @@
 /**
- * Unit-cost and margin arithmetic — **pure**. No db, no ClickHouse, no clock,
+ * Unit-cost and margin arithmetic: **pure**. No db, no ClickHouse, no clock,
  * no network. Everything is a function of its arguments, which is what makes
  * the rules below exhaustively testable rather than merely asserted.
  *
@@ -8,7 +8,7 @@
  * 1. **The ratio is computed at the requested bucket, from a summed numerator
  *    and a summed denominator.** Never a mean of per-day ratios. On a week
  *    where volume moved, `mean(cost_d / units_d)` and `Σcost / Σunits` are
- *    different numbers, and only the second one is the week's unit cost — the
+ *    different numbers, and only the second one is the week's unit cost: the
  *    first weights a quiet Sunday exactly as heavily as a peak Monday. The same
  *    rule applies one level up: {@link UnitCostSeries.overallValue} is
  *    `Σcost / Σunits` across buckets, not the mean of the bucket ratios.
@@ -18,7 +18,7 @@
  *    "that period was free"), never ±Infinity, never NaN. This is the rule the
  *    whole feature stands on: a chart that quietly reads 0 on days a metric was
  *    not reported will be believed, and it says the opposite of the truth.
- *    A *zero numerator over a positive denominator* is not a gap — spend of
+ *    A *zero numerator over a positive denominator* is not a gap: spend of
  *    nothing over 300 customers genuinely is 0 per customer.
  *
  * 3. **A bucket's numerator and denominator cover the same days.** The period
@@ -33,8 +33,8 @@
  *    dropped (which understates every unit cost) or added to another currency
  *    (which invents a number).
  *
- * Partial buckets — where the denominator covers only some of the bucket's days
- * — are computed rather than discarded, because throwing away six real days of
+ * Partial buckets (where the denominator covers only some of the bucket's days)
+ * are computed rather than discarded, because throwing away six real days of
  * volume is its own distortion. They are counted and reported so every surface
  * can say the ratio there reads high.
  */
@@ -49,7 +49,7 @@ import {
 
 import { addDays } from "./dates";
 
-/** A cost aggregate for one currency — the shape `queryCosts` returns. */
+/** A cost aggregate for one currency: the shape `queryCosts` returns. */
 export interface UnitCostCostGroup {
   currency: string;
   points: Array<{ bucket: string; amount: number }>;
@@ -96,8 +96,8 @@ export interface UnitCostComputeResult {
 /**
  * Rounding for the ratio itself.
  *
- * Ten places, not two. A unit cost is routinely sub-cent — cost per API
- * request, cost per event — and rounding to the currency's minor unit would
+ * Ten places, not two. A unit cost is routinely sub-cent (cost per API
+ * request, cost per event) and rounding to the currency's minor unit would
  * turn every such number into `0`, which reads as "free" and is the same lie as
  * rule 2's zero. Ten is far below anything a business metric can resolve and
  * far above the float noise that would otherwise put `0.30000000000000004` on
@@ -142,7 +142,7 @@ interface BucketDenominator {
  * fact about the data.
  *
  * `cumulative` binning shares the daily bucket boundaries and then runs a
- * running sum — over the denominator too, because the numerator `queryCosts`
+ * running sum: over the denominator too, because the numerator `queryCosts`
  * returns for that binning is already cumulative and dividing a running total by
  * a daily one is meaningless.
  */
@@ -219,7 +219,7 @@ export function computeUnitCosts(input: UnitCostComputeInput): UnitCostComputeRe
   if (costGroups.length === 0) return { series: [], gapBuckets: 0, partialBuckets: 0 };
 
   // Trim leading/trailing buckets that have neither spend nor a reported value.
-  // Interior emptiness is preserved — that is exactly the gap the feature is
+  // Interior emptiness is preserved: that is exactly the gap the feature is
   // built to show.
   const bucketsWithSpend = new Set<string>();
   for (const group of costGroups) {
@@ -239,7 +239,7 @@ export function computeUnitCosts(input: UnitCostComputeInput): UnitCostComputeRe
   const series: UnitCostSeries[] = costGroups.map((group) => {
     const amounts = new Map(group.points.map((p) => [p.bucket, p.amount]));
     // Margin subtracts money from money, so a series in a currency the metric
-    // is not denominated in has no honest answer — every bucket is a gap that
+    // is not denominated in has no honest answer: every bucket is a gap that
     // names the reason, rather than a ratio nobody could reconcile.
     const currencyMismatch = mode === "margin" && group.currency !== metricCurrency;
 

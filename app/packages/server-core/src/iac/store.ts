@@ -15,13 +15,13 @@ import { db } from "../db/client.js";
 import { accounts, iacManagedResources, iacStates, users } from "../db/schema.js";
 
 /**
- * Persistence for **IaC reconciliation** — uploaded Terraform state documents
+ * Persistence for **IaC reconciliation**: uploaded Terraform state documents
  * and the resource instances lifted out of them.
  *
  * The document itself is never stored. Parsing happens once, on upload, and
  * only the parsed projection lands in the database: an attribute bag with
  * every sensitive value already dropped by the parser, truncated to bounded
- * sizes. That is deliberate — a `.tfstate` is one of the most secret-dense
+ * sizes. That is deliberate: a `.tfstate` is one of the most secret-dense
  * files an organization has, and the reconciliation only ever needs the
  * attributes it compares against.
  */
@@ -127,7 +127,7 @@ export async function getIacState(
  * mode: the newest document in the org can belong to a *different* account,
  * and reconciling account A's resources against account B's state produces a
  * confidently wrong managed/unmanaged answer. A caller that wants a fallback
- * must ask for the org-wide scope explicitly — those documents really do
+ * must ask for the org-wide scope explicitly: those documents really do
  * cover every account.
  */
 export async function getLatestIacState(
@@ -185,7 +185,7 @@ export interface SaveIacStateResult {
 
 /**
  * Parse and store one state document. Rejects rather than truncating a
- * document it cannot understand — a partially-read state would classify real
+ * document it cannot understand: a partially-read state would classify real
  * managed resources as ClickOps, which is exactly the wrong answer.
  */
 export async function saveIacState(args: SaveIacStateArgs): Promise<SaveIacStateResult> {
@@ -201,7 +201,7 @@ export async function saveIacState(args: SaveIacStateArgs): Promise<SaveIacState
   // everything before it is a file a stranger uploaded. So *any* throw from the
   // parse stage is a statement about the document, and must reach the client as
   // a 400. Matching on specific error classes is what let a `RangeError` from a
-  // deeply nested attribute escape as a 500 — and a 500 is not just the wrong
+  // deeply nested attribute escape as a 500, and a 500 is not just the wrong
   // status, it is the wrong instruction: it tells a user holding an
   // unacceptable file that we broke, so they retry it unchanged.
   //
@@ -315,7 +315,7 @@ export interface IacRetentionResult {
 /**
  * Retention: drop state documents past the window, **except** the newest one
  * per org+account scope. A quiet org that has not re-uploaded in months must
- * not silently lose its answer to "what does Terraform manage?" — the point of
+ * not silently lose its answer to "what does Terraform manage?": the point of
  * retention here is superseded snapshots, not the current one.
  *
  * Rides the poller's hourly retention pass beside `pruneResourceChanges`;
@@ -324,7 +324,7 @@ export interface IacRetentionResult {
 export async function pruneIacStates(now = new Date()): Promise<IacRetentionResult> {
   const cutoff = new Date(now.getTime() - IAC_STATE_LIMITS.retentionDays * 24 * 60 * 60 * 1000);
 
-  // The newest row per (org, account) scope — `account_id IS NULL` is its own
+  // The newest row per (org, account) scope: `account_id IS NULL` is its own
   // scope, which `IS NOT DISTINCT FROM` handles without a special case.
   const keep = await db.execute(sql`
     SELECT DISTINCT ON (organization_id, account_id) id

@@ -1,5 +1,5 @@
 /**
- * Cost report tools — list, read, run and manage the org's named saved cost
+ * Cost report tools: list, read, run and manage the org's named saved cost
  * graphs from chat and MCP.
  *
  * The point of the report object over an ad-hoc `query_costs` call is that
@@ -29,8 +29,8 @@ import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
 
 /**
- * Turn what an agent says about a folder — an id, a full path like
- * "Finance / Monthly", or a bare name — into a folder id. Ambiguity is an
+ * Turn what an agent says about a folder (an id, a full path like
+ * "Finance / Monthly", or a bare name) into a folder id. Ambiguity is an
  * error rather than a guess: filing a report in the wrong "Monthly" is a
  * mistake nobody notices until the report cannot be found.
  */

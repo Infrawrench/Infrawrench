@@ -103,7 +103,7 @@ describe("verifyWorkosAccessToken", () => {
 
   /**
    * Regression guard. WorkOS AuthKit tokens carry no `aud` claim, and their
-   * `iss` varies by configuration and SDK version — passing either option to
+   * `iss` varies by configuration and SDK version: passing either option to
    * `jwtVerify` rejects every real token and locks out all bearer clients
    * (MCP, mobile, desktop sync, chat). Isolation comes from the per-client
    * JWKS instead. See the comment on `verifyWorkosAccessToken`.

@@ -3,7 +3,7 @@
  * /api/org/:orgId/access-requests).
  *
  * Asking takes `access:request`, seeing the queue takes `access:read`, and
- * deciding takes `access:approve` — deliberately not `team:role:write`.
+ * deciding takes `access:approve`: deliberately not `team:role:write`.
  * Granting a role is a considered change with a paper trail; approving an
  * elevation happens mid-incident, and an org should be able to say who may do
  * the second without also saying who may do the first.
@@ -61,7 +61,7 @@ async function callerName(userId: string): Promise<string | null> {
 const STATUSES: AccessRequestStatus[] = ["pending", "approved", "denied", "expired"];
 
 /**
- * GET / — the org's requests, newest first.
+ * GET /: the org's requests, newest first.
  *
  * `?mine=1` narrows to the caller's own, which is what a member without
  * `access:approve` actually wants: "where is my request".
@@ -82,10 +82,10 @@ app.get("/", async (c) => {
 });
 
 /**
- * GET /catalog — the permission strings a request may ask for, and the limits.
+ * GET /catalog: the permission strings a request may ask for, and the limits.
  *
  * Served rather than hard-coded in the client so the picker cannot drift from
- * the server's catalog — the same reason the role editor reads it from here.
+ * the server's catalog: the same reason the role editor reads it from here.
  */
 app.get("/catalog", (c) => {
   requirePermission(c, "access:read");
@@ -106,7 +106,7 @@ const createSchema = z
   })
   .strict();
 
-/** POST / — ask for elevation. */
+/** POST /: ask for elevation. */
 app.post("/", async (c) => {
   requirePermission(c, "access:request");
   const userId = callerId(c);
@@ -160,7 +160,7 @@ async function decide(c: Context, decision: "approved" | "denied") {
     {
       userId,
       name: await callerName(userId),
-      // The decider's live set, which is the ceiling on what they can grant —
+      // The decider's live set, which is the ceiling on what they can grant:
       // a grant can never mint authority nobody in the room had.
       permissions: callerPermissions(c),
     },
@@ -215,7 +215,7 @@ app.post("/:id/approve", (c) => decide(c, "approved"));
 app.post("/:id/deny", (c) => decide(c, "denied"));
 
 /**
- * POST /:id/revoke — end a live grant early.
+ * POST /:id/revoke: end a live grant early.
  *
  * Allowed for anyone with `access:approve` **and** for the holder: giving back
  * an elevation you no longer need must never require finding an approver.
@@ -254,7 +254,7 @@ app.post("/:id/revoke", async (c) => {
   return c.json(result.request);
 });
 
-/** POST /:id/withdraw — the requester calls off their own pending request. */
+/** POST /:id/withdraw: the requester calls off their own pending request. */
 app.post("/:id/withdraw", async (c) => {
   requirePermission(c, "access:request");
   const userId = callerId(c);

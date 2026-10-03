@@ -56,7 +56,7 @@ describe("expiryBracket — the smallest horizon reached", () => {
 describe("detectCommitmentExpiries — fire once per horizon", () => {
   it("emits exactly one finding per commitment per pass, at its current bracket", () => {
     // 30 days out is inside both the 60 and the 30 horizon. Emitting both
-    // would produce two alerts about one commitment in one pass — the failure
+    // would produce two alerts about one commitment in one pass: the failure
     // the bracket rule exists to prevent.
     const { findings } = detectCommitmentExpiries([commitment()], OPTIONS, TODAY);
     expect(findings).toHaveLength(1);
@@ -217,7 +217,7 @@ describe("detectCommitmentExpiries — what it costs", () => {
       OPTIONS,
       TODAY,
     );
-    // A CUD expiring is still an expiry — it just states no money.
+    // A CUD expiring is still an expiry: it just states no money.
     expect(findings).toHaveLength(1);
     expect(findings[0]!.monthlyCommitmentAmount).toBeNull();
     expect(findings[0]!.unitCommitments).toEqual([{ unit: "vCPU", amount: 2000 }]);

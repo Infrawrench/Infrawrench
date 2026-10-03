@@ -1,12 +1,12 @@
 /**
- * Cost centres and allocation rules — the org-defined mapping from spend to
+ * Cost centres and allocation rules: the org-defined mapping from spend to
  * named cost centres that powers the showback report. CRUD only; the actual
  * allocation happens in `clickhouse/cost-readers.ts` (`getShowbackSpend`),
  * which compiles the ordered rule list into one `multiIf` over `cost_daily`.
  *
  * Centres nest (`parentId`), so "what does Engineering cost" can be answered
  * with a subtree rather than a single bucket. Nesting is presentation and
- * rollup only — matching is untouched, every row still resolves to exactly one
+ * rollup only: matching is untouched, every row still resolves to exactly one
  * centre in that one pass, and an org that never sets a parent behaves exactly
  * as it did before the column existed. The tree rules (depth cap over the whole
  * subtree being moved, no move into your own descendants) live in
@@ -67,7 +67,7 @@ function ruleToWire(row: typeof costAllocationRules.$inferSelect): AllocationRul
 export function normalizeMatch(match: AllocationRuleMatch): AllocationRuleMatch {
   const out: AllocationRuleMatch = {};
   if (match.tagKey?.trim()) out.tagKey = match.tagKey.trim();
-  // A tag value without a key matches nothing meaningful — require the key.
+  // A tag value without a key matches nothing meaningful: require the key.
   if (out.tagKey && match.tagValue?.trim()) out.tagValue = match.tagValue.trim();
   if (match.accountId?.trim()) out.accountId = match.accountId.trim();
   if (match.pluginId?.trim()) out.pluginId = match.pluginId.trim();
@@ -87,7 +87,7 @@ export async function listCostCentres(organizationId: string): Promise<CostCentr
 /**
  * Create a centre, optionally nested under `parentId`. Throws
  * {@link CostCentreError} when the placement would breach the depth cap or
- * name an unknown parent — the same check the move picker runs client-side.
+ * name an unknown parent: the same check the move picker runs client-side.
  */
 export async function createCostCentre(
   organizationId: string,
@@ -115,7 +115,7 @@ export async function createCostCentre(
 
 /**
  * Rename, redescribe, and/or move a centre. A move is this same update with a
- * different `parentId` — there is no separate endpoint, the same way filing a
+ * different `parentId`: there is no separate endpoint, the same way filing a
  * report in a folder is an edit of where it is filed.
  *
  * Throws {@link CostCentreError} when the move would nest past
@@ -159,7 +159,7 @@ export async function updateCostCentre(
  * deleted and never promoted to the root. Deleting "Platform" out of
  * Engineering → Platform → Search has to leave Search under Engineering: that
  * is what the org chart still says, and promoting to root would quietly move
- * Search's spend out of Engineering's subtree total — a chargeback number
+ * Search's spend out of Engineering's subtree total; a chargeback number
  * changing because someone tidied up a middle row is exactly the surprise this
  * avoids. A root delete leaves its children as roots, which is the same rule
  * with a null parent.
@@ -167,7 +167,7 @@ export async function updateCostCentre(
  * Spend history is untouched: amounts live in ClickHouse and are recomputed
  * from the rules on every read. The centre's own rules do go with it (FK
  * `on delete cascade`), so the spend they claimed falls through to whatever
- * rule is next — often "Unallocated", which stays a first-class row.
+ * rule is next: often "Unallocated", which stays a first-class row.
  */
 export async function deleteCostCentre(organizationId: string, id: string): Promise<boolean> {
   return db.transaction(async (tx) => {
@@ -192,7 +192,7 @@ export async function deleteCostCentre(organizationId: string, id: string): Prom
 }
 
 /**
- * Rules in evaluation order — the order the showback reader compiles into its
+ * Rules in evaluation order: the order the showback reader compiles into its
  * single `multiIf`, and the order the settings UI renders so "first match wins"
  * means what the list shows.
  *
@@ -216,7 +216,7 @@ export async function createAllocationRule(
   organizationId: string,
   input: AllocationRuleInput,
 ): Promise<AllocationRule | null> {
-  // The centre must belong to the same org — a cross-org centre id would
+  // The centre must belong to the same org: a cross-org centre id would
   // silently allocate someone else's spend labels.
   const [centre] = await db
     .select({ id: costCentres.id })

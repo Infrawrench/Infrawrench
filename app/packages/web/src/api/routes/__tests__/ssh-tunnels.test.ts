@@ -239,7 +239,7 @@ describe("SSH tunnel routes", () => {
       expect(body).toMatchObject({ stdout: "up 3 days", code: 0 });
       expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "ssh.exec" }));
       // Nothing downstream re-resolves for this route, so the address the
-      // guard cleared has to travel with the config — the name is resolved
+      // guard cleared has to travel with the config: the name is resolved
       // once, and `host` stays the name for host-key trust.
       expect(mockSshExec).toHaveBeenCalledWith(
         "org-1",

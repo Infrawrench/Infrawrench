@@ -100,8 +100,8 @@ describe("claimDueCostAccounts", () => {
   });
 
   // Regression: this used to be `= ANY(${ids})`. The sql tag expands a JS array
-  // into a parenthesized placeholder list, so ANY() received `($2, $3)` — a row
-  // constructor, not an array — and every cost tick died with Postgres 42809.
+  // into a parenthesized placeholder list, so ANY() received `($2, $3)` (a row
+  // constructor, not an array) and every cost tick died with Postgres 42809.
   // The mocked sql tag can't execute SQL, so assert on the operator directly.
   it("matches plugin ids with IN, never ANY()", async () => {
     await claimDueCostAccounts(2, ["aws", "gcp"]);

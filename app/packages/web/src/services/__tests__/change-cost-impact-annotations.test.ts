@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * The db is a drizzle-shaped chain fake (the `agent-setup.test.ts` pattern) with
  * queued results, which is what lets a single-threaded test drive the two
  * outcomes of a compare-and-swap. `conflictTolerantInserts` records whether the
- * link insert went out under `onConflictDoNothing` — without that, the second
+ * link insert went out under `onConflictDoNothing`: without that, the second
  * writer's insert is a raw unique violation, which is the shape of the bug.
  */
 

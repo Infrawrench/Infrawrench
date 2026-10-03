@@ -7,7 +7,7 @@
  *
  * Public setup callback (`/api/github/setup`): GitHub redirects the browser
  * here after the user installs/configures the app; we verify the signed state
- * and record the installation for that org. No session needed — the signed
+ * and record the installation for that org. No session needed: the signed
  * state authorizes the org binding.
  */
 import { Hono } from "hono";
@@ -154,7 +154,7 @@ githubSetupRoute.get("/github/setup", async (c) => {
 
   // A member of an org without app-install rights can only *request* the
   // install; GitHub redirects here with setup_action=request and no
-  // installation id. Nothing to record — an owner must approve it on GitHub.
+  // installation id. Nothing to record: an owner must approve it on GitHub.
   if (setupAction === "request") {
     return c.redirect(returnUrl("requested"));
   }

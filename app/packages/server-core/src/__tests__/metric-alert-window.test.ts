@@ -7,7 +7,7 @@ import {
 } from "../metric-alerts/window";
 
 /**
- * The pure half of metric alert evaluation — no mocks, direct fixtures, the
+ * The pure half of metric alert evaluation: no mocks, direct fixtures, the
  * `anomaly-detect.test.ts` stance.
  */
 

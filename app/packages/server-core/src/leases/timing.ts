@@ -1,7 +1,7 @@
 /**
  * Pure timing + message rendering for the auto-delete lease pass. No I/O
  * lives here so the two-announcements contract is unit-testable without a
- * database — the `expiry/summary.ts` split.
+ * database: the `expiry/summary.ts` split.
  *
  * The contract the pass enforces, in words:
  *
@@ -11,7 +11,7 @@
  *    11/12 of its lifetime), and a lease created inside the final window gets
  *    warning 1 immediately with warning 2 no sooner than half the remaining
  *    time. If the poller was down and expiry arrives with warnings unsent,
- *    the delete is pushed later — both warnings still go out first, separated
+ *    the delete is pushed later: both warnings still go out first, separated
  *    by at least {@link LEASE_MIN_WARNING_GAP_MS}.
  * 2. **Delete only after expiry AND both warnings.** `nextLeaseStep` never
  *    yields `"delete"` until `expiresAt` has passed and both warning stamps
@@ -24,7 +24,7 @@ export const LEASE_WARN1_LEAD_MS = 72 * 60 * 60 * 1000;
 export const LEASE_WARN2_LEAD_MS = 24 * 60 * 60 * 1000;
 /**
  * Least time between the two announcements when the schedule has collapsed
- * (lease created — or discovered by a recovering poller — at/after expiry).
+ * (lease created (or discovered by a recovering poller) at/after expiry).
  * One pass lease, so the delete lands two ticks later at the earliest.
  */
 export const LEASE_MIN_WARNING_GAP_MS = 10 * 60 * 1000;
@@ -40,7 +40,7 @@ export interface LeaseWarningTargets {
  * The planned announcement instants for a lease's lifetime.
  *
  * Long lease (> 72h): expiry − 72h and expiry − 24h. Shorter leases
- * compress proportionally — `expiry − min(72h, duration/3)` puts warning 1
+ * compress proportionally: `expiry − min(72h, duration/3)` puts warning 1
  * at 2/3 of the lifetime, `expiry − min(24h, duration/12)` puts warning 2 at
  * 11/12. A lease no longer than the final window (24h) sends warning 1
  * immediately and warning 2 at half the lifetime.
@@ -70,7 +70,7 @@ export type LeaseStep =
   | { kind: "warn1" }
   | { kind: "warn2" }
   | { kind: "delete" }
-  /** Nothing due yet — re-check at `until`. */
+  /** Nothing due yet: re-check at `until`. */
   | { kind: "wait"; until: number };
 
 /**
@@ -80,7 +80,7 @@ export type LeaseStep =
  *
  * Warning 2 is due at the later of its planned target and "half the time
  * remaining after warning 1 actually went out" (floored at
- * {@link LEASE_MIN_WARNING_GAP_MS}) — a late first warning therefore always
+ * {@link LEASE_MIN_WARNING_GAP_MS}): a late first warning therefore always
  * buys a real gap before the final one, and expiry with warnings outstanding
  * pushes the delete later rather than skipping an announcement.
  */
@@ -97,7 +97,7 @@ export function nextLeaseStep(state: LeaseTimingState, now: number): LeaseStep {
   return now >= state.expiresAt ? { kind: "delete" } : { kind: "wait", until: state.expiresAt };
 }
 
-/** "3d" / "26h" / "45m" — rough humanized duration for message copy. */
+/** "3d" / "26h" / "45m": rough humanized duration for message copy. */
 export function leaseDurationLabel(ms: number): string {
   const minutes = Math.max(1, Math.round(ms / 60_000));
   if (minutes < 60) return `${minutes}m`;

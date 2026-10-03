@@ -18,7 +18,7 @@ export function getStripePriceId(): string {
 
 /**
  * Metered chat-usage price, bound to the billing meter named by
- * INFRAWRENCH_STRIPE_CHAT_METER_EVENT. Optional — without it checkout omits
+ * INFRAWRENCH_STRIPE_CHAT_METER_EVENT. Optional: without it checkout omits
  * the metered line item and chat usage goes unbilled.
  */
 export function getStripeChatPriceId(): string | null {
@@ -27,7 +27,7 @@ export function getStripeChatPriceId(): string | null {
 
 /**
  * Metered hosted-build price, bound to the billing meter named by
- * INFRAWRENCH_STRIPE_BUILD_METER_EVENT. Optional — without it checkout omits
+ * INFRAWRENCH_STRIPE_BUILD_METER_EVENT. Optional: without it checkout omits
  * the line item and build time goes unbilled (the flat plan absorbs it).
  */
 export function getStripeBuildPriceId(): string | null {
@@ -35,7 +35,7 @@ export function getStripeBuildPriceId(): string | null {
 }
 
 /**
- * One-time price of a single prepaid capacity slot — a seat bought outright for
+ * One-time price of a single prepaid capacity slot: a seat bought outright for
  * a fixed term rather than rented monthly (see
  * `server-core/billing/capacity-slots.ts`).
  *

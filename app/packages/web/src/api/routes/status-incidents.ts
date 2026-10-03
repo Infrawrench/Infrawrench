@@ -1,5 +1,5 @@
 /**
- * Provider status correlation — `GET /api/org/{orgId}/status-incidents`.
+ * Provider status correlation: `GET /api/org/{orgId}/status-incidents`.
  *
  * Thin route: all the work (matching cached provider incidents against the
  * org's resources, counting overlapping changes) lives in server-core

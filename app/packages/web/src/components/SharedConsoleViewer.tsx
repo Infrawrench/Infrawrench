@@ -4,19 +4,19 @@
  * The mirror image of `WebTerminal`: it opens a socket, sends
  * `console:attach`, and renders `console:data`. What it never does is decide
  * whether this person may type. It sends keystrokes when the server has told
- * it this participant is the driver — and when it is wrong about that, the
+ * it this participant is the driver, and when it is wrong about that, the
  * server drops them. The UI state exists so the observer is not confused, not
  * so that they are contained.
  *
  * Two behaviours worth reading the code for:
  *
  * - **The retry on `console_not_here`.** The pty lives in one web replica's
- *   memory and the ingress hashes `?sid=` to reach it. When that misses — a
- *   rolling deploy, a proxy that does not honour the annotation — the socket
+ *   memory and the ingress hashes `?sid=` to reach it. When that misses (a
+ *   rolling deploy, a proxy that does not honour the annotation) the socket
  *   is reopened on a fresh ws token, which rehashes. Bounded, and it says so
  *   when it gives up rather than showing an empty terminal forever.
  * - **Letterboxing.** The pty's geometry is the driver's. This terminal is set
- *   to that grid and scaled to fit, never reflowed — an observer watching a
+ *   to that grid and scaled to fit, never reflowed: an observer watching a
  *   full-screen editor has to be looking at the same screen the driver is.
  */
 import { useCallback, useEffect, useRef, useState } from "react";

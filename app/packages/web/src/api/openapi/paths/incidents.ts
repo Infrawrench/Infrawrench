@@ -3,7 +3,7 @@ import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common
 import type { BuildContext } from "../context";
 
 /**
- * Incident mode — incidents the organization declares itself.
+ * Incident mode: incidents the organization declares itself.
  *
  * Deliberately distinct from `/status-incidents`, which reports a *provider's*
  * outage scraped from their status page. Nothing in this file describes that.

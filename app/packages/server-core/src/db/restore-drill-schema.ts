@@ -1,5 +1,5 @@
 /**
- * Restore drills — the record that somebody actually tried.
+ * Restore drills: the record that somebody actually tried.
  *
  * One table, and it is deliberately a *log* rather than a state: a drill is an
  * event that happened on a date, and "where does this resource stand" is
@@ -11,7 +11,7 @@
  * of the product references synced resources: a resource row is re-created by
  * every sync, and a drill is evidence about a *system* rather than about a row.
  * The evidence that the orders database restored in 45 minutes should survive
- * that database being re-synced under a new internal id — and it should
+ * that database being re-synced under a new internal id, and it should
  * certainly survive somebody deleting the resource, because "we tested this and
  * then removed it" is a fact an auditor asks about.
  *
@@ -29,7 +29,7 @@ export const restoreDrills = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** Infrawrench resource id. No FK — see the module note. */
+    /** Infrawrench resource id. No FK: see the module note. */
     resourceId: text("resource_id").notNull(),
     /**
      * When the drill was performed, which is **not** when it was recorded.
@@ -42,12 +42,12 @@ export const restoreDrills = pgTable(
       .$type<"verified" | "restored-unverified" | "failed" | "blocked">()
       .notNull(),
     /**
-     * Measured wall-clock minutes. Null when the drill did not get that far —
+     * Measured wall-clock minutes. Null when the drill did not get that far:
      * a blocked drill has no RTO, and an invented one would be the most
      * dangerous number on the page.
      */
     rtoMinutes: integer("rto_minutes"),
-    /** Snapshot id, S3 key, a date — whatever form the operator has it in. */
+    /** Snapshot id, S3 key, a date: whatever form the operator has it in. */
     restoredFrom: text("restored_from"),
     /** What was checked, or what went wrong. The most re-read field here. */
     notes: text("notes"),

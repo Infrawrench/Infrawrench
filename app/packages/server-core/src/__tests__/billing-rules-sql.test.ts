@@ -13,7 +13,7 @@
  *    the total before, for every input.
  *
  * The evaluator below parses and runs the emitted expressions, so this file
- * fails if the SQL and the intent ever diverge — the same stance
+ * fails if the SQL and the intent ever diverge: the same stance
  * `commitment-coverage-basis.test.ts` takes toward the amortized expression.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,7 +23,7 @@ import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
 /**
  * A real Drizzle database over a fake driver, so `captured` holds the exact
- * statement ClickHouse would receive — literals, escaping, `FINAL` and all.
+ * statement ClickHouse would receive: literals, escaping, `FINAL` and all.
  */
 const ch = fakeClickHouse();
 const captured = ch.queries;
@@ -157,7 +157,7 @@ function evaluate(expr: string, r: Row): Value {
     // `<>` is what Drizzle's `ne()` renders; `!=` is what the hand-written
     // fragments use. ClickHouse accepts both and they mean the same thing.
     if (eat("!=") || eat("<>")) return left !== mulExpr();
-    // Guard against consuming the `=` of a `!=` — both are tried first.
+    // Guard against consuming the `=` of a `!=`: both are tried first.
     if (eat("=")) return left === mulExpr();
     return left;
   };
@@ -354,7 +354,7 @@ describe("collected spend is never touched", () => {
       adjustments: compileBillingRules([markup(50), move("account", "acct-z")]),
     });
     const sql = captured[0]!;
-    // Not "contains amount" — *is* the column, with nothing applied to it.
+    // Not "contains amount": *is* the column, with nothing applied to it.
     expect(unsum(selectExpr(sql, "raw_amount"))).toBe("`cost_daily`.`amount`");
     expect(captured).toHaveLength(1);
   });
@@ -545,7 +545,7 @@ describe("reallocation moves money without creating or destroying it", () => {
 
   it("lets a cost-centre rule consume a row the account expression then leaves alone", async () => {
     // The cross-kind case: the centre rule wins on priority, so the account
-    // grouping must be unchanged — not re-attributed by the later account rule.
+    // grouping must be unchanged, not re-attributed by the later account rule.
     // Otherwise the graph and the showback report would disagree about whether
     // that row moved.
     const rules = [

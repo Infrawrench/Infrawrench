@@ -9,8 +9,8 @@ import { apiGet } from "@/lib/api";
  * behind a paid plan. The server already refuses actual builds with a 402
  * (`requirePaidPlan` in the runner), but a free org landing on the page and
  * only finding out at the deploy button is a worse pitch than saying up front
- * what the feature is and what unlocks it. Desktop is not gated — local
- * deploys via the CLI are free — so this lives web-side, not in the panel.
+ * what the feature is and what unlocks it. Desktop is not gated (local
+ * deploys via the CLI are free) so this lives web-side, not in the panel.
  */
 
 // Mirrors PAID_STATUSES in @infrawrench/server-core/entitlements: past_due
@@ -25,7 +25,7 @@ function isPaid(status: BillingStatus): boolean {
   // `trialing` is also what the checkout route stamps on the placeholder row
   // before payment, and an abandoned checkout is not a paid plan. The server
   // (planAccess) tells the two apart by stripeSubscriptionId, which this
-  // response doesn't carry — but only the Stripe webhooks ever set the billing
+  // response doesn't carry, but only the Stripe webhooks ever set the billing
   // period, so a period end is the same signal: a real Stripe-reported trial
   // has one, a placeholder never does.
   return sub.status === "trialing" && sub.currentPeriodEnd !== null;

@@ -1,7 +1,7 @@
 import type { Plugin } from "@infrawrench/plugin-base";
 import { pluginManifestSchema, validatePreflightContract } from "@infrawrench/plugin-base";
 
-// Static imports — keep plugin registration eager so esbuild bundles them all
+// Static imports: keep plugin registration eager so esbuild bundles them all
 import { plugin as awsPlugin } from "@infrawrench/plugin-aws";
 import { plugin as cloudflarePlugin } from "@infrawrench/plugin-cloudflare";
 import { plugin as digitaloceanPlugin } from "@infrawrench/plugin-digitalocean";
@@ -54,7 +54,7 @@ import { plugin as uploadthingPlugin } from "@infrawrench/plugin-uploadthing";
 import { plugin as workosPlugin } from "@infrawrench/plugin-workos";
 
 /**
- * The registry, before validation. Exported because `loadPlugins()` *filters* —
+ * The registry, before validation. Exported because `loadPlugins()` *filters*;
  * a plugin whose manifest fails `pluginManifestSchema` is logged and skipped,
  * so its output is the wrong set to assert manifest properties against: the
  * offender is precisely the entry that is missing. Tests that check something

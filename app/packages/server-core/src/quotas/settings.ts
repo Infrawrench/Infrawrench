@@ -28,7 +28,7 @@ export interface QuotaSettingsRecord {
   threshold: number;
   /**
    * When this org's quota alert scan last completed; null if never. A claim,
-   * not bookkeeping — see `alerts.ts`. It records the last *scan*, not
+   * not bookkeeping: see `alerts.ts`. It records the last *scan*, not
    * necessarily a delivered message: a scan that found nothing keeps it.
    */
   lastNotifiedAt: Date | null;
@@ -72,7 +72,7 @@ export interface QuotaSettingsPatchInput {
  * Reject rather than clamp.
  *
  * Clamping a threshold silently turns "alert me at 40%" into "alert me at 50%"
- * and the form then shows a number the user did not type — which reads as the
+ * and the form then shows a number the user did not type, which reads as the
  * setting not having saved. The expiry settings take the same stance for
  * `leadDays`.
  */

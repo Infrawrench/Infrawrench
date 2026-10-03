@@ -1,9 +1,9 @@
 /**
- * Synthetic probe rows — CRUD + normalization shared by the web API and the
+ * Synthetic probe rows: CRUD + normalization shared by the web API and the
  * poller pass.
  *
  * Input limits come from `@infrawrench/client-core` (`PROBE_LIMITS`,
- * `normalizeProbeUrl`), the same values the editor UIs clamp with — the
+ * `normalizeProbeUrl`), the same values the editor UIs clamp with: the
  * server and the form can't disagree about what a valid interval is (the
  * `schedules/store.ts` stance).
  */
@@ -114,8 +114,8 @@ export async function getProbeRecord(
 /**
  * Create a probe. The URL is validated and normalized; numeric inputs are
  * clamped into `PROBE_LIMITS` rather than rejected (an interval of 30 becomes
- * 60 — the floor exists to protect the shared proxy, not to fail forms). A
- * linked resource, when given, must exist in this org — the link is advisory
+ * 60: the floor exists to protect the shared proxy, not to fail forms). A
+ * linked resource, when given, must exist in this org: the link is advisory
  * (the probe outlives the resource) but must at least start out true.
  */
 export async function createProbeRecord(
@@ -196,7 +196,7 @@ export async function createProbeRecord(
 
 /**
  * Update settings and/or the enable toggle. A URL or method change resets the
- * probe's state to "unknown" — the history belongs to the old endpoint — and
+ * probe's state to "unknown" (the history belongs to the old endpoint) and
  * any change that re-enables or retimes the probe clears the lease so the new
  * cadence starts from the next tick.
  */

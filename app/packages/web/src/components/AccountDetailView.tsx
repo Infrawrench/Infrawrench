@@ -31,7 +31,7 @@ import { CreateResourceModal } from "./CreateResourceModal";
 
 /**
  * Account-page resource type entry. This is the canonical `ResourceTypeSummary`
- * wire shape (from `GET /accounts/:id/detail`) — re-exported under the local
+ * wire shape (from `GET /accounts/:id/detail`): re-exported under the local
  * historical name so existing imports keep working.
  */
 export type ResourceTypeInfo = ResourceTypeSummary;
@@ -85,7 +85,7 @@ export function AccountDetailView({
   } | null>(null);
   // The plugin's preflight declaration, loaded from the catalog whenever the
   // account (and therefore plugin) changes. Null both while loading and for
-  // plugins without preflight support — the "Check credentials" button only
+  // plugins without preflight support: the "Check credentials" button only
   // renders once a declaration exists.
   const [preflightDeclaration, setPreflightDeclaration] = useState<PreflightDeclaration | null>(
     null,
@@ -110,7 +110,7 @@ export function AccountDetailView({
         setPreflightDeclaration(plugins.find((p) => p.id === account.pluginId)?.preflight ?? null);
       })
       .catch(() => {
-        // Catalog unavailable — leave the affordance hidden rather than error.
+        // Catalog unavailable: leave the affordance hidden rather than error.
       });
     return () => {
       cancelled = true;

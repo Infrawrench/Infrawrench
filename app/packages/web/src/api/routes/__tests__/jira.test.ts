@@ -4,7 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import type { AuthSession } from "@/api/auth-middleware";
 
 /**
- * Jira route tests. The behaviour worth pinning here is not the happy path —
+ * Jira route tests. The behaviour worth pinning here is not the happy path:
  * it is:
  *
  *  - **permission split.** `jira:read` sees the redacted connection, the
@@ -13,7 +13,7 @@ import type { AuthSession } from "@/api/auth-middleware";
  *  - **the token never leaves.** `GET /` must answer with a hint, and `PUT /`
  *    with an omitted token must mean "keep the stored one" rather than wipe it.
  *  - **error mapping.** A Jira 401 has to become a 502 (their side), while a
- *    bad site URL — which never reaches Jira — has to become a 400 (ours).
+ *    bad site URL (which never reaches Jira) has to become a 400 (ours).
  *  - **ordering on create.** The link row is only written after Jira returns a
  *    key, so a failed create leaves no link claiming an issue that isn't there.
  */
@@ -29,7 +29,7 @@ const mockCreateIssue = vi.fn();
 const mockRecordLink = vi.fn();
 const mockListLinks = vi.fn();
 
-/** The real error class — the route branches on `instanceof` and on `status`. */
+/** The real error class: the route branches on `instanceof` and on `status`. */
 class JiraApiError extends Error {
   readonly status: number | null;
   constructor(message: string, status: number | null = null) {
@@ -260,7 +260,7 @@ describe("POST /verify", () => {
     expect(mockVerifyCredentials).not.toHaveBeenCalled();
   });
 
-  /** Jira answered — their side, so 502, carrying Jira's wording. */
+  /** Jira answered: their side, so 502, carrying Jira's wording. */
   it("maps a Jira 401 to 502", async () => {
     mockVerifyStored.mockRejectedValue(
       new JiraApiError("Jira rejected the credentials (401).", 401),
@@ -342,7 +342,7 @@ describe("POST /issues", () => {
   });
 
   /**
-   * The link must never claim an issue that was not created — a dangling link
+   * The link must never claim an issue that was not created: a dangling link
    * silently suppresses the file button for a finding nobody filed.
    */
   it("records no link when Jira refuses the create", async () => {

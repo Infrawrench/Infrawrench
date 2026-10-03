@@ -3,7 +3,7 @@
  *
  * The inventory is assembled in server-core (`dns/feed.ts`) so the web API,
  * the MCP tool and the posture pass share one computation. Purely a read over
- * already-synced state: no provider API calls, and no DNS resolution — a
+ * already-synced state: no provider API calls, and no DNS resolution; a
  * record's target is judged against what we synced, never against what the
  * internet currently answers.
  *
@@ -24,7 +24,7 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * GET /api/org/:orgId/dns — every zone and record across every connected
+ * GET /api/org/:orgId/dns: every zone and record across every connected
  * provider, with each record target classified as owned, dangling, external or
  * not analysed.
  */

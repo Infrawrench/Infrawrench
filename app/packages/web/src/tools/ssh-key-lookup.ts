@@ -1,7 +1,7 @@
 /**
  * Resolve a stored org SSH key (Settings → SSH keys) to its public key text.
  * Used by the create tools so the model can reference a key by id instead of
- * pasting public key material — only the PUBLIC key ever leaves the store.
+ * pasting public key material, only the PUBLIC key ever leaves the store.
  */
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/client";

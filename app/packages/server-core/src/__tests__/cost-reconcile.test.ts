@@ -3,7 +3,7 @@
  * `ALTER TABLE cost_daily DELETE` in two plugins' upgrade notes.
  *
  * A ReplacingMergeTree only replaces a row something rewrites, and `cost_daily`
- * folds charge type and commitment id into `tags_hash` — so the day a plugin
+ * folds charge type and commitment id into `tags_hash`, so the day a plugin
  * starts stamping charge types, a cell whose spend was entirely non-usage moves
  * to a new key and its old row lingers, double-counting. The same shape recurs
  * whenever a provider restates a cell away or a label changes, which is why it
@@ -80,7 +80,7 @@ describe("supersededTombstones supersedes what a collection no longer writes", (
     // rather than an extra row.
     expect(tombstones[0]!.tags_hash).toBe(staleKey.tags_hash);
     // Charge type and commitment id ride in that hash, so they are carried
-    // forward verbatim — a tombstone that changed them would describe a row
+    // forward verbatim: a tombstone that changed them would describe a row
     // whose hash no longer matches its own contents.
     expect(tombstones[0]!.charge_type).toBe(staleKey.charge_type);
     expect(tombstones[0]!.commitment_id).toBe(staleKey.commitment_id);
@@ -195,7 +195,7 @@ describe("supersededTombstones must not fire on thin evidence", () => {
 
   it("never zeroes a row pushed through the ingest API", () => {
     // Pushed rows carry a reserved `infrawrench:`-prefixed tag naming their
-    // source. A collector must never zero spend a user pushed — the two key
+    // source. A collector must never zero spend a user pushed: the two key
     // spaces are deliberately disjoint and neither owns the other.
     const pushed = stored({
       service: "Snowflake",
@@ -218,7 +218,7 @@ describe("supersededTombstones must not fire on thin evidence", () => {
     const rows = written([{ date: "2026-07-01", service: "Other", currency: "USD", amount: 1 }]);
     const [tombstone] = supersededTombstones(META, [stored()], rows);
     // `amortized_reported: 0` means "no opinion", so the amortized reader falls
-    // back to `amount` — which is also 0. Nothing to double-count either way.
+    // back to `amount`, which is also 0. Nothing to double-count either way.
     expect(tombstone!.amount).toBe(0);
     expect(tombstone!.amortized_amount).toBe(0);
     expect(tombstone!.amortized_reported).toBe(0);
@@ -251,7 +251,7 @@ describe("supersededTombstones repairs a period-native plugin's intra-period res
   it("zeroes the stranded prefixes the fixed dating no longer writes", () => {
     // The day rule cannot reach these: nothing rewrites 2026-08-15..18 ever
     // again, because the month's total now lives on the 1st. Reading the month
-    // as the restated unit is what retires them — on the next collection, with
+    // as the restated unit is what retires them: on the next collection, with
     // no operator step and nothing plugin-specific in this module.
     const tombstones = supersededTombstones(MISTRAL, pollutedAugust(), augustTotal(), {
       periodNative: true,
@@ -296,7 +296,7 @@ describe("supersededTombstones repairs a period-native plugin's intra-period res
   it("expands only a month whose first day the collection wrote", () => {
     // Cloudflare's charge periods follow each subscription's billing-cycle
     // anchor, Turso dates rows to an invoice due date, OVH to a bill's issue
-    // date — all period-native, none of them a calendar month filed on the 1st.
+    // date: all period-native, none of them a calendar month filed on the 1st.
     // Widening the unit to "whatever month a written row falls in" would let a
     // flaky page of one provider's invoice list zero a sibling invoice.
     const anchored = toCostDailyRows(MISTRAL, [
@@ -324,7 +324,7 @@ describe("supersededTombstones repairs a period-native plugin's intra-period res
 
   it("keeps every other guard while it does so", () => {
     // Guard 1: an empty fetch is still not evidence of anything, period-native
-    // or not — this is the guard that makes zeroing safe to run every day.
+    // or not; this is the guard that makes zeroing safe to run every day.
     expect(supersededTombstones(MISTRAL, pollutedAugust(), [], { periodNative: true })).toEqual([]);
 
     // Guard 3: a pushed row inside the period is still not a collector's to
@@ -345,7 +345,7 @@ describe("supersededTombstones repairs a period-native plugin's intra-period res
 describe("guard 3 depends on collectors keeping reserved keys out of `tags`", () => {
   it("does not store the synthetic charge-type and commitment entries it hashes", () => {
     // `hashTags` folds `infrawrench:charge_type` and `infrawrench:commitment`
-    // into `tags_hash` because the sort key cannot carry them — but it must not
+    // into `tags_hash` because the sort key cannot carry them, but it must not
     // write them into the `tags` column. Guard 3 skips any stored row whose
     // tags carry a reserved key, so if they *were* stored, every attribution
     // row a collector writes would look like a pushed row and reconciliation
@@ -404,8 +404,8 @@ describe("guard 3 depends on collectors keeping reserved keys out of `tags`", ()
 describe("getStoredCostRowKeys excludes rows that are already zero", () => {
   it("filters on both money columns, so a key is tombstoned once and not forever", async () => {
     // Without the filter a superseded key comes back on every subsequent
-    // collection looking exactly like a candidate again — still stored, still
-    // not written — and each one re-inserts an identical zero row. Idempotent,
+    // collection looking exactly like a candidate again (still stored, still
+    // not written) and each one re-inserts an identical zero row. Idempotent,
     // but unbounded write amplification against the table whose whole point is
     // retaining years of daily history.
     const ch = fakeClickHouse();

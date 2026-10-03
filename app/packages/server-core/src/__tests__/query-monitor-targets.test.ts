@@ -40,7 +40,7 @@ describe("isSqlTargetType", () => {
     expect(isSqlTargetType(typeOf("cloudflare", "d1-database"))).toBe(true);
     expect(isSqlTargetType(typeOf("turso", "turso-database"))).toBe(true);
     expect(isSqlTargetType(typeOf("databricks", "databricks-sql-warehouse"))).toBe(true);
-    // REST-queried, no connection string to resolve — `supportsRestQuery`.
+    // REST-queried, no connection string to resolve: `supportsRestQuery`.
     expect(isSqlTargetType(typeOf("gcp", "bigquery-dataset"))).toBe(true);
     expect(isSqlTargetType(typeOf("gcp", "spanner-database"))).toBe(true);
   });
@@ -52,7 +52,7 @@ describe("isSqlTargetType", () => {
 
 describe("sqlPeerIntegrationsOf", () => {
   it("finds the managed databases that expose SQL through a peer plugin", async () => {
-    // None of these declare resourceSqlDriver — their SQL surface is a peer
+    // None of these declare resourceSqlDriver: their SQL surface is a peer
     // integration mapping a connection string onto postgres/mysql/mssql.
     expect(isSqlTargetType(typeOf("neon", "neon-database"))).toBe(false);
     await expect(sqlPeerIntegrationsOf(typeOf("neon", "neon-database"))).resolves.toMatchObject([
@@ -123,7 +123,7 @@ describe("listQueryMonitorTargets", () => {
     const targets = await listQueryMonitorTargets("org-1");
 
     // Hetzner has neither an account driver nor a SQL-capable resource, so it
-    // is not offered at all — a monitor pointed at it could only ever fail.
+    // is not offered at all: a monitor pointed at it could only ever fail.
     expect(targets.map((t) => t.id)).toEqual(["acc-ch", "acc-gcp", "acc-pg"]);
 
     const clickhouse = targets.find((t) => t.id === "acc-ch")!;

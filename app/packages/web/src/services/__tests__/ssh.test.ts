@@ -94,7 +94,7 @@ describe("sshExecCapture", () => {
   it("counts bytes, not characters, and never splits a multi-byte character at the cap", async () => {
     const { promise, stream } = startCapture();
     // Fill to one byte under the cap, then send a 2-byte character: only its
-    // first byte fits, and the clipped tail must be dropped — not decoded into
+    // first byte fits, and the clipped tail must be dropped, not decoded into
     // a replacement character that would push the string back over budget.
     stream.emit("data", Buffer.alloc(CAPTURE_MAX_BYTES - 1, "a"));
     stream.emit("data", Buffer.from("é"));

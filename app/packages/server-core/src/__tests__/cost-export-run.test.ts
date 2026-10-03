@@ -4,7 +4,7 @@ import type { CostExportRecord } from "../cost-exports/store";
 /**
  * The run loop's exactly-once protocol.
  *
- * The hazard being tested is not "does an export upload" — it is what happens
+ * The hazard being tested is not "does an export upload": it is what happens
  * when the *outcome write* fails after the upload has already gone out. The
  * lease lives in `next_run_at`, so an unrecorded run is re-claimed half an hour
  * later and delivered a second time; for an HTTPS endpoint that is a duplicate
@@ -170,7 +170,7 @@ describe("runCostExport — a lost outcome write must not re-deliver", () => {
     const first = await runCostExport(exportRow(), noRetry);
 
     expect(uploadCostExportObject).toHaveBeenCalledTimes(1);
-    // The delivery happened, so the result says so — but the caller is told the
+    // The delivery happened, so the result says so, but the caller is told the
     // record of it did not land, rather than being handed a clean "succeeded".
     expect(first.status).toBe("succeeded");
     expect(first.error).toMatch(/could not be recorded/);

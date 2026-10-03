@@ -17,7 +17,7 @@ export function WebQuotasPanel({ orgId }: { orgId: string }) {
       setData(await apiGet<QuotaListResponse>(`/api/org/${encodeURIComponent(orgId)}/quotas`));
       setError(null);
     } catch (err) {
-      // The last feed deliberately stays on screen — QuotasSection renders a
+      // The last feed deliberately stays on screen: QuotasSection renders a
       // banner over it rather than blanking a drawn list.
       setError(err instanceof Error ? err.message : "Request failed");
     }

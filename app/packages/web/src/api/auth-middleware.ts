@@ -27,7 +27,7 @@ export interface AuthSession {
   email: string;
   /**
    * WorkOS session (`sid`) this request authenticated with, when there is one.
-   * Lets the account settings UI mark — and refuse to revoke — the session the
+   * Lets the account settings UI mark (and refuse to revoke) the session the
    * user is currently browsing from. Absent only if WorkOS ever hands us a
    * token without the claim.
    */
@@ -38,7 +38,7 @@ export interface AuthSession {
  * The `iwk_` API key a request authenticated with, when it did.
  *
  * Its presence is what tells the rest of the org middleware stack to stand
- * down — and what tells a handler it is not talking to a person. Deliberately
+ * down, and what tells a handler it is not talking to a person. Deliberately
  * *not* a place to look up authority: `permissions` already carries the key's
  * effective set, and a handler that reached into `scopes` here would be reading
  * the un-intersected ceiling rather than what the key may actually do.
@@ -58,8 +58,8 @@ declare module "hono" {
     role: ResolvedRole | null;
     apiKey: ApiKeyPrincipal;
     /**
-     * The verified claims of this request's bearer JWT — or null when the JWT
-     * failed verification — stashed by `agentOrgMiddleware` so that
+     * The verified claims of this request's bearer JWT (or null when the JWT
+     * failed verification) stashed by `agentOrgMiddleware` so that
      * `sessionMiddleware`, running next on the same request, does not verify
      * the same signature a second time. Unset (`undefined`) on requests the
      * agent middleware never saw.
@@ -67,7 +67,7 @@ declare module "hono" {
     bearerClaims: WorkosAccessTokenClaims | null;
     /**
      * Live break-glass grants already folded into `permissions`. Kept separate
-     * so a surface can say *why* the caller can do something — "until 14:32,
+     * so a surface can say *why* the caller can do something: "until 14:32,
      * because you asked for it" is a different statement from "your role
      * grants this", and collapsing them quietly normalises elevation.
      */
@@ -77,7 +77,7 @@ declare module "hono" {
 
 /**
  * Validates WorkOS session cookie and auto-provisions users in the DB.
- * Does NOT resolve an organization — use orgMiddleware for org-scoped routes.
+ * Does NOT resolve an organization: use orgMiddleware for org-scoped routes.
  */
 export const sessionMiddleware = createMiddleware(async (c, next) => {
   const cookieValue = getCookie(c, "wos-session");
@@ -94,7 +94,7 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
         return c.json({ error: "Unauthorized" }, 401);
       }
       // An agent-auth token's `sub` is a registration id. Handing it to
-      // `ensureUserFromClaims` would mint a `users` row keyed by that id — a
+      // `ensureUserFromClaims` would mint a `users` row keyed by that id: a
       // principal nobody created, holding whatever the row's org membership
       // later granted. Refuse before provisioning, and say why: this group is
       // the non-org surface (profile, MFA, org creation, admin), which is
@@ -227,8 +227,8 @@ export const orgMiddleware = createMiddleware(async (c, next) => {
  * Must run after sessionMiddleware + orgMiddleware on session-authed routes,
  * or be called manually for bearer-token endpoints.
  *
- * `permissions` here is the caller's role **union any live break-glass grant**
- * — the resolver folds those in for session principals. That is what makes an
+ * `permissions` here is the caller's role **union any live break-glass grant**:
+ * the resolver folds those in for session principals. That is what makes an
  * elevation reach every surface at once (HTTP, the WebSocket gateway through
  * `POST /ws-token`, chat, MCP tools) instead of each having to remember.
  */
@@ -255,7 +255,7 @@ export const permissionsMiddleware = createMiddleware(async (c, next) => {
  * intersected with its owner's role right now, so a key can never do something
  * its holder could not do while signed in. See `auth/effective-permissions.ts`.
  *
- * A no-op — straight through to `sessionMiddleware` — for any request that
+ * A no-op (straight through to `sessionMiddleware`) for any request that
  * isn't presenting an `iwk_` bearer token. Session cookies and WorkOS access
  * tokens take the identical path they take today.
  *
@@ -276,7 +276,7 @@ export const apiKeyOrgMiddleware = createMiddleware(async (c, next) => {
   if (!auth?.apiKeyId) return c.json({ error: "Unauthorized" }, 401);
 
   // A key is pinned to the org it was minted in. Presenting it against another
-  // org's URL is a 403 whatever the key holds — there is no cross-org key.
+  // org's URL is a 403 whatever the key holds: there is no cross-org key.
   if (auth.organizationId !== orgId) {
     return c.json({ error: "API key belongs to a different organization" }, 403);
   }
@@ -286,7 +286,7 @@ export const apiKeyOrgMiddleware = createMiddleware(async (c, next) => {
 
   // The owner's `users` row, which is also what `AuthSession.email` needs. A
   // deleted user cascades away their keys and memberships, so this is belt and
-  // braces — but it is the belt that is actually checked, rather than a
+  // braces, but it is the belt that is actually checked, rather than a
   // property of a foreign key three tables away.
   const [owner] = await db
     .select({ email: users.email })
@@ -310,7 +310,7 @@ export const apiKeyOrgMiddleware = createMiddleware(async (c, next) => {
   c.set("permissions", permissions);
   // A key holds no role. `role` exists so a handler can ask "is the caller an
   // owner" (routes/team.ts does, for owner-only mutations); answering `null`
-  // makes those fail closed. The routes that ask are denied to keys anyway —
+  // makes those fail closed. The routes that ask are denied to keys anyway:
   // this is the second lock on the same door.
   c.set("role", null);
   // Break-glass never reaches a key; `effectivePermissions` resolves key
@@ -325,10 +325,10 @@ export const apiKeyOrgMiddleware = createMiddleware(async (c, next) => {
  * Authenticate an agent credential against the org tree.
  *
  * Deliberately a sibling of {@link apiKeyOrgMiddleware} rather than a branch
- * inside it. The two principals differ in the places that matter — an agent is
+ * inside it. The two principals differ in the places that matter: an agent is
  * pinned to its org by a registration row rather than by a key row, its
  * permissions are resolved by `resolveAgentPrincipal` rather than by
- * intersecting stored scopes, and its denial policy is its own — and folding
+ * intersecting stored scopes, and its denial policy is its own, and folding
  * them together would mean one function with two of everything.
  *
  * The context it leaves behind is identical in shape to both other paths, so
@@ -354,7 +354,7 @@ export const agentOrgMiddleware = createMiddleware(async (c, next) => {
     if (!auth?.agentRegistrationId) return c.json({ error: "Unauthorized" }, 401);
   } else {
     // A WorkOS agent token is a JWT, so it cannot be recognised by prefix.
-    // Verify it once and stash the claims — `sessionMiddleware` runs next on
+    // Verify it once and stash the claims: `sessionMiddleware` runs next on
     // every non-agent bearer request, and without the stash this hottest
     // authenticated path would pay the JWKS signature check twice.
     const claims = await verifyWorkosAccessToken(token);
@@ -394,7 +394,7 @@ export const agentOrgMiddleware = createMiddleware(async (c, next) => {
 
   c.set("session", { userId: auth.userId, email: actor.email });
   c.set("organizationId", orgId);
-  // Already final — intersected with the claimer's role and the agent ceiling
+  // Already final: intersected with the claimer's role and the agent ceiling
   // by `resolveAgentPrincipal`, so there is nothing left to narrow here.
   c.set("permissions", auth.scopes ?? []);
   // Same reasoning as the key path: an agent holds no role, and answering
@@ -431,7 +431,7 @@ export async function ensureUserFromClaims(
     .limit(1);
   if (existing[0]) return existing[0];
 
-  // Access-token JWTs may not include email — fall back to the WorkOS user
+  // Access-token JWTs may not include email: fall back to the WorkOS user
   // endpoint so we can provision a new row.
   let email = claimEmail;
   let firstName: string | null = null;
@@ -471,7 +471,7 @@ async function provisionUser(user: {
 
 /**
  * Returns true if the user already has a membership row in the given org.
- * Never creates organizations or memberships — org creation is exclusively
+ * Never creates organizations or memberships: org creation is exclusively
  * handled by `POST /api/orgs`, and memberships by explicit invites.
  */
 export async function hasMembership(userId: string, orgId: string): Promise<boolean> {
@@ -493,7 +493,7 @@ export interface UserOrganization {
 
 /**
  * The organizations a user belongs to, oldest membership first. Used by callers
- * that have no org in hand — notably MCP, where the OAuth token is not
+ * that have no org in hand: notably MCP, where the OAuth token is not
  * guaranteed to carry an `org_id` claim and there is no UI to pick one.
  * Read-only: it can only ever return orgs the user is already a member of.
  */

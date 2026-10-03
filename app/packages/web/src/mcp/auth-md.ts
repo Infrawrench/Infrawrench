@@ -1,5 +1,5 @@
 /**
- * `GET /auth.md` — the agent registration skill document.
+ * `GET /auth.md`: the agent registration skill document.
  *
  * Served from our own origin rather than proxied from a vendor, because the
  * flow it describes is ours: we mint the credential, we own the claim ceremony,
@@ -7,7 +7,7 @@
  * decisions no generated document would know about.
  *
  * Written as instructions to an agent, in the imperative, with literal curl.
- * That is the format's whole point — an agent that finds this should be able to
+ * That is the format's whole point: an agent that finds this should be able to
  * act on it without a human translating, and without an SDK.
  */
 import { Hono } from "hono";

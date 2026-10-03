@@ -25,7 +25,7 @@ class FakeSshClient extends EventEmitter {
 
   end() {
     this.ended = true;
-    // Real ssh2 clients emit "close" when ended — the chain establishment
+    // Real ssh2 clients emit "close" when ended: the chain establishment
     // promise relies on this to settle after a concurrent teardown.
     this.emit("close");
   }
@@ -111,7 +111,7 @@ vi.mock("@/services/host-validation", () => ({
 }));
 
 /**
- * The shared-console hub is real in these tests — the proxy's input and resize
+ * The shared-console hub is real in these tests: the proxy's input and resize
  * gates go through it, and stubbing it would stub out the thing being checked.
  * Its *store* is not: it reaches server-core's own `db/client`, which is a
  * different module specifier from the `@/db/client` mocked above and would
@@ -247,7 +247,7 @@ describe("handleSshSession", () => {
     mockForwardOutHop.mockRejectedValue(new Error("stop here"));
     const ws = fakeWs();
     // A private target is exactly what a jump host is for, so the guard must
-    // not fire — reaching hop establishment at all proves it didn't.
+    // not fire: reaching hop establishment at all proves it didn't.
     const session = handleSshSession(ws as never, "org-1", "acct-1", undefined, {
       ...DIRECT,
       host: "10.0.0.5",
@@ -435,7 +435,7 @@ describe("handleSshSession", () => {
 
     ws.emit("message", JSON.stringify({ type: "ssh:data", data: btoa("ls\r") }));
     expect(recorder.onInput).toHaveBeenCalledTimes(1);
-    // The keystroke still reaches the host — the tee is a second consumer,
+    // The keystroke still reaches the host: the tee is a second consumer,
     // never a filter.
     expect(stream.written).toHaveLength(1);
 
@@ -448,8 +448,8 @@ describe("handleSshSession", () => {
 
   it("keeps the terminal working when the recorder cannot be opened", async () => {
     selectRows([KEY_ROW]);
-    // `startSessionRecording` returns null for every not-recording case — opted
-    // out, settings unreadable, insert failed — so the proxy has one branch and
+    // `startSessionRecording` returns null for every not-recording case (opted
+    // out, settings unreadable, insert failed) so the proxy has one branch and
     // a broken recorder is indistinguishable from recording being off.
     mockStartSessionRecording.mockResolvedValue(null);
     const ws = fakeWs();
@@ -489,7 +489,7 @@ describe("handleSshSession", () => {
     ws.close();
     release!();
 
-    // No shell — but the row must not be left saying "recording" forever.
+    // No shell, but the row must not be left saying "recording" forever.
     await vi.waitFor(() => expect(recorder.finish).toHaveBeenCalled());
     expect(conn.shellCalled).toBe(false);
   });

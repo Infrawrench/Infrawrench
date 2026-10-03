@@ -24,14 +24,14 @@ function hashToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
 }
 
-/** GET /api/invitations/by-token/:token — get invite details (for the accept page) */
+/** GET /api/invitations/by-token/:token: get invite details (for the accept page) */
 app.get("/by-token/:token", async (c) => {
   const token = c.req.param("token");
   const hashedToken = hashToken(token);
 
   // Only return invites that are still pending and unexpired. Returning the
   // email/org for an already-accepted or expired invite would leak who was
-  // invited to which org — treat those as 404.
+  // invited to which org: treat those as 404.
   const rows = await db
     .select({
       id: invitations.id,
@@ -69,7 +69,7 @@ app.get("/by-token/:token", async (c) => {
   });
 });
 
-/** POST /api/invitations/accept — accept an invitation by token */
+/** POST /api/invitations/accept: accept an invitation by token */
 app.post("/accept", async (c) => {
   const session = c.get("session");
   const { token } = await c.req.json<{ token: string }>();

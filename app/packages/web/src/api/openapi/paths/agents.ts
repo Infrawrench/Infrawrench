@@ -5,7 +5,7 @@ import type { BuildContext } from "../context";
 const Tool = z.enum(["codex", "claude-code"]);
 // How the session is driven. "terminal" attaches the tool's CLI in an SSH
 // tab; "t3-code" runs the T3 Code server, which drives that same CLI and is
-// used from T3 Code's own client. Orthogonal to `tool` — T3 Code is a
+// used from T3 Code's own client. Orthogonal to `tool`: T3 Code is a
 // control surface, not an agent. Optional for clients predating it.
 const Surface = z.enum(["terminal", "t3-code"]);
 // How a T3 Code server is reached: T3's hosted relay ("t3-connect", the

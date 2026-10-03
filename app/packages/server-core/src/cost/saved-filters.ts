@@ -2,19 +2,19 @@
  * Query-time resolution of a saved cost filter reference.
  *
  * Lives in server-core, not the web package, because the two consumers span
- * both: `runCostQuery` (web — the HTTP API, the MCP/chat tools, and therefore
- * the CLI) and `budgetMonthStatus` (here — also driven by the poller's budget
+ * both: `runCostQuery` (web; the HTTP API, the MCP/chat tools, and therefore
+ * the CLI) and `budgetMonthStatus` (here; also driven by the poller's budget
  * evaluation pass). One resolver means every surface agrees on the one rule
  * that matters:
  *
  * **A reference that fails to resolve is an error, never an empty filter.**
- * A saved filter is subtractive — it narrows scope — so the failure mode of
+ * A saved filter is subtractive (it narrows scope) so the failure mode of
  * "couldn't find it, carry on" is running the query over *everything*. For a
  * graph that is a wrong chart; for a budget it re-scopes the alert to all
  * spend, which can fire a page that should not fire or, worse, keep one quiet
  * that should. Deletion of a referenced filter is refused at the API
  * (services/saved-cost-filters.ts in web), so hitting this error means a race
- * or corrupt data — both worth a loud failure.
+ * or corrupt data: both worth a loud failure.
  */
 import { and, eq, isNull } from "drizzle-orm";
 

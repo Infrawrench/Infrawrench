@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApp } from "./test-utils";
 
 /**
- * The channel upsert. Adding a channel no longer decides what it receives —
- * that moved to `alert_rules` — so a channel row is just an identity plus a
+ * The channel upsert. Adding a channel no longer decides what it receives
+ * (that moved to `alert_rules`) so a channel row is just an identity plus a
  * cached name, and the upsert exists to make re-adding an existing channel
  * idempotent.
  *
@@ -34,7 +34,7 @@ vi.mock("@infrawrench/server-core/slack", () => ({
 const { slackRoutes } = await import("@/api/routes/slack");
 const buildApp = () => buildTestApp(slackRoutes);
 
-/** The org owns installation inst-1 — the upsert's precondition. */
+/** The org owns installation inst-1: the upsert's precondition. */
 function mockLiveInstallations() {
   mockSelect.mockReturnValue({
     from: () => ({ where: () => Promise.resolve([{ id: "inst-1" }]) }),

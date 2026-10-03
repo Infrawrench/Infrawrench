@@ -88,7 +88,7 @@ describe("hashTags", () => {
 
     it("separates charge types on untagged rows too", () => {
       // The untagged path used to short-circuit to "0" before looking at
-      // anything else — a credit with no tags would have collapsed onto the
+      // anything else: a credit with no tags would have collapsed onto the
       // usage row it was credited against.
       expect(hashTags(undefined, { chargeType: "credit" })).not.toBe("0");
       expect(hashTags(undefined, { chargeType: "credit" })).not.toBe(
@@ -169,7 +169,7 @@ describe("toCostDailyRows", () => {
     // The failure this guards: cost_daily is a ReplacingMergeTree keyed on
     // tags_hash (charge_type is NOT in the sort key), so three rows identical
     // in every key column would be treated as three versions of one row and
-    // FINAL would keep only the last ingested — the credit would eat the usage.
+    // FINAL would keep only the last ingested; the credit would eat the usage.
     const rows = toCostDailyRows({ organizationId: "org1", accountId: "acc1", pluginId: "aws" }, [
       { date: "2026-07-01", service: "AmazonEC2", currency: "USD", amount: 100 },
       {

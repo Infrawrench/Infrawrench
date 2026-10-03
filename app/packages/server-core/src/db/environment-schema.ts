@@ -10,14 +10,14 @@ import type {
 import { accounts, organizations, users } from "./core-schema.js";
 
 /**
- * Ephemeral environments — the template half.
+ * Ephemeral environments: the template half.
  *
  * A template is a **document**, not a set of rows: `members` and `parameters`
  * are jsonb (`EnvironmentTemplateMember[]` / `EnvironmentParameter[]` in
  * client-core) because the pure code that orders, validates and instantiates
  * them works on the whole document at once, and splitting it into tables would
  * mean reassembling it on every read while gaining no query we ever run. The
- * one thing we *do* query — "which templates does this org have" — is the org
+ * one thing we *do* query ("which templates does this org have") is the org
  * index.
  *
  * A member names an account, but not with a FK: an account can be disconnected
@@ -34,9 +34,9 @@ export const environmentTemplates = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
-    /** Fields the user chose to vary — `EnvironmentParameter[]`. */
+    /** Fields the user chose to vary: `EnvironmentParameter[]`. */
     parameters: jsonb("parameters").$type<EnvironmentParameter[]>().notNull().default([]),
-    /** The captured resources — `EnvironmentTemplateMember[]`. */
+    /** The captured resources: `EnvironmentTemplateMember[]`. */
     members: jsonb("members").$type<EnvironmentTemplateMember[]>().notNull().default([]),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -59,7 +59,7 @@ export const environmentTemplates = pgTable(
  * turns on: a create that succeeded and was never recorded is a cloud resource
  * nobody can find, and it keeps billing.
  *
- * `templateId` is nullable and set null on delete — the template is a
+ * `templateId` is nullable and set null on delete: the template is a
  * convenience, the instance owns real resources and must outlive it. Hence
  * `templateName` denormalized.
  *
@@ -78,7 +78,7 @@ export const environmentInstances = pgTable(
     templateId: text("template_id").references(() => environmentTemplates.id, {
       onDelete: "set null",
     }),
-    /** Template name at instantiation — survives the template's deletion. */
+    /** Template name at instantiation: survives the template's deletion. */
     templateName: text("template_name").notNull(),
     name: text("name").notNull(),
     /** Slug prepended to every member's name field. */
@@ -89,7 +89,7 @@ export const environmentInstances = pgTable(
     /** The TTL deadline every member lease is set to. */
     expiresAt: timestamp("expires_at").notNull(),
     note: text("note"),
-    /** Why a partial/failed instance is in that state — never silent. */
+    /** Why a partial/failed instance is in that state, never silent. */
     error: text("error"),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -106,7 +106,7 @@ export const environmentInstances = pgTable(
 );
 
 /**
- * A member of a live instance — the row that stops a created resource ever
+ * A member of a live instance: the row that stops a created resource ever
  * being orphaned.
  *
  * It is inserted `pending` before the create runs and updated to `created`
@@ -135,7 +135,7 @@ export const environmentInstanceMembers = pgTable(
     accountId: text("account_id")
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
-    /** Null until the create returns — and after a create that failed. */
+    /** Null until the create returns, and after a create that failed. */
     resourceId: text("resource_id"),
     externalId: text("external_id"),
     displayName: text("display_name").notNull(),
@@ -148,14 +148,14 @@ export const environmentInstanceMembers = pgTable(
      * Due time **and** claim lease for the background repair pass, following
      * the `resource_leases.next_check_at` protocol: null = due, and claiming
      * writes `now() + lease` so N poller replicas never repair one member
-     * twice. Repair is not idempotent — it creates leases and can delete a
-     * resource — so it has to be claimed rather than merely bounded.
+     * twice. Repair is not idempotent (it creates leases and can delete a
+     * resource) so it has to be claimed rather than merely bounded.
      */
     nextRepairAt: timestamp("next_repair_at"),
     repairAttempts: integer("repair_attempts").notNull().default(0),
     /** Why the last repair attempt failed. Never logged-and-forgotten. */
     repairError: text("repair_error"),
-    /** Creation order — the topological order the plan ran in. */
+    /** Creation order: the topological order the plan ran in. */
     position: integer("position").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -170,7 +170,7 @@ export const environmentInstanceMembers = pgTable(
 
 /**
  * The org's rails on how long an ephemeral environment may live. A singleton
- * per org, absent until someone changes it — the reader normalizes a missing
+ * per org, absent until someone changes it: the reader normalizes a missing
  * row into the shipped defaults, so nothing has to seed it.
  */
 export const environmentSettings = pgTable("environment_settings", {

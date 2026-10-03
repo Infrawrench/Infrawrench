@@ -8,7 +8,7 @@ const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 
 // Prepaid capacity queries its own table, so it is stubbed rather than queued
-// into selectSequence — these tests are about which source wins.
+// into selectSequence: these tests are about which source wins.
 const mockActiveCapacitySeats = vi.fn<() => Promise<number>>();
 vi.mock("../billing/capacity-slots", () => ({
   activeCapacitySeats: () => mockActiveCapacitySeats(),
@@ -50,7 +50,7 @@ describe("planAccess", () => {
   it("denies a placeholder trialing row from an abandoned checkout", async () => {
     // The checkout route inserts status "trialing" with no Stripe subscription
     // before payment; if checkout is abandoned that row lingers forever and
-    // must grant nothing — including the "reactivate" reason, since this org
+    // must grant nothing, including the "reactivate" reason, since this org
     // never subscribed.
     selectSequence(orgRow(false), [sub("trialing", null)]);
     expect(await planAccess("org-1")).toEqual({ paid: false, reason: "none" });
@@ -130,7 +130,7 @@ describe("planAccess", () => {
   });
 
   it("grants a prepaid slot even when the subscription has lapsed", async () => {
-    // A slot outlives the monthly plan by design — cancelling the subscription
+    // A slot outlives the monthly plan by design: cancelling the subscription
     // cannot revoke a term that is already paid for.
     mockActiveCapacitySeats.mockResolvedValue(2);
     selectSequence(orgRow(false), [sub("canceled")]);

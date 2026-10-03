@@ -1,11 +1,11 @@
 /**
- * Backup coverage — the org's recovery objectives.
+ * Backup coverage: the org's recovery objectives.
  *
  * There is exactly one table, and it holds *policies*, not findings. Coverage
  * is recomputed from synced inventory on every read (`backups/feed.ts`,
  * `computeBackupCoverage`) exactly as posture findings are, for the same
- * reason: a finding has no identity of its own — it is a fact about the state
- * of the world at the moment you asked — and materialising one would only
+ * reason: a finding has no identity of its own (it is a fact about the state
+ * of the world at the moment you asked) and materialising one would only
  * create a second thing that can be stale.
  *
  * Lives in its own module (importing only `core-schema.js`) and is re-exported
@@ -19,15 +19,15 @@ import { organizations, users } from "./core-schema.js";
  * One recovery objective, applied to whichever stateful resources its selector
  * picks out.
  *
- * The selector is two independent narrowings rather than a query language —
- * resource types and one tag — because those are the two axes people actually
+ * The selector is two independent narrowings rather than a query language
+ * (resource types and one tag) because those are the two axes people actually
  * reason about ("all production volumes", "every database"). Both empty means
  * every stateful resource, which is the useful shape for an org's first
  * policy.
  *
  * `resourceTypeIds` is a comma-joined text column rather than jsonb or an array
  * type: the values are short opaque identifiers with no commas, the list is
- * only ever read whole, and text keeps the row readable in a psql session —
+ * only ever read whole, and text keeps the row readable in a psql session;
  * the same call the sync path makes for comma-joined id fields.
  *
  * `createdBy` is nulled rather than cascaded when the user is deleted: the
@@ -53,7 +53,7 @@ export const backupPolicies = pgTable(
     /** Provider-native retention must be at least this many days; null = no demand. */
     minRetentionDays: integer("min_retention_days"),
     /**
-     * Off keeps the row and stops it judging anything — the schedules `paused`
+     * Off keeps the row and stops it judging anything: the schedules `paused`
      * stance. Turning a policy off to investigate a noisy finding must not
      * cost you the policy.
      */

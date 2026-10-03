@@ -5,12 +5,12 @@ import { requirePermission } from "../../auth/permissions";
 const app = new Hono();
 
 /**
- * GET /api/org/:orgId/rightsizing — "Oversized" recommendations: resources
+ * GET /api/org/:orgId/rightsizing; "Oversized" recommendations: resources
  * whose plugin declares `rightsizing`, whose stored p95 CPU/memory over the
  * last 14 days sits under the thresholds, each matched with the cheapest
  * catalog size that still clears headroom and a live-priced monthly saving.
  *
- * `resources:read`, like orphans — the list is derived from the org's
+ * `resources:read`, like orphans: the list is derived from the org's
  * resource set (prices are catalog rates, not the org's billing data).
  * Recomputed on demand with a short in-memory cache; `?refresh=true`
  * bypasses it (the section's Refresh button).

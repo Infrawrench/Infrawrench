@@ -3,7 +3,7 @@
  * forced sub-model call.
  *
  * This is the shape Claude Code uses, and the reason for it is that neither we
- * nor Anthropic's API expose a raw "give me ten links" endpoint — `web_search`
+ * nor Anthropic's API expose a raw "give me ten links" endpoint: `web_search`
  * only exists as a tool a model may call. So the search *tool* the chat agent
  * sees is implemented by handing the query to a cheap model that is compelled to
  * search (`tool_choice` pins it to the tool, so it cannot answer from memory)
@@ -12,7 +12,7 @@
  * The sub-model is Haiku: it is doing retrieval and compression, not reasoning,
  * and the expensive model that asked for the search is the one that will use the
  * answer. Haiku also can't do programmatic tool calling, which settles the tool
- * version — `web_search_20250305` defaults to `allowed_callers: ["direct"]`,
+ * version: `web_search_20250305` defaults to `allowed_callers: ["direct"]`,
  * where the newer `_20260209` would try to route the search through code
  * execution and 400 on a model that can't.
  */

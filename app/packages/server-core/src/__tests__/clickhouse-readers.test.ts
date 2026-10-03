@@ -4,7 +4,7 @@ import { fakeClickHouse } from "./helpers/fake-clickhouse";
 /**
  * The readers run against a real Drizzle database over a fake driver, so the
  * SQL these assertions see is the SQL ClickHouse would get. Rows are given as
- * objects whose keys are written **in each query's projection order** — see
+ * objects whose keys are written **in each query's projection order**: see
  * `helpers/fake-clickhouse.ts`.
  */
 const ch = fakeClickHouse();

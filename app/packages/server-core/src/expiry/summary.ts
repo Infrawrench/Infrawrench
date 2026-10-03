@@ -1,13 +1,13 @@
 /**
  * Pure capping and rendering for expiry alerts. No I/O lives here so the
- * message shape is unit-testable without a database — the same split as
+ * message shape is unit-testable without a database: the same split as
  * `drift/summary.ts`. `alerts.ts` does the claim, the feed read and the
  * fan-out.
  *
  * Volume is structurally bounded before this module runs: the cooldown claim
  * caps the message rate at one per org per 24h, and the feed itself is one
- * bounded computation over stored rows. What this module bounds is the *body*
- * — at most {@link MAX_LISTED_DEADLINES} named deadlines, soonest first, with
+ * bounded computation over stored rows. What this module bounds is the *body*:
+ * at most {@link MAX_LISTED_DEADLINES} named deadlines, soonest first, with
  * the rest collapsed into a trailing count.
  */
 import type { ExpiryItem, ExpirySeverity } from "@infrawrench/client-core";
@@ -25,7 +25,7 @@ export interface ExpiryAlertSummary {
   total: number;
   /** Count per alertable severity; every bucket present, zeros included. */
   counts: Record<AlertSeverity, number>;
-  /** The deadlines named in the body — the soonest, capped. */
+  /** The deadlines named in the body: the soonest, capped. */
   items: ExpiryItem[];
   /** How many deadlines the body does not name. */
   omitted: number;
@@ -71,7 +71,7 @@ export function expiryTitle(summary: ExpiryAlertSummary): string {
   return `Expiry radar: ${plural(summary.total, "deadline")} within ${summary.leadDays} days`;
 }
 
-/** `"<name> — <label> in 12d"` / `"<name> — <label> 3d overdue"`. */
+/** `"<name>: <label> in 12d"` / `"<name>: <label> 3d overdue"`. */
 export function expiryItemLine(item: ExpiryItem): string {
   const when =
     item.daysRemaining < 0 ? `${-item.daysRemaining}d overdue` : `in ${item.daysRemaining}d`;
@@ -83,7 +83,7 @@ function countsLine(summary: ExpiryAlertSummary): string {
 }
 
 /**
- * The body as plain-text lines, shared by every transport — the same split the
+ * The body as plain-text lines, shared by every transport: the same split the
  * drift and weekly-digest bodies use. `bold` wraps a fragment in the
  * transport's bold markup, or returns it unchanged for plain text (the Teams
  * Adaptive Card escaper turns `*` into a literal asterisk, so Teams must not
@@ -109,14 +109,14 @@ export function formatExpirySlackBody(summary: ExpiryAlertSummary): string {
   return expiryLines(summary, (s) => `*${s}*`).join("\n");
 }
 
-/** Teams plain-text body — the Adaptive Card escaper strips markdown anyway. */
+/** Teams plain-text body: the Adaptive Card escaper strips markdown anyway. */
 export function formatExpiryTeamsBody(summary: ExpiryAlertSummary): string {
   return expiryLines(summary, (s) => s).join("\n\n");
 }
 
 /**
  * Mobile push body. A notification banner shows two or three lines, so it gets
- * the counts and the single soonest deadline — the deep link carries the
+ * the counts and the single soonest deadline: the deep link carries the
  * reader to the full radar.
  */
 export function formatExpiryPushBody(summary: ExpiryAlertSummary): string {

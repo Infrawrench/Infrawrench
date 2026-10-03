@@ -1,5 +1,5 @@
 /**
- * Zod schema for the org config document — what `POST /config/plan` and
+ * Zod schema for the org config document: what `POST /config/plan` and
  * `POST /config/apply` validate their bodies against.
  *
  * The *types* it describes live in `@infrawrench/client-core` (`org-config.ts`)
@@ -8,8 +8,8 @@
  * `@infrawrench/ui/cost/config` convention, applied one package over because
  * the document is a server contract rather than an editor contract.
  *
- * Where a section's payload is already validated elsewhere — cost filters,
- * budget thresholds, tag policies, widget configs — this schema reuses the
+ * Where a section's payload is already validated elsewhere (cost filters,
+ * budget thresholds, tag policies, widget configs) this schema reuses the
  * existing zod objects rather than restating them, so a config document can
  * never smuggle in a shape the hand-editing route would have refused.
  */
@@ -148,7 +148,7 @@ const dashboardCardSchema = z.discriminatedUnion("kind", [
       widgetKind: z.enum(DASHBOARD_WIDGET_KINDS),
       title: z.string().max(ORG_CONFIG_LIMITS.maxNameLength).default(""),
       // Validated against `widgetConfigSchemaFor(kind)` on apply, once the
-      // budget/graph reference has been resolved back into it — the kinds that
+      // budget/graph reference has been resolved back into it: the kinds that
       // carry one would fail their own schema while the id is lifted out.
       config: z.record(z.unknown()).default({}),
       budgetKey: key.optional(),
@@ -369,7 +369,7 @@ const orgConfigDocumentSchema = z
   })
   .strict();
 
-/** The document after parsing — every collection defaulted, ids resolved later. */
+/** The document after parsing: every collection defaulted, ids resolved later. */
 export type ParsedOrgConfigDocument = z.infer<typeof orgConfigDocumentSchema>;
 
 /* -------------------------------- validation ------------------------------- */
@@ -426,7 +426,7 @@ export function parseOrgConfigDocument(raw: unknown): ParsedOrgConfigDocument {
   return parsed.data;
 }
 
-/** Which sections a document actually carries — what apply checks permissions on. */
+/** Which sections a document actually carries: what apply checks permissions on. */
 export function orgConfigDocumentSections(doc: ParsedOrgConfigDocument): OrgConfigSection[] {
   return ORG_CONFIG_SECTIONS.filter((s) => doc[s as keyof ParsedOrgConfigDocument] !== undefined);
 }
@@ -441,7 +441,7 @@ type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
  * fails to type-check in the CLI.
  *
  * The tuple is *instantiated* below rather than merely declared: `Exact` widens
- * to `never` on a mismatch, and a type alias to `never` is perfectly legal — it
+ * to `never` on a mismatch, and a type alias to `never` is perfectly legal; it
  * is assigning `true` to it that actually fails.
  */
 type SchemaMatchesOrgConfigContract = [

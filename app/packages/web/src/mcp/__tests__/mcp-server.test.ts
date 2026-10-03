@@ -64,7 +64,7 @@ describe("MCP server org scoping", () => {
     const listResources = tools.find((t) => t.name === "list_resources");
 
     expect(listResources?.inputSchema.properties).toHaveProperty("org_id");
-    // Optional — a caller that omits it still gets the default org.
+    // Optional: a caller that omits it still gets the default org.
     expect(listResources?.inputSchema.required ?? []).not.toContain("org_id");
   });
 

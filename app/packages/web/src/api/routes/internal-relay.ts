@@ -1,9 +1,9 @@
 /**
  * The receiving end of the cross-replica relay.
  *
- * A session that lives in one pod's memory — today a Linux application
+ * A session that lives in one pod's memory: today a Linux application
  * session, tomorrow the shared-console pty and the bastion registry that
- * `infra/k8s/web-ws-ingress.yaml` says are waiting on the same mechanism — can
+ * `infra/k8s/web-ws-ingress.yaml` says are waiting on the same mechanism; can
  * only be driven by the pod holding it. `services/replica-relay.ts` leases the
  * session to that pod and forwards calls here; this route runs them.
  *
@@ -12,7 +12,7 @@
  * `INTERNAL_RELAY_SECRET`, compared in constant time, and nothing else. This is
  * a pod-to-pod endpoint: the caller is another replica of this same
  * deployment, and what it forwards is an operation it has *already*
- * authorised — `tools/linux-apps.ts` checked `resources:execute` before any of
+ * authorised; `tools/linux-apps.ts` checked `resources:execute` before any of
  * this happened. So the secret is not standing in for a user's permissions; it
  * is what makes "this came from one of our pods" a fact rather than a hope.
  *

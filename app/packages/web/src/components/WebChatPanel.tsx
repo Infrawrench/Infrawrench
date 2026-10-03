@@ -21,7 +21,7 @@ interface Props {
 }
 
 /**
- * Org-level AI chat rendered as a workspace tab — the web counterpart of the
+ * Org-level AI chat rendered as a workspace tab: the web counterpart of the
  * desktop CloudChatPanel. ConversationView keeps the tab's title in sync with
  * the conversation (they auto-rename after the first message).
  */

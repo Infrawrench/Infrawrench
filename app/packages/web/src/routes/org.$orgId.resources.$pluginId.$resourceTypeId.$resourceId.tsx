@@ -118,7 +118,7 @@ export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceT
       ...(typeof search["sshKeyId"] === "string" ? { sshKeyId: search["sshKeyId"] } : {}),
       ...(typeof search["sshKeyName"] === "string" ? { sshKeyName: search["sshKeyName"] } : {}),
       // A window of a remote application, addressed at its host's URL. This
-      // list is a whitelist — anything absent from it is dropped from the URL
+      // list is a whitelist: anything absent from it is dropped from the URL
       // on navigation, which left `#window` with no window to identify and
       // sent the tab to the resource detail instead.
       // `window` arrives as a number: the router's default search parser reads
@@ -140,7 +140,7 @@ interface ResourcePanelProps {
   resourceId: string;
   accountId?: string | undefined;
   parent?: string | undefined;
-  /** "ssh" / "sftp" / "" — derived from the tab target's `view`. */
+  /** "ssh" / "sftp" / "": derived from the tab target's `view`. */
   view: string;
   agentSessionId?: string | undefined;
   sshKeyId?: string | undefined;
@@ -149,7 +149,7 @@ interface ResourcePanelProps {
   initialCwd?: string | undefined;
   /**
    * Title to show instead of the resource's own display name, for panels
-   * standing in for something else — an account-root resource rendered as its
+   * standing in for something else: an account-root resource rendered as its
    * account's page. Applies to the header and the workspace tab together, so
    * the two can't disagree.
    */
@@ -208,7 +208,7 @@ export function ResourcePanel({
         })
         .catch((e) => {
           if (cancelled) return;
-          // Retry up to 3 times on "not found" — resource may still be propagating
+          // Retry up to 3 times on "not found": resource may still be propagating
           if (retries < 3 && e.message?.includes("not found")) {
             retries++;
             retryTimer = setTimeout(load, 1000 * retries);
@@ -242,8 +242,8 @@ export function ResourcePanel({
           if (!cancelled) setStore({ forKey: detailUrl, data: d, error: null });
         })
         .catch((e: unknown) => {
-          // Keep the last-good detail on a failed background refresh, but log it
-          // — the initial load surfaces errors, so this shouldn't stay invisible.
+          // Keep the last-good detail on a failed background refresh, but log it:
+          // the initial load surfaces errors, so this shouldn't stay invisible.
           console.error(`[resource-detail] refresh failed for ${detailUrl}:`, e);
         });
     }
@@ -257,7 +257,7 @@ export function ResourcePanel({
           typeId: resourceTypeId,
         });
       } catch {
-        // ignore — fall through to re-read whatever we have
+        // ignore: fall through to re-read whatever we have
       }
       if (!cancelled) refreshFromDb();
     }

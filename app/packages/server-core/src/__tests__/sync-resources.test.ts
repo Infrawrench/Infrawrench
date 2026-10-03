@@ -7,7 +7,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
  * reconciling them into the DB + ClickHouse. We mock every external dep:
  *
  *  - db: real Drizzle over a recording driver (helpers/fake-postgres.ts).
- *    Result rows are queued FIFO in statement order — writes consume a queue
+ *    Result rows are queued FIFO in statement order: writes consume a queue
  *    slot too, so a queued `[]` marks each write between two reads that need
  *    rows; anything past the queue resolves to the empty default. A full
  *    account sync issues: account select, prior-snapshot select, one upsert
@@ -96,7 +96,7 @@ function makeClient(over: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-// Keys in `accounts` column order — the lookup selects the whole row.
+// Keys in `accounts` column order: the lookup selects the whole row.
 function accountRow(over: Partial<Record<string, unknown>> = {}) {
   return {
     id: "acc-1",

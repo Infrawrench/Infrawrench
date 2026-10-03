@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The cooldown protocol every pager shares. The store is faked here because
- * what matters is the protocol around it — claim, fan out, roll back a claim
- * whose page reached nobody — not which table backs it.
+ * what matters is the protocol around it (claim, fan out, roll back a claim
+ * whose page reached nobody) not which table backs it.
  */
 
 const sendOneShotPage = vi.fn(async () => ({ attempted: 1, succeeded: 1, failed: 0 }));
@@ -12,7 +12,7 @@ vi.mock("../twilio-pager", () => ({ sendOneShotPage }));
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -37,7 +37,7 @@ function routed(over: Record<string, unknown> = {}) {
     unrouted: false,
     matchedRuleIds: ["rule1"],
     // The tracked-Slack half of the result. Present by default because
-    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // `byTransport.slack` is 1: a result claiming a Slack delivery with no
     // message to show for it is a shape the real function never returns.
     slackMessages: [],
     deliveryIds: [],
@@ -45,7 +45,7 @@ function routed(over: Record<string, unknown> = {}) {
   };
 }
 
-/** A delivery that reached nobody — no rule matched, or every channel failed. */
+/** A delivery that reached nobody: no rule matched, or every channel failed. */
 function unroutedResult() {
   return routed({
     attempted: 0,

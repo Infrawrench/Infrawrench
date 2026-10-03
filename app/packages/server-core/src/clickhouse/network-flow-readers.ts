@@ -3,7 +3,7 @@
  *
  * Two queries, because the screen asks two questions: "where is the money
  * going" (by boundary) and "who is spending it" (by pair). Neither is derivable
- * from the other cheaply — the boundary summary must include the residual and
+ * from the other cheaply: the boundary summary must include the residual and
  * unattributed buckets to add up, and the pair list must exclude them to be a
  * list of pairs.
  *
@@ -32,7 +32,7 @@ export interface NetworkFlowFilters {
   scope?: string | undefined;
   direction?: string | undefined;
   /**
-   * Keep only pairs with this endpoint at one end — "who talks to this thing".
+   * Keep only pairs with this endpoint at one end: "who talks to this thing".
    *
    * A flow ref is the **provider's** resource id (`i-0abc…`), never the
    * composite id the app addresses resources by, so the caller resolves the
@@ -72,7 +72,7 @@ export interface NetworkFlowScopeTotal {
  * the three buckets mean different things to a reader: `resolved` is
  * actionable, `unattributed` is traffic we saw but could not tie to a
  * workload, and `truncated` is the tail below the storage cap. A total that
- * merged them would be correct and useless — you cannot act on a number
+ * merged them would be correct and useless: you cannot act on a number
  * without knowing how much of it is explained.
  */
 export async function readNetworkFlowScopeTotals(
@@ -136,14 +136,14 @@ export interface NetworkFlowPair {
 /**
  * Top pairs by estimated cost over the range.
  *
- * Truncation rows are excluded — they are not a pair and would otherwise sit
+ * Truncation rows are excluded: they are not a pair and would otherwise sit
  * at the top of the list as an unclickable "everything else" entry. Their
  * weight is reported by {@link readNetworkFlowScopeTotals}, which is rendered
  * above this list precisely so the tail is accounted for before the itemization
  * is read.
  *
  * Unattributed pairs are *included*, because "2 TB left this instance for
- * somewhere we could not identify" is a finding — the second most useful one
+ * somewhere we could not identify" is a finding: the second most useful one
  * this feature produces after a named pair.
  */
 export async function readTopNetworkFlows(

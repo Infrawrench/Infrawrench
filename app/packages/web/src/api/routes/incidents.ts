@@ -27,7 +27,7 @@ import type { AuthSession } from "../auth-middleware";
 import { parseObjectBody } from "../object-body";
 
 /**
- * **Incident mode** — declared operational incidents.
+ * **Incident mode**: declared operational incidents.
  *
  * Not to be confused with `/status-incidents`, which reports a *provider's*
  * outage scraped from their status page. This tree is about incidents the
@@ -37,7 +37,7 @@ import { parseObjectBody } from "../object-body";
  * members. That is deliberate and slightly unusual for a write permission: the
  * people who notice an outage at 03:14 are rarely admins, and a product where
  * declaring needs an admin is a product where nobody declares. The *governance*
- * side effects keep their own gates — opening a change freeze still needs
+ * side effects keep their own gates: opening a change freeze still needs
  * `freezes:write`, and a declaration by someone without it records the freeze
  * as a failed artefact naming the missing permission rather than escalating.
  */

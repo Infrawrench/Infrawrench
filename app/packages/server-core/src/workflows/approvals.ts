@@ -8,7 +8,7 @@
  * author catches it.
  *
  * Why poll rather than suspend the isolate: a run is a single in-process
- * awaited promise (QuickJS asyncify) — there is no snapshot/resume of a
+ * awaited promise (QuickJS asyncify); there is no snapshot/resume of a
  * half-executed guest, and the poll rides the same pause-aware budget
  * (`PAUSED_METHODS`) that already keeps `infra.prompt()` and long SSH waits
  * from eating the run's execution time. Decisions land over plain HTTP on any
@@ -55,15 +55,15 @@ const APPROVAL_PAGE_KEY = "__approval__";
  *
  * Keyed per **workflow**, not per run, and deliberately: the flood this exists
  * to stop is a workflow that raises approvals in a loop, and the two shapes
- * that takes — one run looping over N items, and a run that keeps being
- * re-triggered — are only both covered by the workflow-wide key. `workflow_pages`
+ * that takes (one run looping over N items, and a run that keeps being
+ * re-triggered) are only both covered by the workflow-wide key. `workflow_pages`
  * is already keyed that way for `infra.page`, for the same reason.
  *
  * Fifteen minutes rather than the hour `infra.page` defaults to: an approval is
  * a live question with a deadline (`DEFAULT_APPROVAL_TIMEOUT_MINUTES` is 60), so
  * a window that is a meaningful fraction of the timeout would mute a second,
- * genuinely different request for most of its life. Fifteen collapses a loop —
- * which fires far faster than that — while a distinct approval raised later
+ * genuinely different request for most of its life. Fifteen collapses a loop
+ * (which fires far faster than that) while a distinct approval raised later
  * still reaches a phone.
  *
  * The *first* request is never suppressed: with no row for the key, the claim
@@ -77,7 +77,7 @@ export interface WorkflowApprovalContext {
   workflowId: string;
   /** Used as the approval title when the author didn't set one. */
   workflowName: string;
-  /** The suspended run. Required — an approval must be visible on a run. */
+  /** The suspended run. Required: an approval must be visible on a run. */
   runId?: string;
   /**
    * What started the run, so the request can say who is asking. The schema has
@@ -123,7 +123,7 @@ function approvalsUrl(organizationId: string): string | null {
  * API pages do: an approval *is* a workflow asking for a human, the routing an
  * org already wrote for pages is the routing it wants for this, and the
  * user-facing label ("Pages") already covers it. Adding a trigger is cheap now
- * — one registry entry — but a trigger nobody would route differently is still
+ * (one registry entry) but a trigger nobody would route differently is still
  * a trigger nobody wants to configure.
  *
  * The SMS leg stays here rather than in the shared approvals module: it is
@@ -134,7 +134,7 @@ function approvalsUrl(organizationId: string): string | null {
  * SMS rides `sendOneShotPage` (the same one-shot path budget alerts and
  * `infra.page` use), SMS-only: an approval blocks a run until a human answers,
  * which is the definition of page-worthy. It is gated by the org's Twilio
- * enabled flag, each recipient's SMS opt-in, and — unlike the other three —
+ * enabled flag, each recipient's SMS opt-in, and (unlike the other three)
  * a cooldown on {@link APPROVAL_PAGE_KEY}. One message per `waitForApproval`
  * call is not a bound: `waitForApproval` is a call a workflow can make in a
  * loop, and N iterations would be N texts to everyone's phone at whatever rate
@@ -146,11 +146,11 @@ function approvalsUrl(organizationId: string): string | null {
  * purpose: each approval is a *distinct* decision that blocks the run until
  * someone makes it, and collapsing those messages would hide requests nobody
  * then goes and decides. SMS is the "someone should look now" signal rather
- * than the list — one is enough per window, and it is the leg that costs money
+ * than the list: one is enough per window, and it is the leg that costs money
  * and wakes people. The approvals inbox always holds every row regardless of
  * what was or was not delivered.
  *
- * Never throws — every transport swallows its own errors, and a notification
+ * Never throws: every transport swallows its own errors, and a notification
  * outage must not fail the run that is waiting on the decision.
  */
 async function notifyApprovalRequest(args: {
@@ -175,10 +175,10 @@ async function notifyApprovalRequest(args: {
   const url = approvalsUrl(ctx.organizationId);
 
   // Slack renders `*bold*`; the Teams Adaptive Card escaper turns `*` into a
-  // literal asterisk, so it gets the same text with the markup left out — the
+  // literal asterisk, so it gets the same text with the markup left out: the
   // split the weekly digest and drift alerts already use. Slack's copy carries
   // Approve/Deny buttons and is tracked so a decision can retire every copy in
-  // place — the buttons resolve through `decideWorkflowApproval`, the same
+  // place: the buttons resolve through `decideWorkflowApproval`, the same
   // conditional UPDATE the web UI uses.
   //
   // `bypassQuietHours`: an approval request has a timeout and no decision
@@ -242,7 +242,7 @@ async function notifyApprovalRequest(args: {
  *
  * Same protocol as `paging/deliver.ts`: read the prior row, take the slot with
  * one conditional statement (so two replicas racing the same window still text
- * once), and roll the claim back when the message reached nobody — an SMS
+ * once), and roll the claim back when the message reached nobody; an SMS
  * nobody received must not start a quiet period. A losing claim is silence, not
  * an error: the request is already in the inbox and the other three transports
  * have already carried it.
@@ -278,8 +278,8 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Mark a still-pending request expired; a landed decision wins the race. When
- * the expiry wins, every tracked Slack copy is rewritten too — buttons off,
- * "expired" shown — so a channel never keeps offering a decision the run
+ * the expiry wins, every tracked Slack copy is rewritten too (buttons off,
+ * "expired" shown) so a channel never keeps offering a decision the run
  * already stopped listening for. Fire-and-forget: the updater never throws.
  */
 async function expirePending(approvalId: string): Promise<void> {
@@ -294,7 +294,7 @@ async function expirePending(approvalId: string): Promise<void> {
       .returning();
     if (!row) return null;
     // `expired`, not `acknowledged`: the request timed out and nobody decided,
-    // so there is no acknowledgement to record — but the escalation clock still
+    // so there is no acknowledgement to record, but the escalation clock still
     // has to stop, or it would page about a request the run has already given up on.
     await settleDeliveriesForPushTarget({
       organizationId: row.organizationId,
@@ -345,7 +345,7 @@ export async function requestApprovalAndWait(
   // Notify every transport the org has configured, under the workflowPages
   // opt-in. Each of them already swallows its own errors; the outer catch is
   // the belt to that braces, because the request is *already recorded* by this
-  // point — the approvals inbox can decide it whether or not anyone was told,
+  // point: the approvals inbox can decide it whether or not anyone was told,
   // so failing the run over a notification would be strictly worse.
   try {
     await notifyApprovalRequest({
@@ -456,7 +456,7 @@ export async function listWorkflowApprovals(
 /**
  * Record a decision. The conditional UPDATE (`status = 'pending'` and not yet
  * expired) is what makes two members racing the same request produce exactly
- * one decision — the loser gets `"conflict"` back and the UI refreshes.
+ * one decision: the loser gets `"conflict"` back and the UI refreshes.
  */
 export async function decideWorkflowApproval(
   organizationId: string,
@@ -556,7 +556,7 @@ export async function decideWorkflowApproval(
   if (outcome.kind === "conflict") return { outcome: "conflict" };
 
   if (outcome.kind === "late_expired") {
-    // The Slack copies must land on "expired" here too — this path is the one
+    // The Slack copies must land on "expired" here too: this path is the one
     // where the run's poll never gets to call expirePending (the row left
     // `pending` under the late approval), so nothing else retires them.
     void updateSlackApprovalMessages(organizationId, "workflow", approvalId, {
@@ -571,7 +571,7 @@ export async function decideWorkflowApproval(
 
   // Retire any interactive Slack copies of this request: buttons off, outcome
   // and decider shown in place, threaded reply for the channel's history.
-  // Fire-and-forget (the updater never throws) — the decision is already
+  // Fire-and-forget (the updater never throws): the decision is already
   // landed, and a Slack outage must not turn it into an error.
   void updateSlackApprovalMessages(organizationId, "workflow", approvalId, {
     decision,

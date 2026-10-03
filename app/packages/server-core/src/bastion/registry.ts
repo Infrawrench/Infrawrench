@@ -37,7 +37,7 @@ export async function unregisterAgentConnection(bastionId: string): Promise<void
 
 /**
  * Return the dispatcher for `bastionId` if an agent is currently connected.
- * `null` ⇒ bastion is bound but offline — callers should surface
+ * `null` ⇒ bastion is bound but offline: callers should surface
  * `BastionDisconnectedError` rather than falling back to direct egress.
  */
 export function getDispatcherFor(bastionId: string): import("undici").Dispatcher | null {
@@ -141,7 +141,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
 };
 
 /**
- * Trigger an allowlist refresh for the bastion (if connected) — call after
+ * Trigger an allowlist refresh for the bastion (if connected): call after
  * routes that mutate which accounts reference the bastion.
  */
 export async function refreshAllowlistById(bastionId: string): Promise<void> {

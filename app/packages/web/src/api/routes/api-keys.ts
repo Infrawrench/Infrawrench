@@ -21,7 +21,7 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** POST /api/api-keys — create a new API key */
+/** POST /api/api-keys: create a new API key */
 app.post("/", async (c) => {
   requirePermission(c, "apikeys:write");
   const session = c.get("session");
@@ -61,11 +61,11 @@ app.post("/", async (c) => {
 });
 
 /**
- * GET /api/api-keys — list API keys.
+ * GET /api/api-keys: list API keys.
  *
  * Non-admins see only their own keys. Callers with `apikeys:write` (held by
  * admins and owners via the system role catalog) see every key in the org so
- * they can manage / revoke them — e.g. for offboarding.
+ * they can manage / revoke them, e.g. for offboarding.
  */
 app.get("/", async (c) => {
   requirePermission(c, "apikeys:read");
@@ -95,7 +95,7 @@ app.get("/", async (c) => {
       scopes: (r.scopes as string[]) ?? [],
       // Surface whether this row is still on the legacy SHA-256 hash. The
       // sunset column is only ever non-null while a row carries the legacy
-      // hash — on rehash it's cleared. UIs can use this plus the timestamp
+      // hash: on rehash it's cleared. UIs can use this plus the timestamp
       // to warn admins to rotate before the cutover.
       needsRotation: r.legacyHashSunsetAt !== null,
     })),

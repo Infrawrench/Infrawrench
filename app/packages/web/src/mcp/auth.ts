@@ -30,10 +30,10 @@ export interface McpAuthContext {
 /**
  * Resolves an Authorization: Bearer header to the caller's user + organization.
  * Accepts our own `iwa_` agent credentials as well as WorkOS access tokens (a
- * person's, or an agent's carrying a registration id in `sub`) — the same
+ * person's, or an agent's carrying a registration id in `sub`): the same
  * three-format contract as `authenticateApiRequest`, minus `iwk_` keys, which
  * are pinned to the HTTP API. Returns null if the token is missing/invalid
- * or the caller belongs to no organization — the route should respond 401 with
+ * or the caller belongs to no organization: the route should respond 401 with
  * a `WWW-Authenticate` header so MCP clients can discover the auth server.
  *
  * Unlike the browser session, the AuthKit OAuth tokens issued to MCP clients
@@ -49,8 +49,8 @@ export async function authenticateMcpRequest(
   const token = authHeader.slice(7);
 
   // `iwa_` credentials before JWT verification: this is the credential every
-  // anonymous registration actually holds — the one auth.md tells agents to
-  // present here — and it is an opaque token, so handing it to the JWT
+  // anonymous registration actually holds (the one auth.md tells agents to
+  // present here) and it is an opaque token, so handing it to the JWT
   // verifier can only ever produce a 401 pointing at an OAuth flow the agent
   // cannot complete.
   if (token.startsWith("iwa_")) {
@@ -75,7 +75,7 @@ export async function authenticateMcpRequest(
   }
 
   // Agent credentials first. `sub` is a registration id here, and the org it
-  // acts in comes from our own binding rather than from the token — an agent
+  // acts in comes from our own binding rather than from the token: an agent
   // has exactly one tenant and no membership rows to fall back on. A
   // `user_`-prefixed sub is WorkOS's user-id shape and registration ids are
   // bare UUIDs, so the lookup is skipped for people.
@@ -93,7 +93,7 @@ export async function authenticateMcpRequest(
   let organizationId: string;
   if (claims.org_id) {
     // Verify the caller is already a member of the WorkOS-supplied org. We
-    // never auto-provision memberships here — org creation is exclusive to
+    // never auto-provision memberships here: org creation is exclusive to
     // `POST /api/orgs` and memberships are added via explicit invites.
     if (!(await hasMembership(user.id, claims.org_id))) {
       console.warn(

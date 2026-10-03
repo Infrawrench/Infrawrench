@@ -7,9 +7,9 @@
  * repos) and the github-watcher service (read branch heads).
  *
  * Config (env):
- *   GITHUB_APP_ID            — the app's numeric id
- *   GITHUB_APP_PRIVATE_KEY   — PEM private key (literal newlines or \n-escaped)
- *   GITHUB_APP_SLUG          — the app's URL slug (for the install link)
+ *   GITHUB_APP_ID            - the app's numeric id
+ *   GITHUB_APP_PRIVATE_KEY   - PEM private key (literal newlines or \n-escaped)
+ *   GITHUB_APP_SLUG          - the app's URL slug (for the install link)
  */
 import { createSign, createHmac, createHash } from "node:crypto";
 
@@ -135,7 +135,7 @@ export async function getBranchHeadSha(
 
 /**
  * Read one file's contents at a ref. Used to fetch the `Infrafile` from a repo
- * root without cloning — the web app needs the file's *text* to run it, and a
+ * root without cloning: the web app needs the file's *text* to run it, and a
  * clone only happens later, on the build host.
  *
  * Returns null when the file isn't there, so "this repo has no Infrafile" is an
@@ -216,7 +216,7 @@ export async function createGithubDeployment(
       environment: opts.environment,
       ...(opts.description ? { description: opts.description } : {}),
       // Both defaults are traps. `required_contexts` defaults to *every* status
-      // check on the ref, so GitHub answers 409 while CI is still pending — the
+      // check on the ref, so GitHub answers 409 while CI is still pending: the
       // exact moment a deploy typically starts. `auto_merge` defaults to true,
       // which makes GitHub merge the base branch into the ref and return 202
       // with no deployment at all. We already know what we are deploying.

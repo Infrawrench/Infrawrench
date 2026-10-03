@@ -1,7 +1,7 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
-// One definition of the shape that keeps the collected figure visible — see
+// One definition of the shape that keeps the collected figure visible: see
 // `paths/billing-rules.ts`.
 import { CostAdjustmentSummary } from "./billing-rules";
 
@@ -157,7 +157,7 @@ const CostQuerySeries = strict({
 /**
  * Exported so `paths/cost-reports.ts` can describe `POST /cost-reports/:id/run`
  * with the same component rather than registering a second copy under a
- * near-identical name — running a report returns exactly a cost query result.
+ * near-identical name: running a report returns exactly a cost query result.
  */
 const CostScenarioResult = strict({
   modelId: Uuid,
@@ -393,7 +393,7 @@ const CostAnomalySettingsView = CostAnomalySettings.extend({
 /**
  * Tuning for the three efficiency detectors. One object rather than three,
  * because an organization tunes them as one decision and the settings row is
- * one row — see `org_cost_efficiency_settings`.
+ * one row: see `org_cost_efficiency_settings`.
  */
 const CostEfficiencySettings = strict({
   commitmentExpiryEnabled: z

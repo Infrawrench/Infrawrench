@@ -74,7 +74,7 @@ describe("periodsToExport", () => {
 
   it("rebuilds an overlapped month IN FULL, not just the window's slice", () => {
     // The window reaches back into July, so July's object must be rewritten
-    // from July 1 — a partial rewrite would truncate the file a consumer has.
+    // from July 1: a partial rewrite would truncate the file a consumer has.
     const periods = periodsToExport({
       cadence: "monthly",
       timezone: "UTC",
@@ -176,7 +176,7 @@ describe("nextCostExportRunAt", () => {
 
   it("keeps the local hour across a DST change rather than drifting", () => {
     // Europe/Berlin springs forward on 2026-03-29. 04:00 local is 03:00Z
-    // before and 02:00Z after — the same wall clock either side, which is what
+    // before and 02:00Z after: the same wall clock either side, which is what
     // the user asked for.
     const before = nextCostExportRunAt(
       "daily",

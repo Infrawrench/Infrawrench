@@ -3,8 +3,8 @@
  *
  * `requirePermission` (auth/permissions.ts) covers HTTP routes, where
  * `permissionsMiddleware` has already put the resolved set on the context.
- * Surfaces that authenticate themselves — the chat endpoint, MCP, the chat
- * agent's tool loop — have no such context and resolve through here instead,
+ * Surfaces that authenticate themselves (the chat endpoint, MCP, the chat
+ * agent's tool loop) have no such context and resolve through here instead,
  * so all four surfaces agree on what a principal may do.
  */
 import { resolveEffectivePermissions } from "@infrawrench/server-core/permissions";
@@ -14,14 +14,14 @@ export interface PrincipalRef {
   userId: string;
   organizationId: string;
   /**
-   * Present for API-key and agent principals. `[]` is meaningful — a key with
-   * no scopes — and is not the same as `undefined`, which means "not a key"
+   * Present for API-key and agent principals. `[]` is meaningful (a key with
+   * no scopes) and is not the same as `undefined`, which means "not a key"
    * and grants the user's full role permissions.
    */
   scopes?: readonly string[] | undefined;
   /**
    * Set when the caller is an agent-auth registration. Its `scopes` are then
-   * the FINAL answer rather than a ceiling to intersect — see below.
+   * the FINAL answer rather than a ceiling to intersect: see below.
    */
   agentRegistrationId?: string | undefined;
 }
@@ -32,11 +32,11 @@ export interface PrincipalRef {
  * For a session or OAuth principal that is their role's permission set. For an
  * API key it is that set INTERSECTED with the key's scopes: a key can never
  * exceed the scopes it was minted with, nor the role its owner holds right
- * now — whichever is narrower wins.
+ * now, whichever is narrower wins.
  *
  * **An agent is neither, and must not be re-resolved.** `resolveAgentPrincipal`
- * has already done the whole calculation — the agent ceiling, and for a claimed
- * registration the intersection with its claimer's role — and the `users` row
+ * has already done the whole calculation (the agent ceiling, and for a claimed
+ * registration the intersection with its claimer's role) and the `users` row
  * an agent acts as is an implementation detail whose membership is deliberately
  * a plain `member` so that people-shaped code (the last-owner guard, seat
  * accounting) reads it correctly. Intersecting with that row's role would
@@ -54,7 +54,7 @@ export async function effectivePermissions(principal: PrincipalRef): Promise<rea
     // A break-glass grant is authority handed to a *person* for a bounded
     // window on a stated reason. Letting it flow into an unattended key that
     // person minted last quarter would turn a supervised, expiring elevation
-    // into an unsupervised one — the exact failure the feature exists to
+    // into an unsupervised one: the exact failure the feature exists to
     // prevent. Keys see the owner's role and nothing else.
     { includeElevation: principal.scopes === undefined },
   );

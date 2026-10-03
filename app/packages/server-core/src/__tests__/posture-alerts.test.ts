@@ -6,7 +6,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
  * The security alert window, which now covers **two** feeds: posture checks and
  * the cross-cloud access review. The message rendering is covered by
  * `access-review-summary.test.ts`; what matters here is the claim protocol, and
- * specifically the rule the second feed put under pressure —
+ * specifically the rule the second feed put under pressure:
  *
  * **a failed scan must never spend the window.** `last_notified_at` means "last
  * alert scan", so a scan that *completed* and found nothing keeps the window
@@ -15,7 +15,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
  * hours while a broken feed sat indistinguishable from a clean org.
  *
  * The DB is real Drizzle over a recording driver against the real schema, the
- * shape `expiry-alerts.test.ts` uses — the due-org query, the claim upsert and
+ * shape `expiry-alerts.test.ts` uses: the due-org query, the claim upsert and
  * the release update render their actual SQL (and shadow-validate under
  * test:postgres:shadow). Sequential results are queued: [due orgs], then [the
  * claim's RETURNING].
@@ -135,7 +135,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   pg.reset();
   pg.queueRows([{ organizationId: ORG }]); // the due-org query
-  pg.queueRows([{ organizationId: ORG }]); // the claim's RETURNING — claim won
+  pg.queueRows([{ organizationId: ORG }]); // the claim's RETURNING: claim won
   getPostureSettings.mockResolvedValue({
     organizationId: ORG,
     enabled: true,
@@ -159,7 +159,7 @@ describe("the quiet-scan rule", () => {
 
 describe("a failed access review is not a quiet scan", () => {
   // The regression: the access half threw, posture had nothing alertable, and
-  // the window was marked spent — suppressing the retry and every access
+  // the window was marked spent; suppressing the retry and every access
   // finding for a day, with a broken feed indistinguishable from a clean org.
   it("rolls the claim back instead of spending the window", async () => {
     listAccessReview.mockRejectedValue(new Error("clickhouse is down"));

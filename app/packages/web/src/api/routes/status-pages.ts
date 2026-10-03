@@ -19,7 +19,7 @@ import type { AuthSession } from "../auth-middleware";
 import { parseObjectBody } from "../object-body";
 
 /**
- * Public status pages — the org's synthetic probes, published at an
+ * Public status pages: the org's synthetic probes, published at an
  * unauthenticated URL.
  *
  * This module exports **two** routers, and keeping them apart is the point:
@@ -172,7 +172,7 @@ app.put("/:id", async (c) => {
       action: "status_page.update",
       entityType: "status_page",
       entityId: updated.id,
-      // Publishing is the state change that matters in an audit trail — it is
+      // Publishing is the state change that matters in an audit trail: it is
       // the moment the page became readable by anyone with the link.
       metadata: { published: updated.published, componentCount: updated.components.length },
     });
@@ -182,7 +182,7 @@ app.put("/:id", async (c) => {
   }
 });
 
-/** POST /:id/rotate-slug — revoke the current public URL, issue a new one. */
+/** POST /:id/rotate-slug: revoke the current public URL, issue a new one. */
 app.post("/:id/rotate-slug", async (c) => {
   requirePermission(c, "resources:write");
   const organizationId = c.get("organizationId");
@@ -224,7 +224,7 @@ app.delete("/:id", async (c) => {
 
 /**
  * The public reader. Mounted outside the org tree and outside every auth
- * middleware — see the module note.
+ * middleware: see the module note.
  *
  * An unpublished page and a nonexistent slug answer the same 404, so the
  * endpoint cannot be used to probe which slugs are real.
@@ -242,7 +242,7 @@ publicApp.get("/:slug", async (c) => {
     const page = await getPublicStatusPage(slug);
     if (!page) return c.json({ error: "Status page not found" }, 404);
     c.header("Cache-Control", "public, max-age=60");
-    // No account, no org — nothing here is per-user, and a search engine
+    // No account, no org: nothing here is per-user, and a search engine
     // indexing a status page someone was given privately is not intended.
     c.header("X-Robots-Tag", "noindex");
     return c.json(page);

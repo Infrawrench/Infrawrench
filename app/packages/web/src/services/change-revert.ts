@@ -15,7 +15,7 @@ import { getClientForAccount } from "./plugin-clients";
  * thing:
  *
  * 1. **The writable surface is the plugin's, not ours.** Whether a field can be
- *    put back is `isFieldEditable` over the resource type's declared fields —
+ *    put back is `isFieldEditable` over the resource type's declared fields:
  *    the exact predicate the Edit form filters with. A field the user can't
  *    edit by hand is not revertible either, so no provider call is ever
  *    invented for a plugin that never declared one.
@@ -25,7 +25,7 @@ import { getClientForAccount } from "./plugin-clients";
  *    it already holds. A field that moved between the two reads comes back as a
  *    conflict and drops out of the patch.
  *
- *    This is a **last-moment re-read, not an atomic compare-and-swap** — see
+ *    This is a **last-moment re-read, not an atomic compare-and-swap**: see
  *    {@link buildRevertPlan} for exactly how wide the remaining window is and
  *    why it cannot be closed here.
  * 3. **The event is claimed under a lease, and the lease has an owner.** A
@@ -41,7 +41,7 @@ import { getClientForAccount } from "./plugin-clients";
  * so an interactive edit shows up immediately; here it would erase the very
  * drift the next poll is supposed to notice. Leaving the stored snapshot alone
  * means the poller diffs it against the reverted live state and records the
- * revert as an ordinary `updated` event — the undo shows up in the timeline by
+ * revert as an ordinary `updated` event: the undo shows up in the timeline by
  * the normal mechanism rather than by a special case.
  */
 
@@ -135,13 +135,13 @@ export async function loadChange(
  *
  * The apply calls this and then writes, so the gap between reading a field and
  * writing it is one provider round-trip wide. It is **not zero**. A third party
- * — a colleague in the provider's console, a Terraform run, another
- * Infrawrench user editing the resource — can change a field inside that gap,
+ * (a colleague in the provider's console, a Terraform run, another
+ * Infrawrench user editing the resource) can change a field inside that gap,
  * and the revert will then overwrite their value without noticing.
  *
  * That gap cannot be closed at this layer, and the honest reason is the plugin
  * contract: `PluginClient.updateResource(typeId, resourceId, accountId, fields)`
- * takes no precondition — no expected value, no ETag, no version token, no
+ * takes no precondition; no expected value, no ETag, no version token, no
  * `If-Match`. Several providers offer conditional writes natively, but nothing
  * in the contract can carry one, so the host has no way to ask for one
  * generically. Making the write truly atomic would mean widening
@@ -151,11 +151,11 @@ export async function loadChange(
  * What *is* done about it: the read happens as late as possible (immediately
  * before the write, through the same client, with no credential decryption or
  * client construction in between), and the residual window is documented as a
- * window rather than described as a guarantee — in the route, in the OpenAPI
+ * window rather than described as a guarantee; in the route, in the OpenAPI
  * description, and in the user-facing docs.
  *
  * Whole-event refusals (created/deleted, an empty diff, an already-reverted
- * event) short-circuit before the provider is touched — there is no reason to
+ * event) short-circuit before the provider is touched: there is no reason to
  * spend an API call to say "creations aren't revertible".
  */
 export async function buildRevertPlan(
@@ -229,7 +229,7 @@ export async function buildRevertPlan(
  * Every write that ends a revert names the claim it is ending.
  *
  * A deadline on its own is only a timer: an attempt whose lease lapsed while
- * its provider call was still running would otherwise clear — or complete —
+ * its provider call was still running would otherwise clear (or complete)
  * whatever claim had replaced it, and the event would fall open for a third
  * attempt while the second was mid-write. Fencing on the token makes a
  * superseded attempt match no row, so it can do nothing at all, which is
@@ -255,7 +255,7 @@ function fencedWhere(organizationId: string, changeId: string, owner: string) {
  *
  * **The claim and the completion are two columns on purpose.** `revert_claimed_at`
  * is a lease; `reverted_at` is a fact, written only once the provider actually
- * accepted the write. Collapsing them — claiming by setting `reverted_at` — was
+ * accepted the write. Collapsing them (claiming by setting `reverted_at`) was
  * the first shape of this code and it had no recovery path: a process that
  * stopped between the claim committing and the provider call returning left the
  * row marked reverted forever, blocking every retry *and* labelling an event
@@ -275,7 +275,7 @@ function fencedWhere(organizationId: string, changeId: string, owner: string) {
  * *bookkeeping* is never corrupted: a superseded attempt cannot release or
  * complete the new holder's claim, so the event can never fall open to a third
  * attempt while the second is still writing. It does **not** guarantee that two
- * provider writes never overlap — if the work outlives the lease, the second
+ * provider writes never overlap, if the work outlives the lease, the second
  * holder may start its own write while the first is still in flight. What makes
  * that survivable is that both are writing *the same patch*: the values come
  * from the same recorded event, inverted the same way, so the second holder's
@@ -335,7 +335,7 @@ export async function claimRevert(
  * journalling and writing have to succeed or fail together, or the attempt
  * produces exactly the unjournalled provider write this column exists to
  * prevent. A caller that ignored this would be issuing a second concurrent
- * write while holding positive evidence that it had lost the lock — which is a
+ * write while holding positive evidence that it had lost the lock, which is a
  * different thing from the unavoidable case where the lease lapses *during* the
  * provider call and nobody can know.
  */
@@ -355,7 +355,7 @@ export async function markRevertWriteAttempted(
 
 /**
  * Record that the provider accepted the write. Only this makes an event read as
- * reverted — to the feed, to the UI badge, and to a later revert attempt.
+ * reverted: to the feed, to the UI badge, and to a later revert attempt.
  *
  * Returns false when this attempt no longer holds the claim, which means its
  * lease lapsed and another attempt took the event over. The caller must not
@@ -390,8 +390,8 @@ export async function completeRevert(
  * **Always safe to call, on every non-completing exit.** That is the point of
  * {@link markRevertWriteAttempted} existing separately: the claim carries no
  * information about whether a write happened, so letting go of it destroys
- * nothing. Making the release conditional — to protect an inference drawn from
- * the claim — is what wedged events behind a self-renewing lease.
+ * nothing. Making the release conditional (to protect an inference drawn from
+ * the claim) is what wedged events behind a self-renewing lease.
  *
  * Deliberately leaves `revert_write_attempted_at` alone: an attempt whose write
  * threw may still have applied, so the journal outlives the lock.
@@ -401,7 +401,7 @@ export async function completeRevert(
  * to rows that have not completed, so it can never un-revert an event whose
  * write did land.
  *
- * **Returns nothing, and that is deliberate rather than an oversight** — the
+ * **Returns nothing, and that is deliberate rather than an oversight**: the
  * one fenced write here whose row count carries no decision. Zero rows means
  * either "another attempt owns this claim" or "the event already completed",
  * and in both cases the correct action is precisely the nothing that already
@@ -411,7 +411,7 @@ export async function completeRevert(
  *
  * Never throws: this runs on the error path, and a failed rollback must not
  * mask the error that caused it (the same rule the drift-alert cooldown claim
- * follows). A release that fails is not a stuck row either — the lease is the
+ * follows). A release that fails is not a stuck row either: the lease is the
  * backstop, which is exactly why the lease exists.
  */
 export async function releaseRevert(

@@ -28,7 +28,7 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/resources/:pluginId/:typeId/detail?resourceId=...&parentResourceId=... — full resource detail payload */
+/** GET /api/resources/:pluginId/:typeId/detail?resourceId=...&parentResourceId=...: full resource detail payload */
 app.get("/:pluginId/:typeId/detail", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
@@ -69,7 +69,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   if (!ctx) return c.json({ error: "Account not found" }, 404);
   const { client, plugin, account } = ctx;
 
-  // Build the ResourceInstance — always fetch live data from the provider
+  // Build the ResourceInstance: always fetch live data from the provider
   // (like desktop does) so status changes (e.g. provisioning → running)
   // are reflected immediately.
   let instance: ResourceInstance;
@@ -80,7 +80,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     liveResources = await client.listResources(resourceTypeId, accountId);
     liveFetchOk = true;
   } catch (err) {
-    // Provider API failed — fall back to DB data. Log so dev sees provider regressions.
+    // Provider API failed: fall back to DB data. Log so dev sees provider regressions.
     console.error(
       `[resource-detail] Provider listResources failed for ${pluginId}/${resourceTypeId}:`,
       err,
@@ -90,7 +90,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
 
   if (liveInstance) {
     // Overlay any DB-persisted secretStates (decrypted to plaintext) onto the
-    // live instance — listers don't return create-time secrets like passwords.
+    // live instance: listers don't return create-time secrets like passwords.
     const persistedSecrets = parentResourceId ? [] : await loadSecretStatesForResource(resourceId);
     const liveSecretKeys = new Set(liveInstance.secretStates.map((s) => s.fieldKey));
     instance = {
@@ -132,14 +132,14 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     }
   } else if (liveFetchOk && dbResource?.lastSyncedAt) {
     // Provider listed resources successfully but this one wasn't included,
-    // and it was previously synced — it's been deleted externally.
+    // and it was previously synced: it's been deleted externally.
     db.update(resources)
       .set({ deletedAt: new Date() })
       .where(eq(resources.id, resourceId))
       .catch((e) => console.error("[resource-detail] Failed to soft-delete:", e));
     return c.json({ error: "Resource not found" }, 404);
   } else if (dbResource) {
-    // Provider API failed OR resource was never synced (just created) — use DB data
+    // Provider API failed OR resource was never synced (just created): use DB data
     instance = {
       id: dbResource.id,
       pluginId: dbResource.pluginId,
@@ -249,7 +249,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
               },
             };
           } catch {
-            /* introspection failed — still enable SQL editor */
+            /* introspection failed: still enable SQL editor */
           }
           sqlOk = true;
         }
@@ -263,7 +263,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     try {
       enrichedInstance = await client.enrichDetail(enrichedInstance);
     } catch {
-      /* enrichment is best-effort — renderDetail still runs on the base resource */
+      /* enrichment is best-effort: renderDetail still runs on the base resource */
     }
   }
 
@@ -356,7 +356,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     fields?: Record<string, unknown>;
   }> = [];
   // Only ship per-child field bags when the detail view actually renders a
-  // child table for that type — otherwise it's wasted payload.
+  // child table for that type, otherwise it's wasted payload.
   const childTableTypeIds = new Set((finalSchema.childTables ?? []).map((t) => t.typeId));
   for (let i = 0; i < childResults.length; i++) {
     const result = childResults[i]!;
@@ -379,7 +379,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   const canDelete = !!client.deleteResource && resourceTypeDef?.supportsDelete !== false;
   const canEdit = !!client.updateResource && !!resourceTypeDef?.supportsUpdate;
   // `isFieldEditable` is the one definition of a resource type's writable
-  // surface (plugin-base) — the Edit modal filters with it, and the change
+  // surface (plugin-base): the Edit modal filters with it, and the change
   // timeline's revert asks it whether a drifted field can be put back.
   const editableFields = canEdit
     ? (resourceTypeDef?.fields ?? []).flatMap((f) =>
@@ -521,7 +521,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     supportsMetrics:
       ((resourceTypeDef?.supportsMetrics ?? false) && !!client.fetchMetricSeries) ||
       (resourceTypeDef?.peerIntegrations?.some((i) => i.exposeMetricsToParent) ?? false),
-    // Sleep/wake eligibility — discovered from the plugin's lifecycle
+    // Sleep/wake eligibility: discovered from the plugin's lifecycle
     // declaration, never from provider names.
     schedulable: !!resourceTypeDef?.lifecycle && !!client.invokeAction,
   });

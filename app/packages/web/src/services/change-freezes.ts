@@ -85,7 +85,7 @@ interface FreezeAuditTarget {
  * Enforce the org's change freeze on a destructive HTTP mutation.
  *
  * Returns null when the request may proceed (no freeze, or an authorized
- * explicit override — the override itself is audit-logged). Returns a 423
+ * explicit override: the override itself is audit-logged). Returns a 423
  * `Response` describing the freeze when the request must be blocked; the block
  * is audit-logged too. Call it after resolving/authorizing the target and
  * before performing the provider mutation.
@@ -121,7 +121,7 @@ export async function checkChangeFreeze(
       });
       return null;
     }
-    // An override attempt without the permission is still a block — record it.
+    // An override attempt without the permission is still a block: record it.
   }
 
   void logAudit({
@@ -138,7 +138,7 @@ export async function checkChangeFreeze(
 /**
  * Freeze gate for non-HTTP server-side callers (MCP tools). Returns a
  * human-readable error string when the mutation must be refused, or null when
- * no freeze is in effect. Tools have no override affordance — end the freeze
+ * no freeze is in effect. Tools have no override affordance: end the freeze
  * (or use the web UI's admin override) instead. Blocks are audit-logged.
  */
 export async function checkChangeFreezeForTool(
@@ -172,8 +172,8 @@ export async function checkChangeFreezeForTool(
 /**
  * Whether the plugin declares `actionId` destructive for this resource.
  *
- * There is no server-side action registry — actions live in the detail schema
- * a plugin renders — so we re-render the resource's detail and look for a
+ * There is no server-side action registry (actions live in the detail schema
+ * a plugin renders) so we re-render the resource's detail and look for a
  * `plugin-action` with a matching id. Only called while a freeze is in effect,
  * so the extra provider round-trip is confined to freeze windows. Unflagged or
  * unresolvable actions are treated as non-destructive (the flag is opt-in).

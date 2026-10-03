@@ -9,14 +9,14 @@
  *    webhook senders can talk to us. They carry no stability promise, several
  *    are gated on a platform-operator allowlist, and a couple are browser
  *    redirect endpoints that make no sense to call programmatically.
- * 2. **`sessionCookie` auth is removed.** The cookie still works — it's how the
- *    browser UI authenticates — but the only way to obtain one is the browser
+ * 2. **`sessionCookie` auth is removed.** The cookie still works (it's how the
+ *    browser UI authenticates) but the only way to obtain one is the browser
  *    redirect flow, which is itself internal. Advertising it just makes Scalar
  *    default to a scheme nobody outside the UI can use, and generates client
  *    snippets with a `Cookie` header instead of `Authorization: Bearer`.
  *
  * Everything stays in the Zod path files (the code is source-available, and the
- * committed `openapi.json` keeps it all) — internal operations are merely
+ * committed `openapi.json` keeps it all): internal operations are merely
  * tagged `x-internal: true` and dropped on the way out.
  */
 
@@ -24,10 +24,10 @@ const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "options", "head"
 
 /**
  * Whole route trees that are internal.
- * - `/api/admin/` — platform-operator surface (email allowlist), 403 for everyone else.
- * - `/api/v1/webhooks/` — inbound from third parties, signature-verified, never called by users.
- * - `/api/v1/sync/` — bi-directional resource sync used by the desktop app.
- * - `/api/push/` — mobile device registration for push notifications.
+ * - `/api/admin/`: platform-operator surface (email allowlist), 403 for everyone else.
+ * - `/api/v1/webhooks/`: inbound from third parties, signature-verified, never called by users.
+ * - `/api/v1/sync/`: bi-directional resource sync used by the desktop app.
+ * - `/api/push/`: mobile device registration for push notifications.
  */
 const INTERNAL_PATH_PREFIXES = [
   "/api/admin/",
@@ -38,7 +38,7 @@ const INTERNAL_PATH_PREFIXES = [
 
 /**
  * Individual internal routes.
- * - Browser auth redirects — `sign-in` bounces to WorkOS, `callback` consumes
+ * - Browser auth redirects: `sign-in` bounces to WorkOS, `callback` consumes
  *   the code, `sign-out` clears the cookie. All three are cookie-flow only.
  * - `ws-token` mints a short-lived token for our own WebSocket gateway.
  * - Org-scoped push preferences/recipients/test back the mobile notification UI.
@@ -47,7 +47,7 @@ const INTERNAL_PATHS: ReadonlySet<string> = new Set([
   "/api/auth/sign-in",
   "/api/auth/sign-out",
   "/callback",
-  // Inbound Slack — called by Slack (signature-verified) and, for the link
+  // Inbound Slack: called by Slack (signature-verified) and, for the link
   // landing, by a browser redirect; never by API clients.
   "/api/slack/commands",
   "/api/slack/interactions",
@@ -84,7 +84,7 @@ export function injectInternalMarkers(doc: { paths?: Record<string, unknown> }) 
 
 /**
  * Security schemes the published spec doesn't advertise. `sessionCookie` is
- * still accepted by the server — it just isn't obtainable outside the browser
+ * still accepted by the server: it just isn't obtainable outside the browser
  * flow, so documenting it only misleads programmatic clients.
  */
 const UNPUBLISHED_SECURITY_SCHEMES = ["sessionCookie"] as const;
@@ -100,7 +100,7 @@ interface StrippableDoc {
 
 /**
  * Return the copy of `doc` we publish: every `x-internal` operation removed,
- * `sessionCookie` auth removed, plus the fallout — paths left with no
+ * `sessionCookie` auth removed, plus the fallout; paths left with no
  * operations, tags left with no operations, and component schemas no longer
  * reachable from anything that survived.
  */
@@ -192,7 +192,7 @@ function collectRefs(node: unknown, into: Set<string>) {
 /**
  * Delete component entries unreachable from the surviving paths, so internal-only
  * schemas (e.g. `AdminOrganization`) don't show up in the published Models list.
- * `securitySchemes` are always kept — they're referenced by name, not by `$ref`.
+ * `securitySchemes` are always kept: they're referenced by name, not by `$ref`.
  */
 function pruneUnreachableComponents(doc: StrippableDoc) {
   if (!doc.components) return;

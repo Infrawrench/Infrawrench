@@ -37,7 +37,7 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * GET /api/org/:orgId/cost-centres — centres, name-sorted.
+ * GET /api/org/:orgId/cost-centres: centres, name-sorted.
  *
  * Flat on the wire, with `parentId` on each row: clients build the tree
  * themselves, exactly like cost-report folders. A nested payload would make
@@ -48,7 +48,7 @@ app.get("/", async (c) => {
   return c.json(await listCostCentres(c.get("organizationId")));
 });
 
-/** POST /api/org/:orgId/cost-centres — create a centre, optionally nested. */
+/** POST /api/org/:orgId/cost-centres: create a centre, optionally nested. */
 app.post("/", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -80,7 +80,7 @@ app.post("/", async (c) => {
 });
 
 /**
- * PUT /api/org/:orgId/cost-centres/:id — rename / redescribe / move a centre.
+ * PUT /api/org/:orgId/cost-centres/:id: rename / redescribe / move a centre.
  *
  * A move is this same update with a different `parentId`; omitting the field
  * leaves the centre where it is.
@@ -115,7 +115,7 @@ app.put("/:id", async (c) => {
 });
 
 /**
- * DELETE /api/org/:orgId/cost-centres/:id — delete a centre and its rules.
+ * DELETE /api/org/:orgId/cost-centres/:id: delete a centre and its rules.
  *
  * Children are re-parented onto the deleted centre's own parent, never deleted
  * and never promoted to the root; spend history is untouched.
@@ -138,14 +138,14 @@ app.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** GET /api/org/:orgId/cost-centres/rules — rules in evaluation order. */
+/** GET /api/org/:orgId/cost-centres/rules: rules in evaluation order. */
 app.get("/rules", async (c) => {
   requirePermission(c, "costs:read");
   return c.json(await listAllocationRules(c.get("organizationId")));
 });
 
 /**
- * POST /api/org/:orgId/cost-centres/rules/swap — atomically swap two rules'
+ * POST /api/org/:orgId/cost-centres/rules/swap: atomically swap two rules'
  * priorities. Registered before `/rules/:id` so "swap" is not captured as an id.
  */
 app.post("/rules/swap", async (c) => {
@@ -178,7 +178,7 @@ app.post("/rules/swap", async (c) => {
   return c.json(rules);
 });
 
-/** POST /api/org/:orgId/cost-centres/rules — add an allocation rule. */
+/** POST /api/org/:orgId/cost-centres/rules: add an allocation rule. */
 app.post("/rules", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -208,7 +208,7 @@ app.post("/rules", async (c) => {
   return c.json(rule);
 });
 
-/** PUT /api/org/:orgId/cost-centres/rules/:id — update an allocation rule. */
+/** PUT /api/org/:orgId/cost-centres/rules/:id: update an allocation rule. */
 app.put("/rules/:id", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -232,7 +232,7 @@ app.put("/rules/:id", async (c) => {
   return c.json(rule);
 });
 
-/** DELETE /api/org/:orgId/cost-centres/rules/:id — remove a rule. */
+/** DELETE /api/org/:orgId/cost-centres/rules/:id: remove a rule. */
 app.delete("/rules/:id", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");

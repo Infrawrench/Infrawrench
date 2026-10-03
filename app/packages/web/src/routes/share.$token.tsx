@@ -64,7 +64,7 @@ function SharedConsoleJoinPage() {
             setPhase("preview");
             return;
           } catch {
-            // 404 here means "not this org's link" — keep looking. A genuine
+            // 404 here means "not this org's link": keep looking. A genuine
             // refusal (no permission, expired) comes back 200 with
             // `joinable: false` and lands above, so this catch only swallows
             // the search itself.

@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *    keep resolving.
  * 2. **Nothing reached anyone / something did** is the only distinction that
  *    decides whether sending again is safe, so the classification has to draw
- *    it exactly — a partial delivery is terminal, never retried.
+ *    it exactly: a partial delivery is terminal, never retried.
  * 3. **Addresses come from what the customer record actually says**, including
  *    the several-addresses-in-one-field shape people type.
  */

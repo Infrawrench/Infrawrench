@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * The revert claim, as a race.
  *
- * Reverting has to be mutually exclusive per event — two people pressing Revert
- * at the same moment must produce one provider write, not two — and it has to
+ * Reverting has to be mutually exclusive per event (two people pressing Revert
+ * at the same moment must produce one provider write, not two) and it has to
  * be *recoverable*, because the thing holding the exclusion is a row that
  * outlives the request that wrote it. A process that stops between the claim
  * committing and the provider write returning would otherwise leave the event
@@ -40,7 +40,7 @@ interface Row {
 /**
  * `and`/`eq`/`or`/`isNull`/`lt` become inspectable descriptors so the fake
  * below can evaluate the claim's real predicate. Everything else in drizzle
- * stays real — the schema module this service imports is built out of it.
+ * stays real: the schema module this service imports is built out of it.
  */
 vi.mock("drizzle-orm", async (importOriginal) => ({
   ...(await importOriginal<typeof import("drizzle-orm")>()),
@@ -230,7 +230,7 @@ describe("claimRevert — abandoned claims recover", () => {
 
 /**
  * The regression this round of review found: a lease with no owner is only a
- * timer. Every one of these describes the same shape — an attempt whose
+ * timer. Every one of these describes the same shape: an attempt whose
  * provider call outlived the five-minute lease, finishing after a replacement
  * has already taken the event over.
  */
@@ -336,7 +336,7 @@ describe("claim vs completion are different columns", () => {
  * The journal is a separate fact from the lock, and the two have deliberately
  * different lifetimes. A claim says who may act; only this says a write was
  * issued. Inferring the second from the first is what produced two rounds of
- * P1s — a claim outlives an attempt that died *before* writing just as readily
+ * P1s: a claim outlives an attempt that died *before* writing just as readily
  * as one that died after.
  */
 describe("the write journal outlives the lock", () => {

@@ -174,7 +174,7 @@ describe("push org routes", () => {
       const from = vi.fn().mockReturnValue({ where });
       mockSelect.mockReturnValue({ from });
       const body = await (await buildOrgApp().request("/preferences")).json();
-      // Drift ships muted — it is a continuous feed rather than an exceptional
+      // Drift ships muted: it is a continuous feed rather than an exceptional
       // event. An empty list would tell the phone the opposite.
       expect(body).toEqual({ mutedTriggers: ["resourceDrift"] });
     });

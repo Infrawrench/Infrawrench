@@ -124,7 +124,7 @@ describe("Dashboard routes", () => {
       // First select() for finding default dashboard returns empty
       const selectChain1 = chainMock([]);
       // Later selects: pins/workflow pins use innerJoin().where().orderBy(),
-      // widgets use where().orderBy() directly — support both, resolving [].
+      // widgets use where().orderBy() directly; support both, resolving [].
       const pinsOrderBy = vi.fn().mockResolvedValue([]);
       const pinsWhere = vi.fn().mockReturnValue({ orderBy: pinsOrderBy });
       const pinsInnerJoin = vi.fn().mockReturnValue({ where: pinsWhere });
@@ -201,7 +201,7 @@ describe("Dashboard routes", () => {
       const dashChain = chainMock([{ id: "d1" }]);
       // select for resource check
       const resChain = chainMock([{ id: "r1" }]);
-      // select for max(gridX) query — where() is awaited directly (no .limit())
+      // select for max(gridX) query, where() is awaited directly (no .limit())
       const maxWhere = vi.fn().mockResolvedValue([{ maxX: 0 }]);
       const maxFrom = vi.fn().mockReturnValue({ where: maxWhere });
       const maxChain = { from: maxFrom };
@@ -281,7 +281,7 @@ describe("Dashboard routes", () => {
       expect(res.status).toBe(200);
       // gridX is the index within the merged grid, not within each table.
       expect(sets.map((s) => s["gridX"])).toEqual([0, 1, 2]);
-      // Only resource pins carry a sync version — they are the only kind the
+      // Only resource pins carry a sync version: they are the only kind the
       // desktop sync protocol pushes.
       expect(sets[1]).toHaveProperty("syncVersion");
       expect(sets[0]).not.toHaveProperty("syncVersion");

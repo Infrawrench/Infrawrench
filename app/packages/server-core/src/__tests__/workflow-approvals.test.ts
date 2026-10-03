@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Approval-request fan-out. `requestApprovalAndWait` blocks until a decision
  * lands, so these tests approve on the first poll and assert what went out
- * before the wait — the notification is the part this change added.
+ * before the wait: the notification is the part this change added.
  *
  * What matters:
  *  - every transport the org has configured is used, all under the existing
@@ -12,14 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *    being approved, the workflow and run, who asked, when it expires;
  *  - Slack gets mrkdwn, Teams gets plain text (its card escaper would show a
  *    literal asterisk), SMS gets one short line;
- *  - the SMS leg — and only that leg — is damped by a per-workflow cooldown, so
+ *  - the SMS leg (and only that leg) is damped by a per-workflow cooldown, so
  *    a workflow raising approvals in a loop cannot text everybody N times;
  *  - a transport outage cannot fail the run that is waiting.
  */
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
-// Real Drizzle over a recording driver against the real schema — the approval
+// Real Drizzle over a recording driver against the real schema: the approval
 // insert and the poll loop's read-back render their actual SQL (and
 // shadow-validate under test:postgres:shadow). Every test decides on the first
 // poll, so the default rows are the approved row the loop reads back.
@@ -27,7 +27,7 @@ const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 
 /**
- * The row the poll loop reads back — keys in workflow_approvals column order,
+ * The row the poll loop reads back: keys in workflow_approvals column order,
  * values driver-shaped (timestamps as Postgres text). See
  * helpers/fake-postgres.ts.
  */
@@ -85,7 +85,7 @@ vi.mock("../workflows/paging", () => ({
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -110,7 +110,7 @@ function routed(over: Record<string, unknown> = {}) {
     unrouted: false,
     matchedRuleIds: ["rule1"],
     // The tracked-Slack half of the result. Present by default because
-    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // `byTransport.slack` is 1: a result claiming a Slack delivery with no
     // message to show for it is a shape the real function never returns.
     slackMessages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
     deliveryIds: [],
@@ -118,7 +118,7 @@ function routed(over: Record<string, unknown> = {}) {
   };
 }
 
-/** A delivery that reached nobody — no rule matched, or every channel failed. */
+/** A delivery that reached nobody: no rule matched, or every channel failed. */
 function unroutedResult() {
   return routed({
     attempted: 0,
@@ -169,7 +169,7 @@ describe("approval request fan-out", () => {
     expect(routeAlert).toHaveBeenCalledWith(
       expect.objectContaining({ trigger: "workflowPages" }),
       // Tracked because a decision has to retire every posted copy, and
-      // quiet-hours-exempt because no decision counts as a denial — holding an
+      // quiet-hours-exempt because no decision counts as a denial: holding an
       // approval until morning would silently deny the run.
       expect.objectContaining({ track: true, bypassQuietHours: true }),
     );
@@ -288,7 +288,7 @@ describe("approval request fan-out", () => {
 
   it("still waits for the decision when a transport throws", async () => {
     // The transports swallow their own errors in production; if one ever
-    // leaks, the run must not fail on it — the request is already recorded and
+    // leaks, the run must not fail on it: the request is already recorded and
     // the inbox can decide it whether or not anyone was told.
     routeAlert.mockResolvedValue(unroutedResult());
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -300,11 +300,11 @@ describe("approval request fan-out", () => {
 
 /**
  * The SMS cooldown. "One message per `waitForApproval` call" bounds nothing on
- * its own — `waitForApproval` is a call a workflow can make in a loop — so the
+ * its own (`waitForApproval` is a call a workflow can make in a loop) so the
  * SMS leg claims a reserved `workflow_pages` key before it sends.
  *
  * The trade-off these tests pin down: damp a loop, never mute the first
- * request, and never let a suppressed *text* hide an approval — Slack, Teams
+ * request, and never let a suppressed *text* hide an approval; Slack, Teams
  * and push stay one-per-request because each approval is a separate decision
  * somebody has to go and make.
  */
@@ -353,7 +353,7 @@ describe("approval SMS cooldown", () => {
   });
 
   it("rolls the claim back when the SMS reached nobody", async () => {
-    // An SMS nobody received must not start a quiet period — the same rule
+    // An SMS nobody received must not start a quiet period: the same rule
     // paging/deliver.ts applies to a page.
     const prior = { lastPagedAt: new Date("2026-07-31T09:00:00.000Z") };
     pageStore.read.mockResolvedValue(prior);

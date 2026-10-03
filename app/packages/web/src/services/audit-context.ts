@@ -3,7 +3,7 @@
  * `logAudit` can record it without every call site being rewritten.
  *
  * There are 120-odd `logAudit` call sites across the route tree and they all
- * pass `userId` — which stays correct for an API key, since a key acts as its
+ * pass `userId`, which stays correct for an API key, since a key acts as its
  * owner. What none of them pass is *which key*, and once keys can reach the
  * whole org tree "a write attributed to Alice" stops being enough: an operator
  * investigating has to be able to tell Alice-at-a-keyboard from the CI token
@@ -25,7 +25,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 export interface AuditPrincipal {
   /** `api_keys.id` of the credential the request presented. */
   apiKeyId: string;
-  /** The key's owner — recorded as the actor, matching every other surface. */
+  /** The key's owner: recorded as the actor, matching every other surface. */
   userId: string;
 }
 

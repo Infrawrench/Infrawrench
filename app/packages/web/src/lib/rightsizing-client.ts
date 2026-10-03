@@ -8,8 +8,8 @@ import { apiGet, apiPost } from "./api";
 /**
  * Web implementation of the Oversized section's host-injected data access.
  *
- * `applyResize` goes through `POST /resources/update` — the same route the
- * resource edit form uses — so the resize inherits change-freeze enforcement
+ * `applyResize` goes through `POST /resources/update` (the same route the
+ * resource edit form uses) so the resize inherits change-freeze enforcement
  * (a 423 rejects here with the freeze's own message) and audit logging.
  */
 export function createWebRightsizingClient(orgId: string): RightsizingClient {

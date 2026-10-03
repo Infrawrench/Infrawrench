@@ -8,17 +8,17 @@
  * The work spans three stores, and the order they are touched in is the whole
  * design:
  *
- *  1. **WorkOS** — first, because it is the only fallible step that changes
- *     nothing on our side. Most orgs (every trial org — their ids are local
+ *  1. **WorkOS**: first, because it is the only fallible step that changes
+ *     nothing on our side. Most orgs (every trial org: their ids are local
  *     UUIDs, minted by us) have no WorkOS counterpart at all, and the 404
  *     answers count as success; but when WorkOS *refuses* (rotated key, an
  *     outage), aborting here leaves the org genuinely intact everywhere.
- *  2. **ClickHouse** — metrics, cost, poll outcomes and network flows are
+ *  2. **ClickHouse**: metrics, cost, poll outcomes and network flows are
  *     org-scoped but carry no foreign key to anything. Nothing deletes them
- *     implicitly, and an issued purge cannot be recalled — which is exactly
+ *     implicitly, and an issued purge cannot be recalled, which is exactly
  *     why it must not run before every check and every abortable step is
  *     behind it.
- *  3. **Postgres** — one `DELETE`, and 76 tables cascade behind it. Last,
+ *  3. **Postgres**: one `DELETE`, and 76 tables cascade behind it. Last,
  *     because the `organizations` row is the only record that the other two
  *     have anything to clean up.
  *
@@ -30,7 +30,7 @@
  *
  * The reaper additionally passes {@link DestroyOrganizationOptions.expiredTrialOnly},
  * which takes the per-org lock in `lock.ts` and re-checks the org is *still*
- * an expired, unclaimed trial before anything irreversible happens — a claim
+ * an expired, unclaimed trial before anything irreversible happens: a claim
  * ceremony completing in the window between the reaper's due-query and this
  * function must win, not be silently deleted underneath.
  */
@@ -66,7 +66,7 @@ export const ORG_SCOPED_CLICKHOUSE_TABLES = [
 export interface DestroyOrganizationResult {
   /**
    * False when nothing was destroyed: the org row was already gone (a
-   * concurrent sweep won the race), or — on the guarded reaper path — the org
+   * concurrent sweep won the race), or (on the guarded reaper path) the org
    * stopped being an expired unclaimed trial before anything was touched,
    * which is what a claim landing in the window looks like.
    */
@@ -76,8 +76,8 @@ export interface DestroyOrganizationResult {
   /** Whether the WorkOS org was deleted (or was already absent). */
   workosDeleted: boolean;
   /**
-   * Agent `users` rows removed with the org. Not covered by the cascade —
-   * `users` is not org-scoped — so this is counted rather than assumed.
+   * Agent `users` rows removed with the org. Not covered by the cascade
+   * (`users` is not org-scoped) so this is counted rather than assumed.
    */
   agentUsersDeleted: number;
 }
@@ -88,7 +88,7 @@ export interface DestroyOrganizationResult {
  * `ALTER TABLE … DELETE` is a *mutation*: ClickHouse acknowledges the statement
  * and rewrites parts in the background, so a successful return means "accepted",
  * not "gone". `mutations_sync = 2` would make it synchronous, and is deliberately
- * not used — a reaper sweeping a batch of orgs would then block for as long as
+ * not used: a reaper sweeping a batch of orgs would then block for as long as
  * the largest org's parts take to rewrite, turning a cheap tick into a stall.
  * The rows are unreachable either way: every read path filters by
  * `organization_id`, and that org is about to stop existing in Postgres.
@@ -113,7 +113,7 @@ async function purgeClickHouse(organizationId: string): Promise<readonly string[
  * Re-parent an org's ClickHouse history onto another org.
  *
  * Used by a merge claim when the user asks to keep their trial's history. This
- * works — rather than orphaning rows against ids that no longer exist —
+ * works (rather than orphaning rows against ids that no longer exist)
  * because `resources.id` is the provider's own id, assigned by the plugin and
  * globally unique (`sync-resources.ts` upserts on it). After the merge the
  * account re-polls into the target org and recreates the same resource ids, so
@@ -151,12 +151,12 @@ export async function moveOrgClickHouseData(
  * this, and pulling an auth SDK into the polling service to issue one DELETE
  * would be a strange trade. Honours `WORKOS_API_HOSTNAME` so a deployment on a
  * custom Authentication API domain reaches the same place the rest of the app
- * does — once that domain is live, `api.workos.com` is unsupported.
+ * does: once that domain is live, `api.workos.com` is unsupported.
  *
  * A 404 counts as success, and is the *expected* answer for every trial org:
  * trial org ids are local UUIDs and nothing in the repo creates a WorkOS
- * organization for them. The call is kept — cheap, and it covers any org that
- * does have a WorkOS counterpart — but it must never be treated as evidence
+ * organization for them. The call is kept (cheap, and it covers any org that
+ * does have a WorkOS counterpart) but it must never be treated as evidence
  * the org "exists there too".
  */
 async function deleteWorkosOrganization(organizationId: string): Promise<boolean> {
@@ -198,7 +198,7 @@ export interface DestroyOrganizationOptions {
    * This exists to avoid a race rather than to save work. `ALTER TABLE … UPDATE`
    * and `ALTER TABLE … DELETE` are both background mutations; ClickHouse applies
    * them per part in submission order, so a purge issued after a move *should*
-   * find nothing — but "should, because of how the mutation queue is ordered" is
+   * find nothing, but "should, because of how the mutation queue is ordered" is
    * a thin thing to rest a customer's cost history on. Not issuing the delete at
    * all is the same outcome with nothing to reason about.
    */
@@ -209,7 +209,7 @@ export interface DestroyOrganizationOptions {
    * reaper's due-query cleared `trialExpiresAt` (adopt) or is holding the lock
    * mid-merge wins, and the result reports `deleted: false`.
    *
-   * Never set this from a code path that already holds the org's lock — see
+   * Never set this from a code path that already holds the org's lock: see
    * `lock.ts` for the re-entrancy rule.
    */
   expiredTrialOnly?: { now: Date };
@@ -218,7 +218,7 @@ export interface DestroyOrganizationOptions {
 /**
  * Delete an organization and everything belonging to it, everywhere.
  *
- * Throws if any store refuses, having changed as little as possible — see the
+ * Throws if any store refuses, having changed as little as possible: see the
  * module comment for why the ordering makes that safe.
  */
 export async function destroyOrganization(
@@ -271,7 +271,7 @@ async function destroyStores(
 
   // Read the org's registrations before the delete cascades them away. Their
   // agents' `users` rows are the one thing belonging to this org that does NOT
-  // cascade — `users` is not org-scoped — so without this every expired trial
+  // cascade (`users` is not org-scoped) so without this every expired trial
   // would leave an orphan user behind permanently.
   //
   // A registration re-pointed at another org by a merge is correctly absent
@@ -281,8 +281,8 @@ async function destroyStores(
     .from(agentAuthRegistrations)
     .where(eq(agentAuthRegistrations.organizationId, organizationId));
 
-  // On the reaper path the guard predicates ride on the DELETE itself as well
-  // — the lock already serialises claims, so this is belt and braces, but the
+  // On the reaper path the guard predicates ride on the DELETE itself as well:
+  // the lock already serialises claims, so this is belt and braces, but the
   // row this braces against being deleted is a paying customer's org.
   const deleted = await db
     .delete(organizations)

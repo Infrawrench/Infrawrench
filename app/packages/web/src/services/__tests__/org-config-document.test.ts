@@ -7,7 +7,7 @@ import {
 } from "../org-config/schema";
 
 /**
- * Document validation — the boundary between "a file someone hand-edited" and
+ * Document validation: the boundary between "a file someone hand-edited" and
  * anything the apply path is allowed to see. Pure: `schema.ts` deliberately
  * imports no database, so this runs without one.
  */

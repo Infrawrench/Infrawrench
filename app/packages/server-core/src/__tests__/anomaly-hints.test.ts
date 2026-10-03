@@ -15,7 +15,7 @@ import {
 /**
  * The pure half of root-cause hints: ranking and phrasing. The I/O wrapper
  * (`buildAnomalyHints`) is exercised through the evaluator's suite, where it
- * is mocked at the module boundary — what these tests pin down is that the
+ * is mocked at the module boundary: what these tests pin down is that the
  * evidence reads the way a human would summarize it, and that the cap and
  * the ranking hold whatever the window contained.
  */

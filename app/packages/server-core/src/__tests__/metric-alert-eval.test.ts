@@ -5,7 +5,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 /**
  * Metric alert evaluation tests, modelled on `budget-eval.test.ts`: the
  * window maths are covered pure in `metric-alert-window.test.ts`; this suite
- * covers the pipeline — open-claim dedupe, cooldown suppression, the resolve
+ * covers the pipeline; open-claim dedupe, cooldown suppression, the resolve
  * claim, recovery notifications, and notifiedAt accounting. ClickHouse is
  * mocked at the reader boundary and the selector at its module boundary.
  */
@@ -18,7 +18,7 @@ vi.mock("../metric-alerts/selector", () => ({
   resolveSelectorResources: (...a: unknown[]) => resolveSelectorResources(...a),
 }));
 
-// Real Drizzle over a recording driver against the real schema — every
+// Real Drizzle over a recording driver against the real schema: every
 // statement renders its actual SQL (and shadow-validates under
 // test:postgres:shadow). Each test queues its rows FIFO in execution order:
 // the open-events select first, then the open claim's / resolve claim's
@@ -29,7 +29,7 @@ vi.mock("../db/client", () => ({ db: pg.db }));
 /** The event inserts issued, i.e. the open claims. */
 const inserted = () =>
   pg.queries.filter((q) => q.sql.startsWith('insert into "metric_alert_events"'));
-/** The event updates issued — stamps and resolves. */
+/** The event updates issued: stamps and resolves. */
 const updates = () => pg.queries.filter((q) => q.sql.startsWith('update "metric_alert_events"'));
 /** The resolve claims: updates whose SET flips status to "resolved". */
 const resolveUpdates = () =>
@@ -39,7 +39,7 @@ const resolveUpdates = () =>
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -110,13 +110,13 @@ afterEach(() => {
 describe("evaluateMetricAlertRule — opening firings", () => {
   it("opens a firing and notifies with the metricAlerts trigger and deep-link payload", async () => {
     pg.queueRows([]); // no open events
-    pg.queueRows([{ id: "evt1" }]); // the open claim's RETURNING — claim won
+    pg.queueRows([{ id: "evt1" }]); // the open claim's RETURNING: claim won
     pg.queueRows([{ n: 0 }]); // cooldown probe: nothing notified recently
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
 
     expect(inserted()).toHaveLength(1);
     // (id), ruleId, ruleName, organizationId, resourceId, resourceName,
-    // status, observedValue, firedAt — the rendered statement's column order.
+    // status, observedValue, firedAt: the rendered statement's column order.
     expect(inserted()[0]!.params.slice(1)).toEqual([
       "rule1",
       "High CPU",
@@ -166,7 +166,7 @@ describe("evaluateMetricAlertRule — opening firings", () => {
     pg.queueRows([{ id: "evt1" }]);
     pg.queueRows([{ n: 1 }]); // a notified firing for this pair within cooldownMinutes
     await metricEval.evaluateMetricAlertRule(rule(), NOW);
-    expect(inserted()).toHaveLength(1); // stored — the list UI still shows it
+    expect(inserted()).toHaveLength(1); // stored: the list UI still shows it
     expect(routeAlert).not.toHaveBeenCalled();
   });
 
@@ -175,7 +175,7 @@ describe("evaluateMetricAlertRule — opening firings", () => {
     pg.queueRows([{ id: "evt1" }]);
     await metricEval.evaluateMetricAlertRule(rule({ cooldownMinutes: 0 }), NOW);
     expect(routeAlert).toHaveBeenCalledTimes(1);
-    // No cooldown probe was issued at all — the open-events read stays the
+    // No cooldown probe was issued at all: the open-events read stays the
     // only select of the pass.
     expect(pg.queries.filter((q) => q.sql.startsWith("select"))).toHaveLength(1);
   });
@@ -220,7 +220,7 @@ describe("evaluateMetricAlertRule — resolving firings", () => {
     expect(routeAlert).toHaveBeenCalledWith(
       expect.objectContaining({
         trigger: "metricAlerts",
-        // A recovery is good news, so it drops to `info` — which is what lets a
+        // A recovery is good news, so it drops to `info`, which is what lets a
         // rule wake someone for the firing and hold the all-clear till morning.
         severity: "info",
         pushData: expect.objectContaining({ status: "resolved" }),

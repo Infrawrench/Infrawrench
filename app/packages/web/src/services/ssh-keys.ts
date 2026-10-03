@@ -1,5 +1,5 @@
 /**
- * Shared SSH public key validation — used by the HTTP routes and the MCP/chat
+ * Shared SSH public key validation: used by the HTTP routes and the MCP/chat
  * tool registry.
  */
 export function validateSshPublicKey(key: string): { keyType: string; publicKey: string } {

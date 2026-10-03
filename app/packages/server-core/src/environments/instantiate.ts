@@ -7,7 +7,7 @@
  * member row are written `pending` in one transaction before the first
  * provider call, and a member is marked `created` with its resource id the
  * instant `createResource` returns. A partial failure therefore always leaves
- * an inspectable, tearable-down instance — never a cloud resource with no row
+ * an inspectable, tearable-down instance, never a cloud resource with no row
  * pointing at it, which is the one failure mode this feature could produce
  * that costs real money indefinitely.
  *
@@ -22,15 +22,15 @@
  * And a third, for when the failure record itself cannot be written after
  * retries: an id that lands in no row is invisible to every pass that keys off
  * `resource_id`, so the resource is deleted rather than left running
- * unrecorded — identity is certain, the provider returned the id moments
- * earlier — and if even that fails, three things happen at once: the id is
+ * unrecorded (identity is certain, the provider returned the id moments
+ * earlier) and if even that fails, three things happen at once: the id is
  * carried into the instance-level error (a retried write with its own chance
  * of landing), printed to the process log as `UNRECORDED RESOURCE` the moment
  * the state exists, and retried into the member row on a slow clock for as
  * long as the process lives (`persistFailureRecordInBackground`). The
  * synchronous retries cover a blip; the background ones cover the outage that
  * is the only way to get here, so it ends with the repair pass owning the
- * member. The log line is the terminus only if the process dies first — and a
+ * member. The log line is the terminus only if the process dies first, and a
  * dead process leaves the member `pending` at its position, which is state 2
  * below: surfaced by `failStalledInstantiations`, verified by teardown.
  *
@@ -53,22 +53,22 @@
  * |11 | deleted | any    | any   | no       | torn down or auto-deleted            | terminal |
  *
  * Every row is leased, provably empty, or visible. **State 6 is the one that
- * was neither** — the repair pass filtered on `status = "created"`, so a member
+ * was neither**: the repair pass filtered on `status = "created"`, so a member
  * whose rollback failed ran past its TTL with nothing watching it. That is why
  * the pass keys on `resource_id is not null`, which is the actual question,
  * rather than on a status that only correlates with it.
  *
  * The same miss exists one layer up, so the instance statuses get the same
- * treatment — "might this still own live resources?":
+ * treatment: "might this still own live resources?":
  *
  * | status         | owns live resources?                                  |
  * |----------------|-------------------------------------------------------|
- * | `creating`     | yes — in flight, or stalled                            |
+ * | `creating`     | yes: in flight, or stalled                            |
  * | `active`       | yes                                                    |
  * | `partial`      | yes                                                    |
- * | `tearing-down` | yes — in flight, or a teardown whose process died      |
- * | `failed`       | **yes** — a member can survive a failed rollback       |
- * | `deleted`      | no — reaching it requires every member to be `deleted` |
+ * | `tearing-down` | yes (in flight, or a teardown whose process died      |
+ * | `failed`       | **yes**) a member can survive a failed rollback       |
+ * | `deleted`      | no; reaching it requires every member to be `deleted` |
  *
  * Three passes each hand-enumerated this and **none of the three lists was
  * complete** (`["active","partial"]`, `["creating","active","partial"]`,
@@ -84,7 +84,7 @@
  * positively.** The third bug of this shape found here, after state 6 and the
  * ownership signals. A `resources` row that is *soft-deleted* records a
  * deletion we performed and does confirm the resource is gone; a row that is
- * *missing* confirms nothing at all — it is the ordinary residue of a failed
+ * *missing* confirms nothing at all: it is the ordinary residue of a failed
  * upsert, which is the same failure that stranded the member. Reconciliation
  * read the second as the first and marked such members `deleted`, which is
  * terminal: they left lease repair and teardown for good while the resource
@@ -96,7 +96,7 @@
  * live resource is the worse mistake.
  *
  * **Delete only when identity is certain; where it is not, report and leave.**
- * Asymmetric on purpose — an orphan costs money, a wrong delete costs data.
+ * Asymmetric on purpose: an orphan costs money, a wrong delete costs data.
  * Taken to its endpoint, that rule means **recovery does not delete at all**:
  * `checkMemberAgainstProvider` reports what it finds and leaves it running,
  * because a display name is not an identity and every signal that looked like
@@ -104,15 +104,15 @@
  * reliably have (`classifyRecoveryCandidates` lists all three and why).
  * Deletion lives only where identity is certain: rolling back a resource the
  * provider handed back seconds earlier, and members whose `resource_id` was
- * actually recorded — which is what the two-layer id capture above is for. It
+ * actually recorded, which is what the two-layer id capture above is for. It
  * makes recovery the rare fallback rather than a load-bearing path.
  *
  * **Everything goes through the ordinary paths.** Creates run through the same
  * `createResource` + `upsertCreatedResource` + secret-state persistence the
  * create form uses; deletes run through the same `deleteResource`; the TTL is
  * an ordinary `resource_leases` row with `autoDelete`, so expiry is executed by
- * the existing lease pass — two announcements, freeze-deferring, retries,
- * audit, all of it — rather than by a second teardown scheduler that would
+ * the existing lease pass (two announcements, freeze-deferring, retries,
+ * audit, all of it) rather than by a second teardown scheduler that would
  * have to relearn the same lessons.
  */
 import { and, eq, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
@@ -196,7 +196,7 @@ function errorMessage(error: unknown): string {
  * detached from the request, until it lands or the process dies.
  *
  * The synchronous retries in the catch below span a few hundred milliseconds,
- * which covers a blip but not an outage — and an outage is exactly when every
+ * which covers a blip but not an outage, and an outage is exactly when every
  * fallback write fails together while this process still holds the id in
  * memory. So the id is not surrendered to the log alone: as long as the
  * process lives, the write is retried on a slow clock, and the moment it lands
@@ -205,7 +205,7 @@ function errorMessage(error: unknown): string {
  *
  * If the process dies first, nothing is made worse: the member is still
  * `pending` at its position, which `failStalledInstantiations` surfaces and
- * teardown treats as "attempted — verify against the provider" rather than as
+ * teardown treats as "attempted; verify against the provider" rather than as
  * settled. The timer is unref'd so a shutdown is never held open for it.
  */
 function persistFailureRecordInBackground(
@@ -253,7 +253,7 @@ async function withRetry<T>(operation: () => Promise<T>, attempts = 3): Promise<
 }
 
 /**
- * Attach the member's TTL. Retried, and **fatal when it cannot be done** — the
+ * Attach the member's TTL. Retried, and **fatal when it cannot be done**: the
  * caller rolls the resource back rather than letting it run without an expiry.
  *
  * A lease that already exists for the resource is adopted rather than
@@ -341,7 +341,7 @@ async function rollbackCreatedMember(
  * Does this failure mean "the thing is already gone"?
  *
  * Providers disagree on the wording but agree on the vocabulary, and the
- * alternative — treating every delete failure as fatal — makes teardown
+ * alternative (treating every delete failure as fatal) makes teardown
  * non-idempotent, which is exactly what a retry needs it to be.
  */
 function looksAlreadyGone(error: unknown): boolean {
@@ -460,8 +460,8 @@ export async function instantiateEnvironment(
     const member = step.member;
     const accountId = accountFor(member);
     // Held outside the try so the catch can still see a resource the provider
-    // handed back before something downstream — including the write that was
-    // meant to confirm it — threw.
+    // handed back before something downstream (including the write that was
+    // meant to confirm it) threw.
     let createdRecord: {
       resourceId: string;
       externalId: string | null;
@@ -477,8 +477,8 @@ export async function instantiateEnvironment(
         throw new Error(`The ${member.pluginId} plugin cannot create ${member.resourceTypeId}`);
       }
 
-      // Output references captured as encoded refs would be meaningless here —
-      // the template already carries the reference structurally — but a
+      // Output references captured as encoded refs would be meaningless here
+      // (the template already carries the reference structurally) but a
       // literal that happens to be an encoded ref is flattened for the plugin
       // exactly as the create route does.
       const fields: Record<string, string> = {};
@@ -496,7 +496,7 @@ export async function instantiateEnvironment(
       // resource can always be found and torn down. `createdRecord` is set
       // *before* the write, so even a failure of this very write carries the id
       // into the failure record rather than losing a running resource. Retried,
-      // because the alternative to a landed write is the whole rollback path —
+      // because the alternative to a landed write is the whole rollback path:
       // a transient blip should not cost a freshly created resource.
       createdRecord = {
         resourceId: resource.id,
@@ -542,7 +542,7 @@ export async function instantiateEnvironment(
         );
       }
 
-      // Resolve exactly the outputs later members ask for — no more, because
+      // Resolve exactly the outputs later members ask for: no more, because
       // each one is a provider round-trip.
       const outputs: Record<string, string> = { ...(resource.resolvedOutputs ?? {}) };
       for (const outputKey of plan.outputsNeeded[member.key] ?? []) {
@@ -559,8 +559,8 @@ export async function instantiateEnvironment(
       failure = `${member.sourceName}: ${errorMessage(error)}`;
 
       // A member that got as far as a resource but not as far as a TTL must not
-      // be left running. Identity is *certain* here — the provider handed the
-      // id back seconds ago — which is what makes deleting it the safe move,
+      // be left running. Identity is *certain* here (the provider handed the
+      // id back seconds ago) which is what makes deleting it the safe move,
       // unlike the name-based recovery teardown has to do.
       if (createdRecord && !(await memberHasLease(organizationId, createdRecord.resourceId))) {
         const rolledBack = await rollbackCreatedMember(organizationId, {
@@ -594,11 +594,11 @@ export async function instantiateEnvironment(
       } catch (writeError) {
         console.error("[environments] failed to record member failure:", writeError);
         // The retried write is gone, and if `createdRecord` is still set the id
-        // it carries now exists nowhere durable — the one state every repair
+        // it carries now exists nowhere durable: the one state every repair
         // pass keys off `resource_id` and cannot see. Identity is still certain
         // (the provider handed this id back moments ago), so the safe order is:
         // delete the resource rather than let it run unrecorded, and if even
-        // that fails, carry the id into the instance-level error — a separate
+        // that fails, carry the id into the instance-level error: a separate
         // write with its own chance of landing, and the last durable place a
         // human can recover it from.
         if (createdRecord && !(await memberHasLease(organizationId, createdRecord.resourceId))) {
@@ -629,7 +629,7 @@ export async function instantiateEnvironment(
             );
             // And not surrendered to the log alone: the id is retried into the
             // member row on a slow clock for as long as this process lives, so
-            // a database outage — the one way to get here — ends with the
+            // a database outage (the one way to get here) ends with the
             // repair pass owning the member rather than with an operator
             // grepping. See `persistFailureRecordInBackground`.
             persistFailureRecordInBackground(
@@ -681,8 +681,8 @@ export async function instantiateEnvironment(
  * Reverse creation order because a dependency has to outlive its dependents.
  * Idempotent by construction: a member already marked deleted, a resource row
  * that is already soft-deleted and a provider that answers "not found" all take
- * the same quiet success path, so re-running a teardown — or running one after
- * the lease pass already got there — is a no-op rather than an error.
+ * the same quiet success path, so re-running a teardown (or running one after
+ * the lease pass already got there) is a no-op rather than an error.
  *
  * A member with **no** resource id is not one of those cases. It is either a
  * member the run never reached (nothing can exist) or one it attempted and
@@ -748,8 +748,8 @@ export async function tearDownEnvironment(
     }
 
     // Only a confirmed outcome releases the lease. A failed delete keeps it, so
-    // the lease pass — which retries, defers through freezes and reports when
-    // it gives up — still owns the resource instead of it billing until a
+    // the lease pass (which retries, defers through freezes and reports when
+    // it gives up) still owns the resource instead of it billing until a
     // human happens to retry the teardown.
     if (leaseShouldBeCancelled(outcome)) await cancelMemberLease(organizationId, member);
   }
@@ -774,7 +774,7 @@ async function deleteMemberResource(
     .from(resources)
     .where(and(eq(resources.organizationId, organizationId), eq(resources.id, resourceId)))
     .limit(1);
-  // Already reaped — by the lease pass, by a hand delete, by a previous
+  // Already reaped: by the lease pass, by a hand delete, by a previous
   // teardown. Nothing to do, and nothing to complain about.
   if (stored && stored.deletedAt !== null) return "already-gone";
 
@@ -809,21 +809,21 @@ async function deleteMemberResource(
 }
 
 /**
- * Check on a member whose creation was **attempted but never confirmed** — and
+ * Check on a member whose creation was **attempted but never confirmed**, and
  * report, never delete.
  *
  * The row carries no resource id, which does not mean no resource exists: a
  * create can return right before the write recording it fails, or the process
  * can die mid-call. So the provider is asked. But a match is only ever
  * *reported*, because a display name is not an identity and no signal
- * available here upgrades it into one — see `classifyRecoveryCandidates` for
+ * available here upgrades it into one: see `classifyRecoveryCandidates` for
  * the three that were tried and why each turned out to be a proxy for a
  * creation time we do not reliably have.
  *
  * Deleting is left to the paths where identity is certain: the rollback of a
  * resource the provider handed back seconds earlier, and any member whose
  * `resource_id` was actually recorded. The id found here is deliberately **not**
- * written to the member row either — doing so would make the next teardown
+ * written to the member row either: doing so would make the next teardown
  * classify it as `delete` and destroy it through the back door.
  *
  * A failed listing is a failure, never an absence.
@@ -899,7 +899,7 @@ export async function forgetEnvironmentInstance(
  * Catch instances up with what the lease pass already did.
  *
  * Expiry is executed per member by the lease pass, which knows nothing about
- * environments — so an instance whose members have all been auto-deleted would
+ * environments, so an instance whose members have all been auto-deleted would
  * otherwise sit at "active" forever and lie on the page. This walks the
  * expired-and-still-live instances, marks members whose resource row is gone,
  * and closes the instance when nothing is left. Cheap and bounded: only
@@ -927,7 +927,7 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
   for (const row of rows) {
     if (!instanceMayOwnLiveResources(row.status)) continue;
     const members = await getInstanceMemberRows(row.id);
-    // Keyed on holding a resource id, not on `status === "created"` — the same
+    // Keyed on holding a resource id, not on `status === "created"`: the same
     // correction the lease-repair pass needed. A `failed` member with a live
     // resource is exactly the case that must still be followed up.
     const holders = members.filter((m) => m.status !== "deleted" && m.resourceId);
@@ -945,7 +945,7 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
     // Soft-deleted rows are deliberately **included**: their `deleted_at` is
     // the record of a deletion we performed, which is the only thing here that
     // can confirm a resource is gone. Filtering them out would leave "row
-    // missing" and "row deleted" indistinguishable — and a missing row means
+    // missing" and "row deleted" indistinguishable, and a missing row means
     // our upsert failed, not that the provider dropped the resource.
     const rows = await db
       .select({ id: resources.id, deletedAt: resources.deletedAt })
@@ -980,7 +980,7 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
     }
     // Close only when nothing is left open: every holder confirmed gone, and
     // every other member already `deleted`. A member with no id that never
-    // reached `deleted` is unresolved too — teardown has yet to ask the
+    // reached `deleted` is unresolved too: teardown has yet to ask the
     // provider about it.
     const othersSettled = members
       .filter((m) => !holders.includes(m))
@@ -998,7 +998,7 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
  * Throwing is the contract for anything the caller should retry and record:
  * the pass writes the message to `repair_error` and backs the member off,
  * rather than logging it where nobody will look. Returning normally means the
- * member no longer needs repair — either it has a lease now, or its resource
+ * member no longer needs repair: either it has a lease now, or its resource
  * was confirmed gone.
  */
 export async function repairClaimedMember(member: {
@@ -1020,7 +1020,7 @@ export async function repairClaimedMember(member: {
       resourceId: member.resourceId,
       accountId: member.accountId,
       // A member found after its instance already expired cannot be given a
-      // deadline in the past — `validateLeaseInput` rejects it — so it gets a
+      // deadline in the past (`validateLeaseInput` rejects it) so it gets a
       // short one instead. The lease pass still announces before it deletes.
       expiresAt: leaseDeadlineFor(member.expiresAt),
       environmentName: member.instanceName,
@@ -1055,7 +1055,7 @@ export async function repairClaimedMember(member: {
     }
 
     // `unknown`: no row for a lease to reference, so this resource can never be
-    // given a TTL. It was already marked for rollback once, so retry that —
+    // given a TTL. It was already marked for rollback once, so retry that:
     // identity is certain, the id came back from the provider during the run.
     const rolledBack = await rollbackCreatedMember(member.organizationId, {
       accountId: member.accountId,
@@ -1076,14 +1076,14 @@ export async function repairClaimedMember(member: {
  * Surface a run that stopped without finishing.
  *
  * A process that dies mid-instantiation leaves the instance at `creating` and
- * its in-flight member at `pending` with no id — the one state no lease can
+ * its in-flight member at `pending` with no id: the one state no lease can
  * cover, because there is nothing recorded to attach a lease to. A process that
  * dies mid-*teardown* leaves it at `tearing-down`, which is the same lie told
  * from the other end and was missed by the original `creating`-only filter.
  *
  * Both become `partial`: a state the page shows and teardown acts on. Resource
- * safety does not depend on this — `repairMissingMemberLeases` covers any
- * member holding a resource regardless of instance status — but a status that
+ * safety does not depend on this (`repairMissingMemberLeases` covers any
+ * member holding a resource regardless of instance status) but a status that
  * has stopped being true is its own defect.
  */
 async function failStalledInstantiations(organizationId: string): Promise<void> {

@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { BusinessMetric, CostFilter } from "@infrawrench/client-core";
 
 // `../cost-query` transitively reaches server-core's `db/client`, which throws
-// at import time without this. No connection is opened — every query path this
+// at import time without this. No connection is opened: every query path this
 // file touches is mocked below.
 process.env["DATABASE_URL"] ??= "postgres://test:test@localhost:5432/test";
 
 /**
- * `runUnitCostQuery` — the orchestration around the pure arithmetic.
+ * `runUnitCostQuery`: the orchestration around the pure arithmetic.
  *
  * The bucket-level maths is exhaustively covered in server-core's
  * `unit-costs.test.ts`; what is asserted here is everything the service itself

@@ -2,8 +2,8 @@
  * The invite token: what it is, what it is not, and what it must never accept.
  *
  * Worth testing separately from the join rules because the token is the part
- * of this feature that leaves the building — it gets pasted into chat, into a
- * ticket, into somebody's notes — and a parser that is lax about its shape is
+ * of this feature that leaves the building (it gets pasted into chat, into a
+ * ticket, into somebody's notes) and a parser that is lax about its shape is
  * how a share id ends up in an error message that tells an outsider which
  * sessions exist.
  */

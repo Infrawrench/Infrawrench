@@ -4,7 +4,7 @@ import { buildTestApp } from "./test-utils";
 
 /**
  * Tests that the web resource-detail API route derives feature flags
- * identically to how desktop does — ensuring SSH, SFTP, SQL, KV, Docker,
+ * identically to how desktop does: ensuring SSH, SFTP, SQL, KV, Docker,
  * and storage features are visible in the web UI wherever desktop shows them.
  *
  * Root cause of the parity gap: web's resource-detail route only checked

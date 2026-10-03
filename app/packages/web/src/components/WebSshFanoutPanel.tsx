@@ -43,7 +43,7 @@ export function WebSshFanoutPanel({ orgId }: { orgId: string }) {
         const res = await apiGet<SnippetsResponse>(`/api/org/${orgId}/ssh-fanout/snippets`);
         if (!isStale?.()) setSnippets(res.snippets);
       } catch {
-        // Snippets are a convenience — the page still works without them.
+        // Snippets are a convenience: the page still works without them.
       }
     },
     [orgId],

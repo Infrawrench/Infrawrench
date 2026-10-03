@@ -8,7 +8,7 @@ import { apiPost } from "@/lib/api";
  *
  * An agent has built its user a workspace and handed them a code; this is where
  * that code turns into an organization they own. The page assumes the visitor
- * has no idea what any of this is — they were sent here by a chat message — so
+ * has no idea what any of this is (they were sent here by a chat message) so
  * it leads with what the workspace *is* and what happens if they walk away,
  * rather than with a form.
  */

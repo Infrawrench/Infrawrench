@@ -1,5 +1,5 @@
 /**
- * Org-scoped scenario-model CRUD and referent scanning — shared by the HTTP
+ * Org-scoped scenario-model CRUD and referent scanning: shared by the HTTP
  * routes (api/routes/cost-scenarios.ts) and the tool registry, mirroring
  * services/saved-cost-filters.ts.
  *
@@ -86,7 +86,7 @@ export class CostScenarioLimitError extends Error {
  * Normalize an input for storage: trimmed name, upper-cased currency, and every
  * adjustment reduced to exactly the stored shape.
  *
- * Normalizing *before* validating is deliberate — a user typing `usd` into a
+ * Normalizing *before* validating is deliberate: a user typing `usd` into a
  * currency box has not made a mistake, and rejecting them for it would be
  * pedantry. Everything the validation genuinely refuses is refused after.
  *
@@ -218,7 +218,7 @@ export async function createCostScenarioModel(
  * A full replace, matching budgets, reports and saved filters. This is the
  * high-leverage write of the feature: every chart drawing the model, and every
  * budget measuring its forecast thresholds against it, uses the new numbers on
- * its next evaluation — which for a budget can change which alerts fire.
+ * its next evaluation, which for a budget can change which alerts fire.
  */
 export async function updateCostScenarioModel(
   organizationId: string,
@@ -246,7 +246,7 @@ export async function updateCostScenarioModel(
 
 /**
  * Everything still referencing a scenario model, in a stable order (budgets
- * first — they are the ones that page people — then reports, then dashboard
+ * first (they are the ones that page people) then reports, then dashboard
  * graphs).
  *
  * Budgets carry the reference as a real column; reports and ad-hoc graph
@@ -322,7 +322,7 @@ export async function listCostScenarioReferents(
  * Soft-delete a scenario model. False when not found.
  *
  * @throws {CostScenarioInUseError} while any budget, report or dashboard graph
- * references it — see the module comment for why refusal, not detach.
+ * references it: see the module comment for why refusal, not detach.
  */
 export async function softDeleteCostScenarioModel(
   organizationId: string,

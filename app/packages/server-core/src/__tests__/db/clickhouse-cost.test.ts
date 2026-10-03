@@ -3,8 +3,8 @@
  * ClickHouse. The unit suites (billing-rules-sql, cost-reconcile,
  * cost-export-run, …) run this SQL through the fake driver and assert on its
  * text; here the same production modules execute against a real server, which
- * is the only place a query that renders fine but doesn't parse — or parses
- * but reads the wrong column — can fail.
+ * is the only place a query that renders fine but doesn't parse (or parses
+ * but reads the wrong column) can fail.
  *
  * Same rules as clickhouse.test.ts: skipped unless CLICKHOUSE_METRICS_* is
  * set, scratch servers only, rows written under a random per-run org and
@@ -75,7 +75,7 @@ function costRow(over: Partial<CostDailyRow>): CostDailyRow {
   };
 }
 
-// Plain usage on two days, plus one commitment-covered row sharing day1 —
+// Plain usage on two days, plus one commitment-covered row sharing day1:
 // enough to give the coverage, showback and billing-rule SQL something to say.
 const usageProd = costRow({ amount: 10, amortized_amount: 10 });
 const usageDev = costRow({
@@ -179,7 +179,7 @@ describe.skipIf(!isClickHouseConfigured())("cost and flow SQL against a real ser
           query_params: { org: orgId },
         });
       } catch {
-        // Best effort — the tables' TTLs expire test rows regardless.
+        // Best effort: the tables' TTLs expire test rows regardless.
       }
     }
     await ch.close();
@@ -260,7 +260,7 @@ describe.skipIf(!isClickHouseConfigured())("cost and flow SQL against a real ser
     const dev = uncoveredDaily.find((r) => r.day === day2);
     expect(dev?.amount).toBeCloseTo(5);
 
-    // No commitment fee rows are seeded — asserting the query itself runs.
+    // No commitment fee rows are seeded: asserting the query itself runs.
     expect(Array.isArray(await getCommitmentDeliveredTotals(orgId, day1, day2, [accountId]))).toBe(
       true,
     );

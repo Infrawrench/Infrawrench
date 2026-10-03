@@ -5,7 +5,7 @@
  *
  * Cost centres nest, so the report is a tree: each row carries the spend
  * allocated **directly** to it (`totals`) alongside its own plus every
- * descendant's (`subtreeTotals`). Both matter — "Engineering $40k, of which
+ * descendant's (`subtreeTotals`). Both matter: "Engineering $40k, of which
  * Platform $12k" is the shape a finance conversation actually takes, and only
  * one of those numbers can be read off a single figure.
  *
@@ -33,8 +33,8 @@ import { loadConversionContext } from "@infrawrench/server-core/cost/currency-se
  * `displayCurrency` is opt-in and only honoured when the org has configured
  * that currency; absent, the report is per-currency exactly as before.
  *
- * A showback report converts on **one** rate — the one in force on `to`, the
- * last day of the period — rather than per day. Unlike a graph these are
+ * A showback report converts on **one** rate (the one in force on `to`, the
+ * last day of the period) rather than per day. Unlike a graph these are
  * period totals with no day attached to convert against, and a chargeback is a
  * statement about a closed period: "August, at the August rate" is a sentence a
  * finance team can defend, where "August at a blend of whatever rates the
@@ -42,7 +42,7 @@ import { loadConversionContext } from "@infrawrench/server-core/cost/currency-se
  *
  * `adjusted` layers the org's billing rules on: markups multiply, and a
  * reallocation moves a centre's spend onto another centre. Off by default, like
- * every other adjusted surface — a chargeback report that silently showed
+ * every other adjusted surface: a chargeback report that silently showed
  * marked-up numbers is one nobody could reconcile against the invoice. On, the
  * report carries `adjustment` with the collected totals beside them.
  *
@@ -71,7 +71,7 @@ export async function getShowbackReport(
   // Rules pointing at a deleted centre can't exist (FK cascade), but guard
   // anyway: an unknown centre id must not silently relabel spend.
   //
-  // `listAllocationRules` already returns evaluation order — ascending
+  // `listAllocationRules` already returns evaluation order: ascending
   // priority, then the more deeply nested centre first on a tie. Nesting stops
   // here: `getShowbackSpend` compiles this flat list into one `multiIf` and
   // resolves each row to exactly one centre in a single scan of `cost_daily`,
@@ -107,7 +107,7 @@ export async function getShowbackReport(
   }
 
   // Fixed amounts, pro-rated over the range and booked onto the centre they
-  // name. Added after the scan because nothing in `cost_daily` produced them —
+  // name. Added after the scan because nothing in `cost_daily` produced them:
   // a flat overhead is owed whether or not the provider billed anything.
   const fixedTotals: Record<string, number> = {};
   for (const rule of billing?.adjustments.fixed ?? []) {
@@ -126,8 +126,8 @@ export async function getShowbackReport(
     byCentre.set(key, bucket);
   }
 
-  // Every defined centre appears, even with zero spend — a showback report
-  // with silently missing centres reads as a data loss, not an empty bucket —
+  // Every defined centre appears, even with zero spend (a showback report
+  // with silently missing centres reads as a data loss, not an empty bucket)
   // and the unallocated bucket keeps its own first-class row at the end rather
   // than being folded into a parent.
   const centreEntries: ShowbackReport["centres"] = buildShowbackCentres(
@@ -160,7 +160,7 @@ export async function getShowbackReport(
   }));
 
   // The collected figures, converted the same way and on the same day as the
-  // adjusted ones — a chargeback statement has to be reconcilable against the
+  // adjusted ones: a chargeback statement has to be reconcilable against the
   // invoice line for line, and a raw total converted on a different rate would
   // differ from the adjusted one by a currency movement rather than a markup.
   let adjustment: CostAdjustmentSummary | undefined;

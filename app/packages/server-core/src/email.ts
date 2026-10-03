@@ -2,7 +2,7 @@
  * Transactional email as an outbound transport.
  *
  * There was no mail stack in this codebase before this module. The only email
- * the product sent was WorkOS's — verification and invitation mail that WorkOS
+ * the product sent was WorkOS's: verification and invitation mail that WorkOS
  * composes and delivers itself as part of user management; it exposes no
  * general "send this message" API to piggyback on. So rather than bend an auth
  * provider into a mail provider, this is a new transport shaped exactly like
@@ -10,9 +10,9 @@
  * endpoint, and a no-op with a clear log line when it isn't configured.
  *
  * Provider: Mailgun (`POST {base}/v3/{domain}/messages`). Google Cloud has no
- * first-party transactional mail service — its own "sending email from an
+ * first-party transactional mail service: its own "sending email from an
  * instance" guide points at SendGrid, Mailgun or Mailjet, and blocks outbound
- * port 25 — so on GKE the choice is which of those to carry, not whether to
+ * port 25, so on GKE the choice is which of those to carry, not whether to
  * carry one. Mailgun is one of the three Google documents.
  *
  * No SDK, for the same reason the CLI hand-rolls its ANSI output: the whole
@@ -21,15 +21,15 @@
  * via the runtime's own `FormData`, which is what Mailgun documents.
  *
  * Config (env):
- *   MAILGUN_API_KEY  — a domain sending key (preferred) or the account key
- *   MAILGUN_DOMAIN   — the verified sending domain, e.g. `mg.yourdomain.com`
- *   EMAIL_FROM       — the sender, e.g. `Infrawrench <digest@mg.yourdomain.com>`
- *   MAILGUN_API_BASE — optional; `https://api.eu.mailgun.net` for an EU account
+ *   MAILGUN_API_KEY  - a domain sending key (preferred) or the account key
+ *   MAILGUN_DOMAIN   - the verified sending domain, e.g. `mg.yourdomain.com`
+ *   EMAIL_FROM       - the sender, e.g. `Infrawrench <digest@mg.yourdomain.com>`
+ *   MAILGUN_API_BASE: optional; `https://api.eu.mailgun.net` for an EU account
  *
  * Without the first three, `isEmailConfigured()` is false and every send here
  * is a logged no-op. That is the same shape as Slack: a self-hosted deployment
  * that never sets up a mail provider simply doesn't get email delivery, rather
- * than erroring or — worse — failing silently.
+ * than erroring or (worse) failing silently.
  *
  * **Mailgun has no idempotency keys** (an open feature request for years), so
  * unlike some providers it cannot collapse a duplicate send for us. That costs
@@ -37,7 +37,7 @@
  * `classifyDelivery` only marks an attempt retryable when *zero* destinations
  * succeeded, address-level fan-out included. Dedup was belt-and-braces on top
  * of that rule, not the thing making it safe. `traceKey` below is therefore
- * exactly what its name says — a breadcrumb, not a guarantee.
+ * exactly what its name says: a breadcrumb, not a guarantee.
  */
 
 /** US region by default; EU accounts live on a different host entirely. */
@@ -64,7 +64,7 @@ function messagesUrl(): string {
  *
  * Mailgun takes attachments as extra `attachment` parts of the same multipart
  * form the message already is, so this costs no second request, no object
- * store and no expiring link — which is why the invoice CSV is attached rather
+ * store and no expiring link, which is why the invoice CSV is attached rather
  * than linked. A link would need a public URL for a document that names a
  * customer's spend, and a bill nobody can open six months later is not a bill.
  */
@@ -79,7 +79,7 @@ export interface EmailAttachment {
 export interface EmailMessage {
   to: string;
   subject: string;
-  /** Plain-text part. Always sent — some readers never render the HTML. */
+  /** Plain-text part. Always sent: some readers never render the HTML. */
   text: string;
   /** HTML part. Optional; omitted messages are text-only. */
   html?: string;
@@ -88,7 +88,7 @@ export interface EmailMessage {
   /**
    * Optional correlation breadcrumb, sent as the Mailgun custom variable
    * `v:infrawrench-key` so it comes back on the message's log entries and
-   * webhooks — enough to answer "did this org's digest for that week actually
+   * webhooks: enough to answer "did this org's digest for that week actually
    * leave the building?" from Mailgun's side.
    *
    * Deliberately *not* called an idempotency key: Mailgun has no such feature,
@@ -106,7 +106,7 @@ export interface EmailFanOutResult {
 
 const NO_DELIVERY: EmailFanOutResult = { attempted: 0, succeeded: 0, failed: 0 };
 
-/** Send one message. Throws on failure — callers decide whether that matters. */
+/** Send one message. Throws on failure: callers decide whether that matters. */
 async function sendOne(message: EmailMessage): Promise<void> {
   const form = new FormData();
   form.set("from", process.env["EMAIL_FROM"] ?? "");
@@ -125,7 +125,7 @@ async function sendOne(message: EmailMessage): Promise<void> {
       "attachment",
       new Blob([part], { type: file.contentType }),
       // The third argument is the part's filename, which is the name the
-      // recipient's mail client shows — without it Mailgun invents `blob`.
+      // recipient's mail client shows: without it Mailgun invents `blob`.
       file.filename,
     );
   }
@@ -136,7 +136,7 @@ async function sendOne(message: EmailMessage): Promise<void> {
   const res = await fetch(messagesUrl(), {
     method: "POST",
     signal: AbortSignal.timeout(EMAIL_REQUEST_TIMEOUT_MS),
-    // Basic auth with the literal username `api`. No Content-Type header —
+    // Basic auth with the literal username `api`. No Content-Type header:
     // `fetch` derives it from the FormData, including the multipart boundary,
     // and setting it by hand would strip that and break the parse.
     headers: {
@@ -146,7 +146,7 @@ async function sendOne(message: EmailMessage): Promise<void> {
   });
   if (!res.ok) {
     // Mailgun returns a JSON body whose `message` field is far more useful than
-    // the status — an unverified sender domain and a malformed address both
+    // the status: an unverified sender domain and a malformed address both
     // surface as 400, and only the body distinguishes them.
     const detail = (await res.text().catch(() => "")).slice(0, 200).trim();
     throw new Error(`email to ${message.to}: HTTP ${res.status}${detail ? ` — ${detail}` : ""}`);
@@ -154,7 +154,7 @@ async function sendOne(message: EmailMessage): Promise<void> {
 }
 
 /**
- * Send the same message to every address. Never throws — a mail outage must
+ * Send the same message to every address. Never throws: a mail outage must
  * not fail the poller. Per-address errors are logged and counted so the caller
  * can still tell whether anything landed.
  *
@@ -184,7 +184,7 @@ export async function sendEmails(
 
 /**
  * Normalize and validate an address typed into a settings form. Throws with a
- * message meant for the user. Deliberately permissive — the only reliable
+ * message meant for the user. Deliberately permissive: the only reliable
  * validator is delivery, and a regex that rejects a valid address is worse
  * than one that accepts a typo.
  */

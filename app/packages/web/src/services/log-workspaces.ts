@@ -2,7 +2,7 @@
  * Log-capable resource discovery for the log workspace picker.
  *
  * The `logs` capability lives on the *rendered* `DetailViewSchema` (a plugin
- * declares it per instance in `renderDetail`), never on the resource type —
+ * declares it per instance in `renderDetail`), never on the resource type,
  * so the only provider-agnostic way to know a resource can be tailed is to
  * render its stored row and look. `renderDetail` is pure and synchronous, so
  * this stays cheap: one client per account (only accounts whose client
@@ -13,7 +13,7 @@
  * its `kubernetes` peer integration, not in the resources table. The sidecar
  * scan (`discoverSidecarLogStreams`, shared with desktop local mode) walks
  * stored parents, builds each log-capable peer plugin's client through
- * `getClientForResource`, and lists the peer streams — a live-provider call,
+ * `getClientForResource`, and lists the peer streams: a live-provider call,
  * bounded per parent and fail-soft so one broken cluster never empties the
  * picker.
  */
@@ -51,7 +51,7 @@ export async function listLogCapableResources(
     .orderBy(accounts.displayName);
 
   const out: LogCapableResource[] = [];
-  /** Stored rows whose type declares peer integrations — the sidecar scan's roots. */
+  /** Stored rows whose type declares peer integrations: the sidecar scan's roots. */
   const sidecarParents: SidecarLogParent[] = [];
   for (const account of accountRows) {
     if (out.length >= MAX_RESULTS) break;
@@ -84,7 +84,7 @@ export async function listLogCapableResources(
         and(
           eq(resources.organizationId, organizationId),
           eq(resources.accountId, account.id),
-          // The synthetic account-root row is never a tailable stream —
+          // The synthetic account-root row is never a tailable stream:
           // matches the desktop discovery's filter.
           ne(resources.resourceTypeId, "__account__"),
           isNull(resources.deletedAt),
@@ -137,7 +137,7 @@ export async function listLogCapableResources(
     }
   }
 
-  // Sidecar streams (pods inside a managed cluster, …) — live peer listings,
+  // Sidecar streams (pods inside a managed cluster, …): live peer listings,
   // appended after the stored rows so a slow cluster only delays its own
   // entries' spot in the cap, never the cheap half of the picker.
   if (out.length < MAX_RESULTS && sidecarParents.length > 0) {

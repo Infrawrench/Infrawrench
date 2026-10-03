@@ -54,7 +54,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
  * Distilled create fields for a single resource type, from cache or a fresh
  * `getCreateConfig`. Returns null when the plugin can't produce a config (e.g.
  * child types needing a parentResourceId, or a slow/erroring provider). Never
- * throws — failures resolve to null so callers (codegen) fall back to generic.
+ * throws: failures resolve to null so callers (codegen) fall back to generic.
  */
 export async function getCreateFieldsForType(
   pluginId: string,
@@ -76,7 +76,7 @@ export async function getCreateFieldsForType(
     }
   } catch (err) {
     // Never-throws by contract (see docstring), but a transient provider
-    // error must not be cached as "no create fields" for the whole TTL —
+    // error must not be cached as "no create fields" for the whole TTL:
     // log it and let the next call retry.
     console.warn(`[create-fields-cache] getCreateConfig for ${key} failed:`, err);
     return null;

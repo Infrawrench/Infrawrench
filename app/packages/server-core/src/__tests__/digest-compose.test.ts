@@ -20,7 +20,7 @@ import {
 } from "../digest/compose";
 
 /**
- * The composer is deliberately pure — these tests pin down the window math
+ * The composer is deliberately pure: these tests pin down the window math
  * (local Mondays in an arbitrary IANA zone, across both DST transitions), the
  * schedule's due check, the week-over-week arithmetic (totals, deltas, movers,
  * currency separation), and the formatting all three transports share.
@@ -154,7 +154,7 @@ describe("calendar helpers", () => {
 /**
  * The reason these exist: the composed window, the "is it due" check and the
  * `last_sent_week_start` claim key all have to agree, and a DST transition is
- * exactly where a naive `+7 * 86_400_000` implementation stops agreeing —
+ * exactly where a naive `+7 * 86_400_000` implementation stops agreeing;
  * silently double-sending or skipping a week once a year.
  */
 describe("timezone-aware scheduling", () => {
@@ -217,9 +217,9 @@ describe("timezone-aware scheduling", () => {
       const w = digestWindow(new Date("2026-03-08T12:00:00Z"), "America/New_York");
       expect(w.weekEnd).toBe("2026-03-01");
       expect(digestDueDate(w, 7)).toBe("2026-03-08");
-      // 01:30 EST — before the jump, and before the send hour.
+      // 01:30 EST: before the jump, and before the send hour.
       expect(isDigestDue(new Date("2026-03-08T06:30:00Z"), w, sundayAt2)).toBe(false);
-      // 03:00 EDT — the clock skipped 02:00 entirely, so the digest becomes due
+      // 03:00 EDT: the clock skipped 02:00 entirely, so the digest becomes due
       // the moment the local hour clears the send hour. Late, never skipped.
       expect(isDigestDue(new Date("2026-03-08T07:00:00Z"), w, sundayAt2)).toBe(true);
     });
@@ -262,11 +262,11 @@ describe("timezone-aware scheduling", () => {
     it("stays due across the repeated hour rather than firing twice", () => {
       const w = digestWindow(new Date("2026-11-01T06:30:00Z"), "America/New_York");
       expect(digestDueDate(w, 7)).toBe("2026-11-01");
-      // 00:30 EDT — before the send hour.
+      // 00:30 EDT: before the send hour.
       expect(isDigestDue(new Date("2026-11-01T04:30:00Z"), w, sundayAt1)).toBe(false);
-      // 01:30 EDT — the first pass through the repeated hour.
+      // 01:30 EDT: the first pass through the repeated hour.
       expect(isDigestDue(new Date("2026-11-01T05:30:00Z"), w, sundayAt1)).toBe(true);
-      // 01:30 EST — the second pass. Still "due"; the last_sent_week_start
+      // 01:30 EST: the second pass. Still "due"; the last_sent_week_start
       // claim, not this predicate, is what keeps it to one send.
       expect(isDigestDue(new Date("2026-11-01T06:30:00Z"), w, sundayAt1)).toBe(true);
     });
@@ -479,7 +479,7 @@ describe("formatting", () => {
   });
 
   it("omits the cost-move line entirely when nothing could be measured", () => {
-    // Not "no cost-moving changes" — that would claim we looked and found
+    // Not "no cost-moving changes": that would claim we looked and found
     // nothing, when in fact the provider's data had not arrived.
     expect(formatDigestSlackBody(composeWeeklyDigest(input()))).not.toContain("Biggest cost move");
   });
@@ -556,7 +556,7 @@ describe("email rendering", () => {
     const text = formatDigestEmailText(digest(), null, "https://app.example.com/org/o1/costs");
     expect(text.split("\n")[0]).toBe("Weekly digest · Jul 20 – Jul 26");
     expect(text).toContain("Spend: $150.00");
-    // No mrkdwn asterisks — a mail client would render them literally.
+    // No mrkdwn asterisks: a mail client would render them literally.
     expect(text).not.toContain("*Spend");
     expect(text).toContain("View in Infrawrench: https://app.example.com/org/o1/costs");
   });
@@ -571,7 +571,7 @@ describe("email rendering", () => {
     expect(html).toContain("<h1");
     expect(html).toContain("<strong>Spend: $150.00</strong>");
     expect(html).toContain('href="https://app.example.com/x"');
-    // No external stylesheet or script — mail clients strip both.
+    // No external stylesheet or script: mail clients strip both.
     expect(html).not.toContain("<style");
     expect(html).not.toContain("<script");
   });
@@ -593,13 +593,13 @@ describe("email rendering", () => {
 
 /**
  * The narrative is model output that goes into the body verbatim, and the
- * system prompt is not a security boundary — a paragraph that happens to
+ * system prompt is not a security boundary: a paragraph that happens to
  * contain HTML must come out as text on every transport.
  *
  * The regression: the HTML part used to recover its own markup by splitting the
  * rendered line on `/(<strong>.*?<\/strong>)/` and passing the matches through
  * unescaped. A narrative containing `<strong>` therefore reached the mail body
- * raw — and because the pattern is non-greedy across the whole line, so did
+ * raw, and because the pattern is non-greedy across the whole line, so did
  * everything sitting between two such tags. The renderers now build from
  * `digestSegments`, so markup and text are never in the same string.
  */

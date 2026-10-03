@@ -3,11 +3,11 @@
  *
  * Three public endpoints (mounted at /api, no session):
  *
- *  - `POST /slack/commands` — the `/infrawrench` slash command (`costs`,
+ *  - `POST /slack/commands`: the `/infrawrench` slash command (`costs`,
  *    `status <resource>`, `link`, `unlink`, `help`).
- *  - `POST /slack/interactions` — `block_actions` payloads: the Approve/Deny
+ *  - `POST /slack/interactions`: `block_actions` payloads: the Approve/Deny
  *    buttons on approval messages and the status disambiguation picker.
- *  - `GET /slack/link` + `POST /slack/link` — the browser half of account
+ *  - `GET /slack/link` + `POST /slack/link`: the browser half of account
  *    linking; session-authed (bounces through sign-in). The GET renders a
  *    confirmation page for a signed token minted for exactly one (org,
  *    workspace, Slack user); the CSRF-guarded POST stores the pair.
@@ -18,12 +18,12 @@
  *     (`verifySlackRequestSignature`) before the body is even parsed. Without
  *     the secret the endpoints refuse everything.
  *  2. Nothing is honoured until the Slack user id resolves through
- *     `slack_user_links` to a *current member* of the org — unknown users get
+ *     `slack_user_links` to a *current member* of the org: unknown users get
  *     an ephemeral "link your account" reply carrying a signed, short-lived
  *     link URL.
  *  3. Every action then re-checks the same permission the equivalent web
  *     surface requires: `costs:read`, `resources:read`, `workflows:approve`,
- *     `chat:write` — resolved through the member's role exactly as the org
+ *     `chat:write`; resolved through the member's role exactly as the org
  *     middleware does.
  *
  * Buttons never create or bypass approvals: they only decide rows that
@@ -242,7 +242,7 @@ const MONTHS = [
 ] as const;
 
 /**
- * One org's month-to-date summary as mrkdwn — the same numbers the costs
+ * One org's month-to-date summary as mrkdwn: the same numbers the costs
  * dashboard's headline and the CLI's `costs` command derive from `runCostQuery`
  * (total per currency, delta vs the previous period, top services).
  */
@@ -649,8 +649,8 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
     // Same gate as POST /alert-rules/deliveries/:id/ack. Membership alone is
     // not enough: acknowledging cancels the escalation, which is the org
     // deciding nobody else needs to be woken up. `acknowledgeAlert` only
-    // arbitrates between two people racing for the same row — it is not an
-    // authorization check — so without this a read-only member could silence
+    // arbitrates between two people racing for the same row (it is not an
+    // authorization check) so without this a read-only member could silence
     // the page for everyone.
     if (
       !hasPermission(
@@ -672,7 +672,7 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
     if (result.acknowledged) {
       // Ephemeral rather than a message rewrite: the alert text is still the
       // useful thing in the channel, and a `chat.update` would overwrite it.
-      // Only the clicking user sees this confirmation — the durable record of
+      // Only the clicking user sees this confirmation: the durable record of
       // who took it is the `alert_deliveries` row, not the channel.
       await respond(
         ephemeral(
@@ -712,7 +712,7 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
   const permissions = await memberPermissions(value.organizationId, member.userId);
 
   if (value.kind === "workflow") {
-    // Same gate as POST /workflow-approvals/:id/approve — deliberately
+    // Same gate as POST /workflow-approvals/:id/approve: deliberately
     // `workflows:approve`, not `workflows:write` (sign-off is its own trust
     // level; see the catalog).
     if (!hasPermission(permissions, "workflows:approve")) {
@@ -755,7 +755,7 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
       value.approvalId,
       decision,
       // The Slack decider's live permissions are the ceiling on what they can
-      // grant, exactly as on the HTTP route — the button is a second front
+      // grant, exactly as on the HTTP route: the button is a second front
       // door to the same decision, not a way around its rules.
       { userId: member.userId, name: memberName(member), permissions },
       { decidedVia: "Slack" },
@@ -825,8 +825,8 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
     });
 
   // Claim the row first, conditioned on it still being `pending`. The returned
-  // row count is what makes two racing deciders — Slack buttons, the web UI, or
-  // one of each — produce exactly one decision: the loser's UPDATE matches
+  // row count is what makes two racing deciders (Slack buttons, the web UI, or
+  // one of each) produce exactly one decision: the loser's UPDATE matches
   // nothing, gets acknowledged, and goes no further. Same conditional
   // transition the web decision route uses.
   const claimed = await db
@@ -856,7 +856,7 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
   }
 
   // Approved and claimed (same approved → executed transition as the web
-  // route): run the tool and resume off this request — execution can outlive
+  // route): run the tool and resume off this request; execution can outlive
   // Slack's 3-second acknowledgement window.
   void (async () => {
     try {
@@ -873,7 +873,7 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
           resolvedAt: new Date(),
         })
         .where(eq(chatPendingActions.id, row.pending.id));
-      // The approval still happened — only the execution failed — so the Slack
+      // The approval still happened (only the execution failed) so the Slack
       // copies' decision controls must retire either way.
       await noteDecided("approved");
       console.error(`[slack] executing pending action ${row.pending.id} failed:`, err);
@@ -919,8 +919,8 @@ app.post("/slack/commands", async (c) => {
   if (!teamId || !slackUserId || !responseUrl) {
     return c.json({ error: "Malformed command payload" }, 400);
   }
-  // Acknowledge inside Slack's 3-second window *before* doing any real work —
-  // a cost query or resource search can blow that budget — and deliver the
+  // Acknowledge inside Slack's 3-second window *before* doing any real work
+  // (a cost query or resource search can blow that budget) and deliver the
   // actual reply through response_url, which stays valid for 30 minutes.
   void (async () => {
     let reply: SlackReply;
@@ -978,7 +978,7 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
 /**
  * Shared GET/POST preamble for /slack/link: authenticated session, valid link
  * token, and membership of the token's org. Failures keep the original
- * behavior — a redirect to the root with the `slack=error` toast param (or the
+ * behavior: a redirect to the root with the `slack=error` toast param (or the
  * session middleware's own response).
  */
 async function resolveLinkRequest(
@@ -1017,7 +1017,7 @@ async function resolveLinkRequest(
  * asserts the Infrawrench account. Membership of the token's org is required
  * before the pair is stored.
  *
- * The GET only *renders* a confirmation naming the Slack user and the org —
+ * The GET only *renders* a confirmation naming the Slack user and the org:
  * a state-changing write must not ride a URL that link unfurlers, prefetchers
  * and mail scanners follow. The write happens in the POST below, guarded by a
  * double-submit CSRF pair: a cookie bound to this browser session plus the

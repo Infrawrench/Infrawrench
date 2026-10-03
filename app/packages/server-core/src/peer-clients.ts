@@ -1,5 +1,5 @@
 /**
- * Resolving a *peer* plugin's client — the plugin a resource exposes rather
+ * Resolving a *peer* plugin's client: the plugin a resource exposes rather
  * than the one its account connects. A managed Kubernetes cluster hands out a
  * kubeconfig, so the `kubernetes` plugin can be driven inside it; a managed
  * database hands out a connection string, so `postgres`/`mysql`/`redis`/
@@ -158,7 +158,7 @@ export async function getClientForResource(
       .catch(() => null);
   } else {
     // The parent resource isn't synced into the resources table (live-listed
-    // only — common for discovered managed clusters/databases). Resolve its
+    // only: common for discovered managed clusters/databases). Resolve its
     // type by probing the parent plugin's resource types that declare a peer
     // integration for the requested plugin; typically that's exactly one type
     // (e.g. only doks-cluster carries a kubernetes peer).

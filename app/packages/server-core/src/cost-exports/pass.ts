@@ -8,7 +8,7 @@
  * Concurrent poller replicas skip past each other's locked rows instead of
  * blocking, and a row is only ever handed to one claimer. An instance that dies
  * mid-run leaves the lease to expire, at which point the export becomes due
- * again — no orphan state, no reaper.
+ * again: no orphan state, no reaper.
  *
  * Nothing here throws into the tick: {@link runCostExport} already records its
  * own failures on the row, and the claim itself is wrapped by the caller.
@@ -23,7 +23,7 @@ import type { CostExportRecord } from "./store";
 /**
  * Must exceed the worst-case duration of one run. A run streams up to 91 daily
  * periods out of ClickHouse and uploads each as its own object, against a
- * bucket that may be on the other side of the planet — minutes, not seconds.
+ * bucket that may be on the other side of the planet: minutes, not seconds.
  * Too short and a second replica starts the same export while the first is
  * still uploading, which would have the two racing to overwrite the same keys.
  */
@@ -34,7 +34,7 @@ export const COST_EXPORT_LEASE_MS = 30 * 60 * 1000;
  * shares the poller's 15s tick with account polling and cost collection, and
  * every export on the default 04:00 schedule comes due within the same hour.
  * Claiming moves `next_run_at` forward, so a deferred export simply lands in a
- * later tick's batch — a warehouse feed that arrives a minute later is not late.
+ * later tick's batch: a warehouse feed that arrives a minute later is not late.
  */
 export const COST_EXPORTS_PER_TICK = 2;
 
@@ -93,8 +93,8 @@ export async function claimDueCostExports(limit: number): Promise<CostExportReco
 }
 
 /**
- * One tick's worth of cost exports. Claimed exports run concurrently — each is
- * mostly waiting on a socket — and every one of them records its own outcome,
+ * One tick's worth of cost exports. Claimed exports run concurrently (each is
+ * mostly waiting on a socket) and every one of them records its own outcome,
  * so a rejected settle here means the claim leased a row we then failed to
  * write, which the lease expiry retries.
  */

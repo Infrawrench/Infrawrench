@@ -6,9 +6,9 @@
  * module is what that binding *means* on our side, and the user picks between
  * two meanings at claim time:
  *
- *  - **adopt** — the trial org stops expiring and becomes theirs. One row
+ *  - **adopt**: the trial org stops expiring and becomes theirs. One row
  *    update and a membership. Right for someone who has never used the product.
- *  - **merge** — the work moves into an org they already belong to and the
+ *  - **merge**: the work moves into an org they already belong to and the
  *    trial is destroyed. Right for an existing customer, who does not want a
  *    second workspace.
  *
@@ -16,13 +16,13 @@
  * re-parented. Resources, metrics, cost history and poll outcomes are all
  * reproducible from the account by the next poll, and re-parenting them would
  * mean a 76-table `UPDATE organization_id` in Postgres plus mutations across
- * eight ClickHouse tables — a large, mostly-unobservable migration whose
+ * eight ClickHouse tables: a large, mostly-unobservable migration whose
  * failure modes land in someone else's tenant. Moving the credential and
  * letting the poller rebuild is the same end state by a route that cannot
  * half-succeed.
  *
  * What that costs is honest to state: anything a trial *authored* rather than
- * discovered — dashboards, cost centres, saved queries — does not survive a
+ * discovered (dashboards, cost centres, saved queries) does not survive a
  * merge. In a 24-hour window that is a small set, and an adopt keeps all of it.
  */
 import { randomUUID } from "node:crypto";
@@ -53,7 +53,7 @@ export interface ClaimTrialOptions {
   registrationId: string;
   /**
    * The claiming user, from the completed ceremony's `act` claim. Never from a
-   * token's `sub` — that is the registration id, not a person.
+   * token's `sub`: that is the registration id, not a person.
    */
   userId: string;
   mode: ClaimMode;
@@ -63,7 +63,7 @@ export interface ClaimTrialOptions {
    * Merge only: also re-parent the trial's ClickHouse history (metrics, cost,
    * poll outcomes, network flows) onto the target org.
    *
-   * Off by default because it is the more surprising outcome — a user merging
+   * Off by default because it is the more surprising outcome: a user merging
    * a trial into a long-lived org usually wants the *connection*, and silently
    * splicing a day of foreign history into their cost graphs is a change to
    * numbers they may already be reporting on. Opt-in, and worth labelling in
@@ -81,7 +81,7 @@ export interface ClaimTrialResult {
   accountsMoved: number;
   /**
    * Whether ClickHouse history was moved. False for an adopt, where the rows
-   * never needed to go anywhere — the org they belong to is the one being kept.
+   * never needed to go anywhere: the org they belong to is the one being kept.
    */
   historyMoved: boolean;
 }
@@ -189,7 +189,7 @@ export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTr
     // alone is not authorization: a merge writes cloud account credentials
     // into the target org, which is exactly what `POST /accounts` requires
     // `accounts:write` for, and the member role deliberately does not hold it.
-    // Without this check the claim ceremony is a way around that route — a
+    // Without this check the claim ceremony is a way around that route: a
     // read-only member could connect arbitrary accounts to a trial and then
     // merge them into an org they cannot write to.
     await assertClaimerMayMerge(targetOrganizationId, options.userId, {
@@ -198,7 +198,7 @@ export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTr
 
     const accountsMoved = await mergeTrialInto(trialOrgId, targetOrganizationId);
 
-    // History moves before the destroy so the purge can be skipped entirely —
+    // History moves before the destroy so the purge can be skipped entirely:
     // see `DestroyOrganizationOptions.skipClickHouse` for why "the mutation queue
     // is ordered" is not a good enough reason to issue both.
     let historyMoved = false;
@@ -221,12 +221,12 @@ export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTr
 
     // The agent's own membership follows its registration into the target org,
     // or the agent would keep authenticating into an org it no longer belongs
-    // to — its permissions resolve against membership, and the trial's row is
+    // to: its permissions resolve against membership, and the trial's row is
     // about to be cascaded away.
     await moveAgentMembership(options.registrationId, trialOrgId, targetOrganizationId);
 
     // No `expiredTrialOnly` here: this caller already holds the org's lock (a
-    // guarded destroy would deadlock re-taking it — see `lock.ts`), and a merge
+    // guarded destroy would deadlock re-taking it; see `lock.ts`), and a merge
     // destroys the trial org whether or not its clock has run out.
     await destroyOrganization(trialOrgId, { skipClickHouse: historyMoved });
 
@@ -240,9 +240,9 @@ export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTr
  * A merge is not one act but two, and they are gated separately because a user
  * can legitimately hold one and not the other:
  *
- *  - **`accounts:write`** — always. Re-parenting the trial's `accounts` rows is
+ *  - **`accounts:write`**: always. Re-parenting the trial's `accounts` rows is
  *    the same write as connecting those clouds by hand.
- *  - **`costs:write`** — only for `moveHistory`, which splices a day of someone
+ *  - **`costs:write`**: only for `moveHistory`, which splices a day of someone
  *    else's metrics and cost into charts the target org may already be
  *    reporting on. That is the same authority `POST /costs/rows` asks for.
  *
@@ -285,7 +285,7 @@ async function assertClaimerMayMerge(
  * consequence of claiming would be the worst possible welcome.
  *
  * The chat cap is left at zero. A claimed org is a free org, and the free tier
- * has its own AI allowance that the billing settings page can raise — but that
+ * has its own AI allowance that the billing settings page can raise, but that
  * is a decision for its new owner to make knowingly, not something a claim
  * should hand over silently.
  */
@@ -303,7 +303,7 @@ async function adoptTrialOrg(
   await ensureSystemRoles(organizationId);
   const ownerRole = await getSystemRole(organizationId, "owner");
 
-  // The claimer becomes the org's owner — its only human member so far; the
+  // The claimer becomes the org's owner: its only human member so far; the
   // agent's membership from `trials/create.ts` is the other row this org holds.
   await db
     .insert(organizationMembers)
@@ -317,7 +317,7 @@ async function adoptTrialOrg(
     .onConflictDoNothing();
 
   // Make sure the agent's own membership is a plain member. `create.ts` writes
-  // it that way now, but rows created before it did were owners — and an
+  // it that way now, but rows created before it did were owners, and an
   // agent-owner makes the claimer's ownership a lie: the last-owner guard on
   // member removal would count the agent and let the only human owner remove
   // themselves, leaving a tenant nobody can administer. The agent loses
@@ -339,7 +339,7 @@ async function adoptTrialOrg(
  * Re-parent the trial's cloud accounts into the target org.
  *
  * `nextPollAt` is nulled so the poller treats every moved account as due
- * immediately — that is what rebuilds resources, metrics and cost in the target
+ * immediately: that is what rebuilds resources, metrics and cost in the target
  * org, and it should start the moment the user finishes claiming rather than
  * whenever the old schedule happened to point.
  */

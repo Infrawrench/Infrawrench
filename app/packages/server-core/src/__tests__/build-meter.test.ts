@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
-// Real Drizzle over a recording driver against the real schema — the org and
+// Real Drizzle over a recording driver against the real schema: the org and
 // subscription lookups and the marker update render their actual SQL (and
 // shadow-validate under test:postgres:shadow). Sequential results are queued:
 // [org row], then [subscription row].

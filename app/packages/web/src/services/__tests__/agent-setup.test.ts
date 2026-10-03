@@ -5,7 +5,7 @@ import { T3_CODE_PROJECTS_DIR } from "@infrawrench/ui/agents/t3-code";
 // update captures the values passed to .set().
 const selectResults: unknown[][] = [];
 const updateSetCalls: Array<Record<string, unknown>> = [];
-// Rows the next `.returning()` yields — the setup-lease claim reads this to
+// Rows the next `.returning()` yields: the setup-lease claim reads this to
 // decide whether this replica won the row. Defaults to winning.
 const updateReturning: unknown[][] = [];
 
@@ -234,7 +234,7 @@ describe("ensureAgentVmSetupForSession", () => {
     selectResults.push([sessionRow()]);
     // 2: appendAgentSessionLog (started)
     selectResults.push([{ logs: [], status: "setting-up" }]);
-    // 3: loadOrgAgentSshPrivateKey — no key row => setup fails
+    // 3: loadOrgAgentSshPrivateKey; no key row => setup fails
     selectResults.push([]);
     // 4: appendAgentSessionLog (Setup failed)
     selectResults.push([{ logs: ["Preparing VM for coding session."], status: "setting-up" }]);
@@ -263,7 +263,7 @@ describe("ensureAgentVmSetupForSession", () => {
   // one heap, so without a DB lease both pods set up the same VM at once.
   it("skips the run when another replica holds the setup lease", async () => {
     selectResults.push([sessionRow()]);
-    updateReturning.push([]); // claim loses — no row came back
+    updateReturning.push([]); // claim loses: no row came back
     await expect(ensureAgentVmSetupForSession("session-1", "org-1")).resolves.toBeUndefined();
     // The lease claim is the only write; setup itself never started, so no
     // "Preparing VM…" log line was appended.

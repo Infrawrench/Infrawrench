@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *
  * The bug this covers: the sandbox's host bridge can create resources, delete
  * them, run SSH commands and execute SQL, and the only check on any of it used
- * to be `workflows:write` — which the built-in Member role holds, while
+ * to be `workflows:write`, which the built-in Member role holds, while
  * `resources:delete` deliberately does not. A member could do through
  * `infra.…delete()` exactly what `delete_resource` refuses them, and a cron
  * trigger made it durable.
@@ -24,7 +24,7 @@ vi.mock("../permissions", () => ({
 
 // Real Drizzle over a recording driver: the author-lookup select renders its
 // actual SQL (and shadow-validates under test:postgres:shadow). Row keys are in
-// projection order — see helpers/fake-postgres.ts.
+// projection order: see helpers/fake-postgres.ts.
 const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 
@@ -95,7 +95,7 @@ describe("buildWorkflowAuthorizer", () => {
 
   it("never gates the operations that only touch the run itself", async () => {
     // A member with no grants at all must still be able to log, emit output,
-    // read and write its own metrics, and raise a page — otherwise the gate
+    // read and write its own metrics, and raise a page, otherwise the gate
     // would break every workflow rather than the privileged ones.
     grant([]);
     const authorize = await buildWorkflowAuthorizer("org-1", "wf-1", { userId: "u1" });

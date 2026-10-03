@@ -139,14 +139,14 @@ export const resources = pgTable(
 );
 
 /**
- * Change-timeline events — one row per observed difference between consecutive
+ * Change-timeline events: one row per observed difference between consecutive
  * resource snapshots. Written by the shared sync path in `sync-resources.ts`
  * whenever the poller (or a manual refresh) upserts polled state, so every
  * provider gets a drift feed for free. Generic by construction: the diff is
  * computed over the host's stored record (displayName, fieldsJson,
  * outputsJson), never over provider-specific shapes.
  *
- * `resourceId` is deliberately not a FK — the feed is history and must keep
+ * `resourceId` is deliberately not a FK: the feed is history and must keep
  * rendering rows for resources that disappeared upstream. Cleanup rides the
  * `accountId` cascade instead: deleting an account takes its history with it.
  */
@@ -205,15 +205,15 @@ export const resourceChanges = pgTable(
     /**
      * Identity of the claim holder, minted per attempt. Every write that ends a
      * revert is fenced on it (`WHERE revert_claim_owner = <mine>`), so an
-     * attempt whose lease already lapsed — and whose event another attempt has
-     * since claimed under a token of its own — matches no row and cannot clear
+     * attempt whose lease already lapsed (and whose event another attempt has
+     * since claimed under a token of its own) matches no row and cannot clear
      * or complete the new holder's claim. A deadline alone is only a timer;
      * this is what makes the lease an exclusion. Same shape as
      * `account_network_flow_polls.lease_owner`.
      */
     revertClaimOwner: text("revert_claim_owner"),
     /**
-     * When a revert last *issued* a provider write for this event — written
+     * When a revert last *issued* a provider write for this event: written
      * immediately before the call, and deliberately not the same claim as
      * `reverted_at`. "We asked the provider to put this back" and "the provider
      * put this back" are different claims, exactly as `delivery_attempted_at`
@@ -330,7 +330,7 @@ export const dashboardPins = pgTable(
 
 /**
  * Non-resource dashboard cards (cost graphs, budget views). A separate table
- * from dashboardPins — which FKs resources — following the
+ * from dashboardPins (which FKs resources) following the
  * dashboardWorkflowPins precedent of one table per pin kind. `config` is a
  * kind-discriminated JSONB blob validated against the zod schemas in
  * `@infrawrench/ui/cost` at the API boundary.
@@ -351,7 +351,7 @@ export const dashboardWidgets = pgTable(
     config: jsonb("config").notNull(),
     gridX: integer("grid_x").notNull().default(0),
     gridY: integer("grid_y").notNull().default(0),
-    /** Cost charts want width — default to a double-wide card. */
+    /** Cost charts want width: default to a double-wide card. */
     gridW: integer("grid_w").notNull().default(2),
     gridH: integer("grid_h").notNull().default(1),
     syncVersion: integer("sync_version").notNull().default(0),
@@ -366,7 +366,7 @@ export const dashboardWidgets = pgTable(
 );
 
 /**
- * Spend budgets. Independent of dashboard widgets — a budget keeps evaluating
+ * Spend budgets. Independent of dashboard widgets: a budget keeps evaluating
  * and alerting even when no widget shows it. `filters` scopes which cost rows
  * count (CostFilter[] from `@infrawrench/ui/cost`); `thresholds` is
  * Array<{ type: "actual" | "forecast"; percent: number }>.
@@ -396,7 +396,7 @@ export const budgets = pgTable(
      * `filters` at evaluation time; null is none. A real column rather than a
      * key inside the `filters` jsonb (which is an array), and deliberately
      * without a foreign key: saved filters are soft-deleted, so referential
-     * integrity is enforced above the database — deletion is *refused* while
+     * integrity is enforced above the database; deletion is *refused* while
      * anything references the filter (services/saved-cost-filters.ts), and a
      * reference that fails to resolve anyway errors the budget's evaluation
      * rather than silently widening it to all spend.
@@ -404,14 +404,14 @@ export const budgets = pgTable(
     savedFilterId: text("saved_filter_id"),
     /**
      * A `cost_scenario_models` row this budget's **forecast** thresholds are
-     * measured against; null — the default, and the value for every budget
-     * nobody deliberately opts in — means the bare trend.
+     * measured against; null (the default, and the value for every budget
+     * nobody deliberately opts in) means the bare trend.
      *
      * Nullable rather than defaulted for exactly the reason the column exists:
      * a scenario is somebody's hypothesis about the future, and a hypothesis
      * must never quietly change when a real person gets paged. Opting in is a
      * per-budget act, it is shown on the card, and it is named in the alert
-     * body. `actual` thresholds ignore this entirely — they measure money
+     * body. `actual` thresholds ignore this entirely: they measure money
      * already spent.
      *
      * No foreign key, for the same reason `saved_filter_id` has none: deletion
@@ -426,8 +426,8 @@ export const budgets = pgTable(
      * otherwise.
      *
      * The same refusal `scenario_model_id` encodes, for a sharper reason. A
-     * billing rule is org policy — a markup that recovers overhead, a
-     * negotiated discount — and a budget threshold decides when a real person
+     * billing rule is org policy (a markup that recovers overhead, a
+     * negotiated discount) and a budget threshold decides when a real person
      * is paged. Letting a markup silently raise every budget's measured spend
      * would mean editing one settings page moves an on-call rota, and the page
      * (or the missing page) would carry no evidence of why. Opting in is a
@@ -452,13 +452,13 @@ export const budgets = pgTable(
 );
 
 /**
- * Scenario models — named, reusable sets of adjustments an org overlays on a
+ * Scenario models: named, reusable sets of adjustments an org overlays on a
  * cost forecast.
  *
  * The trend forecast is a least-squares fit over trailing daily totals: it can
  * only ever extrapolate what already happened. Everything an org *knows* is
- * coming — a reserved-instance purchase next quarter, a team starting in
- * September, a migration that takes a fifth off compute — is invisible to it.
+ * coming: a reserved-instance purchase next quarter, a team starting in
+ * September, a migration that takes a fifth off compute; is invisible to it.
  * This table is where those facts are written down, so a projection can include
  * them without anybody hand-editing a chart.
  *
@@ -506,7 +506,7 @@ export const costScenarioModels = pgTable(
  * Named, reusable cost filter sets ("prod only", "team platform's accounts").
  *
  * Graphs, reports and budgets reference a row here **by id** and the server
- * resolves it at query time — never a copy at pick time — so editing the
+ * resolves it at query time (never a copy at pick time) so editing the
  * filter once changes everything using it. `filters` is a `CostFilter[]`
  * (`@infrawrench/client-core`), the same shape those configs hold inline; the
  * cost-query-language text form is derived from it on read and guaranteed
@@ -515,8 +515,8 @@ export const costScenarioModels = pgTable(
  * Soft-deleted like budgets and reports, but with one extra rule enforced in
  * services/saved-cost-filters.ts: deletion is refused (409) while any budget,
  * report or dashboard graph still references the row. Deleting a referenced
- * filter would silently widen every referent's scope to all spend — for a
- * budget, that can fire or suppress alerts — so the referents are surfaced and
+ * filter would silently widen every referent's scope to all spend (for a
+ * budget, that can fire or suppress alerts) so the referents are surfaced and
  * the user detaches them deliberately.
  */
 export const savedCostFilters = pgTable(
@@ -529,12 +529,12 @@ export const savedCostFilters = pgTable(
     name: text("name").notNull(),
     /** Free text shown under the name in the list; null is no description. */
     description: text("description"),
-    /** The filter itself — a non-empty `CostFilter[]`. */
+    /** The filter itself: a non-empty `CostFilter[]`. */
     filters: jsonb("filters").notNull().default([]),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    /** Soft delete, matching `budgets` — set, never cleared. */
+    /** Soft delete, matching `budgets`: set, never cleared. */
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -543,7 +543,7 @@ export const savedCostFilters = pgTable(
     orgIdx: index("saved_cost_filters_org_idx").on(t.organizationId),
     /**
      * Names are how the CLI (`--filter <name>`) and humans address these, so
-     * they must be unambiguous per org — among *live* rows only, hence the
+     * they must be unambiguous per org; among *live* rows only, hence the
      * partial index: a soft-deleted "prod only" must not squat on the name
      * forever.
      */
@@ -560,21 +560,21 @@ export const savedCostFilters = pgTable(
  * card; a report owns the same config as an org object, so it can be linked to,
  * run by id, and referenced from many dashboards at once through the
  * `cost_report` widget kind. Deleting a report removes those cards with it
- * (services/cost-reports.ts), the same rule budgets and custom graphs follow —
+ * (services/cost-reports.ts), the same rule budgets and custom graphs follow:
  * a card whose target is gone renders as a permanent "unavailable" tile that no
  * amount of dashboard editing explains.
  */
 /**
- * Folders for the Reports list — organization only, never meaning.
+ * Folders for the Reports list: organization only, never meaning.
  *
  * A report's identity, URL, dashboard cards and run-by-id behaviour are
  * unchanged by where it is filed, which is why both foreign keys pointing here
  * are ON DELETE SET NULL: deleting a folder drops its reports and subfolders
  * back to the top level and destroys nothing. Hard-deleted (no `deletedAt`)
- * for the same reason — a folder carries no config worth resurrecting, and the
+ * for the same reason: a folder carries no config worth resurrecting, and the
  * valuable objects inside it are never at risk.
  *
- * Nesting is bounded at COST_REPORT_FOLDER_LIMITS.maxDepth (3) — enforced in
+ * Nesting is bounded at COST_REPORT_FOLDER_LIMITS.maxDepth (3): enforced in
  * services/cost-report-folders.ts, not here, because "how deep is this folder"
  * is a walk up `parentFolderId` the database cannot cheaply constrain. The
  * same service rejects reparenting a folder under its own descendant, the only
@@ -615,7 +615,7 @@ export const costReports = pgTable(
     /** Free text shown under the title in the list; null is no description. */
     description: text("description"),
     /**
-     * The saved graph — a `CostGraphConfig` from `@infrawrench/ui/cost/config`,
+     * The saved graph: a `CostGraphConfig` from `@infrawrench/ui/cost/config`,
      * the same blob a `cost_graph` widget stores inline, validated against
      * `costGraphConfigSchema` at the API boundary.
      */
@@ -623,7 +623,7 @@ export const costReports = pgTable(
     /**
      * The folder the report is filed under; null is the top level of the
      * Reports list. SET NULL, deliberately: deleting a folder must never
-     * delete a report — its contents fall back to the top level instead.
+     * delete a report; its contents fall back to the top level instead.
      */
     folderId: text("folder_id").references(() => costReportFolders.id, {
       onDelete: "set null",
@@ -631,7 +631,7 @@ export const costReports = pgTable(
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    /** Soft delete, matching `budgets` — set, never cleared. */
+    /** Soft delete, matching `budgets`: set, never cleared. */
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -644,7 +644,7 @@ export const costReports = pgTable(
 );
 
 /**
- * Dated notes drawn over cost charts — "we migrated to Graviton here".
+ * Dated notes drawn over cost charts: "we migrated to Graviton here".
  *
  * A step change in spend is only self-explanatory for about a fortnight. These
  * rows are the explanation, stored next to nothing else: an annotation is an
@@ -657,7 +657,7 @@ export const costReports = pgTable(
  * column is the whole cost of supporting both.
  *
  * `cost_report_id` null means **org-wide**: the note appears on every cost
- * chart. That is the default worth having — an instance-type change is not a
+ * chart. That is the default worth having: an instance-type change is not a
  * fact about one report, and filing it under one would leave every other chart
  * showing the same step with no explanation. Set, it narrows the note to one
  * report's chart. CASCADE because a note scoped to a report has no meaning
@@ -675,7 +675,7 @@ export const costAnnotations = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** Scoped to one report, or null for org-wide — see above. */
+    /** Scoped to one report, or null for org-wide: see above. */
     costReportId: text("cost_report_id").references(() => costReports.id, { onDelete: "cascade" }),
     /** Inclusive first day (UTC). A `date`, not a timestamp: spend is daily. */
     startDate: date("start_date").notNull(),
@@ -690,7 +690,7 @@ export const costAnnotations = pgTable(
   },
   (t) => ({
     /**
-     * Every read is "the notes this org's chart should draw", ordered by date —
+     * Every read is "the notes this org's chart should draw", ordered by date:
      * one org's rows, sorted, is the whole access pattern.
      */
     orgDateIdx: index("cost_annotations_org_date_idx").on(t.organizationId, t.startDate),
@@ -702,7 +702,7 @@ export const costAnnotations = pgTable(
 /**
  * Which cost annotation records a given change's or deployment's cost impact.
  *
- * The impact itself is **never stored** — it is recomputed on every read so
+ * The impact itself is **never stored**: it is recomputed on every read so
  * late-arriving and restated provider cost keeps moving the number (see
  * `cost/change-impact-load.ts`). What is stored is only the fact that someone
  * pinned a finding onto the cost graphs, so that pinning it again *rewords the
@@ -713,8 +713,8 @@ export const costAnnotations = pgTable(
  *
  * `subject_id` is deliberately not a FK: it addresses either a
  * `resource_changes` row (append-only history that the 90-day prune will
- * eventually drop) or a `deployment_runs` row. A dangling link is harmless —
- * the note it points at is still a note — and the org cascade cleans up.
+ * eventually drop) or a `deployment_runs` row. A dangling link is harmless
+ * (the note it points at is still a note) and the org cascade cleans up.
  */
 export const changeCostImpactAnnotations = pgTable(
   "change_cost_impact_annotations",
@@ -738,7 +738,7 @@ export const changeCostImpactAnnotations = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
-    /** One note per subject — the whole point of the table. */
+    /** One note per subject: the whole point of the table. */
     subjectUnique: uniqueIndex("change_cost_impact_annotations_subject_idx").on(
       t.organizationId,
       t.subjectKind,
@@ -749,7 +749,7 @@ export const changeCostImpactAnnotations = pgTable(
 
 /**
  * Fired budget-threshold crossings. The unique index makes each threshold
- * fire at most once per calendar month — evaluation inserts with
+ * fire at most once per calendar month: evaluation inserts with
  * onConflictDoNothing and only notifies on a fresh insert.
  */
 export const budgetAlertEvents = pgTable(
@@ -784,8 +784,8 @@ export const budgetAlertEvents = pgTable(
 
 /**
  * Org-level change freeze windows. While a freeze is in effect (active, started,
- * and not yet past `endsAt`), destructive mutations — resource deletion,
- * destructive plugin actions, secret-version destroys, deployment rollbacks —
+ * and not yet past `endsAt`), destructive mutations (resource deletion,
+ * destructive plugin actions, secret-version destroys, deployment rollbacks)
  * are refused with a 423 unless the caller holds `freezes:override` and
  * explicitly opts in. Both blocks and overrides land in `audit_logs`.
  */
@@ -832,7 +832,7 @@ export const orgTagPolicies = pgTable("org_tag_policies", {
   organizationId: text("organization_id")
     .primaryKey()
     .references(() => organizations.id, { onDelete: "cascade" }),
-  /** `[{ key, allowedValues? }]` — see `RequiredTag` in client-core. */
+  /** `[{ key, allowedValues? }]`: see `RequiredTag` in client-core. */
   requiredTags: jsonb("required_tags")
     .$type<Array<{ key: string; allowedValues?: string[] | undefined }>>()
     .notNull()
@@ -844,11 +844,11 @@ export const orgTagPolicies = pgTable("org_tag_policies", {
 
 /**
  * Named cost centres spend is allocated to for showback ("Platform", "Data",
- * "Growth"…). Purely org-defined labels — the mapping from spend to centre is
+ * "Growth"…). Purely org-defined labels: the mapping from spend to centre is
  * the allocation rules table below.
  *
  * Centres nest: a division holds teams, a team holds products. Nesting is a
- * *reporting* structure only — allocation still resolves every cost row to
+ * *reporting* structure only: allocation still resolves every cost row to
  * exactly one centre, and the parent's subtree total is assembled from those
  * leaf numbers afterwards. An org that never sets a parent is a flat list of
  * roots and behaves exactly as it did before the column existed.
@@ -864,7 +864,7 @@ export const costCentres = pgTable(
     description: text("description"),
     /**
      * Self-reference for nesting; null is a top-level centre. SET NULL is a
-     * backstop only — `deleteCostCentre` re-parents children onto the deleted
+     * backstop only: `deleteCostCentre` re-parents children onto the deleted
      * centre's own parent inside the delete transaction, so a subtree keeps
      * its shape instead of being flattened to the root.
      */
@@ -885,7 +885,7 @@ export const costCentres = pgTable(
  * Ordered rules mapping cost rows to cost centres. `match` is an AND of the
  * fields it sets (tag key/value, account, provider, service); a rule with an
  * empty match is a catch-all. Evaluation is first-match-wins by ascending
- * `priority` — the showback reader compiles the ordered list into one
+ * `priority`: the showback reader compiles the ordered list into one
  * ClickHouse `multiIf` over `cost_daily`, so rows no rule claims fall into the
  * synthetic "Unallocated" bucket rather than disappearing.
  */
@@ -921,14 +921,14 @@ export const costAllocationRules = pgTable(
 );
 
 /**
- * Billing rules — the org's own adjustments to collected spend: a markup that
+ * Billing rules; the org's own adjustments to collected spend: a markup that
  * recovers shared overhead, a discount negotiated outside the provider's
  * pricing, a shared cluster reallocated onto the teams that use it.
  *
  * **Nothing here is ever written into `cost_daily`.** These rows are compiled
  * into the cost query at read time (`clickhouse/cost-readers.ts`), so collected
- * spend stays exactly what the provider reported — the number an invoice
- * reconciles against — and editing or deleting a rule restates nothing. That is
+ * spend stays exactly what the provider reported (the number an invoice
+ * reconciles against) and editing or deleting a rule restates nothing. That is
  * the whole reason this is a rule table and not an ingestion step.
  *
  * `match` is the allocation vocabulary plus `chargeType`, deliberately reusing
@@ -953,7 +953,7 @@ export const costBillingRules = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     /**
-     * Disabled rules are kept, not deleted — a markup switched off for a
+     * Disabled rules are kept, not deleted: a markup switched off for a
      * quarter and back on for the next is the normal life of these objects, and
      * deleting it would lose the wording finance agreed to.
      */
@@ -974,7 +974,7 @@ export const costBillingRules = pgTable(
      * Names address a rule from the CLI and from the "these rules are in force"
      * caption, so they must be unambiguous within an org. Hard-deleted rather
      * than soft, so no partial predicate is needed: a deleted rule is gone and
-     * nothing references it — every number it ever affected is recomputed from
+     * nothing references it; every number it ever affected is recomputed from
      * the rules that exist now, because none of it was ever stored.
      */
     orgNameUnique: uniqueIndex("cost_billing_rules_org_name_unique").on(t.organizationId, t.name),
@@ -982,7 +982,7 @@ export const costBillingRules = pgTable(
 );
 
 /**
- * Managed accounts — the customers a managed service provider bills.
+ * Managed accounts: the customers a managed service provider bills.
  *
  * Scope is stored as two id arrays rather than a join table for the same reason
  * `report_notifications` keeps its Slack channel ids inline: nothing queries
@@ -1019,7 +1019,7 @@ export const managedAccounts = pgTable(
      * budget against.
      */
     costBasis: text("cost_basis").$type<"cash" | "amortized">().notNull().default("amortized"),
-    /** Off means a pass-through contract — billed exactly what providers charged. */
+    /** Off means a pass-through contract: billed exactly what providers charged. */
     applyBillingRules: boolean("apply_billing_rules").notNull().default(true),
     notes: text("notes"),
     costCentreIds: jsonb("cost_centre_ids").$type<string[]>().notNull().default([]),
@@ -1058,7 +1058,7 @@ export const managedAccounts = pgTable(
  *
  * `derivation` carries the exchange rates and the day they were read, the
  * billing rules in force, and the names everything in scope had at the time.
- * A later rate change, rename or rule edit therefore cannot restate history —
+ * A later rate change, rename or rule edit therefore cannot restate history,
  * which is the entire point of storing it rather than joining to it.
  *
  * ## Void, never delete
@@ -1079,7 +1079,7 @@ export const managedInvoices = pgTable(
     /**
      * Restrict, not cascade: an issued invoice outlives the customer record's
      * usefulness. `managed_accounts` soft-deletes, so this never fires in
-     * practice — it is the backstop that makes that non-negotiable.
+     * practice: it is the backstop that makes that non-negotiable.
      */
     managedAccountId: text("managed_account_id")
       .notNull()
@@ -1087,7 +1087,7 @@ export const managedInvoices = pgTable(
     /** The customer's name at issue time; frozen with the figures. */
     managedAccountName: text("managed_account_name").notNull(),
     /**
-     * `INV-2026-0001`. Null while draft — numbers are assigned at approval so a
+     * `INV-2026-0001`. Null while draft: numbers are assigned at approval so a
      * deleted draft cannot leave a gap in the sequence.
      */
     number: text("number"),
@@ -1101,7 +1101,7 @@ export const managedInvoices = pgTable(
     lines: jsonb("lines"),
     totals: jsonb("totals"),
     derivation: jsonb("derivation"),
-    /** When the frozen figures were computed — the moment of approval. */
+    /** When the frozen figures were computed: the moment of approval. */
     computedAt: timestamp("computed_at"),
     issuedAt: timestamp("issued_at"),
     approvedByUserId: text("approved_by_user_id").references(() => users.id, {
@@ -1110,7 +1110,7 @@ export const managedInvoices = pgTable(
     sentAt: timestamp("sent_at"),
     sentByUserId: text("sent_by_user_id").references(() => users.id, { onDelete: "set null" }),
     /**
-     * Delivery — where the frozen document went, kept strictly apart from what
+     * Delivery, where the frozen document went, kept strictly apart from what
      * it says. Nothing in this group can restate a figure; `cost/invoices.ts`
      * writes them from the send path and from nowhere else.
      *
@@ -1159,7 +1159,7 @@ export const managedInvoices = pgTable(
      * An invoice number is quoted in a customer's remittance advice, so it must
      * identify exactly one document in the org. Partial because drafts have no
      * number yet and Postgres would otherwise treat every null as distinct
-     * anyway — stating it keeps the intent readable.
+     * anyway: stating it keeps the intent readable.
      */
     orgNumberUnique: uniqueIndex("managed_invoices_org_number_unique")
       .on(t.organizationId, t.number)
@@ -1168,8 +1168,8 @@ export const managedInvoices = pgTable(
 );
 
 /**
- * Detected spend anomalies: a day whose spend for one (dimension, key) —
- * a provider or a service — cleared the trailing-window statistical threshold,
+ * Detected spend anomalies: a day whose spend for one (dimension, key)
+ * (a provider or a service) cleared the trailing-window statistical threshold,
  * or where a key with no prior spend at all started costing money (see
  * `cost/anomaly-detect.ts`). The unique index makes each (org, day,
  * dimension, key, currency) fire at most once no matter how many cost passes
@@ -1178,8 +1178,8 @@ export const managedInvoices = pgTable(
  * anomaly was suppressed by the cross-day cooldown.
  *
  * `kind` is deliberately *not* part of the unique index. The two detections
- * are mutually exclusive for a (day, key) — a key with a baseline worth a
- * sigma bar is not a new source, and one without cannot clear a sigma bar —
+ * are mutually exclusive for a (day, key) (a key with a baseline worth a
+ * sigma bar is not a new source, and one without cannot clear a sigma bar)
  * so adding it would only let the same day be reported twice under two names,
  * which is exactly what the cooldown and the dedup index exist to prevent.
  */
@@ -1199,7 +1199,7 @@ export const costAnomalies = pgTable(
     kind: text("kind").$type<"spike" | "new_source">().notNull().default("spike"),
     /** Which breakdown flagged it. */
     dimension: text("dimension").$type<"provider" | "service">().notNull(),
-    /** The dimension's value — a plugin id or a service name. */
+    /** The dimension's value: a plugin id or a service name. */
     dimensionKey: text("dimension_key").notNull(),
     currency: text("currency").notNull(),
     actualAmountCents: integer("actual_amount_cents").notNull(),
@@ -1216,7 +1216,7 @@ export const costAnomalies = pgTable(
      * Root-cause hints computed when the anomaly first fired: a small ranked
      * list of human-readable facts from the change timeline and audit log for
      * the anomalous day and the day before ("12 gce-instance resources
-     * appeared", "Astrid ran workflow \"Nightly rebuild\"") — see
+     * appeared", "Astrid ran workflow \"Nightly rebuild\""); see
      * `cost/anomaly-hints.ts`. Null for rows written before hints existed and
      * for passes where the hint queries failed; capped at three entries.
      */
@@ -1232,7 +1232,7 @@ export const costAnomalies = pgTable(
      *
      * Re-acknowledging replaces the sentence and restamps this, so the
      * timestamp is "when the current explanation was recorded" rather than
-     * "when it was first noticed" — a corrected explanation dated to the
+     * "when it was first noticed": a corrected explanation dated to the
      * original mistake would be a lie about what was known when.
      */
     acknowledgedAt: timestamp("acknowledged_at"),
@@ -1250,7 +1250,7 @@ export const costAnomalies = pgTable(
      */
     explanation: text("explanation"),
     /**
-     * The annotation the acknowledgement created — the artifact, drawn on every
+     * The annotation the acknowledgement created: the artifact, drawn on every
      * chart covering the anomalous day.
      *
      * SET NULL rather than CASCADE: deleting the note removes the marker, not
@@ -1272,7 +1272,7 @@ export const costAnomalies = pgTable(
     orgDayIdx: index("cost_anomalies_org_day_idx").on(t.organizationId, t.day),
     /**
      * The reverse of the link: given an annotation, which finding did it
-     * explain. Unique so that answer is one row rather than a list — each
+     * explain. Unique so that answer is one row rather than a list: each
      * acknowledgement mints its own note, and nothing attaches an existing one.
      * Partial because every unacknowledged anomaly holds null here and Postgres
      * would otherwise be storing millions of them in a unique index for nothing.
@@ -1284,7 +1284,7 @@ export const costAnomalies = pgTable(
 );
 
 /**
- * Change-based cost alerts — the third cost-alert family, distinct from the
+ * Change-based cost alerts: the third cost-alert family, distinct from the
  * other two on purpose:
  *
  * - **Budgets** (`budgets`) alert on an *absolute monthly total* you chose.
@@ -1308,32 +1308,32 @@ export const costAlerts = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     /**
-     * Which cost rows count — a `CostFilter[]` from `@infrawrench/client-core`,
+     * Which cost rows count: a `CostFilter[]` from `@infrawrench/client-core`,
      * the same jsonb vocabulary `budgets.filters` uses.
      */
     filters: jsonb("filters").notNull().default([]),
     /**
      * Optional per-group fan-out: a `CostDimensionId` (or null for one total).
      * With a groupBy set, each group's spend is compared to its own prior
-     * window and each offending group fires its own event — "watch each
+     * window and each offending group fires its own event: "watch each
      * service" rather than "watch the sum".
      */
     groupBy: text("group_by"),
     /** Required when `groupBy === "tag"`; the tag key to group on. */
     groupByTagKey: text("group_by_tag_key"),
     /**
-     * Comparison cadence — which window is compared to which (exact
+     * Comparison cadence, which window is compared to which (exact
      * definitions in `cost/change-detect.ts`):
      * - `daily`: one complete UTC day vs the same weekday one week earlier.
      * - `weekly`: the last 7 complete UTC days vs the 7 before them.
      * - `monthly`: month-to-date (complete days) vs the *same-length* window
-     *   at the start of the prior month — never MTD vs the full prior month.
+     *   at the start of the prior month, never MTD vs the full prior month.
      */
     cadence: text("cadence").$type<"daily" | "weekly" | "monthly">().notNull(),
     /**
      * Fire when spend moved by at least this percent of the prior window.
      * Null means no percent condition. At least one of the two thresholds is
-     * always set (API-enforced); when **both** are set, **both** must hold —
+     * always set (API-enforced); when **both** are set, **both** must hold:
      * a 50% jump on $2 of spend clears no absolute floor and stays quiet.
      */
     thresholdPercent: integer("threshold_percent"),
@@ -1342,12 +1342,12 @@ export const costAlerts = pgTable(
     /** Which direction of movement matters. */
     direction: text("direction").$type<"increase" | "decrease" | "both">().notNull(),
     enabled: boolean("enabled").notNull().default(true),
-    /** Stamped by each evaluation pass, fired or not — "is this alert live". */
+    /** Stamped by each evaluation pass, fired or not: "is this alert live". */
     lastEvaluatedAt: timestamp("last_evaluated_at"),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    /** Soft delete, matching `budgets` — set, never cleared. */
+    /** Soft delete, matching `budgets`: set, never cleared. */
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -1359,7 +1359,7 @@ export const costAlerts = pgTable(
 
 /**
  * Fired cost-change-alert events. The unique index makes each (alert, period,
- * group, currency) fire at most once — the `budget_alert_events`
+ * group, currency) fire at most once; the `budget_alert_events`
  * once-per-month unique is the precedent: evaluation inserts with
  * `onConflictDoNothing` and only a fresh insert can notify, so re-evaluating
  * a window inside the restatement horizon re-fires nothing.
@@ -1381,7 +1381,7 @@ export const costAlertEvents = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** Dedup key — see the table comment. */
+    /** Dedup key: see the table comment. */
     periodKey: text("period_key").notNull(),
     /** Current window, inclusive UTC days. */
     windowFrom: text("window_from").notNull(),
@@ -1392,7 +1392,7 @@ export const costAlertEvents = pgTable(
     /** The offending group's key; "" when the alert watches one total. */
     groupKey: text("group_key").notNull().default(""),
     /**
-     * Currency both amounts are in. Comparison is per currency — or in the
+     * Currency both amounts are in. Comparison is per currency, or in the
      * org display currency when the org configured one and stated rates; a
      * currency with no rate is compared in its own currency, never dropped.
      */
@@ -1401,11 +1401,11 @@ export const costAlertEvents = pgTable(
     currentAmountCents: integer("current_amount_cents").notNull(),
     /**
      * Signed percent change, rounded. Null when the prior window had no spend
-     * (new spend — the change is infinite, not a number); -100 when the group
+     * (new spend: the change is infinite, not a number); -100 when the group
      * vanished entirely.
      */
     changePercent: integer("change_percent"),
-    /** Which way spend moved — what the alert's `direction` matched. */
+    /** Which way spend moved: what the alert's `direction` matched. */
     direction: text("direction").$type<"increase" | "decrease">().notNull(),
     firedAt: timestamp("fired_at").notNull().defaultNow(),
     /** Null until some transport (or a quiet-hours hold) took the alert. */
@@ -1424,7 +1424,7 @@ export const costAlertEvents = pgTable(
 );
 
 /**
- * Metric threshold alert rules — "CPU > 90% for 15 minutes on these
+ * Metric threshold alert rules: "CPU > 90% for 15 minutes on these
  * resources". Resources are selected by *query* (plugin + resource type +
  * tag), never by id list, so a rule automatically covers resources created
  * after it was written; the selector is resolved against the live `resources`
@@ -1459,7 +1459,7 @@ export const metricAlertRules = pgTable(
     /** Trailing window the condition must hold for before the rule fires. */
     forMinutes: integer("for_minutes").notNull().default(15),
     /**
-     * Least minutes between notified firings for one (rule, resource) — the
+     * Least minutes between notified firings for one (rule, resource): the
      * flap suppressor. Follows the anomaly cooldown convention: a firing
      * inside the cooldown is still recorded, just not notified.
      */
@@ -1487,7 +1487,7 @@ export const metricAlertRules = pgTable(
 );
 
 /**
- * Firing state and history for metric alert rules — one row per continuous
+ * Firing state and history for metric alert rules: one row per continuous
  * breach of one rule on one resource. The partial unique index on
  * (ruleId, resourceId) WHERE status = 'firing' is the claim, mirroring
  * `paging_incidents_open_unique`: the replica whose `onConflictDoNothing`
@@ -1504,7 +1504,7 @@ export const metricAlertRules = pgTable(
  * rather than `cascade`: history is an audit surface, and a stray hard delete
  * of a rule must fail loudly instead of silently erasing its firings.
  * `ruleName` is denormalized at firing time for the same reason
- * `resourceName` is — the event renders on its own, whatever happens to the
+ * `resourceName` is: the event renders on its own, whatever happens to the
  * rule row later.
  */
 export const metricAlertEvents = pgTable(
@@ -1542,7 +1542,7 @@ export const metricAlertEvents = pgTable(
 );
 
 /**
- * Synthetic HTTP probes — "is this endpoint up, and how fast?" checks run on
+ * Synthetic HTTP probes: "is this endpoint up, and how fast?" checks run on
  * an interval from the egress-proxy Cloudflare Worker, i.e. from *outside* the
  * cluster, so a probe measures what a user on the internet would see rather
  * than pod-to-pod latency. Results land in ClickHouse as ordinary metric
@@ -1553,7 +1553,7 @@ export const metricAlertEvents = pgTable(
  * `metric_alert_rules.next_eval_at`: the poller claims due probes with
  * `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` writing
  * `now() + interval` into it, so N replicas never double-probe. Null means
- * "due now" — fresh probes fire promptly.
+ * "due now": fresh probes fire promptly.
  *
  * The linked resource identity (`accountId`/`resourceId`/`pluginId`/
  * `resourceTypeId`/`outputKey`) remembers which resource output suggested the
@@ -1582,9 +1582,9 @@ export const syntheticProbes = pgTable(
     /** Consecutive failures before the probe flips to "down" and notifies. */
     failureThreshold: integer("failure_threshold").notNull().default(3),
     enabled: boolean("enabled").notNull().default(true),
-    /** Linked resource identity — which output suggested the URL. All nullable. */
+    /** Linked resource identity, which output suggested the URL. All nullable. */
     accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
-    /** Not a FK — see above. */
+    /** Not a FK: see above. */
     resourceId: text("resource_id"),
     pluginId: text("plugin_id"),
     resourceTypeId: text("resource_type_id"),
@@ -1599,7 +1599,7 @@ export const syntheticProbes = pgTable(
     lastLatencyMs: integer("last_latency_ms"),
     /** Failure detail for the last failed probe; null after a success. */
     lastError: text("last_error"),
-    /** When `status` last flipped up↔down — "down for 23 minutes" rendering. */
+    /** When `status` last flipped up↔down: "down for 23 minutes" rendering. */
     lastStateChangeAt: timestamp("last_state_change_at"),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -1617,7 +1617,7 @@ export const syntheticProbes = pgTable(
 );
 
 /**
- * Public status pages — a read-only view of a chosen set of synthetic probes,
+ * Public status pages: a read-only view of a chosen set of synthetic probes,
  * served unauthenticated at `/status/:slug` for anyone the org gives the link
  * to. The monitoring already exists (`synthetic_probes`); this table only
  * decides which of it is publishable and under what words.
@@ -1625,7 +1625,7 @@ export const syntheticProbes = pgTable(
  * Two safety properties are structural rather than remembered:
  *
  * - `published` defaults to **false**. A page is created, previewed by the
- *   org, and only then made reachable — creating one can never accidentally
+ *   org, and only then made reachable: creating one can never accidentally
  *   expose an endpoint.
  * - The slug is the only credential, so it is generated with real entropy
  *   (`generateStatusPageSlug`) rather than derived from the title. It is
@@ -1649,7 +1649,7 @@ export const statusPages = pgTable(
     title: text("title").notNull(),
     /** Optional paragraph under the headline. */
     description: text("description"),
-    /** False until someone deliberately publishes — see the note above. */
+    /** False until someone deliberately publishes: see the note above. */
     published: boolean("published").notNull().default(false),
     /** Render the 90-day uptime bars, or just the current state. */
     showHistory: boolean("show_history").notNull().default(true),
@@ -1675,7 +1675,7 @@ export const statusPages = pgTable(
  * `label` exists because a probe's internal name ("prod-api-lb health, eu-w1")
  * is an operations detail, and the public equivalent ("API") is a product one.
  * The public payload always renders `label`, falling back to the probe name
- * only when the org left it blank — that fallback is a deliberate choice by
+ * only when the org left it blank: that fallback is a deliberate choice by
  * the org, not an accident of the schema.
  *
  * `probeId` IS a FK with cascade, unlike the `resource_id` sidecars elsewhere:
@@ -1710,23 +1710,23 @@ export const statusPageComponents = pgTable(
 );
 
 /**
- * Ownership metadata on a resource — who owns it, what it is for, and the
+ * Ownership metadata on a resource: who owns it, what it is for, and the
  * ticket that authorized it.
  *
  * This is the sidecar stance `resource_schedules` and `resource_leases`
  * established, for the same reason: `resource_id` is deliberately **not** a
  * foreign key. Resource rows are churned by sync, and the answer to "whose is
- * this?" must survive a resource disappearing and coming back — losing it on
+ * this?" must survive a resource disappearing and coming back: losing it on
  * every re-sync would make the field useless exactly when someone needs it.
  * Cleanup rides the `account_id` cascade instead.
  *
  * Owner is modelled twice on purpose:
  *
  * - `owner_user_id` is a real org member, and is what makes an alert
- *   *routable* — the orphan finder can name a person and the notifier can
+ *   *routable*: the orphan finder can name a person and the notifier can
  *   reach them. `onDelete: "set null"` so removing a user orphans the
  *   ownership row rather than deleting the purpose and ticket with it.
- * - `owner_label` is free text for the cases a user id cannot express — a
+ * - `owner_label` is free text for the cases a user id cannot express: a
  *   team, a squad rota, a contractor. It is display-only and never routed.
  *
  * A row with neither is still worth keeping: purpose and ticket alone answer
@@ -1742,7 +1742,7 @@ export const resourceOwnership = pgTable(
     accountId: text("account_id")
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
-    /** Not a FK — see above. */
+    /** Not a FK: see above. */
     resourceId: text("resource_id").notNull(),
     pluginId: text("plugin_id").notNull(),
     resourceTypeId: text("resource_type_id").notNull(),
@@ -1780,7 +1780,7 @@ export const sshKeys = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** Owner of this key — only the owner can manage it */
+    /** Owner of this key, only the owner can manage it */
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -1807,7 +1807,7 @@ export const sshKeys = pgTable(
 );
 
 /**
- * Saved fan-out SSH command snippets — org-shared, so the whole team reuses
+ * Saved fan-out SSH command snippets: org-shared, so the whole team reuses
  * the same "check kernel", "disk usage" one-liners from the fan-out screen,
  * the desktop app, and the CLI. Commands are not secret (they run over hosts
  * the org already administers), so they are stored in plaintext.
@@ -1893,7 +1893,7 @@ export const apiKeys = pgTable(
  * Named `agent_auth_*` rather than `agent_*` on purpose: `agent-schema.ts`
  * already owns "agent" for coding-agent VM sessions, which are an unrelated
  * feature that also surfaces in the UI as "Agents". Nothing here is a coding
- * agent — these rows are credentials.
+ * agent: these rows are credentials.
  *
  * The row is what makes the WorkOS registration id addressable. WorkOS knows
  * the registration is claimed; only this table knows *which org it opened*, so
@@ -1903,7 +1903,7 @@ export const apiKeys = pgTable(
 export const agentAuthRegistrations = pgTable(
   "agent_auth_registrations",
   {
-    /** The WorkOS registration id — the `sub` of every token this agent presents. */
+    /** The WorkOS registration id: the `sub` of every token this agent presents. */
     id: text("id").primaryKey(),
     /**
      * The org this registration acts in. Cascades: destroying an expired trial
@@ -1915,7 +1915,7 @@ export const agentAuthRegistrations = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     /**
      * The user bound by the claim ceremony, from the token's `act` claim. Null
-     * until claimed — and the only trustworthy statement of who is behind this
+     * until claimed, and the only trustworthy statement of who is behind this
      * agent. A registration's `sub` is never a user id, however much it looks
      * like one.
      */
@@ -1923,7 +1923,7 @@ export const agentAuthRegistrations = pgTable(
       onDelete: "set null",
     }),
     claimedAt: timestamp("claimed_at"),
-    /** "anonymous" | "service_auth" — how the registration was opened. */
+    /** "anonymous" | "service_auth": how the registration was opened. */
     kind: text("kind").notNull().default("anonymous"),
     /** Free-text label the agent supplied at registration, for the settings list. */
     label: text("label"),
@@ -1948,7 +1948,7 @@ export const agentAuthRegistrations = pgTable(
     /**
      * Source IP of the registration request, for the per-IP rate limit. Kept on
      * the row rather than in a counter table so the limit and the audit trail
-     * are the same record — "who opened 40 trials this hour" is answerable.
+     * are the same record: "who opened 40 trials this hour" is answerable.
      */
     createdFromIp: text("created_from_ip"),
     lastSeenAt: timestamp("last_seen_at"),
@@ -1996,7 +1996,7 @@ export const subscriptions = pgTable(
  * One row per completed one-time Stripe payment, not per seat: a purchase of
  * three slots is one row with `quantity` 3, because they were paid for together
  * and therefore expire together. Rows are additive and never mutated by seat
- * accounting — capacity is a `sum(quantity)` over the rows that are still
+ * accounting: capacity is a `sum(quantity)` over the rows that are still
  * `active` and not yet past `expiresAt`, so an expiring term needs no sweep job
  * to take effect.
  *
@@ -2019,7 +2019,7 @@ export const capacitySlots = pgTable(
     status: text("status").notNull().default("active"),
     /**
      * The Checkout Session that paid for it. Unique, and that is what makes the
-     * webhook idempotent — Stripe redelivers events, and without this a retry
+     * webhook idempotent: Stripe redelivers events, and without this a retry
      * would grant the same seats twice.
      */
     stripeCheckoutSessionId: text("stripe_checkout_session_id").notNull(),
@@ -2194,7 +2194,7 @@ export const slackInstallations = pgTable(
 /**
  * A Slack channel an org can route alerts to.
  *
- * The row is now **identity only** — which channel, in which install. It used
+ * The row is now **identity only**, which channel, in which install. It used
  * to carry one boolean per trigger, which made it half of a routing table with
  * no way to express a condition: a channel could take "all budget alerts" or
  * none, never "budget alerts over $500 on prod". Routing moved to
@@ -2237,7 +2237,7 @@ export const slackChannels = pgTable(
  * trust boundary for two-way Slack.
  *
  * Keyed per (org, workspace, Slack user): one Slack account maps to exactly
- * one Infrawrench account within an org, and re-linking overwrites — the link
+ * one Infrawrench account within an org, and re-linking overwrites; the link
  * token proves control of the Slack account, the session proves the
  * Infrawrench one, so whoever holds both decides the pairing.
  */
@@ -2271,7 +2271,7 @@ export const slackUserLinks = pgTable(
 
 /**
  * Where an approval request's interactive Slack message landed, so a decision
- * — from a Slack button or the web UI — can update every copy in place and
+ * (from a Slack button or the web UI) can update every copy in place and
  * thread the outcome under it. One row per (approval, channel) message.
  *
  * `approvalId` is deliberately not a FK: it points at `workflow_approvals` for
@@ -2288,7 +2288,7 @@ export const slackApprovalMessages = pgTable(
     /**
      * Which table `approval_id` points at: "workflow" (`workflow_approvals`),
      * "chat" (`chat_pending_actions`) or "access" (`access_requests`).
-     * Widening this is a `$type` change only — the column is already `text`.
+     * Widening this is a `$type` change only: the column is already `text`.
      */
     kind: text("kind").$type<"workflow" | "chat" | "access">().notNull(),
     approvalId: text("approval_id").notNull(),
@@ -2297,7 +2297,7 @@ export const slackApprovalMessages = pgTable(
       .references(() => slackInstallations.id, { onDelete: "cascade" }),
     /** Slack channel id (`C…`/`G…`) the message was posted to. */
     channelId: text("channel_id").notNull(),
-    /** Slack message timestamp — the id `chat.update` and threads key on. */
+    /** Slack message timestamp: the id `chat.update` and threads key on. */
     messageTs: text("message_ts").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -2319,7 +2319,7 @@ export const slackApprovalMessages = pgTable(
  * has no app-only OAuth flow we can use, so each channel stands alone with its
  * own URL. See `server-core/src/msteams.ts` for why.
  *
- * The URL is a bearer credential — it carries its own signature — so it is
+ * The URL is a bearer credential (it carries its own signature) so it is
  * stored encrypted and never leaves the server. `urlHost` and `urlHint` are the
  * non-secret parts kept in the clear for display and diagnostics.
  */
@@ -2364,9 +2364,9 @@ export const msteamsWebhooks = pgTable(
  *
  * `lastSentWeekStart` is the Monday (ISO `YYYY-MM-DD`) of the week the last
  * digest *covered*, not the day it was sent, and it is expressed in the org's
- * own `timezone` — the window is the org's local Monday-to-Sunday calendar
+ * own `timezone`: the window is the org's local Monday-to-Sunday calendar
  * week. The scheduler claims due orgs with a single conditional UPDATE on this
- * column, so any number of poller replicas — or a restart mid-morning — can
+ * column, so any number of poller replicas (or a restart mid-morning) can
  * never double-send: only the instance whose UPDATE actually moved the column
  * forward delivers. The column only ever moves *forward*, which is what makes
  * the invariant hold even when an org changes its timezone.
@@ -2418,7 +2418,7 @@ export const orgDigestSettings = pgTable("org_digest_settings", {
 });
 
 /**
- * Email addresses an org routes its weekly digest to — the third digest
+ * Email addresses an org routes its weekly digest to: the third digest
  * transport alongside Slack channels and Teams webhooks.
  *
  * Recipients are an **org-level address list**, not a per-member opt-in, for
@@ -2457,15 +2457,15 @@ export const digestEmailRecipients = pgTable(
  * Money is stored in USD cents and converted per series by
  * `cost/anomaly-detect.ts`, so one number means the same real amount against a
  * provider that bills in dollars and one that bills in yen. The values are
- * bounded by the API (`COST_ANOMALY_LIMITS`) — a sigma of 0 would alert on
- * every fluctuation and a negative floor is meaningless — so nothing here can
+ * bounded by the API (`COST_ANOMALY_LIMITS`) (a sigma of 0 would alert on
+ * every fluctuation and a negative floor is meaningless) so nothing here can
  * store a setting that turns detection into a pager storm.
  *
  * The last two columns are the Twilio half, and they are a pair: `sms_alerts`
  * is the opt-in (default `'off'`, because every org that already has Twilio set
  * up for budgets would otherwise start getting anomaly texts), and
  * `sms_last_paged_at` is the *claim* that bounds their rate, in the same
- * protocol `org_drift_alert_settings.last_notified_at` uses — one conditional
+ * protocol `org_drift_alert_settings.last_notified_at` uses; one conditional
  * UPDATE, whoever wins it sends, rolled back when the text reached nobody.
  */
 export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
@@ -2481,7 +2481,7 @@ export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
   /**
    * Which anomaly kinds also text the org's Twilio recipients:
    * `'off'` (default) | `'new_source'` | `'all'`. Nested rather than two
-   * booleans — see `CostAnomalySmsMode` in `client-core/src/costs.ts`.
+   * booleans: see `CostAnomalySmsMode` in `client-core/src/costs.ts`.
    */
   smsAlerts: text("sms_alerts", { enum: ["off", "new_source", "all"] })
     .notNull()
@@ -2497,7 +2497,7 @@ export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
 });
 
 /**
- * Per-org tuning for the three *efficiency* detectors — commitment expiry,
+ * Per-org tuning for the three *efficiency* detectors: commitment expiry,
  * idle commitments, and unit-cost regression. `org_cost_anomaly_settings`'
  * protocol exactly: one row per org that has ever changed a knob, no row means
  * the shipped defaults (`DEFAULT_COST_EFFICIENCY_SETTINGS` in
@@ -2506,7 +2506,7 @@ export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
  * pager storm or a permanent silence.
  *
  * One table for three detectors rather than three tables, because an org tunes
- * them as one decision — "how noisy is the slow lane" — and because the three
+ * them as one decision ("how noisy is the slow lane") and because the three
  * are read together, once per evaluation pass, by three drivers that already
  * run back to back.
  *
@@ -2542,7 +2542,7 @@ export const orgCostEfficiencySettings = pgTable("org_cost_efficiency_settings",
   /**
    * Days inside the window that must carry cost data before anything is
    * judged. The guard that keeps a collection outage from reading as an idle
-   * commitment — see `commitments/utilization.ts`.
+   * commitment: see `commitments/utilization.ts`.
    */
   commitmentIdleMinMeasuredDays: integer("commitment_idle_min_measured_days").notNull().default(14),
   /** Least wasted money before alerting, USD cents. */
@@ -2564,12 +2564,12 @@ export const orgCostEfficiencySettings = pgTable("org_cost_efficiency_settings",
  * Fired unit-cost regressions: one row per (metric, currency, window end).
  *
  * The `budget_alert_events` once-per-period protocol, with the period being
- * the current window's last day — evaluation inserts with
+ * the current window's last day: evaluation inserts with
  * `onConflictDoNothing` and only a fresh insert notifies. That alone would
  * still re-fire daily while a regression persists (the window slides), so the
  * driver adds the `cost_anomalies` cross-day cooldown on top: a metric that
  * was *notified* inside the trailing cooldown stores its row but stays quiet.
- * Counting only notified rows matters for the same reason it does there — a
+ * Counting only notified rows matters for the same reason it does there: a
  * suppressed row must not extend its own silence, and a row nobody received
  * must not suppress the alert that would have told them.
  *
@@ -2596,14 +2596,14 @@ export const unitCostRegressionEvents = pgTable(
     /**
      * The two ratios, in currency units per metric unit. Not cents: a unit
      * cost is routinely sub-cent (cost per request, cost per event) and
-     * rounding it to the currency's minor unit would store `0` — the same lie
+     * rounding it to the currency's minor unit would store `0`; the same lie
      * `cost/unit-costs.ts` refuses to draw.
      */
     previousUnitCost: doublePrecision("previous_unit_cost").notNull(),
     currentUnitCost: doublePrecision("current_unit_cost").notNull(),
     /** Signed percent change of the unit cost, rounded. */
     changePercent: integer("change_percent").notNull(),
-    /** Current window's spend, in currency units — the "is this worth reading" number. */
+    /** Current window's spend, in currency units: the "is this worth reading" number. */
     currentSpend: doublePrecision("current_spend").notNull(),
     /** Summed metric value on each side, over the reported days only. */
     previousMetricValue: doublePrecision("previous_metric_value").notNull(),
@@ -2623,7 +2623,7 @@ export const unitCostRegressionEvents = pgTable(
     /** The read: one org's recent firings, newest first. */
     orgFiredIdx: index("unit_cost_regression_events_org_fired_idx").on(t.organizationId, t.firedAt),
     /**
-     * The cooldown probe — "this metric's notified rows inside a day range" —
+     * The cooldown probe ("this metric's notified rows inside a day range")
      * needs no index of its own: `onceUnique` is already
      * `(metric_id, currency, window_to)`, which is equality on the first two
      * and a range on the third, exactly the shape of that query.
@@ -2637,8 +2637,8 @@ export const unitCostRegressionEvents = pgTable(
  * per org that has either tuned the settings or been alerted; no row means the
  * shipped defaults.
  *
- * Drift is the highest-volume signal in the product — a single sync pass can
- * record hundreds of `resource_changes` rows — so this table exists to make the
+ * Drift is the highest-volume signal in the product (a single sync pass can
+ * record hundreds of `resource_changes` rows) so this table exists to make the
  * *notification* rate independent of the change rate:
  *
  * - `lastNotifiedAt` is a claim, not bookkeeping. `drift/alerts.ts` advances it
@@ -2661,7 +2661,7 @@ export const orgDriftAlertSettings = pgTable("org_drift_alert_settings", {
     .references(() => organizations.id, { onDelete: "cascade" }),
   /** Alert on resources that appeared since the last window. */
   notifyCreated: boolean("notify_created").notNull().default(true),
-  /** Alert on field-level updates. Off by default — this is the noisy kind. */
+  /** Alert on field-level updates. Off by default: this is the noisy kind. */
   notifyUpdated: boolean("notify_updated").notNull().default(false),
   /** Alert on resources that disappeared since the last window. */
   notifyDeleted: boolean("notify_deleted").notNull().default(true),
@@ -2671,7 +2671,7 @@ export const orgDriftAlertSettings = pgTable("org_drift_alert_settings", {
   minChanges: integer("min_changes").notNull().default(1),
   /** Account ids to alert on; an empty array means every account. */
   accountIds: jsonb("account_ids").$type<string[]>().notNull().default([]),
-  /** The cooldown claim — when this org last had a drift digest delivered. */
+  /** The cooldown claim, when this org last had a drift digest delivered. */
   lastNotifiedAt: timestamp("last_notified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -2688,8 +2688,8 @@ export const orgDriftAlertSettings = pgTable("org_drift_alert_settings", {
  * advances it with one conditional upsert (`last_notified_at IS NULL OR
  * <= now - 24h`), exactly like the drift cooldown, so N poller replicas
  * evaluating the same org produce one scan per day. A scan that finds nothing
- * due keeps the window spent — deadlines move by whole days, so re-scanning a
- * quiet org every tick would buy nothing — while a scan whose message reached
+ * due keeps the window spent (deadlines move by whole days, so re-scanning a
+ * quiet org every tick would buy nothing) while a scan whose message reached
  * nobody is rolled back so the next tick can retry.
  */
 export const orgExpirySettings = pgTable("org_expiry_settings", {
@@ -2700,7 +2700,7 @@ export const orgExpirySettings = pgTable("org_expiry_settings", {
   enabled: boolean("enabled").notNull().default(true),
   /** Days of lead time before a deadline counts as `upcoming` and alertable. */
   leadDays: integer("lead_days").notNull().default(60),
-  /** The cooldown claim — when this org's expiry alert scan last completed. */
+  /** The cooldown claim, when this org's expiry alert scan last completed. */
   lastNotifiedAt: timestamp("last_notified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -2727,20 +2727,20 @@ export const orgPostureSettings = pgTable("org_posture_settings", {
     .references(() => organizations.id, { onDelete: "cascade" }),
   /** Whether the poller sends posture alerts for this org at all. */
   enabled: boolean("enabled").notNull().default(true),
-  /** The cooldown claim — when this org's posture alert scan last completed. */
+  /** The cooldown claim, when this org's posture alert scan last completed. */
   lastNotifiedAt: timestamp("last_notified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 /**
- * Accepted posture findings — "yes, that bucket is public on purpose".
+ * Accepted posture findings: "yes, that bucket is public on purpose".
  *
  * Keyed by `(organization, resource, rule)` rather than by a finding row:
  * findings have no identity, they are recomputed from stored fields on every
- * read. Both halves of the key are stable — resource ids come from the
+ * read. Both halves of the key are stable: resource ids come from the
  * plugin's lister and are the id upserted on every sync, rule ids are
- * declared in the plugin manifest — so a dismissal survives syncs and stops
+ * declared in the plugin manifest, so a dismissal survives syncs and stops
  * applying by itself the moment the rule stops matching.
  *
  * `resourceId` is not a FK, the `resource_changes` stance: resource rows are
@@ -2748,7 +2748,7 @@ export const orgPostureSettings = pgTable("org_posture_settings", {
  * resource is inert anyway (the feed only reports dismissals whose rule still
  * matches). Cleanup rides the organization cascade.
  *
- * `dismissedBy` is nulled rather than cascaded when the user is deleted — the
+ * `dismissedBy` is nulled rather than cascaded when the user is deleted: the
  * decision stays on the record even when the person who made it is gone.
  */
 export const postureDismissals = pgTable(
@@ -2770,7 +2770,7 @@ export const postureDismissals = pgTable(
   },
   (t) => ({
     orgIdx: index("posture_dismissals_org_idx").on(t.organizationId),
-    /** One decision per (resource, rule) — dismissing twice is an update. */
+    /** One decision per (resource, rule): dismissing twice is an update. */
     findingUnique: uniqueIndex("posture_dismissals_finding_idx").on(
       t.organizationId,
       t.resourceId,
@@ -2780,7 +2780,7 @@ export const postureDismissals = pgTable(
 );
 
 /**
- * Sleep/wake schedules — "off at 19:00, on at 08:00, Mon–Fri" windows on
+ * Sleep/wake schedules: "off at 19:00, on at 08:00, Mon–Fri" windows on
  * resources whose plugin declares a `lifecycle` start/stop action pair.
  *
  * `nextTransitionAt` is the due-time column AND the claim lease, exactly like
@@ -2792,10 +2792,10 @@ export const postureDismissals = pgTable(
  * `lastTransitionKey` (`"<ISO instant>:<stop|start>"`) is the idempotency
  * record: the due transition is recomputed from the timing at claim time, and
  * a key that matches means the transition already ran (or was deliberately
- * skipped for a freeze) — the pass reschedules without re-invoking, so a
+ * skipped for a freeze); the pass reschedules without re-invoking, so a
  * restart mid-lease can't fire the same window twice.
  *
- * `resourceId` is not a FK (the `resource_changes` stance) — resource rows
+ * `resourceId` is not a FK (the `resource_changes` stance): resource rows
  * are churned by sync; cleanup rides the account cascade, and the pass skips
  * schedules whose resource row is gone.
  */
@@ -2823,13 +2823,13 @@ export const resourceSchedules = pgTable(
     paused: boolean("paused").notNull().default(false),
     /** Due time + claim lease; null while paused. */
     nextTransitionAt: timestamp("next_transition_at"),
-    /** "stop" | "start" — what fires at `nextTransitionAt`. */
+    /** "stop" | "start": what fires at `nextTransitionAt`. */
     nextTransitionAction: text("next_transition_action").$type<"stop" | "start">(),
     /** Idempotency record of the last executed/skipped transition. */
     lastTransitionKey: text("last_transition_key"),
     lastRunAt: timestamp("last_run_at"),
     lastRunAction: text("last_run_action").$type<"stop" | "start">(),
-    /** "ok" | "failed" | "skipped_freeze" — failures are never silent. */
+    /** "ok" | "failed" | "skipped_freeze": failures are never silent. */
     lastRunStatus: text("last_run_status").$type<"ok" | "failed" | "skipped_freeze">(),
     lastRunError: text("last_run_error"),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
@@ -2841,7 +2841,7 @@ export const resourceSchedules = pgTable(
   (t) => ({
     orgIdx: index("resource_schedules_org_idx").on(t.organizationId),
     dueIdx: index("resource_schedules_due_idx").on(t.nextTransitionAt),
-    /** One schedule per resource — two windows on one VM would fight. */
+    /** One schedule per resource: two windows on one VM would fight. */
     resourceUnique: uniqueIndex("resource_schedules_org_resource_idx").on(
       t.organizationId,
       t.resourceId,
@@ -2850,27 +2850,27 @@ export const resourceSchedules = pgTable(
 );
 
 /**
- * Resource leases (TTL) — an optional "expires at" on any resource ("give me
+ * Resource leases (TTL): an optional "expires at" on any resource ("give me
  * a test cluster for 3 days"). Active leases ride the expiry radar (kind
  * `"lease"`), so the owner is nagged through the existing alert pass; a lease
  * with `autoDelete` additionally opts into the poller's lease pass, which
  * announces the deletion twice and then calls the plugin's `deleteResource`
- * at expiry (freeze-aware — a delete during a change freeze is deferred and
+ * at expiry (freeze-aware: a delete during a change freeze is deferred and
  * surfaced, never silently executed).
  *
  * `nextCheckAt` is the due-time column AND the claim lease for auto-delete
  * leases, the `resource_schedules.next_transition_at` protocol: the pass
  * claims due rows with `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP
- * LOCKED)` writing `now() + lease` into it. Null means "due now" — a fresh
+ * LOCKED)` writing `now() + lease` into it. Null means "due now": a fresh
  * auto-delete lease is picked up on the next tick, which computes the first
  * warning instant and reschedules. Non-auto-delete leases keep it null and
  * are never claimed (the pass filters on `autoDelete`).
  *
  * `firstWarningAt` / `finalWarningAt` record the two mandatory announcements
- * (null until sent) — the pass never deletes until both are non-null AND the
+ * (null until sent): the pass never deletes until both are non-null AND the
  * expiry has passed, even when that pushes the delete later.
  *
- * `resourceId` is not a FK (the `resource_schedules` stance) — resource rows
+ * `resourceId` is not a FK (the `resource_schedules` stance): resource rows
  * are churned by sync; cleanup rides the account cascade. `displayName` is
  * denormalized so completion messages can name the resource after its row is
  * gone.
@@ -2888,7 +2888,7 @@ export const resourceLeases = pgTable(
     resourceId: text("resource_id").notNull(),
     pluginId: text("plugin_id").notNull(),
     resourceTypeId: text("resource_type_id").notNull(),
-    /** Resource display name at lease time — survives the resource's deletion. */
+    /** Resource display name at lease time: survives the resource's deletion. */
     displayName: text("display_name").notNull(),
     /** The lease deadline. */
     expiresAt: timestamp("expires_at").notNull(),
@@ -2908,7 +2908,7 @@ export const resourceLeases = pgTable(
     /** Due time + claim lease for the auto-delete pass; null = due. */
     nextCheckAt: timestamp("next_check_at"),
     deleteAttempts: integer("delete_attempts").notNull().default(0),
-    /** Last failure/deferral detail — failures are never silent. */
+    /** Last failure/deferral detail: failures are never silent. */
     lastError: text("last_error"),
     /** When the lease reached a terminal status. */
     completedAt: timestamp("completed_at"),
@@ -2921,7 +2921,7 @@ export const resourceLeases = pgTable(
   (t) => ({
     orgIdx: index("resource_leases_org_idx").on(t.organizationId),
     dueIdx: index("resource_leases_due_idx").on(t.nextCheckAt),
-    /** One lease per resource — two TTLs on one resource would fight. */
+    /** One lease per resource: two TTLs on one resource would fight. */
     resourceUnique: uniqueIndex("resource_leases_org_resource_idx").on(
       t.organizationId,
       t.resourceId,
@@ -2930,19 +2930,19 @@ export const resourceLeases = pgTable(
 );
 
 /**
- * Log workspace saved queries — a named set of log-capable resources plus a
+ * Log workspace saved queries: a named set of log-capable resources plus a
  * search expression, so a multi-resource tail workspace can be reopened.
  *
  * `alertEnabled` opts the query into the poller's log-alert pass:
  * `nextEvalAt` is the due-time column AND the claim lease (the
- * `resource_schedules.next_transition_at` protocol — `UPDATE … WHERE id IN
+ * `resource_schedules.next_transition_at` protocol: `UPDATE … WHERE id IN
  * (SELECT … FOR UPDATE SKIP LOCKED)` writes `now() + lease` into it), so N
  * poller replicas never evaluate the same query twice. It is null while the
  * alert is off. `lastAlertedAt` anchors the notification cooldown so a query
  * that keeps matching doesn't re-fire every pass.
  *
  * `resources` is a jsonb array of stream selectors (`LogStreamSelector` in
- * client-core), not FK rows — resource rows are churned by sync (the
+ * client-core), not FK rows: resource rows are churned by sync (the
  * `resource_changes` stance); the pass and the UI simply report streams whose
  * resource is gone instead of breaking the whole query.
  */
@@ -2974,7 +2974,7 @@ export const logWorkspaceQueries = pgTable(
     lastEvalAt: timestamp("last_eval_at"),
     /** Last evaluation that found at least one matching line. */
     lastMatchAt: timestamp("last_match_at"),
-    /** Last dispatched notification — the cooldown anchor. */
+    /** Last dispatched notification: the cooldown anchor. */
     lastAlertedAt: timestamp("last_alerted_at"),
     /** Failure detail from the last evaluation; never silent. */
     lastEvalError: text("last_eval_error"),
@@ -2989,7 +2989,7 @@ export const logWorkspaceQueries = pgTable(
   (t) => ({
     orgIdx: index("log_workspace_queries_org_idx").on(t.organizationId),
     dueIdx: index("log_workspace_queries_due_idx").on(t.nextEvalAt),
-    /** Names are the reopen handle — duplicates would be ambiguous. */
+    /** Names are the reopen handle: duplicates would be ambiguous. */
     nameUnique: uniqueIndex("log_workspace_queries_org_name_idx").on(t.organizationId, t.name),
   }),
 );
@@ -3056,7 +3056,7 @@ export const pagingIncidents = pgTable(
 );
 
 /**
- * Expo push tokens for the mobile app. User-scoped, not org-scoped — a phone
+ * Expo push tokens for the mobile app. User-scoped, not org-scoped: a phone
  * belongs to a person and registers once regardless of org memberships. The
  * unique index on the token lets re-registration upsert and reassign the row
  * to the current user (phone handoffs, account switches).
@@ -3072,7 +3072,7 @@ export const pushDevices = pgTable(
     expoPushToken: text("expo_push_token").notNull(),
     platform: text("platform").notNull().$type<"ios" | "android">(),
     deviceName: text("device_name"),
-    /** Refreshed on every register call — the app re-registers on launch. */
+    /** Refreshed on every register call: the app re-registers on launch. */
     lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
     /** Consecutive send failures; reset to 0 on success or re-register. */
     failureCount: integer("failure_count").notNull().default(0),
@@ -3088,7 +3088,7 @@ export const pushDevices = pgTable(
 );
 
 /**
- * Per-(user, org) push trigger opt-outs. No row means the shipped defaults —
+ * Per-(user, org) push trigger opt-outs. No row means the shipped defaults:
  * registering a device is the opt-in act.
  *
  * This is the one half of the old boolean matrix that did **not** become a
@@ -3096,12 +3096,12 @@ export const pushDevices = pgTable(
  * org decision about where the org is told; this is a member's decision about
  * whether their own phone rings at 3am. Folding it into the org table would
  * have let an admin un-mute somebody else's notifications, so it stayed
- * personal — it just stopped being one column per trigger.
+ * personal: it just stopped being one column per trigger.
  *
  * `mutedTriggers` names the triggers this member has turned **off**; an unknown
  * or new trigger is therefore on by default, which is why adding one needs no
  * migration here. The shipped defaults for a member with no row live in
- * `DEFAULT_MUTED_TRIGGERS` (`client-core/src/alert-routing.ts`) — currently
+ * `DEFAULT_MUTED_TRIGGERS` (`client-core/src/alert-routing.ts`): currently
  * just `resourceDrift`, which is the same decision its `false` column default
  * used to encode.
  */
@@ -3144,7 +3144,7 @@ export const pushPreferences = pgTable(
  * Conditions and destinations are a discriminated union that will grow; columns
  * would put us back where we started, adding one per new idea. The shapes are
  * validated by `validateAlertRule` on the way in, so the JSON is never
- * unchecked — it is just not the database's job to check it.
+ * unchecked: it is just not the database's job to check it.
  */
 export const alertRules = pgTable(
   "alert_rules",
@@ -3162,7 +3162,7 @@ export const alertRules = pgTable(
      *
      * `$type` here documents the shape and spares every reader a cast; it is
      * *not* a guarantee. These columns outlive the build that wrote them, so
-     * `alerts/rules.ts` still re-checks each one on the way out — see `toRule`.
+     * `alerts/rules.ts` still re-checks each one on the way out: see `toRule`.
      */
     conditions: jsonb("conditions").$type<AlertCondition[]>().notNull().default([]),
     /** Empty is legal: a rule that swallows alerts. */
@@ -3186,14 +3186,14 @@ export const alertRules = pgTable(
  * The follow-up queue: one row per (rule, alert) that is not finished when
  * `routeAlert` returns.
  *
- * Two features share it because they are the same shape — an alert with a
+ * Two features share it because they are the same shape: an alert with a
  * deadline and a claim column:
  *
- *   * **held** — quiet hours caught it. `deliverAfter` is when the window
+ *   * **held**: quiet hours caught it. `deliverAfter` is when the window
  *     closes, and the flush pass claims it exactly the way the poller claims a
  *     due account: `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)`,
  *     writing a lease into the due column itself. N replicas send once.
- *   * **awaiting_ack** — the rule asked to escalate. `escalateAt` is the second
+ *   * **awaiting_ack**: the rule asked to escalate. `escalateAt` is the second
  *     deadline and is claimed by the same statement shape.
  *
  * `payload` is the whole `AlertEvent` because the pass that sends it runs
@@ -3203,7 +3203,7 @@ export const alertRules = pgTable(
  * held copy says exactly what the immediate copy would have said.
  *
  * This table is **not** part of the cooldown/claim protocol that decides
- * whether an alert is raised at all — those live with each detector
+ * whether an alert is raised at all: those live with each detector
  * (`inCooldown`, `PageCooldownStore`, `org_drift_alert_settings`) and are
  * untouched. A row only ever appears here after such a claim was already won.
  */
@@ -3226,13 +3226,13 @@ export const alertDeliveries = pgTable(
     severity: text("severity").notNull(),
     /**
      * `held` | `awaiting_ack` | `sent` | `acknowledged` | `escalated` |
-     * `expired` — the `AlertDeliveryState` union in client-core. `sent` is what
+     * `expired`: the `AlertDeliveryState` union in client-core. `sent` is what
      * `flushHold` writes for a released hold whose rule does not escalate;
      * everything else is terminal or waiting on one of the two deadlines.
      */
     state: text("state").notNull(),
     /**
-     * The full `AlertEvent`, rendered — see the note above. Left untyped
+     * The full `AlertEvent`, rendered: see the note above. Left untyped
      * because `AlertEvent` is declared in `alerts/route.ts`, which imports this
      * module; naming it here would close the cycle.
      */
@@ -3291,7 +3291,7 @@ export const sshTunnelConfigs = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
-/* AI chat — conversations + per-turn messages + pending-action approvals     */
+/* AI chat: conversations + per-turn messages + pending-action approvals     */
 /* + per-turn token usage rolled up for Stripe metered billing.               */
 /* -------------------------------------------------------------------------- */
 
@@ -3306,20 +3306,20 @@ export const chatConversations = pgTable(
      * Nullable, and `set null` rather than `cascade`, so deleting an account
      * retires its conversations instead of destroying them.
      *
-     * `chat_usage` rows hang off the messages here and are billing records —
+     * `chat_usage` rows hang off the messages here and are billing records:
      * `stripe_usage_record_id` stays null until the reporting sweep claims
      * them. Cascading from the user would take unreported usage with it, so an
      * account deleted inside the sweep window silently cost the org its charge.
      *
      * Every read scopes conversations with `userId === auth.userId`, so a
-     * null-owned row matches nobody and the history stops being reachable —
+     * null-owned row matches nobody and the history stops being reachable,
      * which is the intent. The usage rows underneath it survive to be billed.
      */
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     title: text("title").notNull().default("New chat"),
     /**
      * Must stay in step with `DEFAULT_CHAT_MODEL` in client-core (server-core
-     * can't import it — no dependency that way). The API writes the model
+     * can't import it: no dependency that way). The API writes the model
      * explicitly, so this is only reached by a caller that forgets; it points
      * at the cheapest model so forgetting is cheap rather than expensive.
      */
@@ -3481,7 +3481,7 @@ export const externalPages = pgTable(
     source: text("source").notNull(),
     /** The caller-chosen throttle key; "default" when unspecified. */
     key: text("key").notNull(),
-    /** When this key last delivered a page — the start of its cooldown. */
+    /** When this key last delivered a page: the start of its cooldown. */
     lastPagedAt: timestamp("last_paged_at").notNull().defaultNow(),
     /** The message that was sent, for the settings UI. */
     lastMessage: text("last_message"),
@@ -3498,7 +3498,7 @@ export const externalPages = pgTable(
 );
 
 /**
- * Poll bookkeeping for provider status feeds — one row per plugin whose
+ * Poll bookkeeping for provider status feeds: one row per plugin whose
  * manifest declares `statusFeed`. Global, not org-scoped: a provider's status
  * page is the same for everyone, so the cache is shared and correlation with
  * an org's resources happens at read time.
@@ -3517,7 +3517,7 @@ export const providerStatusFeeds = pgTable(
     pluginId: text("plugin_id").primaryKey(),
     nextFetchAt: timestamp("next_fetch_at"),
     lastFetchedAt: timestamp("last_fetched_at"),
-    /** "ok" | "error" — outcome of the most recent fetch+parse attempt. */
+    /** "ok" | "error": outcome of the most recent fetch+parse attempt. */
     lastStatus: text("last_status"),
     /** Truncated fetch/parse error message from the most recent failure. */
     lastError: text("last_error"),
@@ -3538,7 +3538,7 @@ export const providerStatusFeeds = pgTable(
  * `unresolved.json` simply drop resolved incidents).
  *
  * `regions` hold plugin-native region ids (the strings plugins write into
- * `fields_json.region`), `resourceTypeIds` plugin resource type ids — the two
+ * `fields_json.region`), `resourceTypeIds` plugin resource type ids: the two
  * axes correlation matches on, plus `providerWide`.
  */
 export const providerStatusIncidents = pgTable(
@@ -3562,7 +3562,7 @@ export const providerStatusIncidents = pgTable(
     services: jsonb("services").$type<string[]>().notNull().default([]),
     resourceTypeIds: jsonb("resource_type_ids").$type<string[]>().notNull().default([]),
     providerWide: boolean("provider_wide").notNull().default(false),
-    /** Last poll that still reported this incident — staleness marker. */
+    /** Last poll that still reported this incident: staleness marker. */
     lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -3579,7 +3579,7 @@ export const providerStatusIncidents = pgTable(
 
 /**
  * Exactly-once bookkeeping for provider-incident notifications: one row per
- * (incident, org) that has been fanned out. The insert is the claim — the
+ * (incident, org) that has been fanned out. The insert is the claim: the
  * replica whose `ON CONFLICT DO NOTHING` insert actually lands owns delivery,
  * mirroring the conditional-UPDATE claims in `drift/alerts.ts`. When no
  * transport delivers, the row is deleted so a later tick can retry
@@ -3613,7 +3613,7 @@ export const providerStatusNotifications = pgTable(
  * anomalies, orphans, oversized resources, posture findings, expiring
  * credentials, failed probes) into tracked issues.
  *
- * One row per org — an org files into a single site. Keyed by `organizationId`
+ * One row per org: an org files into a single site. Keyed by `organizationId`
  * rather than carrying its own `id` for the same reason `twilio_settings` is:
  * "configured or not" is a property of the org, and a primary key makes the
  * upsert in `setJiraIntegration` a plain `onConflictDoUpdate` on the org.
@@ -3621,7 +3621,7 @@ export const providerStatusNotifications = pgTable(
  * Auth is Jira Cloud basic auth: `Authorization: Basic base64(email:apiToken)`.
  * The API token is a bearer credential for the whole Atlassian account, so it
  * is encrypted at rest exactly like the Twilio auth token and the Teams webhook
- * URL, and never leaves the server — the API returns {@link tokenHint} instead.
+ * URL, and never leaves the server: the API returns {@link tokenHint} instead.
  */
 export const jiraIntegrations = pgTable("jira_integrations", {
   organizationId: text("organization_id")
@@ -3633,7 +3633,7 @@ export const jiraIntegrations = pgTable("jira_integrations", {
    * issue links are built from it.
    */
   siteUrl: text("site_url").notNull(),
-  /** Atlassian account email — the username half of the basic-auth pair. */
+  /** Atlassian account email: the username half of the basic-auth pair. */
   accountEmail: text("account_email").notNull(),
   /** AES-256-GCM encrypted Jira API token. AAD: `jira:<orgId>:apiToken`. */
   encryptedApiToken: text("encrypted_api_token").notNull(),
@@ -3659,7 +3659,7 @@ export const jiraIntegrations = pgTable("jira_integrations", {
  * The unique constraint spans (org, kind, source, issue key) so re-filing the
  * same finding as the same issue is idempotent rather than an error, while
  * still permitting a deliberate second issue for the same finding (a different
- * key) — the UI never offers that, but a caller with `jira:write` may.
+ * key): the UI never offers that, but a caller with `jira:write` may.
  */
 export const jiraIssueLinks = pgTable(
   "jira_issue_links",
@@ -3670,7 +3670,7 @@ export const jiraIssueLinks = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     /**
      * Which detector produced the finding. Constrained in the database as well
-     * as in the route's zod schema — these rows outlive any one code path, and
+     * as in the route's zod schema: these rows outlive any one code path, and
      * an unknown kind would strand the link where no UI looks for it.
      */
     sourceKind: text("source_kind").notNull(),
@@ -3706,7 +3706,7 @@ export const jiraIssueLinks = pgTable(
 );
 
 /**
- * An org's connection to one Linear workspace — the second issue tracker next
+ * An org's connection to one Linear workspace: the second issue tracker next
  * to `jira_integrations`, covering the same six finding kinds. Deliberately a
  * parallel table rather than a generalized "trackers" table: an org may
  * connect either or both, and two tables keep the integrations independently
@@ -3718,10 +3718,10 @@ export const jiraIssueLinks = pgTable(
  * `onConflictDoUpdate` on the org.
  *
  * Auth is a Linear personal API key sent as `Authorization: <key>` (no Bearer
- * prefix — see server-core/linear.ts). No site URL column: Linear has one
+ * prefix: see server-core/linear.ts). No site URL column: Linear has one
  * fixed GraphQL endpoint for every workspace. The key is a bearer credential
  * for everything the Linear user can see, so it is encrypted at rest exactly
- * like the Jira API token, and never leaves the server — the API returns
+ * like the Jira API token, and never leaves the server: the API returns
  * {@link keyHint} instead.
  */
 export const linearIntegrations = pgTable("linear_integrations", {
@@ -3748,7 +3748,7 @@ export const linearIntegrations = pgTable("linear_integrations", {
 });
 
 /**
- * The Linear issue a finding was filed as — the exact counterpart of
+ * The Linear issue a finding was filed as: the exact counterpart of
  * `jira_issue_links`, with the issue identifier (`ENG-123`) where Jira has an
  * issue key. Same idempotency story: the unique constraint spans (org, kind,
  * source, identifier) so re-filing the same finding as the same issue is a
@@ -3763,7 +3763,7 @@ export const linearIssueLinks = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     /**
      * Which detector produced the finding. Constrained in the database as well
-     * as in the route's zod schema — these rows outlive any one code path, and
+     * as in the route's zod schema: these rows outlive any one code path, and
      * an unknown kind would strand the link where no UI looks for it.
      */
     sourceKind: text("source_kind").notNull(),
@@ -3775,7 +3775,7 @@ export const linearIssueLinks = pgTable(
     sourceId: text("source_id").notNull(),
     /** Linear issue identifier, e.g. `ENG-123`. */
     issueIdentifier: text("issue_identifier").notNull(),
-    /** Issue URL as Linear returned it. Stored rather than derived — the URL
+    /** Issue URL as Linear returned it. Stored rather than derived: the URL
      * embeds the workspace slug, which this table does not otherwise know. */
     issueUrl: text("issue_url").notNull(),
     createdByUserId: text("created_by_user_id"),
@@ -3798,14 +3798,14 @@ export const linearIssueLinks = pgTable(
 );
 
 /**
- * The org's display currency for cost reporting — one row per org, the same
+ * The org's display currency for cost reporting: one row per org, the same
  * missing-row-means-defaults protocol as `org_tag_policies` and
  * `org_cost_anomaly_settings`.
  *
  * Cost data is stored per currency and never merged, and that stays the
  * default: an org with no row here, or with a null `display_currency`, sees
  * exactly the per-currency numbers it saw before this table existed. Setting a
- * currency is an explicit, org-level opt-in to seeing one number instead — and
+ * currency is an explicit, org-level opt-in to seeing one number instead, and
  * only takes effect for currencies the org has also stated a rate for in
  * `org_exchange_rates`, because Infrawrench never fetches live FX.
  */
@@ -3832,8 +3832,8 @@ export const orgCurrencySettings = pgTable("org_currency_settings", {
  * applying.
  *
  * These are the org's rates, not ours. A finance team reconciles a converted
- * total against the rate their accounting system booked the period at — not
- * today's mid-market quote — so nothing in the product fetches live FX. A rate
+ * total against the rate their accounting system booked the period at (not
+ * today's mid-market quote) so nothing in the product fetches live FX. A rate
  * is a row somebody with `org:settings:write` created, `created_by` records
  * who, and a historical day converts at whichever rate was in force then.
  *
@@ -3864,7 +3864,7 @@ export const orgExchangeRates = pgTable(
     /**
      * Multiply an amount in `from_currency` by this to get `to_currency`.
      *
-     * **`numeric(20, 10)` — an exact decimal, not a float.** Three reasons, in
+     * **`numeric(20, 10)`: an exact decimal, not a float.** Three reasons, in
      * order of how much they matter:
      *
      *  1. The number the org typed must be the number stored and echoed back.
@@ -3877,14 +3877,14 @@ export const orgExchangeRates = pgTable(
      *     survives the round trip to the API and the form. It becomes a float
      *     exactly once, in `cost/currency-convert.ts`, at the multiply.
      *  3. 10 decimal places covers the low-value currencies with room to
-     *     spare — a VND→USD rate of ~0.0000395 still keeps six significant
-     *     figures — while 20 total digits leaves the integer side unbounded in
+     *     spare (a VND→USD rate of ~0.0000395 still keeps six significant
+     *     figures) while 20 total digits leaves the integer side unbounded in
      *     practice.
      *
      * An integer scaled fixed-point column (rate × 10^10 in a `bigint`) would
      * store the same values just as exactly, and was rejected: it puts the
      * scale in application code rather than in the column type, so every
-     * reader — the API, the CLI, a psql session, a future migration — has to
+     * reader (the API, the CLI, a psql session, a future migration) has to
      * know the magic constant to interpret the number, and getting it wrong is
      * silent and off by a factor of ten billion. `numeric` says what it means.
      */
@@ -3899,7 +3899,7 @@ export const orgExchangeRates = pgTable(
     effectiveFrom: date("effective_from").notNull(),
     /**
      * User who stated the rate. Nullable because the user row can be deleted
-     * and the rate must outlive them — the converted history stays valid, and
+     * and the rate must outlive them: the converted history stays valid, and
      * a null author is more honest than reassigning one.
      */
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -3935,7 +3935,7 @@ export const orgExchangeRates = pgTable(
  * Two things about the design are load-bearing:
  *
  *   * `nextRunAt` is both the due-time column and the claim lease, exactly like
- *     `metric_alert_rules.next_eval_at` — one conditional
+ *     `metric_alert_rules.next_eval_at`: one conditional
  *     `UPDATE … FOR UPDATE SKIP LOCKED` claims a row, and an instance that dies
  *     mid-run simply lets the lease expire. No extra schema, replica-safe.
  *   * `restatementDays` exists because provider spend is **restated for days
@@ -3949,7 +3949,7 @@ export const orgExchangeRates = pgTable(
  *
  * Destination credentials are AES-256-GCM encrypted with the same mechanism as
  * `twilio_settings`, `msteams_webhooks` and `jira_integrations`, and are never
- * returned by any route — {@link credentialHint} is what the API answers with.
+ * returned by any route: {@link credentialHint} is what the API answers with.
  */
 export const costExports = pgTable(
   "cost_exports",
@@ -3960,7 +3960,7 @@ export const costExports = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     /** User-facing name, e.g. `Finance warehouse (daily)`. */
     name: text("name").notNull(),
-    /** `csv` | `ndjson` — how the row stream is serialised. */
+    /** `csv` | `ndjson`: how the row stream is serialised. */
     format: text("format").notNull().default("csv"),
     /**
      * The query scope, as a `CostExportQuery`: the same `CostFilter[]` and cost
@@ -3971,7 +3971,7 @@ export const costExports = pgTable(
      */
     query: jsonb("query").$type<CostExportQuery>().notNull(),
     /**
-     * `daily` | `weekly` | `monthly`. Doubles as the *period* definition — a
+     * `daily` | `weekly` | `monthly`. Doubles as the *period* definition: a
      * run writes one object per calendar day, ISO week, or calendar month.
      */
     cadence: text("cadence").notNull().default("daily"),
@@ -3986,7 +3986,7 @@ export const costExports = pgTable(
     /**
      * Trailing days of already-written periods each run re-exports. 0 means
      * "write the newest complete period and never look back", which is only
-     * correct for an org whose providers never restate — see the table comment.
+     * correct for an org whose providers never restate: see the table comment.
      */
     restatementDays: integer("restatement_days").notNull().default(7),
     enabled: boolean("enabled").notNull().default(true),
@@ -3999,7 +3999,7 @@ export const costExports = pgTable(
      */
     destination: jsonb("destination").$type<CostExportDestination>().notNull(),
     /**
-     * AES-256-GCM encrypted JSON credential bundle — `{accessKeyId, secretAccessKey}`
+     * AES-256-GCM encrypted JSON credential bundle: `{accessKeyId, secretAccessKey}`
      * for S3, `{url}` for HTTP (a pre-signed URL carries its own signature, so
      * it is a bearer credential). AAD: `costExport:<exportId>:credentials`.
      */
@@ -4054,19 +4054,19 @@ export const costExports = pgTable(
 );
 
 /**
- * Scheduled delivery of a saved cost report to Slack, Teams and email — one row
+ * Scheduled delivery of a saved cost report to Slack, Teams and email: one row
  * per schedule, several schedules per report.
  *
  * This is the **digest pattern, not the alert-routing one**: a report delivery
  * is a scheduled, composed summary sent to destinations someone picked when
- * they created the schedule, exactly like `org_digest_settings` — it is not an
+ * they created the schedule, exactly like `org_digest_settings`; it is not an
  * alert, has no severity, and deliberately does not go through
  * `alerts/route.ts`'s routing rules. Do not "fix" it onto the routing table:
  * a routing rule answers "where do alerts of this kind go", while a schedule
- * here answers "who asked for this report, when" — per-report, per-schedule
+ * here answers "who asked for this report, when": per-report, per-schedule
  * state that a shared rule set cannot express.
  *
- * `cost_report_id` cascades: **a deleted report takes its schedules with it —
+ * `cost_report_id` cascades: **a deleted report takes its schedules with it;
  * that cascade IS the design.** A schedule is meaningless without the report
  * it delivers, and a surviving row would be a claim the poller keeps trying to
  * honour against a report that no longer exists. (Soft deletes don't fire the
@@ -4075,7 +4075,7 @@ export const costExports = pgTable(
  *
  * Scheduling is modelled on `org_digest_settings` (cadence + local hour + IANA
  * zone) but claimed like `cost_exports`: `next_send_at` is both the due time
- * and the claim lease — null while disabled, pushed a lease ahead by the
+ * and the claim lease; null while disabled, pushed a lease ahead by the
  * claim, replaced with the true next fire (or a bounded retry backoff) when
  * the run records its outcome.
  */
@@ -4096,7 +4096,7 @@ export const reportNotifications = pgTable(
     sendDay: integer("send_day").notNull().default(1),
     /**
      * Day of month (1–31); read only when `cadence` is monthly. A day the
-     * month doesn't have clamps to its last day — "the 31st" means "month end"
+     * month doesn't have clamps to its last day: "the 31st" means "month end"
      * in April, which is what someone scheduling a month-end report meant.
      */
     sendDayOfMonth: integer("send_day_of_month").notNull().default(1),
@@ -4113,7 +4113,7 @@ export const reportNotifications = pgTable(
     /** Opted-in `msteams_webhooks` row ids. */
     teamsWebhookIds: jsonb("teams_webhook_ids").$type<string[]>().notNull().default([]),
     /**
-     * Plain addresses, stored lowercased — the digest's recipient model: an
+     * Plain addresses, stored lowercased; the digest's recipient model: an
      * address list reaches a finance alias with no Infrawrench login, which a
      * member opt-in never could.
      */
@@ -4158,12 +4158,12 @@ export const reportNotifications = pgTable(
 );
 
 /**
- * Business metric definitions — the denominators unit costs divide by.
+ * Business metric definitions: the denominators unit costs divide by.
  *
  * "Cost per customer" needs two halves: the spend (already in `cost_daily`) and
  * a count of customers, which only the org knows. This row is the declaration
  * of that second half: what it is called, what one of it is called, whether it
- * is a quantity or money, and — through `cost_scope` — which slice of spend it
+ * is a quantity or money, and (through `cost_scope`) which slice of spend it
  * is the denominator *of*.
  *
  * `kind` is what makes margin safe. `(revenue − cost) ÷ revenue` is only
@@ -4183,18 +4183,18 @@ export const businessMetrics = pgTable(
     /**
      * Stable lowercase slug. Workflows, the CLI and the values endpoint address
      * the metric by this, so it is unique per org among live rows and survives a
-     * rename of `name` — which is the whole reason both columns exist.
+     * rename of `name`, which is the whole reason both columns exist.
      */
     key: text("key").notNull(),
     name: text("name").notNull(),
     /** Singular unit label for display: "customer", "request", "GB". */
     unit: text("unit").notNull(),
     description: text("description"),
-    /** "count" | "currency" — see the table comment. */
+    /** "count" | "currency": see the table comment. */
     kind: text("kind").notNull().default("count"),
     /** ISO-4217 code; set exactly when `kind = 'currency'`. */
     currency: text("currency"),
-    /** `CostFilter[]` — the spend this metric divides. Empty is all spend. */
+    /** `CostFilter[]`: the spend this metric divides. Empty is all spend. */
     costScope: jsonb("cost_scope").notNull().default([]),
     /**
      * A `saved_cost_filters` row AND-composed with `cost_scope`, resolved at
@@ -4208,7 +4208,7 @@ export const businessMetrics = pgTable(
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    /** Soft delete, matching budgets and saved filters — set, never cleared. */
+    /** Soft delete, matching budgets and saved filters: set, never cleared. */
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -4225,7 +4225,7 @@ export const businessMetrics = pgTable(
     /**
      * Both directions. A `currency` metric with no currency cannot have margin
      * computed against it, and a `count` metric carrying one would suggest its
-     * numbers are money when they are requests — either way the row would be a
+     * numbers are money when they are requests: either way the row would be a
      * trap for a later reader rather than a rejected write.
      */
     currencyMatchesKind: check(
@@ -4240,10 +4240,10 @@ export const businessMetrics = pgTable(
  *
  * **Postgres, not ClickHouse, and not because it is small.** These values are
  * joined against ClickHouse spend on every unit-cost query, and a cross-store
- * join *per point* would indeed be the thing to avoid — but that is not the
+ * join *per point* would indeed be the thing to avoid, but that is not the
  * join this feature performs. Both sides are aggregated to the query's buckets
  * first (ClickHouse sums the numerator, this table sums the denominator), and
- * the two are combined once, in application code, at the bucket level — at most
+ * the two are combined once, in application code, at the bucket level: at most
  * a few hundred numbers meeting a few hundred numbers, exactly the way
  * `cost/currency-convert.ts` folds stated rates into an already-aggregated
  * series.
@@ -4269,7 +4269,7 @@ export const businessMetricValues = pgTable(
     /** The UTC day this value belongs to. Daily, to match `cost_daily`. */
     day: date("day").notNull(),
     value: doublePrecision("value").notNull(),
-    /** "api" | "workflow" — who wrote it, for reading a surprising point. */
+    /** "api" | "workflow": who wrote it, for reading a surprising point. */
     source: text("source").notNull().default("api"),
     updatedByUserId: text("updated_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -4280,7 +4280,7 @@ export const businessMetricValues = pgTable(
   (t) => ({
     /**
      * The restatement key. Re-reporting a day updates it in place rather than
-     * appending, which is what makes a nightly job safe to retry — an ingest
+     * appending, which is what makes a nightly job safe to retry: an ingest
      * that accumulated would double every number the first time it re-ran.
      */
     metricDayUnique: uniqueIndex("business_metric_values_metric_day_unique").on(t.metricId, t.day),

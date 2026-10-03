@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
-// Real Drizzle over a recording driver against the real schema — every select,
+// Real Drizzle over a recording driver against the real schema: every select,
 // insert, update and delete below renders its actual SQL (and shadow-validates
 // under test:postgres:shadow). Sequential results are queued per statement in
 // execution order; `db.transaction` is shimmed flat, so the advisory lock and
@@ -175,7 +175,7 @@ describe("recordWorkflowAiUsage", () => {
     expect(cost).toBe(4_500_000);
     const insert = queriesOn('insert into "workflow_ai_usage"')[0];
     expect(insert).toBeDefined();
-    // id, org, workflow, run, model, tokens ×4, costMicros — insertion order.
+    // id, org, workflow, run, model, tokens ×4, costMicros: insertion order.
     expect(insert!.params).toEqual([
       expect.stringMatching(/^[0-9a-f-]{36}$/i),
       "o1",
@@ -248,7 +248,7 @@ describe("reserve / release AI spend", () => {
     expect(queriesOn('delete from "ai_spend_reservations"')).toHaveLength(1);
     const insert = queriesOn('insert into "ai_spend_reservations"')[0];
     expect(insert).toBeDefined();
-    // id, org, estimate, expiresAt — insertion order.
+    // id, org, estimate, expiresAt: insertion order.
     const [rowId, orgId, estimate, expiresAt] = insert!.params;
     expect(rowId).toBe(id);
     expect(orgId).toBe("o1");

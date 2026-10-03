@@ -32,7 +32,7 @@ const mockLoadConversionContext = vi.fn();
 
 // Same reason as the modules below: the currency-settings module reaches
 // server-core's db client, which throws at import time without DATABASE_URL.
-// The conversion *arithmetic* is deliberately not mocked — it is pure, and the
+// The conversion *arithmetic* is deliberately not mocked: it is pure, and the
 // point of these tests is that the route wires it up, not that it multiplies.
 vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   loadConversionContext: (...args: unknown[]) => mockLoadConversionContext(...args),
@@ -45,7 +45,7 @@ vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
 // is covered in services/__tests__/cost-query-saved-filters.test.ts; requests
 // in this file never set savedFilterId, so the mock is never called.
 // The billing-rule resolver reaches Postgres at import time. Nothing here asks
-// for an adjusted answer, so it is never called — it only has to exist.
+// for an adjusted answer, so it is never called: it only has to exist.
 vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({
   resolveBillingAdjustments: vi.fn(),
   listBillingRules: vi.fn(async () => []),
@@ -96,7 +96,7 @@ const mockAcknowledgeAnomaly = vi.fn();
 
 /**
  * The anomaly service is mocked rather than exercised: acknowledging writes to
- * two tables in a transaction, and these tests own the transport contract —
+ * two tables in a transaction, and these tests own the transport contract;
  * permissions, validation, status codes, audit. The rules it applies to those
  * writes are pure and have their own suite in server-core
  * (`anomaly-acknowledge.test.ts`).
@@ -220,7 +220,7 @@ const acknowledgedAnomaly = {
   },
 };
 
-/** An org that has not opted into conversion — the default in every test. */
+/** An org that has not opted into conversion: the default in every test. */
 const noConversion = { displayCurrency: null, rates: [] };
 
 /** One stated EUR→USD rate, as `loadConversionContext` returns it. */
@@ -434,7 +434,7 @@ describe("POST /query", () => {
       headers: { "Content-Type": "application/json" },
     });
     const body = (await res.json()) as { series: Array<{ key: string; points: unknown[] }> };
-    // One AWS line, not two — that is the whole point of the feature.
+    // One AWS line, not two: that is the whole point of the feature.
     expect(body.series).toHaveLength(1);
     expect(body.series[0]!.key).toBe("aws");
   });
@@ -547,7 +547,7 @@ describe("GET /dimensions", () => {
 
   it("answers charge_type from the fixed union without querying stored data", async () => {
     // A DISTINCT query would leave the picker empty until a provider happened
-    // to bill a credit — so you could never filter credits out until you had
+    // to bill a credit, so you could never filter credits out until you had
     // one, which is exactly when you stop being able to see the problem.
     const res = await buildApp().request("/dimensions?dimension=charge_type");
     expect(res.status).toBe(200);
@@ -689,7 +689,7 @@ describe("anomaly settings", () => {
 
 /**
  * The text form of the filter. The language itself is exhaustively tested in
- * `@infrawrench/client-core`; these cover the wiring — that a query compiles to
+ * `@infrawrench/client-core`; these cover the wiring: that a query compiles to
  * exactly the structured filter, that a parse failure comes back as a usable
  * 400, and that the two spellings can never be sent together.
  */

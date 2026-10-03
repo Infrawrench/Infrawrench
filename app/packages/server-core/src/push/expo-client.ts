@@ -17,13 +17,13 @@ export interface ExpoPushMessage {
   /**
    * `normal` is APNs priority 5 / FCM normal, `high` is APNs 10 / FCM high.
    * Omitting the field means `normal` on Android and `high` on iOS, so this is
-   * only load-bearing for Android — but we set it explicitly rather than
+   * only load-bearing for Android, but we set it explicitly rather than
    * inherit a platform default that could change under us.
    */
   priority?: "default" | "normal" | "high";
   /**
    * iOS only; maps to `UNNotificationInterruptionLevel`. `critical` needs an
-   * Apple-approved entitlement — `time-sensitive` needs only the entitlement we
+   * Apple-approved entitlement: `time-sensitive` needs only the entitlement we
    * grant ourselves in `app.config.ts`.
    */
   interruptionLevel?: "passive" | "active" | "time-sensitive" | "critical";

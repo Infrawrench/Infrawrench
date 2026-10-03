@@ -161,7 +161,7 @@ describe("authenticateMcpRequest", () => {
 
   // The credential every anonymous registration actually holds. Routing it
   // through the JWT verifier was the bug that made the documented agent MCP
-  // flow a guaranteed 401 — auth.md tells agents to bring this token here.
+  // flow a guaranteed 401: auth.md tells agents to bring this token here.
   it("authenticates an iwa_ credential without consulting the JWT verifier", async () => {
     vi.mocked(ceremony.resolveAgentCredential).mockResolvedValue("reg-1");
     vi.mocked(principal.resolveAgentPrincipal).mockResolvedValue({
@@ -196,7 +196,7 @@ describe("authenticateMcpRequest", () => {
   });
 
   // AuthKit OAuth tokens issued to MCP clients are not guaranteed to carry an
-  // org_id claim, and an MCP client has no org picker — fall back to the
+  // org_id claim, and an MCP client has no org picker: fall back to the
   // caller's own memberships rather than 401.
   it("falls back to the caller's membership when the token has no org_id", async () => {
     vi.mocked(apiAuth.verifyWorkosAccessToken).mockResolvedValue({
@@ -295,7 +295,7 @@ describe("authenticateMcpRequest", () => {
 
 /*
  * The 2026-07-28 spec deprecates Dynamic Client Registration in favour of
- * Client ID Metadata Documents. Both are WorkOS Dashboard toggles, not code —
+ * Client ID Metadata Documents. Both are WorkOS Dashboard toggles, not code:
  * the probe's job is to tell the operator, from our logs, which of them the
  * configured authorization server actually advertises.
  */

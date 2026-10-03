@@ -32,7 +32,7 @@ const ORG_ID_PARAM = z
  * Converts a registry tool's Zod shape (Zod 3, shared with the chat agent) to
  * the Standard Schema the v2 SDK's `registerTool` takes. The SDK is pinned to
  * Zod 4, so the shape cannot be handed over directly; instead it goes through
- * JSON Schema — the same conversion, with the same trimming, that
+ * JSON Schema: the same conversion, with the same trimming, that
  * `toolToProvider` in src/chat/agent.ts does for the Anthropic API. The SDK's
  * built-in validator then enforces it on 2026-era and legacy calls alike.
  */
@@ -61,8 +61,8 @@ async function resolveCallAuth(
 ): Promise<ToolAuthContext | { error: string }> {
   if (!orgId || orgId === base.organizationId) return base;
   // An agent credential is bound to the one org its registration opened. The
-  // membership check below would not catch this on its own — the agent *is* a
-  // member of its own org and of nothing else — but the error it produced would
+  // membership check below would not catch this on its own (the agent *is* a
+  // member of its own org and of nothing else) but the error it produced would
   // read as "ask someone to add you", which is the wrong instruction for a
   // principal that can never belong anywhere else.
   if (base.agentRegistrationId) {
@@ -77,7 +77,7 @@ async function resolveCallAuth(
 /**
  * Builds a fresh McpServer instance scoped to a single authenticated caller.
  * Tool handlers close over the auth context, so each connection sees only the
- * caller's organization. Stateless — one server per HTTP request, which is
+ * caller's organization. Stateless; one server per HTTP request, which is
  * also the 2026-07-28 protocol's model: the http-handler serves each request
  * with a fresh instance whichever protocol era the client speaks.
  *
@@ -100,7 +100,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
     // use. `agentRegistrationId` beside them is load-bearing, not just audit
     // metadata: it tells `effectivePermissions` these are the final answer
     // rather than a ceiling to re-intersect with the role of the `users` row
-    // the agent acts as — that row is a plain `member` on purpose, and
+    // the agent acts as; that row is a plain `member` on purpose, and
     // intersecting with it would deny over MCP what the same credential is
     // granted over HTTP.
     ...(auth.agent
@@ -198,7 +198,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
           };
         }
 
-        // Central permission gate — MCP clients reach these handlers without
+        // Central permission gate: MCP clients reach these handlers without
         // passing through the HTTP `requirePermission` middleware, so the
         // tool's declared permission is enforced here instead.
         const denied = await authorizeToolCall(tool, callAuth);

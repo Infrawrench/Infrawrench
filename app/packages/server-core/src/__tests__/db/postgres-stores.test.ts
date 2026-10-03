@@ -1,13 +1,13 @@
 /**
  * Executes the store modules' real drizzle SQL against a real Postgres. The
  * unit suites stub `db/client` with chainable fakes, which asserts the tests'
- * idea of the query builder — never that the joins, aggregates and jsonb
+ * idea of the query builder, never that the joins, aggregates and jsonb
  * reads actually run against the migrated schema. Here each module's read
  * path executes for an organization that does not exist, and must come back
  * empty (or with its synthesized defaults) without throwing.
  *
  * Same rules as postgres.test.ts: skipped unless DATABASE_URL is set,
- * migrations already applied, scratch databases only. Reads only — nothing
+ * migrations already applied, scratch databases only. Reads only: nothing
  * is written.
  *
  * Every import is dynamic: these modules import `db/client`, which throws at

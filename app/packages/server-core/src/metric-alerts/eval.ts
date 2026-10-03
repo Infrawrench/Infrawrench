@@ -1,5 +1,5 @@
 /**
- * Metric threshold alert evaluation — the pipeline half. The window judgement
+ * Metric threshold alert evaluation: the pipeline half. The window judgement
  * lives in `window.ts` (pure, unit-tested); this module resolves the rule's
  * selector, reads the per-minute samples from ClickHouse, opens/resolves
  * firing events, and fans out through the existing notification transports
@@ -18,10 +18,10 @@
  * - The rule's `cooldownMinutes` is the flap suppressor, in the anomaly
  *   cooldown's shape: a fresh firing whose (rule, resource) pair was
  *   *notified* within the window is still recorded (the list UI shows it) but
- *   not notified — and its recovery stays quiet too, because recoveries only
+ *   not notified, and its recovery stays quiet too, because recoveries only
  *   ever follow a notified firing (same dedupe key, both directions).
  *
- * Errors are logged, never thrown — evaluation must not break the poller's
+ * Errors are logged, never thrown: evaluation must not break the poller's
  * pass (the `budget-eval.ts` stance).
  */
 import { and, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
@@ -36,7 +36,7 @@ import { orgAppUrl } from "../app-url";
 
 export type MetricAlertRuleRow = typeof metricAlertRules.$inferSelect;
 
-/** `93.42` → `"93.42"`, `93` → `"93"` — no trailing zero noise in alert text. */
+/** `93.42` → `"93.42"`, `93` → `"93"`: no trailing zero noise in alert text. */
 function formatValue(value: number): string {
   return Number(value.toFixed(2)).toString();
 }
@@ -256,7 +256,7 @@ export async function evaluateMetricAlertRule(
     for (const event of openEvents) {
       try {
         // A resource that left the selector (deleted, re-tagged, re-typed) is
-        // no longer covered by the rule — resolve rather than firing forever.
+        // no longer covered by the rule: resolve rather than firing forever.
         if (!selectedIds.has(event.resourceId)) {
           await resolveFiring(rule, event);
           continue;
@@ -264,7 +264,7 @@ export async function evaluateMetricAlertRule(
         const verdict = judge(event.resourceId);
         // `no_data` clears too: the resource stopped reporting the series, and
         // an incident that can never observe recovery would be stuck open.
-        // `insufficient` keeps it open — sparse-but-breaching is not recovery.
+        // `insufficient` keeps it open: sparse-but-breaching is not recovery.
         if (verdict.state === "cleared" || verdict.state === "no_data") {
           await resolveFiring(rule, event);
         }

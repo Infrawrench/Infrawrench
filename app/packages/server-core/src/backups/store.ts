@@ -1,9 +1,9 @@
 /**
- * Backup policy rows — CRUD shared by the web API and the coverage feed.
+ * Backup policy rows: CRUD shared by the web API and the coverage feed.
  *
  * Validation comes from `@infrawrench/client-core`
  * (`validateBackupPolicyInput`, `BACKUP_POLICY_LIMITS`), the same function the
- * editors call before a round trip — the `probes/store.ts` and
+ * editors call before a round trip; the `probes/store.ts` and
  * `schedules/store.ts` stance: the server and the form must not be able to
  * disagree about what a valid policy is.
  */
@@ -148,7 +148,7 @@ export async function updateBackupPolicy(
   };
   // Validated after merging, not before: a PATCH that clears the RPO on a
   // policy whose only other demand is retention is fine, and one that clears
-  // both is not — neither is visible from the patch alone.
+  // both is not; neither is visible from the patch alone.
   const problem = validateBackupPolicyInput(merged);
   if (problem) throw new BackupPolicyInputError(problem);
 

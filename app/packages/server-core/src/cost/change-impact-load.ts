@@ -1,26 +1,26 @@
 /**
- * Cost per change / cost per deploy — the gathering half.
+ * Cost per change / cost per deploy: the gathering half.
  *
  * The arithmetic is in `change-impact.ts` (pure). This module reads what that
  * function needs: the change rows, the resources they name, the accounts'
  * collection coverage, the daily cost series, and how many other changes
  * touched the same resource in the same window.
  *
- * ## Computed lazily, on read — deliberately
+ * ## Computed lazily, on read: deliberately
  *
  * There is no `change_cost_impacts` table and nothing here is cached. Provider
  * billing arrives late and is then *restated* (`DEFAULT_RESTATEMENT_DAYS`, and
  * far more for the period-native plugins), so a number computed the day after
  * a deploy is computed against data that is still filling in. A stored answer
  * would freeze that wrong number and would need an invalidation rule that
- * mirrored every collector's restatement horizon — a rule that is wrong the
+ * mirrored every collector's restatement horizon: a rule that is wrong the
  * moment a plugin changes its own. Recomputing on read makes "the number
  * updates as data arrives" a property of the design rather than a background
  * job that must not fail. The cost is two ClickHouse reads per request, both
  * of which are the same range-scans the cost graphs already do.
  *
  * It lives in `server-core` rather than `web` because the weekly digest runs in
- * the **poller**, which cannot import web — the same reason `runDeployment`
+ * the **poller**, which cannot import web: the same reason `runDeployment`
  * moved here.
  */
 
@@ -55,7 +55,7 @@ export interface ChangeImpactOptions {
 interface ImpactSubject {
   /** Identifies the row in the caller's answer. Empty for a deployment resource. */
   key: string;
-  /** `resources.id` — what `resource_changes.resource_id` holds. */
+  /** `resources.id`: what `resource_changes.resource_id` holds. */
   resourceId: string;
   accountId: string;
   pluginId: string;
@@ -263,7 +263,7 @@ async function computeForSubjects(
 
 /**
  * Cost impact for a batch of change-feed rows. Ids that do not belong to the
- * org are simply absent from the result — never a 404 for the whole page.
+ * org are simply absent from the result, never a 404 for the whole page.
  */
 export async function loadChangeCostImpacts(
   organizationId: string,
@@ -316,7 +316,7 @@ export async function loadChangeCostImpact(
 /**
  * Cost impact for a deployment run, broken down per resource.
  *
- * The set of resources is `deployment_runs.created_resources` — the resources
+ * The set of resources is `deployment_runs.created_resources`: the resources
  * the run actually provisioned through `infra.accounts.*.create(...)`. That is
  * the only set the platform can attribute to a run with certainty; a deploy
  * that merely re-shipped an image links to nothing and honestly reports an

@@ -1,5 +1,5 @@
 /**
- * Query monitors — CRUD, and the one-off "run it now" the editor previews with.
+ * Query monitors: CRUD, and the one-off "run it now" the editor previews with.
  *
  * Validation comes from `@infrawrench/client-core` (`validateQueryMonitor`,
  * `monitorSqlProblem`), the same functions the editor enforces, so the form and
@@ -7,7 +7,7 @@
  *
  * **The read-only guard is re-checked on every execution, not only on save.**
  * A row can reach this table by a route that predates the guard, by a restore,
- * or by an operator editing the database — and the thing being defended against
+ * or by an operator editing the database, and the thing being defended against
  * is an unattended scheduled write with the account's credentials, so the check
  * belongs where the statement is executed rather than where it is stored.
  */
@@ -124,7 +124,7 @@ export async function listQueryMonitors(organizationId: string): Promise<QueryMo
  * targets: a per-resource SQL driver, or a REST query API (`supportsRestQuery`,
  * the BigQuery/Spanner shape). Exported for the targets test.
  *
- * This is the *own-declaration* check only — a type with neither can still
+ * This is the *own-declaration* check only: a type with neither can still
  * qualify through {@link sqlPeerIntegrationsOf}, the peer-integration shape.
  */
 export function isSqlTargetType(typeDef: {
@@ -138,7 +138,7 @@ export function isSqlTargetType(typeDef: {
  * The third way a resource can be a SQL target: a peer integration onto a
  * plugin that *is* a SQL driver. A Neon database maps its connection string
  * onto the `postgres` plugin, an RDS instance onto `postgres`/`mysql`, an
- * Azure SQL database onto `mssql` — none of them declare `resourceSqlDriver`,
+ * Azure SQL database onto `mssql`: none of them declare `resourceSqlDriver`,
  * because the SQL editor reaches them through the peer tab. The monitor picker
  * and runner must reach them the same way, or a whole class of managed
  * databases silently cannot be monitored.
@@ -167,7 +167,7 @@ export async function sqlPeerIntegrationsOf(
 
 /**
  * The subset of a type's SQL peer integrations a specific resource's fields
- * let through — the same `showWhen`/`requiresFields` filtering the peer tabs
+ * let through: the same `showWhen`/`requiresFields` filtering the peer tabs
  * apply (an engine-gated DO cluster running Redis has a `postgres` integration
  * declared but not visible), minus any the provider marked unreachable from
  * here (private-IP-only Cloud SQL).
@@ -182,15 +182,15 @@ function visibleSqlPeerIntegrations(
 }
 
 /**
- * The accounts and resources a monitor's query can actually run against —
+ * The accounts and resources a monitor's query can actually run against:
  * what the editor's target picker shows.
  *
  * Derived from static plugin metadata rather than by instantiating clients:
  * `manifest.sqlDriver` marks an account-level connection, and a resource
  * qualifies when its type passes {@link isSqlTargetType} or carries a SQL
- * peer integration its synced fields let through ({@link sqlPeerIntegrationsOf}
- * — the Neon/RDS/Cloud SQL shape). Accounts with none of these are omitted
- * entirely — offering them would only manufacture "That account has no SQL
+ * peer integration its synced fields let through ({@link sqlPeerIntegrationsOf}:
+ * the Neon/RDS/Cloud SQL shape). Accounts with none of these are omitted
+ * entirely: offering them would only manufacture "That account has no SQL
  * driver" runs.
  */
 export async function listQueryMonitorTargets(
@@ -255,7 +255,7 @@ export async function listQueryMonitorTargets(
 /**
  * Resolve and validate a monitor's resource scope against the synced rows.
  *
- * The row's stored type is authoritative — the caller's `resourceTypeId` is
+ * The row's stored type is authoritative: the caller's `resourceTypeId` is
  * replaced by it, which removes the id/type-mismatch failure class instead of
  * reporting it (and lets an API caller omit the type entirely). Returns the
  * type id to store, or the caller's value untouched for an account-level
@@ -316,7 +316,7 @@ export async function createQueryMonitor(
       `An organization may have ${QUERY_MONITOR_LIMITS.maxPerOrg} query monitors.`,
     );
   }
-  // The account must be this org's — a monitor is executed with its
+  // The account must be this org's: a monitor is executed with its
   // credentials, so an id from elsewhere would be a credential-use primitive.
   const [account] = await db
     .select({ id: accounts.id })
@@ -451,7 +451,7 @@ export interface MonitorQueryResult {
   value: number | null;
   error: string | null;
   durationMs: number;
-  /** Rows the query returned, capped — the editor's preview shows them. */
+  /** Rows the query returned, capped: the editor's preview shows them. */
   rows: Record<string, unknown>[];
 }
 
@@ -460,10 +460,10 @@ const MAX_PREVIEW_ROWS = 20;
 /**
  * Run one monitor's query against its account.
  *
- * Mirrors the connection paths the SQL editor resolves — a REST-based
+ * Mirrors the connection paths the SQL editor resolves: a REST-based
  * `executeQuery`, a per-resource driver, a SQL peer integration (the Neon /
  * RDS / Cloud SQL shape, which the editor reaches through the peer tab), and
- * the account-level driver — because a monitor must be able to watch anything
+ * the account-level driver, because a monitor must be able to watch anything
  * the editor can query. It lives here rather than in the web route so the
  * poller, which has no HTTP context, runs exactly the same resolution.
  *
@@ -516,7 +516,7 @@ export async function runMonitorQuery(
         connection = await rewriteConnectionForTunnel(monitor.accountId, connection);
         rows = (await driver.query(connection, monitor.sql)) as Record<string, unknown>[];
       } else if (typeDef) {
-        // A database reached through a peer integration — the target the
+        // A database reached through a peer integration: the target the
         // picker offered via sqlPeerIntegrationsOf. Resolve the peer plugin's
         // credentials from the parent resource's outputs (running the
         // credential rewriters, exactly as the peer tab does) and run the

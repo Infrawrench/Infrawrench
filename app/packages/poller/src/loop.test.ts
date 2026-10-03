@@ -17,7 +17,7 @@ vi.mock("@infrawrench/server-core/db/client", () => ({
 }));
 
 // The loop itself only touches `workflows`, but running a workflow can page,
-// and paging reaches Slack and Microsoft Teams — so the schema mock has to
+// and paging reaches Slack and Microsoft Teams, so the schema mock has to
 // cover what that import chain reads, not just what the loop reads.
 vi.mock("@infrawrench/server-core/db/schema", () => ({
   workflows: { id: "id" },
@@ -37,8 +37,8 @@ vi.mock("@infrawrench/server-core/db/schema", () => ({
     lastSentWeekStart: "lastSentWeekStart",
   },
   // The expiry/quota/posture radars build their dailyWindowStore at module
-  // scope (`table:` in each store config), so their settings tables — and the
-  // engine's own `accounts` import — have to exist on the mock too.
+  // scope (`table:` in each store config), so their settings tables (and the
+  // engine's own `accounts` import) have to exist on the mock too.
   orgExpirySettings: { organizationId: "organizationId" },
   orgQuotaSettings: { organizationId: "organizationId" },
   orgPostureSettings: { organizationId: "organizationId" },
@@ -150,7 +150,7 @@ afterEach(() => {
 describe("PollerLoop", () => {
   // Regression: every ephemeral-environment recovery layer used to hang off
   // `GET /instances`, so a member left holding a live resource with no lease
-  // was only repaired while somebody had the page open — and the environment
+  // was only repaired while somebody had the page open, and the environment
   // whose creation failed badly is the one nobody opens again, and the one
   // still billing. The poller must reach it with no read involved.
   it("repairs stranded environment members on a tick, with no instance-list read", async () => {
@@ -171,7 +171,7 @@ describe("PollerLoop", () => {
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
     // A throwing repair must not take the reconcile half down with it, nor
-    // the next tick — this is the pass that stops resources billing forever.
+    // the next tick: this is the pass that stops resources billing forever.
     expect(runEnvironmentReconcilePass).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1000);
     expect(runEnvironmentRepairPass).toHaveBeenCalledTimes(2);
@@ -450,7 +450,7 @@ describe("PollerLoop workflows", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ nextRunAt: null }));
-    // It still runs this one time — de-scheduling only stops future fires.
+    // It still runs this one time: de-scheduling only stops future fires.
     expect(runOrgWorkflow).toHaveBeenCalledTimes(1);
     await loop.stop();
   });

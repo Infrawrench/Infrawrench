@@ -1,9 +1,9 @@
 /**
  * Interactive Slack approval messages.
  *
- * An approval request — a workflow suspended on `infra.waitForApproval`, the
+ * An approval request: a workflow suspended on `infra.waitForApproval`, the
  * chat agent waiting on a destructive tool call, or a member asking for
- * break-glass access — goes out to Slack with Approve/Deny buttons. This module owns the shared halves of that flow:
+ * break-glass access; goes out to Slack with Approve/Deny buttons. This module owns the shared halves of that flow:
  *
  *  - the buttons themselves (`slackApprovalButtons`) and the opaque `value`
  *    payload a click echoes back;
@@ -170,7 +170,7 @@ export async function recordSlackApprovalMessages(
 export interface SlackApprovalOutcome {
   decision: "approved" | "denied" | "expired";
   decidedByName: string | null;
-  /** Where the decision landed — "Slack" or "the web app". Unknown for expiry. */
+  /** Where the decision landed: "Slack" or "the web app". Unknown for expiry. */
   via?: string;
   /** The request's original headline and body, re-rendered without buttons. */
   title: string;
@@ -179,7 +179,7 @@ export interface SlackApprovalOutcome {
 
 function outcomeLine(outcome: SlackApprovalOutcome): string {
   if (outcome.decision === "expired") {
-    // A named decider here means their approval landed after the timeout —
+    // A named decider here means their approval landed after the timeout:
     // the run treats that as expired, so the message must say so too.
     const late = outcome.decidedByName
       ? ` (${outcome.decidedByName}'s approval${outcome.via ? ` via ${outcome.via}` : ""} came after the timeout)`
@@ -194,7 +194,7 @@ function outcomeLine(outcome: SlackApprovalOutcome): string {
 
 /**
  * Rewrite every copy of an approval request to its decided form and thread the
- * outcome under each. Never throws — the decision is already recorded, and a
+ * outcome under each. Never throws: the decision is already recorded, and a
  * Slack outage must not make it look like it wasn't. Called after *any*
  * decision (button or web UI), so a message whose buttons nobody pressed still
  * stops offering them.

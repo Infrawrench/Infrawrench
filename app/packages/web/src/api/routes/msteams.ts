@@ -8,7 +8,7 @@
  * flow we can use, so an org pastes the webhook URL of a Teams "Workflows"
  * automation and we post to it. See `server-core/src/msteams.ts` for the full
  * reasoning. The URL is a bearer credential and is never returned by any of
- * these routes — the client only ever sees the `urlHint`.
+ * these routes: the client only ever sees the `urlHint`.
  */
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
@@ -45,10 +45,10 @@ interface WebhookBody {
 /**
  * Add a channel by its webhook URL, or update the one already holding that URL.
  * A rejected URL (wrong host, not https) comes back as a 400 whose message is
- * written for the user — the settings form renders it verbatim.
+ * written for the user: the settings form renders it verbatim.
  *
  * Which alerts reach the channel is an `alert_rules` question now, not a set of
- * flags on this request — see `PUT /alert-rules`.
+ * flags on this request: see `PUT /alert-rules`.
  */
 app.post("/webhooks", async (c) => {
   requirePermission(c, "org:settings:write");

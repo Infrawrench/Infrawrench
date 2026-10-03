@@ -3,7 +3,7 @@
  *
  * Deliberately parallel to `credits/collect.ts`: the host owns scheduling,
  * storage and rendering; the plugin owns the provider calls. A quota, like a
- * balance, is a point-in-time reading with no backfillable history — the
+ * balance, is a point-in-time reading with no backfillable history: the
  * series is the one we build by reading repeatedly, which is why every
  * collection appends a snapshot even when nothing has moved. A flat stretch is
  * evidence of a stable account, and dropping it would make a stable quota
@@ -38,7 +38,7 @@ export interface QuotaCollectionResult {
 /**
  * Read the account's quotas and record them.
  *
- * Throws on failure — the caller (the poller's quota pass) owns backoff and
+ * Throws on failure: the caller (the poller's quota pass) owns backoff and
  * the error write, exactly as the cost and credit passes do.
  */
 export async function collectAccountQuotas(
@@ -59,8 +59,8 @@ export async function collectAccountQuotas(
   // One transaction for the whole replacement.
   //
   // The three writes below are one fact about the account expressed three
-  // ways — what is true now, what was true at this instant, and what is no
-  // longer true — and a partial application of them is not a smaller truth but
+  // ways (what is true now, what was true at this instant, and what is no
+  // longer true) and a partial application of them is not a smaller truth but
   // a wrong one. Interrupted between the upserts and the delete, the account
   // keeps a "94% of your Elastic IPs" row for a quota the provider no longer
   // reports; interrupted between the upserts and the snapshots, the trend
@@ -91,7 +91,7 @@ export async function collectAccountQuotas(
         adjustable: reading.adjustable ?? null,
         // The same boundary the failure help link crosses, reached through the
         // other field. `docsUrl` is plugin-supplied, is returned unchanged by
-        // the feed, and ends up at `window.open` on web — a worse sink than an
+        // the feed, and ends up at `window.open` on web: a worse sink than an
         // anchor `href`, since a scheme the browser executes runs without the
         // user ever leaving the page. `https:` only; anything else is stored
         // as null and the row simply renders without a link.
@@ -122,7 +122,7 @@ export async function collectAccountQuotas(
     // A quota the provider stopped reporting is deleted rather than left at
     // its last reading: a stale "94% of your Elastic IPs" for a quota that no
     // longer applies is worse than showing nothing, because somebody will act
-    // on it. The *snapshots* stay — the history of a quota that used to matter
+    // on it. The *snapshots* stay: the history of a quota that used to matter
     // is still history, and the retention prune is what eventually removes it.
     //
     // Expressed as one `NOT IN` delete rather than a select-then-delete: read
@@ -171,7 +171,7 @@ export async function markQuotaPollSuccess(
  *
  * A `QuotaAccessError` is stored with its help link intact so the panel can
  * say "this credential cannot read Service Quotas, here is the policy" rather
- * than reporting a generic outage — those want completely different reactions
+ * than reporting a generic outage: those want completely different reactions
  * from the reader, and only one of them is fixable by the reader.
  *
  * Two boundaries around that link, both borrowed from `cost/failure.ts`:

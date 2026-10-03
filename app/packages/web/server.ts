@@ -32,7 +32,7 @@ const port = parseInt(process.env["PORT"] ?? "3000", 10);
  * Unauthenticated liveness/readiness endpoint for load balancers and k8s probes.
  *
  * Like `/api/mcp`, this is answered ahead of the Hono listener and so has to
- * set the security headers itself — both server modes route through here, so
+ * set the security headers itself: both server modes route through here, so
  * doing it in the one function covers both.
  */
 function respondHealthz(res: import("node:http").ServerResponse): void {
@@ -45,15 +45,15 @@ function respondHealthz(res: import("node:http").ServerResponse): void {
 /**
  * Keep one broken request from taking everybody's sessions with it.
  *
- * This process holds long-lived state for many people at once — SSH shells,
- * SQL connections, application streams — and Node's default for an unhandled
+ * This process holds long-lived state for many people at once (SSH shells,
+ * SQL connections, application streams) and Node's default for an unhandled
  * rejection or an uncaught exception is to end the process. On a request
  * handler that would be defensible; here it means every other customer's
  * terminal dies because one socket reset at the wrong moment, and it shows up
  * as a gateway error to all of them.
  *
  * So both are logged loudly and survived. The risk of carrying on after an
- * exception is real — the state it came from may be inconsistent — but it is
+ * exception is real (the state it came from may be inconsistent) but it is
  * bounded to whatever was mid-flight, and the alternative is not bounded to
  * anything. Anything that reaches here is a bug with a stack trace attached:
  * fix it there rather than relying on this.
@@ -121,7 +121,7 @@ async function start() {
     const prodApp = new Hono();
 
     // The SPA shell and every static asset are served by this app, not by
-    // `api`, so they need the headers mounted here too — the framing defence
+    // `api`, so they need the headers mounted here too: the framing defence
     // matters most on exactly the HTML document `api` never emits.
     prodApp.use("*", securityHeaders());
 
@@ -167,8 +167,8 @@ async function start() {
   // redraws, which compress extremely well; browsers and Electron negotiate
   // the extension automatically and plain clients fall back to uncompressed.
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
-  // Application frames are already compressed — zstd inside, or an image codec
-  // — so deflating them again would burn a core per session for nothing.
+  // Application frames are already compressed (zstd inside, or an image codec)
+  // so deflating them again would burn a core per session for nothing.
   const appsWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   /**
@@ -197,8 +197,8 @@ async function start() {
 
   // Wrapped, because the body is `async`: a rejection out of an event listener
   // is an unhandled rejection, and Node ends the process on one of those. Every
-  // await in here can fail for reasons that are nobody's fault — a database
-  // blip while resolving a token — and one of those must cost the caller their
+  // await in here can fail for reasons that are nobody's fault (a database
+  // blip while resolving a token) and one of those must cost the caller their
   // socket, not everybody else theirs.
   server.on("upgrade", (request, socket, head) => {
     void handleUpgrade(request, socket, head).catch((error) => {
@@ -280,7 +280,7 @@ async function start() {
     if (!auth) {
       // Fall back to API key auth (from desktop sync client). Unlike the
       // ws-token path there is no prior permission check, so enforce the same
-      // `resources:execute` scope here — every channel this socket can open
+      // `resources:execute` scope here: every channel this socket can open
       // (SSH, SQL, k8s exec, port-forward, workflow runs) reaches customer
       // infrastructure, and a read-scoped key must not get there.
       const fakeRequest = new Request("http://localhost", {

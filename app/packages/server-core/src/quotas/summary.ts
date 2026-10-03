@@ -1,12 +1,12 @@
 /**
  * Pure capping and rendering for quota alerts. No I/O lives here so the
- * message shape is unit-testable without a database — the same split as
+ * message shape is unit-testable without a database: the same split as
  * `expiry/summary.ts` and `drift/summary.ts`. `alerts.ts` does the claim, the
  * feed read and the fan-out.
  *
  * Volume is structurally bounded before this module runs: the cooldown claim
  * caps the message rate at one per org per 24h, and the feed is one bounded
- * read of stored rows. What this module bounds is the *body* — at most
+ * read of stored rows. What this module bounds is the *body*: at most
  * {@link MAX_LISTED_QUOTAS} named quotas, worst first, with the rest collapsed
  * into a trailing count.
  */
@@ -31,7 +31,7 @@ export interface QuotaAlertSummary {
   total: number;
   /** Count per alertable severity; every bucket present, zeros included. */
   counts: Record<QuotaAlertSeverity, number>;
-  /** The quotas named in the body — the worst, capped. */
+  /** The quotas named in the body: the worst, capped. */
   rows: QuotaRow[];
   /** How many quotas the body does not name. */
   omitted: number;
@@ -91,7 +91,7 @@ export function quotaTitle(summary: QuotaAlertSummary): string {
 }
 
 /**
- * `"prod-aws · ec2 Running On-Demand Standard instances (eu-west-1) — 912 of
+ * `"prod-aws · ec2 Running On-Demand Standard instances (eu-west-1): 912 of
  * 1,024 vCPUs, 89%, full in 6 days"`.
  *
  * The absolute figures ride alongside the percentage because a percentage on
@@ -120,7 +120,7 @@ function countsLine(summary: QuotaAlertSummary): string {
 }
 
 /**
- * The body as plain-text lines, shared by every transport — the same split the
+ * The body as plain-text lines, shared by every transport: the same split the
  * expiry and weekly-digest bodies use. `bold` wraps a fragment in the
  * transport's bold markup, or returns it unchanged for plain text (the Teams
  * Adaptive Card escaper turns `*` into a literal asterisk, so Teams must not
@@ -146,14 +146,14 @@ export function formatQuotaSlackBody(summary: QuotaAlertSummary): string {
   return quotaLines(summary, (s) => `*${s}*`).join("\n");
 }
 
-/** Teams plain-text body — the Adaptive Card escaper strips markdown anyway. */
+/** Teams plain-text body: the Adaptive Card escaper strips markdown anyway. */
 export function formatQuotaTeamsBody(summary: QuotaAlertSummary): string {
   return quotaLines(summary, (s) => s).join("\n\n");
 }
 
 /**
  * Mobile push body. A notification banner shows two or three lines, so it gets
- * the counts and the single worst quota — the deep link carries the reader to
+ * the counts and the single worst quota: the deep link carries the reader to
  * the full radar.
  */
 export function formatQuotaPushBody(summary: QuotaAlertSummary): string {

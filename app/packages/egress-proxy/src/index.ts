@@ -7,7 +7,7 @@
  * pods' Services, the kubelet, the GCP metadata server on 169.254.169.254 (which
  * hands out node credentials to anyone who asks). No amount of URL validation in
  * the pod fully closes that, because validation and the socket live in the same
- * place — a DNS name that resolves to a private address after the check passes
+ * place: a DNS name that resolves to a private address after the check passes
  * is enough to defeat it.
  *
  * So the request is made from somewhere that has no such network. This Worker
@@ -17,7 +17,7 @@
  * refusal were somehow missed, the request still lands nowhere useful.
  *
  * The URL checks below are therefore the *first* line of defence, not the only
- * one, which is what lets them be strict — every redirect hop is re-validated
+ * one, which is what lets them be strict: every redirect hop is re-validated
  * rather than trusted because the first hop passed.
  *
  * Contract (POST /fetch, `Authorization: Bearer <PROXY_TOKEN>`):
@@ -27,12 +27,12 @@
  *
  * The caller is `server-core/workflows/fetch.ts`; the request shape is
  * `WorkflowFetchRequest` from @infrawrench/workflow-runtime, already validated
- * there. This Worker re-validates anyway — it is reachable by anyone holding the
+ * there. This Worker re-validates anyway: it is reachable by anyone holding the
  * token, so it can't assume a well-behaved caller.
  *
  * A second endpoint (POST /probe, same token) serves synthetic uptime/latency
- * probes for `server-core/probes/pass.ts`: time the request from the edge —
- * an external vantage point the cluster cannot provide — and return only the
+ * probes for `server-core/probes/pass.ts`: time the request from the edge
+ * (an external vantage point the cluster cannot provide) and return only the
  * verdict, never the body. See {@link probeFetch}.
  */
 
@@ -115,7 +115,7 @@ function isIpv4(host: string): boolean {
 }
 
 /**
- * True for an IPv4 literal outside public address space — loopback, RFC 1918,
+ * True for an IPv4 literal outside public address space: loopback, RFC 1918,
  * link-local (which is where cloud metadata servers live), CGNAT, multicast,
  * and the reserved top block.
  */
@@ -149,7 +149,7 @@ function isPrivateIpv6(raw: string): boolean {
 }
 
 /**
- * Validate one URL — the original request and every redirect hop it takes.
+ * Validate one URL: the original request and every redirect hop it takes.
  * Throws {@link ProxyError} rather than returning a boolean so the caller can
  * report *which* rule refused, which is what makes this debuggable from a
  * workflow's run log.
@@ -177,7 +177,7 @@ export function assertAllowedUrl(raw: string): URL {
   } else if (isIpv4(host) && isPrivateIpv4(host)) {
     throw new ProxyError("blocked_host", `${host} is a private address and is not proxied.`);
   }
-  // A bare hostname with no dot can only resolve through a search domain — i.e.
+  // A bare hostname with no dot can only resolve through a search domain, i.e.
   // something on the resolver's own network, never a public name.
   if (!host.includes(".") && !isIpv4(host)) {
     throw new ProxyError("blocked_host", `${host} is not a public hostname.`);
@@ -345,13 +345,13 @@ interface ProbeRequestBody {
   timeoutMs?: unknown;
 }
 
-/** Ceiling on a probe's timeout — a probe is a health check, not a download. */
+/** Ceiling on a probe's timeout: a probe is a health check, not a download. */
 const MAX_PROBE_TIMEOUT_MS = 60_000;
 
 /**
  * Perform one synthetic probe (POST /probe): time the request, discard the
  * body, report the verdict. Unlike /fetch, a failing endpoint is *data*, not a
- * proxy error — the response is always HTTP 200 with
+ * proxy error; the response is always HTTP 200 with
  * `{ result: { ok, status?, latencyMs, error? } }`, and only caller mistakes
  * (bad URL, blocked host) surface as ProxyError.
  *
@@ -360,7 +360,7 @@ const MAX_PROBE_TIMEOUT_MS = 60_000;
  * service must not page anyone), while a 5xx says the service itself is
  * failing, which is exactly what an uptime check exists to catch.
  *
- * Redirects are followed with the same per-hop re-validation as /fetch — a
+ * Redirects are followed with the same per-hop re-validation as /fetch: a
  * probe target is free to redirect at the metadata server too.
  */
 async function probeFetch(body: ProbeRequestBody): Promise<Response> {
@@ -384,7 +384,7 @@ async function probeFetch(body: ProbeRequestBody): Promise<Response> {
     const location = upstream.headers.get("location");
     const isRedirect = upstream.status >= 300 && upstream.status < 400 && location;
     if (!isRedirect) {
-      // Latency is measured to headers-received; the body is dropped unread —
+      // Latency is measured to headers-received; the body is dropped unread:
       // a probe cares whether the endpoint answers, not what it says.
       const latencyMs = Date.now() - startedAt;
       await upstream.body?.cancel().catch(() => {});
@@ -396,7 +396,7 @@ async function probeFetch(body: ProbeRequestBody): Promise<Response> {
     if (hop >= MAX_REDIRECTS) return fail("too_many_redirects");
     await upstream.body?.cancel().catch(() => {});
     // Re-validate each hop, exactly like /fetch. A refused hop is a caller
-    // problem (the target redirected somewhere private) — report it as a
+    // problem (the target redirected somewhere private): report it as a
     // failed probe rather than a proxy error, since it recurs every interval.
     try {
       url = assertAllowedUrl(new URL(location, url).toString());

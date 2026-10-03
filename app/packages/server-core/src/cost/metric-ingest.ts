@@ -1,5 +1,5 @@
 /**
- * Validation and storage for business metric values — the denominators unit
+ * Validation and storage for business metric values: the denominators unit
  * costs divide by.
  *
  * Two callers push values and they must behave identically, so the rules live
@@ -15,7 +15,7 @@
  *   falls out of the ReplacingMergeTree key; here it is a `(metric_id, day)`
  *   unique index and an `ON CONFLICT DO UPDATE`. Either way a nightly job is
  *   safe to retry, which is the only property that makes unattended ingest
- *   usable at all — an accumulating write doubles every number the first time
+ *   usable at all: an accumulating write doubles every number the first time
  *   the job re-runs, and nothing about the resulting chart looks wrong.
  * - **Nothing lands unless everything validates.** The whole batch is checked
  *   before the first row is written, so a bad row 400s instead of leaving half
@@ -27,7 +27,7 @@
  * identity is `(metric, day)` and a metric belongs to exactly one org, so there
  * is no shared key space for two sources to collide in. When two sources write
  * the same metric they are, by construction, making claims about the same
- * number — and the last claim wins, which is what restatement means.
+ * number, and the last claim wins, which is what restatement means.
  */
 import { and, asc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -95,7 +95,7 @@ export async function resolveBusinessMetric(
  * Validate and store a batch of values for one metric. Throws
  * {@link BusinessMetricIngestError} on anything the caller can fix.
  *
- * Returns how many days were written — which counts restatements, because from
+ * Returns how many days were written, which counts restatements, because from
  * the caller's side "I reported 30 days" is true whether or not those days
  * already had numbers.
  */
@@ -183,7 +183,7 @@ export interface StoredMetricValue {
  * This is the denominator side of every unit-cost query. It is deliberately a
  * plain range read rather than a join against spend: the numerator lives in
  * ClickHouse and the two are combined once, at the bucket level, in application
- * code — see the `business_metric_values` table comment for why that is the
+ * code; see the `business_metric_values` table comment for why that is the
  * right shape and a per-point cross-store join is not.
  */
 export async function getMetricValues(

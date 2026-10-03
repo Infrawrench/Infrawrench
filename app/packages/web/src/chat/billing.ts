@@ -4,10 +4,10 @@
  * After each assistant turn we insert a `chat_usage` row computing the
  * micro-dollar cost from token counts (see ./pricing.ts), then push a billing
  * meter event (event name from `INFRAWRENCH_STRIPE_CHAT_METER_EVENT`) keyed by
- * the org's Stripe customer id. Best-effort — a Stripe outage doesn't fail the
+ * the org's Stripe customer id. Best-effort: a Stripe outage doesn't fail the
  * user's request; the row is simply left with a null `stripeUsageRecordId`.
  *
- * Nothing replays those rows — usage dropped by a Stripe outage is never
+ * Nothing replays those rows: usage dropped by a Stripe outage is never
  * billed. `chat_usage_unreported_idx` exists to support a replay job, but that
  * job has not been written.
  */
@@ -24,7 +24,7 @@ import type { SpendStatus } from "@infrawrench/ui";
  * The org's month-to-date AI spend against its monthly cap. Since `infra.ai()`
  * arrived in workflows this is org-wide AI spend, not just chat: the sum covers
  * `chat_usage`, `workflow_ai_usage`, and active in-flight reservations. Both
- * features reserve under the same org lock before a provider call — the
+ * features reserve under the same org lock before a provider call: the
  * canonical logic lives in server-core's billing/ai-usage.ts (the poller
  * needs it too).
  */
@@ -72,7 +72,7 @@ interface RecordWebSearchInput {
   conversationId: string;
   /** Assistant message whose tool_use ran the search. */
   messageId: string;
-  /** Backend id, for the per-query rate — see ./pricing.ts. */
+  /** Backend id, for the per-query rate: see ./pricing.ts. */
   backend: string;
   /** Sub-model that ran the search, for the token half of the cost. */
   model: string;
@@ -83,8 +83,8 @@ interface RecordWebSearchInput {
 /**
  * Bill one `web_search` tool call.
  *
- * A search costs two things — the backend's per-query fee and the retrieval
- * sub-model's tokens — and neither is visible to {@link recordUsage}, which
+ * A search costs two things (the backend's per-query fee and the retrieval
+ * sub-model's tokens) and neither is visible to {@link recordUsage}, which
  * only ever sees the main turn's usage and has already run by the time a tool
  * dispatches. So this writes its own `chat_usage` row against the same
  * assistant message. Several rows per message is already normal (a turn that
@@ -142,7 +142,7 @@ async function reportUsageToStripe(
   const meterEventName = process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"];
   if (!meterEventName) return;
 
-  // Complimentary orgs are never billed — keep the chat_usage row for internal
+  // Complimentary orgs are never billed: keep the chat_usage row for internal
   // cost tracking but don't emit a meter event.
   const [org] = await db
     .select({ complimentary: organizations.complimentary })
@@ -162,14 +162,14 @@ async function reportUsageToStripe(
   try {
     stripe = getStripe();
   } catch {
-    // Stripe not configured for this deployment — usage is captured in DB,
+    // Stripe not configured for this deployment: usage is captured in DB,
     // can be replayed later. Don't fail the user request.
     return;
   }
 
   // Stripe billing meters expect a numeric value; we report in micro-dollars,
   // and the meter aggregator + price-per-unit in Stripe yields the dollar charge.
-  // (Using meters API rather than legacy usage records — meters are the
+  // (Using meters API rather than legacy usage records; meters are the
   // forward path for v2024+ accounts.)
   // The usage row id rides in `identifier`, not the payload: Stripe rejects
   // undeclared payload keys (they count as meter dimensions), and identifier

@@ -1,5 +1,5 @@
 /**
- * Cost & budget tools — expose the cloud-spend surface (ClickHouse cost_daily
+ * Cost & budget tools: expose the cloud-spend surface (ClickHouse cost_daily
  * + Postgres budgets) to MCP clients and the chat agent. Unlike the resource
  * tools, these guard org-wide spend data, so every handler enforces the same
  * `costs:read` / `budgets:*` permissions as the HTTP API.

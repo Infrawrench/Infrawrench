@@ -20,7 +20,7 @@ const PushPreferences = strict({
 }).openapi("PushPreferences");
 
 // Registered as its own component rather than reusing `PushPreferences`, so the
-// request body and the response shape can diverge without a client break — the
+// request body and the response shape can diverge without a client break: the
 // response is what the server settled on, which need not stay identical to what
 // a client is allowed to send.
 const PushPreferencesUpdate = strict({

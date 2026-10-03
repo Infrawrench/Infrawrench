@@ -17,7 +17,7 @@ import {
 } from "../report-delivery/compose";
 
 /* ------------------------------------------------------------------ *
- * Schedule arithmetic — civil dates, month ends, DST.
+ * Schedule arithmetic: civil dates, month ends, DST.
  * ------------------------------------------------------------------ */
 
 const schedule = (overrides: Partial<ReportSchedule>): ReportSchedule => ({
@@ -50,7 +50,7 @@ describe("nextReportSendAt", () => {
   });
 
   it("monthly clamps day 31 to a 30-day month's last day", () => {
-    // Asked for the 31st; April has 30 days — month end is what was meant.
+    // Asked for the 31st; April has 30 days: month end is what was meant.
     const next = nextReportSendAt(
       schedule({ cadence: "monthly", sendDayOfMonth: 31 }),
       new Date("2026-04-02T00:00:00Z"),
@@ -123,7 +123,7 @@ describe("nextReportSendAt", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * Composition — converted totals, the caveat, and the empty send.
+ * Composition: converted totals, the caveat, and the empty send.
  * ------------------------------------------------------------------ */
 
 const baseData = (overrides: Partial<ReportDeliveryData>): ReportDeliveryData => ({

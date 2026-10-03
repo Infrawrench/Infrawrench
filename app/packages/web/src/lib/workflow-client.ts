@@ -1,5 +1,5 @@
 /**
- * Browser-side WorkflowClient for the web app — talks to the org-scoped
+ * Browser-side WorkflowClient for the web app: talks to the org-scoped
  * `/api/org/:orgId/workflows` routes over fetch (session cookie auth).
  */
 import type {

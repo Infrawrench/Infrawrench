@@ -1,5 +1,5 @@
 /**
- * SSH command execution via ssh2 — used by the connect/env-deploy API.
+ * SSH command execution via ssh2: used by the connect/env-deploy API.
  */
 import { StringDecoder } from "node:string_decoder";
 import ssh2 from "ssh2";
@@ -68,7 +68,7 @@ export interface SshExecResult {
  * `dialAddress` is the IP literal `resolveSafeHost` cleared: the socket goes
  * there, so the name is resolved exactly once and a short-TTL record cannot
  * swap in an internal address between the check and the connect. Host-key
- * identity deliberately stays `config.host` — pins live in `ssh_host_keys`
+ * identity deliberately stays `config.host`: pins live in `ssh_host_keys`
  * keyed by (host, port), so verifying against the IP would invalidate every
  * existing trust record and re-prompt the operator on a host they already
  * trust. Omit it only where no SSRF check applies to the destination.
@@ -77,7 +77,7 @@ export interface SshDialOptions {
   dialAddress?: string | undefined;
 }
 
-/** Caps for fan-out style captures — bound memory when many hosts stream at once. */
+/** Caps for fan-out style captures: bound memory when many hosts stream at once. */
 const CAPTURE_MAX_BYTES = 256 * 1024;
 const CAPTURE_READY_TIMEOUT_MS = 30_000;
 const CAPTURE_COMMAND_TIMEOUT_MS = 120_000;
@@ -108,7 +108,7 @@ function decodeCapped(chunks: Buffer[]): string {
 
 /**
  * Execute a single command over SSH and capture stdout, stderr, and the exit
- * code. Unlike {@link sshExec}, a non-zero exit resolves normally — the caller
+ * code. Unlike {@link sshExec}, a non-zero exit resolves normally: the caller
  * (fan-out) surfaces per-host exit codes instead of treating them as
  * transport errors. Still throws on SSH/connection failures (including
  * {@link HostKeyTrustRequiredError}) and when the command is killed by a
@@ -157,7 +157,7 @@ export function sshExecCapture(
         // ssh2 mirrors child_process here: close carries the numeric exit
         // status, or (null, "SIGKILL", …) when the command died to a signal,
         // or nothing at all when the channel closed without exit info. Only a
-        // real numeric status may resolve — signal death is not exit 0.
+        // real numeric status may resolve: signal death is not exit 0.
         stream.on("close", (code: number | null | undefined, signal?: string | null) => {
           client.end();
           if (typeof code !== "number") {

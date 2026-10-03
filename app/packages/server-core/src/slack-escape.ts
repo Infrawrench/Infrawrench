@@ -3,7 +3,7 @@
  *
  * Split out of `slack.ts` for the reason `probes/metric-ids.ts` was split out
  * of `probes/pass.ts`: `slack.ts` imports `db/client`, so importing an escaper
- * from it drags the whole transport stack — and a `DATABASE_URL` requirement —
+ * from it drags the whole transport stack (and a `DATABASE_URL` requirement)
  * into every module that merely renders a message. The alert `summary.ts`
  * modules are deliberately I/O-free so their bodies can be unit-tested without
  * a database, and that property is the one this file exists to preserve.
@@ -28,8 +28,8 @@ export function escapeMrkdwn(s: string): string {
 }
 
 /**
- * Neutralise one fragment of *untrusted* text — a resource, principal or
- * account name synced out of a customer's cloud — before it is composed into a
+ * Neutralise one fragment of *untrusted* text (a resource, principal or
+ * account name synced out of a customer's cloud) before it is composed into a
  * Slack mrkdwn body.
  *
  * Because {@link escapeMrkdwn} has to leave `*` alone, a synced name

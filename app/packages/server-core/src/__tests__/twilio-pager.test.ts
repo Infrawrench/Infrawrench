@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 /**
  * Twilio pager tests. The DB is real Drizzle over a recording driver
  * (helpers/fake-postgres.ts): each test queues result rows FIFO in the
- * statement order the module issues them — on the error path that is
+ * statement order the module issues them; on the error path that is
  * settings select, failure insert, expired-row delete, count select, incident
  * select, then (incident insert and) recipients select. Writes resolve to
  * nothing and are asserted from the captured SQL. `fetch` is spied on
@@ -44,7 +44,7 @@ const writeCount = () => pg.queries.filter((q) => /^(insert|update|delete)\b/.te
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -69,7 +69,7 @@ function routed(over: Record<string, unknown> = {}) {
     unrouted: false,
     matchedRuleIds: ["rule1"],
     // The tracked-Slack half of the result. Present by default because
-    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // `byTransport.slack` is 1: a result claiming a Slack delivery with no
     // message to show for it is a shape the real function never returns.
     slackMessages: [],
     deliveryIds: [],
@@ -77,7 +77,7 @@ function routed(over: Record<string, unknown> = {}) {
   };
 }
 
-/** A delivery that reached nobody — no rule matched, or every channel failed. */
+/** A delivery that reached nobody: no rule matched, or every channel failed. */
 function unroutedResult() {
   return routed({
     attempted: 0,
@@ -103,7 +103,7 @@ function errResponse(status = 400, body = "boom") {
   return { ok: false, status, text: async () => body } as unknown as Response;
 }
 
-// Row keys in `twilio_settings` column order — see helpers/fake-postgres.ts.
+// Row keys in `twilio_settings` column order: see helpers/fake-postgres.ts.
 function settingsRow(over: Partial<Record<string, unknown>> = {}) {
   return {
     organizationId: "org1",
@@ -384,7 +384,7 @@ describe("notePollOutcome — error / threshold", () => {
 
   it("delivers push-only when Twilio creds are missing, and sets pagedAt on push success", async () => {
     routeAlert.mockResolvedValueOnce(routed());
-    // No creds stored at all — previously this org silently skipped incidents.
+    // No creds stored at all: previously this org silently skipped incidents.
     pg.queueRows([
       settingsRow({
         encryptedAccountSid: null,

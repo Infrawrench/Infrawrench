@@ -58,7 +58,7 @@ export class TokenBucketRegistry {
       state.capacity !== config.capacity ||
       state.refillPerSecond !== config.refillPerSecond
     ) {
-      // Config changed (e.g. plugin updated its manifest) — adopt new values.
+      // Config changed (e.g. plugin updated its manifest): adopt new values.
       state.capacity = config.capacity;
       state.refillPerSecond = config.refillPerSecond;
     }

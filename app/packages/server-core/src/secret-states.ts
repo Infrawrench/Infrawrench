@@ -9,7 +9,7 @@
  *
  * That invariant is the whole reason this module exists. The upsert used to be
  * written out at each call site (create flows, the associations routes, the
- * plugin `SecretHostServices`), and the copies had already drifted — the
+ * plugin `SecretHostServices`), and the copies had already drifted: the
  * output-ref path in the associations route left `encrypted_value` populated
  * while flipping `resolution_kind` to `output-ref`. Adding a column to the
  * table means updating the clear-list in exactly one place now.

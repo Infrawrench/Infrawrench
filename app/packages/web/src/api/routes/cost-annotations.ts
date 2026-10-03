@@ -2,7 +2,7 @@
  * HTTP API for cost annotations (org-scoped, mounted at
  * /api/org/:orgId/cost-annotations).
  *
- * An annotation is a dated note drawn over a cost chart — "we migrated to
+ * An annotation is a dated note drawn over a cost chart: "we migrated to
  * Graviton here". Reads are `costs:read` and writes are `costs:write`, the same
  * permissions cost reports use, because a note about spend is cost data with
  * words on it rather than dashboard furniture.
@@ -51,7 +51,7 @@ app.get("/", async (c) => {
   return c.json({ annotations });
 });
 
-/** POST /api/org/:orgId/cost-annotations — create a note. */
+/** POST /api/org/:orgId/cost-annotations: create a note. */
 app.post("/", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -85,7 +85,7 @@ app.post("/", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/cost-annotations/change-impact — pin a change's or a
+ * POST /api/org/:orgId/cost-annotations/change-impact: pin a change's or a
  * deploy's measured cost impact onto the charts.
  *
  * One route for both subject kinds, discriminated in the body, because they
@@ -146,7 +146,7 @@ app.post("/change-impact", async (c) => {
   }
 });
 
-/** PUT /api/org/:orgId/cost-annotations/:id — replace date, span, text, scope. */
+/** PUT /api/org/:orgId/cost-annotations/:id: replace date, span, text, scope. */
 app.put("/:id", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -179,7 +179,7 @@ app.put("/:id", async (c) => {
   }
 });
 
-/** DELETE /api/org/:orgId/cost-annotations/:id — hard delete. */
+/** DELETE /api/org/:orgId/cost-annotations/:id: hard delete. */
 app.delete("/:id", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");

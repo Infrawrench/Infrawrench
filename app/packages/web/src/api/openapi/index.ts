@@ -115,7 +115,7 @@ interface BuildOptions {
 
 /**
  * Servers to advertise when the caller doesn't specify. A deployment knows its
- * own origin (`APP_URL` / `PUBLIC_BASE_URL`, set in prod), so serve that alone —
+ * own origin (`APP_URL` / `PUBLIC_BASE_URL`, set in prod), so serve that alone,
  * otherwise Scalar picks the first entry and every "try it" request and code
  * snippet on the production docs points at `localhost:3000`.
  */
@@ -667,7 +667,7 @@ async function getOpenApiDocument(opts: BuildOptions = {}): Promise<OpenAPIObjec
 }
 
 /**
- * The spec we publish — the same document with `x-internal` operations, the
+ * The spec we publish: the same document with `x-internal` operations, the
  * `sessionCookie` scheme, and the tags/schemas only they used removed. This is
  * what `/openapi.json` serves and what `/docs` renders. See `./public-spec.ts`.
  *
@@ -675,7 +675,7 @@ async function getOpenApiDocument(opts: BuildOptions = {}): Promise<OpenAPIObjec
  * call as each generated SDK spells it, so the `/docs` client picker offers
  * the real clients instead of only generic HTTP snippets. The samples are
  * derived from the same IR the SDK generator consumes (which is why this
- * reaches into `scripts/sdk`); they exist only on the served document — the
+ * reaches into `scripts/sdk`); they exist only on the served document: the
  * committed `openapi.json` stays snippet-free so its diffs show surface
  * changes.
  */

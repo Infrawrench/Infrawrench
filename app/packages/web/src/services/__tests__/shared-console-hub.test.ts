@@ -4,14 +4,14 @@
  * The hub's registry is process memory and web runs two replicas, so an
  * ejection is an HTTP call that lands on one of them and a live pty that may
  * be on the other. The replica holding the pty learns about it by re-reading
- * the participant list — and re-reading is only half the job. If it swaps the
+ * the participant list, and re-reading is only half the job. If it swaps the
  * array in and stops there, the ejected guest's socket is still in the fan-out
  * map, still receiving every byte of somebody else's production terminal, and
  * "removed" means removed from a list rather than removed from the session.
  *
  * That is what these tests pin. They drive the hub through its real code path
- * with the database stubbed out, because the bug is not in any decision — the
- * pure arbitration functions get this right, and are tested separately — it is
+ * with the database stubbed out, because the bug is not in any decision (the
+ * pure arbitration functions get this right, and are tested separately) it is
  * in whether the transport acts on what they say.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -136,7 +136,7 @@ function fakeHandle(written: Buffer[], ownerFrames: Record<string, unknown>[]) {
 }
 
 /**
- * A hub with one shared console, an owner-driver and one attached guest —
+ * A hub with one shared console, an owner-driver and one attached guest:
  * the state every test below starts from.
  */
 async function setup(guestOverrides: Partial<ParticipantRow> = {}) {
@@ -218,7 +218,7 @@ describe("a guest ejected through another replica", () => {
     ];
     await hub.refresh(SHARE_ID);
 
-    // The fan-out must not reach them again — this is the part that leaked a
+    // The fan-out must not reach them again: this is the part that leaked a
     // colleague's production terminal for as long as the socket stayed in the
     // map, which was until the far slower permission sweep noticed.
     hub.broadcastOutput(LIVE_ID, Buffer.from("after"));
@@ -240,7 +240,7 @@ describe("a guest ejected through another replica", () => {
 
   /**
    * The sharper half of the same bug: an ejected *driver* kept the attachment
-   * that input travels on. Two independent things must stop them — the socket
+   * that input travels on. Two independent things must stop them: the socket
    * leaving `attached`, and `evaluateInput` refusing a row that is no longer
    * `joined`.
    */

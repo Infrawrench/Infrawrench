@@ -1,5 +1,5 @@
 /**
- * Org-scoped metric alert rule CRUD + status — shared by the HTTP routes
+ * Org-scoped metric alert rule CRUD + status: shared by the HTTP routes
  * (api/routes/metric-alerts.ts). Evaluation lives in
  * `server-core/src/metric-alerts/`; this module only reads/writes the rules
  * and their firing history, mirroring `services/budgets.ts`.
@@ -73,7 +73,7 @@ export async function listRulesWithStatus(
   return Promise.all(
     rows.map(async (row) => {
       // The selector resolves against the live resources table, so the count
-      // reflects resources created after the rule was written — the whole
+      // reflects resources created after the rule was written: the whole
       // point of query-based selection.
       let matching = 0;
       try {
@@ -190,7 +190,7 @@ export async function softDeleteRule(organizationId: string, ruleId: string): Pr
     .returning({ id: metricAlertRules.id });
   if (!deleted) return false;
 
-  // Anything still firing is closed quietly — the rule no longer exists, so
+  // Anything still firing is closed quietly: the rule no longer exists, so
   // there is nothing to recover from and nobody to notify.
   await db
     .update(metricAlertEvents)
@@ -209,7 +209,7 @@ export async function listEvents(
     .select({
       id: metricAlertEvents.id,
       ruleId: metricAlertEvents.ruleId,
-      // Snapshotted at firing time — no join, and the event keeps its name
+      // Snapshotted at firing time: no join, and the event keeps its name
       // even if the rule row is renamed or goes away.
       ruleName: metricAlertEvents.ruleName,
       resourceId: metricAlertEvents.resourceId,
@@ -246,7 +246,7 @@ export async function listEvents(
  * What the org's resources actually offer to select on. The pickers are fed
  * from this instead of the full plugin catalog, so the form never offers a
  * provider or tag the org has no resources for. Tag keys are read from a
- * bounded sample of the newest resources — enough to enumerate an org's
+ * bounded sample of the newest resources: enough to enumerate an org's
  * tagging vocabulary without an unbounded JSONB scan.
  */
 export async function listSelectorOptions(
@@ -287,7 +287,7 @@ export async function listSelectorOptions(
   };
 }
 
-/** What a selector matches right now — the form's "who does this cover?" preview. */
+/** What a selector matches right now: the form's "who does this cover?" preview. */
 export async function previewSelector(
   organizationId: string,
   selector: MetricAlertSelector,

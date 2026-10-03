@@ -8,8 +8,8 @@ import type { PollAccountRow } from "./poll-account";
 /**
  * Commitment inventories are read daily.
  *
- * A reservation or savings plan changes on human cadence — a purchase, an
- * exchange, an expiry — so anything faster than daily only burns the same
+ * A reservation or savings plan changes on human cadence (a purchase, an
+ * exchange, an expiry) so anything faster than daily only burns the same
  * rate-limited management APIs the rest of the plugin shares. Daily also
  * keeps the expiry story honest: a commitment lapsing tomorrow was collected
  * today.
@@ -32,7 +32,7 @@ export async function pollAccountCommitments(account: PollAccountRow): Promise<v
       new Date(Date.now() + COMMITMENT_INTERVAL_MS + jitter),
     );
     if (result.recordCount === 0) {
-      // Not an error — most accounts genuinely hold no commitments — but
+      // Not an error (most accounts genuinely hold no commitments) but
       // worth a line, because the alternative explanation is a credential
       // that cannot see them.
       console.log(`[commitments] read for ${account.id} (${account.pluginId}) returned no records`);

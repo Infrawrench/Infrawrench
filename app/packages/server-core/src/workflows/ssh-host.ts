@@ -82,7 +82,7 @@ async function loadPrivateKey(organizationId: string, sshKeyId: string): Promise
 /**
  * Read a resource's SSH host from its live instance. The address lives in the
  * resource's `resolvedOutputs` (e.g. a droplet's `ipv4`), populated by
- * `getResource` — NOT via `resolveOutput` (which most plugins don't implement
+ * `getResource`: NOT via `resolveOutput` (which most plugins don't implement
  * for these output keys). Falls back to a same-named `fields` value. Mirrors the
  * interactive SSH/tunnel path (see web `tunnel-ssh-attach.ts`).
  */
@@ -168,7 +168,7 @@ async function resourceConnection(
 }
 
 /**
- * Resolve just the host/port to probe — no SSH key required (unlike
+ * Resolve just the host/port to probe: no SSH key required (unlike
  * {@link resourceConnection}). Returns null when the host isn't available yet
  * (e.g. a freshly-created VM that has no IP assigned), so the caller can retry.
  */
@@ -241,7 +241,7 @@ function makeTofuVerifier(
           fingerprint: fp,
         });
       } catch {
-        // Concurrent insert — accept; a mismatch will be caught next time.
+        // Concurrent insert: accept; a mismatch will be caught next time.
       }
       return true;
     })().then(
@@ -432,7 +432,7 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
         try {
           const next = take();
           if (next) resolve(next);
-          // Spurious wake (no chunk yet) — wait for the next one.
+          // Spurious wake (no chunk yet): wait for the next one.
           else state.waiter = onWake;
         } catch (e) {
           reject(e instanceof Error ? e : new Error(String(e)));
@@ -472,7 +472,7 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
     const deadline = Date.now() + (params.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS);
     // Resolve the host *inside* the loop: a just-created VM may not have an IP
     // yet, so keep re-resolving (and re-probing) until it's reachable or we time
-    // out — rather than failing the instant the address isn't available.
+    // out, rather than failing the instant the address isn't available.
     while (Date.now() < deadline) {
       if (opts.signal?.aborted) return false; // bail out of waitUntilReachable on Stop
       const target = await resolveResourceHost(organizationId, params);

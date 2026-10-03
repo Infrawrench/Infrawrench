@@ -1,11 +1,11 @@
 /**
- * Org-scoped custom-graph CRUD, rendering, typings, and source checking —
+ * Org-scoped custom-graph CRUD, rendering, typings, and source checking:
  * shared by the HTTP routes (api/routes/custom-graphs.ts) and the tool
  * registry (tools/custom-graphs.ts), mirroring services/workflows.ts.
  *
  * Custom graphs are a paid-plan feature: writes and renders call
  * `requirePaidPlan`, so a free org sees a 402/tool error naming the upgrade
- * path. Reads and deletes stay open — a lapsed org can still see and clean up
+ * path. Reads and deletes stay open: a lapsed org can still see and clean up
  * what it made.
  */
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
@@ -135,8 +135,8 @@ export async function updateCustomGraph(
       ...(body.name !== undefined ? { name: body.name.trim() } : {}),
       ...(body.description !== undefined ? { description: body.description?.trim() || null } : {}),
       // A source change re-attributes authorship: infra.* runs as whoever last
-      // wrote the script, so editing someone else's graph makes it run as YOU
-      // — a dashboards:write member can't borrow an admin's authority by
+      // wrote the script, so editing someone else's graph makes it run as YOU;
+      // a dashboards:write member can't borrow an admin's authority by
       // appending to their script. An update with no recorded user disables
       // infra rather than keeping the previous author's.
       ...(body.source !== undefined
@@ -150,7 +150,7 @@ export async function updateCustomGraph(
 }
 
 /**
- * Soft-delete a graph — and every dashboard card pointing at it. Nothing else
+ * Soft-delete a graph, and every dashboard card pointing at it. Nothing else
  * ever would: a `custom_graph` widget resolves its graph by `config.graphId`
  * with no FK (the budget precedent), so a card left behind renders as a
  * permanent "graph unavailable" tile. The graph's stored data stays until the
@@ -183,7 +183,7 @@ export async function softDeleteCustomGraph(organizationId: string, id: string):
 
 /**
  * The ambient d.ts for graph source: the static `graph.*` half plus a
- * READ-ONLY `infra.d.ts` generated from the org's real accounts — the same
+ * READ-ONLY `infra.d.ts` generated from the org's real accounts; the same
  * accounts tree the render hands the script, minus everything a graph cannot
  * do (create/update/delete, importYaml, publish, sftp, page). Falls back to
  * the static half alone if account enumeration fails, so a provider hiccup

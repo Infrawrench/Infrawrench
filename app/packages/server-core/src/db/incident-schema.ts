@@ -3,7 +3,7 @@ import { pgTable, text, timestamp, index, uniqueIndex, jsonb } from "drizzle-orm
 import { organizations, users } from "./core-schema.js";
 
 /**
- * **Incident mode** — a declared operational incident and the things declaring
+ * **Incident mode**: a declared operational incident and the things declaring
  * it did on the operator's behalf.
  *
  * Do not confuse this with `provider_status_incidents` (schema.ts), which is a
@@ -15,7 +15,7 @@ import { organizations, users } from "./core-schema.js";
  * The table holds the incident's own facts and nothing else. The timeline is
  * assembled **on read** by joining the feeds that already exist (resource
  * changes, deployments, cost anomalies, provider incidents, audit, freezes,
- * probes, metric alerts) — copying those rows in here would freeze a snapshot
+ * probes, metric alerts): copying those rows in here would freeze a snapshot
  * that goes stale the moment anything is corrected upstream, and would make
  * this table grow with the org's entire event volume.
  */
@@ -27,7 +27,7 @@ export const incidents = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
-    /** `sev1`…`sev4` — see `INCIDENT_SEVERITIES` in client-core. */
+    /** `sev1`…`sev4`: see `INCIDENT_SEVERITIES` in client-core. */
     severity: text("severity").$type<"sev1" | "sev2" | "sev3" | "sev4">().notNull().default("sev2"),
     /**
      * `mitigated` is a real state, not a synonym for resolved: it is the moment
@@ -36,7 +36,7 @@ export const incidents = pgTable(
      */
     status: text("status").$type<"open" | "mitigated" | "resolved">().notNull().default("open"),
     summary: text("summary"),
-    /** Backdatable — people declare after they start firefighting, not before. */
+    /** Backdatable: people declare after they start firefighting, not before. */
     startedAt: timestamp("started_at").notNull().defaultNow(),
     mitigatedAt: timestamp("mitigated_at"),
     resolvedAt: timestamp("resolved_at"),
@@ -69,8 +69,8 @@ export const incidents = pgTable(
  * Operator notes: the running commentary that no join can reconstruct.
  *
  * `occurred_at` is separate from `created_at` on purpose. Notes are written
- * late — somebody catching up at 04:00 types "03:14: failed over to the
- * replica" — and a timeline that plots them at the moment they were *typed*
+ * late; somebody catching up at 04:00 types "03:14: failed over to the
+ * replica", and a timeline that plots them at the moment they were *typed*
  * puts the write-up out of order with the events it explains.
  */
 export const incidentNotes = pgTable(
@@ -98,7 +98,7 @@ export const incidentNotes = pgTable(
  * writes the incident first and then attempts each opted-in artefact; an
  * artefact that throws lands here with `status = "failed"` and the error text,
  * so a Slack outage costs the announcement and never the incident. Resolving
- * consults this table to undo exactly what this incident created — the freeze
+ * consults this table to undo exactly what this incident created: the freeze
  * it opened, not whatever freeze happens to be in effect.
  *
  * `ref_id` / `ref_secondary` are plain text with no foreign key, on purpose:
@@ -120,7 +120,7 @@ export const incidentArtifacts = pgTable(
      * `created` | `failed` | `closed` | `close_failed`.
      *
      * The fourth is not a nicety. `failed` means "never made it"; `close_failed`
-     * means "made it, could not put it away" — the freeze is still in force, the
+     * means "made it, could not put it away": the freeze is still in force, the
      * public notice still says there is an outage. Retrying the first re-creates;
      * retrying the second re-closes. Collapsing them would either strand the
      * incident with a live freeze nothing can lift, or open a second freeze.
@@ -137,7 +137,7 @@ export const incidentArtifacts = pgTable(
      * The status-page artefact is why this exists: the operator named which
      * components are affected, and a retry that had forgotten them would
      * publish the outage against the whole page. Server-side retry state, so
-     * it is deliberately narrow — see `IncidentArtifactRequest`.
+     * it is deliberately narrow: see `IncidentArtifactRequest`.
      */
     requestJson: jsonb("request_json").$type<{
       statusPageId?: string | null;
@@ -165,13 +165,13 @@ export const incidentArtifacts = pgTable(
  *
  * Status pages were a purely *derived* view until now: every word on them came
  * from probe state and uptime rollups, so there was no way to say "we know,
- * we're on it" — which is the one thing visitors turn up for. A notice is that
+ * we're on it", which is the one thing visitors turn up for. A notice is that
  * sentence, and incident mode is what usually writes it.
  *
  * The security stance of `status_pages` carries over unchanged: nothing here is
  * assembled into the public payload by narrowing an internal shape. The public
  * assembler picks `title`, `body`, `state` and the timestamps by name, and the
- * incident id is deliberately **not** among them — a visitor learns that
+ * incident id is deliberately **not** among them: a visitor learns that
  * something is wrong, never the org's internal id for it.
  *
  * `affected_component_ids` names components on this page; an empty array means

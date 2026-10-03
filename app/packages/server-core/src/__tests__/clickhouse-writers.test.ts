@@ -3,7 +3,7 @@ import type { MetricSeries } from "@infrawrench/plugin-base";
 import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
 /**
- * The writers go through `db.insert(...)`, which sends a `JSONEachRow` body —
+ * The writers go through `db.insert(...)`, which sends a `JSONEachRow` body,
  * so what these assert on is what the driver was handed: a table name and the
  * decoded rows, after the dialect mapped each value to its row-format form.
  */

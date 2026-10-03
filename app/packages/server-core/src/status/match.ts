@@ -1,5 +1,5 @@
 /**
- * Correlating cached provider incidents with the resources an org holds —
+ * Correlating cached provider incidents with the resources an org holds:
  * the "is it me or is it them?" half of the status feature. The cache
  * (`provider_status_incidents`) is global; everything org-specific happens
  * here, at read time.
@@ -22,7 +22,7 @@ type IncidentRow = typeof providerStatusIncidents.$inferSelect;
 /** Default window for including recently-resolved incidents in the API. */
 export const RESOLVED_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** Upper bound on incidents correlated per request — safety valve. */
+/** Upper bound on incidents correlated per request: safety valve. */
 const MAX_INCIDENTS = 50;
 
 const SAMPLE_LIMIT = 5;
@@ -30,7 +30,7 @@ const SAMPLE_LIMIT = 5;
 /**
  * Pure matching rule, exported for tests. Region comparison also accepts a
  * hierarchical child: a resource in `us-central1-a` matches an incident
- * naming `us-central1`, and one in `fr-par-2` matches `fr-par` — providers
+ * naming `us-central1`, and one in `fr-par-2` matches `fr-par`; providers
  * with zone/AZ suffixes all use a `-` separator, so the prefix check stays
  * generic.
  */
@@ -73,7 +73,7 @@ export async function matchIncidentsForOrg(
   if (incidents.length === 0) return matches;
   const pluginIds = Array.from(new Set(incidents.map((i) => i.pluginId)));
 
-  // Only the region placement value is needed for matching — not the full
+  // Only the region placement value is needed for matching, not the full
   // fields bag. Extract it in SQL so we don't ship every resource's jsonb.
   const rows = await db
     .select({

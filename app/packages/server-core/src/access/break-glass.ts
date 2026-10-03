@@ -1,5 +1,5 @@
 /**
- * Break-glass access — time-boxed permission elevation.
+ * Break-glass access: time-boxed permission elevation.
  *
  * The premise is that the right steady-state role for most people is narrower
  * than the widest thing they will ever need to do, and the usual answer to
@@ -102,7 +102,7 @@ export type { ActiveElevation };
  * Called on **every** permission resolution for a session principal, so it is
  * written to be one index probe: `access_requests_org_user_status_idx` covers
  * `(organization_id, user_id, status)` and the window predicates run on the
- * handful of approved rows that survives. Deliberately not cached — a revoked
+ * handful of approved rows that survives. Deliberately not cached: a revoked
  * grant has to stop applying on the next request, not when a TTL happens to
  * lapse, and "took away access a bit late" is not a failure mode worth trading
  * a query for.
@@ -135,7 +135,7 @@ export async function activeElevations(
       }));
   } catch (err) {
     // Fail closed. An elevation that cannot be read is an elevation the caller
-    // does not have — the alternative is granting authority on a database
+    // does not have: the alternative is granting authority on a database
     // hiccup, which is the one outcome this feature must never produce.
     console.error(`[break-glass] reading elevations for ${userId} in ${organizationId}:`, err);
     return [];
@@ -162,7 +162,7 @@ export type CreateAccessRequestResult =
   | { outcome: "already_held"; error: string };
 
 /**
- * Raise a request and notify the org. Returns immediately — unlike a workflow
+ * Raise a request and notify the org. Returns immediately: unlike a workflow
  * approval, nothing is blocked waiting for the answer.
  */
 export async function createAccessRequest(
@@ -218,7 +218,7 @@ export async function createAccessRequest(
     .returning();
 
   // The request is already recorded, so a notification outage must not fail
-  // the call — the queue holds it either way.
+  // the call: the queue holds it either way.
   try {
     await fanOutApprovalRequest({
       organizationId: input.organizationId,
@@ -282,7 +282,7 @@ export interface ListAccessRequestsOptions {
  * An org's requests, newest first.
  *
  * A `pending` listing hides rows whose timeout has already passed, so the queue
- * never offers a decision that would immediately be refused — the same
+ * never offers a decision that would immediately be refused: the same
  * treatment the workflow approvals inbox gives its own stale rows.
  */
 export async function listAccessRequests(
@@ -329,7 +329,7 @@ export async function getAccessRequest(
 export interface AccessDecider {
   userId: string;
   name?: string | null;
-  /** The decider's live permissions — the ceiling on what they can grant. */
+  /** The decider's live permissions: the ceiling on what they can grant. */
   permissions: readonly string[];
 }
 
@@ -344,7 +344,7 @@ export type DecideAccessRequestResult =
  * Record a decision, opening the elevation window on approval.
  *
  * The conditional UPDATE (`status = 'pending'`) is what makes two people racing
- * the same request produce exactly one decision — the loser gets `"conflict"`
+ * the same request produce exactly one decision: the loser gets `"conflict"`
  * and the UI re-lists. Deciding after the timeout has passed is also a
  * conflict: the request was already dead, and pretending otherwise would open a
  * window nobody agreed to.
@@ -365,7 +365,7 @@ export async function decideAccessRequest(
 
   // Rule 1. Checked before anything else and for denials too: a person who
   // cannot approve their own request should not be able to withdraw it through
-  // the approval path either — withdrawal is its own operation with its own
+  // the approval path either; withdrawal is its own operation with its own
   // audit action.
   if (existing.userId === decider.userId) return { outcome: "self_approval" };
 
@@ -469,7 +469,7 @@ export type RevokeAccessGrantResult =
  * End a live grant early.
  *
  * Conditioned on `revoked_at IS NULL` so two revokers produce one revocation,
- * and applies from the next permission resolution — there is nothing to
+ * and applies from the next permission resolution: there is nothing to
  * invalidate because nothing is cached.
  *
  * Anyone with `access:approve` can revoke, and so can the holder: giving back
@@ -514,7 +514,7 @@ export type WithdrawAccessRequestResult =
  * The requester calls off their own pending request.
  *
  * Its own operation rather than a self-denial, so the audit trail distinguishes
- * "nobody would approve this" from "they decided they didn't need it" — those
+ * "nobody would approve this" from "they decided they didn't need it": those
  * read very differently in a review, and collapsing them loses the difference.
  */
 export async function withdrawAccessRequest(

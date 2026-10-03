@@ -3,8 +3,8 @@
  *
  * The chat agent loop (../agent.ts) is model-agnostic: it loads history, asks a
  * provider to stream one turn, then dispatches whatever tool_uses come back.
- * Everything model-specific — SDK wiring, tool schema dialect, streaming event
- * shapes, usage accounting — lives behind this interface.
+ * Everything model-specific (SDK wiring, tool schema dialect, streaming event
+ * shapes, usage accounting) lives behind this interface.
  *
  * `ChatContentBlock` (Anthropic-shaped) stays the canonical persistence format
  * for message content regardless of provider. Non-Anthropic providers convert

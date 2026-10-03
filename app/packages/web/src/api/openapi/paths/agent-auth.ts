@@ -13,7 +13,7 @@ import type { BuildContext } from "../context";
  *
  * **Both halves or neither.** The ceremony spans an agent-authed start and a
  * session-authed confirm, so describing only the agent's half publishes a flow
- * that can be begun and never finished — which is exactly what shipped first.
+ * that can be begun and never finished, which is exactly what shipped first.
  */
 const RegisterRequest = strict({
   label: z

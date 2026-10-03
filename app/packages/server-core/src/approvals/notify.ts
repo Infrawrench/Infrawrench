@@ -5,7 +5,7 @@
  * became the second caller. The mechanics are genuinely the same regardless of
  * what is being approved: push, Slack (with Approve/Deny buttons, tracked so a
  * decision can retire every copy in place), Microsoft Teams (same text without
- * the markup — the Adaptive Card escaper turns `*` into a literal asterisk),
+ * the markup; the Adaptive Card escaper turns `*` into a literal asterisk),
  * and an SMS behind a cooldown. What differs is only the wording and where the
  * link points, so those are the parameters.
  *
@@ -15,7 +15,7 @@
  * over a notification outage would be strictly worse.
  *
  * On the trigger: everything here rides the `workflowPages` opt-in. That is
- * the argument the workflow approvals already made — an approval is something
+ * the argument the workflow approvals already made: an approval is something
  * asking for a human, the opt-in a member or channel already made is the same
  * one, and the user-facing label ("Pages") already covers it. A break-glass
  * request is if anything more page-worthy than a workflow gate: someone is
@@ -39,7 +39,7 @@ export interface ApprovalFanOut {
   /** What the approver is deciding. */
   message: string;
   /**
-   * Lines appended under `message` in the Slack/Teams/push detail — who is
+   * Lines appended under `message` in the Slack/Teams/push detail: who is
    * asking, what for, when it lapses. Caller-owned because "run 41f, started
    * on its schedule" and "Dana, for 30 minutes" are not the same sentence.
    */

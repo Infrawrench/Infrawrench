@@ -11,7 +11,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 // Real Drizzle over a recording driver against the real schema: every chain
 // renders its actual SQL (and shadow-validates under test:postgres:shadow).
-// Rows fed in are what each statement returns — for the insert/update chains
+// Rows fed in are what each statement returns, for the insert/update chains
 // that is the `returning({ id })` result, where empty models a conflict (or a
 // payment intent that bought nothing).
 const pg = fakePostgres();
@@ -83,7 +83,7 @@ describe("activeCapacitySeats", () => {
     const { sql, params } = pg.lastQuery();
     expect(sql).toContain('"organization_id" = $1');
     expect(sql).toContain('"status" = $2');
-    // The cutoff arrives as a bound timestamp, not interpolated into raw SQL —
+    // The cutoff arrives as a bound timestamp, not interpolated into raw SQL:
     // interpolating a Date hands postgres.js a bind parameter it rejects.
     expect(sql).toContain('"expires_at" > $3');
     expect(params[0]).toBe("org-1");

@@ -1,23 +1,23 @@
 /**
- * Org-scoped unit-cost query execution — shared by the HTTP route
+ * Org-scoped unit-cost query execution: shared by the HTTP route
  * (api/routes/business-metrics.ts), the MCP tools and the CLI, exactly the way
  * `services/cost-query.ts` is shared, so every surface divides the same
  * numerator by the same denominator.
  *
  * The shape of the work, and why it is this shape:
  *
- * 1. **Numerator** — one `queryCosts` call, ungrouped, bucketed by the caller's
+ * 1. **Numerator**: one `queryCosts` call, ungrouped, bucketed by the caller's
  *    binning. Grouping is deliberately not offered: a per-group ratio needs a
  *    per-group denominator, and the org has declared exactly one series of
  *    values. Drawing "cost per customer, by service" would silently divide each
  *    service's spend by the *whole* customer count and produce five numbers
  *    that do not sum to the real one.
- * 2. **Currency** — conversion happens here, on the already-aggregated series,
+ * 2. **Currency**: conversion happens here, on the already-aggregated series,
  *    through the same pure `convertGroups` the cost graph uses. Nothing is
  *    re-implemented and nothing is dropped: a currency with no rate keeps its
  *    own series (rule 4 in `cost/unit-costs.ts`).
- * 3. **Denominator** — one range read of `business_metric_values`.
- * 4. **The division** — `computeUnitCosts`, which is pure and holds every
+ * 3. **Denominator**: one range read of `business_metric_values`.
+ * 4. **The division**: `computeUnitCosts`, which is pure and holds every
  *    correctness rule the feature stands on.
  *
  * Steps 1 and 3 are the cross-store part, and they meet exactly once: two
@@ -78,9 +78,9 @@ function daySpan(from: string, to: string): number {
  * The filters the numerator actually runs: the metric's own `costScope` and
  * saved filter, AND-composed with whatever narrowing the request added.
  *
- * Composition, never replacement. The scope is part of what the metric *means*
- * — "cost per customer" is only honest if the numerator is the spend that
- * serves customers — so a caller can narrow it (this service, this account) but
+ * Composition, never replacement. The scope is part of what the metric *means*:
+ * "cost per customer" is only honest if the numerator is the spend that
+ * serves customers, so a caller can narrow it (this service, this account) but
  * has no way to widen it. A request that could drop the scope would be
  * answering a different question under the same name.
  */
@@ -151,14 +151,14 @@ async function resolveNumeratorFilters(
  *
  * Two different questions wearing one name, so they are answered separately:
  *
- * - **Unit cost** asks the *display* question — "show me one number instead of
- *   three" — and is therefore governed by the org's opt-in display currency,
+ * - **Unit cost** asks the *display* question ("show me one number instead of
+ *   three") and is therefore governed by the org's opt-in display currency,
  *   through the same `loadConversionContext` policy every cost query uses. No
  *   request, no conversion.
  * - **Margin** asks an *arithmetic* question. `(revenue − cost) ÷ revenue`
  *   subtracts money from money and is undefined across currencies, so the
  *   target is always the metric's own currency regardless of what the org
- *   displays in — and the rate table is loaded directly rather than through the
+ *   displays in, and the rate table is loaded directly rather than through the
  *   display-currency gate, which would refuse any currency but the configured
  *   one. `convertGroups` is still the only thing doing arithmetic; this only
  *   decides what to point it at.
@@ -210,7 +210,7 @@ export async function runUnitCostQuery(
 
   // Independent reads: the filter set is never an input to the conversion
   // context, and vice versa. Serialising them doubled the latency of every
-  // unit-cost query for nothing. Error reporting is unaffected — only
+  // unit-cost query for nothing. Error reporting is unaffected, only
   // `resolveNumeratorFilters` raises a `CostQueryError`, and `resolveConversion`
   // is a settings read that either answers or fails the whole request.
   const [filters, { displayCurrency, rates }] = await Promise.all([
@@ -223,7 +223,7 @@ export async function runUnitCostQuery(
       from: request.from,
       to: request.to,
       binning: request.binning,
-      // Ungrouped on purpose — see the module comment. Currencies still come
+      // Ungrouped on purpose: see the module comment. Currencies still come
       // back separately; `queryCosts` never merges those.
       groupBy: "none",
       filters,
@@ -267,7 +267,7 @@ export async function runUnitCostQuery(
     gapBuckets,
     partialBuckets,
   };
-  // Only set when something was actually converted — its absence is how a
+  // Only set when something was actually converted: its absence is how a
   // client knows the per-currency numbers are the literal collected ones.
   if (conversion) response.conversion = conversion;
   return response;

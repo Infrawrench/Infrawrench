@@ -23,7 +23,7 @@ vi.mock("@/db/client", () => ({
 
 // `authenticateApiRequest` asks whether a bearer `sub` is an agent registration
 // before reading it as a user id. These cases are all `iwk_` keys, so the
-// answer is always no — mocked because the real module reaches Postgres at
+// answer is always no: mocked because the real module reaches Postgres at
 // import time.
 vi.mock("@infrawrench/server-core/trials/ceremony", () => ({
   resolveAgentCredential: vi.fn(async () => null),
@@ -86,7 +86,7 @@ describe("API Keys routes", () => {
 
       const body = await res.json();
       const stored = capturedValues[0] as Record<string, string>;
-      // The stored hash must NOT equal the raw key — it's a hex SHA-256 digest
+      // The stored hash must NOT equal the raw key: it's a hex SHA-256 digest
       expect(stored.hashedKey).toBeDefined();
       expect(stored.hashedKey).not.toBe(body.key);
       expect(stored.hashedKey).toMatch(/^[0-9a-f]{64}$/); // SHA-256 hex
@@ -370,7 +370,7 @@ describe("authenticateApiRequest — legacy hash sunset", () => {
       scopes: [],
       expiresAt: null,
       revokedAt: null,
-      // Sunset fired in 2020 — well before now. The row must be refused even
+      // Sunset fired in 2020: well before now. The row must be refused even
       // though the legacy hash still matches.
       legacyHashSunsetAt: new Date("2020-01-01"),
       hashedKey: "legacy-digest",

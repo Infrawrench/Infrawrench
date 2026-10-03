@@ -1,5 +1,5 @@
 /**
- * Acknowledging an alert — the thing that stops it escalating.
+ * Acknowledging an alert: the thing that stops it escalating.
  *
  * The only surface today is the Slack button `routeAlert` attaches when a rule
  * has an escalation policy; the inbound handler in
@@ -21,7 +21,7 @@ export interface AckResult {
    * Set when the row did not move, and why.
    *
    * `not_pending` is the catch-all for a row that exists but was never waiting
-   * on an acknowledgement — still `held`, already `sent` without an escalation
+   * on an acknowledgement: still `held`, already `sent` without an escalation
    * policy, or `expired`. It is deliberately distinct from
    * `already_acknowledged`: reporting "somebody already acknowledged this" for a
    * row nobody ever could have acknowledged names an event that did not happen,
@@ -40,7 +40,7 @@ export interface AckResult {
  * reason every other claim in this codebase is: two people can press the button
  * in the same second, and the loser has to find out it lost rather than
  * overwrite the winner's name. `state = 'awaiting_ack'` in the WHERE clause is
- * the whole race protection — only one statement can move a row out of that
+ * the whole race protection, only one statement can move a row out of that
  * state, and it also means an escalation that fired a moment earlier (which
  * moved the row to `escalated`) cannot be retroactively acknowledged into
  * silence.
@@ -81,7 +81,7 @@ export async function acknowledgeAlert(args: {
     return { acknowledged: true, ...(payload?.title ? { title: payload.title } : {}) };
   }
 
-  // Nothing moved. Read the row to say *why* — "already acknowledged by Sam" is
+  // Nothing moved. Read the row to say *why*: "already acknowledged by Sam" is
   // a useful answer and "that alert doesn't exist" is a different bug.
   const [row] = await db
     .select()
@@ -101,7 +101,7 @@ export async function acknowledgeAlert(args: {
     return { acknowledged: false, reason: "already_escalated", ...title };
   }
   if (row.state !== "acknowledged") {
-    // `held`, `sent` or `expired` — the row exists but was never awaiting an
+    // `held`, `sent` or `expired`: the row exists but was never awaiting an
     // acknowledgement, so there is nothing here to take and nobody to name.
     return { acknowledged: false, reason: "not_pending", ...title };
   }
@@ -114,7 +114,7 @@ export async function acknowledgeAlert(args: {
 }
 
 /**
- * The org's recent delivery rows, newest first — what the settings page shows
+ * The org's recent delivery rows, newest first: what the settings page shows
  * under "Recent alerts" so an admin can see what is held, what is waiting on an
  * acknowledgement, and what escalated.
  */
@@ -130,23 +130,23 @@ export async function listAlertDeliveries(
     .limit(Math.min(Math.max(limit, 1), 200));
 }
 
-/** Minimal DB surface used by settlement — the module client or a transaction. */
+/** Minimal DB surface used by settlement: the module client or a transaction. */
 type SettlementDb = Pick<typeof db, "update">;
 
 /**
  * Settle every awaiting-acknowledgement delivery raised about one thing that
  * has now been dealt with elsewhere.
  *
- * Some alerts have their own resolution — a workflow approval is approved,
- * denied or times out — and that resolution *is* the acknowledgement. Without
+ * Some alerts have their own resolution (a workflow approval is approved,
+ * denied or times out) and that resolution *is* the acknowledgement. Without
  * this the escalation clock keeps running on a settled request and fires a
  * "nobody acknowledged this" page about a decision that was made ten minutes
  * ago, which is worse than no escalation at all: it wakes someone up to look at
  * something already closed.
  *
  * Matched on the deep-link payload rather than a stored id list because that is
- * the identifier the alert already carries — `routeAlert` writes the whole
- * `AlertEvent` into `payload`, `pushData.approvalId` included — so no new
+ * the identifier the alert already carries (`routeAlert` writes the whole
+ * `AlertEvent` into `payload`, `pushData.approvalId` included) so no new
  * column and no bookkeeping that can drift from the rows it describes. Scoped
  * to the org and to `awaiting_ack`, so it can never touch a finished row or
  * another org's.
@@ -159,7 +159,7 @@ type SettlementDb = Pick<typeof db, "update">;
  * leaves the row armed to escalate, which is the failure mode this helper
  * exists to prevent. Callers that land a decision should run this inside the
  * same transaction (pass `executor`) so the decision and the settle commit
- * together — a decision that lands while the escalate clock keeps running is
+ * together: a decision that lands while the escalate clock keeps running is
  * worse than no decision at all.
  */
 export async function settleDeliveriesForPushTarget(args: {
@@ -206,7 +206,7 @@ export async function settleDeliveriesForPushTarget(args: {
   return rows.length;
 }
 
-/** Cancel held or awaiting-ack rows — used when an admin clears the queue. */
+/** Cancel held or awaiting-ack rows: used when an admin clears the queue. */
 export async function cancelAlertDeliveries(
   organizationId: string,
   ids: string[],

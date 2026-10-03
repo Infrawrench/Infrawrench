@@ -31,7 +31,7 @@ function buildDb(client: ClickHouseClient) {
 
 /**
  * Lazily-initialized singleton client pointed at the internal metrics cluster
- * (ClickHouse Cloud). Throws if env vars are missing — guard with
+ * (ClickHouse Cloud). Throws if env vars are missing: guard with
  * isClickHouseConfigured() at boundaries that may run without metrics
  * storage configured (e.g. tests, local dev).
  *
@@ -56,7 +56,7 @@ export function getClickHouseClient(): ClickHouseClient {
     clickhouse_settings: {
       async_insert: 1,
       wait_for_async_insert: 0,
-      // Every writer sends timestamps as Date#toISOString() — 'Z'-suffixed
+      // Every writer sends timestamps as Date#toISOString(): 'Z'-suffixed
       // ISO 8601, which the self-hosted default date_time_input_format='basic'
       // rejects. ClickHouse Cloud defaults to best_effort, so this only ever
       // bit the in-cluster deployment (and CI), where the metric writers
@@ -73,8 +73,8 @@ export function getClickHouseClient(): ClickHouseClient {
  * ClickHouse has no prepared-statement protocol, so the dialect renders every
  * parameter as a typed literal (`toDate('2026-01-01')`, `map('k', 'v')`) rather
  * than as an HTTP `{name:Type}` parameter. String content still goes through the
- * dialect's own escaping — nothing below interpolates a caller's value into SQL
- * text — but it does mean a statement carries its data, which is why bulk row
+ * dialect's own escaping (nothing below interpolates a caller's value into SQL
+ * text) but it does mean a statement carries its data, which is why bulk row
  * writes go through `writers.ts`'s `JSONEachRow` path instead of an
  * `INSERT ... VALUES` a megabyte wide.
  */

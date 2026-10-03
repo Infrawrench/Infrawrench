@@ -1,5 +1,5 @@
 /**
- * Read side of cost anomaly detection — the poller writes `cost_anomalies`
+ * Read side of cost anomaly detection: the poller writes `cost_anomalies`
  * (server-core `cost/anomaly-eval.ts`); this lists them for the Costs panel
  * and the HTTP API.
  *
@@ -69,7 +69,7 @@ function toCostAnomaly(row: CostAnomalyRow): CostAnomaly {
  * time), newest day first, then largest overshoot first within a day.
  *
  * Explained findings are **not** filtered out. Acknowledging stops a row
- * nagging — it drops out of the unexplained count and renders as answered — but
+ * nagging (it drops out of the unexplained count and renders as answered) but
  * the detection was correct and the record is the point: hiding it would lose
  * the history and invite the next reader to work the same spike out again.
  */
@@ -94,10 +94,10 @@ export async function listRecentCostAnomalies(
  *
  * Null when the anomaly isn't this org's. Throws
  * {@link CostAnomalyAcknowledgeError} for an explanation an annotation could
- * not hold — the API answers 400.
+ * not hold: the API answers 400.
  *
  * Both writes happen in one transaction. Without it a failure between them
- * leaves a note on every chart that no finding claims, and — worse — a retry
+ * leaves a note on every chart that no finding claims, and (worse) a retry
  * would mint a *second* one, because the anomaly still looks unacknowledged.
  * The annotation row is written here rather than through
  * services/cost-annotations.ts for that reason alone (those helpers hold the
@@ -128,7 +128,7 @@ export async function acknowledgeCostAnomaly(
   );
 
   // The sentence as it will be stored, trimmed once by the shared derivation so
-  // the anomaly's record and the note's text are the same string — including in
+  // the anomaly's record and the note's text are the same string, including in
   // the "none" case, where there is no note left to compare against.
   const text =
     plan.action === "create"

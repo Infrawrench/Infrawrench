@@ -19,7 +19,7 @@ interface WebBackupsPanelProps {
 /**
  * Web host for the shared backup coverage screen: fetches the org's coverage
  * and policies and refreshes when resources change. Same wiring as
- * WebPosturePanel — a failed *refresh* must not blank data that is already
+ * WebPosturePanel: a failed *refresh* must not blank data that is already
  * drawn, so the last loaded coverage stays on screen under the section's
  * banner.
  */

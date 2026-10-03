@@ -1,5 +1,5 @@
 /**
- * The showback report with the org's billing rules applied — the surface where
+ * The showback report with the org's billing rules applied: the surface where
  * an adjustment is actually a chargeback, so the properties are sharper here
  * than on a chart.
  *
@@ -65,7 +65,7 @@ const MARKUP = {
 
 function totalsOf(report: Awaited<ReturnType<typeof getShowbackReport>>, currency: string) {
   // `totals` is spend allocated *directly* to a centre, so summing it across
-  // every row is the org's spend for the period — parents do not double count.
+  // every row is the org's spend for the period: parents do not double count.
   return report.centres.reduce((sum, c) => sum + (c.totals[currency] ?? 0), 0);
 }
 

@@ -24,7 +24,7 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/plugins — list available plugins */
+/** GET /api/plugins: list available plugins */
 app.get("/plugins", async (c) => {
   requirePermission(c, "accounts:read");
   const plugins = await loadPlugins();
@@ -51,7 +51,7 @@ app.get("/plugins", async (c) => {
   );
 });
 
-/** GET /api/plugins/:pluginId/policy-template — least-privilege credential template */
+/** GET /api/plugins/:pluginId/policy-template: least-privilege credential template */
 app.get("/plugins/:pluginId/policy-template", async (c) => {
   requirePermission(c, "accounts:read");
   const pluginId = c.req.param("pluginId");
@@ -68,7 +68,7 @@ app.get("/plugins/:pluginId/policy-template", async (c) => {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
   // A typo'd capability id must not silently widen the template to
-  // everything — that's the opposite of least privilege.
+  // everything: that's the opposite of least privilege.
   const declaredIdSet = new Set(declaredIds);
   const unknown = requested.filter((s) => !declaredIdSet.has(s));
   if (unknown.length > 0) {
@@ -79,7 +79,7 @@ app.get("/plugins/:pluginId/policy-template", async (c) => {
 });
 
 /**
- * POST /api/accounts/preflight — probe credentials before an account exists.
+ * POST /api/accounts/preflight: probe credentials before an account exists.
  * The credentials are used for the probe only; nothing is stored.
  */
 app.post("/preflight", async (c) => {
@@ -114,12 +114,12 @@ app.post("/preflight", async (c) => {
     return c.json(await runAccountPreflight(loaded.plugin, client));
   } catch (e) {
     // createClient throws on malformed credentials (bad JSON key, missing
-    // field) — that's a user-fixable state, not a 500.
+    // field): that's a user-fixable state, not a 500.
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
 
-/** POST /api/accounts/:accountId/preflight — re-run preflight on a stored account */
+/** POST /api/accounts/:accountId/preflight: re-run preflight on a stored account */
 app.post("/:accountId/preflight", async (c) => {
   requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
@@ -134,7 +134,7 @@ app.post("/:accountId/preflight", async (c) => {
   return c.json(await runAccountPreflight(ctx.plugin, ctx.client));
 });
 
-/** GET /api/accounts — list accounts */
+/** GET /api/accounts: list accounts */
 app.get("/", async (c) => {
   requirePermission(c, "accounts:read");
   const organizationId = c.get("organizationId");
@@ -151,7 +151,7 @@ app.get("/", async (c) => {
   return c.json(rows);
 });
 
-/** POST /api/accounts — create an account */
+/** POST /api/accounts: create an account */
 app.post("/", async (c) => {
   requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
@@ -162,7 +162,7 @@ app.post("/", async (c) => {
     bastionId?: string | null;
   }>();
 
-  // The free plan caps connected accounts. Deleted accounts don't count —
+  // The free plan caps connected accounts. Deleted accounts don't count:
   // the filter matches the list route's.
   const access = await planAccess(organizationId);
   if (!access.paid) {
@@ -180,7 +180,7 @@ app.post("/", async (c) => {
     }
   }
 
-  // Verify the bastion (if any) belongs to this org — never trust the client.
+  // Verify the bastion (if any) belongs to this org, never trust the client.
   let validatedBastionId: string | null = null;
   if (bastionId) {
     const [b] = await db
@@ -241,7 +241,7 @@ app.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** PATCH /api/accounts/:id — rename account or change bastion binding. */
+/** PATCH /api/accounts/:id: rename account or change bastion binding. */
 app.patch("/:id", async (c) => {
   requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
@@ -313,7 +313,7 @@ app.patch("/:id", async (c) => {
   return c.json(updated);
 });
 
-/** GET /api/accounts/:id/credentials — get decrypted credentials */
+/** GET /api/accounts/:id/credentials: get decrypted credentials */
 app.get("/:id/credentials", async (c) => {
   requirePermission(c, "secrets:read");
   const organizationId = c.get("organizationId");
@@ -346,7 +346,7 @@ app.get("/:id/credentials", async (c) => {
 });
 
 /**
- * PUT /api/accounts/:id/credentials — rotate the credentials this account
+ * PUT /api/accounts/:id/credentials: rotate the credentials this account
  * uses to talk to the upstream provider. Used to swap a stale or
  * narrowly-scoped API token for a freshly-minted one without losing the
  * account's existing resources, pins, dashboards, or sync history.
@@ -377,7 +377,7 @@ app.put("/:id/credentials", async (c) => {
       credentialsIv: iv,
       updatedAt: new Date(),
       // A credential edit is usually the fix for whatever the last poll
-      // complained about — a blank billing-export table, a rotated key, a
+      // complained about: a blank billing-export table, a rotated key, a
       // missing role. Leaving the backoff in place means the account sits out
       // up to a day still showing the stale error telling the user to do the
       // thing they just did, so clear the failure state and make both passes
@@ -394,7 +394,7 @@ app.put("/:id/credentials", async (c) => {
   return c.json({ ok: true });
 });
 
-/** GET /api/accounts/:id/resources — list resources for account */
+/** GET /api/accounts/:id/resources: list resources for account */
 app.get("/:id/resources", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
@@ -414,7 +414,7 @@ app.get("/:id/resources", async (c) => {
     // An account-root type is the exception in both directions: it *is* the
     // account, so it is excluded and its direct children are promoted into
     // the top level it vacated. This has to mirror `getListableResourceTypes`
-    // in `@infrawrench/ui` — desktop reads the plugin registry directly and
+    // in `@infrawrench/ui`: desktop reads the plugin registry directly and
     // uses that helper, so any disagreement here shows up as the two apps
     // expanding the same account to different things.
     const sidebarChildTypeIds = new Set<string>();
@@ -457,7 +457,7 @@ app.get("/:id/resources", async (c) => {
   return c.json(rows);
 });
 
-/** GET /api/accounts/:id/export-terraform — generate Terraform HCL for the
+/** GET /api/accounts/:id/export-terraform: generate Terraform HCL for the
  * account's stored inventory. Resources without a mapping are listed as
  * unsupported rather than dropped silently. */
 app.get("/:id/export-terraform", async (c) => {
@@ -505,7 +505,7 @@ app.get("/:id/export-terraform", async (c) => {
   return c.json(outcome);
 });
 
-/** POST /api/accounts/:id/sync — sync resources from plugin API */
+/** POST /api/accounts/:id/sync: sync resources from plugin API */
 app.post("/:id/sync", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
@@ -514,7 +514,7 @@ app.post("/:id/sync", async (c) => {
   return c.json({ synced: result.resourceCount });
 });
 
-/** GET /api/accounts/:id/detail — account metadata + resource types (no resources, no sync) */
+/** GET /api/accounts/:id/detail: account metadata + resource types (no resources, no sync) */
 app.get("/:id/detail", async (c) => {
   requirePermission(c, "accounts:read");
   const organizationId = c.get("organizationId");
@@ -535,7 +535,7 @@ app.get("/:id/detail", async (c) => {
       parentTypeId: rt.parentTypeId,
       supportsCreate: rt.supportsCreate ?? false,
       // Both flags drive what the account page *opens to*, so the client can't
-      // work them out from the rows alone — `showInSidebar` was already
+      // work them out from the rows alone: `showInSidebar` was already
       // missing here once and made web drop every child type until you typed
       // into the search box.
       ...(rt.showInSidebar ? { showInSidebar: true } : {}),
@@ -543,7 +543,7 @@ app.get("/:id/detail", async (c) => {
       ...(rt.attachTargets ? { attachTargets: rt.attachTargets } : {}),
       ...(rt.sshEndpoint ? { isSshHost: true } : {}),
       ...(rt.sshTunnelAttachSource ? { sshTunnelAttachSource: true } : {}),
-      // Sleep/wake eligibility — the host never hard-codes provider names.
+      // Sleep/wake eligibility: the host never hard-codes provider names.
       ...(rt.lifecycle ? { schedulable: true } : {}),
     })) ?? [];
 
@@ -559,7 +559,7 @@ app.get("/:id/detail", async (c) => {
   });
 });
 
-/** POST /api/accounts/:id/sync-type/:typeId — sync a single resource type and return its resources */
+/** POST /api/accounts/:id/sync-type/:typeId: sync a single resource type and return its resources */
 app.post("/:id/sync-type/:typeId", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");

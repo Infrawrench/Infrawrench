@@ -4,12 +4,12 @@
  * Two callers push spend this way and they must behave identically, so the
  * rules live here rather than in either of them:
  *
- * - `cost/workflow-costs.ts` — a workflow calling `infra.costs.write(...)`.
- * - `cost/external-costs.ts` — a server calling `POST /costs/rows`.
+ * - `cost/workflow-costs.ts`: a workflow calling `infra.costs.write(...)`.
+ * - `cost/external-costs.ts`: a server calling `POST /costs/rows`.
  *
  * **Why every pushed row carries a reserved tag.** `cost_daily` is a
  * ReplacingMergeTree keyed on
- * `(org, account, day, service, region, resource_id, tags_hash, currency)` —
+ * `(org, account, day, service, region, resource_id, tags_hash, currency)`:
  * `plugin_id` is NOT in that key, and the ORDER BY is frozen. So attributing a
  * pushed row to a real account could otherwise collide with a row the poller
  * collected for the same day/service and silently replace it. Every pushed row
@@ -48,11 +48,11 @@ export interface IngestCostRow {
 
 /** Where a batch of pushed rows came from, and how to key it. */
 export interface CostIngestSource {
-  /** `plugin_id` on every row — the value the "provider" dimension shows. */
+  /** `plugin_id` on every row: the value the "provider" dimension shows. */
   pluginId: string;
   /**
    * Reserved tag stamped on every row. Its value is what keeps this source's
-   * ReplacingMergeTree key space disjoint from the pollers' — see the module
+   * ReplacingMergeTree key space disjoint from the pollers': see the module
    * comment. The key must start with {@link RESERVED_TAG_PREFIX}.
    */
   tag: { key: string; value: string };
@@ -116,7 +116,7 @@ function validateTags(raw: unknown, fail: (detail: string) => never): Record<str
 }
 
 /**
- * Reject any `accountId` that is not a live account in this org — in one query,
+ * Reject any `accountId` that is not a live account in this org: in one query,
  * and before anything is written, so a partial batch can't land.
  */
 async function assertAccountsBelongToOrg(
@@ -189,7 +189,7 @@ export async function ingestCostRows(opts: {
     }
 
     // The reserved tag is what keeps this row's ReplacingMergeTree key disjoint
-    // from anything a provider collector writes — see the module comment.
+    // from anything a provider collector writes: see the module comment.
     const tags = { ...validateTags(row.tags, fail), [source.tag.key]: source.tag.value };
 
     return {
@@ -213,7 +213,7 @@ export async function ingestCostRows(opts: {
       // these defaults must hash exactly as they did before the columns existed.
       charge_type: "usage",
       amortized_amount: 0,
-      // Not reported, not "reported as zero" — an amortized query falls back to
+      // Not reported, not "reported as zero": an amortized query falls back to
       // the cash amount for these rows rather than showing them as worthless.
       amortized_reported: 0,
       commitment_id: "",

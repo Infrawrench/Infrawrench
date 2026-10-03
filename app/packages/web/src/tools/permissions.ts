@@ -1,7 +1,7 @@
 /**
  * Permission gate for tool handlers. The HTTP API enforces permissions in
  * middleware (`requirePermission`), but MCP and chat callers reach tool
- * handlers through their own dispatch loops — so the equivalent check happens
+ * handlers through their own dispatch loops, so the equivalent check happens
  * here, driven by the `permission` declared on each {@link ToolDefinition}.
  *
  * Enforcement is central ({@link authorizeToolCall}, called by `mcp/server.ts`
@@ -13,12 +13,12 @@ import { effectivePermissions } from "../auth/effective-permissions";
 import { err, type ToolAuthContext, type ToolDefinition, type ToolResult } from "./types";
 
 /**
- * The permissions a tool caller actually holds — the shared resolver in
+ * The permissions a tool caller actually holds: the shared resolver in
  * `auth/effective-permissions.ts`, so the tool layer and the chat endpoint
  * can't drift on how a principal is scored.
  *
  * Deliberately un-memoized. The lookups are primary-key reads, and a chat turn
- * can stay open across an approval round-trip — re-reading is what lets a role
+ * can stay open across an approval round-trip: re-reading is what lets a role
  * change mid-turn actually take effect on the next tool call.
  */
 export async function effectiveToolPermissions(auth: ToolAuthContext): Promise<readonly string[]> {

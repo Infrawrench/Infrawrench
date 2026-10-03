@@ -4,8 +4,8 @@
  * This is the agent-facing half of the app-streaming feature. Where the viewer
  * (`apps-proxy.ts`) relays frames to a canvas a person is looking at, this
  * launches an application, keeps the same per-window canvas in Node, and lets
- * a caller take screenshots, read the accessibility tree, and synthesise input
- * — everything `@infrawrench/appstream-host`'s `HeadlessAppClient` exposes.
+ * a caller take screenshots, read the accessibility tree, and synthesise input:
+ * everything `@infrawrench/appstream-host`'s `HeadlessAppClient` exposes.
  *
  * Sessions are cached per (org, resource) and reused: staging the binary and
  * starting a compositor takes seconds, and an agent's screenshot-click-repeat
@@ -17,17 +17,17 @@
  * it is an SSH channel to a compositor that exits the moment the channel
  * closes. With more than one replica behind round-robin routing, a call for a
  * session another pod holds used to start a second compositor on the same
- * host, which fails to bind the session's socket and dies — surfacing as an
+ * host, which fails to bind the session's socket and dies: surfacing as an
  * intermittent "the app server closed before greeting" for about half of all
  * calls. So every operation goes through {@link runOnOwner}: `services/
  * replica-relay.ts` leases the session to one pod, and calls arriving anywhere
  * else are forwarded to it rather than duplicating it.
  *
  * The operations are therefore written once, as {@link runLocally}, and
- * reached two ways — directly on the owning pod, or over the relay from
+ * reached two ways: directly on the owning pod, or over the relay from
  * another. `api/routes/internal-relay.ts` is the receiving end.
  *
- * Host resolution reuses `resolveSshConfig` — the one `ssh_exec` uses — so a
+ * Host resolution reuses `resolveSshConfig` (the one `ssh_exec` uses) so a
  * plugin-native host (Fly, Hetzner) needs no key and a VM (`sshEndpoint`) uses
  * the org's own key against the address that cleared `resolveSafeHost`.
  */
@@ -87,8 +87,8 @@ export class AppsHostError extends Error {
  * driving it lives in whichever replica of this service started it. A call
  * routed elsewhere tries to start a second compositor, which refuses to take a
  * socket name the first one holds. Nothing about that is visible from the
- * outside — the tool call just fails, intermittently, for what looks like no
- * reason — so say what happened and what to do about it.
+ * outside (the tool call just fails, intermittently, for what looks like no
+ * reason) so say what happened and what to do about it.
  */
 function explainStartFailure(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
@@ -220,7 +220,7 @@ async function resolveTarget(
     ...(username ? { sshUsername: username } : {}),
   });
 
-  // SSRF: only the host the resource named is untrusted input — a plugin-native
+  // SSRF: only the host the resource named is untrusted input; a plugin-native
   // endpoint is org configuration, dialed unguarded like every SQL/Docker host.
   // Dial the address that cleared; the name keeps the host-key identity.
   let dialAddress = config.host;
@@ -268,7 +268,7 @@ export interface AppsSessionRef {
 /**
  * The compositor connection **held by this process**, opening it on first use.
  *
- * Only ever called on the pod that owns the session's lease — everywhere else
+ * Only ever called on the pod that owns the session's lease: everywhere else
  * goes through {@link runOnOwner}, which forwards. Starting one here without
  * holding the lease is the bug the relay exists to prevent.
  */
@@ -365,7 +365,7 @@ function endLocalSession(organizationId: string, resourceId: string): boolean {
  *
  * One implementation, two ways in: called directly by the pod that holds the
  * session's lease, or handed to it over the relay by a pod that does not. The
- * split below is what keeps those two paths from drifting — a new operation is
+ * split below is what keeps those two paths from drifting: a new operation is
  * a case in `runLocally` and a method on {@link AppsSession}, and it works
  * across replicas without anything else being written.
  * ---------------------------------------------------------------------- */
@@ -433,7 +433,7 @@ const str = (payload: Payload, field: string): string => {
 
 /**
  * Run an operation against the session this process holds, opening it if this
- * is the first call. Never call it without the lease — see {@link runOnOwner}.
+ * is the first call. Never call it without the lease: see {@link runOnOwner}.
  */
 export async function runLocally(
   ref: AppsSessionRef,
@@ -487,7 +487,7 @@ export async function runLocally(
  * A result as JSON, for the hop between pods.
  *
  * Only screenshots need anything: a PNG is a Buffer, which `JSON.stringify`
- * turns into a `{type:"Buffer",data:[…]}` array — several times the size and
+ * turns into a `{type:"Buffer",data:[…]}` array; several times the size and
  * not what the far side reconstructs. Base64 costs a third and round-trips.
  */
 export function encodeOpResult(op: AppsOp, value: unknown): unknown {
@@ -507,7 +507,7 @@ function decodeOpResult(op: AppsOp, value: unknown): unknown {
  *
  * The lease decides. Holding it means running here; not holding it means
  * forwarding to whoever does. The one interesting case is an owner that has
- * gone away between the claim and the call — a rollout, a crash — which is why
+ * gone away between the claim and the call (a rollout, a crash) which is why
  * an unreachable owner is not simply an error: the lease is dropped and the
  * work is retried, so a pod dying costs a caller some latency rather than a
  * failed request.

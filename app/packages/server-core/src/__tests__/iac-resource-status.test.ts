@@ -5,7 +5,7 @@ import type { IacStateSummary } from "@infrawrench/client-core";
  * The scope rule for the resource-detail IaC badge.
  *
  * Two document scopes can legitimately cover a resource: one uploaded for its
- * own account, and an org-wide one. Nothing else does — reconciling against
+ * own account, and an org-wide one. Nothing else does: reconciling against
  * "the newest document in the org" can pick up a *different account's* state
  * and produce a confident, wrong badge. These tests pin which scopes are asked
  * for, because that is the whole of the bug.
@@ -37,7 +37,7 @@ function selectReturns(rows: Array<Record<string, unknown>>) {
   pg.queueRows(rows);
 }
 
-// Keys in the projection order of getIacResourceStatus's select — see
+// Keys in the projection order of getIacResourceStatus's select: see
 // helpers/fake-postgres.ts.
 const resourceRow = {
   id: "res-1",

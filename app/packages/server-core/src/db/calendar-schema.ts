@@ -1,14 +1,14 @@
 /**
  * The operations calendar's one table: iCalendar subscriptions.
  *
- * The calendar itself stores nothing. Every event on it — a freeze, a sleep
- * window, a deadline, a commitment term, a scheduled run, an incident — already
+ * The calendar itself stores nothing. Every event on it (a freeze, a sleep
+ * window, a deadline, a commitment term, a scheduled run, an incident) already
  * exists somewhere else, and the feed is recomputed on read exactly as posture
  * findings and backup coverage are, for the same reason: an event has no
  * identity of its own, and materialising one would only create a second thing
  * that can go stale.
  *
- * What *does* need storing is the subscription — a URL someone pasted into
+ * What *does* need storing is the subscription: a URL someone pasted into
  * Google Calendar eighteen months ago and forgot about, which has to keep
  * working, be attributable, and be revocable.
  *
@@ -23,7 +23,7 @@ import { organizations, users } from "./core-schema.js";
  * One iCalendar subscription URL.
  *
  * **The token is stored hashed**, like an API key, because it is the sole
- * credential on a route that runs outside every auth layer — a calendar client
+ * credential on a route that runs outside every auth layer: a calendar client
  * cannot do OAuth, so the URL *is* the authentication. Plain SHA-256 rather
  * than a password KDF is the right call here and only here: the token is 32
  * bytes from `randomBytes`, so there is no low-entropy guess space for a work
@@ -32,7 +32,7 @@ import { organizations, users } from "./core-schema.js";
  *
  * `userId` is the person who created it and is nulled rather than cascaded when
  * they leave: the feed keeps working, and the org keeps a record that a live
- * subscription exists — the opposite behaviour (silently deleting feeds when
+ * subscription exists; the opposite behaviour (silently deleting feeds when
  * someone offboards) is how a team discovers its shared calendar vanished.
  * Revoking is what stops a feed, and that is deliberately explicit.
  *
@@ -57,7 +57,7 @@ export const calendarSubscriptions = pgTable(
     kinds: text("kinds").notNull().default(""),
     /**
      * Last time the feed was actually fetched. Written best-effort on a
-     * throttle rather than on every request — a subscribed client polls hourly
+     * throttle rather than on every request: a subscribed client polls hourly
      * forever, and a write per poll would make this table the busiest one in
      * the schema for no gain. Its purpose is answering "is anyone still using
      * this?" before revoking, and an hour of staleness cannot change that

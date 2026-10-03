@@ -11,8 +11,8 @@ import { buildTestApp } from "./test-utils";
  *    rebuilt against a fresh `getResource` precisely so a field that moved since
  *    the preview drops out; every millisecond between that read and the
  *    `updateResource` that follows is a window in which a third party's write is
- *    silently overwritten. The window can't be closed — `updateResource` takes
- *    no precondition — so the least the handler can do is not *widen* it, and
+ *    silently overwritten. The window can't be closed (`updateResource` takes
+ *    no precondition) so the least the handler can do is not *widen* it, and
  *    rebuilding the plugin client (credential decrypt, credential rewriters,
  *    host services) between the two is exactly that.
  * 2. **The event is only marked reverted once the provider accepted the write.**
@@ -247,7 +247,7 @@ describe("POST /:changeId/revert — the read-to-write window", () => {
     const res = await app().request("/chg-1/revert", { method: "POST" });
     expect(res.status).toBe(409);
     expect(updateResource).not.toHaveBeenCalled();
-    // Claimed, then released — never completed.
+    // Claimed, then released, never completed.
     expect(writes.some((w) => "revertedAt" in w && w.revertedAt instanceof Date)).toBe(false);
     expect(writes.at(-1)).toMatchObject({ revertClaimedAt: null });
   });
@@ -283,7 +283,7 @@ describe("POST /:changeId/revert — claim lifecycle", () => {
   /**
    * The seam the journal left. Planning outlives the five-minute lease, another
    * request claims the event, and the owner-fenced journal write matches zero
-   * rows — at which point issuing the provider call anyway would produce
+   * rows: at which point issuing the provider call anyway would produce
    * exactly the unjournalled mutation the journal exists to prevent, and a
    * second concurrent write besides. Journalling and writing succeed or fail
    * together.
@@ -317,7 +317,7 @@ describe("POST /:changeId/revert — claim lifecycle", () => {
   /**
    * The provider call outlived the five-minute lease and another attempt took
    * the event over. The write landed, but this request no longer owns the
-   * outcome — reporting success would mean overwriting the replacement's claim,
+   * outcome: reporting success would mean overwriting the replacement's claim,
    * and reporting a plain failure would be a lie about a write that happened.
    */
   it("reports honestly when its lease lapsed and it was superseded mid-write", async () => {
@@ -344,7 +344,7 @@ describe("POST /:changeId/revert — claim lifecycle", () => {
    * A mutation that reached the provider is a mutation someone made to their
    * infrastructure, and it belongs in the audit trail whoever won the lease
    * race. Auditing after the superseded branch returned meant a successful
-   * write with no actor attached to it — the one thing the audit log exists to
+   * write with no actor attached to it: the one thing the audit log exists to
    * prevent.
    */
   it("audits the write even when the claim was lost, naming the actor", async () => {
@@ -408,7 +408,7 @@ describe("POST /:changeId/revert — claim lifecycle", () => {
 /**
  * Rows 4, 8 and 9 of the lifecycle table on the handler: a write that lands and
  * is not recorded, and how the next attempt closes the loop. Without this the
- * feed disagrees with the provider permanently — the retry finds nothing to do
+ * feed disagrees with the provider permanently: the retry finds nothing to do
  * and walks away.
  */
 describe("POST /:changeId/revert — a write that landed but was never recorded", () => {
@@ -429,7 +429,7 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
     expect(journalIndex).toBeGreaterThanOrEqual(0);
     expect(calls).toEqual(["buildClient", "getResource", "updateResource"]);
 
-    // The claim is just a lock now, so it goes back like any other failure —
+    // The claim is just a lock now, so it goes back like any other failure:
     // the journal is what brings the next attempt down the reconcile path.
     expect(releasedClaim(writes)).toBe(true);
 
@@ -494,7 +494,7 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
    * hand-edit as somebody's revert.
    */
   it("does not reconcile from a claim left by an attempt that never wrote", async () => {
-    // Claim outstanding, but no journal entry — nothing was ever issued.
+    // Claim outstanding, but no journal entry: nothing was ever issued.
     stubSelect({
       ...CHANGE,
       revertClaimedAt: new Date("2026-08-10T09:05:00.000Z"),
@@ -523,7 +523,7 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
       revertWriteAttemptedAt: new Date("2026-08-10T09:05:01.000Z"),
     });
     const writes = stubUpdate();
-    // The field moved on again — a conflict, which can never be reconciled.
+    // The field moved on again: a conflict, which can never be reconciled.
     stubClient({ liveSize: "s-8vcpu-16gb" });
 
     const res = await app().request("/chg-1/revert", { method: "POST" });
@@ -549,7 +549,7 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
     expect((await res.json()).error).toMatch(/already applied to the provider/);
     expect(updateResource).not.toHaveBeenCalled();
     // Safe to release: the journal, not the claim, brings the next attempt back
-    // down this path — and holding it would wedge the event.
+    // down this path, and holding it would wedge the event.
     expect(releasedClaim(writes)).toBe(true);
   });
 
@@ -564,7 +564,7 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
   });
 
   it("still reverts normally when the journalled attempt's write never landed", async () => {
-    // Journal present, but the fields never moved — the write was issued and
+    // Journal present, but the fields never moved: the write was issued and
     // did not apply. Nothing to reconcile; this is an ordinary revert.
     stubSelect(WROTE_BEFORE);
     stubUpdate();

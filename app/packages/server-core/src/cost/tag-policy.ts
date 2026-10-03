@@ -1,5 +1,5 @@
 /**
- * Read/write side of `org_tag_policies` — the org's required-tag policy. A
+ * Read/write side of `org_tag_policies`: the org's required-tag policy. A
  * missing row reads as the shipped defaults (no required tags, no
  * enforcement), the same protocol as `org_cost_anomaly_settings`.
  *

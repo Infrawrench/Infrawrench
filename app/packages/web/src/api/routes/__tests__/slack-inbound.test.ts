@@ -12,7 +12,7 @@ import { Hono } from "hono";
  *  - each surface enforces the same permission as its web equivalent
  *    (costs:read, resources:read, workflows:approve, chat:write + ownership);
  *  - approval buttons decide through decideWorkflowApproval / the chat
- *    pending-action transitions — the exact code paths the web UI uses.
+ *    pending-action transitions: the exact code paths the web UI uses.
  */
 
 /* ---------------------------------------------------------------- mocks -- */
@@ -620,7 +620,7 @@ describe("POST /api/slack/interactions — workflow approval buttons", () => {
   it("refuses a button whose echoed value names an org the clicker isn't linked in", async () => {
     // The link row is for org-1; the (attacker-controllable) button value says
     // org-2. Membership must resolve from the value's org, not just any org
-    // the clicker is linked in — otherwise a crafted value crosses orgs.
+    // the clicker is linked in, otherwise a crafted value crosses orgs.
     linkedAstrid();
     await interactionRequest("infrawrench_approval_approve", {
       k: "workflow",
@@ -742,7 +742,7 @@ describe("POST /api/slack/interactions — alert acknowledge button", () => {
   it("refuses a linked member without org:settings:write", async () => {
     // Acknowledging cancels the escalation for the whole org, so it takes the
     // same permission as the web endpoint. `acknowledgeAlert` only arbitrates
-    // races — it is not an authorization check — so a read-only member reaching
+    // races (it is not an authorization check) so a read-only member reaching
     // it would silence everyone's page.
     linkedAstrid();
     memberPermissions = ["resources:read"];

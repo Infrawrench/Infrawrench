@@ -16,7 +16,7 @@
  *
  * `--emit-batches` writes the untranslated sources as `<app>-<locale>-<n>.json`
  * batches of `{i, s}` objects, plus a `-hashes.json` per locale to key the
- * finished translations back — the shapes the workflow in KNOWLEDGE.md
+ * finished translations back: the shapes the workflow in KNOWLEDGE.md
  * ("Filling the catalogs") consumes.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";

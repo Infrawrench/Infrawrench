@@ -78,7 +78,7 @@ describe("resolveSelectorResources", () => {
   };
 
   it("keeps only rows whose tags satisfy the selector", async () => {
-    // Keys in projection order — see helpers/fake-postgres.ts.
+    // Keys in projection order: see helpers/fake-postgres.ts.
     pg.setRows([
       row("a", { tags: { env: "prod" } }),
       row("b", { tags: { env: "staging" } }),

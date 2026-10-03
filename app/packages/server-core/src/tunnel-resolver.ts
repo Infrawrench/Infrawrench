@@ -26,8 +26,8 @@ export type TunnelResolution =
  * If the account has an ssh_tunnel_configs row, ensures the SSH tunnel is open
  * and returns `{ status: "ok", localPort }`. If the account has no tunnel
  * config, returns `{ status: "none" }`. If tunnel resolution itself fails
- * (DB lookup, decryption, openTunnel), returns `{ status: "error", cause }`
- * — callers can disambiguate "no tunnel configured" from "tunnel resolution
+ * (DB lookup, decryption, openTunnel), returns `{ status: "error", cause }`:
+ * callers can disambiguate "no tunnel configured" from "tunnel resolution
  * exploded" instead of treating both as null.
  */
 async function resolveTunnelForAccount(accountId: string): Promise<TunnelResolution> {
@@ -117,7 +117,7 @@ function applyTunnelToConnectionString(connectionString: string, localPort: numb
     url.port = String(localPort);
     return url.toString();
   } catch {
-    // Not a URL — try host:port pattern
+    // Not a URL: try host:port pattern
     if (/^(.+):(\d+)$/.test(connectionString)) {
       return `127.0.0.1:${localPort}`;
     }

@@ -4,17 +4,17 @@
  * Three evidence gatherers run side by side and are folded into one report by
  * the shared pure `summarizeBlastRadius`:
  *
- *  - the **dependency graph**, walked inbound (`loadDependencyGraph` — the
+ *  - the **dependency graph**, walked inbound (`loadDependencyGraph`: the
  *    same assembly the Dependencies tab draws, so the warning on the delete
  *    dialog can never disagree with the tab behind it),
  *  - **network flow attribution**, when the org turned collection on,
- *  - **soft references** — the dashboards, graphs, probes, status pages,
+ *  - **soft references**: the dashboards, graphs, probes, status pages,
  *    alerts, leases, schedules, log queries, workflows and owner record that
  *    name the resource without depending on it.
  *
  * The rule this module is built around: **every gatherer that cannot answer
  * says so.** A failed ClickHouse read, a flow switch that is off, a workflow
- * body that names the resource by a value it computes at runtime — each one
+ * body that names the resource by a value it computes at runtime; each one
  * lands in `unchecked` with a sentence, and none of them can turn into a quiet
  * "nothing found". A person is about to press Delete on the strength of this
  * report; the difference between "nothing depends on it" and "we could not
@@ -114,7 +114,7 @@ export async function getBlastRadius(
 }
 
 /**
- * The org-wide graph, deliberately — not the endpoint's cheap `?resourceId=`
+ * The org-wide graph, deliberately, not the endpoint's cheap `?resourceId=`
  * neighbourhood, which is one hop deep and therefore cannot produce a
  * transitive radius at all. The CLI's `graph --resource` and the mobile
  * blast-radius screen already pay the same price for the same reason. This is
@@ -157,7 +157,7 @@ async function loadDependencyGraphSafely(organizationId: string) {
  *
  * A fourth kind of gap comes from the peers themselves. Flow refs are the
  * **provider's** id, not the app's composite one, and `external_id` is unique
- * only within one plugin and one account — so identifying a peer is a scoped
+ * only within one plugin and one account, so identifying a peer is a scoped
  * lookup that is allowed to fail. `resolveFlowPeerIdentities` links a ref only
  * when exactly one resource claims it and reports anything contested through
  * `unchecked`; a peer that resolves to nothing is just an endpoint outside the
@@ -220,7 +220,7 @@ async function loadFlowPeers(
   // A peer's Infrawrench id, when its flow ref names exactly one resource we
   // sync. Both ends are looked up in one query rather than per row.
   //
-  // The candidate query is scoped to the flow row's **plugin** — a flow ref is
+  // The candidate query is scoped to the flow row's **plugin**: a flow ref is
   // a provider-native id, so `i-0abc…` from an AWS flow log can only mean an
   // AWS resource. It is deliberately NOT scoped to the resource's account:
   // cross-account flows are real and nothing in a flow row names the peer's
@@ -293,7 +293,7 @@ async function loadFlowPeers(
  * Each query is separately guarded: one table being unavailable costs its own
  * line in `unchecked`, not the whole report. The two source-text searches
  * (workflows, custom graphs) are `ILIKE` over a program body and can only find
- * a **literal** id — a script that assembles the id from parts, or looks the
+ * a **literal** id: a script that assembles the id from parts, or looks the
  * resource up by name, is invisible to them, which is stated rather than
  * implied.
  */
@@ -372,7 +372,7 @@ async function loadDashboardPins(
  *
  * A probe on a *published* page is the one reference in this whole report that
  * somebody outside the organization can see go red, so both it and the page
- * are marked `userFacing` — that flag alone raises the report to high
+ * are marked `userFacing`: that flag alone raises the report to high
  * severity, ahead of any count of internal dependants.
  */
 async function loadProbesAndStatusPages(
@@ -518,7 +518,7 @@ async function loadSchedules(
  * Saved log queries whose stream selector names the resource.
  *
  * `resources` is a jsonb array of selector objects, so the predicate is a
- * containment test — the same shape the log workspace writes.
+ * containment test: the same shape the log workspace writes.
  */
 async function loadLogQueries(
   organizationId: string,
@@ -546,7 +546,7 @@ async function loadLogQueries(
 }
 
 /**
- * The recorded owner — who to tell, which is the question a delete dialog is
+ * The recorded owner: who to tell, which is the question a delete dialog is
  * really asking. A record naming nobody is not a reference: `resource_ownership`
  * can hold a purpose with no owner, and "somebody wrote a note about this" is
  * not an answer to "who do I ask?".
@@ -576,7 +576,7 @@ async function loadOwner(
   const row = rows[0];
   if (!row) return [];
   // The member wins over the label when both are set, and a deleted user falls
-  // back to the label — the same tie-break `toOwnerSummary` applies everywhere.
+  // back to the label: the same tie-break `toOwnerSummary` applies everywhere.
   const name = row.userName || row.userEmail || row.ownerLabel;
   if (!name) return [];
   return [

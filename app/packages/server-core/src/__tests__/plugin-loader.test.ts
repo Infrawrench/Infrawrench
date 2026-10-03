@@ -5,7 +5,7 @@ import { createMockResource, makeMockCredentials } from "@infrawrench/plugin-bas
 let loader: typeof import("../plugin-loader");
 
 // One import for the whole file. Transforming every plugin package is expensive,
-// and doing it in `beforeEach` (with `resetModules`) paid that cost per test —
+// and doing it in `beforeEach` (with `resetModules`) paid that cost per test:
 // under a saturated `turbo test` that routinely blew past a 60s hook timeout.
 // None of these cases mutate the loader cache, so a single load is enough; the
 // caching assertion still exercises two `loadPlugins()` calls on that instance.
@@ -75,9 +75,9 @@ describe("plugin logos", () => {
  * The other half of the same problem, and worth having whatever the cause:
  * `loadPlugins()` drops an invalid manifest with nothing but a `console.error`,
  * so a validation failure removes a provider from the product silently. That is
- * a shipped regression — the plugin count is hardcoded in the docs plan table,
+ * a shipped regression: the plugin count is hardcoded in the docs plan table,
  * the onboarding card and the marketing copy, and the docs page count is
- * expected to equal this registry — but the surrounding tests would not notice:
+ * expected to equal this registry, but the surrounding tests would not notice:
  * `length > 0` still passes at 48 of 49, and the well-known-plugins check only
  * covers aws and postgres.
  */
@@ -127,7 +127,7 @@ describe("accountRoot declarations", () => {
 });
 
 /**
- * `dependsOn.targetTypeId` / `targetPluginId` are plain strings — nothing in
+ * `dependsOn.targetTypeId` / `targetPluginId` are plain strings: nothing in
  * the type system checks that they name a type that exists. A typo doesn't
  * fail to compile, it just silently produces no edge on the dependency graph,
  * which is invisible until someone notices a missing arrow. Validate the whole
@@ -163,7 +163,7 @@ describe("dependsOn declarations", () => {
   it("declare a field the type actually knows about, or an undeclared synced one", async () => {
     // A rule may legitimately name a field the lister writes without declaring
     // in `fields[]` (the bag is stored unfiltered), so this can't be a hard
-    // equality check — but a rule whose field matches neither the declared
+    // equality check, but a rule whose field matches neither the declared
     // fields nor the outputs is almost certainly a typo.
     const loaded = await loader.loadPlugins();
     const suspicious: string[] = [];
@@ -185,7 +185,7 @@ describe("dependsOn declarations", () => {
   it("only interpolate fields the type declares in matchTemplate", async () => {
     // Same silent-failure class as above, one level deeper: a typo inside
     // `{…}` makes the host abort the composition on every row, so the rule
-    // yields nothing forever — no compile error, no runtime error, just a
+    // yields nothing forever; no compile error, no runtime error, just a
     // missing arrow. Nothing else validates these names.
     const loaded = await loader.loadPlugins();
     const bad: string[] = [];
@@ -201,8 +201,8 @@ describe("dependsOn declarations", () => {
             continue;
           }
           for (const name of placeholders) {
-            // A template reads one bag — `outputs` when the rule says so,
-            // `fields` otherwise — so validate against the one it will read.
+            // A template reads one bag (`outputs` when the rule says so,
+            // `fields` otherwise) so validate against the one it will read.
             const known =
               rule.from === "outputs"
                 ? type.outputs.some((o) => o.key === name)
@@ -220,7 +220,7 @@ describe("dependsOn declarations", () => {
 
 /**
  * Same silent-failure class as `dependsOn`: an `expiryFields` rule over a
- * field the lister never stores simply yields no item on the expiry radar —
+ * field the lister never stores simply yields no item on the expiry radar;
  * no compile error, no runtime error, just a deadline nobody is watching.
  */
 describe("expiryFields declarations", () => {
@@ -256,7 +256,7 @@ describe("expiryFields declarations", () => {
 
 /**
  * Same silent-failure class again: a `postureChecks` condition over a field
- * the lister never stores simply never matches — no compile error, no runtime
+ * the lister never stores simply never matches; no compile error, no runtime
  * error, just a security check that silently watches nothing.
  */
 describe("postureChecks declarations", () => {
@@ -297,7 +297,7 @@ describe("postureChecks declarations", () => {
 /**
  * Same silent-failure class once more, twice over. A `dnsRole` key over a
  * field the lister never stores yields a record whose name, type or target
- * reads as empty — the row shows up on the Domains surface saying nothing. And
+ * reads as empty: the row shows up on the Domains surface saying nothing. And
  * a `dnsServiceHosts` pattern whose claimant can never be matched turns every
  * record pointing into that namespace into a false takeover finding, which is
  * the one failure mode this feature cannot afford.
@@ -359,10 +359,10 @@ describe("dnsRole declarations", () => {
 
 describe("backupRole declarations", () => {
   it("name fields the type actually knows about", async () => {
-    // Explicitly-declared keys only — deliberately unlike `dnsRole`, which
+    // Explicitly-declared keys only: deliberately unlike `dnsRole`, which
     // also checks its *defaults*. There, a record whose target field is stored
     // elsewhere and unsaid is a record with no target: meaningless. Here a
-    // missing default is merely degraded — a snapshot with no `sourceKey` in
+    // missing default is merely degraded: a snapshot with no `sourceKey` in
     // `fields` is reported as unattributable, and one with no `createdKey`
     // still proves a restore point exists, it just can't date it. Requiring
     // the defaults would force DigitalOcean's and Hetzner's timestamp-less
@@ -541,7 +541,7 @@ describe("dnsServiceHosts declarations", () => {
 
 /**
  * The rightsizing declaration names stored fields and relies on host paths
- * (updateResource, metrics) that nothing type-checks across the boundary —
+ * (updateResource, metrics) that nothing type-checks across the boundary:
  * validate the whole registry so a typo'd field key or a declaration on a
  * type whose resize can't actually be applied fails the build, not the user.
  */
@@ -596,7 +596,7 @@ describe("rightsizing declarations", () => {
 
 /**
  * The access review's declaration, validated for the same silent-failure class
- * as its siblings — but with one asymmetry worth stating out loud.
+ * as its siblings, but with one asymmetry worth stating out loud.
  *
  * An *explicitly declared* key that names no field is a typo: the author meant
  * to read something and reads nothing. A *defaulted* key that resolves to no
@@ -612,7 +612,7 @@ describe("principalRole declarations", () => {
       for (const type of plugin.resourceTypes) {
         const p = type.principalRole;
         if (!p) continue;
-        // Only the explicitly declared keys — a defaulted one that resolves to
+        // Only the explicitly declared keys: a defaulted one that resolves to
         // nothing is the documented "we have no evidence" case.
         for (const key of [
           p.lastUsedKey,
@@ -687,7 +687,7 @@ describe("principalRole declarations", () => {
    * Access-review findings and posture findings share one dismissal store
    * (`posture_dismissals`), keyed on `(organizationId, resourceId, ruleId)`.
    * The namespaces stay disjoint because the review's rule ids all start
-   * `access-review:` — a plugin claiming that prefix would let one dismissal
+   * `access-review:`: a plugin claiming that prefix would let one dismissal
    * silence a finding on the other surface.
    */
   it("leave the access-review rule-id namespace to the access review", async () => {
@@ -710,16 +710,16 @@ describe("principalRole declarations", () => {
  * The Metrics tab is stated twice, in two places that never see each other.
  *
  * The hosts *fetch* series when the resource type declares `supportsMetrics`
- * (or has a peer integration with `exposeMetricsToParent` — the managed-K8s
+ * (or has a peer integration with `exposeMetricsToParent`: the managed-K8s
  * types get all of their series from the Kubernetes peer). The hosts *render*
  * the tab when the schema `renderDetail` returns carries `metricsCapability`.
  * Neither statement can see the other, nothing type-checks the pair, and both
  * ways of getting it wrong are silent:
  *
- *  - declaration without capability — the fetch fires, series come back, and
+ *  - declaration without capability: the fetch fires, series come back, and
  *    there is no tab to put them in. This was issue #111: ~100 resource types
  *    across thirteen plugins, including everything AWS and Azure list.
- *  - capability without declaration — the tab is there and permanently empty,
+ *  - capability without declaration: the tab is there and permanently empty,
  *    because nothing ever asks the plugin for the series.
  *
  * So assert the pair over the whole registry, in both directions, by actually
@@ -772,7 +772,7 @@ describe("metrics declarations", () => {
    * The flag alone is not enough: the host's condition is
    * `supportsMetrics && client.fetchMetricSeries`, so a type that declares it
    * on a plugin with no fetcher gets a tab that stays empty forever. Peer-only
-   * types are exempt by construction — their series come from the peer's
+   * types are exempt by construction: their series come from the peer's
    * client, which is why they leave `supportsMetrics` unset in the first place.
    */
   it("supportsMetrics only appears on plugins whose client can fetch series", () => {

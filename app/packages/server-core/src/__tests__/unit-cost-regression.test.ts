@@ -82,7 +82,7 @@ describe("summarizeUnitCostWindow — gap semantics", () => {
     const summary = summarizeUnitCostWindow(CURRENT, costByDay, valuesByDay);
     expect(summary.reportedDays).toBe(12);
     expect(summary.gapDays).toBe(2);
-    // 12 × 100 — the two gap days' $200 is NOT folded in. Folding it in would
+    // 12 × 100: the two gap days' $200 is NOT folded in. Folding it in would
     // put the unit cost at 1400/600 = 2.33 instead of the true 2.00.
     expect(summary.cost).toBe(1200);
     expect(summary.metricValue).toBe(600);
@@ -145,7 +145,7 @@ describe("detectUnitCostRegression — a gap never produces a regression", () =>
 
   it("does not let gap days in one window inflate the comparison", () => {
     // Spend is flat at $100/day and volume is flat at 100/day, so the unit
-    // cost is 1.00 on both sides — but four days of the *current* window have
+    // cost is 1.00 on both sides, but four days of the *current* window have
     // no reported value. Counting their spend would read 1400/1000 = 1.40, a
     // 40% "regression" invented entirely by a broken metric ingest.
     const reported = daysIn(CURRENT.from, CURRENT.to).slice(0, 10);
@@ -156,7 +156,7 @@ describe("detectUnitCostRegression — a gap never produces a regression", () =>
       OPTIONS,
     );
     expect(findings).toHaveLength(0);
-    // Not "insufficient history" — 10 days clears the bar — but genuinely
+    // Not "insufficient history" (10 days clears the bar) but genuinely
     // unchanged, because the gap days sat out of both sums.
     expect(skipped).toEqual([{ currency: "USD", reason: "improved" }]);
   });

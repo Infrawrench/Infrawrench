@@ -12,8 +12,8 @@ import type { PollAccountRow } from "./poll-account";
  * *provisioning*, which happens in minutes: an autoscaler that eats the last
  * of a vCPU quota at 09:00 should not be discovered at 18:00. Not much more
  * often, because AWS quota reads are the most expensive collection in this
- * codebase — a CloudWatch call and up to two Service Quotas calls per region
- * per quota — and the trend is fitted over a fortnight, where a four-times-
+ * codebase (a CloudWatch call and up to two Service Quotas calls per region
+ * per quota) and the trend is fitted over a fortnight, where a four-times-
  * daily series is already far denser than the signal.
  *
  * Jitter spreads the fleet so a restart doesn't stampede every account onto
@@ -34,9 +34,9 @@ export async function pollAccountQuotas(account: PollAccountRow): Promise<void> 
       new Date(Date.now() + QUOTA_INTERVAL_MS + jitter),
     );
     if (result.quotaCount === 0) {
-      // Not an error — a Kubernetes cluster with no ResourceQuota objects, or
-      // an AWS account using nothing in any region, legitimately reports none
-      // — but worth a line, because the other explanation is a credential that
+      // Not an error: a Kubernetes cluster with no ResourceQuota objects, or
+      // an AWS account using nothing in any region, legitimately reports none,
+      // but worth a line, because the other explanation is a credential that
       // cannot see them, and those look identical on the screen.
       console.log(`[poller] quota read for ${account.id} (${account.pluginId}) returned no quotas`);
     }
@@ -52,7 +52,7 @@ export async function pollAccountQuotas(account: PollAccountRow): Promise<void> 
   } catch (err) {
     // Exponential backoff on the failure count, capped at a day. A credential
     // that cannot read Service Quotas will keep failing, and hammering a
-    // management API about it helps nobody — least of all on AWS, where the
+    // management API about it helps nobody: least of all on AWS, where the
     // retry is metered.
     const backoff = Math.min(
       QUOTA_BASE_BACKOFF_MS * 2 ** account.pollFailureCount,

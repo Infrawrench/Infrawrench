@@ -1,5 +1,5 @@
 /**
- * Shared consoles — pair-on-prod for a live cloud SSH session.
+ * Shared consoles: pair-on-prod for a live cloud SSH session.
  *
  * The SSH proxy already holds both ends of the pty (`web/src/services/
  * ssh-proxy.ts` bridges the browser's WebSocket to ssh2), which is the same
@@ -10,8 +10,8 @@
  * Two tables, because a share and the people on it have different lifetimes. A
  * share is created once and revoked once; participants join, leave and swap
  * roles throughout. Folding the participant list into a jsonb column on the
- * share would make the one invariant this feature exists to hold — **one
- * driver at a time** — a thing enforced only by application code, and read-
+ * share would make the one invariant this feature exists to hold (**one
+ * driver at a time**) a thing enforced only by application code, and read-
  * modify-write on a jsonb array is precisely where a handover race lands.
  * Here it is a partial unique index (see {@link sharedConsoleParticipants}),
  * so two simultaneous grants cannot both win no matter which replica served
@@ -20,7 +20,7 @@
  * Nothing here is an authorisation record. A participant row says a person is
  * *attached*; whether they may be is re-derived from their live permissions on
  * every attach and re-checked while they are on. The invite token is a
- * convenience for finding the session, never a capability — see
+ * convenience for finding the session, never a capability: see
  * `shared-console/arbitration.ts`, which is where that is actually decided.
  */
 import {
@@ -69,7 +69,7 @@ export const sharedConsoles = pgTable(
     ownerName: text("owner_name"),
     accountId: text("account_id"),
     resourceId: text("resource_id"),
-    /** Final hop, as dialled — what the join screen shows before anyone joins. */
+    /** Final hop, as dialled: what the join screen shows before anyone joins. */
     host: text("host").notNull(),
     port: integer("port").notNull().default(22),
     username: text("username").notNull(),
@@ -88,7 +88,7 @@ export const sharedConsoles = pgTable(
     inviteConsumedAt: timestamp("invite_consumed_at"),
     /**
      * Whether anyone but the owner may ever hold the keyboard. False makes the
-     * share strictly read-only — the one safety property in this feature that
+     * share strictly read-only: the one safety property in this feature that
      * is enforced rather than inferred, and the honest alternative to guessing
      * which commands are dangerous.
      */
@@ -123,7 +123,7 @@ export const sharedConsoles = pgTable(
  * The **partial unique index** is the load-bearing part of this table: at most
  * one row per share may be a joined driver. A handover is "demote the current
  * driver, promote the new one" inside one transaction, so two concurrent
- * grants against the same share cannot both commit — the loser gets a unique
+ * grants against the same share cannot both commit: the loser gets a unique
  * violation, which the route turns into a 409 saying the keyboard already
  * moved. Doing that arbitration in application code alone would be correct
  * only for as long as there is one replica, and there are two.
@@ -155,7 +155,7 @@ export const sharedConsoleParticipants = pgTable(
     driverRequestedAt: timestamp("driver_requested_at"),
     /**
      * The viewport this participant last reported. Only ever applied to the
-     * pty while they are the driver — an observer's window size is recorded so
+     * pty while they are the driver: an observer's window size is recorded so
      * that a handover to them resizes to something they can read, and ignored
      * until then.
      */

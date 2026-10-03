@@ -1,8 +1,8 @@
 /**
  * Integration tests against a real ClickHouse server. Skipped unless the four
  * CLICKHOUSE_METRICS_* env vars are set (`pnpm test:clickhouse`); point them at
- * a scratch server — docker-compose.dev.yml publishes one on
- * http://localhost:8124 — never at production. Rows are written under random
+ * a scratch server (docker-compose.dev.yml publishes one on
+ * http://localhost:8124) never at production. Rows are written under random
  * per-run ids and deleted best-effort afterwards (the tables' TTLs mop up the
  * rest), but DDL from migrateMetrics() is permanent.
  *
@@ -78,7 +78,7 @@ describe.skipIf(!isClickHouseConfigured())("clickhouse against a real server", (
           query_params: { org: orgId },
         });
       } catch {
-        // Best effort — the tables' TTLs expire test rows regardless.
+        // Best effort: the tables' TTLs expire test rows regardless.
       }
     }
     await ch.close();

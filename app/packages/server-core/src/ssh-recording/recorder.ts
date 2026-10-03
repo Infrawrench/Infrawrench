@@ -3,7 +3,7 @@
  *
  * The SSH proxy already sees every byte in both directions, so recording is a
  * second consumer of a stream we hold rather than anything installed on the
- * customer's host. That is the whole economics of this feature — and it is
+ * customer's host. That is the whole economics of this feature, and it is
  * also why the recorder must be *completely* subordinate to the session: an
  * operator's terminal must never stall, hiccup or fail because a write to
  * `ssh_session_recording_chunks` did.
@@ -76,7 +76,7 @@ const HEARTBEAT_INTERVAL_MS = 60_000;
  *
  * A session that `cat`s a multi-gigabyte log is not an audit artifact anybody
  * will watch, but it is an unbounded write amplifier against our database. At
- * the ceiling the recorder stops capturing and marks the row `"truncated"` —
+ * the ceiling the recorder stops capturing and marks the row `"truncated"`:
  * an honest partial recording that says so, rather than either a silent gap or
  * an unbounded table. 32 MiB is about ten hours of ordinary interactive work.
  */
@@ -125,7 +125,7 @@ export interface SessionRecorder {
    *
    * Called on every membership or role change. Writes to the recording's own
    * row, not the cast, so a list view can say "three people" without reading
-   * the tape — and so the attribution survives the share rows being cleaned
+   * the tape, and so the attribution survives the share rows being cleaned
    * up. Fire-and-forget like everything else here.
    */
   setParticipants(sharedConsoleId: string, participants: RecordingParticipant[]): void;
@@ -136,8 +136,8 @@ export interface SessionRecorder {
 /**
  * Start recording, or return null when this session should not be recorded.
  *
- * Null covers every "not recording" case on purpose — the org opted out, the
- * settings read failed, the opening insert failed — so the proxy has exactly
+ * Null covers every "not recording" case on purpose (the org opted out, the
+ * settings read failed, the opening insert failed) so the proxy has exactly
  * one branch to write and no way to accidentally treat a broken recorder as a
  * working one.
  */
@@ -146,7 +146,7 @@ export async function startSessionRecording(
 ): Promise<SessionRecorder | null> {
   let captureInput = false;
   try {
-    // Cached: an org with recording off — most orgs, most of the time — must
+    // Cached: an org with recording off (most orgs, most of the time) must
     // not pay a query on every SSH connect just to learn that.
     const settings = await getCachedSessionRecordingSettings(ctx.organizationId);
     if (!settings.enabled) return null;
@@ -246,7 +246,7 @@ class ChunkedRecorder implements SessionRecorder {
   private sawInput = false;
   /** Set once the size ceiling is hit; the row settles as "truncated". */
   private truncated = false;
-  /** Set when a write failed — recording stops, the session does not. */
+  /** Set when a write failed: recording stops, the session does not. */
   private disabled = false;
   private finished = false;
 

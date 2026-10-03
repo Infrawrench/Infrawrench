@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * Quota collection: the replacement must be atomic, and a plugin-supplied help
  * link must not reach storage unless it is safe to render as an anchor.
  *
- * The DB is a chainable fake. Every write records which handle issued it —
- * `db` directly, or the `tx` handed to `db.transaction` — which is what lets
+ * The DB is a chainable fake. Every write records which handle issued it
+ * (`db` directly, or the `tx` handed to `db.transaction`) which is what lets
  * the atomicity test assert the shape rather than just the outcome.
  */
 
@@ -122,7 +122,7 @@ describe("collectAccountQuotas — atomicity", () => {
    * The three writes are one fact expressed three ways: what is true now, what
    * was true at this instant, and what is no longer true. Applied partially
    * they are not a smaller truth but a wrong one, and neither half
-   * self-corrects — the next pass writes a *new* reading, so a missing
+   * self-corrects: the next pass writes a *new* reading, so a missing
    * snapshot is a permanent hole in the trend and a surviving stale row lasts
    * until the quota reappears.
    */
@@ -154,7 +154,7 @@ describe("collectAccountQuotas — atomicity", () => {
   });
 
   // `fetchQuotas` throws rather than returning a short list (the contract's
-  // rule 3), so an empty array genuinely means "this account reports none" —
+  // rule 3), so an empty array genuinely means "this account reports none",
   // and every stored row is therefore stale.
   it("clears the account's rows when the provider reports no quotas", async () => {
     fetchQuotas.mockResolvedValue([]);
@@ -184,7 +184,7 @@ describe("collectAccountQuotas — docsUrl", () => {
   /**
    * The same boundary the failure help link crosses, reached through the other
    * field. `docsUrl` is returned unchanged by the feed and handed to
-   * `window.open` on web — a worse sink than an anchor `href`, since a scheme
+   * `window.open` on web: a worse sink than an anchor `href`, since a scheme
    * the browser executes runs without the user leaving the page.
    */
   it("refuses a docs URL the UI could not safely open", async () => {
@@ -250,7 +250,7 @@ describe("markQuotaPollFailure — help links", () => {
         lastErrorHelpLabel: null,
         lastErrorHelpUrl: null,
       });
-      // The message still survives — a failure explained without a link is
+      // The message still survives: a failure explained without a link is
       // strictly better than a link that should not be clicked.
       expect(pollWrites[0]?.["lastError"]).toBe("This key cannot read Service Quotas.");
     }

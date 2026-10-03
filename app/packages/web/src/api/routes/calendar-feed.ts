@@ -4,12 +4,12 @@
  * Registered outside every auth layer, for the same reason public status pages
  * are: the caller is Google Calendar or a phone, which cannot hold a session, a
  * bearer token or an API key. The opaque token in the path is the sole
- * credential — and unlike a status page's slug it is 32 random bytes, because
+ * credential, and unlike a status page's slug it is 32 random bytes, because
  * this one answers with the org's schedule rather than a page someone chose to
  * publish.
  *
  * The URL deliberately contains no organization id. A feed that leaks should
- * expose *what it carries* and nothing else — in particular it must not become
+ * expose *what it carries* and nothing else: in particular it must not become
  * a way to learn an org id and start probing org-scoped routes with it.
  *
  * Everything this handler can reach is the token resolver and the calendar

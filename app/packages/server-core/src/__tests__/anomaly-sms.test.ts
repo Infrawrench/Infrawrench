@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *
  * Everything here is about one constraint: `sendOneShotPage` truncates at 320
  * characters, and its truncation cuts mid-word and would eat the trailing
- * "and N more" — the one part of the message that says the list is partial. So
+ * "and N more"; the one part of the message that says the list is partial. So
  * the body is *built* to fit rather than trimmed to fit, and these tests pin
  * that at the sizes real provider and service keys reach.
  *

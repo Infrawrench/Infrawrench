@@ -10,7 +10,7 @@
 /** Tag key stamped on every workflow-written row. Reserved from user tags. */
 export const WORKFLOW_COST_TAG = "infrawrench:workflow";
 
-/** `plugin_id` for workflow-written rows — the "Workflow" provider dimension. */
+/** `plugin_id` for workflow-written rows: the "Workflow" provider dimension. */
 export const WORKFLOW_COST_PLUGIN_ID = "workflow";
 
 /** Prefix of the synthetic `account_id` used when a row names no real account. */

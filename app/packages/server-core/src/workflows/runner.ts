@@ -76,7 +76,7 @@ export interface OrgWorkflowHostExtras {
   runId?: string;
   /**
    * What started this run. Approval requests quote it so the notification can
-   * say who is asking — `workflow_runs` records no user, so the trigger source
+   * say who is asking: `workflow_runs` records no user, so the trigger source
    * is the honest answer available.
    */
   triggerSource?: string;
@@ -84,7 +84,7 @@ export interface OrgWorkflowHostExtras {
   readStorageObject?: (accountId: string, bucket: string, key: string) => Promise<Uint8Array>;
   /** Debugger line hook (instrumented runs); blocks per line until continued. */
   line?: (line: number) => Promise<void>;
-  /** Abort the run (Stop) — lets in-flight SSH probes bail out. */
+  /** Abort the run (Stop): lets in-flight SSH probes bail out. */
   signal?: AbortSignal;
 }
 
@@ -118,7 +118,7 @@ export interface RunOrgWorkflowResult {
 
 /**
  * Resolve the plugin client a workflow operation should run against: the
- * account's own, or — for an operation on a sidecar resource — the peer
+ * account's own, or (for an operation on a sidecar resource) the peer
  * plugin's, built from the parent resource's outputs.
  */
 async function clientForWorkflow(organizationId: string, accountId: string, sidecar?: SidecarRef) {
@@ -147,7 +147,7 @@ async function clientForWorkflow(organizationId: string, accountId: string, side
  *
  * `enrichCreateFields` (typings upgrade pass only) additionally fetches each
  * createable type's live create config so `create({...})` is typed, and probes
- * each sidecar's capability flags — both hit provider APIs. The editor/chat
+ * each sidecar's capability flags: both hit provider APIs. The editor/chat
  * first-paint path leaves them off (static plugin defs + DB accounts); the
  * runtime path (every run) does too.
  */
@@ -193,8 +193,8 @@ export async function listOrgPlugins(
   }
 
   // The peer plugins each resource type exposes (a cluster's `kubernetes`, a
-  // managed database's `postgres`). Needed on the runtime path too — the
-  // prelude builds `cluster.kubernetes` from this — so it is not gated behind
+  // managed database's `postgres`). Needed on the runtime path too (the
+  // prelude builds `cluster.kubernetes` from this) so it is not gated behind
   // `enrichCreateFields`; it reads loaded plugin definitions, no API calls.
   await Promise.all(
     Array.from(byPlugin.values()).map((entry) => {
@@ -428,7 +428,7 @@ async function seedMetrics(
 
 /**
  * The `infra.event.kind` for a run with no richer payload. A budget-sourced run
- * always supplies its own event, so "budget" here would mean a caller forgot —
+ * always supplies its own event, so "budget" here would mean a caller forgot:
  * fall back to "api" rather than claiming a crossing that isn't described.
  */
 function eventKindFor(source: RunTriggerSource): "manual" | "cron" | "git" | "api" {

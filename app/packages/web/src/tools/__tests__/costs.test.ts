@@ -6,7 +6,7 @@ const mockListDimensionValues = vi.fn();
 const mockListTagKeys = vi.fn();
 const mockGetOrgCostStatus = vi.fn();
 // The tag-policy modules reach the db client at import time, which requires
-// DATABASE_URL — stub them like the other server-core imports below.
+// DATABASE_URL: stub them like the other server-core imports below.
 // Same DATABASE_URL reason: the saved-filter service and the commitments feed
 // both reach a db client at import time. Behaviour lives in their own tests
 // (services/__tests__ and api/routes/__tests__/saved-filters.test.ts).
@@ -20,7 +20,7 @@ vi.mock("@infrawrench/server-core/commitments/feed", () => ({
   getCommitmentsFeed: vi.fn().mockResolvedValue([]),
 }));
 // The billing-rule resolver reaches Postgres at import time. Nothing here asks
-// for an adjusted answer, so it is never called — it only has to exist.
+// for an adjusted answer, so it is never called: it only has to exist.
 vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({
   resolveBillingAdjustments: vi.fn(),
   listBillingRules: vi.fn(async () => []),
@@ -229,8 +229,8 @@ describe("costTools", () => {
 /**
  * Explaining an anomaly from a model's side.
  *
- * The model is often the thing that worked out the cause — it has the hints,
- * the change timeline and the conversation — so this is the surface where an
+ * The model is often the thing that worked out the cause (it has the hints,
+ * the change timeline and the conversation) so this is the surface where an
  * explanation is most likely to be written at all. What it must not do is
  * write one without the permission, or fabricate the annotation's date.
  */

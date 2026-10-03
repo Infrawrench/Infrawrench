@@ -6,14 +6,14 @@ import { platformAdminMiddleware } from "../../auth/platform-admin";
 
 /**
  * Platform-admin routes (mounted at /api/admin). Session-authed and then
- * gated by the INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist — these operate
+ * gated by the INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist: these operate
  * across all orgs, so org membership and org roles don't apply here.
  */
 const app = new Hono();
 
 app.use("*", platformAdminMiddleware);
 
-/** GET /api/admin/organizations — every org with billing-relevant state. */
+/** GET /api/admin/organizations: every org with billing-relevant state. */
 app.get("/organizations", async (c) => {
   const rows = await db
     .select({
@@ -33,7 +33,7 @@ app.get("/organizations", async (c) => {
   return c.json(rows);
 });
 
-/** PUT /api/admin/organizations/:orgId/complimentary — grant or revoke. */
+/** PUT /api/admin/organizations/:orgId/complimentary: grant or revoke. */
 app.put("/organizations/:orgId/complimentary", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { complimentary?: unknown } | null;
   if (!body || typeof body.complimentary !== "boolean") {

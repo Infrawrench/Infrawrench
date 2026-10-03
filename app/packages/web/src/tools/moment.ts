@@ -1,5 +1,5 @@
 /**
- * The moment view as an agent surface — `what_changed`.
+ * The moment view as an agent surface: `what_changed`.
  *
  * Mirrors `GET /moment`: same union service, same per-feed permission
  * gating. The declared permission is the endpoint's floor (`resources:read`);
@@ -42,7 +42,7 @@ export function momentTools(): ToolDefinition[] {
           .describe("Half-window in minutes (the ± around `at`). Default 60, max 4320 (±3 days)."),
       },
       risk: "read",
-      // Mirrors `GET /moment` — the union's floor; per-feed gating happens in
+      // Mirrors `GET /moment`: the union's floor; per-feed gating happens in
       // the service against the caller's full effective permissions.
       permission: "resources:read",
       handler: async (input, auth) => {
@@ -52,7 +52,7 @@ export function momentTools(): ToolDefinition[] {
         };
         let at: Date | undefined;
         if (atRaw !== undefined) {
-          // Shared with `GET /moment` — offset-less timestamps are pinned to
+          // Shared with `GET /moment`: offset-less timestamps are pinned to
           // UTC so the result doesn't depend on the server's local zone.
           const parsed = parseMomentTimestamp(atRaw);
           if (parsed === null) {

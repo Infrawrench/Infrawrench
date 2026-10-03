@@ -8,12 +8,12 @@ import path from "node:path";
  * latest applied row's `created_at` (`Number(last.created_at) < folderMillis`).
  * A branch-generated migration whose `when` lands *before* a migration that
  * already shipped is silently skipped, and the next migration that depends on
- * it then either fails mid-transaction or — worse — the app deploys against a
+ * it then either fails mid-transaction or (worse) the app deploys against a
  * schema that never got the tables/columns the new code selects.
  *
  * Hit in prod twice:
  * - 2026-08-08: `0074_smart_slipstream` (session recordings)
- * - 2026-08-09: `0079_alert_routing_rules` (`muted_triggers` / `alert_rules` —
+ * - 2026-08-09: `0079_alert_routing_rules` (`muted_triggers` / `alert_rules`;
  *   "Your mobile notifications" 500s in Settings → Notifications)
  */
 const journal = JSON.parse(

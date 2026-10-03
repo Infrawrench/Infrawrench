@@ -1,5 +1,5 @@
 /**
- * Per-org tuning for the three efficiency detectors — commitment expiry, idle
+ * Per-org tuning for the three efficiency detectors: commitment expiry, idle
  * commitments, unit-cost regression. The read/write side of
  * `org_cost_efficiency_settings`, plus the clamping that keeps a hand-written
  * row from producing a detector that misbehaves.
@@ -42,7 +42,7 @@ function bool(value: unknown, fallback: boolean): boolean {
  * An empty list after filtering falls back to the defaults rather than to
  * "never warn". A row that stores `[]` is far more likely to be a form that
  * cleared itself than a considered request for silence, and silence is what
- * `commitmentExpiryEnabled: false` is for — a knob that says so out loud.
+ * `commitmentExpiryEnabled: false` is for: a knob that says so out loud.
  */
 export function normalizeExpiryHorizons(value: unknown): number[] {
   const raw = Array.isArray(value) ? value : [];
@@ -135,7 +135,7 @@ export function normalizeEfficiencySettings(
 }
 
 /**
- * A reported days requirement can exceed the window it is measured in — a
+ * A reported days requirement can exceed the window it is measured in: a
  * clamp on each field independently cannot see the other. Both detectors
  * would then be permanently silent, which is the failure mode a bound is
  * supposed to prevent, so the pair is reconciled here: the requirement gives

@@ -18,13 +18,13 @@ import type { AuthSession } from "../auth-middleware";
 import { parseObjectBody } from "../object-body";
 
 /**
- * Sleep/wake schedules — "off at 19:00, on at 08:00, Mon–Fri" windows on
+ * Sleep/wake schedules: "off at 19:00, on at 08:00, Mon–Fri" windows on
  * resources whose plugin declares a `lifecycle` start/stop action pair.
  * Execution happens in the poller (`server-core/src/schedules/pass.ts`);
  * these routes only manage the rows and quote projected savings.
  *
  * Permissions: reads are `resources:read` (the list is derived from the
- * org's resource set, like orphans); mutations are `resources:write` — a
+ * org's resource set, like orphans); mutations are `resources:write`; a
  * schedule is a standing instruction to invoke the same actions that
  * permission already gates on `/resources/invoke-action`.
  */
@@ -37,7 +37,7 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** Wall-clock "HH:MM", 24-hour — the same shape the MCP tool schema enforces. */
+/** Wall-clock "HH:MM", 24-hour: the same shape the MCP tool schema enforces. */
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function readTiming(
@@ -88,7 +88,7 @@ function scheduleErrorResponse(c: Context, err: unknown) {
   if (err instanceof ScheduleInputError) {
     return c.json({ error: err.message }, err.status);
   }
-  // Anything else is a server bug or infrastructure failure — log the detail
+  // Anything else is a server bug or infrastructure failure: log the detail
   // server-side and keep internals out of the response.
   console.error("[schedules] unexpected error:", err);
   return c.json({ error: "Schedule operation failed" }, 500);

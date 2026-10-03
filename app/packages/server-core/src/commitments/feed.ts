@@ -1,26 +1,26 @@
 /**
- * The commitments feed — everything one screen (or one CLI table, or one MCP
+ * The commitments feed: everything one screen (or one CLI table, or one MCP
  * call) needs to answer three questions about an org's reservations, savings
  * plans and committed-use discounts:
  *
  *   1. What do we hold? (`holdings`, straight from the collected inventory)
  *   2. Is it working? (per-holding derived utilization, plus coverage as an
- *      honest *range* — see `../commitments/coverage.ts` for why there is no
+ *      honest *range*: see `../commitments/coverage.ts` for why there is no
  *      single denominator)
- *   3. What should we buy next? (`planner` — recommendations that a human
+ *   3. What should we buy next? (`planner`: recommendations that a human
  *      signs off on; nothing here purchases anything)
  *
  * Derivations happen in the pure modules next door; this file only fetches
  * their inputs (Postgres inventory + ClickHouse aggregates) and maps rows.
  *
  * Attribution gating: derived utilization, coverage and the planner only use
- * accounts whose plugin declares `costs.chargeTypes` — for anyone else,
+ * accounts whose plugin declares `costs.chargeTypes`, for anyone else,
  * every cost row reads as plain uncovered usage and all three numbers would
  * be wrong in the direction that triggers action (a healthy plan at "0%
  * used" gets cancelled). Such accounts still list their holdings; their
  * derived utilization is null with reason `unattributed_rows`, and they are
  * named in `coverage.excludedAccountIds`. Azure's provider-reported
- * utilization is unaffected — it rides on the holding itself and is never
+ * utilization is unaffected: it rides on the holding itself and is never
  * blended with anything derived here.
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
@@ -63,7 +63,7 @@ export interface CommitmentHolding {
   kind: string;
   description: string;
   scope: string | null;
-  /** Null means "applies across regions" — render "All regions", not blank. */
+  /** Null means "applies across regions": render "All regions", not blank. */
   region: string | null;
   startDate: string | null;
   endDate: string | null;
@@ -96,7 +96,7 @@ export interface CommitmentsFeed {
   coverage: CommitmentCoverageReport;
   planner: PlannerResult;
   failures: CommitmentPollFailure[];
-  /** Commitment-capable accounts never yet collected — named, not omitted. */
+  /** Commitment-capable accounts never yet collected: named, not omitted. */
   pendingAccountIds: string[];
   utilizationWindowDays: number;
   plannerWindowDays: number;
@@ -157,7 +157,7 @@ export async function getCommitmentsFeed(
   if (relevant.length === 0) return emptyFeed();
   const accountById = new Map(relevant.map((a) => [a.id, a]));
 
-  // Attribution-capable accounts — the only ones coverage, the planner, and
+  // Attribution-capable accounts: the only ones coverage, the planner, and
   // derived utilization may read cost rows from. See the module header.
   const attributingAccountIds = relevant
     .filter((a) => chargeTypePluginIds.has(a.pluginId))
@@ -252,7 +252,7 @@ export async function getCommitmentsFeed(
       };
     });
 
-  // Active first, then soonest to expire — the reader's next decision is
+  // Active first, then soonest to expire: the reader's next decision is
   // almost always about the thing that lapses next.
   mapped.sort(
     (a, b) =>

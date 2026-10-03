@@ -3,7 +3,7 @@
  *
  * The digest itself is composed and sent by the poller (see
  * `server-core/src/digest/weekly.ts`); these routes carry the org-level
- * settings — on/off, send day/hour/timezone, the AI-narrative opt-in — the
+ * settings (on/off, send day/hour/timezone, the AI-narrative opt-in) the
  * last-attempt bookkeeping for display, the email recipient list, and a
  * "send now" escape hatch so the settings UI can prove the pipeline works
  * without waiting for the schedule. Slack and Teams routing is part of their
@@ -65,7 +65,7 @@ app.get("/", async (c) => {
  * Update the weekly digest settings. Every field is optional, so the toggle,
  * the schedule and the narrative opt-in can each be saved on their own.
  * Enabling schedules the first digest for the next send time rather than firing
- * immediately — POST /digest/send is the immediate path.
+ * immediately: POST /digest/send is the immediate path.
  */
 app.put("/", async (c) => {
   requirePermission(c, "org:settings:write");
@@ -120,7 +120,7 @@ app.put("/", async (c) => {
 /**
  * Compose last week's digest and send it now to every opted-in channel and
  * every email recipient, regardless of the schedule or the enabled flag.
- * Errors surface to the UI — "nothing is routed to receive it" is the one the
+ * Errors surface to the UI: "nothing is routed to receive it" is the one the
  * user needs to see.
  */
 app.post("/send", async (c) => {

@@ -3,7 +3,7 @@
  *
  * Reading takes `team:read` rather than a settings permission: knowing who is
  * on call is something every member needs and nobody should have to ask an
- * admin for. Writing takes `org:settings:write`, the alert-routing stance — a
+ * admin for. Writing takes `org:settings:write`, the alert-routing stance: a
  * rotation decides who gets woken up, which is an org-wide decision.
  *
  * The one exception is **covers**. Arranging cover takes `team:read` too,
@@ -75,14 +75,14 @@ function readScheduleBody(
   return { ok: true, value: out };
 }
 
-/** GET /api/org/:orgId/on-call/schedules — the org's rotations. */
+/** GET /api/org/:orgId/on-call/schedules: the org's rotations. */
 app.get("/schedules", async (c) => {
   requirePermission(c, "team:read");
   return c.json({ schedules: await listOnCallSchedules(c.get("organizationId")) });
 });
 
 /**
- * GET /api/org/:orgId/on-call/now — who is on call right now, per rotation.
+ * GET /api/org/:orgId/on-call/now: who is on call right now, per rotation.
  *
  * The read a phone, a Slack command or a dashboard tile wants: it answers the
  * question without the caller having to know the rotation arithmetic.
@@ -108,7 +108,7 @@ app.get("/now", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/on-call/schedules/:scheduleId/shifts — the rotation's
+ * GET /api/org/:orgId/on-call/schedules/:scheduleId/shifts: the rotation's
  * upcoming shifts, plus the covers drawn over them.
  *
  * Rotation shifts and covers are returned **separately** rather than merged: a
@@ -238,7 +238,7 @@ app.get("/overrides", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/on-call/overrides — arrange cover.
+ * POST /api/org/:orgId/on-call/overrides: arrange cover.
  *
  * `team:read`, deliberately: cover is arranged at 17:55 on a Friday, and the
  * person handing over is rarely an org admin. The audit entry is what makes

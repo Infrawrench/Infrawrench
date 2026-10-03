@@ -1,12 +1,12 @@
 /**
- * asciicast v2 encoding — the on-disk (and on-the-wire) format for recorded
+ * asciicast v2 encoding: the on-disk (and on-the-wire) format for recorded
  * SSH sessions.
  *
  * Deliberately somebody else's format. A recording that only our player can
  * open is worth very little to the auditor it exists for, whereas a `.cast`
  * plays in `asciinema play`, in the reference web player, and in half a dozen
  * third-party viewers. The spec is
- * https://docs.asciinema.org/manual/asciicast/v2/ — a JSON header object on
+ * https://docs.asciinema.org/manual/asciicast/v2/: a JSON header object on
  * line one, then one JSON array per line:
  *
  *     {"version": 2, "width": 120, "height": 30, "timestamp": 1754524800}
@@ -22,7 +22,7 @@ import type { CastEvent, CastEventCode } from "@infrawrench/client-core";
 /**
  * Event kinds we emit. `"o"` output, `"i"` input, `"r"` resize, `"m"` marker.
  *
- * Markers are asciinema's own annotation event — a labelled point on the
+ * Markers are asciinema's own annotation event: a labelled point on the
  * timeline that its player renders as a chapter and that `asciinema play`
  * ignores harmlessly. We emit one whenever the cast needs to say something the
  * byte stream does not: somebody joined the shared session, somebody took the
@@ -69,7 +69,7 @@ export function encodeCastHeader(header: CastHeader): string {
  *
  * `elapsedSeconds` is seconds since the header's `timestamp`, rounded to
  * milliseconds. Rounding rather than keeping the float is what stops a
- * long session's lines from growing a 17-digit tail apiece — at 1ms the
+ * long session's lines from growing a 17-digit tail apiece: at 1ms the
  * quantisation is far below what a terminal reader can perceive, and it makes
  * the size accounting in the recorder predictable.
  */
@@ -97,7 +97,7 @@ export interface ParsedCast {
  * Tolerant on purpose: blank lines are skipped and a line that does not parse
  * is dropped rather than failing the whole recording. A cast is an append-only
  * artifact assembled from chunks, so the realistic corruption is a truncated
- * final line — and losing that last frame is enormously better than refusing
+ * final line, and losing that last frame is enormously better than refusing
  * to play the ten minutes in front of it.
  *
  * Throws only when the header itself is unreadable, because without geometry
@@ -132,7 +132,7 @@ export function parseCast(text: string): ParsedCast {
       if (code !== "o" && code !== "i" && code !== "r" && code !== "m") continue;
       events.push({ time, code, data });
     } catch {
-      // Truncated or otherwise unreadable line — see the note above.
+      // Truncated or otherwise unreadable line: see the note above.
     }
   }
   return { header, events };

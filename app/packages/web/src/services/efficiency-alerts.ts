@@ -1,12 +1,12 @@
 /**
- * Read side of the three efficiency detectors — the poller writes
+ * Read side of the three efficiency detectors: the poller writes
  * `commitment_expiry_events`, `commitment_idle_events` and
  * `unit_cost_regression_events` (server-core `commitments/alert-eval.ts` and
  * `cost/unit-cost-regression-eval.ts`); this folds them into the one feed the
  * Costs panel, the mobile app and the HTTP API render.
  *
  * Three tables, one wire type. They are separate tables because their dedup
- * keys are genuinely different — a horizon, a month, and a sliding window —
+ * keys are genuinely different (a horizon, a month, and a sliding window)
  * and forcing one events table to carry all three would mean a nullable
  * discriminated key that no unique index could enforce. They are one wire type
  * because every surface shows them in one list, and the five facts a reader
@@ -131,7 +131,7 @@ export async function listEfficiencyAlerts(
       accountName: r.accountName ?? null,
       currency: r.currency,
       // The exposure, falling back to the commitment's own monthly price. Both
-      // may be absent — a unit-denominated CUD states no money at all — and
+      // may be absent (a unit-denominated CUD states no money at all) and
       // null renders as "not reported" rather than as free.
       amount:
         r.onDemandMonthlyAmount ??

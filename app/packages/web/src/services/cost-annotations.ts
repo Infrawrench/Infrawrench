@@ -1,5 +1,5 @@
 /**
- * Org-scoped cost-annotation CRUD — the dated notes drawn over cost charts.
+ * Org-scoped cost-annotation CRUD: the dated notes drawn over cost charts.
  *
  * Shared by the HTTP routes (api/routes/cost-annotations.ts) the same way
  * services/cost-reports.ts is, so there is one implementation of "which notes
@@ -25,13 +25,13 @@ import { costAnnotations, costAnomalies, costReports } from "../db/schema";
 
 type CostAnnotationRow = typeof costAnnotations.$inferSelect;
 
-/** A bad request rather than a server fault — the API maps this to a 400. */
+/** A bad request rather than a server fault: the API maps this to a 400. */
 export class CostAnnotationError extends Error {}
 
 /**
  * @param costAnomalyId The finding this note was written to explain, when it
- * came from acknowledging one. Resolved from `cost_anomalies.annotation_id` —
- * the same single foreign key the anomaly reads forwards — so the link cannot
+ * came from acknowledging one. Resolved from `cost_anomalies.annotation_id`
+ * (the same single foreign key the anomaly reads forwards) so the link cannot
  * disagree with itself. Null on the create path, where a note written by hand
  * explains no finding by definition.
  */
@@ -39,7 +39,7 @@ function toCostAnnotation(row: CostAnnotationRow, costAnomalyId: string | null):
   return {
     id: row.id,
     // `date` columns come back as YYYY-MM-DD strings, which is exactly the
-    // shape the bucket mapping compares against — never parsed into a Date on
+    // shape the bucket mapping compares against, never parsed into a Date on
     // the way through, because a timezone would be invented in the process.
     startDate: row.startDate,
     endDate: row.endDate,
@@ -53,7 +53,7 @@ function toCostAnnotation(row: CostAnnotationRow, costAnomalyId: string | null):
 }
 
 /**
- * The finding that points at this note, if any — the reverse of the link, read
+ * The finding that points at this note, if any: the reverse of the link, read
  * from the anomaly's side because that is where the only copy of it lives.
  */
 async function anomalyIdForAnnotation(annotationId: string): Promise<string | null> {
@@ -95,7 +95,7 @@ function assertValid(input: CostAnnotationInput): void {
  * The org's annotations, newest first.
  *
  * With `reportId`, this is the set a chart for that report draws: the org-wide
- * notes **and** that report's own. Without it, every annotation in the org —
+ * notes **and** that report's own. Without it, every annotation in the org:
  * what a management list wants, and what an ad-hoc dashboard cost card draws
  * (an org-wide note belongs on every chart, and a card belongs to no report).
  */
@@ -115,7 +115,7 @@ export async function listCostAnnotations(
 
   // Left-joined rather than a second query: an annotation that came from
   // acknowledging an anomaly should say so wherever it is drawn, and the join
-  // is on `cost_anomalies.annotation_id`, which is unique where it is set — so
+  // is on `cost_anomalies.annotation_id`, which is unique where it is set, so
   // this can only ever add one id per note, never duplicate a row.
   const rows = await db
     .select({ annotation: costAnnotations, anomalyId: costAnomalies.id })
@@ -148,7 +148,7 @@ export async function createCostAnnotation(
     })
     .returning();
   // A note written by hand explains no finding, so the reverse link is null
-  // without a lookup — only an acknowledgement can create that link, and it
+  // without a lookup, only an acknowledgement can create that link, and it
   // writes the anomaly's side of it in the same transaction.
   return toCostAnnotation(created!, null);
 }
@@ -180,8 +180,8 @@ export async function updateCostAnnotation(
     )
     .returning();
   if (!updated) return null;
-  // Editing a note never changes which finding points at it — the link lives on
-  // the anomaly and this endpoint cannot reach that column — but the answer
+  // Editing a note never changes which finding points at it (the link lives on
+  // the anomaly and this endpoint cannot reach that column) but the answer
   // still has to carry it, or rewording an anomaly's note would read back as
   // having severed it.
   return toCostAnnotation(updated, await anomalyIdForAnnotation(updated.id));

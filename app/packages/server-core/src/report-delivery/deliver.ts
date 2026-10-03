@@ -8,8 +8,8 @@
  * pure composition in `./compose.ts` turns it into the message every
  * transport renders.
  *
- * Delivery is direct to the schedule's own destinations — Slack channel rows,
- * Teams webhook rows, an email list — **not** through `alerts/route.ts`. That
+ * Delivery is direct to the schedule's own destinations: Slack channel rows,
+ * Teams webhook rows, an email list, **not** through `alerts/route.ts`. That
  * is deliberate and load-bearing: this is the digest pattern (a scheduled
  * summary sent where its schedule says), not an alert (routed by kind).
  *
@@ -108,7 +108,7 @@ async function labelForGroups(
  * Run the report and compose the delivery data.
  *
  * Two ClickHouse reads (the report's window and the same span shifted back one
- * full period — the comparison is always included in a delivery, whatever the
+ * full period: the comparison is always included in a delivery, whatever the
  * saved config says, because "vs the period before" is what makes a recurring
  * number readable) plus the org's currency settings. Conversion follows the
  * org's configured display currency, exactly like the digest: a scheduled
@@ -156,7 +156,7 @@ export async function buildReportDelivery(
 
   // One total per currency, and the previous period's beside it when that
   // currency existed then. A currency that only appears in one period still
-  // shows — dropping it would understate one side of the comparison.
+  // shows: dropping it would understate one side of the comparison.
   const byCurrency = new Map<string, { current: number; previous: number | null }>();
   for (const g of current) {
     const entry = byCurrency.get(g.currency) ?? { current: 0, previous: null };
@@ -222,7 +222,7 @@ export async function buildReportDelivery(
 }
 
 /**
- * Send a composed delivery to one schedule's destinations. Never throws — all
+ * Send a composed delivery to one schedule's destinations. Never throws: all
  * three transports already swallow and log; this only counts.
  */
 export async function deliverReportNotification(
@@ -252,7 +252,7 @@ export async function deliverReportNotification(
 
   // Built even when mail is unconfigured, on purpose: `sendEmails` logs the
   // "you have recipients but no mail provider" line, and short-circuiting here
-  // would make that failure silent — the exact failure mode this feature is
+  // would make that failure silent; the exact failure mode this feature is
   // designed not to have.
   const text = recipients.length > 0 ? formatReportEmailText(data) : "";
   const html = recipients.length > 0 ? formatReportEmailHtml(data) : "";
@@ -294,7 +294,7 @@ export async function deliverReportNotification(
   };
 }
 
-/** Record what an attempt did. Never throws — bookkeeping must not mask the send. */
+/** Record what an attempt did. Never throws: bookkeeping must not mask the send. */
 async function recordAttempt(
   row: ReportNotificationRecord,
   now: Date,
@@ -406,11 +406,11 @@ export async function runReportNotification(
 }
 
 /**
- * Run one schedule immediately, ignoring `next_send_at` and `enabled` — backs
+ * Run one schedule immediately, ignoring `next_send_at` and `enabled`: backs
  * the report page's "Send now" and the CLI's `reports send`. Unlike the
  * scheduled path this throws when nothing could be delivered, because the
  * caller is a person who needs to see why. A successful manual send also
- * clears parked failure state — it is the documented recovery for a partial
+ * clears parked failure state: it is the documented recovery for a partial
  * delivery.
  */
 export async function sendReportNotificationNow(

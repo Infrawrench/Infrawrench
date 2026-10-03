@@ -14,14 +14,14 @@ import type { AuthSession } from "../auth-middleware";
 import { parseObjectBody } from "../object-body";
 
 /**
- * Resource ownership — owner, purpose, and the authorizing ticket, on any
+ * Resource ownership: owner, purpose, and the authorizing ticket, on any
  * resource. Read by the orphan finder (which annotates every flagged row with
  * its owner) and by the alert notifier (which routes a resource-scoped alert
  * to the owning person).
  *
  * Permissions follow the leases stance: reads are `resources:read` (ownership
  * is a view over the org's resource set), writes are `resources:write`.
- * Deliberately *not* gated on an org-admin permission — the person who can
+ * Deliberately *not* gated on an org-admin permission: the person who can
  * create a resource is the person who should be able to say it is theirs, and
  * requiring an admin to record ownership is how ownership data stops existing.
  *
@@ -67,11 +67,11 @@ app.get("/", async (c) => {
 });
 
 /**
- * GET /members — people an owner can be set to.
+ * GET /members: people an owner can be set to.
  *
  * On `resources:read` rather than `team:read`: recording who owns a resource
  * must not be a privilege reserved for whoever can also see roles and
- * membership dates. The projection is correspondingly minimal — id, name,
+ * membership dates. The projection is correspondingly minimal: id, name,
  * email, nothing else.
  */
 app.get("/members", async (c) => {
@@ -79,7 +79,7 @@ app.get("/members", async (c) => {
   return c.json({ members: await listOwnerCandidates(c.get("organizationId")) });
 });
 
-/** GET /resource?resourceId=… — the (unique) ownership record, or null. */
+/** GET /resource?resourceId=…: the (unique) ownership record, or null. */
 app.get("/resource", async (c) => {
   requirePermission(c, "resources:read");
   const resourceId = c.req.query("resourceId");
@@ -90,7 +90,7 @@ app.get("/resource", async (c) => {
 });
 
 /**
- * PUT / — upsert one resource's ownership.
+ * PUT /: upsert one resource's ownership.
  *
  * Answers 200 with `null` when the patch left the record empty, because
  * clearing every field deletes the row (see the store): the response is the
@@ -143,7 +143,7 @@ app.put("/", async (c) => {
   }
 });
 
-/** DELETE /?resourceId=… — drop the record entirely. */
+/** DELETE /?resourceId=…: drop the record entirely. */
 app.delete("/", async (c) => {
   requirePermission(c, "resources:write");
   const organizationId = c.get("organizationId");

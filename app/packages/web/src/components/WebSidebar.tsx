@@ -188,7 +188,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       await apiDelete(`${apiBase}/chat/conversations/${id}`);
       setChatSessions((prev) => prev.filter((c) => c.id !== id));
       window.dispatchEvent(new Event(CHAT_CONVERSATIONS_CHANGED_EVENT));
-      // Leave the archived conversation before dropping its tab — the root
+      // Leave the archived conversation before dropping its tab: the root
       // route effect re-adds a tab for whatever the URL still points at.
       if (pathname === `/org/${orgId}/chat/${id}`) {
         await navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } });

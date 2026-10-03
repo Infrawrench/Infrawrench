@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /**
  * Parsing is the trust boundary for an uploaded state document: before it, a
  * file a stranger sent us; after it, our own data. So the translation of parse
- * failures has to be **total**, not an allow-list of error classes — that is
+ * failures has to be **total**, not an allow-list of error classes: that is
  * what let a `RangeError` from a deeply nested attribute escape as an HTTP 500.
  *
  * A 500 is not merely the wrong status here. It tells a user holding an

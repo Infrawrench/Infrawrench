@@ -2,8 +2,8 @@
  * Opening the SSH connection a Linux-application host is reached on.
  *
  * Extracted from `apps-proxy.ts` because the setup check needs the *same*
- * connection on the same terms — the org's own key, `resolveSafeHost` before
- * anything is dialled, and the trust-on-first-use host-key pin — and a second
+ * connection on the same terms (the org's own key, `resolveSafeHost` before
+ * anything is dialled, and the trust-on-first-use host-key pin) and a second
  * implementation of that would be the one place a changed host key goes
  * unnoticed.
  */

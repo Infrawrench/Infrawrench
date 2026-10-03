@@ -44,7 +44,7 @@ export function ChangeFreezeBanner({ orgId }: { orgId: string }) {
       );
       setFreeze(status.freeze);
     } catch {
-      // Keep whatever we last knew — a transient fetch failure shouldn't
+      // Keep whatever we last knew: a transient fetch failure shouldn't
       // flap the banner.
     }
   }, [orgId]);

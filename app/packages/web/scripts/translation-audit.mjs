@@ -3,7 +3,7 @@
  * explicitly excused.
  *
  * `translations:status` answers "are the catalogs current for what is marked".
- * This answers the prior question — "what has nobody marked yet" — and fails
+ * This answers the prior question ("what has nobody marked yet") and fails
  * (exit 1) when the answer is not "nothing".
  *
  * It parses every component with Babel and flags, per file: JSX text nodes,

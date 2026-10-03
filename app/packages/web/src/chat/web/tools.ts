@@ -1,5 +1,5 @@
 /**
- * `web_search` and `web_fetch` — chat-only tools.
+ * `web_search` and `web_fetch`: chat-only tools.
  *
  * Deliberately NOT in the shared registry (`../../tools/registry.ts`), for the
  * same reason `sleep` isn't: that registry is what the MCP server exposes, and
@@ -8,7 +8,7 @@
  * message it doesn't recognise before acting on the user's infrastructure.
  *
  * Both are `risk: "read"`. `web_fetch` is GET-only by construction and
- * `web_search` reads public indexes, so neither can change anything — putting
+ * `web_search` reads public indexes, so neither can change anything: putting
  * them behind the destructive-approval prompt would mean a modal for every
  * lookup, which trains people to click Approve without reading it, and that
  * modal is load-bearing for `delete_resource`.
@@ -54,7 +54,7 @@ function estimateSearchCostMicros(backendId: string, query: string, model: strin
 export interface WebToolContext {
   organizationId: string;
   conversationId: string;
-  /** Assistant message whose tool_use triggered the call — the billing key. */
+  /** Assistant message whose tool_use triggered the call: the billing key. */
   messageId: string;
 }
 
@@ -98,7 +98,7 @@ async function runSearch(query: string, ctx: WebToolContext): Promise<ToolResult
     );
   }
 
-  // Reserve against the shared AI pool before the sub-model runs — the parent
+  // Reserve against the shared AI pool before the sub-model runs: the parent
   // chat turn already released its model-call hold, so without this a search
   // near the cap could clear no check and bill past the line.
   const reserveModel = backend.id === "vertex" ? "gemini-3.7-flash" : "claude-haiku-4-5";
@@ -214,7 +214,7 @@ async function runFetch(url: string): Promise<ToolResult> {
   };
 }
 
-/** A tool minus its handler — everything that is constant across a turn. */
+/** A tool minus its handler: everything that is constant across a turn. */
 type WebToolSpec = Omit<ToolDefinition, "handler">;
 
 interface WebTool {

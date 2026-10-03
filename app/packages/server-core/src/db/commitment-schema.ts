@@ -6,7 +6,7 @@
  * collection: the provider's list APIs return the entire holding (expired
  * records included), so `(account_id, commitment_id)` upserts plus a sweep of
  * rows the provider stopped reporting keep this an exact mirror. Money
- * columns are nullable on purpose — Azure's list API reports no purchase
+ * columns are nullable on purpose: Azure's list API reports no purchase
  * price and GCP's reports no money at all, and a substituted zero renders as
  * "free" where a NULL renders as "not reported". One of those ends up in a
  * finance review.
@@ -40,7 +40,7 @@ export const accountCommitments = pgTable(
       .references(() => accounts.id, { onDelete: "cascade" }),
     pluginId: text("plugin_id").notNull(),
     /**
-     * Provider-native commitment id — the join key against
+     * Provider-native commitment id: the join key against
      * `cost_daily.commitment_id` (an ARN where billing data carries ARNs,
      * the bare id where it does not, e.g. EC2 RIs).
      */
@@ -50,7 +50,7 @@ export const accountCommitments = pgTable(
     description: text("description").notNull(),
     /** Provider scope qualifier (an AZ, "Shared", an instance family). */
     scope: text("scope"),
-    /** NULL means "applies across regions" — a real state, not missing data. */
+    /** NULL means "applies across regions": a real state, not missing data. */
     region: text("region"),
     startDate: timestamp("start_date"),
     endDate: timestamp("end_date"),
@@ -62,16 +62,16 @@ export const accountCommitments = pgTable(
     currency: text("currency"),
     upfrontAmount: doublePrecision("upfront_amount"),
     recurringAmount: doublePrecision("recurring_amount"),
-    /** "hour" | "month" — atomic with recurring_amount. */
+    /** "hour" | "month": atomic with recurring_amount. */
     recurringPeriod: text("recurring_period"),
-    /** Committed spend per hour — what utilization is measured against. */
+    /** Committed spend per hour: what utilization is measured against. */
     hourlyCommitmentAmount: doublePrecision("hourly_commitment_amount"),
     /** [{unit, amount}] for unit-denominated commitments (GCP CUDs). */
     unitCommitments: jsonb("unit_commitments").$type<Array<{ unit: string; amount: number }>>(),
     /** "active" | "expired" | "queued" */
     state: text("state").notNull(),
     /**
-     * [{grainDays, percentage}] — the provider's own utilization aggregates
+     * [{grainDays, percentage}]: the provider's own utilization aggregates
      * (Azure only), passed through and never blended with derived figures.
      */
     providerUtilization:
@@ -98,14 +98,14 @@ export const accountCommitments = pgTable(
  * Fired commitment-expiry warnings: one row per (account, commitment, term
  * end, horizon).
  *
- * The `budget_alert_events` once-per-period protocol — insert with
- * `onConflictDoNothing`, notify only on a fresh insert — with the "period"
+ * The `budget_alert_events` once-per-period protocol (insert with
+ * `onConflictDoNothing`, notify only on a fresh insert) with the "period"
  * being a horizon rather than a month. That is what makes 60/30/7 three
  * alerts and not three hundred: the daily pass re-evaluates every commitment,
  * and every horizon it already crossed collides with its own row.
  *
  * **`term_end_day` is in the key on purpose.** A commitment whose end date
- * moves — an in-place extension, or a provider correcting a date — is a
+ * moves (an in-place extension, or a provider correcting a date) is a
  * different term and deserves its own countdown. Without it, extending a
  * reservation by a year would buy permanent silence on its next expiry.
  *
@@ -136,7 +136,7 @@ export const commitmentExpiryEvents = pgTable(
     hourlyCommitmentAmount: doublePrecision("hourly_commitment_amount"),
     /**
      * What the usage this commitment currently covers would cost per month at
-     * on-demand rates, in `currency` units — null when the holding carries no
+     * on-demand rates, in `currency` units: null when the holding carries no
      * money (GCP CUDs) or nothing was delivered to measure.
      */
     onDemandMonthlyAmount: doublePrecision("on_demand_monthly_amount"),
@@ -175,7 +175,7 @@ export const commitmentIdleEvents = pgTable(
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
     commitmentId: text("commitment_id").notNull(),
-    /** "YYYY-MM" the window ended in — the dedup key. */
+    /** "YYYY-MM" the window ended in: the dedup key. */
     periodKey: text("period_key").notNull(),
     /** The measured window, inclusive ISO days. */
     windowFrom: text("window_from").notNull(),
@@ -187,7 +187,7 @@ export const commitmentIdleEvents = pgTable(
     /** hourly × 24 × measuredDays, in `currency` units. */
     obligationAmount: doublePrecision("obligation_amount").notNull(),
     deliveredAmount: doublePrecision("delivered_amount").notNull(),
-    /** obligation − delivered, floored at 0 — the money that bought nothing. */
+    /** obligation − delivered, floored at 0: the money that bought nothing. */
     wastedAmount: doublePrecision("wasted_amount").notNull(),
     /** Window days that carried cost data, and window days that did not. */
     measuredDays: integer("measured_days").notNull(),

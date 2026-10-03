@@ -4,7 +4,7 @@
  * Two permission levels, and the split is the point. **Reading and performing**
  * a runbook takes `resources:read`: the person who can see the infrastructure
  * is the person who will be woken up about it, and a checklist nobody on call
- * can open is worse than no checklist. **Editing** takes `org:settings:write` —
+ * can open is worse than no checklist. **Editing** takes `org:settings:write`:
  * a procedure is an org-wide statement about how something is done, and it is
  * read by strangers under pressure.
  *
@@ -139,13 +139,13 @@ function readRunbookBody(
   };
 }
 
-/** GET /api/org/:orgId/runbooks — every runbook the org has. */
+/** GET /api/org/:orgId/runbooks: every runbook the org has. */
 app.get("/", async (c) => {
   requirePermission(c, "resources:read");
   return c.json({ runbooks: await listRunbooks(c.get("organizationId")) });
 });
 
-/** GET /api/org/:orgId/runbooks/runs — recent runs across every runbook. */
+/** GET /api/org/:orgId/runbooks/runs: recent runs across every runbook. */
 app.get("/runs", async (c) => {
   requirePermission(c, "resources:read");
   const runbookId = c.req.query("runbookId");
@@ -173,7 +173,7 @@ app.get("/runs/:runId", async (c) => {
 });
 
 /**
- * PATCH /api/org/:orgId/runbooks/runs/:runId/steps/:stepId — tick a step.
+ * PATCH /api/org/:orgId/runbooks/runs/:runId/steps/:stepId: tick a step.
  *
  * Takes `resources:read`, like starting a run: performing a checklist is not an
  * act of configuration, and requiring an admin to tick a box mid-incident is
@@ -254,7 +254,7 @@ app.get("/:runbookId", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/runbooks/:runbookId/runs — start performing it.
+ * POST /api/org/:orgId/runbooks/:runbookId/runs: start performing it.
  *
  * `resources:read`, deliberately: the point of a runbook is that whoever is
  * awake can follow it.
@@ -290,7 +290,7 @@ app.post("/:runbookId/runs", async (c) => {
   }
 });
 
-/** POST /api/org/:orgId/runbooks — write one. */
+/** POST /api/org/:orgId/runbooks: write one. */
 app.post("/", async (c) => {
   requirePermission(c, "org:settings:write");
   const parsed = await readObjectBody(c.req);

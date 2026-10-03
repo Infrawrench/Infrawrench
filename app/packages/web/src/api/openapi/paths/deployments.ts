@@ -101,7 +101,7 @@ const DeploymentRun = strict({
   // `allOf: [$ref, {type:["string","null"]}]`, which still demands an enum value
   // and so rejects the nulls this column actually stores. The generator adds its
   // own null branch on top of this one, so the output carries a harmless
-  // duplicate in the anyOf — cosmetic, and not worth a component to dodge.
+  // duplicate in the anyOf: cosmetic, and not worth a component to dodge.
   stage: z.union([DeployStage, z.null()]),
   durationMs: z.number().int().nullable(),
   /** Hosted build-worker seconds consumed. Null when we did not pay for the build. */

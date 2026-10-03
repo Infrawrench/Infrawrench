@@ -12,7 +12,7 @@ import { getWorkspaceNavigateArgs, incidentsTabTarget } from "@/lib/workspace-ta
  * Rendered as a workspace tab (the "metric-alerts" kind) by
  * WebWorkspaceTabsViewport.
  *
- * Each firing carries a "Declare incident" button and the modal opens here —
+ * Each firing carries a "Declare incident" button and the modal opens here;
  * see the note on WebProbesPanel: an incident starts where somebody noticed it.
  */
 export function WebMetricAlertsPanel({ orgId }: { orgId: string }) {

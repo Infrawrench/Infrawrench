@@ -1,5 +1,5 @@
 /**
- * Org-scoped cost-report CRUD and execution — shared by the HTTP routes
+ * Org-scoped cost-report CRUD and execution: shared by the HTTP routes
  * (api/routes/cost-reports.ts) and the tool registry (tools/cost-reports.ts),
  * mirroring services/budgets.ts.
  *
@@ -32,7 +32,7 @@ type CostReportRow = typeof costReports.$inferSelect;
  * Which dashboards carry a card for each of `reportIds`, keyed by report id.
  *
  * Cost-report widgets store their target as `config.reportId`, so this reads
- * the JSONB key rather than a foreign key — there is no referential integrity
+ * the JSONB key rather than a foreign key: there is no referential integrity
  * between a report and the cards pointing at it, which is exactly what lets a
  * report outlive every one of its cards.
  */
@@ -200,7 +200,7 @@ export async function updateCostReport(
  * The cards go with it for the reason budget and custom-graph cards do: a
  * `cost_report` widget resolves its row by `config.reportId`, so a card left
  * behind renders as a permanent "report unavailable" tile that no amount of
- * dashboard editing explains. Removing a *card* still leaves the report alone —
+ * dashboard editing explains. Removing a *card* still leaves the report alone:
  * that direction is the whole point of the object.
  */
 export async function softDeleteCostReport(
@@ -245,7 +245,7 @@ export async function softDeleteCostReport(
  * Run a report by id and return its series. Null when the report is not found.
  *
  * The point of executing by id is that no caller has to reassemble the config
- * to run it — chat, the CLI and (later) scheduled delivery all ask for the same
+ * to run it: chat, the CLI and (later) scheduled delivery all ask for the same
  * report and get the same numbers. The resolved `from`/`to` ride along because
  * a relative preset means a different window tomorrow, and a consumer quoting
  * the total needs to know which days it covered.

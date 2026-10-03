@@ -1,18 +1,18 @@
 /**
- * Status page rows — org-scoped CRUD, plus the one function that assembles the
+ * Status page rows: org-scoped CRUD, plus the one function that assembles the
  * **public** payload.
  *
  * The split at the bottom of this file is the security model, so it is worth
  * stating plainly: {@link getStatusPageWire} answers the org's own editor and
  * may name probes and ids; {@link getPublicStatusPage} answers the anonymous
  * internet and is written from scratch rather than by narrowing the private
- * shape. That is deliberate — with narrowing, a field added to the org shape
+ * shape. That is deliberate: with narrowing, a field added to the org shape
  * later becomes public by omission, which is precisely the mistake this
  * feature cannot afford.
  *
  * Input validation comes from `@infrawrench/client-core`
  * (`validateStatusPageInput`, `STATUS_PAGE_LIMITS`), the same function the
- * editor UI checks with — the `probes/store.ts` stance.
+ * editor UI checks with: the `probes/store.ts` stance.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
@@ -66,7 +66,7 @@ const SLUG_LENGTH = 22;
  * link" would quietly mean "published to everyone". 22 characters of this
  * alphabet is ~109 bits.
  *
- * Rejection-sampled so the modulo doesn't bias the alphabet — the bias would be
+ * Rejection-sampled so the modulo doesn't bias the alphabet: the bias would be
  * tiny, but a biased secret is not worth the four lines saved.
  */
 export function generateStatusPageSlug(): string {
@@ -99,7 +99,7 @@ interface ComponentRow {
  * Read a page's components joined to their probes.
  *
  * An inner join: `status_page_components.probe_id` cascades on probe deletion,
- * so a row without a probe cannot exist — the join documents the invariant
+ * so a row without a probe cannot exist; the join documents the invariant
  * rather than defending against it.
  */
 async function readComponents(statusPageId: string): Promise<ComponentRow[]> {
@@ -175,7 +175,7 @@ export async function getStatusPageWire(
  * component list into insertable rows.
  *
  * The org check is the one that matters: without it, a page could publish
- * another tenant's probe by id. Order in equals order out — `position` is the
+ * another tenant's probe by id. Order in equals order out: `position` is the
  * caller's index, because the editor's drag order *is* the render order.
  */
 async function resolveComponents(
@@ -258,7 +258,7 @@ export async function createStatusPageRecord(
 /**
  * Update settings and/or the component set.
  *
- * `components`, when present, replaces the set wholesale — the editor always
+ * `components`, when present, replaces the set wholesale: the editor always
  * submits the full ordered list, so a delete-then-insert inside one
  * transaction is both simpler and the only way to express a reorder without a
  * position-shuffling dance.
@@ -311,7 +311,7 @@ export async function deleteStatusPageRecord(
 /**
  * Issue a fresh slug, revoking the old public URL.
  *
- * The slug is the page's only credential, so this is its reroll — the answer
+ * The slug is the page's only credential, so this is its reroll: the answer
  * to "the link ended up somewhere we didn't intend". It is intentionally not
  * coupled to unpublishing: rotating keeps the page live for anyone the org
  * re-sends the new link to.
@@ -345,7 +345,7 @@ function utcDay(ms: number): string {
  * link.
  *
  * Returns null for an unknown slug **and** for a page that exists but is not
- * published — the same answer for both, so the endpoint cannot be used to
+ * published: the same answer for both, so the endpoint cannot be used to
  * confirm that a slug is real. The caller renders one 404 either way.
  *
  * Every field is chosen rather than inherited. What is deliberately *not*

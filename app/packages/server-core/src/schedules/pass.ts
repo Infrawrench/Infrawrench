@@ -1,5 +1,5 @@
 /**
- * The poller's sleep/wake schedule pass — finds due transitions and invokes
+ * The poller's sleep/wake schedule pass: finds due transitions and invokes
  * the plugin's declared lifecycle start/stop action server-side.
  *
  * Correctness properties, in the order they bite:
@@ -14,12 +14,12 @@
  *   (`"<ISO>:<action>"`); a row whose `last_transition_key` already carries
  *   that key is rescheduled without re-invoking, so a restart after the
  *   completion write can't fire the same window twice. Downtime longer than
- *   a window executes only the *latest* missed transition — the one that
- *   decides the current desired state — never a replay of history.
+ *   a window executes only the *latest* missed transition (the one that
+ *   decides the current desired state) never a replay of history.
  * - **Edits beat stale runs.** The lease instant doubles as a claim token
  *   (`claimGuard`): every completion write requires `next_transition_at` to
  *   still hold the claimed value. A schedule edit or pause recomputes that
- *   column, so a superseded run's completion matches nothing — the edit's
+ *   column, so a superseded run's completion matches nothing: the edit's
  *   timing (and a paused row's null `next_transition_at`) always wins.
  * - **Freezes are respected.** An in-effect org change freeze skips the
  *   transition: logged, recorded as `skipped_freeze` on the row (surfaced in
@@ -27,7 +27,7 @@
  *   not retried the moment the freeze lifts mid-window.
  * - **Don't fight the sync.** After a successful transition the stored
  *   resource row's status field is set to the declared desired value and a
- *   change-timeline event is recorded with `origin: "schedule"` — the next
+ *   change-timeline event is recorded with `origin: "schedule"`: the next
  *   poll sees the expected state, so the transition never reads as drift,
  *   and the feed attributes it to the schedule rather than to nobody.
  * - **Failures are never silent.** Every failure logs `[schedules]`-prefixed
@@ -78,7 +78,7 @@ interface ClaimedSchedule {
    * The exact lease instant the claim wrote into `next_transition_at`,
    * carried as Postgres' own text rendering so no driver rounds the
    * microseconds away. Every completion/reschedule write is guarded on the
-   * column still holding this value — a schedule edit (or pause) recomputes
+   * column still holding this value: a schedule edit (or pause) recomputes
    * `next_transition_at`, which invalidates the token, so a stale claimed run
    * can never clobber the edit (and a paused row can never be handed a
    * non-null `next_transition_at` back).
@@ -86,7 +86,7 @@ interface ClaimedSchedule {
   claimToken: string;
 }
 
-/** Claim due, unpaused schedules — the `claimDueAccounts` protocol. */
+/** Claim due, unpaused schedules: the `claimDueAccounts` protocol. */
 async function claimDueSchedules(limit: number): Promise<ClaimedSchedule[]> {
   const rows = await db.execute(sql`
     UPDATE resource_schedules
@@ -214,7 +214,7 @@ async function attributeTransition(
     const from = fieldKey ? (resource.fieldsJson[fieldKey] ?? null) : null;
     if (fieldKey && desired !== null) {
       // Patch only the status key in place (jsonb_set) rather than writing
-      // back the whole document we read earlier — a concurrent sync's update
+      // back the whole document we read earlier: a concurrent sync's update
       // to any other field must not be clobbered by this bookkeeping write.
       await db
         .update(resources)
@@ -261,18 +261,18 @@ async function executeSchedule(
   const due = computeMostRecentTransition(timing, now);
   if (!due) {
     // Nothing has ever been due (fresh schedule whose first window is ahead,
-    // or timing rows edited to something invalid) — just reschedule.
+    // or timing rows edited to something invalid), just reschedule.
     await rescheduleOnly(row, now, claimToken);
     return "noop";
   }
   if (row.lastTransitionKey === transitionKey(due)) {
-    // Already executed (or deliberately skipped) — a lease-expiry re-claim or
+    // Already executed (or deliberately skipped): a lease-expiry re-claim or
     // a restart landed here. Reschedule without re-invoking.
     await rescheduleOnly(row, now, claimToken);
     return "noop";
   }
 
-  // Respect an in-effect change freeze: skip, log, surface — never defer to
+  // Respect an in-effect change freeze: skip, log, surface, never defer to
   // fire the moment the freeze lifts (the window's moment has passed).
   const freeze = await findActiveChangeFreeze(row.organizationId, new Date(now));
   if (freeze) {
@@ -320,7 +320,7 @@ async function executeSchedule(
     return "failed";
   }
 
-  // Already in the desired state (per the last sync)? Don't re-invoke — a
+  // Already in the desired state (per the last sync)? Don't re-invoke: a
   // second stop on a stopped instance is at best a no-op and at worst a
   // provider error that would read as a failed run.
   const desiredValues = due.action === "stop" ? lifecycle.stoppedValues : lifecycle.runningValues;
@@ -341,7 +341,7 @@ async function executeSchedule(
     }
 
     // Retry of a transition whose earlier attempt failed *after* the request
-    // may have reached the provider (timeout, dropped response — the outcome
+    // may have reached the provider (timeout, dropped response: the outcome
     // is ambiguous). The plugin contract carries no idempotency key, so the
     // guard is a live provider read: if the desired state already holds, the
     // earlier invocation landed and re-invoking would at best no-op and at
@@ -362,7 +362,7 @@ async function executeSchedule(
         );
         alreadyApplied = stateMatches(live.fields[lifecycle.statusFieldKey], desiredValues);
       } catch {
-        // The pre-check is best-effort — fall through to the normal invoke.
+        // The pre-check is best-effort: fall through to the normal invoke.
       }
       if (alreadyApplied) {
         console.log(
@@ -412,7 +412,7 @@ async function executeSchedule(
 
 /**
  * One schedule-pass tick: claim due schedules and execute their transitions.
- * Every schedule is individually guarded — one failure never blocks the rest
+ * Every schedule is individually guarded: one failure never blocks the rest
  * of the batch, and nothing here throws into the poller's tick.
  */
 export async function runSchedulePass(

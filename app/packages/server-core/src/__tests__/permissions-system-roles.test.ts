@@ -49,7 +49,7 @@ describe("SYSTEM_ROLE_DEFINITIONS", () => {
 
   it("member keeps the workflow access dashboards:write used to imply", () => {
     // Workflows rode on `dashboards:*` until they got their own family.
-    // Members could write, run, and approve them, and still can — carving
+    // Members could write, run, and approve them, and still can: carving
     // `workflows:approve` out of the default would 403 members who approve
     // today. Custom roles are where the split earns its keep.
     const perms = SYSTEM_ROLE_DEFINITIONS.member.permissions;

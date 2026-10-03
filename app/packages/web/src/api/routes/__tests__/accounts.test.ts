@@ -74,7 +74,7 @@ const buildApp = () => buildTestApp(accountRoutes);
 /**
  * Mounted the way `api/index.ts` mounts it, so tests can request the exact
  * URLs the web client builds. The Update Credentials flow shipped asking for
- * `/api/org/:orgId/plugins` — a path no router serves — and 404'd every time.
+ * `/api/org/:orgId/plugins` (a path no router serves) and 404'd every time.
  */
 const buildMountedApp = () => {
   const app = new Hono();

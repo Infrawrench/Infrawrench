@@ -2,8 +2,8 @@
  * HTTP API for business metrics and unit costs (org-scoped, mounted at
  * /api/org/:orgId/business-metrics).
  *
- * A business metric is the denominator a unit cost divides by — customers,
- * requests, GB, revenue — reported by the org itself. CRUD on the definition,
+ * A business metric is the denominator a unit cost divides by (customers,
+ * requests, GB, revenue) reported by the org itself. CRUD on the definition,
  * a batch write for the values, and the unit-cost query that puts the two
  * together.
  *
@@ -61,13 +61,13 @@ function writeError(c: Context, e: unknown) {
   throw e;
 }
 
-/** GET /api/org/:orgId/business-metrics — list, by key, with coverage. */
+/** GET /api/org/:orgId/business-metrics: list, by key, with coverage. */
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
   return c.json({ metrics: await listBusinessMetrics(c.get("organizationId")) });
 });
 
-/** POST /api/org/:orgId/business-metrics — create. */
+/** POST /api/org/:orgId/business-metrics: create. */
 app.post("/", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -94,7 +94,7 @@ app.post("/", async (c) => {
   }
 });
 
-/** GET /api/org/:orgId/business-metrics/:id — by id **or** key. */
+/** GET /api/org/:orgId/business-metrics/:id: by id **or** key. */
 app.get("/:id", async (c) => {
   requirePermission(c, "costs:read");
   const metric = await getBusinessMetric(c.get("organizationId"), c.req.param("id"));
@@ -103,11 +103,11 @@ app.get("/:id", async (c) => {
 });
 
 /**
- * PUT /api/org/:orgId/business-metrics/:id — replace the definition.
+ * PUT /api/org/:orgId/business-metrics/:id: replace the definition.
  *
  * A full replace, matching budgets and saved filters. Changing `key` is allowed
  * and never orphans history (values are keyed on the metric's id), but it does
- * break a workflow still writing to the old key — which is the honest outcome,
+ * break a workflow still writing to the old key, which is the honest outcome,
  * and why the key is separate from the display name.
  */
 app.put("/:id", async (c) => {
@@ -138,7 +138,7 @@ app.put("/:id", async (c) => {
 });
 
 /**
- * DELETE /api/org/:orgId/business-metrics/:id — soft delete.
+ * DELETE /api/org/:orgId/business-metrics/:id: soft delete.
  *
  * Not refused when a graph references it, unlike a saved filter. The failure
  * modes are opposite: an unresolvable saved filter would silently *widen* a
@@ -169,7 +169,7 @@ app.delete("/:id", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/business-metrics/:id/values?limit= — reported values,
+ * GET /api/org/:orgId/business-metrics/:id/values?limit= - reported values,
  * newest day first.
  */
 app.get("/:id/values", async (c) => {
@@ -191,10 +191,10 @@ app.get("/:id/values", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/business-metrics/:id/values — report a batch of days.
+ * POST /api/org/:orgId/business-metrics/:id/values: report a batch of days.
  *
  * **Re-reporting a day restates it rather than adding to it**, so a nightly job
- * is safe to retry — an accumulating write would double every number the first
+ * is safe to retry: an accumulating write would double every number the first
  * time the job re-ran, and nothing about the resulting chart would look wrong.
  * The audit entry records how many days were written, because "who restated
  * March" has to be answerable.
@@ -239,10 +239,10 @@ app.post("/:id/values", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/business-metrics/:id/unit-costs — spend ÷ metric, or
+ * POST /api/org/:orgId/business-metrics/:id/unit-costs: spend ÷ metric, or
  * margin, bucketed the way the caller asked.
  *
- * A read, so `costs:read` — it computes nothing that is stored. A bucket with
+ * A read, so `costs:read`: it computes nothing that is stored. A bucket with
  * no metric value comes back with `value: null` and a `gap` reason rather than
  * a zero; see `server-core/cost/unit-costs.ts` for why that distinction is the
  * one this endpoint exists to preserve.

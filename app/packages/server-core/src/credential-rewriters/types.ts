@@ -1,7 +1,7 @@
 /**
  * Credential rewriters transform a plugin's resolved credentials before the
- * plugin client is created. Each rewriter inspects the context — which
- * account / resource the credentials belong to — and decides whether to
+ * plugin client is created. Each rewriter inspects the context (which
+ * account / resource the credentials belong to) and decides whether to
  * mutate the credential map in place.
  *
  * The chain is composed in `./index.ts`. Today it contains the SSH-tunnel

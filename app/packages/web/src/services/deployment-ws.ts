@@ -11,7 +11,7 @@
  *                    deploy:prompt {spec} · deploy:result {runId, result} ·
  *                    deploy:error {message}
  *
- * Unlike a workflow run there is no line debugger — an Infrafile is a
+ * Unlike a workflow run there is no line debugger; an Infrafile is a
  * deployment, not something you single-step through.
  */
 import type { WebSocket } from "ws";
@@ -50,7 +50,7 @@ async function requireDeployPermission(
 ): Promise<void> {
   const required = planOnly ? "deployments:plan" : "deployments:write";
   const verb = planOnly ? "preview a deploy" : "deploy";
-  // No identified user means nothing to resolve a role against — deny rather
+  // No identified user means nothing to resolve a role against: deny rather
   // than fall through to an unchecked run.
   if (!userId) throw new Error(`You do not have permission to ${verb} in this organization.`);
   const granted = await effectivePermissions({ organizationId, userId });
@@ -76,7 +76,7 @@ export function handleDeploymentSession(
 
   /**
    * Unwind everything in flight. A pending `select(...)` holds the isolate open,
-   * so it has to be resolved before the abort can take effect — otherwise the
+   * so it has to be resolved before the abort can take effect, otherwise the
    * run (and its SSH workspace) sits there until the execution budget expires.
    */
   const unwind = (): void => {
@@ -107,7 +107,7 @@ export function handleDeploymentSession(
   };
   ws.on("message", onMessage);
   // A browser that navigates away or drops its connection must not leave the
-  // deploy running with nobody watching — and a prompt outstanding at that
+  // deploy running with nobody watching, and a prompt outstanding at that
   // moment would otherwise never settle.
   ws.on("close", unwind);
   ws.on("error", unwind);

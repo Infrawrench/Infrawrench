@@ -1,5 +1,5 @@
 /**
- * Cost per change / cost per deploy — the arithmetic. **Pure**: no db, no
+ * Cost per change / cost per deploy: the arithmetic. **Pure**: no db, no
  * ClickHouse, no clock of its own (callers pass "today"), which is what makes
  * every rule below exhaustively testable. The gathering lives beside it in
  * `change-impact-load.ts`; the wire contract and phrasing live in
@@ -8,12 +8,12 @@
  * This is the fourth member of the cost-alert/analysis family and answers a
  * question none of the other three do:
  *
- * - **Budgets** (`budget-eval.ts`) — an absolute monthly total.
- * - **Anomalies** (`anomaly-detect.ts`) — unconfigured statistical outliers.
- * - **Change alerts** (`change-detect.ts`) — a configured *relative* movement
+ * - **Budgets** (`budget-eval.ts`): an absolute monthly total.
+ * - **Anomalies** (`anomaly-detect.ts`): unconfigured statistical outliers.
+ * - **Change alerts** (`change-detect.ts`): a configured *relative* movement
  *   of a cost *scope*. Note the name collision: that module is about spend
  *   changing, this one is about a *resource change event* costing something.
- * - **Change impact** (this module) — "we made this edit; what did it do to
+ * - **Change impact** (this module): "we made this edit; what did it do to
  *   the run rate?"
  *
  * ## Windows, exactly
@@ -26,7 +26,7 @@
  * - `before` = `[T-w, T-1]`
  * - `after`  = `[T+1, T+w]`
  *
- * Today is never in a window either — the accruing day always reads as a dip.
+ * Today is never in a window either: the accruing day always reads as a dip.
  * `w` shrinks **symmetrically** to whatever both sides actually support, so
  * the two rates always average the same number of days: a 7-day mean against a
  * 2-day mean compares a settled figure to a noisy one and prints the noise as
@@ -53,7 +53,7 @@
  *
  * Two facts look identical in a table of cost rows: "this resource was billed
  * nothing" and "we hold no billing for this resource". They are separated here
- * by **collection coverage** — the inclusive day span the org actually
+ * by **collection coverage**: the inclusive day span the org actually
  * collected cost for the resource's account. Inside coverage, a day with no
  * row genuinely cost nothing and is zero-filled. Outside coverage, the day is
  * not part of any window at all. And a resource with no spend *anywhere* in
@@ -101,7 +101,7 @@ export interface ChangeImpactInput {
   /**
    * Inclusive day span the org has collected cost for this resource's account,
    * or null when it has collected none. This is the only thing that separates
-   * "billed nothing" from "we don't know" — do not synthesise it from the
+   * "billed nothing" from "we don't know": do not synthesise it from the
    * series, which cannot express the difference.
    */
   coverage: { firstDay: string; lastDay: string } | null;
@@ -112,7 +112,7 @@ export interface ChangeImpactInput {
   /** Other recorded changes to the same resource inside the union window. */
   overlappingChanges: number;
   /**
-   * False when the resource carries no provider-native id — nothing in
+   * False when the resource carries no provider-native id: nothing in
    * `cost_daily` can be keyed to it, so no amount of data would help.
    */
   costAddressable: boolean;
@@ -206,7 +206,7 @@ export function computeChangeCostImpact(input: ChangeImpactInput): ChangeCostImp
   if (!input.coverage) return unknown(input, ["no_cost_data"]);
 
   // The accruing day is never comparable, so the newest usable day is
-  // yesterday — and never past what the account has actually collected.
+  // yesterday, and never past what the account has actually collected.
   const lastComplete = earlierOf(addDays(input.today, -1), input.coverage.lastDay);
 
   const beforeAvailable = spanDays(
@@ -271,7 +271,7 @@ export function computeChangeCostImpact(input: ChangeImpactInput): ChangeCostImp
   }
 
   // Collected across both windows and found nothing at all. That is "we have
-  // no cost for this resource", not "this change cost nothing" — the two are
+  // no cost for this resource", not "this change cost nothing": the two are
   // different answers and this is where they are kept apart.
   if (!sawSpend) return unknown(input, [...reasons, "no_cost_data"]);
 
@@ -328,7 +328,7 @@ export function changeImpactFetchRange(
 /**
  * Sum a set of per-resource impacts into a deployment total.
  *
- * Only `measured` rows contribute — an unknown resource adds nothing rather
+ * Only `measured` rows contribute: an unknown resource adds nothing rather
  * than zero, and is counted separately so the total can never quietly claim to
  * cover resources it could not price. The confidence is the **weakest** among
  * the contributors: a breakdown is only as trustworthy as its worst row.

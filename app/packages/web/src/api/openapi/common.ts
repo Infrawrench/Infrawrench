@@ -2,7 +2,7 @@ import { ALERT_SEVERITIES, ALERT_TRIGGERS } from "@infrawrench/client-core";
 import { z } from "./zod";
 import { ALL_PERMISSIONS } from "@infrawrench/server-core/permissions";
 
-/** Strict object helper — refuses unknown properties. */
+/** Strict object helper: refuses unknown properties. */
 export const strict = <T extends z.ZodRawShape>(shape: T) => z.object(shape).strict();
 
 export const Uuid = z
@@ -47,7 +47,7 @@ export const OrgIdParam = strict({
 });
 
 /**
- * A free-form JSON value — used where plugins return arbitrary fields/outputs.
+ * A free-form JSON value: used where plugins return arbitrary fields/outputs.
  * We don't model the recursion in OpenAPI (it doesn't help generated clients
  * and confuses zod-to-openapi); just declare it as `additionalProperties: true`.
  */
@@ -88,7 +88,7 @@ export const ErrorResponses = {
   403: { description: "Forbidden", content: { "application/json": { schema: ErrorResponse } } },
   /**
    * The organization's plan does not include this feature. Distinct from `403`,
-   * which means the caller lacks a permission — this is about the plan, and the
+   * which means the caller lacks a permission: this is about the plan, and the
    * fix is billing rather than a role change.
    */
   402: {
@@ -102,7 +102,7 @@ export const ErrorResponses = {
     content: { "application/json": { schema: ReauthenticationRequiredResponse } },
   },
   404: { description: "Not found", content: { "application/json": { schema: ErrorResponse } } },
-  /** The resource is busy — e.g. a deploy to this environment is already running. */
+  /** The resource is busy, e.g. a deploy to this environment is already running. */
   409: { description: "Conflict", content: { "application/json": { schema: ErrorResponse } } },
   500: { description: "Server error", content: { "application/json": { schema: ErrorResponse } } },
   503: {
@@ -115,7 +115,7 @@ export const ErrorResponses = {
  * Trigger ids, as an enum so a client sees the list rather than "some string".
  *
  * Sourced from the shared registry (`client-core/src/alert-routing.ts`), which
- * is the same list the server routes on — adding a trigger regenerates this
+ * is the same list the server routes on: adding a trigger regenerates this
  * enum and needs no edit here. That is the point of the routing table: what
  * used to be a column in three schemas is a value in one list.
  *

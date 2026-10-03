@@ -218,7 +218,7 @@ describe("aggregateNetworkFlows", () => {
     const unattributed = byAttribution(result.rows, "unattributed");
     expect(unattributed).toHaveLength(1);
     expect(unattributed[0]!.bytes).toBe(80 * GB);
-    // The resolved row keeps exactly its own bytes — nothing was spread onto it.
+    // The resolved row keeps exactly its own bytes: nothing was spread onto it.
     expect(byAttribution(result.rows, "resolved")[0]!.bytes).toBe(20 * GB);
     // And the two account for the whole reported total, so there is no tail.
     expect(byAttribution(result.rows, "truncated")).toHaveLength(0);
@@ -227,7 +227,7 @@ describe("aggregateNetworkFlows", () => {
 
   it("produces nothing at all for a provider with no flow source", () => {
     // A plugin that found no readable source returns no flows and no totals.
-    // The result must be empty rows — not a zero-byte row, which on the screen
+    // The result must be empty rows, not a zero-byte row, which on the screen
     // is a claim that the network was quiet.
     const result = aggregateNetworkFlows(DAY, { flows: [], totals: [], rates: RATES }, {});
     expect(result.rows).toEqual([]);
@@ -308,7 +308,7 @@ describe("aggregateNetworkFlows", () => {
     const rows = byAttribution(result.rows, "resolved");
     expect(rows).toHaveLength(2);
     expect(rows[0]!.pairHash).not.toBe(rows[1]!.pairHash);
-    // Stable across processes — the ReplacingMergeTree key depends on it.
+    // Stable across processes: the ReplacingMergeTree key depends on it.
     expect(fnv1a64("i-src i-a  use1-az2  ")).toBe(fnv1a64("i-src i-a  use1-az2  "));
   });
 });

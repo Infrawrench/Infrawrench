@@ -1,5 +1,5 @@
 /**
- * Managed accounts — CRUD for the customers a managed service provider bills.
+ * Managed accounts: CRUD for the customers a managed service provider bills.
  *
  * The shape of this module mirrors `cost/allocation.ts` and
  * `cost/billing-rules.ts` deliberately: these are the third object in the same
@@ -36,7 +36,7 @@ export class ManagedAccountError extends Error {
   override readonly name = "ManagedAccountError";
 }
 
-/** A name already taken in this org — the API maps this to a 409. */
+/** A name already taken in this org: the API maps this to a 409. */
 export class ManagedAccountNameConflictError extends Error {
   override readonly name = "ManagedAccountNameConflictError";
 
@@ -49,7 +49,7 @@ export class ManagedAccountNameConflictError extends Error {
 }
 
 /**
- * Scope the caller asked for is already billed to someone else — 409, with the
+ * Scope the caller asked for is already billed to someone else: 409, with the
  * other customer named, because "it conflicts" without saying with whom is a
  * message that sends the user hunting through every other customer.
  */
@@ -228,7 +228,7 @@ async function assertScopeExclusive(
  * Reads
  * ------------------------------------------------------------------ */
 
-/** Live rows, name-sorted. Internal — invoice generation reads these. */
+/** Live rows, name-sorted. Internal: invoice generation reads these. */
 export async function listManagedAccountRows(organizationId: string): Promise<
   Array<{
     id: string;
@@ -284,7 +284,7 @@ export async function listManagedAccounts(organizationId: string): Promise<Manag
   return rows.map((row) => toWire(row, counts.get(row.id) ?? 0));
 }
 
-/** The raw live row — what invoice generation needs. Null when not found. */
+/** The raw live row: what invoice generation needs. Null when not found. */
 export async function getManagedAccountRow(
   organizationId: string,
   id: string,
@@ -371,7 +371,7 @@ export async function createManagedAccount(
  * else: every approved invoice already holds its own copy of the scope, so
  * moving a cost centre from one customer to another cannot retroactively
  * re-bill a period that has already been invoiced. That is not a special case
- * here — it falls out of freezing at approval.
+ * here: it falls out of freezing at approval.
  */
 export async function updateManagedAccount(
   organizationId: string,
@@ -409,7 +409,7 @@ export async function updateManagedAccount(
  * Soft, always, and not because deletes are scary: an issued invoice names its
  * customer and links to this row, and an invoice whose customer stopped
  * resolving is exactly the unreconcilable document this feature exists to
- * avoid. A customer with no invoices is soft-deleted too — one rule is easier
+ * avoid. A customer with no invoices is soft-deleted too: one rule is easier
  * to reason about than two, and the partial unique index frees the name either
  * way.
  *

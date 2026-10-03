@@ -3,7 +3,7 @@ import { buildTestApp } from "./test-utils";
 
 // The service is mocked rather than exercised: it reaches the Drizzle client,
 // which throws at import time without DATABASE_URL. These tests own the
-// transport contract — permissions, validation, status codes, audit.
+// transport contract: permissions, validation, status codes, audit.
 const mockList = vi.fn();
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();

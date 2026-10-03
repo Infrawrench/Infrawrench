@@ -13,7 +13,7 @@ function withStatus(message: string, status: number): Error {
 /**
  * Verbatim from a real GCP account. Both the project id (`…-503516-h4`) and
  * the project number (`205336108475`) contain runs that a naive /5\d\d/ reads
- * as a 5xx status — this exact string is what put the account into permanent
+ * as a 5xx status: this exact string is what put the account into permanent
  * backoff.
  */
 const DISABLED_API =
@@ -34,7 +34,7 @@ describe("isTransientError", () => {
   });
 
   it("ignores digits inside project ids when no status is attached", () => {
-    // Same messages, but from a plugin that attaches no status — the word
+    // Same messages, but from a plugin that attaches no status: the word
     // boundaries have to carry it alone.
     expect(isTransientError(new Error(DISABLED_API))).toBe(false);
     expect(isTransientError(new Error(RAW_403))).toBe(false);

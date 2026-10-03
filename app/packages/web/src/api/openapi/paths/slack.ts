@@ -37,7 +37,7 @@ const SlackChannelCreate = strict({
   isPrivate: z.boolean().optional(),
 }).openapi("SlackChannelCreate");
 
-// Registered under its own name — `.partial()` on a registered schema would
+// Registered under its own name: `.partial()` on a registered schema would
 // otherwise collapse back into the full $ref in the generated document.
 const SlackChannelUpdate = strict({
   channelName: z.string(),
@@ -180,7 +180,7 @@ export function registerSlackPaths(ctx: BuildContext) {
   });
 
   // --- Inbound Slack (public, signature-verified; internal in the published
-  // spec — these are called by Slack and the browser, never by API clients).
+  // spec: these are called by Slack and the browser, never by API clients).
 
   const slackSignatureHeaders = strict({
     "x-slack-signature": z

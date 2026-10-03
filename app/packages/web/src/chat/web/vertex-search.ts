@@ -2,7 +2,7 @@
  * Search backend: Google Search grounding on Vertex AI, driven by a small
  * sub-model call.
  *
- * Structurally the twin of ./anthropic-search.ts — grounding is likewise only
+ * Structurally the twin of ./anthropic-search.ts: grounding is likewise only
  * reachable as a tool a model may call, so the search tool is again "ask a cheap
  * model, read the sources back out". The differences are Google's: grounding is
  * requested with `googleSearch` rather than being pinned with a tool_choice (the

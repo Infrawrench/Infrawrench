@@ -104,15 +104,15 @@ export async function handleSshSession(
     let connectThroughAccountId: string | undefined;
     /**
      * The vetted IP the final socket goes to, set only on the one path the
-     * server dials on a client's say-so. Undefined everywhere else — a
+     * server dials on a client's say-so. Undefined everywhere else: a
      * bastion-routed session reaches its target over `sock`, and a
-     * plugin-supplied endpoint is not client-chosen — and `dialFinal` then
+     * plugin-supplied endpoint is not client-chosen, and `dialFinal` then
      * falls back to the configured host as before.
      */
     let targetDialAddress: string | undefined;
 
     if (directSsh) {
-      // Direct SSH via SSH key — used for sshHost resources (EC2, droplets, etc.)
+      // Direct SSH via SSH key: used for sshHost resources (EC2, droplets, etc.)
       const [key] = await db
         .select()
         .from(sshKeys)
@@ -125,7 +125,7 @@ export async function handleSshSession(
 
       // `host` comes straight off the WebSocket frame, so this is the one
       // place a caller picks the destination outright. Refuse internal address
-      // space for the same reason the tunnel routes do — without it the server
+      // space for the same reason the tunnel routes do: without it the server
       // will happily dial 127.0.0.1 or the cloud metadata endpoint on request.
       // Skipped when jumping through a bastion: the whole point of a jump host
       // is to reach hosts that are private from where we sit.
@@ -210,7 +210,7 @@ export async function handleSshSession(
     let torndown = false;
     /**
      * The session-recording tee, when the org has recording enabled. Null in
-     * every other case — opted out, settings unreadable, opening write failed —
+     * every other case (opted out, settings unreadable, opening write failed)
      * so there is exactly one branch here and no way for a broken recorder to
      * be mistaken for a working one. Nothing on this object throws, and nothing
      * on the terminal's path awaits it.
@@ -263,11 +263,11 @@ export async function handleSshSession(
       }
       // With compression negotiated, ending the connection while the channel
       // is still finalizing makes ssh2 compress the channel-close packet
-      // through already-destroyed zlib writers — an uncaught "Invalid Zlib
+      // through already-destroyed zlib writers: an uncaught "Invalid Zlib
       // instance" throw on a later tick that would take the process down.
       // End the channel first, and close the connections only after its
       // "close" has fired AND its remaining teardown ticks (readable-end →
-      // destroy) have drained — hence the extra deferral.
+      // destroy) have drained, hence the extra deferral.
       let ended = false;
       const endOnce = () => {
         if (ended) return;
@@ -285,7 +285,7 @@ export async function handleSshSession(
     };
 
     // Registered BEFORE dialing: if the browser goes away mid-connect (or
-    // mid-chain-establishment) we tear down whatever exists at that point —
+    // mid-chain-establishment) we tear down whatever exists at that point;
     // the shell may not be open yet (or ever).
     ws.on("close", cleanup);
     ws.on("error", cleanup);
@@ -323,7 +323,7 @@ export async function handleSshSession(
           return;
         }
         if (torndown || ws.readyState !== ws.OPEN) {
-          // ws closed while the shell was opening — discard it.
+          // ws closed while the shell was opening: discard it.
           try {
             stream.end();
           } catch {
@@ -347,7 +347,7 @@ export async function handleSshSession(
 
         // Registered before the first byte, and unconditionally: the console
         // is now shareable, and a session that could only be shared if the
-        // sharer had decided so at connect time would be useless — the moment
+        // sharer had decided so at connect time would be useless; the moment
         // you want a second pair of eyes is never the moment you opened the
         // shell.
         sharedConsoleHub.register(
@@ -417,20 +417,20 @@ export async function handleSshSession(
 
             if (msg.type === "ssh:data" && msg.data) {
               // Unshared: always true, and this is the pre-existing path. Once
-              // shared, the owner types only while they are the driver — the
+              // shared, the owner types only while they are the driver: the
               // same server-side gate their guests go through, because "the
               // person who opened the session" is not a role that exempts
               // anyone from the one-driver rule they agreed to.
               if (!sharedConsoleHub.ownerMayWrite(liveConsoleId)) return;
               const input = Buffer.from(msg.data, "base64");
               stream.write(input);
-              // No-op unless the org opted into input capture specifically —
+              // No-op unless the org opted into input capture specifically:
               // see the note on `capture_input` in the schema.
               recorder?.onInput(input);
             } else if (msg.type === "ssh:resize" && msg.cols && msg.rows) {
               // A pty has one size and it is the driver's. An owner who has
               // handed the keyboard over letterboxes like everybody else
-              // rather than resizing the window out from under the driver —
+              // rather than resizing the window out from under the driver,
               // but their window size is still recorded, so taking the
               // keyboard back resizes to what they can actually read.
               sharedConsoleHub.noteOwnerViewport(liveConsoleId, msg.cols, msg.rows);
@@ -452,7 +452,7 @@ export async function handleSshSession(
 
     conn.on("ready", () => {
       if (torndown) {
-        // ws closed while the handshake was completing — drop the connection.
+        // ws closed while the handshake was completing: drop the connection.
         try {
           conn.end();
         } catch {
@@ -461,7 +461,7 @@ export async function handleSshSession(
         return;
       }
       // The recorder opens *before* the shell rather than alongside it, so the
-      // cast starts at the first byte the host emits — a prompt or a MOTD that
+      // cast starts at the first byte the host emits: a prompt or a MOTD that
       // arrived while an insert was still in flight would otherwise be missing
       // from the top of the tape. It costs one round-trip, and only when the
       // org has recording on (the settings read short-circuits otherwise).
@@ -479,7 +479,7 @@ export async function handleSshSession(
           rows,
         });
         if (torndown) {
-          // ws closed while the recording was opening — settle the empty row.
+          // ws closed while the recording was opening: settle the empty row.
           const opened = recorder;
           recorder = null;
           await opened?.finish();
@@ -496,7 +496,7 @@ export async function handleSshSession(
 
     const hostKeyErrorRef = { value: null as HostKeyTrustRequiredError | null };
     conn.on("error", (err) => {
-      // A verifier rejection surfaces as a generic ssh2 connect error — report
+      // A verifier rejection surfaces as a generic ssh2 connect error: report
       // the typed host-key error instead when that's what aborted us.
       sendError(hostKeyErrorRef.value ?? err);
       cleanup();
@@ -589,7 +589,7 @@ export async function handleSshSession(
 
     // Open each intermediate hop, then dial the final target on `conn`.
     // ssh2's ConnectConfig types `sock` as Node's `Readable`, but the
-    // `forwardOut` stream is in fact a full duplex — cast accordingly.
+    // `forwardOut` stream is in fact a full duplex: cast accordingly.
     type SshSock = import("stream").Readable;
     const dialFinal = (sock?: SshSock) => {
       if (torndown) return;
@@ -615,7 +615,7 @@ export async function handleSshSession(
         ),
         ...(forwardAgent ? { agent: forwardAgent, agentForward: true } : {}),
         // TUI apps redraw whole screen regions constantly and that text
-        // compresses extremely well — the `ssh -C` equivalent.
+        // compresses extremely well: the `ssh -C` equivalent.
         algorithms: { compress: ["zlib@openssh.com", "zlib", "none"] },
       });
     };
@@ -625,7 +625,7 @@ export async function handleSshSession(
     } else {
       // No address pinning anywhere in here, deliberately. Every hop after the
       // first is dialed *through* the previous one over `sock`, so this
-      // process never resolves it — and the first hop's endpoint comes from a
+      // process never resolves it, and the first hop's endpoint comes from a
       // stored SSH account written by someone with `accounts:write`, not from
       // the WebSocket frame, and is routinely a private address an operator
       // configured on purpose. Guarding it would break the documented reason
@@ -647,7 +647,7 @@ export async function handleSshSession(
               reject(hopKeyErrorRef.value ?? (err instanceof Error ? err : new Error(String(err)))),
             );
             // `end()` from a concurrent ws-close teardown emits "close"
-            // without "error" — settle the promise so we don't hang.
+            // without "error": settle the promise so we don't hang.
             client.once("close", () =>
               reject(new Error("SSH connection closed while establishing the jump chain")),
             );

@@ -1,11 +1,11 @@
 /**
- * Fan-out SSH — run one command across many SSH-capable hosts.
+ * Fan-out SSH: run one command across many SSH-capable hosts.
  *
  * Targets come in two flavours, mirroring the single-host terminal:
  *  - "account": accounts of the `ssh` plugin, whose client natively exposes
  *    `getSshConfig()` (host, username, and key live in the account creds).
  *  - "resource": resources whose type declares `sshEndpoint` (EC2 instances,
- *    droplets, Hetzner servers, …) — paired with an org SSH key at run time,
+ *    droplets, Hetzner servers, …); paired with an org SSH key at run time,
  *    exactly like the quick-connect flow.
  *
  * Execution reuses `sshExecCapture` (services/ssh.ts) per host under a
@@ -86,7 +86,7 @@ interface ResourceRowLike {
 
 /**
  * Derive a fan-out target from a stored resource row and its type definition.
- * Pure — exercised directly by unit tests. Returns null when the type has no
+ * Pure: exercised directly by unit tests. Returns null when the type has no
  * sshEndpoint or no host resolves.
  */
 export function deriveResourceTarget(
@@ -203,7 +203,7 @@ export interface FanoutRunOptions {
 /**
  * Run `command` on every target with a concurrency cap. Per-host failures
  * (unreachable host, untrusted key, blocked internal host) become per-host
- * results — one bad box never fails the run. The caller has already passed
+ * results: one bad box never fails the run. The caller has already passed
  * permission and change-freeze gates and audits the run.
  */
 export async function runFanout(
@@ -221,7 +221,7 @@ export async function runFanout(
   );
 
   // Resolve the org key once (resource targets). Restricted to keys owned by
-  // the caller — same policy as /ssh-tunnels/exec.
+  // the caller: same policy as /ssh-tunnels/exec.
   let privateKey: string | null = null;
   const needsKey = opts.targets.some((t) => t.kind === "resource");
   if (needsKey) {
@@ -311,7 +311,7 @@ export async function runFanout(
       }
 
       // SSRF guard on the host the server is about to dial. The cleared
-      // address is what gets dialed — re-resolving the name inside ssh2 would
+      // address is what gets dialed: re-resolving the name inside ssh2 would
       // give a short-TTL record a second answer to give, after this check has
       // already passed. `config.host` still carries the host-key identity.
       let dialAddress: string;

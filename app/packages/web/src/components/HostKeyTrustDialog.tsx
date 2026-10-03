@@ -174,7 +174,7 @@ function FingerprintRow({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      /* clipboard blocked — ignore */
+      /* clipboard blocked: ignore */
     }
   }
 

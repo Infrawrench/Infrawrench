@@ -1,10 +1,10 @@
 /**
- * Cost export rows — CRUD, validation and credential handling, shared by the
+ * Cost export rows: CRUD, validation and credential handling, shared by the
  * web API and the poller pass.
  *
  * **The one rule this file exists to enforce: credentials only travel inward.**
  * {@link toCostExportView} is the only way a row becomes something a route may
- * return, and it has no branch that emits a secret — it carries
+ * return, and it has no branch that emits a secret; it carries
  * {@link CostExportRecord.credentialHint} instead. `loadCredentials` is
  * separate, is not reachable from any route, and is used only by the run loop.
  *
@@ -236,7 +236,7 @@ function hintFor(creds: CostExportCredentials): string {
 
 /**
  * Pull the credential bundle out of the input, or `null` when the caller
- * omitted it — which the update path reads as "keep what is stored", the same
+ * omitted it, which the update path reads as "keep what is stored", the same
  * contract the Jira and Twilio settings use for a blank password field.
  */
 function credentialsFromInput(input: CostExportInput): CostExportCredentials | null {
@@ -255,7 +255,7 @@ function credentialsFromInput(input: CostExportInput): CostExportCredentials | n
 }
 
 /**
- * Decrypt an export's credentials. **Server-side callers only** — nothing that
+ * Decrypt an export's credentials. **Server-side callers only**: nothing that
  * can reach an HTTP response may call this. Returns null when none are stored
  * or when decryption fails (a rotated master key, a corrupted row); the run
  * loop turns that into a visible `lastError` rather than a crash.
@@ -323,7 +323,7 @@ export async function listCostExports(organizationId: string): Promise<CostExpor
   return rows.map(toCostExportView);
 }
 
-/** Raw row (credentials still encrypted) — for the run loop and internal callers. */
+/** Raw row (credentials still encrypted), for the run loop and internal callers. */
 export async function getCostExportRow(
   organizationId: string,
   id: string,
@@ -423,7 +423,7 @@ export async function updateCostExport(
   if (!creds && !existing.encryptedCredentials) {
     throw new CostExportInputError("This export has no stored credentials; supply them");
   }
-  // A destination that changed kind cannot keep the old credentials — an S3
+  // A destination that changed kind cannot keep the old credentials: an S3
   // key pair is not a URL. Rejecting is better than silently running with a
   // credential that cannot possibly match the new destination.
   if (!creds && existing.destinationKind !== normalized.destination.kind) {
@@ -515,7 +515,7 @@ export function isCostExportInFlight(lastError: string | null): boolean {
  * Only `last_error` moves: `last_status` deliberately keeps the previous run's
  * verdict, because a run takes minutes and flashing "failed" at anyone who
  * opens Settings during the nightly window would be a worse lie than a stale
- * "succeeded" — the marker's job is to be found by the *next* claim, not to
+ * "succeeded"; the marker's job is to be found by the *next* claim, not to
  * report progress.
  */
 export async function markCostExportRunInFlight(id: string, startedAt: Date): Promise<void> {

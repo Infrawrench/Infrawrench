@@ -1,8 +1,8 @@
 /**
  * Accepted posture findings (`posture_dismissals`).
  *
- * A finding is not a row — it is recomputed from stored fields on every read
- * — so "dismiss this warning" cannot be a flag on the finding. It is a
+ * A finding is not a row (it is recomputed from stored fields on every read)
+ * so "dismiss this warning" cannot be a flag on the finding. It is a
  * decision recorded against `(resourceId, ruleId)` and replayed by the feed,
  * which partitions the matching findings out of the list and out of the alert
  * pass. Everything that reads `listPosture` therefore inherits dismissals for
@@ -40,7 +40,7 @@ interface DismissalRow {
 }
 
 /**
- * The wire shape. `dismissedBy` is a *name*, not an id — every surface
+ * The wire shape. `dismissedBy` is a *name*, not an id: every surface
  * renders it directly, and the id is meaningless off-server. A deleted user
  * (the FK nulls out) reads as unknown rather than as a dangling reference.
  */
@@ -106,7 +106,7 @@ function normalizeReason(reason: string | null | undefined): string | null {
 }
 
 /**
- * Accept a finding. Idempotent by design — dismissing something already
+ * Accept a finding. Idempotent by design: dismissing something already
  * dismissed rewrites the note, the author and the timestamp instead of
  * failing, so a retried request (or two admins reaching the same conclusion)
  * lands one row rather than an error.

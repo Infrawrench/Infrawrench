@@ -1,15 +1,15 @@
 /**
- * Workflow authoring tools — let MCP clients and the chat agent write, check,
+ * Workflow authoring tools: let MCP clients and the chat agent write, check,
  * and run sandboxed TypeScript automations without an editor.
  *
  * The pairing matters: `get_workflow_typings` hands back the generated
  * `infra.d.ts` for the caller's *own* accounts (so the model writes against
  * real account names and resource types), and `write_workflow` type-checks the
- * source against that same file before saving — a workflow with type errors is
+ * source against that same file before saving; a workflow with type errors is
  * rejected with diagnostics instead of being persisted and failing at 3am.
  *
  * Everything routes through services/workflows.ts, the same module behind the
- * HTTP routes, so the two surfaces can't drift — including the permissions:
+ * HTTP routes, so the two surfaces can't drift, including the permissions:
  * reads take `workflows:read`, and writing/running/deleting take
  * `workflows:write`, exactly as the matching routes do.
  */
@@ -689,7 +689,7 @@ export function workflowTools(): ToolDefinition[] {
               ? {
                   typecheck: {
                     warnings: check.diagnostics,
-                    // A degraded check only inspected syntax — say so rather
+                    // A degraded check only inspected syntax: say so rather
                     // than implying the types were verified.
                     ...(check.degraded
                       ? { note: "Type checking was unavailable; only syntax was checked." }

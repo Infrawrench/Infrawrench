@@ -7,16 +7,16 @@ import { fakePostgres } from "./helpers/fake-postgres";
  *
  *  - **the Authorization header**, which is the part of Linear's contract that
  *    contradicts habit: personal API keys are sent bare, and adding a `Bearer`
- *    prefix — the obvious "fix" a future refactor might make — breaks every
+ *    prefix (the obvious "fix" a future refactor might make) breaks every
  *    request (per https://linear.app/developers/graphql, Bearer is the OAuth
  *    form only);
  *  - **GraphQL error mapping**, because Linear can answer HTTP 200 with an
  *    `errors` array (partial success) and reports rate limiting as a
- *    `RATELIMITED` code on an HTTP 400 — treating either as success, or as a
+ *    `RATELIMITED` code on an HTTP 400; treating either as success, or as a
  *    generic 400, would misreport what happened;
  *  - **the issueCreate input**, where optional fields must be absent rather
  *    than null, and the description goes through as markdown untouched (no
- *    ADF conversion — that is Jira's quirk, not Linear's);
+ *    ADF conversion; that is Jira's quirk, not Linear's);
  *  - **redaction**, since the API key must never appear in anything a route
  *    can return.
  *
@@ -42,7 +42,7 @@ function graphqlResponse(data: unknown, status = 200) {
 }
 
 // Keys in the `linear_integrations` column order, values driver-shaped
-// (timestamps as ISO strings) — see helpers/fake-postgres.ts.
+// (timestamps as ISO strings): see helpers/fake-postgres.ts.
 const STORED_ROW = {
   organizationId: "org1",
   encryptedApiKey: "CT",
@@ -105,7 +105,7 @@ describe("verifyLinearCredentials", () => {
 
   /**
    * Linear documents rate limiting as GraphQL errors with code RATELIMITED on
-   * an HTTP 400 (https://linear.app/developers/rate-limiting) — it must not be
+   * an HTTP 400 (https://linear.app/developers/rate-limiting): it must not be
    * reported as "your input was wrong".
    */
   it("reports RATELIMITED as rate limiting, not a generic error", async () => {
@@ -122,7 +122,7 @@ describe("verifyLinearCredentials", () => {
     await expect(verifyLinearCredentials("key")).rejects.toThrow(/rate limiting/);
   });
 
-  /** GraphQL can fail on an HTTP 200 — the errors array is the truth. */
+  /** GraphQL can fail on an HTTP 200: the errors array is the truth. */
   it("treats errors on an HTTP 200 as failure", async () => {
     fetchSpy.mockImplementation(
       async () =>
@@ -216,7 +216,7 @@ describe("createLinearIssue", () => {
     expect(body.variables.input).toEqual({
       teamId: "t1",
       title: "Cost anomaly: EC2 spend up 240%",
-      // Markdown, verbatim — no ADF conversion. That is Jira's contract, not
+      // Markdown, verbatim: no ADF conversion. That is Jira's contract, not
       // Linear's, and converting here would post a JSON blob into the issue.
       description: "Baseline: $12/day",
     });

@@ -8,14 +8,14 @@ import { costDaily, type Complete } from "./schema";
  *
  * Derived from the table rather than restated, so a column added to `schema.ts`
  * is a column every producer of this type has to fill. `ingested_at` is dropped
- * because the server's `now()` default owns it; everything else is required —
+ * because the server's `now()` default owns it; everything else is required:
  * see {@link Complete}.
  */
 export type CostDailyRow = Complete<Omit<InferInsertModel<typeof costDaily>, "ingested_at">>;
 
 /**
  * Tag keys the host owns. Mirrors `RESERVED_TAG_PREFIX` in `cost/cost-ingest.ts`
- * (restated rather than imported — that module imports this one, and a cycle
+ * (restated rather than imported: that module imports this one, and a cycle
  * between the writer and its validator helps nobody). Pushed rows are rejected
  * for using this prefix, so nothing a caller supplies can collide with the
  * synthetic entries {@link hashTags} folds in below.
@@ -39,13 +39,13 @@ export interface CostRowKeyExtras {
  * **Why charge type and commitment id are hashed in here.** `cost_daily` is a
  * ReplacingMergeTree whose sort key is
  * `(org, account, day, service, region, resource_id, tags_hash, currency)`, and
- * that key is frozen — it cannot gain `charge_type` without re-keying three
+ * that key is frozen: it cannot gain `charge_type` without re-keying three
  * years of history (`clickhouse/migrate.ts` explains why the ALTER path may
  * only add columns). But a provider legitimately reports several charge types
  * for the same account, day, service and region: the EC2 usage line, the credit
  * applied against it, and the tax on it are three rows identical in every key
  * column. Written as-is, ReplacingMergeTree treats them as three versions of
- * one row and `FINAL` keeps only the last one ingested — the org's spend would
+ * one row and `FINAL` keeps only the last one ingested: the org's spend would
  * silently become whichever line the provider happened to page in last.
  *
  * So they are folded into `tags_hash`, which IS in the key, as synthetic
@@ -60,12 +60,12 @@ export interface CostRowKeyExtras {
  * historical number the first time a restatement window is re-fetched. Do not
  * "simplify" this by always appending the charge type.
  *
- * **The synthetic entries go into the hash only — never into the `tags` column
- * {@link toCostDailyRows} writes — and something depends on that.**
+ * **The synthetic entries go into the hash only (never into the `tags` column
+ * {@link toCostDailyRows} writes) and something depends on that.**
  * `clickhouse/cost-reconcile.ts` distinguishes a collector's rows from rows a
  * user pushed by looking for a reserved key in the *stored* `tags`, so if these
  * entries were also stored, every attribution row a collector writes would look
- * pushed, and reconciliation would skip exactly the rows it exists to fix —
+ * pushed, and reconciliation would skip exactly the rows it exists to fix:
  * silently, since it would still run and still find nothing. The two ends are
  * cross-referenced; change neither alone.
  */
@@ -76,7 +76,7 @@ export function hashTags(
   const keys = tags ? Object.keys(tags).sort() : [];
   const parts = keys.map((k) => `${k}=${tags![k]}`);
 
-  // Only non-default values are folded in — see the note above about why the
+  // Only non-default values are folded in: see the note above about why the
   // default must hash identically to a plain tags map.
   const chargeType = extras?.chargeType ?? "usage";
   if (chargeType !== "usage") parts.push(`${RESERVED_KEY_PREFIX}charge_type=${chargeType}`);
@@ -112,7 +112,7 @@ function toCostDailyRow(
     resource_id: r.resourceId ?? "",
     tags: r.tags ?? {},
     // Charge type and commitment id ride in the hash because the sort key
-    // cannot carry them — without this a credit would replace the usage line
+    // cannot carry them: without this a credit would replace the usage line
     // it was credited against. See hashTags.
     tags_hash: hashTags(r.tags, { chargeType, commitmentId }),
     currency: r.currency,
@@ -143,11 +143,11 @@ export function toCostDailyRows(
  * Write a chunk's rows.
  *
  * Unlike the fire-and-forget metric writers, cost collection must know about
- * failures so the poller can back off and retry — errors throw.
+ * failures so the poller can back off and retry: errors throw.
  *
  * **Accepts an async iterable, and nothing here passes one.** The dialect
  * streams a body, so a caller producing rows lazily would never hold a month of
- * a large account's resource-level billing at once — but `cost/collect.ts`
+ * a large account's resource-level billing at once, but `cost/collect.ts`
  * cannot be that caller. Reconciliation subtracts the keys about to be written
  * from the keys already stored, and appends its tombstones to the same insert,
  * so the mapped rows have to exist before the write starts. Streaming them

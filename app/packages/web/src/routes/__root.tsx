@@ -56,7 +56,7 @@ interface TunnelAttachState {
  * Distinct from `/invite/` and `/admin`, which skip the *onboarding redirect*
  * but still call `/api/auth/me`: a public status page must not make that call.
  * Hitting an authenticated endpoint would redirect an anonymous visitor to
- * sign-in, which is precisely what a public status page cannot do — the page
+ * sign-in, which is precisely what a public status page cannot do: the page
  * exists for people who have no relationship with the org beyond the link.
  */
 function isPublicRoute(pathname: string): boolean {
@@ -75,7 +75,7 @@ function isPublicRoute(pathname: string): boolean {
  * `/org/` branch, and an anonymous visitor is bounced to sign-in and lands back
  * in one of the first two.
  *
- * `/claim` in particular must also survive having **no organization at all** —
+ * `/claim` in particular must also survive having **no organization at all**:
  * claiming is how its visitor gets their first one, so sending them to
  * onboarding first would be asking them to build the workspace they were
  * invited to take over.
@@ -133,7 +133,7 @@ function RootLayout() {
       });
   }, [navigate, pathname]);
 
-  // Rendered before any auth state is consulted — see isPublicRoute.
+  // Rendered before any auth state is consulted: see isPublicRoute.
   if (isPublicRoute(pathname)) return <Outlet />;
 
   if (!authChecked) {
@@ -173,8 +173,8 @@ function AuthenticatedShell() {
   const hash = useRouterState({ select: (s) => s.location.hash });
   // The search string must come from the SAME router state snapshot as the
   // pathname and hash. @tanstack/history flushes the real history.pushState
-  // asynchronously, so window.location.search — which syncWorkspaceRouteFromPath
-  // falls back to — can still be the previous route's query while the router
+  // asynchronously, so window.location.search (which syncWorkspaceRouteFromPath
+  // falls back to) can still be the previous route's query while the router
   // already reports the new hash. For a freshly launched Linux app that mixed
   // state read as "#window with no window", parsed as the resource detail, and
   // replaced the app tab the user just opened with the VM's info page.
@@ -215,7 +215,7 @@ function AuthenticatedShell() {
     getWorkspaceNavigateArgs,
   );
 
-  // On plain routes (Moment, Admin) the workspace tabs are all background —
+  // On plain routes (Moment, Admin) the workspace tabs are all background:
   // the page's own title wins over the active tab.
   useWorkspaceTabDocumentTitle({ routeTitle: plainRouteDocumentTitle(pathname) });
 

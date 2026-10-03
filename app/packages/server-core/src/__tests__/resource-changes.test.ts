@@ -64,7 +64,7 @@ describe("diffResourceRecords", () => {
 
   it("does not report fields the lister stopped returning (upsert merge semantics)", () => {
     // The upsert merges JSON, so a key missing from the fetch survives in the
-    // DB — it must not read as removed.
+    // DB: it must not read as removed.
     const diff = diffResourceRecords(prior(), fetched({ fields: { status: "running" } }));
     expect(diff).toEqual([]);
   });

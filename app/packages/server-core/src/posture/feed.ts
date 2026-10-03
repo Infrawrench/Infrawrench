@@ -31,7 +31,7 @@ export interface ListPostureOptions {
  * never outlive the thing it belongs to.
  *
  * Findings the org has dismissed are partitioned into `dismissed` rather than
- * listed — which is what keeps them out of the poller's alert pass, the
+ * listed, which is what keeps them out of the poller's alert pass, the
  * digest and the MCP tool as well, since all of them read this one function.
  */
 export async function listPosture(
@@ -47,7 +47,7 @@ export async function listPosture(
         accountId: resources.accountId,
         displayName: resources.displayName,
         externalId: resources.externalId,
-        // Only the DNS half needs the parent link — it is how a record finds
+        // Only the DNS half needs the parent link: it is how a record finds
         // the zone it lives in.
         parentResourceId: resources.parentResourceId,
         fieldsJson: resources.fieldsJson,

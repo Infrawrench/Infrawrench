@@ -113,7 +113,7 @@ export async function claimDueCostAccounts(
  * Same SKIP LOCKED lease protocol as the cost claim, but keyed off
  * `account_credit_polls` rather than columns on `accounts`. Credit-capable
  * plugins are a small minority, so a row that exists only for accounts the
- * pass has touched keeps this a scan of a tiny table — and the LEFT JOIN is
+ * pass has touched keeps this a scan of a tiny table, and the LEFT JOIN is
  * what lets an account with no row yet still come due immediately.
  */
 export async function claimDueCreditAccounts(

@@ -1,6 +1,6 @@
 /**
  * Exhaustive tests for the pure conversion layer. No database, no ClickHouse,
- * no clock — every case here is a function of its arguments, which is the whole
+ * no clock: every case here is a function of its arguments, which is the whole
  * reason `cost/currency-convert.ts` holds no db import.
  *
  * The cases that matter most are the ones where getting it wrong is silent:
@@ -85,7 +85,7 @@ describe("parseRate", () => {
     "refuses %s rather than treating it as zero",
     (raw) => {
       // A zero rate would erase a currency's spend while reporting it as
-      // converted — the silent understatement this feature exists to prevent.
+      // converted: the silent understatement this feature exists to prevent.
       expect(parseRate(raw)).toBeNull();
     },
   );
@@ -145,7 +145,7 @@ describe("convertGroups", () => {
   });
 
   it("passes spend already in the display currency straight through", () => {
-    // Not multiplied by a rate of 1 — passed through, so no rounding can touch it.
+    // Not multiplied by a rate of 1: passed through, so no rounding can touch it.
     const groups = [group("aws", "USD", [["2026-02-01", 100.005]])];
     const result = convertGroups(groups, "USD", eurUsd);
     expect(result.groups[0]!.points[0]!.amount).toBe(100.005);
@@ -186,7 +186,7 @@ describe("convertGroups", () => {
       rates,
     );
     expect(result.groups[0]!.points.map((p) => p.amount)).toEqual([100, 200]);
-    // Both rates are reported, newest first — a total spanning a rate change is
+    // Both rates are reported, newest first: a total spanning a rate change is
     // a blend, and the reader has to be able to see that.
     expect(result.conversion!.converted[0]!.rates).toEqual([
       { effectiveFrom: "2026-02-01", rate: 2 },

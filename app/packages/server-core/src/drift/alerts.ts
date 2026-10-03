@@ -4,7 +4,7 @@
  * `resourceDrift` trigger.
  *
  * Invoked from `sync-resources.ts` right after a pass writes its
- * `resource_changes` rows, but only for poller-driven syncs — a manual refresh
+ * `resource_changes` rows, but only for poller-driven syncs: a manual refresh
  * from the UI never notifies, the same rule the sync-failure pager follows.
  *
  * Volume is the whole design (see `./summary.ts` for the caps). Three things
@@ -18,12 +18,12 @@
  *    statement sends, everyone else is suppressed, so N poller replicas racing
  *    the same window still produce one message. As there, the claim is rolled
  *    back when every transport reached nobody, so a message nobody received
- *    does not start a quiet period — and that rollback is an invariant of the
+ *    does not start a quiet period, and that rollback is an invariant of the
  *    claim, not a branch: a throw anywhere past it releases too, because a kept
  *    claim moves `since` forward and would drop the window's changes for good.
  * 2. **A bounded read.** The digest covers everything since the previous
- *    notification rather than just the pass that triggered it — so a suppressed
- *    window is folded into the next message instead of lost — but the query
+ *    notification rather than just the pass that triggered it (so a suppressed
+ *    window is folded into the next message instead of lost) but the query
  *    stops at `MAX_SCANNED_CHANGES + 1` rows and reports the overflow as "500+".
  * 3. **A bounded body.** At most `MAX_LISTED_CHANGES` named changes; the rest
  *    collapse into a link to the change timeline.
@@ -67,7 +67,7 @@ export type DriftNotifyOutcome =
   /**
    * Something threw. Distinct from `no-changes` on purpose: a reader of a log
    * or a caller inspecting the outcome must be able to tell a quiet window from
-   * a broken one. `released` says whether the cooldown claim was rolled back —
+   * a broken one. `released` says whether the cooldown claim was rolled back:
    * see the invariant in `notifyResourceDrift`.
    */
   | { status: "failed"; error: string; released: boolean };
@@ -106,7 +106,7 @@ async function claimWindow(
       //
       // or()/lte(), not a raw sql`` fragment: raw interpolation sends the
       // Date object straight to postgres.js, which rejects it as a bind
-      // parameter — comparators map it through the column's serializer.
+      // parameter; comparators map it through the column's serializer.
       // (The ! is exactOptionalPropertyTypes noise; or() with arguments
       // never returns undefined.)
       setWhere: or(
@@ -124,7 +124,7 @@ async function claimWindow(
  * Conditional on still *owning* the claim. `claimWindow` stamps `lastNotifiedAt`
  * with its own `now`, so that value is the ownership token: the rollback only
  * fires while the row still carries it. Without the check a replica that hangs
- * past the cooldown — a wedged Slack call is enough — would come back and rewind
+ * past the cooldown (a wedged Slack call is enough) would come back and rewind
  * a *later* replica's claim, re-reporting a window that had already been sent.
  * Losing the race means someone else owns the window now, which is not an error.
  */
@@ -191,7 +191,7 @@ async function readWindow(
 /**
  * Running tally of what the transports actually delivered in this window, plus
  * whether the claim has already been rolled back. Threaded through the claimed
- * body so the release invariant can read it from outside — including from a
+ * body so the release invariant can read it from outside, including from a
  * `catch`, where the body's own return value never happened.
  */
 interface WindowDelivery {
@@ -208,10 +208,10 @@ interface WindowDelivery {
  * single idempotent guard is what extends it to a throw. Two properties matter:
  *
  * - It never throws. A failing rollback must not mask the error that triggered
- *   it — the caller would lose the reason the window failed in the first place.
+ *   it: the caller would lose the reason the window failed in the first place.
  * - It runs at most once, so it can be called on the way out of both the
  *   `catch` (which needs the answer to report it) and the `finally` (which owns
- *   the normal paths) without releasing twice — and so the answer the `catch`
+ *   the normal paths) without releasing twice, and so the answer the `catch`
  *   already reported cannot be contradicted by a later attempt.
  *
  * Returns whether the claim ended up released.
@@ -283,8 +283,8 @@ async function deliverWindow(
   delivery.succeeded += routed.succeeded + routed.held;
 
   // Nobody is routed here (the common case for a trigger the default rule
-  // excludes), or every transport failed. Either way this window was not spent
-  // — the guard rolls the claim back on the way out. A quiet-hours hold counts
+  // excludes), or every transport failed. Either way this window was not spent:
+  // the guard rolls the claim back on the way out. A quiet-hours hold counts
   // as spent: those changes *will* be reported, and rewinding `since` would
   // report them a second time alongside the held copy.
   if (delivery.succeeded === 0) return { status: "undelivered", changes: summary.total };
@@ -301,7 +301,7 @@ async function deliverWindow(
 /**
  * Consider notifying about the drift a sync pass just recorded.
  *
- * `events` is only used as a cheap guard — the notification itself covers every
+ * `events` is only used as a cheap guard: the notification itself covers every
  * change since the last one, across every account, so a quiet account's pass
  * can still carry a busy account's news.
  */
@@ -322,13 +322,13 @@ export async function notifyResourceDrift(
     if (!(await claimWindow(organizationId, settings, now))) return { status: "cooling-down" };
 
     // Past this line the claim has advanced `last_notified_at`, which is what
-    // the next digest measures `since` from. Every exit — returned outcome or
-    // thrown error — goes through `releaseUnlessDelivered`, because a claim
+    // the next digest measures `since` from. Every exit (returned outcome or
+    // thrown error) goes through `releaseUnlessDelivered`, because a claim
     // that is kept without a delivery drops that window's changes from drift
     // notifications permanently and silently.
     //
     // No prior notification means no window boundary to measure from; the
-    // cooldown is the natural one — anything older would have been reported by
+    // cooldown is the natural one: anything older would have been reported by
     // the notification that never happened.
     const since = prior ?? new Date(now.getTime() - settings.cooldownMinutes * 60_000);
     const delivery: WindowDelivery = { succeeded: 0, release: null };
@@ -345,8 +345,8 @@ export async function notifyResourceDrift(
       await releaseUnlessDelivered(organizationId, now, prior, delivery);
     }
   } catch (err) {
-    // Nothing was claimed on this path — settings, the guards, or the claim
-    // statement itself failed — so there is nothing to roll back.
+    // Nothing was claimed on this path (settings, the guards, or the claim
+    // statement itself failed) so there is nothing to roll back.
     console.error(`[drift] notification for org ${organizationId} failed:`, err);
     return {
       status: "failed",

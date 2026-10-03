@@ -34,7 +34,7 @@ vi.mock("@/services/audit", () => ({
 }));
 
 // The discovery service imports the db client (which requires DATABASE_URL at
-// module scope) — mock it at the boundary like the store.
+// module scope): mock it at the boundary like the store.
 const listLogCapableResources = vi.fn();
 vi.mock("@/services/log-workspaces", () => ({
   listLogCapableResources: (...a: unknown[]) => listLogCapableResources(...a),

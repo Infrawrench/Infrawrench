@@ -1,14 +1,14 @@
 /**
  * Org-level AI spend accounting, shared by AI chat (web) and `infra.ai()` in
- * workflows (web + poller — which is why it lives in server-core, same reason
+ * workflows (web + poller, which is why it lives in server-core, same reason
  * as the build meter).
  *
  * One pool, deliberately: an org has a single monthly AI cap
  * (`organizations.chat_monthly_cap_micros`, plus the $5 free tier for unpaid
  * orgs), and both chat turns and workflow AI calls draw from it. The
- * month-to-date figure is therefore the sum of BOTH usage tables —
+ * month-to-date figure is therefore the sum of BOTH usage tables:
  * `chat_usage` (rows hang off a conversation/message) and `workflow_ai_usage`
- * (rows hang off a workflow/run) — plus any in-flight holds in
+ * (rows hang off a workflow/run), plus any in-flight holds in
  * `ai_spend_reservations`. Splitting the cap per feature would let a workflow
  * spend on top of everything chat already allowed.
  *
@@ -22,7 +22,7 @@
  * the cap); on failure or Stop they release without recording.
  *
  * Workflow usage reports to the same Stripe chat meter (micro-dollar unit)
- * with the same plain-fetch approach as `./build-meter.ts` — server-core does
+ * with the same plain-fetch approach as `./build-meter.ts`: server-core does
  * not depend on the Stripe SDK. Best-effort by contract: a null
  * `stripe_usage_record_id` is what a future replay job would key on.
  */
@@ -88,7 +88,7 @@ export class AiSpendCapExceededError extends Error {
   }
 }
 
-/** Anything that can run the selects `getAiSpendStatus` needs — `db` or a tx. */
+/** Anything that can run the selects `getAiSpendStatus` needs: `db` or a tx. */
 type SpendQueryable = Pick<typeof db, "select">;
 
 function reservationExpiry(from = Date.now()): Date {
@@ -161,7 +161,7 @@ export async function getAiSpendStatus(
         gte(workflowAiUsage.createdAt, monthStart()),
       ),
     );
-  // Active holds only — expired rows are ignored here and deleted on reserve.
+  // Active holds only: expired rows are ignored here and deleted on reserve.
   const reservationRows = await queryable
     .select({ total: sql<string>`coalesce(sum(${aiSpendReservations.estimatedCostMicros}), 0)` })
     .from(aiSpendReservations)
@@ -200,7 +200,7 @@ export interface WorkflowAiUsageInput {
 
 /**
  * Rough token count from character length. Anthropic's Latin-script average is
- * ~4 characters per token; overshooting the estimate is fine — the reservation
+ * ~4 characters per token; overshooting the estimate is fine: the reservation
  * is a ceiling, and real usage replaces it after the call.
  */
 export function estimateTokensFromChars(chars: number): number {
@@ -213,7 +213,7 @@ export function estimateTokensFromChars(chars: number): number {
  * the same key and see each other's holds in the month-to-date sum.
  *
  * Admission is against the projected total (current spend + this estimate),
- * not merely whether the existing total is already over the line — otherwise
+ * not merely whether the existing total is already over the line, otherwise
  * serialized near-cap callers would each clear a below-cap check and settle
  * well past the configured limit.
  *
@@ -278,7 +278,7 @@ export async function releaseAiSpendReservation(reservationId: string): Promise<
  * brief overlap is a conservative double-count rather than a gap.
  *
  * Best-effort past the insert: a call that succeeded is never failed back to
- * the workflow because Stripe was down — but the insert itself must succeed,
+ * the workflow because Stripe was down, but the insert itself must succeed,
  * because the row is what the spend cap sums.
  */
 export async function recordWorkflowAiUsage(input: WorkflowAiUsageInput): Promise<number> {
@@ -315,7 +315,7 @@ async function reportWorkflowAiUsageToStripe(
   const secretKey = process.env["STRIPE_SECRET_KEY"];
   if (!eventName || !secretKey) return;
 
-  // Complimentary orgs are never billed — keep the usage row for internal
+  // Complimentary orgs are never billed: keep the usage row for internal
   // cost tracking but don't emit a meter event.
   const [org] = await db
     .select({ complimentary: organizations.complimentary })

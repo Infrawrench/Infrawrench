@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - **site URL validation**, which is a security control rather than a
  *    convenience. The server makes an outbound request to whatever an org
  *    member pastes, so anything that isn't an https Atlassian host has to be
- *    refused — and suffix matching has to actually be suffix matching;
+ *    refused, and suffix matching has to actually be suffix matching;
  *  - **ADF construction**, because REST v3 types `description` as a document.
  *    A plain string does not error, it silently writes raw characters into the
  *    field, so "did we build a document" is not visible at runtime;
@@ -57,7 +57,7 @@ describe("parseJiraSiteUrl", () => {
 
   /**
    * Users paste what they are looking at. A board URL carries the right origin,
-   * so discarding the path is friendlier — and safer — than refusing it.
+   * so discarding the path is friendlier (and safer) than refusing it.
    */
   it("accepts a pasted board or issue URL and keeps only the origin", async () => {
     const { parseJiraSiteUrl } = await import("../jira");
@@ -314,7 +314,7 @@ describe("verifyJiraCredentials", () => {
   });
 
   /**
-   * This is the case Save exists to catch — a revoked or mistyped token has to
+   * This is the case Save exists to catch: a revoked or mistyped token has to
    * be reported on the form, in Jira's terms, not swallowed.
    */
   it("throws a user-readable error when Jira answers 401", async () => {
@@ -333,7 +333,7 @@ describe("verifyJiraCredentials", () => {
 
   /**
    * The host is user-supplied, so "we never reached Jira" is a distinct and
-   * likely outcome from "Jira said no" — and carries no HTTP status, which is
+   * likely outcome from "Jira said no", and carries no HTTP status, which is
    * what the route branches on to choose 400 over 502.
    */
   it("reports an unreachable site with no status", async () => {
@@ -367,7 +367,7 @@ describe("verifyJiraCredentials", () => {
 describe("getJiraIntegration", () => {
   it("returns the redacted record, never the token", async () => {
     // Keys in jira_integrations column order, values driver-shaped (timestamps
-    // as Postgres text) — see helpers/fake-postgres.ts.
+    // as Postgres text): see helpers/fake-postgres.ts.
     pg.setRows([
       {
         organizationId: "org1",

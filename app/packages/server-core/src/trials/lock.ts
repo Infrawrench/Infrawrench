@@ -3,23 +3,23 @@
  * destroy and a claim.
  *
  * Both hold this lock for their whole critical section, so the interleavings
- * that used to be possible — the reaper purging an org mid-claim, a claim
- * re-pointing a registration the cascade is about to delete — cannot happen.
+ * that used to be possible (the reaper purging an org mid-claim, a claim
+ * re-pointing a registration the cascade is about to delete) cannot happen.
  * The lock provides *mutual exclusion only*: callers still run their inner
  * statements on the main pool, so nothing here changes atomicity or
  * visibility, and a caller that throws mid-section leaves exactly the state it
  * had written (which each caller is already designed to tolerate).
  *
  * **The lock lives on its own connection, and that is the whole point of this
- * module having a connection at all.** The obvious implementation —
- * `db.transaction(tx => { advisory lock; await fn() })` — takes a connection
+ * module having a connection at all.** The obvious implementation:
+ * `db.transaction(tx => { advisory lock; await fn() })`: takes a connection
  * out of the main pool and holds it for the length of the critical section
  * while `fn` goes back to that same pool for every statement it runs. With a
  * pool of 10, ten concurrent claims hold all ten connections in open
  * transactions whose inner queries queue behind connections nobody will
  * release until those queries finish: a self-inflicted deadlock that takes the
  * rest of the process's database traffic down with it. A small dedicated pool
- * removes the coupling entirely — acquiring a lock can never consume the
+ * removes the coupling entirely: acquiring a lock can never consume the
  * capacity the locked work needs, and if this pool saturates, callers queue for
  * a *lock* rather than deadlocking.
  *
@@ -29,7 +29,7 @@
  *
  * **Re-entrancy rule**: advisory locks are held per-connection and this pool
  * hands out whichever connection is free, so a caller that already holds the
- * lock must not invoke another function that takes it — the inner acquisition
+ * lock must not invoke another function that takes it; the inner acquisition
  * lands on a different connection and blocks forever on its own caller.
  * Concretely: `claimTrialOrg` holds the lock across a merge and calls
  * `destroyOrganization`, so destroy only takes the lock on its guarded reaper
@@ -40,7 +40,7 @@ import postgres from "postgres";
 /**
  * Deliberately tiny. This pool only ever runs `pg_advisory_lock` /
  * `pg_advisory_unlock`, and its size is the cap on concurrent critical
- * sections — five is far above the real rate (claims are human-driven, and the
+ * sections: five is far above the real rate (claims are human-driven, and the
  * reaper is a serial loop) while staying a rounding error against Postgres's
  * connection limit.
  */

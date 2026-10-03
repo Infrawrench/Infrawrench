@@ -10,7 +10,7 @@
  * Validation and the restating upsert live in `cost/metric-ingest.ts`, shared
  * with the HTTP path so a workflow author and an API client get the same rules
  * and the same messages. What is specific to workflows is the per-run cap and
- * resolving the metric *key* an author typed into the row it belongs to —
+ * resolving the metric *key* an author typed into the row it belongs to:
  * authors address metrics by key, never by an opaque uuid.
  */
 import type {
@@ -28,7 +28,7 @@ import {
 const MAX_VALUES_PER_CALL = 1_000;
 const MAX_VALUES_PER_RUN = 50_000;
 
-/** A rejected write — surfaced to the workflow author as a thrown error. */
+/** A rejected write: surfaced to the workflow author as a thrown error. */
 export class WorkflowBusinessMetricError extends Error {
   override readonly name = "WorkflowBusinessMetricError";
 }

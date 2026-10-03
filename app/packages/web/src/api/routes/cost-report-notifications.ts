@@ -7,19 +7,19 @@
  * zone, plus the destinations it delivers to. The logic lives in
  * `server-core/src/report-delivery/*` so the poller drives exactly the same
  * code; this file is transport only. It follows the **digest pattern, not
- * alert routing** — see `server-core/src/report-delivery/compose.ts`.
+ * alert routing**: see `server-core/src/report-delivery/compose.ts`.
  *
  * ## Permissions
  *
- * Reads are `costs:read`, matching every other cost surface — that is what
+ * Reads are `costs:read`, matching every other cost surface: that is what
  * lets the mobile app show a report's schedules read-only.
  *
  * Writes (and "Send now") are **`org:settings:write`, not `costs:write`**, the
  * same deliberate step up `cost-exports` took, and for the same reason: a
  * schedule is standing authorisation to ship the org's spend, recurringly, to
  * destinations the creator picks. Slack channels and Teams webhooks are
- * org-approved surfaces an admin already connected — on their own they could
- * arguably ride on `costs:write` — but the email list is arbitrary-address
+ * org-approved surfaces an admin already connected (on their own they could
+ * arguably ride on `costs:write`) but the email list is arbitrary-address
  * egress, exactly like an export destination. Splitting the permission by
  * transport would make the required scope depend on the request body, and a
  * `costs:write` schedule that later *gained* an email address would be a
@@ -59,7 +59,7 @@ function asError(e: unknown): { message: string; status: 400 | 404 } | null {
 
 const app = new Hono();
 
-/** GET /cost-reports/:id/notifications — one report's delivery schedules. */
+/** GET /cost-reports/:id/notifications: one report's delivery schedules. */
 app.get("/:id/notifications", async (c) => {
   requirePermission(c, "costs:read");
   try {
@@ -72,7 +72,7 @@ app.get("/:id/notifications", async (c) => {
 });
 
 /**
- * GET /cost-reports/:id/notifications/targets — what a schedule can deliver
+ * GET /cost-reports/:id/notifications/targets; what a schedule can deliver
  * to: the org's live Slack channels, its Teams webhooks, and whether this
  * deployment can send mail. Backs the schedule editor's pickers.
  */
@@ -81,7 +81,7 @@ app.get("/:id/notifications/targets", async (c) => {
   return c.json(await listReportDeliveryTargets(c.get("organizationId")));
 });
 
-/** POST /cost-reports/:id/notifications — create a schedule. */
+/** POST /cost-reports/:id/notifications: create a schedule. */
 app.post("/:id/notifications", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -118,7 +118,7 @@ app.post("/:id/notifications", async (c) => {
   }
 });
 
-/** PUT /cost-reports/:id/notifications/:notificationId — replace a schedule. */
+/** PUT /cost-reports/:id/notifications/:notificationId: replace a schedule. */
 app.put("/:id/notifications/:notificationId", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -179,9 +179,9 @@ app.delete("/:id/notifications/:notificationId", async (c) => {
 });
 
 /**
- * POST /cost-reports/:id/notifications/:notificationId/send — run the report
+ * POST /cost-reports/:id/notifications/:notificationId/send: run the report
  * and deliver it to this schedule's destinations right now, ignoring the
- * schedule. Errors are 400s with the reason — the caller is a person clicking
+ * schedule. Errors are 400s with the reason: the caller is a person clicking
  * "Send now" who needs to see why nothing arrived.
  */
 app.post("/:id/notifications/:notificationId/send", async (c) => {

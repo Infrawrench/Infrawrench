@@ -8,14 +8,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * it**. For cost rows that falls out of the ReplacingMergeTree key; here it is a
  * `(metric_id, day)` unique index and an `ON CONFLICT DO UPDATE`. An ingest
  * that accumulated would double every number the first time a nightly job
- * retried, and nothing about the resulting chart would look wrong — which is
+ * retried, and nothing about the resulting chart would look wrong, which is
  * exactly why it is asserted rather than assumed.
  */
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
 // Real Drizzle over a recording driver against the real schema: the upsert
-// renders its actual SQL — conflict clause included — and shadow-validates
+// renders its actual SQL (conflict clause included) and shadow-validates
 // under test:postgres:shadow.
 const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
@@ -28,7 +28,7 @@ function upsert() {
 /**
  * The value tuples of the upsert, sliced out of the positional params. Each row
  * binds 8 params in column order (id, organization_id, metric_id, day, value,
- * source, updated_by_user_id, updated_at — created_at renders as `default`);
+ * source, updated_by_user_id, updated_at: created_at renders as `default`);
  * the trailing param is the conflict clause's updated_at.
  */
 function inserted(): Array<Record<string, unknown>> {

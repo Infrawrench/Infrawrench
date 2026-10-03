@@ -1,20 +1,20 @@
 /**
- * Root-cause hints for cost anomalies — "spend went up *because of this*".
+ * Root-cause hints for cost anomalies: "spend went up *because of this*".
  *
  * When the evaluator (`anomaly-eval.ts`) flags a day, it already knows the
  * window, the org, and (for the provider dimension) which plugin the spend
  * belongs to. This module turns that into a small ranked list of
  * human-readable facts pulled from what the platform already indexes:
  *
- * - the change timeline (`resource_changes`) — "12 gce-instance resources
+ * - the change timeline (`resource_changes`): "12 gce-instance resources
  *   appeared";
- * - the audit log (`audit_logs`) — "Astrid ran workflow \"Nightly rebuild\"",
+ * - the audit log (`audit_logs`): "Astrid ran workflow \"Nightly rebuild\"",
  *   "a change freeze was lifted".
  *
  * The split mirrors `anomaly-detect.ts` / `anomaly-eval.ts`: the ranking and
  * phrasing (`composeAnomalyHints`) are pure and unit-tested without a
  * database; `buildAnomalyHints` is the thin I/O wrapper that runs the two
- * window queries and never throws — hints are garnish on an alert that must
+ * window queries and never throws; hints are garnish on an alert that must
  * go out either way, so any failure here degrades to "no hints".
  *
  * Both queries are cheap by construction: they range-scan the existing
@@ -30,7 +30,7 @@ import { auditLogs, resourceChanges, users, workflows } from "../db/schema";
 /** Hints kept per anomaly, however much happened in the window. */
 export const MAX_ANOMALY_HINTS = 3;
 
-/** Audit rows read per window — plenty for ranking, bounded for safety. */
+/** Audit rows read per window: plenty for ranking, bounded for safety. */
 const AUDIT_ROW_CAP = 200;
 
 /** The slice of an anomaly the hint queries need. */
@@ -45,7 +45,7 @@ export interface AnomalyHintTarget {
 /**
  * The window a hint may come from: the anomalous day plus the whole day
  * before it, in UTC. Spend billed on a day is caused by things that happened
- * on that day or shortly before — a fleet created at 23:50 shows up on the
+ * on that day or shortly before: a fleet created at 23:50 shows up on the
  * next day's bill. Wider than two days and the hints start explaining the
  * baseline rather than the spike.
  */
@@ -70,7 +70,7 @@ export interface AuditHintEntry {
   /** Display name (or email) of the acting user; null for API-key actors. */
   actorName: string | null;
   /**
-   * A human name for the entity where one is resolvable — the workflow's
+   * A human name for the entity where one is resolvable: the workflow's
    * name for `workflow.run`, the freeze's name for `change_freeze.*`.
    */
   entityName: string | null;
@@ -108,8 +108,8 @@ interface ScoredHint {
 }
 
 /**
- * Phrase one change-timeline aggregate. Creations rank highest — new
- * resources are the single most direct way spend appears — then deletions
+ * Phrase one change-timeline aggregate. Creations rank highest (new
+ * resources are the single most direct way spend appears) then deletions
  * (context for a spike elsewhere, the cause of a final-hours billing burst),
  * then updates. Within a kind, bigger buckets outrank smaller.
  */
@@ -153,7 +153,7 @@ function actorLabel(actorName: string | null): string {
 
 /**
  * Phrase one *group* of identical audit entries (same action, actor and
- * entity), `count` strong. Returns null for actions the map doesn't cover —
+ * entity), `count` strong. Returns null for actions the map doesn't cover:
  * callers pre-filter on {@link HINT_AUDIT_ACTIONS}, so that is only a new
  * action added to the list without a phrase here.
  */
@@ -215,12 +215,12 @@ function auditHint(entry: AuditHintEntry, count: number): ScoredHint | null {
 
 /**
  * Rank and phrase the window's evidence into at most {@link MAX_ANOMALY_HINTS}
- * hints. Pure — the inputs are whatever the two queries (or a test) supply.
+ * hints. Pure: the inputs are whatever the two queries (or a test) supply.
  *
  * Audit entries arrive one row per event and are grouped here by
  * (action, actor, entity) so ten identical workflow runs read as one hint
  * with a count, not ten hints crowding everything else out. Schedule actions
- * collapse to one phrase per actor on purpose — create/update/delete of a
+ * collapse to one phrase per actor on purpose: create/update/delete of a
  * sleep/wake schedule are the same fact for this audience.
  */
 export function composeAnomalyHints(
@@ -272,7 +272,7 @@ function metadataName(metadata: unknown): string | null {
 /**
  * Query the change timeline and the audit log for the anomaly's window and
  * compose the hints. Scoped to the org; for the provider dimension the change
- * timeline is additionally filtered to that plugin's resources — a GCP spike
+ * timeline is additionally filtered to that plugin's resources: a GCP spike
  * should not be "explained" by a Cloudflare worker appearing. Service names
  * cannot be mapped to a plugin generically, so the service dimension reads
  * org-wide.
@@ -327,7 +327,7 @@ export async function buildAnomalyHints(
       .orderBy(desc(auditLogs.createdAt))
       .limit(AUDIT_ROW_CAP);
 
-    // `workflow.run` logs the workflow id, not its name — resolve names in one
+    // `workflow.run` logs the workflow id, not its name: resolve names in one
     // read so the hint can say which workflow, not just that one ran.
     const workflowIds = [
       ...new Set(auditRows.filter((r) => r.action === "workflow.run").map((r) => r.entityId)),

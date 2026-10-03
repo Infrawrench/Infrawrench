@@ -25,7 +25,7 @@ import { requirePermission } from "../../auth/permissions";
 const app = new Hono();
 
 /**
- * GET / — the report.
+ * GET /: the report.
  *
  * `?windowDays=` sets the activity window (default 90). Not cached: the report
  * is a handful of indexed aggregates run when somebody opens a settings page,

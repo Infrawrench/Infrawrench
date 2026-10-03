@@ -80,7 +80,7 @@ const CheckResult = strict({
     }),
   ),
   hasErrors: z.boolean(),
-  /** True when TypeScript's lib files were unavailable — syntax-only check. */
+  /** True when TypeScript's lib files were unavailable: syntax-only check. */
   degraded: z.boolean(),
 }).openapi("CustomGraphCheckResult");
 

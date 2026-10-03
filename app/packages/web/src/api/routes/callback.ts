@@ -72,12 +72,12 @@ function signInFailedPage(message?: string): string {
 </html>`;
 }
 
-/** GET /callback — WorkOS OAuth callback */
+/** GET /callback: WorkOS OAuth callback */
 app.get("/", async (c) => {
   const code = c.req.query("code");
   if (!code) {
     // WorkOS redirects back with `error` (and sometimes `error_description`)
-    // instead of a code when sign-in fails on its side — an unknown user on
+    // instead of a code when sign-in fails on its side: an unknown user on
     // the dev emulator, a cancelled flow, a misconfigured connection. Surface
     // the reason; a bare 400 here reads like our bug instead of theirs.
     const providerError = c.req.query("error");
@@ -100,10 +100,10 @@ app.get("/", async (c) => {
   const cookieState = getCookie(c, OAUTH_STATE_COOKIE);
   const queryState = c.req.query("state");
   const alreadyRetried = getCookie(c, OAUTH_RETRY_COOKIE) !== undefined;
-  // Always clear the cookie regardless of outcome — it is single-use.
+  // Always clear the cookie regardless of outcome: it is single-use.
   deleteCookie(c, OAUTH_STATE_COOKIE, { path: "/" });
   if (!cookieState || !queryState || !constantTimeEqual(cookieState, queryState)) {
-    // A mismatch is usually not an attack — it is a state cookie that expired
+    // A mismatch is usually not an attack: it is a state cookie that expired
     // or never arrived. Restart the flow once with a fresh nonce, which is what
     // the user would do by hand; the unverified `code` is simply dropped, so
     // this concedes nothing to the CSRF check it is recovering from. The retry

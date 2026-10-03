@@ -3,7 +3,7 @@
  *
  * Dials outbound over WSS to the Infrawrench backend with an enrollment
  * token, then opens TCP streams (one per cloud-API call) on demand. The
- * agent is intentionally tiny — it doesn't terminate TLS, doesn't see
+ * agent is intentionally tiny: it doesn't terminate TLS, doesn't see
  * credentials, doesn't have an inbound listener, and only opens
  * destinations the backend allowlists at hello time.
  *

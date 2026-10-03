@@ -3,7 +3,7 @@
  * beside it.
  *
  * Gated on `org:settings:write` throughout, like the Slack, Teams and digest
- * settings it replaced — a routing rule decides who in the org hears about an
+ * settings it replaced: a routing rule decides who in the org hears about an
  * incident, which is an admin decision rather than a personal one. (Personal
  * mutes live on `/push/preferences` and need no permission at all.)
  */
@@ -137,7 +137,7 @@ const DESTINATION_KINDS = new Set(["push", "slack", "msteams", "on-call"]);
  * Structural check before the semantic one.
  *
  * `validateAlertRule` (shared with the editor) enforces limits and coherence,
- * but it trusts the discriminants and the field types — it is written against
+ * but it trusts the discriminants and the field types: it is written against
  * typed input. `c.req.json<T>()` validates nothing at runtime, so this request
  * is `unknown` JSON wearing a type, and both halves of that have to be checked
  * here:
@@ -146,7 +146,7 @@ const DESTINATION_KINDS = new Set(["push", "slack", "msteams", "on-call"]);
  *     `case` in `conditionMatches` and silently never match, which reads to the
  *     user as "the rule I saved does nothing".
  *   * **Shapes.** `{ conditions: [{ field: "trigger" }] }` would throw inside
- *     `values.filter`, and a numeric `name` would throw inside `.trim()` — a
+ *     `values.filter`, and a numeric `name` would throw inside `.trim()`: a
  *     500 where the honest answer is a 400 naming the bad field.
  *
  * Destination *identifiers* are checked here too, not just kinds: a `slack`
@@ -214,7 +214,7 @@ function structuralError(rule: RuleBody): string | null {
  * two independent PATCHes would leave a window in which alerts route somewhere
  * nobody asked for. One request, one transaction, no window.
  *
- * Destinations are checked against the org's own channels — a rule may not name
+ * Destinations are checked against the org's own channels: a rule may not name
  * a Slack channel or Teams webhook belonging to another org, which is the only
  * thing standing between this endpoint and using someone else's connection as a
  * send target.
@@ -234,7 +234,7 @@ app.put("/", async (c) => {
   const [ownChannels, ownWebhooks, ownRules, ownSchedules] = await Promise.all([
     // Live installations only, matching the GET list and `resolveSlackChannels`.
     // A channel whose install was disconnected is still a row in this org's
-    // table, so ownership alone would accept it — and it would then be dropped
+    // table, so ownership alone would accept it, and it would then be dropped
     // at delivery time, turning a first-match rule into silence.
     db
       .select({ id: slackChannels.id })
@@ -264,7 +264,7 @@ app.put("/", async (c) => {
   // An id the caller did not get from this org's own list is rejected rather
   // than silently ignored. The writer's upsert is org-scoped so it could not
   // have overwritten anything, but it would have dropped the rule instead of
-  // saving it — and a rule that vanishes on save is worse than an error.
+  // saving it, and a rule that vanishes on save is worse than an error.
   const unknownId = input.find((r) => r.id && !ownRuleIds.has(r.id));
   if (unknownId) {
     return c.json({ error: `Unknown rule id "${unknownId.id}"` }, 400);
@@ -333,7 +333,7 @@ app.put("/", async (c) => {
 });
 
 /**
- * "Start from the defaults" — persist the synthesized default rule so it can be
+ * "Start from the defaults": persist the synthesized default rule so it can be
  * edited. A no-op if the org already has rules.
  */
 app.post("/adopt-defaults", async (c) => {
@@ -413,7 +413,7 @@ app.post("/deliveries/:id/ack", async (c) => {
   return c.json(result);
 });
 
-/** Drop held or awaiting-ack rows — "I have dealt with this, stop the queue". */
+/** Drop held or awaiting-ack rows: "I have dealt with this, stop the queue". */
 app.post("/deliveries/cancel", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");

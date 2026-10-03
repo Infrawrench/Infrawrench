@@ -2,8 +2,8 @@
  * Shared shapes for the chat agent's web access (search + fetch).
  *
  * Search is deliberately behind an interface with more than one implementation.
- * The chat surface is multi-provider — the default model is Gemini on Vertex and
- * `ANTHROPIC_API_KEY` is optional — so search cannot be a provider-native tool
+ * The chat surface is multi-provider (the default model is Gemini on Vertex and
+ * `ANTHROPIC_API_KEY` is optional) so search cannot be a provider-native tool
  * block on the main turn without existing for only half of the deployments. It
  * is instead a normal tool whose handler runs its own small sub-model call, and
  * the backend for that call is chosen from whatever credentials the deployment
@@ -24,7 +24,7 @@ export interface SearchOutcome {
   hits: SearchHit[];
   /**
    * Queries the backend actually issued. Both backends bill per query rather
-   * than per tool call — one call can fan out — so this is the billable unit,
+   * than per tool call (one call can fan out) so this is the billable unit,
    * not a display detail. See ../pricing.ts.
    */
   queries: number;

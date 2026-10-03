@@ -21,7 +21,7 @@ interface WebCalendarPanelProps {
  * Unlike the other section hosts this one does not own the window: the section
  * does, and asks for a range through `onRangeChange`. The fetch is therefore
  * keyed on that range, and out-of-order responses are discarded by request
- * number — paging quickly through months is exactly how a stale month lands on
+ * number: paging quickly through months is exactly how a stale month lands on
  * top of a newer one.
  */
 export function WebCalendarPanel({ orgId, openResource, openTab }: WebCalendarPanelProps) {

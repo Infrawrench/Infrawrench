@@ -5,15 +5,15 @@
  * ----------------------
  * A workflow's host bridge reaches the org's real accounts: it can create and
  * delete resources, run SSH commands, execute SQL, and write to storage. Until
- * this module existed the only check on any of that was `workflows:write` — the
- * permission to *run a workflow at all* — which the built-in Member role holds.
+ * this module existed the only check on any of that was `workflows:write` (the
+ * permission to *run a workflow at all*) which the built-in Member role holds.
  * The same operations through the HTTP API or the chat/MCP tool layer require
  * `resources:write`, `resources:delete`, `resources:execute`, `storage:write`.
  * So `infra.…delete()` was a supported way for a Member to do what
  * `delete_resource` refuses them, and cron made it durable.
  *
  * The fix is to run each workflow *as somebody*, and to check each operation
- * against that person's effective permissions — the same
+ * against that person's effective permissions: the same
  * `resolveEffectivePermissions` the API middleware and the tool layer use, so
  * the three surfaces cannot drift.
  *
@@ -21,16 +21,16 @@
  * -----------------
  * A manual run acts as the person who pressed the button. An automated run
  * (cron, git push, a budget crossing) has no such person, so it acts as the
- * workflow's **author** — `workflows.created_by_user_id`. That is the honest
+ * workflow's **author**: `workflows.created_by_user_id`. That is the honest
  * answer: the author is who chose what the automation does, and it means a
  * workflow cannot gain authority by being put on a schedule. If the author has
  * since left the org their membership is gone, `resolveEffectivePermissions`
- * returns nothing, and the privileged operations start failing — which is the
+ * returns nothing, and the privileged operations start failing, which is the
  * correct outcome and a visible one, in the run's error, rather than a silent
  * continuation of a departed employee's access.
  *
- * @see file://../permissions/catalog.ts — the permission strings and matcher.
- * @see file://../../../workflow-runtime/src/host.ts — `dispatch`, which calls the gate.
+ * @see file://../permissions/catalog.ts: the permission strings and matcher.
+ * @see file://../../../workflow-runtime/src/host.ts: `dispatch`, which calls the gate.
  */
 import { eq } from "drizzle-orm";
 
@@ -54,7 +54,7 @@ import { resolveEffectivePermissions } from "../permissions";
  * address space regardless of who is asking (see ./fetch.ts).
  *
  * Exhaustive over `dispatch`'s switch. An unlisted method is denied rather than
- * allowed — see {@link buildWorkflowAuthorizer}.
+ * allowed: see {@link buildWorkflowAuthorizer}.
  */
 export const WORKFLOW_OPERATION_PERMISSIONS: Readonly<Record<string, string | null>> = {
   // --- discovery + reads -------------------------------------------------
@@ -110,14 +110,14 @@ export const WORKFLOW_OPERATION_PERMISSIONS: Readonly<Record<string, string | nu
 
   // --- cost data ---------------------------------------------------------
   "costs.write": "costs:write",
-  // Reporting a business metric is the same class of act as reporting spend —
-  // it writes a number the organization's unit costs and margins are computed
-  // from — so it rides the same permission rather than earning its own.
+  // Reporting a business metric is the same class of act as reporting spend
+  // (it writes a number the organization's unit costs and margins are computed
+  // from) so it rides the same permission rather than earning its own.
   "businessMetrics.write": "costs:write",
 
   // --- Infrafile deploy stages -------------------------------------------
-  // Unreachable through `runOrgWorkflow` today — deployments build their own
-  // Infrafile host and gate at `deployment-ws.ts` — but mapped so that wiring
+  // Unreachable through `runOrgWorkflow` today (deployments build their own
+  // Infrafile host and gate at `deployment-ws.ts`) but mapped so that wiring
   // this gate into that path later is a one-line change rather than a policy
   // decision made under time pressure.
   "infrafile.plan": "deployments:plan",
@@ -133,8 +133,8 @@ export const WORKFLOW_OPERATION_PERMISSIONS: Readonly<Record<string, string | nu
 
   // --- the run talking to itself -----------------------------------------
   fetch: null,
-  // `null` like fetch: an AI call touches nothing in the org — the prompt is
-  // all the model sees — and its spend is bounded by the org's monthly AI cap
+  // `null` like fetch: an AI call touches nothing in the org (the prompt is
+  // all the model sees) and its spend is bounded by the org's monthly AI cap
   // (billing/ai-usage.ts), which is billing policy, not a role's permission.
   ai: null,
   prompt: null,
@@ -196,7 +196,7 @@ export interface WorkflowPrincipal {
  * synchronous gate `dispatch` calls per operation.
  *
  * Resolution happens once, here, rather than per operation: the gate runs on
- * every RPC — including the per-statement `line` hook on debug runs — so it
+ * every RPC (including the per-statement `line` hook on debug runs) so it
  * cannot be a database round trip. The cost is that a role change mid-run does
  * not take effect until the next run, which for a bounded run is the right
  * trade (the tool layer makes the opposite choice because a chat turn can stay
@@ -217,9 +217,9 @@ export async function buildWorkflowAuthorizer(
     userId = wf?.createdByUserId ?? undefined;
   }
 
-  // No resolvable principal means no authority. This is reachable — a workflow
+  // No resolvable principal means no authority. This is reachable; a workflow
   // whose author's row predates `created_by_user_id`, or whose author has been
-  // removed from the org — and denying is the only safe reading: the
+  // removed from the org, and denying is the only safe reading: the
   // alternative is an automation running unbounded on behalf of nobody.
   const granted = userId
     ? (await resolveEffectivePermissions(organizationId, { kind: "user", userId })).permissions
@@ -228,7 +228,7 @@ export async function buildWorkflowAuthorizer(
   return (method: string) => {
     const required = WORKFLOW_OPERATION_PERMISSIONS[method];
     // `undefined` means the method is absent from the map, not that it is
-    // unrestricted — `null` is how a method says that. A new `case` in
+    // unrestricted: `null` is how a method says that. A new `case` in
     // `dispatch` therefore fails closed and loudly the first time it runs,
     // instead of quietly shipping an ungated capability.
     if (required === undefined) {

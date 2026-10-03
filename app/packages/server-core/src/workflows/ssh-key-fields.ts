@@ -3,8 +3,8 @@
  *
  * The dts suggests the org's Infrawrench SSH key NAMES for `ssh-key-picker`
  * fields, but providers (e.g. DigitalOcean's droplet `sshPublicKey`) expect the
- * raw OpenSSH public-key string. This resolver — wired in as the workflow host's
- * `transformCreateFields` — rewrites any `ssh-key-picker` field whose value is a
+ * raw OpenSSH public-key string. This resolver (wired in as the workflow host's
+ * `transformCreateFields`) rewrites any `ssh-key-picker` field whose value is a
  * known key name/id into that key's public key. A value that is already a public
  * key is passed through untouched (so authors can paste one directly).
  *
@@ -18,7 +18,7 @@ import { sshKeys } from "../db/schema";
 import { decrypt, buildAad } from "../encryption";
 import { getCreateFieldsForType } from "./create-fields-cache";
 
-/** A value that already looks like an OpenSSH public key — leave it alone. */
+/** A value that already looks like an OpenSSH public key: leave it alone. */
 const PUBLIC_KEY_RE = /^(ssh-|ecdsa-|sk-ssh-|sk-ecdsa-)/;
 
 /** Distinct names of the org's Infrawrench-managed SSH keys (for dts autocomplete). */

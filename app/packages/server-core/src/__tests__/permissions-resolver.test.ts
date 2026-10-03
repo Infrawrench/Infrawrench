@@ -5,7 +5,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 /**
  * Real Drizzle over a recording driver against the real schema (see
  * helpers/fake-postgres.ts). Each test queues its precise sequence of DB
- * responses with `pg.queueRows` — one queue entry per query, in execution
+ * responses with `pg.queueRows`: one queue entry per query, in execution
  * order, keys in the query's projection order (or the table's column order for
  * bare `select()`).
  */
@@ -61,7 +61,7 @@ const membershipUpdates = () =>
 
 /**
  * Break-glass grants are resolved alongside the role, but they have their own
- * suite — here we only care that the resolver unions them in for people and
+ * suite: here we only care that the resolver unions them in for people and
  * leaves them out for keys and non-members.
  */
 const mockActiveElevations = vi.fn(async () => [] as unknown[]);
@@ -177,7 +177,7 @@ describe("resolveEffectivePermissions — user", () => {
    * Regression guard for the `dashboards:*` → `workflows:*` split. Workflows
    * used to ride on `dashboards:write`, and the grandfathering of grants that
    * predate the split ran once, in migration
-   * `0055_grandfather_workflow_permissions` — never here. A role written after
+   * `0055_grandfather_workflow_permissions`, never here. A role written after
    * that migration therefore means exactly what it says, which is the entire
    * point of giving `workflows:approve` its own entry: "may edit the
    * automation, may not land the decision on someone else's

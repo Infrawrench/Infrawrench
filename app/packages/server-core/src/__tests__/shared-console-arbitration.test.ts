@@ -5,7 +5,7 @@
  * and the participant list are all recoverable if they are wrong; a bad answer
  * here is somebody typing into a machine they should not be able to reach. So
  * each case below is written as the question a reviewer would actually ask,
- * and the assertions are on the *reason* as well as the outcome — a join that
+ * and the assertions are on the *reason* as well as the outcome: a join that
  * fails for the right reason and one that fails by accident are the same
  * `false` and very different code.
  */
@@ -362,7 +362,7 @@ describe("evaluateHandover — who may move the keyboard", () => {
   });
 
   /**
-   * The race. Two grants are authorised against the same state — this function
+   * The race. Two grants are authorised against the same state; this function
    * is pure and says yes to both, which is correct: it decides *authority*.
    * Order is decided by the partial unique index in the database, and the
    * loser surfaces as a 409. This test exists to pin that division of labour,
@@ -483,7 +483,7 @@ describe("evaluateOwnerAction — revocation is not gated on still holding acces
       actor: { userId: "owner", organizationId: "org-1", permissions: [] },
       isOrgAdmin: false,
     });
-    // Nobody is the owner of an ownerless share — only an admin can end it.
+    // Nobody is the owner of an ownerless share, only an admin can end it.
     expect(decision.ok).toBe(false);
   });
 });

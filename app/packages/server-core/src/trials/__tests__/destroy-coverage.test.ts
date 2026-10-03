@@ -15,7 +15,7 @@ vi.mock("../../clickhouse/client", () => ({
 import { ORG_SCOPED_CLICKHOUSE_TABLES } from "../destroy";
 
 /**
- * The purge list in `destroy.ts` is hand-written, which is the point — a new
+ * The purge list in `destroy.ts` is hand-written, which is the point: a new
  * ClickHouse table should have to be thought about rather than swept up. This
  * is what makes forgetting fail the build instead of leaking a destroyed org's
  * rows forever.

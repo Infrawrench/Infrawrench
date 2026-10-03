@@ -23,7 +23,7 @@ interface UseHostKeyTrust {
   /**
    * Wrap an async action so that if it throws a `HostKeyTrustRequiredClientError`,
    * the dialog is shown and the action is retried once on accept. Other
-   * errors propagate untouched. The action may run up to twice — once
+   * errors propagate untouched. The action may run up to twice: once
    * normally, and a single retry after the user trusts the key.
    */
   withTrustPrompt: <T>(action: () => Promise<T>) => Promise<T>;

@@ -13,7 +13,7 @@
  *
  * The dismissal routes take `resources:write` instead: accepting a finding is
  * a statement about one resource ("this bucket is public on purpose"), the
- * same trust level as changing it, and members — who can read the screen —
+ * same trust level as changing it, and members (who can read the screen)
  * deliberately cannot silence it. Both are audited.
  */
 import { Hono } from "hono";
@@ -38,7 +38,7 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * GET /api/org/:orgId/posture — every matched plugin-declared security check
+ * GET /api/org/:orgId/posture: every matched plugin-declared security check
  * on the org's synced resources (public buckets, world-open ingress,
  * unencrypted disks, stale credentials), worst severity first.
  */
@@ -47,7 +47,7 @@ app.get("/", async (c) => {
   return c.json(await listPosture(c.get("organizationId")));
 });
 
-// POST /api/org/:orgId/posture/dismissals and its DELETE — the shared
+// POST /api/org/:orgId/posture/dismissals and its DELETE: the shared
 // implementation over the dismissal store both security surfaces use. See
 // `finding-dismissals.ts` for the contract and the permission argument.
 registerFindingDismissalRoutes(app, "posture");
@@ -67,7 +67,7 @@ app.get("/settings", async (c) => {
 
 /**
  * Update the posture alert settings. `lastNotifiedAt` is deliberately not
- * writable — it is the poller's cooldown claim.
+ * writable: it is the poller's cooldown claim.
  */
 app.put("/settings", async (c) => {
   requirePermission(c, "org:settings:write");

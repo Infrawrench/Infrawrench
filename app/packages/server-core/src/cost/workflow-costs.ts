@@ -1,12 +1,12 @@
 /**
  * Cost rows reported by a workflow (`infra.costs.write`).
  *
- * This is the escape hatch for spend Infrawrench has no provider plugin for —
+ * This is the escape hatch for spend Infrawrench has no provider plugin for:
  * a SaaS invoice, an internal chargeback, a colo bill. A cron workflow fetches
  * the numbers however it likes and writes them into the same `cost_daily`
  * table the provider collectors use, so they appear in cost graphs, dimension
  * filters, and budgets with no special-casing downstream. A server outside
- * Infrawrench does the same thing over HTTP — see `cost/external-costs.ts`.
+ * Infrawrench does the same thing over HTTP: see `cost/external-costs.ts`.
  *
  * Validation, the reserved-tag invariant, and the ClickHouse write all live in
  * `cost/cost-ingest.ts`; what is specific to workflows is the per-run cap and
@@ -28,7 +28,7 @@ import {
 const MAX_ROWS_PER_CALL = 1_000;
 const MAX_ROWS_PER_RUN = 50_000;
 
-/** A rejected row — surfaced to the workflow author as a thrown error. */
+/** A rejected row: surfaced to the workflow author as a thrown error. */
 export class WorkflowCostError extends Error {
   constructor(message: string) {
     super(message);

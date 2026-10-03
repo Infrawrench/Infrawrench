@@ -7,7 +7,7 @@ import { buildTestApp } from "./test-utils";
  * plugin and only current resources are displayed.
  *
  * Root cause of the bug: syncAccountResources() previously only upserted
- * resources — it never removed resources that the plugin no longer returned.
+ * resources; it never removed resources that the plugin no longer returned.
  * Desktop doesn't have this issue because it queries the plugin directly
  * and never persists resource state in a DB.
  */
@@ -129,7 +129,7 @@ function setupSync(pluginResources: ReturnType<typeof makeResource>[]) {
     insertCalls.push({ values: v, conflictSet: null });
     return { onConflictDoUpdate };
   });
-  // Change-timeline inserts go to their own table — keep them out of
+  // Change-timeline inserts go to their own table: keep them out of
   // `insertCalls` so the resource-upsert assertions stay exact.
   mockInsert.mockImplementation((table: unknown) => {
     if (table === resourceChanges) {

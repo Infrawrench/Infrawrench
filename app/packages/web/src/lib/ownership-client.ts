@@ -17,7 +17,7 @@ export function createWebOwnershipClient(orgId: string): OwnershipClient {
       return res.ownership;
     },
     // The upsert answers `null` when the patch left nothing to record, which
-    // is the server deleting the row — the panel renders that as "cleared"
+    // is the server deleting the row: the panel renders that as "cleared"
     // rather than inventing an empty record.
     saveResourceOwnership: (patch: ResourceOwnershipPatch) =>
       apiPut<ResourceOwnership | null>(base, patch),

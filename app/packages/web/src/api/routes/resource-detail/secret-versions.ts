@@ -98,7 +98,7 @@ export function registerSecretVersionRoutes(app: Hono): void {
     if (!ctx.client.modifySecretVersion)
       return c.json({ error: "Plugin does not support secret versions" }, 400);
 
-    // Destroying a secret version is irreversible — gate it behind the org's
+    // Destroying a secret version is irreversible: gate it behind the org's
     // change freeze. Enable/disable stay allowed (they're recoverable).
     if (action === "destroy") {
       const frozen = await checkChangeFreeze(c, {

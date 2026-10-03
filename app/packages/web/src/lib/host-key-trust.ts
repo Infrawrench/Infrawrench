@@ -26,7 +26,7 @@ export {
 
 /**
  * Try to parse a `fetch` Response as a host-key-trust 409. Returns the
- * payload if matched, otherwise null. Consumes the response body — only
+ * payload if matched, otherwise null. Consumes the response body, only
  * call this after `res.ok` is false. The response is cloned before reading,
  * so the caller can still inspect the original body for non-matches if
  * needed.

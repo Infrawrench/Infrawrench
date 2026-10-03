@@ -1,5 +1,5 @@
 /**
- * Read/write side of `org_currency_settings` and `org_exchange_rates` — the
+ * Read/write side of `org_currency_settings` and `org_exchange_rates`: the
  * opt-in display currency and the rate table the org states for itself.
  *
  * The conversion arithmetic is not here. It lives in `./currency-convert.ts`,
@@ -8,7 +8,7 @@
  * delete, and normalize.
  *
  * A missing settings row and a row with a null `displayCurrency` are the same
- * thing — "do not convert" — which is what every org that has never opened the
+ * thing ("do not convert") which is what every org that has never opened the
  * form gets, and what makes this feature byte-identically absent by default.
  */
 import { and, asc, desc, eq } from "drizzle-orm";
@@ -26,7 +26,7 @@ import { orgCurrencySettings, orgExchangeRates } from "../db/schema";
 
 export type { ExchangeRate, ExchangeRateInput, OrgCurrencyConfig, OrgCurrencySettings };
 
-/** Invalid caller input — routes map this to a 400. */
+/** Invalid caller input: routes map this to a 400. */
 export class CurrencySettingsError extends Error {}
 
 type RateRow = typeof orgExchangeRates.$inferSelect;
@@ -47,7 +47,7 @@ function toRate(row: RateRow): ExchangeRate {
 }
 
 /**
- * The org's display currency. A missing row reads as null — "do not convert" —
+ * The org's display currency. A missing row reads as null ("do not convert")
  * so an org that predates this table behaves exactly as it always did.
  */
 export async function getOrgCurrencySettings(organizationId: string): Promise<OrgCurrencySettings> {
@@ -89,7 +89,7 @@ export async function setOrgDisplayCurrency(
 }
 
 /**
- * Every rate the org has stated, newest effective date first — the order the
+ * Every rate the org has stated, newest effective date first: the order the
  * editor shows and the order lookup wants.
  */
 export async function listOrgExchangeRates(organizationId: string): Promise<ExchangeRate[]> {
@@ -105,7 +105,7 @@ export async function listOrgExchangeRates(organizationId: string): Promise<Exch
   return rows.map(toRate);
 }
 
-/** Settings plus the whole rate table — one round trip for the settings page. */
+/** Settings plus the whole rate table: one round trip for the settings page. */
 export async function getOrgCurrencyConfig(organizationId: string): Promise<OrgCurrencyConfig> {
   const [settings, rates] = await Promise.all([
     getOrgCurrencySettings(organizationId),
@@ -125,7 +125,7 @@ export async function loadConversionContext(
   organizationId: string,
   requested?: string | undefined,
 ): Promise<{ displayCurrency: string | null; rates: ExchangeRate[] }> {
-  // No request, no conversion — the caller has to ask, every time. A stored
+  // No request, no conversion: the caller has to ask, every time. A stored
   // display currency alone must never start converting a caller that did not
   // opt in (the MCP tools and older clients among them).
   if (!requested) return { displayCurrency: null, rates: [] };
@@ -133,7 +133,7 @@ export async function loadConversionContext(
   const settings = await getOrgCurrencySettings(organizationId);
   // The org's configured currency is authoritative. A request naming a
   // different one is honoured only if the org has actually configured that
-  // currency — otherwise there are no rates pointing at it and conversion
+  // currency, otherwise there are no rates pointing at it and conversion
   // would report everything unconverted, which is noise rather than an answer.
   if (!settings.displayCurrency) return { displayCurrency: null, rates: [] };
   const wanted = normalizeCurrencyCode(requested);
@@ -174,7 +174,7 @@ function normalizeInput(input: ExchangeRateInput): Required<ExchangeRateInput> {
   }
   if (value < EXCHANGE_RATE_LIMITS.rateMin || value > EXCHANGE_RATE_LIMITS.rateMax) {
     // Zero and negatives land here. A zero rate would erase a currency's spend
-    // from the total while still reporting it as converted — the exact silent
+    // from the total while still reporting it as converted: the exact silent
     // understatement this feature exists to prevent.
     throw new CurrencySettingsError(
       `rate must be greater than 0 and at most ${EXCHANGE_RATE_LIMITS.rateMax}.`,

@@ -3,7 +3,7 @@
  *
  * Some sessions cannot be moved between pods. A Linux application session is
  * an SSH channel to a compositor on a customer's host, and that compositor
- * exits the moment the channel closes — so the pod that opened it is the only
+ * exits the moment the channel closes, so the pod that opened it is the only
  * one that can serve the next call about it. With `replicas: 2` and round-robin
  * routing, roughly half of those calls arrive somewhere else, and the pod they
  * land on has no way to know it should not just start its own.
@@ -20,7 +20,7 @@
  * It is a routing mechanism and nothing more. An address in the table is a
  * hint, not a capability: the receiving pod re-checks the caller's permissions
  * exactly as it would on a direct call, and this module never carries a user's
- * identity — only the operation and the session it belongs to.
+ * identity, only the operation and the session it belongs to.
  *
  * ## When it is off
  *
@@ -38,7 +38,7 @@ import { replicaSessionOwners } from "@/db/schema";
 
 /**
  * How long a lease survives without a heartbeat. A pod that is OOM killed or
- * evicted never releases anything, so the lease has to expire on its own — and
+ * evicted never releases anything, so the lease has to expire on its own, and
  * this is the delay before a stranded session can be replaced, which is why it
  * is a minute rather than an hour.
  */
@@ -121,7 +121,7 @@ export function relayEnabled(): boolean {
  * Only ever forward to a private IPv4 address.
  *
  * The addresses in this table are written by our own pods, so this is defence
- * in depth rather than input validation — but it is the cheap kind: a row that
+ * in depth rather than input validation, but it is the cheap kind: a row that
  * somehow named a public host would otherwise turn every replica into an
  * open forwarder for an authenticated internal endpoint.
  */
@@ -151,7 +151,7 @@ function rowId(kind: string, key: string): string {
  * The upsert is the whole concurrency argument: two pods racing for the same
  * new session both run one statement, and Postgres serialises them, so exactly
  * one insert wins and the loser reads the winner's address. `setWhere` is what
- * stops a live session being stolen — an existing lease is only overwritten
+ * stops a live session being stolen: an existing lease is only overwritten
  * when it is already ours (a reconnect) or its holder has stopped
  * heartbeating (a pod that died).
  */
@@ -198,7 +198,7 @@ export async function claimSession(kind: string, key: string): Promise<SessionCl
   return { owner: "self" };
 }
 
-/** Give up a session's lease. Only ever our own — another pod's is not ours to drop. */
+/** Give up a session's lease. Only ever our own: another pod's is not ours to drop. */
 export async function releaseSession(kind: string, key: string): Promise<void> {
   const me = relayAddress();
   if (!me) return;
@@ -208,7 +208,7 @@ export async function releaseSession(kind: string, key: string): Promise<void> {
     .delete(replicaSessionOwners)
     .where(and(eq(replicaSessionOwners.id, id), eq(replicaSessionOwners.ownerAddress, me)))
     .catch((error: unknown) => {
-      // Losing a lease row is recoverable — it expires — and this runs on
+      // Losing a lease row is recoverable (it expires) and this runs on
       // teardown paths that must not throw.
       console.warn(`[relay] could not release ${id}:`, error);
     });
@@ -323,7 +323,7 @@ export async function forwardToOwner<T>(address: string, call: RelayCall): Promi
       body && typeof body === "object" && "error" in body && typeof body.error === "string"
         ? body.error
         : `the replica holding this session answered ${response.status}`;
-    // A session the owner no longer has is not an error to report onward — it
+    // A session the owner no longer has is not an error to report onward: it
     // is a stale lease, and the caller should be free to take over.
     if (response.status === 409) throw new RelayUnreachableError(address, new Error(message));
     throw new RelayRemoteError(message);

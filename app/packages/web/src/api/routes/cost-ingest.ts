@@ -1,5 +1,5 @@
 /**
- * Cost push — `POST /api/org/:orgId/costs/rows`.
+ * Cost push: `POST /api/org/:orgId/costs/rows`.
  *
  * Lets a server outside Infrawrench report spend it already knows about (a
  * parsed SaaS invoice, an internal chargeback, a colo bill) into the same
@@ -8,7 +8,7 @@
  *
  * Mounted outside the org tree's middleware stack because that stack 401s
  * `iwk_` API keys, and an unattended server has nothing else to authenticate
- * with — see `auth/org-request-auth.ts`.
+ * with: see `auth/org-request-auth.ts`.
  */
 import { Hono } from "hono";
 import { z } from "zod";
@@ -34,7 +34,7 @@ const bodySchema = z.object({
   rows: z.array(z.record(z.unknown())).max(MAX_EXTERNAL_COST_ROWS_PER_CALL),
 });
 
-/** POST /api/org/:orgId/costs/rows — push cost rows for a named source. */
+/** POST /api/org/:orgId/costs/rows: push cost rows for a named source. */
 app.post("/rows", async (c) => {
   const orgId = c.req.param("orgId");
   if (!orgId) return c.json({ error: "Missing organization ID" }, 400);

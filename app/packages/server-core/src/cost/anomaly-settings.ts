@@ -5,7 +5,7 @@
  * `AnomalyDetectionOptions` the pure detector takes (currency units).
  *
  * A missing row means the shipped defaults, exactly the way
- * `org_digest_settings` treats a missing row as disabled — an org that has
+ * `org_digest_settings` treats a missing row as disabled: an org that has
  * never opened the form is indistinguishable from one that saved the defaults,
  * so the feature keeps working for every org that predates the table.
  *
@@ -37,8 +37,8 @@ function clamp(value: number, min: number, max: number, fallback: number): numbe
 
 /**
  * An unknown stored value reads as `off`. This is the one setting that spends
- * money and wakes people, so anything the code does not recognise — a row
- * written by a newer deployment, a hand-edited value — fails closed.
+ * money and wakes people, so anything the code does not recognise (a row
+ * written by a newer deployment, a hand-edited value) fails closed.
  */
 function normalizeSmsMode(value: unknown): CostAnomalySmsMode {
   return COST_ANOMALY_SMS_MODES.includes(value as CostAnomalySmsMode)
@@ -84,8 +84,8 @@ export function smsWantsKind(mode: CostAnomalySmsMode, kind: "spike" | "new_sour
 
 /**
  * Turn a settings record into detector options. Cents become currency units;
- * `minBaselineDays` is not a user knob — it is a statement about how much
- * history a baseline needs before it means anything — so it comes from the
+ * `minBaselineDays` is not a user knob (it is a statement about how much
+ * history a baseline needs before it means anything) so it comes from the
  * shipped defaults.
  */
 export function anomalyOptionsFor(settings: CostAnomalySettings): AnomalyDetectionOptions {
@@ -168,7 +168,7 @@ export interface AnomalySmsClaim {
  *
  * An UPDATE rather than the upsert drift uses, deliberately: reaching here at
  * all means `sms_alerts <> 'off'`, which only a saved row can say, so there is
- * no missing row to insert — and re-checking the opt-in *inside* the claiming
+ * no missing row to insert, and re-checking the opt-in *inside* the claiming
  * statement is what makes an org that turned the setting off mid-pass silent
  * immediately rather than one text later.
  */
@@ -204,7 +204,7 @@ export async function claimAnomalySmsWindow(
 
 /**
  * Give the slot back after a text nobody received, so an outage does not buy
- * six hours of silence. Conditional on still owning the claim — a replica that
+ * six hours of silence. Conditional on still owning the claim: a replica that
  * hung past the cooldown must not rewind a later replica's window.
  */
 export async function releaseAnomalySmsWindow(

@@ -408,7 +408,7 @@ app.delete("/sessions/:id", async (c) => {
   const organizationId = orgId(c);
   const row = await loadSession(c.req.param("id"), organizationId);
   if (!row) return c.json({ error: "Not found" }, 404);
-  // Revoke the relay link while the VM still exists — afterwards there is no
+  // Revoke the relay link while the VM still exists: afterwards there is no
   // way to remove the environment from T3's side. Best effort: an unreachable
   // VM must not block deletion of a machine that is still billing.
   if (isT3CodeSurface(row.surface)) {

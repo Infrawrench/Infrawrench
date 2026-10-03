@@ -2,7 +2,7 @@
  * Typed errors callers can catch to distinguish bastion-routing failures
  * from genuine cloud-API failures. The host-services layer surfaces these
  * synchronously when the account is bound to a bastion that isn't reachable;
- * plugins shouldn't retry on these — the user has to bring the bastion back
+ * plugins shouldn't retry on these: the user has to bring the bastion back
  * up or unbind the account from it.
  */
 
@@ -31,7 +31,7 @@ export class BastionRevokedError extends BastionError {
   }
 }
 
-/** Agent rejected the open — destination outside the allowlist or DNS failure. */
+/** Agent rejected the open: destination outside the allowlist or DNS failure. */
 export class BastionStreamOpenError extends BastionError {
   constructor(bastionId: string, reason: string) {
     super(`Bastion ${bastionId} refused to open stream: ${reason}`, bastionId);

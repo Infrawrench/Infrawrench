@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * The config-as-code planner: how a document is matched against what the org
  * already has, and what that produces.
  *
- * The database is mocked out entirely — the planner's job is to turn (current
+ * The database is mocked out entirely: the planner's job is to turn (current
  * state, document, mode) into a list of changes and a list of deferred writes,
  * and that is pure decision-making. The writes themselves are exercised by the
  * queries they build, not here.
@@ -47,7 +47,7 @@ const state = {
 
 vi.mock("../org-config/state", () => ({
   loadOrgConfigState: () => Promise.resolve(state),
-  // Same encoding as the real helper — kept local so the mock does not pull in
+  // Same encoding as the real helper: kept local so the mock does not pull in
   // the full state module (and its db import) at suite load time.
   orgConfigResourceKey: (
     accountId: string,
@@ -277,7 +277,7 @@ describe("cross-section references", () => {
   });
 
   it("drops a resource pin whose inventory row has not been synced yet", async () => {
-    // Account exists, but the resource itself is not in `resourceKeys` — the
+    // Account exists, but the resource itself is not in `resourceKeys`: the
     // old path accepted the card at plan time and silently skipped it on write.
     const result = await plan({
       dashboards: [

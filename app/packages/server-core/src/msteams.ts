@@ -4,14 +4,14 @@
  * An org adds one or more Teams *webhook URLs*, and each stored webhook is a
  * destination an `alert_rules` rule can name; we POST an Adaptive Card to every
  * webhook the matched rules named. Like `slack.ts`, this module has no notion
- * of a trigger — routing is decided once in `alerts/route.ts` and the webhook
+ * of a trigger: routing is decided once in `alerts/route.ts` and the webhook
  * is addressed here by its stored row id.
  *
  * Why webhooks and not an "Add to Teams" OAuth flow like Slack
  * -----------------------------------------------------------
  * Microsoft does not offer Slack's shape. Posting a channel message through
  * Graph (`POST /teams/{id}/channels/{id}/messages`) needs the *delegated*
- * `ChannelMessage.Send` scope — a signed-in user at send time. The only
+ * `ChannelMessage.Send` scope: a signed-in user at send time. The only
  * application permission Graph accepts for that route is `Teamwork.Migrate.All`,
  * which Microsoft restricts to data migration. Every sender here is a daemon
  * (the poller, the budget evaluator, a workflow calling `infra.page`) with no
@@ -21,12 +21,12 @@
  * The supported app-only path is a webhook: the user adds a "Post to a channel
  * when a webhook request is received" workflow to the channel and pastes the
  * generated URL here. This also replaces the old Office 365 connector
- * ("Incoming Webhook") URLs, which Microsoft disables in May 2026 — those
+ * ("Incoming Webhook") URLs, which Microsoft disables in May 2026: those
  * `*.webhook.office.com` URLs still work today and are accepted, but the
  * settings UI steers new setups to Workflows.
  *
  * Config (env): none. Unlike Slack, which no-ops without `SLACK_CLIENT_ID`,
- * there is no app to register and nothing for an operator to set up — Teams
+ * there is no app to register and nothing for an operator to set up: Teams
  * alerts work on every deployment, self-hosted included, the moment an org
  * pastes a URL.
  *
@@ -38,7 +38,7 @@
  * at rest with AAD `msteams:<orgId>:webhookUrl`, never returned by the API, and
  * shown in the UI only as a host + last-four hint. Because the server makes an
  * outbound request to a user-supplied URL, the host is checked against
- * {@link ALLOWED_HOST_SUFFIXES} — without that this endpoint would be an
+ * {@link ALLOWED_HOST_SUFFIXES}: without that this endpoint would be an
  * org-member-triggerable SSRF into the cluster's network.
  */
 import { and, eq, inArray } from "drizzle-orm";
@@ -58,13 +58,13 @@ const DIGEST_DOMAIN = "msteams-webhook";
 /**
  * Hosts a Teams webhook URL is allowed to point at. All are Microsoft-operated:
  *
- *   *.logic.azure.com        — Power Automate flows created before the 2025
+ *   *.logic.azure.com        - Power Automate flows created before the 2025
  *                              move; still issued in some tenants.
- *   *.api.powerautomate.com  — current Workflows trigger URLs.
- *   *.api.powerplatform.com  — current Workflows trigger URLs (environment-
+ *   *.api.powerautomate.com  - current Workflows trigger URLs.
+ *   *.api.powerplatform.com  - current Workflows trigger URLs (environment-
  *                              scoped form).
- *   *.flow.microsoft.com     — Power Automate.
- *   *.webhook.office.com     — legacy Office 365 connector "Incoming Webhook".
+ *   *.flow.microsoft.com     - Power Automate.
+ *   *.webhook.office.com     - legacy Office 365 connector "Incoming Webhook".
  *                              Microsoft disables these in May 2026; accepted
  *                              until then so existing setups keep working.
  *
@@ -91,7 +91,7 @@ export interface ParsedWebhookUrl {
 
 /**
  * Validate a pasted webhook URL and derive its display hint. Throws with a
- * message meant for the user — this runs on the settings form, so the wording
+ * message meant for the user: this runs on the settings form, so the wording
  * is what they'll see.
  */
 export function parseWebhookUrl(raw: string): ParsedWebhookUrl {
@@ -144,7 +144,7 @@ export type { AddMsTeamsWebhookArgs };
 
 /**
  * Add a webhook, or update the one already holding this URL. Returns the row
- * without the URL — callers hand this straight to the client.
+ * without the URL: callers hand this straight to the client.
  */
 export async function addMsTeamsWebhook(
   organizationId: string,
@@ -258,7 +258,7 @@ function truncate(s: string, max: number): string {
 /**
  * Escape the characters an Adaptive Card `TextBlock` treats as markdown. Alert
  * bodies carry provider error text, so a stray `[` must not silently swallow
- * the rest of the line as a malformed link. HTML needs no handling — Teams
+ * the rest of the line as a malformed link. HTML needs no handling: Teams
  * ignores it in cards and renders it as literal text.
  */
 function escapeMarkdown(s: string): string {
@@ -267,7 +267,7 @@ function escapeMarkdown(s: string): string {
 
 /**
  * Adaptive Card payload for one alert, wrapped in the `type: message` envelope
- * the Workflows webhook trigger expects. Card schema 1.4 — Teams supports up to
+ * the Workflows webhook trigger expects. Card schema 1.4: Teams supports up to
  * 1.5, and 1.4 is what the Workflows templates emit.
  */
 function alertCard(alert: MsTeamsAlert): Record<string, unknown> {
@@ -323,7 +323,7 @@ function retryAfterMs(header: string | null): number {
 /**
  * POST a card to one webhook. Microsoft throttles a webhook above 4 requests
  * per second, so a 429 gets one honoured retry before it counts as a failure.
- * Errors are prefixed with the webhook's label — a multi-channel failure has to
+ * Errors are prefixed with the webhook's label: a multi-channel failure has to
  * be diagnosable from the log line alone.
  */
 async function postToWebhook(url: string, payload: unknown, label: string): Promise<void> {
@@ -352,7 +352,7 @@ async function postToWebhook(url: string, payload: unknown, label: string): Prom
   throw new Error(`${label}: rate limited by Microsoft (HTTP 429)`);
 }
 
-/** Every webhook the org has added — what the default rule expands to. */
+/** Every webhook the org has added: what the default rule expands to. */
 export async function listMsTeamsWebhookIds(organizationId: string): Promise<string[]> {
   const rows = await db
     .select({ id: msteamsWebhooks.id })
@@ -362,7 +362,7 @@ export async function listMsTeamsWebhookIds(organizationId: string): Promise<str
 }
 
 /**
- * Post one alert to a specific set of stored webhook rows. Never throws — a
+ * Post one alert to a specific set of stored webhook rows. Never throws: a
  * Teams or Power Automate outage must not fail the poller, the budget
  * evaluator, or the workflow that raised the alert. Per-webhook errors are
  * logged and counted as failures so the caller can still tell whether anything
@@ -412,7 +412,7 @@ export async function sendMsTeamsToWebhooks(
 /**
  * Send a one-off test card to every webhook the org has added, regardless of
  * routing rules. Throws (unlike {@link sendMsTeamsToWebhooks}) so the settings UI
- * can show the actual failure — a deleted or turned-off Workflow answers 404,
+ * can show the actual failure: a deleted or turned-off Workflow answers 404,
  * and the user needs to see that rather than a silent success.
  */
 export async function sendMsTeamsTest(organizationId: string): Promise<{

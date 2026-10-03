@@ -68,7 +68,7 @@ export function StorageBrowser({
   const onBatchDownload = useCallback(
     async (keys: string[]) => {
       // Two things were wrong here and only one of them was visible. The route
-      // takes `keys` as a JSON array, not a singular `key` per window — but it
+      // takes `keys` as a JSON array, not a singular `key` per window, but it
       // also lives under `/v1/storage` (`api/index.ts`), where only
       // list/mkdir/delete are also served unversioned from
       // `connection-features.ts`. So the old request 404'd before it could

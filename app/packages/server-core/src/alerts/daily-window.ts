@@ -2,13 +2,13 @@
  * The shared claim/scan/deliver/release protocol behind the daily alert
  * radars (expiry, quotas, posture). Each radar used to carry its own verbatim
  * copy; the invariants live here once and the radars supply only what genuinely
- * differs — the settings table, the shipped-default insert values, and the
+ * differs: the settings table, the shipped-default insert values, and the
  * scan-and-deliver body.
  *
  * The protocol, unchanged from the originals:
  *
  * 1. **One scan per org per window** (`cooldownMs`), claimed with a single
- *    conditional upsert on the settings table's `last_notified_at` — the exact
+ *    conditional upsert on the settings table's `last_notified_at`: the exact
  *    statement `drift/alerts.ts` pioneered. Whoever wins the statement scans,
  *    everyone else is suppressed, so N poller replicas racing the same window
  *    still produce one message.
@@ -22,7 +22,7 @@
  *
  * `drift/alerts.ts` stays separate on purpose: it is sync-driven rather than
  * clock-driven (no due-org query), its cooldown is per-org configurable, and a
- * quiet drift window is *released* rather than spent — the `spent` flag here is
+ * quiet drift window is *released* rather than spent; the `spent` flag here is
  * exactly the semantic that distinguishes the radars from drift.
  */
 import { and, eq, isNull, lte, or } from "drizzle-orm";
@@ -61,14 +61,14 @@ export interface WindowDelivery {
 /**
  * A radar's per-org outcome: the engine's own statuses plus whatever the
  * radar's `deliver` returns. A radar outcome must not reuse the engine's
- * status names (`disabled`, `cooling-down`, `failed`) — the run loop counts on
+ * status names (`disabled`, `cooling-down`, `failed`): the run loop counts on
  * telling them apart. Every radar status counts as a claimed scan.
  */
 export type DailyWindowOutcome<TScan extends { status: string }> =
   | { status: "disabled" }
   | { status: "cooling-down" }
   /**
-   * `claimed` is true only after the cooldown claim landed — pre-claim
+   * `claimed` is true only after the cooldown claim landed: pre-claim
    * failures (settings read, claim SQL) leave it false so `scanned` stays
    * honest. `released` is whether the claim was rolled back.
    */
@@ -95,7 +95,7 @@ export interface DailyWindowStore<S extends DailyWindowSettings> {
  * Bind the protocol's SQL to a radar's settings table.
  *
  * `claimValues` supplies the full insert row for an org with no settings row
- * yet — it must land the shipped defaults the radar's reader already reported
+ * yet: it must land the shipped defaults the radar's reader already reported
  * (plus `lastNotifiedAt: now`), so a first claim and a later read agree.
  */
 export function dailyWindowStore<S extends DailyWindowSettings>({
@@ -159,7 +159,7 @@ export function dailyWindowStore<S extends DailyWindowSettings>({
           set: { lastNotifiedAt: now, updatedAt: now } as never,
           // or()/lte(), not a raw sql`` fragment: raw interpolation sends the
           // Date object straight to postgres.js, which rejects it as a bind
-          // parameter — comparators map it through the column's serializer.
+          // parameter; comparators map it through the column's serializer.
           // (The ! is exactOptionalPropertyTypes noise; or() with arguments
           // never returns undefined.)
           setWhere: or(isNull(table.lastNotifiedAt), lte(table.lastNotifiedAt, cutoff))!,
@@ -172,7 +172,7 @@ export function dailyWindowStore<S extends DailyWindowSettings>({
      * Undo a claim whose message reached nobody, restoring the previous value.
      * Conditional on still owning the claim: `claimWindow` stamped
      * `lastNotifiedAt` with its own `now`, so that value is the ownership
-     * token — a replica that wedged past the cooldown must not rewind a later
+     * token; a replica that wedged past the cooldown must not rewind a later
      * replica's claim. Losing the race means someone else owns the window, not
      * an error.
      */
@@ -190,7 +190,7 @@ export interface DailyWindowConfig<
   S extends DailyWindowSettings,
   TScan extends { status: string },
 > {
-  /** Log prefix, without brackets — `expiry`, `quotas`, `posture`. */
+  /** Log prefix, without brackets: `expiry`, `quotas`, `posture`. */
   logPrefix: string;
   store: DailyWindowStore<S>;
   getSettings(organizationId: string): Promise<S>;
@@ -276,8 +276,8 @@ async function runOne<S extends DailyWindowSettings, TScan extends { status: str
       await releaseUnlessDelivered(config, organizationId, now, prior, delivery);
     }
   } catch (err) {
-    // Nothing was claimed on this path — settings or the claim statement
-    // itself failed — so there is nothing to roll back.
+    // Nothing was claimed on this path (settings or the claim statement
+    // itself failed) so there is nothing to roll back.
     console.error(`[${config.logPrefix}] alert scan for org ${organizationId} failed:`, err);
     return {
       outcome: {
@@ -293,7 +293,7 @@ async function runOne<S extends DailyWindowSettings, TScan extends { status: str
 
 /**
  * The poller pass: claim up to `limit` due orgs and run each one's scan.
- * Sequential on purpose — the batch is small and each scan is a handful of
+ * Sequential on purpose: the batch is small and each scan is a handful of
  * indexed reads; parallel fan-outs would just interleave transport calls.
  */
 export async function runDailyAlertWindows<

@@ -53,7 +53,7 @@ function serializeRole(row: typeof roles.$inferSelect): SerializedRole {
   };
 }
 
-/** GET /api/org/:orgId/team/me — current user's effective permissions and role. */
+/** GET /api/org/:orgId/team/me: current user's effective permissions and role. */
 app.get("/me", async (c) => {
   const role = c.get("role");
   const permissions = c.get("permissions") ?? [];
@@ -73,7 +73,7 @@ app.get("/me", async (c) => {
     permissions: [...permissions],
     /**
      * Live break-glass grants, already included in `permissions`. Returned
-     * separately so the app can show what is temporary and when it lapses —
+     * separately so the app can show what is temporary and when it lapses:
      * an elevation the holder cannot see the clock on is one they will forget
      * they have.
      */
@@ -81,13 +81,13 @@ app.get("/me", async (c) => {
   });
 });
 
-/** GET /api/org/:orgId/team/permissions — catalog of all known permission strings. */
+/** GET /api/org/:orgId/team/permissions: catalog of all known permission strings. */
 app.get("/permissions", async (c) => {
   requirePermission(c, "team:read");
   return c.json({ permissions: [...ALL_PERMISSIONS] });
 });
 
-/** GET /api/org/:orgId/team/roles — list all roles (system + custom). */
+/** GET /api/org/:orgId/team/roles: list all roles (system + custom). */
 app.get("/roles", async (c) => {
   requirePermission(c, "team:read");
   const organizationId = c.get("organizationId");
@@ -96,7 +96,7 @@ app.get("/roles", async (c) => {
   return c.json(rows.map(serializeRole));
 });
 
-/** POST /api/org/:orgId/team/roles — create a custom role. */
+/** POST /api/org/:orgId/team/roles: create a custom role. */
 app.post("/roles", async (c) => {
   requirePermission(c, "team:role:write");
   const organizationId = c.get("organizationId");
@@ -137,7 +137,7 @@ app.post("/roles", async (c) => {
   return c.json(row ? serializeRole(row) : { id, name: name.trim(), permissions: cleanPerms });
 });
 
-/** PATCH /api/org/:orgId/team/roles/:id — edit a custom role. */
+/** PATCH /api/org/:orgId/team/roles/:id: edit a custom role. */
 app.patch("/roles/:id", async (c) => {
   requirePermission(c, "team:role:write");
   const organizationId = c.get("organizationId");
@@ -183,7 +183,7 @@ app.patch("/roles/:id", async (c) => {
   return c.json(row ? serializeRole(row) : { ok: true });
 });
 
-/** DELETE /api/org/:orgId/team/roles/:id — delete a custom role. */
+/** DELETE /api/org/:orgId/team/roles/:id: delete a custom role. */
 app.delete("/roles/:id", async (c) => {
   requirePermission(c, "team:role:write");
   const organizationId = c.get("organizationId");
@@ -284,7 +284,7 @@ app.get("/invitations", async (c) => {
  * The clamp is defensive rather than reachable today: agents may not invite
  * (`AGENT_DENY_RULES` closes `POST /team/invitations`), and no human is a
  * member of an org while it is still a trial, so no invite is ever minted from
- * one. It stays because invitations cascade with the organization — should
+ * one. It stays because invitations cascade with the organization: should
  * trial-org invites ever open up, an invite whose link outlives the org would
  * be a dead link with no explanation on the other side, and this is the one
  * place that failure can be prevented.
@@ -318,7 +318,7 @@ app.post("/invitations", async (c) => {
   //
   // No trial-specific gate is needed: a caller with `access.reason === "trial"`
   // cannot exist here. Agents are denied this route outright (see
-  // `AGENT_DENY_RULES` — an anonymous registration that can send mail from our
+  // `AGENT_DENY_RULES`: an anonymous registration that can send mail from our
   // domain is a spam relay), and a trial org has no human members until a
   // claim, which is also the moment `trialExpiresAt` is cleared.
   const access = await planAccess(organizationId);
@@ -363,7 +363,7 @@ app.post("/invitations", async (c) => {
   // Privilege-escalation guards, identical to PATCH /members/:id/role. Without
   // them an invitation is a way around that route's checks: `team:invite` is
   // held by every admin, so an admin could invite an address they control as
-  // an owner and accept their way to `*` — picking up billing:write and
+  // an owner and accept their way to `*`; picking up billing:write and
   // org:settings:write, the two permissions the admin role exists to withhold.
   const callerPerms = c.get("permissions") ?? [];
   if (!isSubsetOfCallerPerms(targetRolePerms, callerPerms)) {
@@ -374,13 +374,13 @@ app.post("/invitations", async (c) => {
   }
 
   // Seat gate: on a paid plan every member and pending invite occupies a
-  // seat. Inviting past capacity needs an explicit `addSeat` opt-in — the
+  // seat. Inviting past capacity needs an explicit `addSeat` opt-in: the
   // client shows the 409 as an "add a seat?" prompt and retries with it set.
   const seatLimit = await checkSeatAvailability(organizationId);
   let seatAdded = false;
   if (seatLimit) {
     // An org whose capacity is entirely prepaid capacity slots has no monthly
-    // subscription item to increment, so there is no seat to opt into here —
+    // subscription item to increment, so there is no seat to opt into here:
     // it has to buy another slot from the billing page first. Refusing before
     // reading `addSeat` keeps that a clear 409 instead of a confusing 502 from
     // `addSeat` finding nothing to grow.
@@ -455,7 +455,7 @@ app.post("/invitations", async (c) => {
 //
 // Agent memberships never count, whatever role their row carries: the guard
 // exists so a *person* always remains who can administer the org, and an agent
-// cannot — its permission ceiling excludes team and settings mutations. A
+// cannot; its permission ceiling excludes team and settings mutations. A
 // claimed org whose agent still counted as an owner would let the only human
 // owner remove themselves.
 async function countOwners(organizationId: string): Promise<number> {
@@ -526,7 +526,7 @@ app.delete("/members/:id", async (c) => {
     );
 
   // Revoke the keys they minted in this org. `authenticateApiRequest` also
-  // re-checks membership, so this is belt-and-braces — but it leaves an
+  // re-checks membership, so this is belt-and-braces, but it leaves an
   // accurate record rather than rows that merely happen to be unusable, and
   // the removed user can no longer reach the UI to revoke them.
   const revoked = await db

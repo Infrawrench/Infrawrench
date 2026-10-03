@@ -1,16 +1,16 @@
 /**
- * Resource ownership rows — upsert/read/delete, plus the owner *lookups* every
+ * Resource ownership rows: upsert/read/delete, plus the owner *lookups* every
  * other feature uses to attribute a resource to a person.
  *
  * Input validation comes from `@infrawrench/client-core`
  * (`validateOwnershipPatch`, `OWNERSHIP_LIMITS`), the same function the editor
- * UIs check with — the server and the form can't disagree about what a valid
+ * UIs check with: the server and the form can't disagree about what a valid
  * ticket link is (the `leases/store.ts` stance).
  *
  * The interesting half of this module is not the CRUD, it is
  * {@link lookupResourceOwners}: one batched read that turns a set of resource
- * ids into printable, routable owners. Every consumer — the orphan finder, the
- * alert notifier, the CLI — goes through it, so "who owns this?" is answered
+ * ids into printable, routable owners. Every consumer (the orphan finder, the
+ * alert notifier, the CLI) goes through it, so "who owns this?" is answered
  * the same way everywhere, including the tie-break between a member owner and
  * a free-text one.
  */
@@ -171,7 +171,7 @@ export function toOwnerAnnotation(row: {
 }
 
 /**
- * Batch "who owns these resources?" — the single lookup every consumer uses.
+ * Batch "who owns these resources?": the single lookup every consumer uses.
  *
  * Returns a map keyed by resource id, with entries only for resources that
  * have a *nameable* owner: a resource carrying only a purpose is absent, so a
@@ -207,7 +207,7 @@ export async function lookupResourceOwners(
 }
 
 /**
- * The owner of one resource, or null — the convenience wrapper alert paths
+ * The owner of one resource, or null: the convenience wrapper alert paths
  * use, where the answer is needed for a single resource and a map would be
  * ceremony.
  */
@@ -224,7 +224,7 @@ export async function lookupResourceOwner(
  *
  * Upsert rather than create/update because ownership is a property *of the
  * resource*: the caller knows the resource, not whether a row exists. Omitted
- * fields keep their value, `null` clears — so an editor that only touches the
+ * fields keep their value, `null` clears, so an editor that only touches the
  * ticket link cannot blank the purpose.
  *
  * A row with nothing left in it is **deleted rather than kept empty**. Clearing
@@ -338,7 +338,7 @@ export type { OwnerCandidate };
 /**
  * Org members an owner can be set to.
  *
- * A deliberately minimal projection — id, name, email — rather than a reuse of
+ * A deliberately minimal projection (id, name, email) rather than a reuse of
  * the team endpoint's rows. The team list carries roles and membership dates
  * and is gated on `team:read`; requiring that permission to say "this VM is
  * mine" would put ownership out of reach of exactly the people who create
@@ -385,7 +385,7 @@ function pick(value: string | null | undefined, current: string | null): string 
 }
 
 /**
- * As {@link pick}, but an all-whitespace string clears too — the editors bind
+ * As {@link pick}, but an all-whitespace string clears too: the editors bind
  * text inputs straight to these fields, and an emptied box means "remove
  * this", not "set it to a space".
  */

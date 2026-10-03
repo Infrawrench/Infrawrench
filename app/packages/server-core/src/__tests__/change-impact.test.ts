@@ -143,7 +143,7 @@ describe("computeChangeCostImpact — the null that must never become a zero", (
 
   it("does report a real zero when the resource was billed on one side only", () => {
     // A resource that was deleted: it cost money before and nothing after.
-    // That IS a measurement — the days after are covered and genuinely empty.
+    // That IS a measurement: the days after are covered and genuinely empty.
     const result = computeChangeCostImpact(
       input({ series: [{ currency: "USD", points: flat("2026-06-08", "2026-06-14", 3) }] }),
     );
@@ -230,7 +230,7 @@ describe("computeChangeCostImpact — currencies", () => {
 describe("computeChangeCostImpact — late-arriving cost", () => {
   it("recomputes to the right answer as the provider fills the window in", () => {
     // Day 1 after a deploy: the provider has published two days either side.
-    // Same event, same window request — only the data differs.
+    // Same event, same window request, only the data differs.
     const early = computeChangeCostImpact(
       input({
         eventDay: "2026-06-15",
@@ -252,7 +252,7 @@ describe("computeChangeCostImpact — late-arriving cost", () => {
     expect(early.confidence).toBe("low");
     expect(early.series[0]?.deltaPerDay).toBe(1);
 
-    // A week later the full window exists — and the true rise was larger,
+    // A week later the full window exists, and the true rise was larger,
     // because the first days after the deploy were partial provider days.
     const settled = computeChangeCostImpact(
       input({

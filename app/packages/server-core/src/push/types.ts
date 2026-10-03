@@ -4,9 +4,9 @@
  *
  * This module is a deliberate leaf: its only import is type-only, so the
  * transport can describe its message payload without depending on the module
- * that owns the database queries. Consumers that only need the contract —
- * `slack.ts`, `msteams.ts`, and anything reading `PushData` off a notification
- * — should import from here rather than from `dispatch.ts`, which pulls in
+ * that owns the database queries. Consumers that only need the contract
+ * (`slack.ts`, `msteams.ts`, and anything reading `PushData` off a notification)
+ * should import from here rather than from `dispatch.ts`, which pulls in
  * `db/client` and opens a connection at module scope.
  */
 import type { AlertTrigger, PushNotificationData } from "@infrawrench/client-core";
@@ -23,7 +23,7 @@ export type PushData = PushNotificationData;
 
 /**
  * What can raise an alert. Aliased from the registry in
- * `client-core/src/alert-routing.ts` — the single list that used to be spelled
+ * `client-core/src/alert-routing.ts`: the single list that used to be spelled
  * out here, in three database schemas and in three `TRIGGER_COLUMN` maps.
  *
  * The digest can reach a channel but not a phone; that is expressed as

@@ -22,7 +22,7 @@ import { loadPlugins } from "../plugins/loader";
 import { getClientForAccount } from "./plugin-clients";
 
 /**
- * "Oversized" recommendations — the savings finder's second pass: resources
+ * "Oversized" recommendations; the savings finder's second pass: resources
  * whose plugin declares `rightsizing`, whose stored p95 utilisation over the
  * trailing 14 days sits under the thresholds, matched against the plugin's
  * own size catalog (the create form's size-picker options, prices hydrated
@@ -31,12 +31,12 @@ import { getClientForAccount } from "./plugin-clients";
  * Unlike orphans this can't be a pure read: the size catalogs come from the
  * provider APIs with the account's credentials, and the percentiles from
  * ClickHouse. Both are slow-moving, so the whole org response is cached
- * in-memory for a few minutes and recomputed on demand — there is no poller
+ * in-memory for a few minutes and recomputed on demand: there is no poller
  * pass to keep stale rows warm (the orphans shape, not the schedules one).
  *
  * Failure surface, deliberately: a ClickHouse outage throws (the section
  * shows the error instead of "nothing is oversized"), while one account's
- * broken credentials only cost that account's rows — logged `[rightsizing]`,
+ * broken credentials only cost that account's rows; logged `[rightsizing]`,
  * never silent.
  */
 
@@ -71,7 +71,7 @@ export async function listRightsizing(
   });
   const entry: CacheEntry = { expiresAt: Date.now() + CACHE_TTL_MS, promise };
   responseCache.set(organizationId, entry);
-  // A failed computation must not serve from cache until the TTL runs out —
+  // A failed computation must not serve from cache until the TTL runs out:
   // drop the entry (only if it is still ours) so the next call retries.
   promise.catch(() => {
     if (responseCache.get(organizationId) === entry) responseCache.delete(organizationId);
@@ -129,7 +129,7 @@ async function computeRightsizing(organizationId: string): Promise<RightsizingLi
   const candidates = orgResources.filter((r) => {
     const entry = declared.get(r.pluginId)?.get(r.resourceTypeId);
     if (!entry || !accountMap.has(r.accountId)) return false;
-    // A stopped machine's percentiles describe its idle tail, not its work —
+    // A stopped machine's percentiles describe its idle tail, not its work,
     // and the right fix for one that stays off is a schedule or a delete.
     const lifecycle = entry.typeDef.lifecycle;
     if (lifecycle?.statusFieldKey && lifecycle.stoppedValues) {

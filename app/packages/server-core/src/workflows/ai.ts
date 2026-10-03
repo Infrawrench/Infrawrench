@@ -1,9 +1,9 @@
 /**
- * Cloud implementation of `infra.ai(...)` — one prompt in, one reply out.
+ * Cloud implementation of `infra.ai(...)`: one prompt in, one reply out.
  *
  * Talks to Anthropic the way the digest narrative does (../digest/narrative.ts):
  * a one-shot, non-streaming completion with a short timeout and one retry. It
- * differs in what a failure means — the narrative swallows every error because
+ * differs in what a failure means: the narrative swallows every error because
  * it is decoration, but a workflow author branches on the answer, so here an
  * error (unconfigured deployment, spend cap reached, model refusal, provider
  * outage) throws into the run where it can be seen and caught.
@@ -11,7 +11,7 @@
  * Billing rides the same rails as AI chat: every call writes a
  * `workflow_ai_usage` row priced with the chat markup, reports to the chat
  * Stripe meter, and is refused once the org's monthly AI spend cap is reached
- * (chat and workflow spend share one pool — see ../billing/ai-usage.ts).
+ * (chat and workflow spend share one pool; see ../billing/ai-usage.ts).
  * Both surfaces reserve estimated spend under the same org lock before the
  * provider call so concurrent consumers cannot all clear the same below-cap
  * check.
@@ -33,7 +33,7 @@ import { computeCostMicros } from "../billing/ai-pricing";
 
 /**
  * Model calls one run may make. `infra.ai` is a step in an automation, not a
- * batch inference API — and because AI calls are excluded from the run's
+ * batch inference API, and because AI calls are excluded from the run's
  * execution budget (they are a paused method, see the runtime's isolate), this
  * cap is what keeps an `infra.ai` loop bounded.
  */
@@ -42,7 +42,7 @@ export const MAX_AI_CALLS_PER_RUN = 20;
 /**
  * Per-call wall clock. Generous enough for a frontier model to produce the
  * 8k-token ceiling, short enough that a hung call doesn't hold a poller slot
- * for long — and it bounds the pause the isolate grants the call.
+ * for long, and it bounds the pause the isolate grants the call.
  */
 const AI_TIMEOUT_MS = 120_000;
 
@@ -56,7 +56,7 @@ export interface WorkflowAiContext {
   workflowId: string;
   /** The run making the calls, for usage attribution. */
   runId?: string;
-  /** Abort the run (Stop) — cancels an in-flight Anthropic request. */
+  /** Abort the run (Stop): cancels an in-flight Anthropic request. */
   signal?: AbortSignal;
 }
 
@@ -97,7 +97,7 @@ export async function aiFromWorkflow(
 
   // Reserve estimated spend under the shared org lock before the provider call
   // so concurrent chat turns and workflow runs see each other. One call that
-  // started under the cap can still settle past the line — the cap is a
+  // started under the cap can still settle past the line: the cap is a
   // monthly budget, not a hard wire, and the overshoot is at most one call.
   let reservationId: string;
   try {
@@ -133,7 +133,7 @@ export async function aiFromWorkflow(
       cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
     };
     // Always settle usage for a completed provider response before honoring
-    // Stop — otherwise a race where abort lands after Anthropic returns would
+    // Stop, otherwise a race where abort lands after Anthropic returns would
     // release the reservation with nothing recorded and understate the org's
     // shared AI spend. Record before releasing so the brief overlap is a
     // conservative double-count rather than a gap concurrent callers could use.
@@ -186,7 +186,7 @@ export async function aiFromWorkflow(
 /**
  * A per-run `ai` for {@link file://./runner.ts}: the same call, with the run's
  * call budget closed over so the cap applies across the whole run rather than
- * per call — the same arrangement as `buildWorkflowFetch`.
+ * per call; the same arrangement as `buildWorkflowFetch`.
  */
 export function buildWorkflowAi(
   ctx: WorkflowAiContext,

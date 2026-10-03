@@ -37,7 +37,7 @@ const { mockSelect, mockInsert, mockDb, mockSchema, mockEncryption } = vi.hoiste
 vi.mock("../../db/client", mockDb);
 vi.mock("../../db/schema", mockSchema);
 // The create path writes through server-core's shared upsert helpers, which
-// reach for server-core's own copies of these modules — the web re-export
+// reach for server-core's own copies of these modules: the web re-export
 // shims aren't on that import path, so both spellings need the same stubs.
 vi.mock("@infrawrench/server-core/db/client", mockDb);
 vi.mock("@infrawrench/server-core/db/schema", mockSchema);
@@ -61,7 +61,7 @@ vi.mock("../../services/plugin-clients", () => ({
 
 vi.mock("../../services/encryption", mockEncryption);
 vi.mock("../../services/audit", () => ({ logAudit: vi.fn() }));
-// No freeze in effect by default — the freeze gate has its own tests.
+// No freeze in effect by default: the freeze gate has its own tests.
 vi.mock("../../services/change-freezes", () => ({
   checkChangeFreezeForTool: vi.fn().mockResolvedValue(null),
   getActiveChangeFreeze: vi.fn().mockResolvedValue(null),
@@ -72,7 +72,7 @@ vi.mock("@infrawrench/plugin-base", () => ({
   evaluatePeerIntegrationUnreachable: () => null,
 }));
 // The status correlation and expiry feed modules load the whole plugin
-// registry (and, transitively, the db client) at import time — stub them;
+// registry (and, transitively, the db client) at import time: stub them;
 // both have their own server-core tests.
 vi.mock("@infrawrench/server-core/status/match", () => ({
   getOrgStatusIncidents: vi.fn().mockResolvedValue([]),
@@ -354,8 +354,8 @@ describe("genericTools", () => {
     const quiet = JSON.parse(
       (await tool("list_posture_findings").handler({}, auth)).content[0]!.text,
     );
-    // The count is always there — "clean" must be distinguishable from
-    // "quiet because somebody silenced it" — but the rows are opt-in.
+    // The count is always there ("clean" must be distinguishable from
+    // "quiet because somebody silenced it") but the rows are opt-in.
     expect(quiet.dismissedCount).toBe(1);
     expect(quiet.dismissed).toBeUndefined();
     expect(quiet.findings).toHaveLength(1);

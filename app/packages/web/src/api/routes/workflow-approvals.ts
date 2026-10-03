@@ -4,8 +4,8 @@
  *
  * A run suspended on `infra.waitForApproval(...)` writes a pending
  * `workflow_approvals` row and polls it; these routes are how a human lands
- * the decision. Listing takes `workflows:read` — the same permission that opens
- * the Workflows tab — while approving or denying takes `workflows:approve`,
+ * the decision. Listing takes `workflows:read` (the same permission that opens
+ * the Workflows tab) while approving or denying takes `workflows:approve`,
  * deliberately NOT `workflows:write`: the point of an approval step is that a
  * second person signs off, so a role can grant authorship without sign-off (or
  * sign-off without authorship).

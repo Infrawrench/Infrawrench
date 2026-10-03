@@ -152,8 +152,8 @@ const Resource = strict({
 }).openapi("Resource");
 
 /**
- * What `sync-type` hands back: the same rows as `Resource`, minus `accountId`
- * — the caller named the account in the path, so the route doesn't echo it.
+ * What `sync-type` hands back: the same rows as `Resource`, minus `accountId`;
+ * the caller named the account in the path, so the route doesn't echo it.
  */
 const SyncedResource = Resource.omit({ accountId: true }).openapi("SyncedResource");
 

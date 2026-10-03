@@ -63,7 +63,7 @@ describe("apiKeyRouteDenial", () => {
     // Shared consoles, by the same argument as break-glass: sharing a live
     // shell and accepting a place on one are both acts a person performs, and
     // an unattended key redeeming an invite would turn a link pasted into a
-    // chat window into a durable foothold. Listing stays open — that is the
+    // chat window into a durable foothold. Listing stays open: that is the
     // visibility half of the control.
     expect(apiKeyRouteDenial("GET", `${ORG}/shared-consoles`)).toBeNull();
     expect(apiKeyRouteDenial("POST", `${ORG}/shared-consoles`)).toMatch(/share or join a console/);
@@ -80,7 +80,7 @@ describe("apiKeyRouteDenial", () => {
 
   /**
    * A prefix rule must not swallow a sibling that merely starts with the same
-   * characters — `/teams-something` is not `/team`.
+   * characters: `/teams-something` is not `/team`.
    */
   it("matches on path segments, not string prefixes", () => {
     expect(apiKeyRouteDenial("POST", `${ORG}/teams-of-things`)).toBeNull();
@@ -110,7 +110,7 @@ describe("apiKeyRouteDenial", () => {
   });
 
   it("says nothing about paths outside the org tree", () => {
-    // `/api/profile` is human-only for a different reason — it sits under the
+    // `/api/profile` is human-only for a different reason: it sits under the
     // `authed` group, whose session middleware is untouched.
     expect(apiKeyRouteDenial("DELETE", "/api/profile/sessions/s1")).toBeNull();
   });

@@ -33,8 +33,8 @@ vi.mock("@/plugins/loader", () => ({
   ]),
 }));
 
-// Building the whole spec is genuinely expensive — every path module, every
-// schema, and a plugin-enum pass — and it grows with the API. The default 5s
+// Building the whole spec is genuinely expensive (every path module, every
+// schema, and a plugin-enum pass) and it grows with the API. The default 5s
 // per-test budget was never sized for several full builds under a loaded
 // parallel run.
 vi.setConfig({ testTimeout: 30_000 });
@@ -190,7 +190,7 @@ describe("getPublicOpenApiDocument", () => {
     expect(pub.security).toEqual([{ bearerAuth: [] }]);
     const named = JSON.stringify(pub).includes("sessionCookie");
     expect(named).toBe(false);
-    // The full document still documents it — the cookie still works.
+    // The full document still documents it: the cookie still works.
     const full = await fullDocument();
     expect(full.components?.securitySchemes).toHaveProperty("sessionCookie");
   });

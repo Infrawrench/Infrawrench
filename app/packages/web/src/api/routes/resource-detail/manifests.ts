@@ -51,7 +51,7 @@ export function registerManifestRoutes(app: Hono): void {
     return c.json({ ok: true });
   });
 
-  /** POST /api/resources/:pluginId/import-yaml — kubectl apply -f equivalent */
+  /** POST /api/resources/:pluginId/import-yaml: kubectl apply -f equivalent */
   app.post("/:pluginId/import-yaml", async (c) => {
     requirePermission(c, "resources:write");
     const organizationId = c.get("organizationId");

@@ -58,7 +58,7 @@ function makeCtx(opts: { authorization?: string; cookie?: string }) {
   } as never;
 }
 
-/** Stub the org-membership lookup — `rows` non-empty means "is a member". */
+/** Stub the org-membership lookup: `rows` non-empty means "is a member". */
 function membershipReturns(rows: unknown[]) {
   mockHasMembership.mockResolvedValue(rows.length > 0);
 }
@@ -276,7 +276,7 @@ describe("authenticateChat", () => {
     });
 
     it("403s a scoped key whose owner's role lacks the permission", async () => {
-      // The key carries chat:write, so `requireScope` passes — the owner's
+      // The key carries chat:write, so `requireScope` passes: the owner's
       // role is what rejects it.
       mockAuthenticateApiRequest.mockResolvedValue({
         userId: "u1",

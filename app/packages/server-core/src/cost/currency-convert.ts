@@ -1,5 +1,5 @@
 /**
- * Currency conversion for cost aggregates — **pure**. No db, no clock, no
+ * Currency conversion for cost aggregates: **pure**. No db, no clock, no
  * ClickHouse, no network. Everything here is a function of its arguments, which
  * is what makes the rate-selection rules exhaustively testable.
  *
@@ -10,13 +10,13 @@
  *
  *  - The stored rows stay untouched and auditable. `cost_daily` always holds
  *    what the provider billed, in the currency it billed in. A converted number
- *    is a presentation of that, never a replacement for it — re-stating a rate
+ *    is a presentation of that, never a replacement for it: re-stating a rate
  *    changes what you see and nothing about what was collected.
  *  - Rates vary by day. Expressing "the latest rate whose effective_from is on
  *    or before this row's day" as a join against a small table, for every row
  *    of a large one, buys a materially harder query for no benefit.
  *  - The rate table is tiny (one org's stated rates) and the aggregate is
- *    already small by the time it gets here — at most a few hundred points.
+ *    already small by the time it gets here: at most a few hundred points.
  *
  * ## The rules, in one place
  *
@@ -28,12 +28,12 @@
  *     currency by accident.
  *  3. **The rate that applied then.** A point dated `day` converts at the rate
  *     with the greatest `effectiveFrom <= day`. A day earlier than every stated
- *     rate for that currency has no rate — see rule 4.
+ *     rate for that currency has no rate: see rule 4.
  *  4. **A currency with no rate is surfaced, never dropped.** It keeps its own
  *     series and its own total, and its code lands in `unconverted`. Silently
  *     omitting it would understate the total, which is the worst failure this
  *     module could have. A currency that has *some* rates but none effective
- *     early enough for *some* points is reported as unconverted too — a
+ *     early enough for *some* points is reported as unconverted too: a
  *     partially converted series would be a number nobody could reconcile.
  *  5. **One hop only.** Rates are stated from a currency to the display
  *     currency. Nothing here inverts a rate or chains two of them; both invent
@@ -50,7 +50,7 @@ import {
 
 export type { CostConversion, CostConvertedCurrency, CostConversionRate };
 
-/** The minimum a group needs for conversion — matches `CostSeriesGroup`. */
+/** The minimum a group needs for conversion: matches `CostSeriesGroup`. */
 export interface ConvertibleGroup {
   currency: string;
   points: Array<{ bucket: string; amount: number }>;
@@ -71,7 +71,7 @@ export interface ConvertibleGroup {
  *
  * Six, not two. These are aggregates that get summed again downstream (per
  * bucket, per series, into a period total), and rounding each point to the
- * cent first makes the total drift by up to half a cent per point — on a
+ * cent first makes the total drift by up to half a cent per point: on a
  * 90-day daily graph that is a visibly wrong total. Six places is far below
  * any currency's minor unit and far above the accumulated error, and it keeps
  * the JSON free of the `0.30000000000000004` tails that make a reader distrust
@@ -87,8 +87,8 @@ function roundAmount(value: number): number {
 /**
  * The rate in force on `day`, or null when the org stated none that early.
  *
- * `rates` must be sorted by `effectiveFrom` descending — `buildExchangeRateTable`
- * does that — so the first row on or before `day` is the latest one, and the
+ * `rates` must be sorted by `effectiveFrom` descending (`buildExchangeRateTable`
+ * does that) so the first row on or before `day` is the latest one, and the
  * scan stops there. ISO `YYYY-MM-DD` compares correctly as a string, which is
  * why no dates are parsed anywhere in this module.
  */
@@ -129,9 +129,9 @@ export interface ConversionResult<T extends ConvertibleGroup> {
 /**
  * Convert every group the org holds a usable rate for into `displayCurrency`.
  *
- * Groups keep their identity — a `CostSeriesGroup` comes back a
+ * Groups keep their identity: a `CostSeriesGroup` comes back a
  * `CostSeriesGroup` with the same `key`, only its `currency` and amounts
- * changed — so callers can merge same-key groups afterwards if they want one
+ * changed, so callers can merge same-key groups afterwards if they want one
  * series per key. Merging is left to the caller because "same key" means
  * different things to a graph (merge) and to a showback report (already keyed
  * by centre).
@@ -164,7 +164,7 @@ export function convertGroups<T extends ConvertibleGroup>(
   const converted: CostConvertedCurrency[] = [...convertible.entries()].map(
     ([currency, applied]) => ({
       currency,
-      // Newest effective date first — the same order the rate editor shows.
+      // Newest effective date first: the same order the rate editor shows.
       rates: [...applied.values()].sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1)),
     }),
   );
@@ -173,7 +173,7 @@ export function convertGroups<T extends ConvertibleGroup>(
 
   if (convertible.size === 0) {
     // Nothing to multiply, but the caller still has to be told which currencies
-    // could not be converted — that is the whole point of reporting it.
+    // could not be converted: that is the whole point of reporting it.
     return { groups, conversion };
   }
 
@@ -191,7 +191,7 @@ export function convertGroups<T extends ConvertibleGroup>(
       ...group,
       currency: displayCurrency,
       points: convertPoints(group.points),
-      // Same rates, same days — see `ConvertibleGroup.rawPoints`.
+      // Same rates, same days: see `ConvertibleGroup.rawPoints`.
       ...(group.rawPoints ? { rawPoints: convertPoints(group.rawPoints) } : {}),
     };
   });
@@ -282,8 +282,8 @@ export function mergeConvertedGroups<T extends ConvertibleGroup & { key: string 
 /**
  * Convert a `Record<currency, amount>` total map.
  *
- * Used where there are no per-day points to convert against — a showback
- * report's per-centre totals, a budget's month figure — so the rate is picked
+ * Used where there are no per-day points to convert against (a showback
+ * report's per-centre totals, a budget's month figure) so the rate is picked
  * once, for `day`. Unconvertible currencies keep their own entry.
  */
 export function convertTotals(

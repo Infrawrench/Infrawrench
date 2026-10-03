@@ -27,7 +27,7 @@ export interface ListExpiringOptions {
   /**
    * Lead time to compute the `upcoming` bucket against. When omitted the org's
    * stored settings are read (default 60 days when it has no row). Callers
-   * that already hold the settings — the poller's alert pass — pass it to
+   * that already hold the settings (the poller's alert pass) pass it to
    * avoid a second read.
    */
   leadDays?: number;
@@ -171,10 +171,10 @@ export async function listExpiring(
     { leadDays, now },
   );
 
-  // Active resource leases ride the same feed as kind "lease" — merged after
+  // Active resource leases ride the same feed as kind "lease": merged after
   // the scan (their deadline lives on the lease row, not in a synced field)
   // with the evaluator's own sort and counts re-applied, so every consumer of
-  // the feed — including `itemsWithinLead` and the counts — sees them.
+  // the feed (including `itemsWithinLead` and the counts) sees them.
   return mergeExpiryItems(
     feed,
     leaseItems(

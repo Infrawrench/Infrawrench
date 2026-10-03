@@ -4,12 +4,12 @@
  *
  * By default this reads the checked-in `openapi.json`, which is the artifact
  * the spec workflow already treats as the source of truth for generated
- * clients — so this command is fast and needs no plugin registry or database.
+ * clients, so this command is fast and needs no plugin registry or database.
  * Pass `--rebuild` to build the spec from the live plugin registry first
  * (the same thing `generate:openapi` does, minus writing the file).
  *
  * Output goes to `<repo>/sdk/<target>/`, which is gitignored and outside the
- * pnpm workspace. Nothing regenerates unless the API version changed — see
+ * pnpm workspace. Nothing regenerates unless the API version changed: see
  * `./sdk/generate.ts` for the exact staleness rules, and pass `--force` to
  * override them.
  *

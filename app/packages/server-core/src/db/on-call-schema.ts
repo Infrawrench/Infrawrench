@@ -3,7 +3,7 @@
  *
  * Participants are a **table**, not a jsonb array on the schedule, and the
  * reason is deletion. A rotation naming somebody who left the organization
- * pages nobody, silently, on their week — the worst failure this feature has —
+ * pages nobody, silently, on their week (the worst failure this feature has)
  * and only a foreign key with `ON DELETE CASCADE` makes their removal from the
  * org remove them from the rotation. A jsonb list would have to be swept by
  * something that remembers to look.
@@ -49,7 +49,7 @@ export const onCallSchedules = pgTable(
     startDate: text("start_date").notNull(),
     /**
      * Off resolves to nobody. A destination pointing at a disabled schedule
-     * contributes nobody and the rule's other destinations still deliver — an
+     * contributes nobody and the rule's other destinations still deliver: an
      * alert lost to a misconfigured schedule is the worst outcome here.
      */
     enabled: boolean("enabled").notNull().default(true),
@@ -69,7 +69,7 @@ export const onCallSchedules = pgTable(
  * One person's place in one rotation.
  *
  * `position` is the rotation order and is unique per schedule, so two people
- * cannot silently share a slot. `userId` cascades — see the module note.
+ * cannot silently share a slot. `userId` cascades: see the module note.
  */
 export const onCallParticipants = pgTable(
   "on_call_participants",
@@ -86,7 +86,7 @@ export const onCallParticipants = pgTable(
   },
   (t) => ({
     scheduleIdx: index("on_call_participants_schedule_idx").on(t.scheduleId, t.position),
-    /** One slot per person per rotation — validated in the UI, enforced here. */
+    /** One slot per person per rotation: validated in the UI, enforced here. */
     scheduleUserUnique: uniqueIndex("on_call_participants_schedule_user_unique").on(
       t.scheduleId,
       t.userId,
@@ -98,7 +98,7 @@ export const onCallParticipants = pgTable(
  * A cover: one person taking another's place for a bounded window.
  *
  * Stored rather than folded into the rotation, because "Sam covered Tuesday
- * night" is a fact somebody wants to read back six months later — and because
+ * night" is a fact somebody wants to read back six months later, and because
  * a rotation edited to express a one-off cover is a rotation nobody can reason
  * about afterwards.
  *

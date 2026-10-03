@@ -4,7 +4,7 @@ import { getClickHouseDb, isClickHouseConfigured } from "./client";
 import { networkFlowDaily, type Complete } from "./schema";
 
 /**
- * A `network_flow_daily` row, as ClickHouse takes it — derived from the table
+ * A `network_flow_daily` row, as ClickHouse takes it: derived from the table
  * so a new column is one every producer has to fill. `ingested_at` is dropped:
  * the server's `now()` default owns it.
  */

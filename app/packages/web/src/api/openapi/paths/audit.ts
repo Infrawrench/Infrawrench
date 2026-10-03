@@ -17,7 +17,7 @@ const AuditEntry = strict({
   /**
    * The key's name and display prefix, resolved at read time. Null for entries
    * a person made in the browser, and for a key row that has since been
-   * deleted — `apiKeyId` outlives both.
+   * deleted: `apiKeyId` outlives both.
    */
   apiKeyName: z.string().nullable(),
   apiKeyPrefix: z.string().nullable(),

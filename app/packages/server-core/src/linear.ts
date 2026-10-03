@@ -2,7 +2,7 @@
  * Linear as an issue tracker for findings.
  *
  * The second tracker next to Jira (`jira.ts`), covering the same six finding
- * kinds — cost anomalies, orphaned and oversized resources, posture findings,
+ * kinds: cost anomalies, orphaned and oversized resources, posture findings,
  * expiring credentials, failed probes. An org may connect either tracker or
  * both; the two integrations are stored in parallel tables and are
  * independently removable, which is why nothing here is generalized over
@@ -14,16 +14,16 @@
  * `https://api.linear.app/graphql`. An org supplies a personal API key created
  * under Linear → Settings → Security & access. Per
  * https://linear.app/developers/graphql the key is sent as
- * `Authorization: <API_KEY>` — **no `Bearer` prefix**; the Bearer form is for
+ * `Authorization: <API_KEY>`: **no `Bearer` prefix**; the Bearer form is for
  * OAuth access tokens only, which we do not use. The key is a bearer
  * credential for everything the Linear user can see, so it is encrypted at
- * rest with AAD `linear:<orgId>:apiKey` — the same mechanism the Jira API
- * token uses — and never leaves the server. The API returns
+ * rest with AAD `linear:<orgId>:apiKey` (the same mechanism the Jira API
+ * token uses) and never leaves the server. The API returns
  * {@link LinearIntegrationRecord.keyHint} in its place.
  *
  * Issue descriptions are **markdown** (a plain string), in deliberate contrast
  * to Jira REST v3 where the description field is an Atlassian Document Format
- * JSON document — so there is no `toAdf` counterpart here; the plain text our
+ * JSON document, so there is no `toAdf` counterpart here; the plain text our
  * draft builder produces is already what `issueCreate` wants.
  *
  * Why there is no host allowlist here
@@ -36,12 +36,12 @@
  *
  * Throwing vs. not throwing follows jira.ts exactly:
  *
- *   Ambient  — {@link isLinearConfigured}, {@link getLinearIntegration},
+ *   Ambient  - {@link isLinearConfigured}, {@link getLinearIntegration},
  *              {@link listLinearIssueLinks}. These run while rendering a list
  *              that is *about something else*; they log with `[linear]` and
  *              return an empty value rather than break the page.
  *
- *   User-initiated — {@link setLinearIntegration},
+ *   User-initiated: {@link setLinearIntegration},
  *              {@link deleteLinearIntegration}, {@link verifyLinearCredentials},
  *              {@link listLinearTeams}, {@link createLinearIssue}. Somebody
  *              pressed a button and is waiting, so these throw
@@ -57,7 +57,7 @@ import { buildAad, decrypt, encrypt } from "./encryption";
 
 /**
  * The one place Linear is reachable. GraphQL endpoint per
- * https://linear.app/developers/graphql — fixed for every workspace, which is
+ * https://linear.app/developers/graphql: fixed for every workspace, which is
  * what makes a host allowlist unnecessary (see the module comment).
  */
 export const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
@@ -85,7 +85,7 @@ const TEAMS_PAGE_SIZE = 100;
 // --- Source kinds ---
 
 /**
- * The detectors a filed issue can come from — the same six as Jira, mirrored
+ * The detectors a filed issue can come from: the same six as Jira, mirrored
  * by a CHECK constraint on `linear_issue_links.source_kind` and by the zod
  * enum on the route. Duplicated rather than imported from `jira.ts` so either
  * integration can be removed without the other losing its constraint's source
@@ -111,7 +111,7 @@ export function isLinearSourceKind(value: string): value is LinearSourceKind {
 /**
  * A failure a user should see. `status` is the HTTP status where the call
  * reached Linear, or `null` for local failures (missing configuration,
- * network error) — the route maps that to 400 vs 502.
+ * network error): the route maps that to 400 vs 502.
  */
 export class LinearApiError extends Error {
   readonly status: number | null;
@@ -131,7 +131,7 @@ interface LinearGraphqlErrorShape {
 /**
  * Turn Linear's GraphQL `errors` array into one line a user can act on.
  *
- * Linear answers errors in the standard GraphQL shape — an `errors` array on a
+ * Linear answers errors in the standard GraphQL shape: an `errors` array on a
  * response that may still be HTTP 200 (partial success) or HTTP 400. Each
  * entry carries `message` and an `extensions.code`; the codes worth branching
  * on are `AUTHENTICATION_ERROR` (bad or revoked key) and `RATELIMITED`, which
@@ -181,7 +181,7 @@ export function describeLinearHttpError(status: number, body: string): string {
 
 /**
  * One authenticated GraphQL call. Throws {@link LinearApiError} on transport
- * failure, a non-2xx status, or a response carrying GraphQL errors — every
+ * failure, a non-2xx status, or a response carrying GraphQL errors: every
  * caller here is user-initiated, so a failure has somebody waiting on it.
  */
 async function linearGraphql<T>(
@@ -195,7 +195,7 @@ async function linearGraphql<T>(
       method: "POST",
       signal: AbortSignal.timeout(LINEAR_REQUEST_TIMEOUT_MS),
       headers: {
-        // Personal API keys are sent bare, NOT as `Bearer <key>` — that form
+        // Personal API keys are sent bare, NOT as `Bearer <key>`: that form
         // is for OAuth tokens only. Per https://linear.app/developers/graphql.
         Authorization: apiKey,
         "Content-Type": "application/json",
@@ -263,7 +263,7 @@ function toIntegrationRecord(row: typeof linearIntegrations.$inferSelect): Linea
 
 /**
  * The org's integration, redacted, or `null` when there isn't one.
- * Ambient: never throws — see the module comment.
+ * Ambient: never throws; see the module comment.
  */
 export async function getLinearIntegration(
   organizationId: string,
@@ -282,7 +282,7 @@ export async function getLinearIntegration(
 }
 
 /**
- * Whether the org can file issues into Linear. Ambient: never throws — this
+ * Whether the org can file issues into Linear. Ambient: never throws; this
  * gates a button on pages that are about something else entirely.
  */
 export async function isLinearConfigured(organizationId: string): Promise<boolean> {
@@ -445,7 +445,7 @@ export async function verifyStoredLinearCredentials(
 export type { LinearTeam };
 
 /**
- * Teams the stored key can see, for the team picker — every Linear issue
+ * Teams the stored key can see, for the team picker: every Linear issue
  * belongs to exactly one team, so `issueCreate` requires a `teamId`, and
  * nobody should be typing a team UUID by hand.
  *
@@ -473,7 +473,7 @@ export interface CreateLinearIssueArgs {
   /**
    * Markdown. This is the contrast with Jira: REST v3 wants an Atlassian
    * Document Format JSON document and silently mangles a plain string, while
-   * Linear's `issueCreate` takes markdown directly — so the plain text the
+   * Linear's `issueCreate` takes markdown directly, so the plain text the
    * shared draft builder produces goes through untouched.
    */
   description?: string | undefined;
@@ -493,7 +493,7 @@ export interface CreatedLinearIssue {
 /**
  * File an issue via the `issueCreate` mutation
  * (https://linear.app/developers/graphql, "Creating and editing issues").
- * User-initiated: throws, and deliberately so — this is the one call in the
+ * User-initiated: throws, and deliberately so; this is the one call in the
  * module where swallowing the error would tell somebody their work is tracked
  * when no issue exists.
  */
@@ -563,7 +563,7 @@ export interface RecordLinearIssueLinkArgs {
 
 /**
  * Remember that a finding was filed. Idempotent on
- * (org, kind, source, identifier) so a retried request cannot double-file —
+ * (org, kind, source, identifier) so a retried request cannot double-file:
  * the issue already exists in Linear at this point, and the row is what stops
  * the UI offering the button again.
  *
@@ -610,7 +610,7 @@ export interface ListLinearIssueLinksFilter {
  * Links for the org, optionally narrowed to one kind and a set of finding ids.
  *
  * This is the batch lookup a list view calls **once** before rendering, instead
- * of one request per row. Ambient: never throws — a cost page must render even
+ * of one request per row. Ambient: never throws; a cost page must render even
  * if this lookup fails, just without the "already filed" markers.
  */
 export async function listLinearIssueLinks(

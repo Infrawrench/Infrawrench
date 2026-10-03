@@ -23,7 +23,7 @@ const MsTeamsWebhookCreate = strict({
   }),
 }).openapi("MsTeamsWebhookCreate");
 
-// Registered under its own name — `.partial()` on a registered schema would
+// Registered under its own name: `.partial()` on a registered schema would
 // otherwise collapse back into the full $ref in the generated document.
 const MsTeamsWebhookUpdate = strict({
   label: z.string(),

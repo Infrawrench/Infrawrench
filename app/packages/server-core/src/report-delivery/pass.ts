@@ -8,12 +8,12 @@
  * the lease. Concurrent poller replicas skip past each other's locked rows
  * instead of blocking, and a row is only ever handed to one claimer. An
  * instance that dies mid-send leaves the lease to expire, at which point the
- * schedule becomes due again — no orphan state, no reaper.
+ * schedule becomes due again: no orphan state, no reaper.
  *
  * This is the **digest pattern, not the alert pass**: what it sends is a
  * scheduled, composed summary addressed by its own row, and it must never be
  * threaded through `alerts/route.ts` (see `./compose.ts` for the full
- * rationale — do not "fix" that later).
+ * rationale; do not "fix" that later).
  *
  * Nothing here throws into the tick: {@link runReportNotification} records its
  * own failures on the row, and the claim itself is wrapped by the caller.
@@ -26,7 +26,7 @@ import type { ReportNotificationRecord } from "./store";
 /**
  * Must exceed the worst-case duration of one delivery: two ClickHouse reads
  * plus a fan-out to Slack, Teams and one request per email address, each with
- * its own timeout. Minutes of budget for tens of seconds of work — too short
+ * its own timeout. Minutes of budget for tens of seconds of work: too short
  * and a second replica double-posts the same report into the same channel,
  * which no retry rule can undo.
  */
@@ -37,7 +37,7 @@ export const REPORT_DELIVERY_LEASE_MS = 10 * 60 * 1000;
  * shares the poller's 15s tick with account polling and cost collection, and
  * every schedule on the same morning hour comes due within one tick. Claiming
  * moves `next_send_at` forward, so a deferred schedule simply lands in a later
- * tick's batch — a report that arrives a minute late is not late.
+ * tick's batch: a report that arrives a minute late is not late.
  */
 export const REPORT_DELIVERIES_PER_TICK = 4;
 
@@ -47,7 +47,7 @@ export const REPORT_DELIVERIES_PER_TICK = 4;
  *
  * `next_send_at IS NOT NULL` excludes disabled rows without a second
  * predicate: disabling nulls the column, so "has a due time" and "should run"
- * are the same statement — the `cost_exports` convention.
+ * are the same statement; the `cost_exports` convention.
  */
 export async function claimDueReportNotifications(
   limit: number,
@@ -97,8 +97,8 @@ export async function claimDueReportNotifications(
 }
 
 /**
- * One tick's worth of report deliveries. Claimed schedules run concurrently —
- * each is mostly waiting on sockets — and every one records its own outcome,
+ * One tick's worth of report deliveries. Claimed schedules run concurrently
+ * (each is mostly waiting on sockets) and every one records its own outcome,
  * so a rejected settle here means the claim leased a row whose bookkeeping
  * write then failed, which the lease expiry retries.
  */

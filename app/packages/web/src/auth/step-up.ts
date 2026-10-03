@@ -5,7 +5,7 @@
  * A session cookie proves the user signed in at some point in the last ~13
  * months. That is a fine bar for reading a dashboard and much too low a bar
  * for minting a password-reset link, moving the account's email address, or
- * removing an MFA factor — each of which converts a borrowed session into
+ * removing an MFA factor: each of which converts a borrowed session into
  * permanent control of the account.
  *
  * WorkOS records when each session was established, so "prove it's still you"
@@ -46,7 +46,7 @@ export async function requireRecentAuthentication(c: Context): Promise<void> {
   const session = c.get("session") as AuthSession;
 
   // Bearer principals (API keys, MCP OAuth tokens) have no interactive sign-in
-  // to be recent — these operations are browser-only by design.
+  // to be recent: these operations are browser-only by design.
   if (!session.sessionId) {
     deny("This action requires a recent sign-in from a browser session.");
   }

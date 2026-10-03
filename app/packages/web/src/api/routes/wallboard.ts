@@ -3,8 +3,8 @@
  *
  * `resources:read` and a session, deliberately: unlike the calendar feed and
  * the public status pages, this is **not** an unauthenticated surface. A
- * wallboard carries incident titles, probe names and account names — the shape
- * of the organisation's estate — and a television in an office is exactly the
+ * wallboard carries incident titles, probe names and account names (the shape
+ * of the organisation's estate) and a television in an office is exactly the
  * screen a visitor photographs. The machine driving the wall signs in once.
  *
  * Purely a read over already-stored state: no provider API calls.

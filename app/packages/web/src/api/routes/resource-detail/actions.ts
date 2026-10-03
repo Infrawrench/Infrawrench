@@ -23,14 +23,14 @@ import {
 /**
  * Cross-cutting per-resource action routes:
  *
- * - invoke-action / nosql-command / attach / export-credential — RPC-style
+ * - invoke-action / nosql-command / attach / export-credential: RPC-style
  *   handlers that dispatch to optional plugin client methods.
- * - peer-panes — lazily fetched secondary tabs.
- * - metrics — historical time-series read from ClickHouse.
+ * - peer-panes: lazily fetched secondary tabs.
+ * - metrics: historical time-series read from ClickHouse.
  */
 export function registerActionRoutes(app: Hono): void {
   registerSshInstallRoutes(app);
-  /** POST /api/resources/invoke-action — invoke a plugin-defined action against a resource. */
+  /** POST /api/resources/invoke-action: invoke a plugin-defined action against a resource. */
   app.post("/invoke-action", async (c) => {
     requirePermission(c, "resources:write");
     const organizationId = c.get("organizationId");
@@ -93,7 +93,7 @@ export function registerActionRoutes(app: Hono): void {
     return c.json({ ok: true });
   });
 
-  /** POST /api/resources/nosql-command — run a NoSQL document-browser command against a resource. */
+  /** POST /api/resources/nosql-command: run a NoSQL document-browser command against a resource. */
   app.post("/nosql-command", async (c) => {
     requirePermission(c, "resources:execute");
     const organizationId = c.get("organizationId");
@@ -131,7 +131,7 @@ export function registerActionRoutes(app: Hono): void {
   });
 
   /**
-   * POST /api/resources/chat-stream — stream a chat turn against a resource
+   * POST /api/resources/chat-stream: stream a chat turn against a resource
    * that exposes the chatPanel capability (e.g. a DigitalOcean Gradient AI
    * agent). The response is NDJSON: each line is a JSON-encoded
    * ChatStreamEvent (`{"kind":"delta","text":"…"}` / `{"kind":"done",…}` /
@@ -161,7 +161,7 @@ export function registerActionRoutes(app: Hono): void {
       return c.json({ error: "Plugin does not support chat" }, 400);
     }
 
-    // Hand the underlying ReadableStream off to Hono — we serialise each
+    // Hand the underlying ReadableStream off to Hono: we serialise each
     // plugin-yielded event as one NDJSON line, flushed immediately so the
     // browser sees tokens as they arrive. Aborting the response (user
     // clicked Stop or navigated away) closes the iterator on the next
@@ -205,7 +205,7 @@ export function registerActionRoutes(app: Hono): void {
   });
 
   /**
-   * POST /api/resources/publish-message — send one message to a pub/sub
+   * POST /api/resources/publish-message: send one message to a pub/sub
    * resource (Cloudflare Queue, AWS SQS/SNS/Kinesis/EventBridge, GCP Pub/Sub,
    * Azure Service Bus / Event Hub, Kafka). The browser-side PublishPanel
    * posts the body + extras here; the plugin's publishMessage handles the
@@ -249,7 +249,7 @@ export function registerActionRoutes(app: Hono): void {
   });
 
   /**
-   * POST /api/resources/synthesize-speech — render one clip of text through a
+   * POST /api/resources/synthesize-speech: render one clip of text through a
    * TTS provider (ElevenLabs, Cartesia, OpenAI, Deepgram Aura, …). The
    * browser-side SpeechPanel posts the text plus the chosen voice/model; the
    * response carries base64 audio the panel plays inline.
@@ -289,7 +289,7 @@ export function registerActionRoutes(app: Hono): void {
   });
 
   /**
-   * POST /api/resources/transcribe-audio — transcribe one clip through an STT
+   * POST /api/resources/transcribe-audio: transcribe one clip through an STT
    * provider (Deepgram, AssemblyAI, Whisper, …). The clip arrives base64 in
    * the JSON body; `SpeechPanelCapability.maxAudioBytes` is what keeps that
    * body within the server's request limit, enforced browser-side before the
@@ -335,7 +335,7 @@ export function registerActionRoutes(app: Hono): void {
     }
   });
 
-  /** POST /api/resources/attach — attach a resource onto a same-account target (e.g. disk → VM). */
+  /** POST /api/resources/attach: attach a resource onto a same-account target (e.g. disk → VM). */
   app.post("/attach", async (c) => {
     requirePermission(c, "resources:write");
     const organizationId = c.get("organizationId");
@@ -368,7 +368,7 @@ export function registerActionRoutes(app: Hono): void {
   });
 
   /**
-   * POST /api/resources/tunnel-ssh-attach — set up SSH over a Cloudflare Tunnel:
+   * POST /api/resources/tunnel-ssh-attach: set up SSH over a Cloudflare Tunnel:
    * tunnel ingress + routing DNS, then install/run cloudflared on the host over
    * SSH. Spans the tunnel's account and the host's account. The tunnel token is
    * resolved server-side and never returned to the client.
@@ -432,9 +432,9 @@ export function registerActionRoutes(app: Hono): void {
     }
   });
 
-  /** POST /api/resources/:pluginId/:typeId/export-terraform — generate HCL
+  /** POST /api/resources/:pluginId/:typeId/export-terraform: generate HCL
    * for one stored resource (plus its direct children, e.g. a zone's DNS
-   * records). Mapping runs from persisted state — no provider API calls. */
+   * records). Mapping runs from persisted state: no provider API calls. */
   app.post("/:pluginId/:typeId/export-terraform", async (c) => {
     requirePermission(c, "resources:read");
     const organizationId = c.get("organizationId");
@@ -545,7 +545,7 @@ export function registerActionRoutes(app: Hono): void {
    * POST /api/resources/:pluginId/:typeId/metrics
    *
    * Returns metric series for a resource. History comes from ClickHouse
-   * (written by the poller) — only resources pinned on some dashboard
+   * (written by the poller), only resources pinned on some dashboard
    * accumulate points. When there is no history, falls back to fetching the
    * series live from the provider via the plugin's `fetchMetricSeries`, so an
    * unpinned resource still charts whatever the provider can serve on demand.
@@ -568,7 +568,7 @@ export function registerActionRoutes(app: Hono): void {
     const series = await getMetricRange(organizationId, resourceId, fromMs, toMs);
     if (series.length > 0) return c.json({ series });
 
-    // Live fallback. Failures degrade to the empty history rather than a 500 —
+    // Live fallback. Failures degrade to the empty history rather than a 500:
     // "no data" is an answer, a dead provider shouldn't take out the chart pane.
     try {
       const ctx = await getClientForResource(pluginId, accountId, organizationId, parentResourceId);

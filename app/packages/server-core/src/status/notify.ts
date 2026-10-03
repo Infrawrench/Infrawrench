@@ -1,12 +1,12 @@
 /**
- * Fan-out for provider incidents that overlap an org's resources — the
+ * Fan-out for provider incidents that overlap an org's resources; the
  * `providerIncidents` trigger over the standard transports: mobile push,
  * Slack, and Microsoft Teams. Deliberately **no** SMS/voice paging: an
  * upstream provider incident is out of the org's hands, so it never warrants
  * a phone buzzing at 3am the way a failing workflow does.
  *
  * Dedupe/claim protocol: one `provider_status_notifications` row per
- * (incident, org). The `ON CONFLICT DO NOTHING` insert *is* the claim — the
+ * (incident, org). The `ON CONFLICT DO NOTHING` insert *is* the claim: the
  * replica whose insert lands owns delivery, the same single-statement rule
  * as `drift/alerts.ts`. If no transport delivers anything, the row is
  * deleted (`releaseUnlessDelivered` invariant) so an org that wires up a
@@ -52,7 +52,7 @@ function describeIncident(
 
 /**
  * Notify every org holding matching resources about this plugin's active
- * incidents. Never throws — called from the poller's status pass, and a
+ * incidents. Never throws: called from the poller's status pass, and a
  * Slack outage must not fail feed collection.
  */
 export async function notifyOrgsOfIncidents(pluginId: string): Promise<void> {
@@ -131,7 +131,7 @@ async function notifyOneOrg(
     const url = incident.url ?? undefined;
 
     // Transport isolation used to be three try/catch blocks here; it is
-    // `routeAlert`'s contract now — it never throws and a failing channel is
+    // `routeAlert`'s contract now: it never throws and a failing channel is
     // counted rather than propagated, so a Slack outage still cannot skip
     // Teams. Only unclaim when *nothing* landed, so a later tick can retry
     // once the org has a working channel.
@@ -149,8 +149,8 @@ async function notifyOneOrg(
         incidentId: incident.id,
         affectedResourceCount: match.affectedResourceCount,
       },
-      // The provider is the useful axis here — "route AWS incidents to the
-      // team that runs on AWS" — and an upstream incident spans the org, so it
+      // The provider is the useful axis here ("route AWS incidents to the
+      // team that runs on AWS") and an upstream incident spans the org, so it
       // deliberately carries no account.
       facts: { pluginId: incident.pluginId, key: providerName },
     });
@@ -159,7 +159,7 @@ async function notifyOneOrg(
     // (incident, org), and releasing it because the message has not gone out
     // *yet* would let the next tick claim and queue a second copy.
     if (!alertReached(routed)) {
-      // Nothing landed — release the claim so a later tick retries once the
+      // Nothing landed: release the claim so a later tick retries once the
       // org has a working transport. Conditional on our own row id, so a
       // concurrent re-claim can't be deleted from under its owner.
       await db

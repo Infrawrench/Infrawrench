@@ -19,7 +19,7 @@ const { mockSelect, mockInsert, mockDelete, mockDb, mockEncryption } = vi.hoiste
 vi.mock("@/db/client", mockDb);
 vi.mock("@/services/encryption", mockEncryption);
 // The secret-field upserts live in server-core and import its own db /
-// encryption modules directly, not the web re-export shims — stub both
+// encryption modules directly, not the web re-export shims: stub both
 // spellings so the two paths share one mock.
 vi.mock("@infrawrench/server-core/db/client", mockDb);
 vi.mock("@infrawrench/server-core/encryption", mockEncryption);

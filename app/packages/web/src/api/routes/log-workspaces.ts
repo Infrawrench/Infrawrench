@@ -17,14 +17,14 @@ import type { AuthSession } from "../auth-middleware";
 import { parseObjectBody } from "../object-body";
 
 /**
- * Log workspace saved queries — a named set of log-capable resources plus a
+ * Log workspace saved queries: a named set of log-capable resources plus a
  * search expression, so a multi-resource tail workspace can be reopened, and
  * optionally alert-evaluated by the poller
  * (`server-core/src/log-workspaces/pass.ts`).
  *
  * Permissions: reads are `resources:read` (a saved query is a view over the
  * org's resource logs, which that permission already gates via
- * `/resources/:pluginId/:typeId/logs`); mutations are `resources:write` —
+ * `/resources/:pluginId/:typeId/logs`); mutations are `resources:write`;
  * the sleep-schedules stance.
  */
 
@@ -40,7 +40,7 @@ function logWorkspaceErrorResponse(c: Context, err: unknown) {
   if (err instanceof LogWorkspaceInputError) {
     return c.json({ error: err.message }, err.status);
   }
-  // Anything else is a server bug or infrastructure failure — log the detail
+  // Anything else is a server bug or infrastructure failure: log the detail
   // server-side and keep internals out of the response.
   console.error("[log-workspaces] unexpected error:", err);
   return c.json({ error: "Saved query operation failed" }, 500);

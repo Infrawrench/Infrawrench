@@ -44,7 +44,7 @@ export function WebAgentsPanel({
     void refresh();
   }, [refresh]);
 
-  // Re-check when the window regains focus — e.g. after the user installs the
+  // Re-check when the window regains focus, e.g. after the user installs the
   // app / picks repos in the GitHub tab and comes back.
   useEffect(() => {
     const onFocus = () => void refresh();

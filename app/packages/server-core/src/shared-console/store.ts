@@ -4,8 +4,8 @@
  * Everything that decides *whether* something is allowed lives in
  * `arbitration.ts` and is pure; this module only reads and writes rows. The
  * one exception is {@link setDriver}, which has to be a transaction to be
- * correct at all, and whose unique-violation is a decision the database makes
- * — see the note there.
+ * correct at all, and whose unique-violation is a decision the database makes:
+ * see the note there.
  */
 import { randomUUID } from "node:crypto";
 
@@ -317,7 +317,7 @@ export async function getParticipantById(id: string): Promise<ParticipantRow | n
   return row ? mapParticipant(row) : null;
 }
 
-/** The org's live shares, newest first — the "who is pairing right now" list. */
+/** The org's live shares, newest first: the "who is pairing right now" list. */
 export async function listActiveSharedConsoles(
   organizationId: string,
 ): Promise<SharedConsoleRow[]> {
@@ -332,7 +332,7 @@ export async function listActiveSharedConsoles(
   return rows.map(mapShare);
 }
 
-/** Live shares among the given ids — the sweep's single query per replica. */
+/** Live shares among the given ids: the sweep's single query per replica. */
 export async function readShareStates(
   ids: readonly string[],
 ): Promise<Map<string, SharedConsoleRow>> {
@@ -348,7 +348,7 @@ export async function readShareStates(
  * Admit somebody, or resume the row they already had.
  *
  * `consumesInvite` clears the stored digest in the same statement that stamps
- * `invite_consumed_at`, so the link stops working the instant it works once —
+ * `invite_consumed_at`, so the link stops working the instant it works once:
  * there is no window in which two people can redeem the same invite, because
  * the second `UPDATE ... WHERE invite_token_hash IS NOT NULL` matches nothing.
  */
@@ -432,7 +432,7 @@ export class DriverRaceLostError extends Error {
  * two concurrent handovers safe: whichever transaction commits second finds
  * the index already occupied by a row it did not demote and raises a unique
  * violation, which surfaces here as {@link DriverRaceLostError} and to the
- * caller as a 409. There is no lock to take and no ordering to get right — the
+ * caller as a 409. There is no lock to take and no ordering to get right: the
  * index *is* the mutual exclusion.
  */
 export async function setDriver(input: {
@@ -501,7 +501,7 @@ export async function touchParticipant(participantId: string, now = new Date()):
 /**
  * Mark somebody off the console.
  *
- * `left` for a voluntary departure — the row survives so they can come back
+ * `left` for a voluntary departure: the row survives so they can come back
  * without burning a fresh invite. `removed` for an ejection or a lapsed
  * permission, which does require a new invite. A departing driver is demoted
  * in the same write; leaving the keyboard with somebody who has closed the tab

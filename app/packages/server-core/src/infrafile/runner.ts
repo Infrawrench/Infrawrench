@@ -1,13 +1,13 @@
 /**
- * Deployments — running a repository's Infrafile.
+ * Deployments: running a repository's Infrafile.
  *
  * In server-core because two callers need it: the web app (routes + the
  * websocket session) and `github-watcher`, which fires deploy-on-push triggers
- * and cannot import web. Web re-exports it, so its routes are unchanged — the
+ * and cannot import web. Web re-exports it, so its routes are unchanged: the
  * same arrangement `workflows/runner.ts` uses.
  *
  * The Infrafile is fetched from git on every run and never written down. What
- * is persisted is the *record* of a run — env, commit, image, logs — so there
+ * is persisted is the *record* of a run (env, commit, image, logs) so there
  * is an audit trail. See `db/deployment-schema.ts` for why that split matters.
  */
 import { randomUUID } from "node:crypto";
@@ -59,11 +59,11 @@ import type {
 /**
  * A `running` row older than this is treated as abandoned. Double the hosted
  * build timeout: nothing legitimate outlives that, and a row that does has
- * lost its process — leaving it would wedge the environment's deploy lock.
+ * lost its process; leaving it would wedge the environment's deploy lock.
  */
 const STALE_RUN_MS = 2 * 1200 * 1000;
 
-/** Where an Infrafile lives. Not configurable — that is the point of the name. */
+/** Where an Infrafile lives. Not configurable: that is the point of the name. */
 const INFRAFILE_PATH = "Infrafile";
 
 export class DeploymentError extends Error {
@@ -95,7 +95,7 @@ async function installationForRepo(
     .where(eq(githubInstallations.organizationId, organizationId));
   for (const install of installs) {
     // Per-installation skip keeps one dead installation from blocking the
-    // rest, but say so — a GitHub outage must not silently read as "repo not
+    // rest, but say so: a GitHub outage must not silently read as "repo not
     // connected".
     const repos = await listInstallationRepos(install.installationId).catch((err: unknown) => {
       console.warn(
@@ -128,8 +128,8 @@ export interface ResolvedSource {
 }
 
 /**
- * Fetch a repo's Infrafile at a branch head. Errors here are the common ones —
- * no install, no such branch, no Infrafile — so each says exactly what to fix.
+ * Fetch a repo's Infrafile at a branch head. Errors here are the common ones
+ * (no install, no such branch, no Infrafile) so each says exactly what to fix.
  */
 export async function resolveInfrafile(
   organizationId: string,
@@ -149,7 +149,7 @@ export async function resolveInfrafile(
     );
   }
 
-  // `branch` may be a commit SHA — a rollback re-reads the Infrafile at the
+  // `branch` may be a commit SHA: a rollback re-reads the Infrafile at the
   // exact commit a past run deployed. The branches API only resolves names, so
   // a full SHA is used as the ref directly.
   const isSha = /^[0-9a-f]{40}$/i.test(branch);
@@ -237,7 +237,7 @@ export interface RunDeploymentOptions {
 /**
  * Run an Infrafile end to end and persist the record.
  *
- * The build happens on the resource the plan chose via `buildOn` — the web
+ * The build happens on the resource the plan chose via `buildOn`: the web
  * app has no working tree and its pods have no Docker daemon, so unlike the
  * CLI there is no local fallback. A plan that omits `buildOn` fails saying so.
  */
@@ -254,7 +254,7 @@ export async function runDeployment(
     );
   }
 
-  // One deploy per environment at a time — enforced by the DATABASE, via the
+  // One deploy per environment at a time: enforced by the DATABASE, via the
   // partial unique index `deployment_runs_one_running`. An earlier version
   // checked then inserted, which reads as a lock and is not one: two deploys
   // arriving in the same window both saw zero running rows and both proceeded,
@@ -269,7 +269,7 @@ export async function runDeployment(
   // First, unwedge: a pod killed mid-deploy leaves its row `running` forever,
   // and with the index enforcing uniqueness that would block every future
   // deploy to the environment. Anything still "running" after double the build
-  // timeout is dead — its process is gone and nothing will ever finish it.
+  // timeout is dead: its process is gone and nothing will ever finish it.
   const staleBefore = new Date(Date.now() - STALE_RUN_MS);
   await db
     .update(deploymentRuns)
@@ -463,7 +463,7 @@ export async function runDeployment(
       if (sshCtx) return runOverSsh(request, sshCtx);
       if (cloudCtx) {
         // Each hosted run() is its own Cloud Build submission, so its worker
-        // time is money we spent exactly like the image build's — and for the
+        // time is money we spent exactly like the image build's, and for the
         // Worker/static-site pattern the run() steps ARE most of the deploy.
         // Counting only the build would under-meter precisely the use case
         // hosted builds exist for. Timed even on failure: the worker ran.
@@ -516,7 +516,7 @@ export async function runDeployment(
       .where(eq(deploymentRuns.id, runId));
     throw err;
   } finally {
-    // Always clear the scratch directory — a failed deploy leaves a clone with
+    // Always clear the scratch directory: a failed deploy leaves a clone with
     // build artifacts behind otherwise, and those accumulate silently.
     if (sshCtx) await cleanupOverSsh(sshCtx).catch(() => {});
     // Same for the staged image: it exists only so run() had something to pull.
@@ -661,7 +661,7 @@ export async function getDeploymentRun(organizationId: string, id: string) {
  * Ship a previous run's artifact again.
  *
  * The Infrafile is read **at the commit that run deployed**, not at the branch
- * head — rolling back should run the deploy logic that shipped alongside those
+ * head: rolling back should run the deploy logic that shipped alongside those
  * bytes, not whatever the branch has since become. The plan and image come
  * from the run's record, so `plan()`, `dockerfile()` and the build are all
  * skipped and the exact known-good image is what lands.
@@ -675,7 +675,7 @@ export async function rollbackDeployment(opts: {
   userId?: string;
   /**
    * Also delete the resources that runs *after* the target created through
-   * `infra.accounts` — undoing the provisioning, not just the shipping.
+   * `infra.accounts`: undoing the provisioning, not just the shipping.
    * Opt-in because those resources can hold data (a database created by the
    * bad deploy is still a database); the default rollback never touches them.
    */
@@ -701,7 +701,7 @@ export async function rollbackDeployment(opts: {
     organizationId: opts.organizationId,
     ...(opts.userId ? { userId: opts.userId } : {}),
     repo: source.repo,
-    // The recorded commit, not the branch head — see above.
+    // The recorded commit, not the branch head: see above.
     branch: source.gitSha,
     env: source.env,
     interactive: false,
@@ -723,7 +723,7 @@ export async function rollbackDeployment(opts: {
       env: source.env,
       after: source.startedAt,
       // The rollback's own run row is newer than the target by definition, and
-      // its deploy() may itself have created resources — those are live now.
+      // its deploy() may itself have created resources: those are live now.
       excludeRunIds: [outcome.runId],
       ...(opts.onLog ? { onLog: opts.onLog } : {}),
     });
@@ -748,12 +748,12 @@ export async function rollbackDeployment(opts: {
 
 /**
  * Delete the resources that deploys to `env` after `after` created, newest run
- * first and within each run in reverse creation order — children before the
+ * first and within each run in reverse creation order: children before the
  * parents they were created under. Failed runs count too: a deploy that
  * provisioned a database and then died still provisioned the database.
  *
  * Per-resource best-effort: a resource somebody already deleted by hand (or
- * whose account is gone) is reported, not fatal — the rollback this runs after
+ * whose account is gone) is reported, not fatal; the rollback this runs after
  * has already succeeded.
  */
 async function deleteResourcesCreatedAfter(opts: {
@@ -821,7 +821,7 @@ async function deleteResourcesCreatedAfter(opts: {
 
 /**
  * Record a run that happened on somebody's machine. The CLI builds locally, so
- * the server never sees the run — it only gets told what happened, which keeps
+ * the server never sees the run: it only gets told what happened, which keeps
  * one history across both origins.
  */
 export async function recordCliRun(
@@ -856,7 +856,7 @@ export async function recordCliRun(
     status: run.status,
     origin: "cli",
     stage: run.stage ?? null,
-    // Same cap the web path applies — this column is client-supplied here, and
+    // Same cap the web path applies: this column is client-supplied here, and
     // an uncapped jsonb array is read back in full by the history view.
     logs: cappedLogs(run.logs ?? []),
     notes: run.notes && run.notes.length > 0 ? run.notes.join("\n") : null,
@@ -879,12 +879,12 @@ export async function recordCliRun(
  * A hosted build streams every line Docker prints, so an unbounded jsonb column
  * grows without limit and is read back in full by the history view. The tail is
  * what people actually want when something failed, so the head is what gets
- * dropped — with a marker, because silently truncated logs are worse than none.
+ * dropped: with a marker, because silently truncated logs are worse than none.
  */
 const MAX_PERSISTED_LOGS = 2000;
 
 /**
- * A run that legitimately provisions does so tens of times, not thousands —
+ * A run that legitimately provisions does so tens of times, not thousands,
  * but this column is client-supplied through `recordCliRun`, so it gets the
  * same treatment as `logs`: bounded on write.
  */

@@ -27,7 +27,7 @@ export function SpotlightSearch({
       const all = await apiGet<SpotlightResult[]>(
         `/api/org/${orgId}/search?q=${encodeURIComponent(query)}`,
       );
-      // Workflows are navigation targets only — keep them out of pin/drop.
+      // Workflows are navigation targets only: keep them out of pin/drop.
       return mode === "navigate" ? all : all.filter((r) => r.resourceTypeId !== "__workflow__");
     },
     [orgId, mode],

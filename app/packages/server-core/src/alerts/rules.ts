@@ -1,8 +1,8 @@
 /**
  * Reading and writing an org's routing rules.
  *
- * The rows are thin — the interesting shapes are JSON validated by
- * `validateAlertRule` — so this module is mostly about two things the callers
+ * The rows are thin (the interesting shapes are JSON validated by
+ * `validateAlertRule`) so this module is mostly about two things the callers
  * must not get wrong: parsing defensively, and the "no rows means the shipped
  * default" contract.
  */
@@ -64,7 +64,7 @@ export async function listAlertRules(organizationId: string): Promise<AlertRule[
  *
  * The default fans out to every channel the org has connected and to its
  * phones, which is precisely what the old boolean matrix did with every box
- * ticked — so an org that upgraded, or one that connects Slack tomorrow without
+ * ticked, so an org that upgraded, or one that connects Slack tomorrow without
  * opening the editor, sees no change in behaviour. Expanding "every channel"
  * here rather than storing it means a channel added later is included without
  * anyone re-saving anything.
@@ -129,7 +129,7 @@ export interface SaveAlertRuleInput {
  * than the simpler delete-all-then-insert: `alert_deliveries.rule_id` is
  * `ON DELETE SET NULL`, so deleting a row and re-inserting it under the same id
  * would still orphan every in-flight delivery that pointed at it. The delivery
- * would survive — its destinations and escalation are snapshotted on the row —
+ * would survive (its destinations and escalation are snapshotted on the row)
  * but it would stop being attributable to the rule that made it.
  */
 export async function replaceAlertRules(
@@ -182,7 +182,7 @@ export async function replaceAlertRules(
             updatedAt: now,
           },
           // Scoped to the org so a caller cannot overwrite another org's rule by
-          // sending its id — the primary key is global, the ownership is not.
+          // sending its id: the primary key is global, the ownership is not.
           setWhere: eq(alertRules.organizationId, organizationId),
         });
     }

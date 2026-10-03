@@ -9,7 +9,7 @@ type AnyHono = Parameters<Hono["route"]>[1];
  * context, and full permissions, then mount the given route group at "/".
  *
  * All `__tests__/*.test.ts` files in this directory historically duplicated
- * this same scaffolding — this helper centralises it.
+ * this same scaffolding: this helper centralises it.
  *
  * Pass `permissions` to exercise a gate: a route group's own test is the only
  * place a 403 boundary can be proved, since the default caller holds `*`.

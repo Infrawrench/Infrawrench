@@ -2,13 +2,13 @@
  * Cloud delivery for pages a server outside Infrawrench raises over
  * `POST /api/org/{orgId}/pages`.
  *
- * Same alert as `infra.page(...)` — same transports, same cooldown protocol,
- * same recipient opt-ins — for code that runs somewhere Infrawrench does not.
+ * Same alert as `infra.page(...)` (same transports, same cooldown protocol,
+ * same recipient opt-ins) for code that runs somewhere Infrawrench does not.
  * A health check, a deploy script, or a cron on a box can hand its alert to the
  * org's on-call fan-out without embedding Twilio, Slack, and Expo itself.
  *
  * The cooldown is a row in `external_pages` keyed by (org, source, page key).
- * `source` is the caller's own name for the system paging — it stands in for
+ * `source` is the caller's own name for the system paging: it stands in for
  * the workflow id, so two services pushing under the same key never throttle
  * each other, and it is what the notification shows as the sender.
  */
@@ -91,7 +91,7 @@ function audienceFor(ctx: ExternalPageContext, key: string): PageAudience {
     organizationId: ctx.organizationId,
     name: ctx.source,
     context: `Source: ${ctx.source}`,
-    // No page of our own to link to — send the reader to the org home, which
+    // No page of our own to link to: send the reader to the org home, which
     // is also where the mobile deep link lands.
     url: base ? `${base}/org/${ctx.organizationId}` : null,
     pushData: {

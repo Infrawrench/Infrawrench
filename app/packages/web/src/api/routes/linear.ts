@@ -2,14 +2,14 @@
  * Linear issue-tracking routes (`/api/org/:orgId/linear/*`).
  *
  * The second tracker next to Jira (`routes/jira.ts`), over the same contract
- * shape: turn a finding — cost anomaly, orphan, oversized resource, posture
- * finding, expiring credential, failed probe — into a Linear issue, and keep
+ * shape: turn a finding (cost anomaly, orphan, oversized resource, posture
+ * finding, expiring credential, failed probe) into a Linear issue, and keep
  * the link so a list view can show "already filed" instead of offering the
  * button again.
  *
  * The org's Linear personal API key is a bearer credential for everything the
  * Linear user can see. It is stored encrypted and **never returned by any
- * route here** — `GET /` answers with a redacted `keyHint` in its place, and
+ * route here**: `GET /` answers with a redacted `keyHint` in its place, and
  * `PUT /` accepts an omitted key to mean "keep the stored one".
  *
  * Every call into `server-core/linear` from this file is user-initiated, so
@@ -50,7 +50,7 @@ const app = new Hono();
  *
  * Same split as the Jira routes: 400 means "fix your input and try again"
  * (missing key, a team the workspace rejected), while 502 means "Linear
- * itself is unhappy" — a revoked key, rate limiting, an outage. Linear
+ * itself is unhappy"; a revoked key, rate limiting, an outage. Linear
  * reports rate limiting and validation as GraphQL errors on an HTTP 400, so
  * a 400 *from Linear* still lands on 400 here, carrying Linear's wording.
  */
@@ -74,7 +74,7 @@ const integrationBody = z.object({
 });
 
 /**
- * GET /api/org/:orgId/linear — the org's connection, redacted.
+ * GET /api/org/:orgId/linear: the org's connection, redacted.
  *
  * `linear:read` rather than `linear:write`: members need to know whether
  * filing is available at all, and this response deliberately contains nothing
@@ -86,7 +86,7 @@ app.get("/", async (c) => {
   return c.json({ integration });
 });
 
-/** PUT /api/org/:orgId/linear — connect Linear, or update the connection. */
+/** PUT /api/org/:orgId/linear: connect Linear, or update the connection. */
 app.put("/", async (c) => {
   requirePermission(c, "linear:write");
   const organizationId = c.get("organizationId");
@@ -112,7 +112,7 @@ app.put("/", async (c) => {
       entityType: "linear_integration",
       entityId: organizationId,
       // The key must not reach the audit log, which is readable by every
-      // holder of `audit:read` — only whether it changed, and the default team.
+      // holder of `audit:read`, only whether it changed, and the default team.
       metadata: {
         keyChanged: parsed.data.apiKey !== undefined,
         defaultTeamId: integration.defaultTeamId,
@@ -124,7 +124,7 @@ app.put("/", async (c) => {
   }
 });
 
-/** DELETE /api/org/:orgId/linear — disconnect. Existing issue links are kept. */
+/** DELETE /api/org/:orgId/linear: disconnect. Existing issue links are kept. */
 app.delete("/", async (c) => {
   requirePermission(c, "linear:write");
   const organizationId = c.get("organizationId");
@@ -148,7 +148,7 @@ const verifyBody = z.object({
 });
 
 /**
- * POST /api/org/:orgId/linear/verify — check the key against Linear.
+ * POST /api/org/:orgId/linear/verify: check the key against Linear.
  *
  * With a key in the body this tests one the user has typed but not yet saved,
  * which is the point: Save can tell them the key is wrong immediately instead
@@ -178,7 +178,7 @@ app.post("/verify", async (c) => {
 // --- Pickers ---
 
 /**
- * GET /api/org/:orgId/linear/teams — teams for the team picker.
+ * GET /api/org/:orgId/linear/teams: teams for the team picker.
  *
  * `linear:read`, not `linear:write`: this also backs the read-only display of
  * a team id as a name in the settings section.
@@ -199,20 +199,20 @@ const createIssueBody = z.object({
   sourceId: z.string().min(1).max(512),
   teamId: z.string().min(1).max(64),
   title: z.string().min(1).max(255),
-  /** Markdown — passed to Linear as-is, unlike Jira's server-side ADF conversion. */
+  /** Markdown: passed to Linear as-is, unlike Jira's server-side ADF conversion. */
   description: z.string().max(30_000).optional(),
   labelIds: z.array(z.string().max(64)).max(20).optional(),
   projectId: z.string().max(64).optional(),
 });
 
 /**
- * POST /api/org/:orgId/linear/issues — file a finding as an issue.
+ * POST /api/org/:orgId/linear/issues: file a finding as an issue.
  *
  * Order matters, exactly as on the Jira route: the issue is created first,
  * then the link row is written. The reverse would leave a link pointing at an
  * issue that does not exist if the create failed; as it stands the worst case
  * is a created issue whose link row failed to save, which surfaces as an
- * offer to file again — visible and recoverable, where a dangling link is
+ * offer to file again: visible and recoverable, where a dangling link is
  * neither.
  */
 app.post("/issues", async (c) => {

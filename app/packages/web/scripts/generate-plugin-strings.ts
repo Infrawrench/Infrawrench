@@ -7,7 +7,7 @@
  * Plugin metadata is data shared with the server, CLI and API, so the plugin
  * packages themselves are never marked up for translation. Instead this
  * manifest feeds the CLI, and the UI translates the *values* at render time
- * through gt-react's runtime content hashing — the hash of a rendered data
+ * through gt-react's runtime content hashing: the hash of a rendered data
  * string matches the hash extracted here as long as the text is identical,
  * which this generator guarantees by reading the same registry the server
  * ships. Run it (and commit the result) whenever plugin metadata changes:
@@ -31,7 +31,7 @@ const add = (value: string | undefined) => {
   // data string containing either could never round-trip cleanly ("{account}"
   // fails interpolation at render, "<registry>" fails ICU validation at
   // extraction). Both only occur in technical id-format descriptions that
-  // shouldn't be translated anyway — leave them out of the catalog.
+  // shouldn't be translated anyway: leave them out of the catalog.
   if (/[{}<>]/.test(value)) return;
   strings.add(value);
 };

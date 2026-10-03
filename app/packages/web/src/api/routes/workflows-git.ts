@@ -65,7 +65,7 @@ function digestsEqual(a: string, b: string): boolean {
  * see in practice:
  *
  *   - GitHub    `X-Hub-Signature-256: sha256=<hex>` over the raw body
- *   - GitLab    `X-Gitlab-Token: <secret>` — a plain shared secret, not an HMAC
+ *   - GitLab    `X-Gitlab-Token: <secret>`: a plain shared secret, not an HMAC
  *   - generic   `X-Hub-Signature-256`, same as GitHub
  *
  * GitHub's legacy `X-Hub-Signature` (SHA-1) is deliberately NOT accepted:
@@ -102,7 +102,7 @@ workflowGitWebhook.post("/workflows/git/:token", async (c) => {
   // bytes the provider signed, not over a re-serialized parse of them.
   const rawBody = await c.req.text().catch(() => "");
 
-  // When a signing secret is configured the signature is authoritative — the
+  // When a signing secret is configured the signature is authoritative: the
   // URL token alone is not enough, since it travels in the path and lands in
   // access logs, proxy logs, and referrers.
   if (wf.webhookSecret) {

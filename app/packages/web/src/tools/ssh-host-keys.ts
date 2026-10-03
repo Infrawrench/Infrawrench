@@ -1,5 +1,5 @@
 /**
- * SSH host-key trust tools — expose the org's host-key pin store to MCP
+ * SSH host-key trust tools: expose the org's host-key pin store to MCP
  * clients and the chat agent. When ssh_exec (or SFTP/tunnels) hits an
  * untrusted host it fails with the presented fingerprint; these tools let the
  * model surface that fingerprint to the user and, once confirmed, record the
@@ -93,7 +93,7 @@ export function sshHostKeyTools(): ToolDefinition[] {
           await trustHostKey(auth.organizationId, host, port, fingerprint);
         } catch (e) {
           // A concurrent connect observed a different fingerprint than the one
-          // the user accepted — surface both so they can re-verify.
+          // the user accepted: surface both so they can re-verify.
           if (e instanceof HostKeyMismatchError) {
             return err(
               `Host key conflict for ${host}:${port} — stored=${e.storedFingerprint}, ` +

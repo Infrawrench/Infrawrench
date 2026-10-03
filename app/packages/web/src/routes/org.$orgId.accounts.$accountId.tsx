@@ -158,7 +158,7 @@ export function AccountPanel({
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [accountId, resyncType]);
 
-  // Auto-refresh every 30s — just re-reads the DB, no provider calls.
+  // Auto-refresh every 30s, just re-reads the DB, no provider calls.
   useEffect(() => {
     const id = setInterval(() => {
       setLoadVersion((v) => v + 1);
@@ -219,13 +219,13 @@ export function AccountPanel({
   if (!meta) return <div className="p-6 text-danger text-sm">{gt("Failed to load account.")}</div>;
 
   // Account-root plugins (UploadThing) hold exactly one instance of their root
-  // type, and that instance *is* the account — so the account opens straight
+  // type, and that instance *is* the account, so the account opens straight
   // to its detail view rather than to an inventory whose only content is a
   // section holding one pill.
   //
   // The tab, the URL, and the sidebar selection all stay the account's: only
   // the body is swapped. That matters because the root is discovered from
-  // already-loaded rows — if the sync hasn't produced one yet we fall through
+  // already-loaded rows, if the sync hasn't produced one yet we fall through
   // to the normal inventory instead of rendering a detail page for a resource
   // id we don't have.
   if (accountRoot) {

@@ -1,5 +1,5 @@
 /**
- * The trial reaper — destroys unclaimed agent trial orgs once their 24 hours
+ * The trial reaper: destroys unclaimed agent trial orgs once their 24 hours
  * are up.
  *
  * **No claim protocol between replicas, on purpose.** Every other poller pass
@@ -18,8 +18,8 @@
  * the destroy wins rather than being deleted underneath.
  *
  * **Failures back off instead of starving the queue.** A destroy that throws
- * leaves the org exactly as it was — see `destroy.ts` for why failing in that
- * direction is safe — but the due-query orders by `trialExpiresAt`, so a
+ * leaves the org exactly as it was (see `destroy.ts` for why failing in that
+ * direction is safe) but the due-query orders by `trialExpiresAt`, so a
  * handful of persistently failing orgs would otherwise occupy every slot of
  * every tick and block the trials queued behind them forever. Failed orgs are
  * skipped for an exponentially growing while (in process memory: a restart
@@ -106,7 +106,7 @@ export async function runTrialExpiryPass(options: TrialPassOptions = {}): Promis
       // be: `audit_logs` is org-scoped and cascades, so a row recording "this
       // org was destroyed" would be deleted by the destruction it records.
       // Anything that needs a durable history of reaped trials reads it from
-      // here — which makes a line claiming a destruction that the guard just
+      // here, which makes a line claiming a destruction that the guard just
       // declined (a claim won the race) worse than no line at all. A
       // platform-level audit table would be the real fix.
       if (result.deleted) {

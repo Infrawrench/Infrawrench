@@ -18,13 +18,13 @@ import type { AuthSession } from "../auth-middleware";
 import { parseObjectBody } from "../object-body";
 
 /**
- * Resource leases (TTL) — an optional "expires at" on any resource. Active
+ * Resource leases (TTL): an optional "expires at" on any resource. Active
  * leases ride the expiry radar (kind `"lease"`); auto-delete leases are
  * executed by the poller (`server-core/src/leases/pass.ts`, two mandatory
  * announcements, freeze-aware). These routes only manage the rows.
  *
  * Permissions: reads are `resources:read` (the list is a view over the org's
- * resource set, like schedules); mutations are `resources:write` — except
+ * resource set, like schedules); mutations are `resources:write`; except
  * that setting `autoDelete: true` additionally requires `resources:delete`,
  * because that lease is a standing instruction to delete the resource.
  */
@@ -41,7 +41,7 @@ function leaseErrorResponse(c: Context, err: unknown) {
   if (err instanceof LeaseInputError) {
     return c.json({ error: err.message }, err.status);
   }
-  // Anything else is a server bug or infrastructure failure — log the detail
+  // Anything else is a server bug or infrastructure failure: log the detail
   // server-side and keep internals out of the response.
   console.error("[leases] unexpected error:", err);
   return c.json({ error: "Lease operation failed" }, 500);
@@ -52,7 +52,7 @@ app.get("/", async (c) => {
   return c.json(await listLeases(c.get("organizationId")));
 });
 
-/** GET /resource?resourceId=… — the (unique) lease on one resource, or null. */
+/** GET /resource?resourceId=…: the (unique) lease on one resource, or null. */
 app.get("/resource", async (c) => {
   requirePermission(c, "resources:read");
   const resourceId = c.req.query("resourceId");
@@ -78,7 +78,7 @@ app.post("/", async (c) => {
   if (body["note"] !== undefined && typeof body["note"] !== "string") {
     return c.json({ error: "note must be a string" }, 400);
   }
-  // An auto-delete lease is a standing deletion — it needs the same
+  // An auto-delete lease is a standing deletion: it needs the same
   // permission the direct delete endpoint gates on.
   if (body["autoDelete"] === true) requirePermission(c, "resources:delete");
 
@@ -140,7 +140,7 @@ app.put("/:id", async (c) => {
   }
   if (Object.keys(patch).length === 0) return c.json({ error: "No changes supplied" }, 400);
   // resources:delete gates auto-delete by *effective* state: turning it on,
-  // and reshaping a lease that stays armed because the patch omits the flag —
+  // and reshaping a lease that stays armed because the patch omits the flag,
   // otherwise resources:write could re-arm a delete with a new deadline.
   if (patch.autoDelete === true) {
     requirePermission(c, "resources:delete");

@@ -11,7 +11,7 @@
  * should come through {@link planAccess} rather than query `subscriptions`.
  *
  * In server-core rather than web because the deployment runner needs it, and
- * that runner is shared with `github-watcher` — which cannot import web.
+ * that runner is shared with `github-watcher`, which cannot import web.
  */
 import { eq } from "drizzle-orm";
 
@@ -25,20 +25,20 @@ import { activeCapacitySeats } from "./billing/capacity-slots.js";
  * `past_due` is deliberately included. Stripe is still retrying the card, and
  * cutting off deploys the moment a payment bounces would take someone's
  * shipping ability away during exactly the window they are least able to notice
- * why — often mid-incident. Losing access should follow a cancellation, not a
+ * why: often mid-incident. Losing access should follow a cancellation, not a
  * transient billing failure.
  *
  * `trialing` is NOT here unconditionally: the checkout route stamps `trialing`
  * on the placeholder row it inserts before Stripe Checkout even opens, so a
  * status of `trialing` alone only proves someone clicked Upgrade. It counts as
- * paid only when the row carries a `stripeSubscriptionId` — i.e. Stripe itself
+ * paid only when the row carries a `stripeSubscriptionId`, i.e. Stripe itself
  * reported the subscription as being in a trial (see {@link isPaidRow}).
  */
 const PAID_STATUSES = new Set(["active", "past_due"]);
 
 /**
  * Whether one subscription row grants paid access. A `trialing` row without a
- * Stripe subscription behind it is an abandoned checkout, not a trial — it
+ * Stripe subscription behind it is an abandoned checkout, not a trial: it
  * must grant nothing, or starting checkout and closing the tab would be a
  * permanent free ride.
  */
@@ -64,7 +64,7 @@ export interface PlanAccess {
   /** The subscription's Stripe status, when there is a subscription at all. */
   status?: string;
   /**
-   * When an unclaimed trial's access ends. Only set for `reason: "trial"` —
+   * When an unclaimed trial's access ends. Only set for `reason: "trial"`:
    * every caller that renders a plan state should say how long is left, because
    * the alternative is an org that silently stops existing.
    */
@@ -83,7 +83,7 @@ export async function planAccess(organizationId: string): Promise<PlanAccess> {
   if (org?.complimentary === true) return { paid: true, reason: "complimentary" };
 
   // An unclaimed agent trial is paid access with no card and no Stripe row at
-  // all — that is the whole point of it. Checked ahead of the subscription
+  // all: that is the whole point of it. Checked ahead of the subscription
   // lookup because a trial org has nothing to look up.
   //
   // Note this grants nothing once the clock runs out: an expired trial that the
@@ -95,7 +95,7 @@ export async function planAccess(organizationId: string): Promise<PlanAccess> {
 
   // Ask "is there ANY paid row", not "what is the first row". An org can carry
   // a stale `canceled` alongside a live `active` one, and without an ordering
-  // Postgres is free to hand back either — which would deny a paying customer
+  // Postgres is free to hand back either, which would deny a paying customer
   // or admit a lapsed one depending on the day.
   const subs = await db
     .select({
@@ -109,7 +109,7 @@ export async function planAccess(organizationId: string): Promise<PlanAccess> {
 
   // A prepaid capacity slot is paid access on its own, checked before any
   // "no plan"/"lapsed" verdict below. It was bought outright for a fixed term,
-  // so it has to keep granting the plan with no subscription row at all — an
+  // so it has to keep granting the plan with no subscription row at all: an
   // org that pays $200 for a seat and is then told to upgrade before it can use
   // one has been sold nothing.
   if ((await activeCapacitySeats(organizationId)) > 0) {
@@ -118,7 +118,7 @@ export async function planAccess(organizationId: string): Promise<PlanAccess> {
 
   if (subs.length === 0) return { paid: false, reason: "none" };
   // Rows that never became a Stripe subscription are abandoned checkouts, not
-  // lapsed plans — an org that only has those has never subscribed, so the
+  // lapsed plans: an org that only has those has never subscribed, so the
   // caller's message should say "upgrade", not "reactivate".
   const lapsed = subs.find((s) => s.status !== "trialing" || s.stripeSubscriptionId !== null);
   if (!lapsed) return { paid: false, reason: "none" };

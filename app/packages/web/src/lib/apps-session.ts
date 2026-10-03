@@ -3,8 +3,8 @@
  *
  * The mirror of the desktop's `lib/apps-session.ts`: one session per host,
  * shared by the launcher tab and every window tab looking at it. The only
- * difference is the transport — a WebSocket to `/api/apps` instead of IPC to a
- * main process — because a browser cannot hold an SSH connection itself.
+ * difference is the transport (a WebSocket to `/api/apps` instead of IPC to a
+ * main process) because a browser cannot hold an SSH connection itself.
  */
 
 import {
@@ -25,7 +25,7 @@ export interface AppsConnectTarget {
   accountId: string;
   resourceId: string;
   /**
-   * The host's plugin and type. Not needed to connect — the window tabs each
+   * The host's plugin and type. Not needed to connect: the window tabs each
    * live at this resource's URL, and on web that URL has both as path
    * segments.
    */
@@ -40,7 +40,7 @@ export interface AppsConnectTarget {
 export interface HostStatus {
   /**
    * `connecting` is the socket; `starting` is the host getting the app server
-   * up, which takes seconds — connect, stage a megabyte, exec. Distinguishing
+   * up, which takes seconds: connect, stage a megabyte, exec. Distinguishing
    * them matters: without it a stalled session and a working one look
    * identical for as long as the user is willing to wait.
    */
@@ -235,7 +235,7 @@ function writeToClipboard(blob: { mimeType: string; data: Uint8Array }): void {
 
 /**
  * The `{accountId, resourceId, sshKeyId, host, username}` the two setup routes
- * take — the same destination the WebSocket names, in a body rather than a
+ * take: the same destination the WebSocket names, in a body rather than a
  * query.
  */
 function setupBody(target: AppsConnectTarget) {

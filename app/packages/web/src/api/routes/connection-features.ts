@@ -94,7 +94,7 @@ app.post("/sql/execute", async (c) => {
   const { client, plugin, credentials } = ctx;
   const params = input.params ?? [];
 
-  // Audit log every /sql/execute attempt — this is a mutating operation that
+  // Audit log every /sql/execute attempt: this is a mutating operation that
   // bypasses the per-resource UI and so should always be traceable to a user.
   // Statement is truncated to 200 chars to bound metadata size and reduce the
   // risk of logging large bind values inline.
@@ -145,7 +145,7 @@ app.post("/sql/execute", async (c) => {
   return c.json({ error: "No SQL driver available" }, 400);
 });
 
-/** POST /api/sql/estimate — dry-run cost estimation for pay-per-byte backends (e.g. BigQuery). */
+/** POST /api/sql/estimate: dry-run cost estimation for pay-per-byte backends (e.g. BigQuery). */
 app.post("/sql/estimate", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");

@@ -17,7 +17,7 @@ interface WebDnsPanelProps {
 /**
  * Web host for the shared Domains surface: fetches the org's DNS inventory
  * from the API and refreshes when resources change. Same wiring as
- * WebPosturePanel — a failed *refresh* must not blank an inventory that is
+ * WebPosturePanel: a failed *refresh* must not blank an inventory that is
  * already drawn, so the last loaded data stays on screen under the section's
  * banner.
  */

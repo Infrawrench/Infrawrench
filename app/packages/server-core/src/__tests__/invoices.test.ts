@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * 1. **An approved invoice does not move.** Cost data restates for days after
  *    the fact. An invoice that silently changed after it was sent to a customer
  *    is the worst outcome this feature could produce, so approval writes the
- *    figures onto the row and every later read returns those bytes — without so
+ *    figures onto the row and every later read returns those bytes: without so
  *    much as querying spend.
  * 2. **The currency is frozen too.** The exchange rate and the day it was read
  *    are part of the document. Restating a rate afterwards must not restate an
@@ -68,7 +68,7 @@ type Table = { __table: string };
  * because two of the properties under test are *about* the database:
  * conditional updates that must not match, and a transaction that must roll
  * back whole. So conditions are actually evaluated against the stored rows, and
- * {@link fakeDb.transaction} restores a snapshot when its callback throws —
+ * {@link fakeDb.transaction} restores a snapshot when its callback throws,
  * which is the only reason a test can tell an atomic supersede from a
  * half-applied one.
  */
@@ -184,7 +184,7 @@ function makeDb() {
       }),
     }),
     // `returning()` is optional on a write, and awaiting the builder without it
-    // still has to run the statement — which is how the supersede back-link is
+    // still has to run the statement, which is how the supersede back-link is
     // written, and therefore something this harness must get right.
     update: (table: Table) => ({
       set: (values: Row) => ({
@@ -423,7 +423,7 @@ describe("computeInvoiceFigures", () => {
     expect(figures.lines[0]!.rate).toBeNull();
     expect(figures.lines[0]!.billed).toBeNull();
     expect(figures.derivation.unconverted).toEqual(["SEK"]);
-    // The amount is still in the total, in its own currency — never short.
+    // The amount is still in the total, in its own currency, never short.
     expect(figures.totals.billed).toEqual({ SEK: 4000 });
   });
 
@@ -466,7 +466,7 @@ describe("freezing at approval", () => {
     expect(reread!.totals.billed).toEqual({ GBP: 1104 });
     expect(reread!.lines[0]!.collected).toBe(1200);
     expect(reread!.live).toBe(false);
-    // Not "it happened to match" — it never asked.
+    // Not "it happened to match": it never asked.
     expect(getShowbackSpend).not.toHaveBeenCalled();
   });
 
@@ -478,7 +478,7 @@ describe("freezing at approval", () => {
     ]);
 
     // The org restates the rate, effective before the invoice's period even
-    // began — the most aggressive possible restatement.
+    // began: the most aggressive possible restatement.
     listOrgExchangeRates.mockResolvedValue([
       {
         id: "x2",
@@ -521,7 +521,7 @@ describe("freezing at approval", () => {
   it("numbers from the period's year, not the day the button was pressed", async () => {
     setInvoice(draftRow({ periodFrom: "2025-12-01", periodTo: "2025-12-31" }));
     store.numbers = [{ number: "INV-2025-0007" }];
-    // The org's rate has to have been in force by the period's end — the rate
+    // The org's rate has to have been in force by the period's end: the rate
     // in `beforeEach` starts on 2026-01-01, which is later than this December
     // period and would (correctly) block approval.
     listOrgExchangeRates.mockResolvedValue([
@@ -634,7 +634,7 @@ describe("renderInvoiceCsv", () => {
  * The figures are computed from ClickHouse before the row is written, because
  * a transaction held open across an analytics query would be a lock behind a
  * network call. That leaves a window in which the draft, or the customer it
- * bills, can change — and every one of these tests drives a change through that
+ * bills, can change, and every one of these tests drives a change through that
  * window by mutating the store from inside the spend query, which is exactly
  * when a concurrent request would commit.
  *
@@ -729,8 +729,8 @@ describe("approval refuses figures that no longer describe the invoice", () => {
  *
  * Void is irreversible and `void` refuses every action that could produce a
  * correction, so an invoice voided without its corrective draft strands the
- * user with no way forward. The failure injected here is the ordinary one — a
- * connection dropping between two writes — and the only acceptable outcome is
+ * user with no way forward. The failure injected here is the ordinary one (a
+ * connection dropping between two writes) and the only acceptable outcome is
  * that neither write survives.
  */
 describe("void and supersede apply whole or not at all", () => {
@@ -861,7 +861,7 @@ describe("sending delivers the invoice", () => {
     });
 
     const failed = await sendInvoice(ORG, "inv-1", "user-9");
-    // Visibly failed — and still released: a person did decide to send it.
+    // Visibly failed, and still released: a person did decide to send it.
     expect(failed.status).toBe("sent");
     expect(failed.delivery!.status).toBe("failed");
     expect(failed.delivery!.deliveredAt).toBeNull();

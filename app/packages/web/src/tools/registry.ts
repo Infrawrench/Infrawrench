@@ -1,5 +1,5 @@
 /**
- * Shared tool registry — consumed by both the MCP server (mcp/server.ts) and
+ * Shared tool registry: consumed by both the MCP server (mcp/server.ts) and
  * the chat agent loop (chat/agent.ts). Returns plain {@link ToolDefinition}
  * objects rather than calling server.registerTool directly so the chat agent
  * can drive the same handlers without going through MCP framing.

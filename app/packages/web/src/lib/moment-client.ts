@@ -6,7 +6,7 @@ import {
 } from "@infrawrench/ui";
 import { apiGet } from "./api";
 
-/** Web binding for the shared moment panel — a thin `apiGet` wrapper. */
+/** Web binding for the shared moment panel: a thin `apiGet` wrapper. */
 export function createWebMomentClient(orgId: string): MomentClient {
   return {
     getMoment: (request: MomentRequest) => {

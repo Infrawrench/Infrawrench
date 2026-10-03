@@ -3,7 +3,7 @@
  *
  * `ssh-proxy.ts` registers every cloud SSH session here the moment its shell
  * opens, shared or not. Registration is unconditional so that sharing a
- * session already in progress needs nothing from the pty — the handle is
+ * session already in progress needs nothing from the pty: the handle is
  * already in the map, and creating the share row is all that changes. An
  * unshared console costs one map entry and one branch per data event.
  *
@@ -16,9 +16,9 @@
  * consistently hashes `$arg_sid` to a backend (`infra/k8s/web-ws-ingress.yaml`).
  * A joiner is told the same `sid` and lands on the same pod.
  *
- * When that fails anyway — a rolling deploy moved the pod, the annotation is
+ * When that fails anyway: a rolling deploy moved the pod, the annotation is
  * not in effect, somebody is running a single instance behind a round-robin
- * proxy — the joiner gets a typed `console:error` with `code:
+ * proxy; the joiner gets a typed `console:error` with `code:
  * "console_not_here"` rather than a socket that connects and then shows
  * nothing. The client retries a bounded number of times on a fresh token,
  * which converges quickly across a small replica set, and then says so. This
@@ -28,7 +28,7 @@
  *
  * ## What is enforced here
  *
- * Nothing is *decided* here — every decision is a pure function in
+ * Nothing is *decided* here: every decision is a pure function in
  * `@infrawrench/server-core/shared-console/arbitration`. This module reads
  * state, calls those functions, and does what they say. In particular an
  * observer's keystrokes are dropped in {@link SharedConsoleHub.handleInput}
@@ -66,7 +66,7 @@ import { recordingParticipantsOf } from "./attribution";
  * How often the hub re-reads share status from the database.
  *
  * Revocation is an HTTP call that can land on either replica, so the replica
- * holding the pty learns about it either directly (same pod — the route calls
+ * holding the pty learns about it either directly (same pod: the route calls
  * {@link SharedConsoleHub.revokeLocal}) or on this sweep. Two seconds is the
  * honest number to quote for "immediately": short enough that a revoke feels
  * instant to the person clicking it, long enough that a shared session costs
@@ -78,7 +78,7 @@ const SWEEP_INTERVAL_MS = 2_000;
 /**
  * How often each participant's permissions are re-derived.
  *
- * More expensive than the status read — a role lookup per participant — and a
+ * More expensive than the status read (a role lookup per participant) and a
  * slower-moving fact, so it rides every fifteenth sweep rather than every one.
  * Thirty seconds is the window in which somebody whose access was just
  * withdrawn can still see the terminal, and it is stated plainly in the docs
@@ -89,7 +89,7 @@ const PERMISSION_SWEEP_EVERY = 15;
 /**
  * When an observer's socket has this much unsent data, cut them off.
  *
- * The operator's own socket gets ordinary backpressure — pause the pty until
+ * The operator's own socket gets ordinary backpressure: pause the pty until
  * the browser catches up. An observer must never get that treatment: a
  * colleague on hotel wifi would otherwise stall the shell of the person
  * fixing production. So a slow observer is dropped with a message instead,
@@ -143,7 +143,7 @@ interface LiveConsole {
    * Only ever assigned through {@link SharedConsoleHub.setParticipants}, which
    * also hangs up on anyone the new list says has gone. A bare assignment here
    * would leave an ejected guest's socket in {@link LiveConsole.attached} and
-   * still receiving output — see the note on that method.
+   * still receiving output: see the note on that method.
    */
   participants: ParticipantRow[];
   /** The owner's own participant row id, once shared. */
@@ -189,7 +189,7 @@ export class SharedConsoleHub {
    * Called by `ssh-proxy` on teardown.
    *
    * Detaches everyone and settles the share as `ended`. The DB write is
-   * fire-and-forget because the terminal's teardown path must not wait on it —
+   * fire-and-forget because the terminal's teardown path must not wait on it:
    * a share whose closing write is lost is settled by the next reader, which
    * finds a share whose live console no longer exists.
    */
@@ -215,7 +215,7 @@ export class SharedConsoleHub {
   /**
    * What the create-share route needs to know about a pty on this replica.
    *
-   * Null when the console is not here — which the route reports as "reopen the
+   * Null when the console is not here, which the route reports as "reopen the
    * terminal and try again" rather than writing a share row pointing at a
    * process that does not hold the session.
    */
@@ -301,7 +301,7 @@ export class SharedConsoleHub {
   /**
    * The input gate, for the owner's own socket.
    *
-   * An unshared session is unchanged — true, always. A shared one asks
+   * An unshared session is unchanged: true, always. A shared one asks
    * `evaluateInput` about the owner's participant row, which is how the owner
    * stops being able to type the moment they hand the keyboard over.
    */
@@ -432,7 +432,7 @@ export class SharedConsoleHub {
    *
    * Input is gated by {@link evaluateInput} against the participant's *current*
    * role, which the sweep and every role change keep fresh. A frame from an
-   * observer is dropped silently — see the note in `arbitration.ts` on why
+   * observer is dropped silently: see the note in `arbitration.ts` on why
    * there is no reply.
    */
   handleAttachedMessage(
@@ -469,7 +469,7 @@ export class SharedConsoleHub {
     }
 
     if (msg.type === "console:viewport" && msg.cols && msg.rows) {
-      // Recorded for everyone, applied only for the driver — a handover then
+      // Recorded for everyone, applied only for the driver: a handover then
       // resizes to something the new driver can actually read.
       if (participant) {
         participant.viewportCols = msg.cols;
@@ -533,7 +533,7 @@ export class SharedConsoleHub {
    * because replacing it is not the whole job. An ejection is an HTTP call that
    * can land on either replica: the one holding the pty ejects the socket
    * directly, and the other one can only write the row. The replica with the
-   * pty then learns about it here — and if it merely swapped the array in, the
+   * pty then learns about it here, and if it merely swapped the array in, the
    * ejected guest's socket would stay in `attached` and keep receiving terminal
    * output until the far slower permission sweep noticed. "Removed" would mean
    * "removed from the list", not "removed from the session", which is not what
@@ -541,7 +541,7 @@ export class SharedConsoleHub {
    *
    * So: any attached socket whose row has gone, or is no longer `joined`, is
    * detached here. Reconciling against the *list* rather than against a
-   * specific event is deliberate — it catches an ejection, a departure
+   * specific event is deliberate: it catches an ejection, a departure
    * processed elsewhere, and a row deleted out from under us, without each of
    * those needing to be a message that could be missed.
    *
@@ -782,7 +782,7 @@ export class SharedConsoleHub {
    *
    * The share row's `updated_at` moves on every mutation that matters (invite,
    * pty size, close) but not on a role change, which touches only the
-   * participant rows — so the pessimistic answer is the right one here: any
+   * participant rows, so the pessimistic answer is the right one here: any
    * share with attached sockets re-reads its participants each sweep. The
    * query is one indexed read of at most a handful of rows.
    */
@@ -803,7 +803,7 @@ export class SharedConsoleHub {
       } catch (err) {
         // Fail *closed* would end the session on a transient database error;
         // fail open leaves someone attached for another 30 seconds. Neither is
-        // good, and the second is recoverable — the next sweep decides again.
+        // good, and the second is recoverable: the next sweep decides again.
         console.error(
           `[shared-console] permission re-check for ${participant.userId} failed:`,
           err,

@@ -22,7 +22,7 @@ import { getOrgAccountClient } from "../org-accounts";
 
 /**
  * Stored fields are `Record<string, unknown>` (the lister writes numbers and
- * booleans as themselves), while `estimateCost` takes strings — the same
+ * booleans as themselves), while `estimateCost` takes strings: the same
  * shape a create form produces. `null`/`undefined` become absent rather than
  * the strings `"null"`/`"undefined"`, which a plugin would read as a real
  * value.
@@ -51,7 +51,7 @@ export interface EstimateCostInput {
 
 /**
  * Estimate one configuration's monthly cost, or `null` when it cannot be
- * priced — the plugin has no `estimateCost`, does not know this type, or
+ * priced: the plugin has no `estimateCost`, does not know this type, or
  * could not resolve a rate.
  */
 export async function estimateResourceCost(
@@ -105,7 +105,7 @@ const MAX_ACCOUNTS_PER_PROJECTION = 12;
 
 /**
  * How many resources one projection will price. Well past the churn of a
- * normal week, and a hard stop on the pathological one — a runaway autoscaler
+ * normal week, and a hard stop on the pathological one: a runaway autoscaler
  * that created ten thousand rows must not make the digest the slowest thing
  * in the tick loop.
  */
@@ -118,7 +118,7 @@ export interface ProjectedSpend {
   /** How many of the resources could be priced. */
   pricedCount: number;
   /**
-   * How many were considered but could not be priced — no `estimateCost` for
+   * How many were considered but could not be priced: no `estimateCost` for
    * the plugin, or no rate for the type. Reported rather than hidden, because
    * "$0" and "nothing we can price" must not read the same.
    */
@@ -134,7 +134,7 @@ export interface ProjectedSpend {
  * Sum the monthly estimates of a set of resource ids.
  *
  * Resources are grouped by account so each account's plugin client is built
- * once and its pricing cache is shared across every resource on it — the
+ * once and its pricing cache is shared across every resource on it: the
  * difference between one GetProducts call per instance type and one per
  * resource.
  *

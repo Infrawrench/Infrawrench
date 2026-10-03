@@ -5,8 +5,8 @@ import type { LoadedPlugin } from "@/plugins/loader";
 /**
  * Verifies that the web app recognizes the same SSH/SFTP-capable resource types
  * as desktop. Desktop derives SSH support from two sources:
- *   1. client.getSshConfig() — for the dedicated SSH plugin
- *   2. resourceType.sshEndpoint — for cloud VMs (EC2, droplets, etc.)
+ *   1. client.getSshConfig(): for the dedicated SSH plugin
+ *   2. resourceType.sshEndpoint: for cloud VMs (EC2, droplets, etc.)
  *
  * The web must check both. This test ensures all plugins with sshEndpoint
  * on their resource types are detected.
@@ -95,7 +95,7 @@ describe("SSH endpoint parity", () => {
   // The SSH plugin uses getSshConfig() instead of sshEndpoint
   it("ssh plugin uses getSshConfig(), not sshEndpoint", () => {
     const loaded = getPlugin("ssh");
-    // SSH plugin should NOT have sshEndpoint — it uses client.getSshConfig()
+    // SSH plugin should NOT have sshEndpoint: it uses client.getSshConfig()
     for (const rt of loaded.plugin.resourceTypes) {
       expect(rt.sshEndpoint).toBeUndefined();
     }
@@ -173,7 +173,7 @@ describe("SSH endpoint parity", () => {
       const hasSshEndpoint = resourceTypes.some((rt) => rt.sshEndpoint);
 
       // These flags should be derivable from the plugin's manifest/resourceTypes
-      // without needing to call the API — this is the basis for both desktop and web
+      // without needing to call the API: this is the basis for both desktop and web
       expect(typeof manifestSql).toBe("boolean");
       expect(typeof resourceSql).toBe("boolean");
       expect(typeof hasKv).toBe("boolean");

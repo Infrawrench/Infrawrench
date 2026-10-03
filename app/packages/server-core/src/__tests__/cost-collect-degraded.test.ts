@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * only the plugin knows.
  *
  * Both large collectors fall back to an unattributed query when the provider
- * refuses the attributed shape — AWS on `ValidationException`, Azure on a
- * rejected `BenefitId` grouping — and that fires for a transient flap as
+ * refuses the attributed shape (AWS on `ValidationException`, Azure on a
+ * rejected `BenefitId` grouping) and that fires for a transient flap as
  * readily as for an account that can never attribute. The fallback's rows are
  * correct in total but written at a *coarser* key space, so reconciling
  * against them zeroes every attribution row for the chunk. Since a backfilled
@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * that window is never repaired: the attribution is destroyed for good, and
  * nothing about the account looks unhealthy afterwards.
  *
- * Mocks mirror `cost-collect-backfill.test.ts` — DB, loader and writers — plus
+ * Mocks mirror `cost-collect-backfill.test.ts` (DB, loader and writers) plus
  * the reconciler, which is what these assertions watch.
  */
 
@@ -67,7 +67,7 @@ describe("collectAccountCosts and degraded passes", () => {
     const result = await collectAccountCosts("acc-1", "org-1");
 
     expect(reconcileCollectedChunk).not.toHaveBeenCalled();
-    // The spend itself is still ingested — the fallback's rows are correct in
+    // The spend itself is still ingested: the fallback's rows are correct in
     // total, they are just coarser. Only the *destructive* half is suppressed.
     expect(insertCostRows).toHaveBeenCalledWith([row]);
     expect(result.rowCount).toBe(1);
@@ -110,8 +110,8 @@ describe("collectAccountCosts tells the reconciler what shape the rows are", () 
   it("passes periodNative through, because it changes what a restated day means", async () => {
     // A monthly-native plugin files a whole month on one day. Without the flag
     // the reconciler applies the day rule, and anything stored in the month's
-    // interior — the rows a collector that once dated its in-progress total to
-    // a moving day left behind — stands forever.
+    // interior (the rows a collector that once dated its in-progress total to
+    // a moving day left behind) stands forever.
     loadAccountClient.mockResolvedValue({
       account: { pluginId: "mistral", costBackfilledAt: new Date("2026-07-01") },
       plugin: {

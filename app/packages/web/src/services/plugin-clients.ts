@@ -22,7 +22,7 @@ interface PeerPaneResult {
 /**
  * For each peer integration, resolve peer credentials via the parent client's
  * outputs, build the peer plugin's client, and call `renderPeerPane`. Errors
- * for individual integrations are captured as error-status panes — one bad
+ * for individual integrations are captured as error-status panes: one bad
  * peer never poisons the others. Used by both the eager (GET /detail) and
  * lazy (POST /peer-panes) endpoints.
  */
@@ -47,7 +47,7 @@ export async function buildPeerPanes(
     integrations.map(async (integration) => {
       // Provider-declared unreachable check (e.g. private-IP-only Cloud SQL).
       // Short-circuit before we resolve outputs, run rewriters, or load the
-      // peer plugin — just hand back the guidance pane.
+      // peer plugin, just hand back the guidance pane.
       const guidance = evaluatePeerIntegrationUnreachable(integration, parentResource?.fields);
       if (guidance) {
         const peerLoaded = await getPlugin(integration.pluginId);

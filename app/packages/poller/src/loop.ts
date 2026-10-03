@@ -90,7 +90,7 @@ interface LoopOptions {
 /**
  * Each tick atomically claims a batch of due accounts and workflows (see
  * `claim.ts`), so any number of poller instances can run concurrently against
- * the same database — scale out by adding replicas, no shard configuration.
+ * the same database: scale out by adding replicas, no shard configuration.
  */
 export class PollerLoop extends TickLoop {
   private buckets = new TokenBucketRegistry();
@@ -122,13 +122,13 @@ export class PollerLoop extends TickLoop {
     await this.tickWorkflows();
 
     // Third pass: cost collection (daily cadence per account). Also
-    // defensive — billing-API problems never affect resource polling.
+    // defensive: billing-API problems never affect resource polling.
     await this.tickCosts();
 
     // Prepaid credit balances (twice-daily cadence per account). Separate from
     // the cost pass rather than folded into it: the capabilities are
-    // independent — most prepaid providers bill nothing in arrears and expose
-    // no cost API at all — and a provider whose billing endpoint is down must
+    // independent (most prepaid providers bill nothing in arrears and expose
+    // no cost API at all) and a provider whose billing endpoint is down must
     // not stop us reading a balance that is about to hit zero.
     await this.tickCredits();
 
@@ -141,7 +141,7 @@ export class PollerLoop extends TickLoop {
     // Provider quota utilisation (four times a day per account). Its own pass
     // rather than part of the cost pass for the reason credits and commitments
     // have theirs: a quota is a management-API fact, not a billing one, and
-    // running out of vCPUs is an outage rather than an invoice — so a billing
+    // running out of vCPUs is an outage rather than an invoice, so a billing
     // outage must not stop us noticing it.
     await this.tickQuotas();
 
@@ -205,8 +205,8 @@ export class PollerLoop extends TickLoop {
     await this.tickLeases();
 
     // Trial reaper: destroy unclaimed agent trial orgs past their 24 hours.
-    // Sits beside the lease pass because it is the same shape of work — a
-    // clock ran out, something gets deleted — but it takes no claim, since
+    // Sits beside the lease pass because it is the same shape of work (a
+    // clock ran out, something gets deleted) but it takes no claim, since
     // destruction is idempotent across all three stores it touches.
     await this.tickTrials();
 
@@ -231,12 +231,12 @@ export class PollerLoop extends TickLoop {
     await this.tickMetricAlerts();
 
     // Query monitors: a small batch of due SQL checks, claimed with the same
-    // SKIP LOCKED lease the account poll uses. Deliberately small — each one
+    // SKIP LOCKED lease the account poll uses. Deliberately small: each one
     // opens a connection to a customer database. Defensive like the others.
     await this.tickQueryMonitors();
 
     // Eleventh pass: synthetic probes. Claims due probes with the accounts
-    // lease protocol (`synthetic_probes.next_probe_at` doubles as the lease —
+    // lease protocol (`synthetic_probes.next_probe_at` doubles as the lease:
     // the claim writes the probe's own interval), runs each through the
     // egress proxy's /probe endpoint from outside the cluster, records the
     // result as metric points and runs the up/down state machine. Skips
@@ -247,7 +247,7 @@ export class PollerLoop extends TickLoop {
     // Twelfth pass: alert follow-up. Releases quiet-hours holds whose window
     // has closed and escalates alerts nobody acknowledged, both claimed with
     // the same `FOR UPDATE SKIP LOCKED` lease the account claim uses (the
-    // lease lives in the row's own deadline column). Cheap when idle — two
+    // lease lives in the row's own deadline column). Cheap when idle: two
     // indexed range scans that usually return nothing. Defensive like the
     // others.
     await this.tickAlertFollowUp();
@@ -265,7 +265,7 @@ export class PollerLoop extends TickLoop {
     // with the accounts lease protocol (`report_notifications.next_send_at`
     // doubles as the lease), runs each schedule's saved report server-side
     // and posts the composed summary to the schedule's own Slack channels,
-    // Teams webhooks and email list — the digest pattern, not alert routing.
+    // Teams webhooks and email list: the digest pattern, not alert routing.
     // Each run records its own success/failure on the row, so a broken
     // schedule shows up on the report page instead of going quiet. Defensive
     // like the others.
@@ -420,7 +420,7 @@ export class PollerLoop extends TickLoop {
    * Destroy unclaimed agent trial orgs whose 24 hours have elapsed.
    *
    * Unlike every other pass this one deletes a whole tenant, so the result is
-   * logged even when it is zero-work — "the reaper ran and found nothing" is
+   * logged even when it is zero-work: "the reaper ran and found nothing" is
    * the line you want in the log when someone asks why a trial is still there.
    */
   private async tickTrials(): Promise<void> {
@@ -442,7 +442,7 @@ export class PollerLoop extends TickLoop {
    * out instances whose resources are confirmed gone.
    *
    * Without this the whole recovery story depended on somebody opening the
-   * Environments page — and the environment whose creation failed badly is the
+   * Environments page, and the environment whose creation failed badly is the
    * one nobody opens again, and the one still billing.
    */
   private async tickEnvironments(): Promise<void> {
@@ -551,7 +551,7 @@ export class PollerLoop extends TickLoop {
    * Unlike the digest there is no claim: the prune is idempotent and uses
    * `SKIP LOCKED`, so several replicas running it costs a little duplicated
    * index probing and nothing else. The in-process clock is only there to keep
-   * the work off the 15s tick — a restarted poller pruning again immediately
+   * the work off the 15s tick: a restarted poller pruning again immediately
    * finds nothing to delete.
    */
   private async tickRetention(): Promise<void> {
@@ -572,7 +572,7 @@ export class PollerLoop extends TickLoop {
     // policy, changes are a fixed 90 days) but their cadence has no reason to.
     try {
       await pruneSessionRecordings();
-      // Rows the recorder never got to close — a web replica killed mid-session
+      // Rows the recorder never got to close: a web replica killed mid-session
       // leaves one saying "recording" forever. The list view derives the same
       // thing for display; this makes it true in the table so a SQL-level
       // reader (the CLI's `--json`, an export) agrees with the UI.
@@ -605,7 +605,7 @@ export class PollerLoop extends TickLoop {
       console.error("[poller] alert delivery retention failed:", e);
     }
     // Uploaded Terraform state documents, same hourly slot. The newest per
-    // org+account scope is always kept — retention here is about superseded
+    // org+account scope is always kept: retention here is about superseded
     // snapshots, not about forgetting what an org told us Terraform manages.
     try {
       await pruneIacStates();

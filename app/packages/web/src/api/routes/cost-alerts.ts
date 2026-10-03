@@ -1,5 +1,5 @@
 /**
- * Change-based cost alerts — org-scoped CRUD plus the fired-event feed.
+ * Change-based cost alerts: org-scoped CRUD plus the fired-event feed.
  *
  * The third cost-alert family, distinct from the other two on purpose:
  * budgets (`routes/budgets.ts`) fire on an absolute monthly total, anomaly
@@ -8,7 +8,7 @@
  * and cadence. Evaluation runs from the poller (`cost/change-eval.ts`);
  * these routes only manage the configuration and read what fired.
  *
- * Reads need `costs:read`, writes `costs:write` — the cost-reports stance.
+ * Reads need `costs:read`, writes `costs:write`: the cost-reports stance.
  * Logic lives in `services/cost-alerts.ts` so the MCP/chat tools share the
  * code path; this file is transport only.
  */

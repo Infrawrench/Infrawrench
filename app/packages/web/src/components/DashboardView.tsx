@@ -248,7 +248,7 @@ export function DashboardView({
       setReports(new Map((await loadAllReports()).map((r) => [r.id, r])));
     } catch (e) {
       // A report card with no row renders as "unavailable", which is
-      // indistinguishable from the report actually being gone — so say so.
+      // indistinguishable from the report actually being gone, so say so.
       toast.error(gt("Couldn't load cost reports"), {
         description: e instanceof Error ? e.message : String(e),
       });
@@ -275,7 +275,7 @@ export function DashboardView({
         if (!cancelled) setCostStatus(rows);
       })
       .catch(() => {
-        /* the notice is advisory — a failed status fetch stays silent */
+        /* the notice is advisory: a failed status fetch stays silent */
       });
     return () => {
       cancelled = true;
@@ -825,13 +825,13 @@ function budgetToInput(budget: BudgetWithStatus | undefined): BudgetInput {
     // the cash basis it was deliberately taken off.
     ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
     // Same rule: a rename must not silently detach the saved filter scoping
-    // this budget — updates are full replaces.
+    // this budget; updates are full replaces.
     ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
     // Same rule: a rename must not silently detach the scenario model whose
     // forecast this budget's thresholds were opted into.
     ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
     // Same rule: not exposed as a toggle in this editor, but settable via the
-    // API and the Terraform provider — a save here must not silently move a
+    // API and the Terraform provider; a save here must not silently move a
     // budget back off the adjusted (billing-rule) figure it was opted into.
     ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
   };

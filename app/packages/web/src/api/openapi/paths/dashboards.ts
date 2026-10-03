@@ -67,7 +67,7 @@ const Widget = strict({
   dashboardId: Uuid,
   kind: WidgetKind,
   title: z.string(),
-  /** Kind-discriminated config — costGraphConfig or budgetWidgetConfig (see @infrawrench/ui/cost). */
+  /** Kind-discriminated config: costGraphConfig or budgetWidgetConfig (see @infrawrench/ui/cost). */
   config: JsonObject,
   gridX: z.number().int(),
   gridY: z.number().int(),
@@ -186,7 +186,7 @@ const TabTarget = strict({
     "resource",
     "agents",
     "costs",
-    // "savings" is retired — the panel is a section of Costs now — but stays
+    // "savings" is retired (the panel is a section of Costs now) but stays
     // accepted here: an older client still sends it, and a strict enum would
     // reject that client's whole tab list rather than the one dead tab.
     "savings",
@@ -218,7 +218,7 @@ const TabTarget = strict({
     "settings",
     "chat",
     // One window of a graphical Linux application on a remote host. Always
-    // dropped by validate-tabs — its session cannot outlive the page — but
+    // dropped by validate-tabs (its session cannot outlive the page) but
     // accepted so an older client's tab list is not rejected wholesale.
     "linux-app",
   ]),
@@ -229,13 +229,13 @@ const TabTarget = strict({
   conversationId: Uuid.optional(),
   /**
    * Which report the Cost reports tab was last on. Omitted for the list view.
-   * Never used to invalidate the tab — the tab is the page, and a deleted
+   * Never used to invalidate the tab: the tab is the page, and a deleted
    * report just lands on the list.
    */
   reportId: Uuid.optional(),
   /**
    * Which invoice the Invoices tab was last on. Omitted for the list view.
-   * Never used to invalidate the tab — the tab is the page, and a voided or
+   * Never used to invalidate the tab: the tab is the page, and a voided or
    * deleted invoice just lands on the list.
    */
   invoiceId: Uuid.optional(),

@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
  * Shadow run of the existing mocked ClickHouse suites (`pnpm
  * test:clickhouse:shadow`): the same unit tests, unchanged and in place, but
  * with `helpers/fake-clickhouse.ts` also executing every captured statement
- * against the real server named by CLICKHOUSE_METRICS_* — see the shadow-mode
+ * against the real server named by CLICKHOUSE_METRICS_*; see the shadow-mode
  * notes in that helper. Collection is by content, not location: any
  * `src/__tests__` suite that uses the helper is picked up automatically.
  *

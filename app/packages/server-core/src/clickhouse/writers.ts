@@ -2,13 +2,13 @@
  * Row writes into the metrics cluster.
  *
  * Every one of these goes through `db.insert(...)`, which sends a `JSONEachRow`
- * body rather than inlining the rows into the statement — see the dialect's
+ * body rather than inlining the rows into the statement: see the dialect's
  * `values()`. That matters here more than anywhere else in the codebase: a
  * single poll flattens one resource's series into thousands of points, and
  * inlined they would be one SQL string built in this process and re-parsed field
  * by field as expressions on the other side.
  *
- * `insertMetricPoints` and friends stay fire-and-forget — a metric point is
+ * `insertMetricPoints` and friends stay fire-and-forget: a metric point is
  * worth less than the poll that produced it, so a failed write is logged and the
  * pass continues. Cost and flow writes are not; they throw. See their modules.
  */
@@ -21,7 +21,7 @@ import { accountResourceCounts, dashboardStats, metricPointsRaw, pollOutcomes } 
 
 export type MetricPointRow = InferInsertModel<typeof metricPointsRaw>;
 
-/** What `readResourceCounts` reads back — writer and reader are one contract. */
+/** What `readResourceCounts` reads back: writer and reader are one contract. */
 export type ResourceCountRow = ResourceCount;
 
 /** Flatten MetricSeries[] (one entry per series with N points) into per-point CH rows. */

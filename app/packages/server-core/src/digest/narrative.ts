@@ -4,8 +4,8 @@
  * Three properties this module exists to guarantee:
  *
  *   1. **Strictly additive.** It takes the already-composed `WeeklyDigest` and
- *      returns a paragraph or `null`. Every failure path — unconfigured, HTTP
- *      error, timeout, empty completion, refusal — returns `null`, and the
+ *      returns a paragraph or `null`. Every failure path (unconfigured, HTTP
+ *      error, timeout, empty completion, refusal) returns `null`, and the
  *      digest goes out with its deterministic content intact. There is no code
  *      path here that can prevent a digest from sending.
  *   2. **The composer stays pure and LLM-free.** `compose.ts` never imports
@@ -20,7 +20,7 @@
  *      accident.
  *
  * Opt-in per org (`org_digest_settings.narrative_enabled`, default off), so no
- * org starts paying for — or sending data to — an LLM without asking.
+ * org starts paying for (or sending data to) an LLM without asking.
  *
  * Config (env): ANTHROPIC_API_KEY. Shared with the chat feature; without it
  * this is a no-op with a log line and the digest simply loses the paragraph.
@@ -32,7 +32,7 @@ import { formatAmount } from "./compose";
 
 /**
  * Anthropic's current frontier model. The digest is one short paragraph a week
- * per org, so the cost is negligible ($5/MTok in, $25/MTok out — this request
+ * per org, so the cost is negligible ($5/MTok in, $25/MTok out: this request
  * is well under a thousand tokens each way) and the quality of the judgement
  * about what mattered last week is the whole point of the feature.
  */
@@ -104,7 +104,7 @@ export function isNarrativeConfigured(): boolean {
 /**
  * Write the paragraph, or return null. Never throws.
  *
- * @param digest the already-composed digest — the only thing the model sees.
+ * @param digest the already-composed digest: the only thing the model sees.
  */
 export async function generateDigestNarrative(digest: WeeklyDigest): Promise<string | null> {
   if (!isNarrativeConfigured()) {

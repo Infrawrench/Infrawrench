@@ -22,7 +22,7 @@ vi.mock("../../services/stripe", () => ({ getStripe: (...a: unknown[]) => mockGe
 vi.mock("uuid", () => ({ v4: () => "usage-uuid" }));
 
 // The spend-status logic moved to server-core (billing/ai-usage.ts) when
-// `infra.ai()` in workflows started sharing the cap — its behavioral tests
+// `infra.ai()` in workflows started sharing the cap: its behavioral tests
 // live in server-core's ai-usage.test.ts. Here we only pin the delegation.
 const mockGetAiSpendStatus = vi.fn();
 vi.mock("@infrawrench/server-core/billing/ai-usage", () => ({
@@ -111,7 +111,7 @@ describe("recordUsage", () => {
         payload: expect.objectContaining({ stripe_customer_id: "cus_1" }),
       }),
     );
-    // Only declared payload keys — Stripe treats extras as meter dimensions.
+    // Only declared payload keys: Stripe treats extras as meter dimensions.
     const payload = (mockMeterCreate.mock.calls[0]?.[0] as { payload: object }).payload;
     expect(Object.keys(payload).sort()).toEqual(["stripe_customer_id", "value"]);
   });

@@ -169,7 +169,7 @@ const BudgetWithStatus = strict({
     }),
   ),
   /**
-   * The dashboards carrying a card for this budget. Empty is normal — a budget
+   * The dashboards carrying a card for this budget. Empty is normal: a budget
    * evaluates and alerts whether or not any dashboard shows it.
    */
   placements: z.array(

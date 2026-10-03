@@ -1,5 +1,5 @@
 /**
- * Billing rules — CRUD, plus the one function that turns them into something a
+ * Billing rules: CRUD, plus the one function that turns them into something a
  * query can use.
  *
  * The shape of this module mirrors `cost/allocation.ts` on purpose: rules are
@@ -45,7 +45,7 @@ export class BillingRuleError extends Error {
   override readonly name = "BillingRuleError";
 }
 
-/** A name already taken in this org — the API maps this to a 409. */
+/** A name already taken in this org: the API maps this to a 409. */
 export class BillingRuleNameConflictError extends Error {
   override readonly name = "BillingRuleNameConflictError";
 
@@ -72,7 +72,7 @@ function toWire(row: typeof costBillingRules.$inferSelect): BillingRule {
 }
 
 /**
- * The org's rules in evaluation order — the order the readers compile and the
+ * The org's rules in evaluation order: the order the readers compile and the
  * order the settings UI renders, so "the first reallocation wins" means what
  * the list shows.
  */
@@ -98,7 +98,7 @@ export async function getBillingRule(
 }
 
 /**
- * Normalize, then validate — a user typing `usd` into a currency box has not
+ * Normalize, then validate: a user typing `usd` into a currency box has not
  * made a mistake, and rejecting them for it would be pedantry. Everything
  * genuinely wrong is refused afterwards, in the same words the editor shows.
  */
@@ -187,7 +187,7 @@ export async function updateBillingRule(
  *
  * Hard delete, and safely so: no spend was ever restated, so nothing has to be
  * un-restated. Every figure the rule ever affected is recomputed from the rules
- * that exist at read time — which is the same reason a budget that opted into
+ * that exist at read time, which is the same reason a budget that opted into
  * adjusted spend simply starts measuring one fewer rule rather than breaking.
  */
 export async function deleteBillingRule(organizationId: string, id: string): Promise<boolean> {
@@ -211,8 +211,8 @@ export interface ResolvedBillingAdjustments {
  * Always returns a set, never null, even for an org with no rules: "adjusted"
  * must be a state a caller can be told it is in, and an empty compiled set
  * still produces `adjustment: { rules: [], rawTotals: … }` on the wire. The
- * absence of that field has exactly one meaning — these are the collected
- * numbers — and an org with no rules must not be able to fake it.
+ * absence of that field has exactly one meaning (these are the collected
+ * numbers) and an org with no rules must not be able to fake it.
  */
 export async function resolveBillingAdjustments(
   organizationId: string,

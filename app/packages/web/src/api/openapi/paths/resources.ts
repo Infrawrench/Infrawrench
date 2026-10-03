@@ -257,7 +257,7 @@ const ExportTerraformRequest = strict({
 }).openapi("ExportTerraformRequest");
 
 export const TerraformExport = strict({
-  /** The generated HCL document — empty string when nothing could be mapped. */
+  /** The generated HCL document: empty string when nothing could be mapped. */
   hcl: z.string(),
   exported: z.array(
     strict({
@@ -332,7 +332,7 @@ const PickerResourcesRequest = strict({
   regionHint: z.string().optional(),
   /**
    * When true, search every account in the org whose plugin matches a source
-   * instead of only `accountId` — used by reference-mode pickers where the
+   * instead of only `accountId`: used by reference-mode pickers where the
    * target usually lives in another account. Labels are suffixed with the
    * owning account name.
    */

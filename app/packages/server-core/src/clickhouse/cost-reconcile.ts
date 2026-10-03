@@ -7,13 +7,13 @@
  * only when the new row lands on the same sort key; a row nothing rewrites is
  * never deleted, because a ReplacingMergeTree has no concept of deletion. That
  * key is frozen (see `migrate.ts`) and cannot carry charge type or commitment
- * id, so `cost-writers.ts` folds those into `tags_hash` — but only when they
+ * id, so `cost-writers.ts` folds those into `tags_hash`, but only when they
  * are non-default, precisely so an ordinary usage row keeps hashing the way it
  * always did.
  *
  * The consequence bites the day a plugin *starts* attributing. A
- * `(day, service, region)` cell that used to be one undifferentiated row —
- * usage plus tax plus a reservation fee, summed by an unfiltered query — now
+ * `(day, service, region)` cell that used to be one undifferentiated row
+ * (usage plus tax plus a reservation fee, summed by an unfiltered query) now
  * arrives as a usage row at the *same* hash plus attribution rows at *new*
  * hashes. Cells containing any consumption re-state correctly, because the
  * usage row supersedes the old one. A cell whose spend was **entirely**
@@ -23,7 +23,7 @@
  * The same shape recurs for reasons that have nothing to do with charge types:
  * a provider restating a cell's spend away, a service or region label changing,
  * a plugin gaining the `resource` dimension. It is generic, so it is solved
- * here, once, rather than hand-rolled per plugin — and hand-rolling it in a
+ * here, once, rather than hand-rolled per plugin, and hand-rolling it in a
  * plugin cannot work in general anyway, because a plugin only knows the keys it
  * is *writing*, not the keys already stored under labels it no longer emits.
  *
@@ -37,7 +37,7 @@
  *
  * Zeroing rather than `ALTER TABLE ... DELETE` is deliberate. A mutation is
  * asynchronous, rewrites whole parts, and is the kind of thing an operator has
- * to be told to run — which was the resting state this module exists to remove.
+ * to be told to run, which was the resting state this module exists to remove.
  * An insert on an existing key is the table's own supersede path, costs one row,
  * and lands with the collection that noticed it.
  *
@@ -45,8 +45,8 @@
  *
  * It repairs a key that moved *under a day the collection restates*, which is
  * the whole of the charge-type hazard above and most restatement shapes. A day
- * no collection ever covers again — one that has aged out of the plugin's
- * restatement window — is beyond it, and stays wrong until a re-backfill covers
+ * no collection ever covers again (one that has aged out of the plugin's
+ * restatement window) is beyond it, and stays wrong until a re-backfill covers
  * it. Choosing a restatement window wide enough to reach a plugin's own
  * dating unit is therefore part of the plugin's job, not this module's.
  *
@@ -54,26 +54,26 @@
  *
  * Four guards, each protecting against a way this could destroy real data.
  * Three are here; the fourth is the caller's, because only a plugin can know
- * it — see `cost/collect.ts` and `CostFetchResult.degraded`, which suppresses
+ * it: see `cost/collect.ts` and `CostFetchResult.degraded`, which suppresses
  * reconciliation for a pass that fell back to a coarser key space than usual.
  *
  * 1. **Nothing written, nothing zeroed.** A chunk the plugin returned no rows
  *    for is left completely alone. A provider that errors into an empty result,
  *    a billing export that has not caught up yet, a partition that returns
- *    nothing for a window it has not finished computing — none of those are
+ *    nothing for a window it has not finished computing: none of those are
  *    evidence that the stored spend is wrong.
  * 2. **Only days the plugin restated.** Within a chunk, a stored row is a
  *    candidate only if the plugin restated *that day*. A day the provider
  *    skipped entirely is not a day it restated to zero. This is what keeps a
  *    provider that reports the last 24h late from wiping yesterday. The
- *    intra-day hazard costs nothing here — the stale cell always sits on a day
+ *    intra-day hazard costs nothing here: the stale cell always sits on a day
  *    that has other, healthy cells.
  *
  *    "Restated" is a day the plugin wrote to, **plus**, for a period-native
  *    plugin that wrote a row dated to the 1st of a month, the rest of that
  *    calendar month. A monthly-native plugin files a whole month on one day, so
  *    the day rule alone would leave anything stored in the interior standing
- *    forever — which is precisely how a month once dated to a *moving* day
+ *    forever, which is precisely how a month once dated to a *moving* day
  *    inside itself (an in-progress total clamped to the requested range, as
  *    Mistral's collector did) stays inflated after the dating is fixed. The
  *    rule, and why it is the 1st rather than any written day, lives in
@@ -104,7 +104,7 @@ const RESERVED_KEY_PREFIX = "infrawrench:";
 
 /**
  * What the collecting plugin says about the shape of its own rows. Only
- * `periodNative` matters here, and only to guard 2 — see `cost/period-scope.ts`.
+ * `periodNative` matters here, and only to guard 2: see `cost/period-scope.ts`.
  */
 export interface ReconcileOptions {
   periodNative?: boolean | undefined;
@@ -147,7 +147,7 @@ function identity(row: {
 
 /**
  * The zero-amount rows that supersede everything stored for this account in the
- * window that the collection is not rewriting. **Pure** — the query and the
+ * window that the collection is not rewriting. **Pure**: the query and the
  * insert live in {@link reconcileCollectedChunk}; this is the part worth
  * testing exhaustively.
  *
@@ -163,7 +163,7 @@ export function supersededTombstones(
   if (written.length === 0) return [];
 
   const writtenKeys = new Set(written.map(identity));
-  // Guard 2: only days this collection actually restated — which for a
+  // Guard 2: only days this collection actually restated, which for a
   // period-native plugin means the period, not just the day it filed it on.
   const restated = restatedDayScope(
     written.map((r) => r.day),
@@ -180,7 +180,7 @@ export function supersededTombstones(
     //
     // Only *pushed* rows can match: a collector's attribution rows fold their
     // reserved keys into `tags_hash` and leave the `tags` column alone. See the
-    // module header — that asymmetry is what keeps this from skipping every row
+    // module header: that asymmetry is what keeps this from skipping every row
     // reconciliation is for.
     if (Object.keys(row.tags).some((k) => k.startsWith(RESERVED_KEY_PREFIX))) continue;
     if (tombstones.has(key)) continue;
@@ -200,7 +200,7 @@ export function supersededTombstones(
       usage_unit: "",
       charge_type: row.charge_type,
       amortized_amount: 0,
-      // Not "amortized to zero" — this row has no money on any basis, and the
+      // Not "amortized to zero": this row has no money on any basis, and the
       // amortized reader's fallback to `amount` finds zero either way.
       amortized_reported: 0,
       commitment_id: row.commitment_id,
@@ -221,8 +221,8 @@ export function supersededTombstones(
  * **Rows that are already zero on both bases are excluded, and that is what
  * makes a key get tombstoned once rather than forever.** Without the filter a
  * superseded key comes back on the next collection looking exactly like a
- * candidate again — it is still stored, and the collection still does not
- * write it — so every subsequent collection of that day would re-emit an
+ * candidate again (it is still stored, and the collection still does not
+ * write it) so every subsequent collection of that day would re-emit an
  * identical zero row. The insert is idempotent, so nothing is *wrong*; it is
  * simply unbounded write amplification against the one table where retaining
  * years of daily history is the point. A key zeroed once is done.
@@ -232,7 +232,7 @@ export function supersededTombstones(
  * that somehow kept a quantity without an amount is not spend anyone reads.
  *
  * Cardinality is bounded by what the same account's collection returns for the
- * same window, which the caller already holds in memory — so this adds a query
+ * same window, which the caller already holds in memory, so this adds a query
  * per chunk, not a scaling problem.
  */
 export async function getStoredCostRowKeys(
@@ -270,7 +270,7 @@ export async function getStoredCostRowKeys(
  * One chunk's tombstones: read the stored keys, subtract what is about to be
  * written, and hand back the zero rows to insert alongside it.
  *
- * Returns `[]` — without querying — for a chunk that produced no rows, so a
+ * Returns `[]` (without querying) for a chunk that produced no rows, so a
  * failed or empty fetch can never take existing data with it.
  */
 export async function reconcileCollectedChunk(

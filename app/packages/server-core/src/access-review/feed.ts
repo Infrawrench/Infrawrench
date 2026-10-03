@@ -3,7 +3,7 @@
  * the CSV export, the weekly digest and the poller's alert pass all read one
  * computation.
  *
- * This is about the principals inside the *customer's* clouds — IAM users and
+ * This is about the principals inside the *customer's* clouds: IAM users and
  * roles, service accounts, app registrations, bindings, long-lived API keys.
  * It is not Infrawrench's own team roles (`permissions/`) and not the
  * credentials Infrawrench itself holds (`hygiene/`).
@@ -39,7 +39,7 @@ export interface ListAccessReviewOptions {
  * against them.
  *
  * Findings the org has dismissed are partitioned into `dismissed` rather than
- * listed — which keeps them out of the alert pass and the digest as well,
+ * listed, which keeps them out of the alert pass and the digest as well,
  * since both read this one function. The `principals` inventory is never
  * filtered: accepting one finding must not make a principal disappear from the
  * list the review exists to produce.
@@ -103,7 +103,7 @@ export async function listAccessReview(
     fields: r.fieldsJson,
   }));
 
-  // Ownership is looked up only for the rows that are actually principals —
+  // Ownership is looked up only for the rows that are actually principals:
   // an org with 40 000 resources and 60 keys should not join the whole table
   // to answer "who owns these keys?".
   const principalTypeKeys = new Set<string>();

@@ -5,7 +5,7 @@
  * and the weekly digest share one computation. Purely a read over
  * already-synced state: no provider API calls.
  *
- * The read takes `resources:read` — it is a view of the org's inventory — while
+ * The read takes `resources:read` (it is a view of the org's inventory) while
  * the policies take `org:settings:write`, the posture-settings stance: a
  * recovery objective is an org-wide statement about what the organisation
  * considers acceptable, not a change to one resource, and a member who can
@@ -44,7 +44,7 @@ const app = new Hono();
 
 /**
  * Read one optional nullable integer out of a body, distinguishing "absent"
- * (leave alone) from `null` (clear) — which is the whole point of a PATCH here,
+ * (leave alone) from `null` (clear), which is the whole point of a PATCH here,
  * since clearing an RPO is a legitimate edit.
  */
 function readNullableInt(
@@ -83,7 +83,7 @@ function readTypeIds(
 }
 
 /**
- * GET /api/org/:orgId/backups — what protects the org's stateful resources,
+ * GET /api/org/:orgId/backups: what protects the org's stateful resources,
  * what does not, and which backups protect nothing.
  */
 app.get("/", async (c) => {
@@ -91,13 +91,13 @@ app.get("/", async (c) => {
   return c.json(await listBackupCoverage(c.get("organizationId")));
 });
 
-/** GET /api/org/:orgId/backups/policies — the org's recovery objectives. */
+/** GET /api/org/:orgId/backups/policies: the org's recovery objectives. */
 app.get("/policies", async (c) => {
   requirePermission(c, "resources:read");
   return c.json({ policies: await listBackupPolicies(c.get("organizationId")) });
 });
 
-/** POST /api/org/:orgId/backups/policies — add a recovery objective. */
+/** POST /api/org/:orgId/backups/policies: add a recovery objective. */
 app.post("/policies", async (c) => {
   requirePermission(c, "org:settings:write");
   const parsed = await readObjectBody(c.req);
@@ -154,7 +154,7 @@ app.post("/policies", async (c) => {
   }
 });
 
-/** PATCH /api/org/:orgId/backups/policies/:policyId — edit one. */
+/** PATCH /api/org/:orgId/backups/policies/:policyId: edit one. */
 app.patch("/policies/:policyId", async (c) => {
   requirePermission(c, "org:settings:write");
   const parsed = await readObjectBody(c.req);
@@ -231,7 +231,7 @@ app.delete("/policies/:policyId", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/backups/drills — where every protected resource stands on
+ * GET /api/org/:orgId/backups/drills, where every protected resource stands on
  * restore, plus the org's drill log.
  *
  * `resources:read`, like the coverage it extends.
@@ -251,7 +251,7 @@ app.get("/drills", async (c) => {
   );
 });
 
-/** GET /api/org/:orgId/backups/drills/log — the raw drill log. */
+/** GET /api/org/:orgId/backups/drills/log: the raw drill log. */
 app.get("/drills/log", async (c) => {
   requirePermission(c, "resources:read");
   const resourceId = c.req.query("resourceId");
@@ -263,7 +263,7 @@ app.get("/drills/log", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/backups/drills — record that somebody tried.
+ * POST /api/org/:orgId/backups/drills: record that somebody tried.
  *
  * Takes `resources:write` rather than `org:settings:write`: recording a drill
  * is reporting what you did, not changing what the organization demands, and

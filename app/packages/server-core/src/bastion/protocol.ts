@@ -4,7 +4,7 @@
  *
  * The agent dials outbound (so it works behind NAT) and the backend opens
  * one logical TCP stream per cloud-API request, multiplexed over the single
- * WS by `streamId`. Bytes inside the streams are opaque to the agent — TLS
+ * WS by `streamId`. Bytes inside the streams are opaque to the agent: TLS
  * is terminated on the backend (client) ↔ cloud API (server), so the agent
  * only sees encrypted bytes.
  */
@@ -23,10 +23,10 @@ export interface BastionHelloMessage {
    * Hostnames the agent is allowed to open TCP streams to. The backend
    * computes this from the accounts that reference this bastion (one entry
    * per cloud-API hostname). Any `open` for a host outside this list is
-   * rejected agent-side — a confused-deputy safeguard.
+   * rejected agent-side: a confused-deputy safeguard.
    *
    * Wildcards are supported as a leading `*.` (e.g. `*.amazonaws.com`).
-   * Empty array means "no destinations allowed yet" — useful for the first
+   * Empty array means "no destinations allowed yet": useful for the first
    * connect before any accounts are bound.
    */
   allowlist: string[];

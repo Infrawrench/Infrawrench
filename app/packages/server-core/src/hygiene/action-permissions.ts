@@ -6,7 +6,7 @@
  * This is the mapping between the two.
  *
  * **The audit log only witnesses writes.** Reading a resource list, opening a
- * dashboard, querying costs — none of those leave a row, by design. So an
+ * dashboard, querying costs: none of those leave a row, by design. So an
  * absence of evidence says something about `resources:delete` and nothing at
  * all about `resources:read`, and the report must only ever draw conclusions
  * about permissions in {@link WITNESSED_PERMISSIONS}. Concluding "unused" from
@@ -21,7 +21,7 @@
  *
  * Exact matches, not prefixes: `resource.update` is `resources:write` while
  * `resource.delete` is `resources:delete`, and a prefix rule over `resource.`
- * would collapse the two — which is exactly the distinction a reviewer cares
+ * would collapse the two, which is exactly the distinction a reviewer cares
  * about. An action missing from this table simply contributes no evidence.
  */
 export const AUDIT_ACTION_PERMISSION: Readonly<Record<string, string>> = {
@@ -85,7 +85,7 @@ export const AUDIT_ACTION_PERMISSION: Readonly<Record<string, string>> = {
   "cost_allocation_rule.update": "costs:write",
   "cost_allocation_rule.delete": "costs:write",
   "cost_allocation_rule.swap": "costs:write",
-  // Billing rules ride `org:settings:write`, not `costs:write` — a markup
+  // Billing rules ride `org:settings:write`, not `costs:write`: a markup
   // changes every figure the org reports about itself, which is a governance
   // act rather than a cost-object edit. See `api/routes/billing-rules.ts`.
   "billing_rule.create": "org:settings:write",
@@ -133,7 +133,7 @@ export const AUDIT_ACTION_PERMISSION: Readonly<Record<string, string>> = {
 };
 
 /**
- * The permissions the audit log can actually witness — the values of
+ * The permissions the audit log can actually witness: the values of
  * {@link AUDIT_ACTION_PERMISSION}, deduped.
  *
  * The report's "granted but never exercised" finding is computed **only** over

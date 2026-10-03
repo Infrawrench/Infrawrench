@@ -6,8 +6,8 @@
  * resources, and dashboards do this inline with a `MAX(sync_version) + 1`
  * subquery keyed on `organization_id`.
  *
- * `dashboard_pins` and `associations` have no such column — they are scoped
- * through `dashboards` / `resources` — so their subqueries have to join the
+ * `dashboard_pins` and `associations` have no such column (they are scoped
+ * through `dashboards` / `resources`) so their subqueries have to join the
  * parent. Nothing was bumping them at all, which left both permanently at the
  * default 0 and therefore invisible to every pull (`0 > lastSyncVersion` is
  * false for any watermark a client can legitimately hold).
@@ -29,7 +29,7 @@ export function nextPinSyncVersion(organizationId: string): SQL<number> {
 
 /**
  * Next `sync_version` for an association in `organizationId`, scoped through
- * the consumer resource. The consumer is the anchor everywhere else too —
+ * the consumer resource. The consumer is the anchor everywhere else too:
  * `/pull` joins on it, and it is the side the write paths org-check.
  */
 export function nextAssociationSyncVersion(organizationId: string): SQL<number> {

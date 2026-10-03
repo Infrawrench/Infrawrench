@@ -1,5 +1,5 @@
 /**
- * Deployments — the web app's slice.
+ * Deployments: the web app's slice.
  *
  * The runner moved to `@infrawrench/server-core/infrafile/runner` so
  * `github-watcher` can fire deploy-on-push triggers without importing web. It is
@@ -58,7 +58,7 @@ export async function listDeployTriggers(organizationId: string): Promise<Deploy
  * Create or update a trigger.
  *
  * The repo and env are validated against the Infrafile at that branch head
- * before the row is written — a trigger naming an environment the file does not
+ * before the row is written: a trigger naming an environment the file does not
  * declare would otherwise sit there failing silently on every push, and the
  * first anyone would know is a deploy that never happened.
  */
@@ -102,7 +102,7 @@ export async function upsertDeployTrigger(
         answers: input.answers ?? {},
         // Re-stamped on every upsert, not just the first insert. Re-arming a
         // disabled trigger with a stale lastSha would make the next watcher
-        // poll deploy whatever is ALREADY at HEAD — the exact thing recording
+        // poll deploy whatever is ALREADY at HEAD: the exact thing recording
         // the SHA at arm time exists to prevent.
         lastSha: resolved.sha,
         updatedAt: new Date(),

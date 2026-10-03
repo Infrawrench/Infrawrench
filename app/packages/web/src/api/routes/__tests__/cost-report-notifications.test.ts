@@ -3,9 +3,9 @@ import { buildTestApp } from "./test-utils";
 
 // The store and delivery modules are mocked rather than exercised: they reach
 // the Drizzle client, which throws at import time without DATABASE_URL. These
-// tests are about the transport contract — permissions (costs:read reads vs
+// tests are about the transport contract: permissions (costs:read reads vs
 // org:settings:write writes), status mapping for input errors, and the
-// send-now route — which is what this file owns.
+// send-now route, which is what this file owns.
 const mockList = vi.fn();
 const mockListOrg = vi.fn();
 const mockTargets = vi.fn();

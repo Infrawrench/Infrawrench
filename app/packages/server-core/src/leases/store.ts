@@ -1,10 +1,10 @@
 /**
- * Resource lease rows — CRUD + normalization shared by the web API and the
+ * Resource lease rows: CRUD + normalization shared by the web API and the
  * poller's auto-delete pass.
  *
  * Input validation comes from `@infrawrench/client-core`
  * (`validateLeaseInput`, `LEASE_LIMITS`), the same function the editor UIs
- * check with — the server and the form can't disagree about what a valid
+ * check with: the server and the form can't disagree about what a valid
  * deadline is.
  */
 import { randomUUID } from "node:crypto";
@@ -118,7 +118,7 @@ export async function getLeaseRecordByResource(
 
 /**
  * Create a lease on a synced resource. One lease per resource: an *active*
- * lease conflicts (409 — edit it instead), while a terminal row (deleted /
+ * lease conflicts (409; edit it instead), while a terminal row (deleted /
  * failed / canceled) is replaced in place so the unique index never blocks a
  * fresh lease on a surviving resource.
  */
@@ -167,7 +167,7 @@ export async function createLeaseRecord(
     finalWarningAt: null,
     // Null = due: the pass picks a fresh auto-delete lease up on the next
     // tick and reschedules it to its first warning instant. Harmless on
-    // nag-only leases — the claim filters on `auto_delete`.
+    // nag-only leases: the claim filters on `auto_delete`.
     nextCheckAt: null,
     deleteAttempts: 0,
     lastError: null,
@@ -236,7 +236,7 @@ export async function createLeaseRecord(
  * leases can be edited. Changing the deadline or the auto-delete flag re-arms
  * the announcement schedule: the warning stamps, the retry counters and the
  * claim column are reset, so the pass recomputes everything from the new
- * timing — and a run the pass has mid-flight loses its claim token, so the
+ * timing, and a run the pass has mid-flight loses its claim token, so the
  * edit always wins.
  */
 export async function updateLeaseRecord(
@@ -252,7 +252,7 @@ export async function updateLeaseRecord(
 
   const expiresAt = patch.expiresAt ?? existing.expiresAt.toISOString();
   const note = patch.note !== undefined ? normalizeNote(patch.note) : existing.note;
-  // Only re-validate the deadline when the patch changes it — a note-only edit
+  // Only re-validate the deadline when the patch changes it: a note-only edit
   // must not be rejected because the existing deadline has already passed.
   const problem =
     patch.expiresAt !== undefined
@@ -283,7 +283,7 @@ export async function updateLeaseRecord(
   return (await getLeaseRecord(organizationId, leaseId))!;
 }
 
-/** Cancel an active lease — the countdown stops, the resource stays. */
+/** Cancel an active lease: the countdown stops, the resource stays. */
 export async function cancelLeaseRecord(
   organizationId: string,
   leaseId: string,

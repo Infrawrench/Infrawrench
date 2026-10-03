@@ -1,12 +1,12 @@
 /**
- * Scheduled cost-report delivery — composition and schedule arithmetic. Pure
+ * Scheduled cost-report delivery: composition and schedule arithmetic. Pure
  * functions only, exactly like `digest/compose.ts`: data in, data out, so the
  * message a schedule sends and the instant it next fires are both unit-testable
  * without a database, a clock, or a network.
  *
  * **This feature follows the digest pattern, not the alert-routing one.** A
  * scheduled report delivery is a composed, recurring summary sent to
- * destinations the schedule itself names — like the weekly digest — and it is
+ * destinations the schedule itself names (like the weekly digest) and it is
  * *not* an alert: it has no severity, no quiet hours, no escalation, and it
  * must not be routed through `alerts/route.ts`. Do not "fix" that later; the
  * routing table answers "where do alerts of this kind go", which is a
@@ -50,7 +50,7 @@ export interface ReportSchedule {
   sendDayOfMonth: number;
   /** Local hour, 0–23. */
   hour: number;
-  /** IANA zone. Invalid zones fall back to UTC — this runs in the poller. */
+  /** IANA zone. Invalid zones fall back to UTC: this runs in the poller. */
   timezone: string;
 }
 
@@ -93,7 +93,7 @@ function firesOn(schedule: ReportSchedule, isoDate: string): boolean {
  *
  * Walks local days forward (like `nextCostExportRunAt`) and takes the first
  * firing day whose local `hour` is still ahead. 62 iterations covers the
- * longest possible gap — a monthly schedule checked the day after it fired —
+ * longest possible gap (a monthly schedule checked the day after it fired)
  * with slack; the fallback is a day, never a throw, because the poller calls
  * this.
  */
@@ -127,7 +127,7 @@ export interface ReportDeliveryGroup {
   amount: number;
 }
 
-/** Everything the renderers need — produced by `deliver.ts`, consumed here. */
+/** Everything the renderers need: produced by `deliver.ts`, consumed here. */
 export interface ReportDeliveryData {
   reportName: string;
   description: string | null;
@@ -146,7 +146,7 @@ export interface ReportDeliveryData {
   url: string | null;
 }
 
-/** How many groups a message quotes. Bounded — a message is not a spreadsheet. */
+/** How many groups a message quotes. Bounded: a message is not a spreadsheet. */
 export const MAX_DELIVERY_GROUPS = 5;
 
 /** `Monthly spend by service · Jul 1 – Jul 31` */
@@ -239,7 +239,7 @@ export function reportDeliverySegments(data: ReportDeliveryData): DigestLine[] {
   return lines;
 }
 
-/** Flattened lines with a transport-specific bold wrapper — the digest's trick. */
+/** Flattened lines with a transport-specific bold wrapper: the digest's trick. */
 function deliveryLines(data: ReportDeliveryData, bold: (s: string) => string): string[] {
   return reportDeliverySegments(data).map((line) =>
     line.map((seg) => (seg.bold ? bold(seg.text) : seg.text)).join(""),
@@ -287,7 +287,7 @@ export interface ReportDeliveryResult {
 /** Attempts one occurrence gets in total, including the first. */
 export const MAX_REPORT_DELIVERY_ATTEMPTS = 3;
 
-/** Backoff before attempt 2 and attempt 3, in minutes — the digest's values. */
+/** Backoff before attempt 2 and attempt 3, in minutes: the digest's values. */
 export const REPORT_DELIVERY_RETRY_BACKOFF_MINUTES = [15, 60] as const;
 
 /**

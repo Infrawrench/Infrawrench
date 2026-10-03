@@ -18,7 +18,7 @@ export function registerPosturePaths(ctx: BuildContext) {
   // Kept as a raw shape so `DismissedPostureFinding` can be emitted as one
   // flat object rather than an `allOf` branch. A branch that declares only
   // `dismissal` while inheriting the rest through a sibling `$ref` is
-  // uninhabited under `additionalProperties: false` — JSON Schema evaluates
+  // uninhabited under `additionalProperties: false`: JSON Schema evaluates
   // that keyword against the properties in the same object, so every inherited
   // field reads as unexpected and strict validators reject real payloads.
   const postureFindingShape = {

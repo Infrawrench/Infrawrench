@@ -4,7 +4,7 @@
  * Sits under the org tree, so it inherits the whole middleware stack. Gated on
  * `team:read` / `team:invite` rather than a permission of its own: a
  * registration is a member of the organization in every sense that matters to a
- * reader of this page — it holds a membership row and acts with authority — and
+ * reader of this page (it holds a membership row and acts with authority) and
  * inventing `agents:*` would mean every existing custom role silently lacked
  * it.
  */
@@ -46,11 +46,11 @@ app.get("/", async (c) => {
 });
 
 /**
- * DELETE /api/org/:orgId/agent-registrations/:id — revoke.
+ * DELETE /api/org/:orgId/agent-registrations/:id: revoke.
  *
  * Revoke, not delete. The row is how an audit entry naming this agent stays
  * legible, and how "what did that thing do before we cut it off" remains
- * answerable — `resolveAgentPrincipal` refuses a revoked row on the next
+ * answerable: `resolveAgentPrincipal` refuses a revoked row on the next
  * request, which is what actually ends the access.
  *
  * Gated on `team:invite` because revoking an agent is the same class of act as

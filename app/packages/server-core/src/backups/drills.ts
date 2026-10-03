@@ -1,5 +1,5 @@
 /**
- * Restore drills — recording one, and computing where each protected resource
+ * Restore drills: recording one, and computing where each protected resource
  * stands.
  *
  * Coverage answers "is there a backup". This answers "does it restore, and how
@@ -7,8 +7,8 @@
  * routinely answered wrongly on the day.
  *
  * The standing is derived on read from the drill log by `drillStanding` in
- * `@infrawrench/client-core` — the same function the UI could call, so the two
- * cannot disagree — and the eligible population comes from
+ * `@infrawrench/client-core` (the same function the UI could call, so the two
+ * cannot disagree) and the eligible population comes from
  * `listBackupCoverage`, so a resource is only ever asked about its restore when
  * it has something to restore *from*.
  */
@@ -72,7 +72,7 @@ interface DrillRow {
 /**
  * Resource and account names are attached by the caller from the coverage feed
  * rather than joined here, because the coverage feed is where a resource's
- * display name is already resolved — and joining `resources` would drop every
+ * display name is already resolved, and joining `resources` would drop every
  * drill whose resource has since been deleted, which is exactly the history an
  * auditor asks about.
  */
@@ -173,7 +173,7 @@ export interface ListDrillCoverageOptions {
  * Where every protected resource stands on restore.
  *
  * The population is resources the coverage feed says are **protected or
- * provider-automated** — a resource with no backup cannot be drilled, and
+ * provider-automated**: a resource with no backup cannot be drilled, and
  * listing it here as "never tested" would duplicate the coverage page's own
  * unprotected finding while burying the ones that genuinely can be tested.
  */

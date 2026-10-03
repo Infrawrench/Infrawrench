@@ -5,7 +5,7 @@ import { usePermissions } from "@/auth/permissions-context";
 import { createWebIacClient } from "@/lib/iac-client";
 
 /**
- * Infrastructure as Code — the IaC reconciliation page. The panel lives in
+ * Infrastructure as Code: the IaC reconciliation page. The panel lives in
  * `@infrawrench/ui` so desktop renders the identical thing; this component is
  * the web host: an `api*`-backed client, the permission gate, and the resource
  * link. Rendered as a workspace tab (the "iac" kind) by the viewport.

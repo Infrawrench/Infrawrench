@@ -88,7 +88,7 @@ const SftpListRequest = strict({
 }).openapi("SftpListRequest");
 
 /**
- * Directory listings come back in the same shape as object storage — the SFTP
+ * Directory listings come back in the same shape as object storage: the SFTP
  * host aliases its entry type to `StorageObject` so one browser component can
  * render both. Spelled out here so the generated SDKs keep a named type.
  */

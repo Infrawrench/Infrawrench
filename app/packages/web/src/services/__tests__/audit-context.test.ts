@@ -2,7 +2,7 @@
  * The ambient audit principal, and the one thing about it that is easy to get
  * wrong: `enterWith` reaches the *current* execution's descendants, not the
  * caller of an awaited function. `authenticateOrgRequest` used to try to
- * establish the principal from inside itself, which silently did nothing —
+ * establish the principal from inside itself, which silently did nothing:
  * these tests pin why the call now lives in the handler instead.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";

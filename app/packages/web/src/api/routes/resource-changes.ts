@@ -42,7 +42,7 @@ const app = new Hono();
 const CHANGE_KINDS = new Set(["created", "updated", "deleted"]);
 
 /**
- * GET /api/org/:orgId/changes — org-wide change feed (paginated, filterable
+ * GET /api/org/:orgId/changes: org-wide change feed (paginated, filterable
  * by account, resource, change kind, and time range).
  */
 app.get("/", async (c) => {
@@ -70,7 +70,7 @@ app.get("/", async (c) => {
 
   const where = and(...conditions);
 
-  // Independent read-only queries — race them so the page costs max(count, rows)
+  // Independent read-only queries: race them so the page costs max(count, rows)
   // instead of the sum.
   const [countRows, entries] = await Promise.all([
     db
@@ -172,14 +172,14 @@ app.put("/alert-settings", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/changes/cost-impacts — what a page of changes did to
+ * POST /api/org/:orgId/changes/cost-impacts: what a page of changes did to
  * the run rate.
  *
  * A POST because it takes a list of ids: a feed page carries up to 50 and a
  * query string of composite resource-change ids is neither readable nor safely
  * within URL length limits. It reads nothing and writes nothing, and is
  * recomputed on every call so that late-arriving and restated provider cost
- * keeps moving the answer — see `cost/change-impact-load.ts`.
+ * keeps moving the answer: see `cost/change-impact-load.ts`.
  *
  * `costs:read` **and** `resources:read`: the response is money, but it is money
  * keyed to specific resources and their change history.
@@ -210,7 +210,7 @@ app.post("/cost-impacts", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/changes/resource?resourceId=… — recent changes for one
+ * GET /api/org/:orgId/changes/resource?resourceId=…: recent changes for one
  * resource. `resourceId` is a query param because composite resource ids
  * contain slashes and colons that don't survive as path segments.
  */
@@ -251,13 +251,13 @@ app.get("/resource", async (c) => {
 
 /* ----------------------------- revert -------------------------------- *
  *
- * GET  /changes/:changeId/revert — the dry run
- * POST /changes/:changeId/revert — apply it
+ * GET  /changes/:changeId/revert (the dry run
+ * POST /changes/:changeId/revert) apply it
  *
  * Same path, and the verb carries the whole difference: the plan is computed
  * identically either way, the POST just rebuilds it against a fresher read and
  * then writes. That re-read is a last-moment check rather than an atomic
- * compare-and-swap — `buildRevertPlan` in `services/change-revert.ts` documents
+ * compare-and-swap: `buildRevertPlan` in `services/change-revert.ts` documents
  * the window it leaves and why the plugin contract can't close it.
  */
 
@@ -278,7 +278,7 @@ function revertFailureResponse(c: Context, failure: { kind: string; message?: st
  * it is right now. Read-only: it touches the provider (to read) and nothing
  * else.
  *
- * `resources:write` rather than `resources:read` — the plan names the write it
+ * `resources:write` rather than `resources:read`: the plan names the write it
  * is offering to make, and it costs a live provider call, so it is gated with
  * the action it previews rather than with the feed it reads from.
  */
@@ -310,11 +310,11 @@ app.get("/:changeId/revert", async (c) => {
  *
  * Order matters and is the point of the handler:
  *
- * 1. permission, then the change freeze — a revert is a provider mutation like
+ * 1. permission, then the change freeze: a revert is a provider mutation like
  *    any other, so it goes through the same gate a delete or a resize does;
  * 2. claim the event under a lease, which settles a race between two reverts of
  *    the same event before either can reach the provider;
- * 3. rebuild the plan against a *fresh* live read — anything that moved since
+ * 3. rebuild the plan against a *fresh* live read: anything that moved since
  *    the preview is now a conflict and drops out of the patch;
  * 4. write **through the client that read**, so nothing (least of all a
  *    credential decrypt and a client rebuild) sits between the read and the
@@ -325,18 +325,18 @@ app.get("/:changeId/revert", async (c) => {
  *
  * ## Three pieces of state, each with one job
  *
- * - `revert_claimed_at` + `revert_claim_owner` — a **lock**, leased so a dead
+ * - `revert_claimed_at` + `revert_claim_owner`: a **lock**, leased so a dead
  *   holder cannot hold it forever, fenced so a superseded holder cannot release
  *   somebody else's. It says who may act. It says nothing about what happened.
- * - `revert_write_attempted_at` — a **journal**, written immediately before the
+ * - `revert_write_attempted_at`: a **journal**, written immediately before the
  *   provider call. It says a write was issued and its outcome is unknown.
- * - `reverted_at` — the **fact**, written only once the provider accepted.
+ * - `reverted_at`: the **fact**, written only once the provider accepted.
  *
  * Keeping these three apart is the whole design, and it was arrived at the hard
  * way: two earlier versions used the claim as its own journal, inferring "an
  * earlier attempt may have written" from "a claim is still outstanding". That
- * inference is unsound — a claim outlives an attempt that died *before* writing
- * exactly as readily as one that died after — and it failed in both directions
+ * inference is unsound (a claim outlives an attempt that died *before* writing
+ * exactly as readily as one that died after) and it failed in both directions
  * at once, wedging events behind a lease each retry renewed while also letting
  * an unrelated hand-edit be recorded as somebody's revert. A lock cannot double
  * as a journal. With the journal explicit, **every exit releases the claim
@@ -346,23 +346,23 @@ app.get("/:changeId/revert", async (c) => {
  *
  * | # | Provider write | Recorded | Response | Row afterwards | Recovers by |
  * |---|---|---|---|---|---|
- * | 1 | not reached (404/409/423, claim lost) | — | 404/409/423 | untouched | n/a |
- * | 1b | not reached (claim lost while planning) | — | 409 | replacement's claim | the replacement |
- * | 2 | not reached (plan failed, no client) | — | 502/404 | claim released | retry |
- * | 3 | not reached (nothing writable / conflict) | — | 409 | claim released | n/a — correct |
+ * | 1 | not reached (404/409/423, claim lost) | - | 404/409/423 | untouched | n/a |
+ * | 1b | not reached (claim lost while planning) | - | 409 | replacement's claim | the replacement |
+ * | 2 | not reached (plan failed, no client) | - | 502/404 | claim released | retry |
+ * | 3 | not reached (nothing writable / conflict) | - | 409 | claim released | n/a: correct |
  * | 4 | not reached (journal says an earlier one wrote) | yes, as `reconciled` | 200 | reverted | n/a |
- * | 4b | not reached (as row 4) | no — DB threw | 500 | claim released, journal kept | retry → row 4 |
- * | 5 | threw | — | 400 | claim released, **journal kept** | retry → row 4 or a normal revert |
+ * | 4b | not reached (as row 4) | no; DB threw | 500 | claim released, journal kept | retry → row 4 |
+ * | 5 | threw | - | 400 | claim released, **journal kept** | retry → row 4 or a normal revert |
  * | 6 | ok | yes | 200 | reverted | n/a |
- * | 7 | ok | no — superseded | 409 | replacement's claim | the replacement |
- * | 8 | ok | no — DB threw | 500 | claim released, journal kept | retry → row 4 |
- * | 9 | ok | never attempted (process died) | — | claim expires, journal kept | lease expiry → row 4 |
+ * | 7 | ok | no; superseded | 409 | replacement's claim | the replacement |
+ * | 8 | ok | no; DB threw | 500 | claim released, journal kept | retry → row 4 |
+ * | 9 | ok | never attempted (process died) | - | claim expires, journal kept | lease expiry → row 4 |
  *
  * Rows 4, 5, 8 and 9 are one loop and the reason this handler is not simply
  * "write, then record". A write that lands and is not recorded would otherwise
  * leave the feed disagreeing with the provider *permanently*: the retry finds
  * nothing to do and walks away. Instead a retry that finds every field already
- * back, on an event whose **journal** says a write was issued, completes it —
+ * back, on an event whose **journal** says a write was issued, completes it:
  * `revertLooksAlreadyApplied` in client-core carries that judgement.
  *
  * Row 5 is now inside that loop rather than a named residual: a provider that
@@ -371,7 +371,7 @@ app.get("/:changeId/revert", async (c) => {
  *
  * **The invariant that binds the whole table: no provider write without a
  * journal entry that survives it.** Which makes the journal's row count a
- * decision, not a formality — row 1b is that decision. Journalling and writing
+ * decision, not a formality; row 1b is that decision. Journalling and writing
  * are fenced on the same claim and succeed or fail together, so an attempt
  * whose planning outlived the lease stops rather than issuing a write nothing
  * would ever be able to reconcile. Of the fenced writes here, only
@@ -384,11 +384,11 @@ app.get("/:changeId/revert", async (c) => {
  * that was never issued. If somebody then returns the field to its old value by
  * hand, the next revert attempt reconciles and records it. The window is two
  * statements wide, it requires a hand-edit that exactly matches a pending
- * revert, and the audit entry says `reconciled` — "recorded an earlier
- * attempt's write" — rather than claiming this user made the change. Closing it
+ * revert, and the audit entry says `reconciled` ("recorded an earlier
+ * attempt's write") rather than claiming this user made the change. Closing it
  * needs a confirmation the provider cannot give us.
  *
- * Every row that reached the provider is audit-logged whatever happened next —
+ * Every row that reached the provider is audit-logged whatever happened next:
  * see {@link auditOutcome}, including why attribution is best-effort.
  *
  * The stored `resources` snapshot is deliberately left alone (unlike
@@ -439,7 +439,7 @@ app.post("/:changeId/revert", async (c) => {
   /**
    * Did an earlier attempt at *this* event get as far as issuing a provider
    * write? A recorded fact (`revert_write_attempted_at`), never inferred from
-   * the claim — see {@link markRevertWriteAttempted} for why that distinction
+   * the claim: see {@link markRevertWriteAttempted} for why that distinction
    * is load-bearing.
    */
   const earlierWriteAttempted = change.revertWriteAttemptedAt !== null;
@@ -469,7 +469,7 @@ app.post("/:changeId/revert", async (c) => {
    * cloud API and our Postgres, so between "the provider accepted the write"
    * and "the audit row committed" there is a gap nothing at this layer can
    * close: a process that dies inside it leaves a real mutation unattributed,
-   * and failing the response would not bring the attribution back — it would
+   * and failing the response would not bring the attribution back; it would
    * only change what the caller is told about a change that already happened.
    * Guaranteeing it needs a durable outbox (a row written in the same
    * transaction as the claim, drained by the poller), which is a platform-level
@@ -477,8 +477,8 @@ app.post("/:changeId/revert", async (c) => {
    *
    * What is done instead is to make the gap **loud and recoverable** rather
    * than silent: the failure is logged at error level with the actor, the event
-   * and the fields written — so the trail exists in the application log even
-   * when the audit table refused it — and reported to the caller as
+   * and the fields written (so the trail exists in the application log even
+   * when the audit table refused it) and reported to the caller as
    * `auditRecorded: false` rather than quietly dropped.
    */
   const auditOutcome = async (
@@ -495,7 +495,7 @@ app.post("/:changeId/revert", async (c) => {
         changeId: change.id,
         pluginId: change.pluginId,
         resourceTypeId: change.resourceTypeId,
-        // Keys only, like `resource.update` — a reverted value can be anything
+        // Keys only, like `resource.update`: a reverted value can be anything
         // the plugin declared, and the audit table is not the place for it.
         fieldKeys,
         changeRecordedAt: change.createdAt.toISOString(),
@@ -526,7 +526,7 @@ app.post("/:changeId/revert", async (c) => {
 
   const patch = buildRevertPatch(plan);
   if (Object.keys(patch).length === 0) {
-    // Row 4 of the lifecycle table. Nothing to write — but if an earlier
+    // Row 4 of the lifecycle table. Nothing to write, but if an earlier
     // attempt journalled a provider write for this event and every field is now
     // back at its old value, that attempt wrote and never got to say so.
     // Recording it here is what stops the feed disagreeing with the provider
@@ -538,7 +538,7 @@ app.post("/:changeId/revert", async (c) => {
       try {
         recorded = await completeRevert(organizationId, change.id, owner, reconciledAt);
       } catch (err) {
-        // Recording failed. The claim goes back like any other failed exit —
+        // Recording failed. The claim goes back like any other failed exit:
         // the journal, not the claim, is what brings the next attempt back down
         // this path, so there is nothing here that letting go destroys.
         console.error("[change-revert] Failed to record a reconciled revert:", err);
@@ -555,7 +555,7 @@ app.post("/:changeId/revert", async (c) => {
       }
       if (recorded) {
         // No provider call was made by this request, and the audit entry says
-        // so — `reconciled` is not folded into `recorded` precisely so nobody
+        // so: `reconciled` is not folded into `recorded` precisely so nobody
         // reads this as "this user resized the machine".
         const audited = await auditOutcome("reconciled", []);
         return c.json({
@@ -594,8 +594,8 @@ app.post("/:changeId/revert", async (c) => {
     return c.json({ error: "The account this change belongs to no longer exists" }, 404);
   }
 
-  // Journal the intent before the call, so that whatever happens next — a
-  // throw, a timeout, this process disappearing — the fact that a write was
+  // Journal the intent before the call, so that whatever happens next (a
+  // throw, a timeout, this process disappearing) the fact that a write was
   // *issued* for this event survives. This is the state that makes the claim a
   // pure lock and lets every failure path release it.
   //
@@ -605,7 +605,7 @@ app.post("/:changeId/revert", async (c) => {
   // precisely the unjournalled provider mutation this column exists to prevent,
   // *and* a second concurrent write while holding positive evidence the lock
   // was lost. The replacement holds the claim and will plan and write itself,
-  // so nothing is dropped by stopping here — only duplicated by not.
+  // so nothing is dropped by stopping here, only duplicated by not.
   const journalled = await markRevertWriteAttempted(organizationId, change.id, owner, new Date());
   if (!journalled) {
     // Nothing written, so nothing to audit and nothing to release (release is
@@ -636,7 +636,7 @@ app.post("/:changeId/revert", async (c) => {
 
   // The write landed. From here every exit audits, because the mutation is now
   // a fact about somebody's infrastructure regardless of what the database does
-  // next — losing a lease race, or losing the database, is not a reason for the
+  // next: losing a lease race, or losing the database, is not a reason for the
   // actor to vanish from the record.
   const revertedAt = new Date();
   let completed: boolean;
@@ -644,7 +644,7 @@ app.post("/:changeId/revert", async (c) => {
     completed = await completeRevert(organizationId, change.id, owner, revertedAt);
   } catch (err) {
     // Row 8. The provider moved and we cannot say so. The claim goes back like
-    // any other failure — what carries this forward is the journal written
+    // any other failure: what carries this forward is the journal written
     // before the call, which is still set, so the next attempt sees the fields
     // already back and reconciles (row 4). The event is retryable at once
     // rather than after the lease expires.
@@ -666,7 +666,7 @@ app.post("/:changeId/revert", async (c) => {
   // One entry per attempt that wrote, never two per attempt: `outcome` is what
   // keeps a superseded pair from reading as two independent reverts. A
   // `superseded` entry means "this actor's write reached the provider, but
-  // another attempt owns the event's recorded state" — and the attempt that
+  // another attempt owns the event's recorded state", and the attempt that
   // took over logs its own `recorded` entry only if it, too, wrote something
   // (if this write got there first, its re-read plans `already-reverted` for
   // every field, so it writes nothing and reconciles instead).
@@ -675,7 +675,7 @@ app.post("/:changeId/revert", async (c) => {
   if (!completed) {
     // This request outlived its lease and another attempt took the event over
     // while the provider call was in flight. The write landed, but the outcome
-    // belongs to whoever holds the claim now — saying "reverted" here would
+    // belongs to whoever holds the claim now: saying "reverted" here would
     // overwrite their claim, and saying nothing at all would be a lie about a
     // write that did happen. Report both halves and let the caller re-read.
     return c.json(

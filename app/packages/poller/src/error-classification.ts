@@ -14,7 +14,7 @@
  *
  * Always preferred over digging digits out of the message. A bare `/5\d\d/`
  * over the text matches any three digits that happen to sit in a project id,
- * resource name or timestamp — a GCP project called `acme-atom-503516-h4`
+ * resource name or timestamp: a GCP project called `acme-atom-503516-h4`
  * reads as a 503, so its permanent 403s classified as transient and pinned the
  * account at maximum backoff forever while resources kept syncing fine. The
  * word boundaries below stop that specific shape; a real status stops the

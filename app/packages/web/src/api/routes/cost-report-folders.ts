@@ -4,7 +4,7 @@
  *
  * A folder organizes the Reports list and nothing else, so it follows the
  * cost-report permissions exactly: reads are `costs:read`, writes are
- * `costs:write`. Filing a *report* into a folder is not here — that is the
+ * `costs:write`. Filing a *report* into a folder is not here: that is the
  * report's own PUT with a different `folderId`.
  *
  * The tree rules (nesting depth, no reparenting under a descendant) are
@@ -34,13 +34,13 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/org/:orgId/cost-report-folders — the org's folders, flat. */
+/** GET /api/org/:orgId/cost-report-folders: the org's folders, flat. */
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
   return c.json(await listCostReportFolders(c.get("organizationId")));
 });
 
-/** POST /api/org/:orgId/cost-report-folders — create a folder. */
+/** POST /api/org/:orgId/cost-report-folders: create a folder. */
 app.post("/", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -69,7 +69,7 @@ app.post("/", async (c) => {
 });
 
 /**
- * PUT /api/org/:orgId/cost-report-folders/:id — rename and/or reparent.
+ * PUT /api/org/:orgId/cost-report-folders/:id: rename and/or reparent.
  *
  * The 400s here are the tree rules: a parent past the depth limit, or a parent
  * inside the folder's own subtree (the cycle case).
@@ -103,7 +103,7 @@ app.put("/:id", async (c) => {
 });
 
 /**
- * DELETE /api/org/:orgId/cost-report-folders/:id — delete the folder.
+ * DELETE /api/org/:orgId/cost-report-folders/:id: delete the folder.
  *
  * Never blocked by contents and never destructive to them: the SET NULL
  * foreign keys drop the folder's reports and immediate subfolders to the top

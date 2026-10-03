@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 /**
- * Guards migration `0055_grandfather_workflow_permissions` — the one-time data
+ * Guards migration `0055_grandfather_workflow_permissions`: the one-time data
  * migration that writes the pre-split `dashboards:*` → `workflows:*`
  * implication into stored grants, replacing the runtime shim that used to guess
  * it from a timestamp.
@@ -12,7 +12,7 @@ import path from "node:path";
  * It cannot be executed here (these tests have no database), so what is checked
  * is the shape that makes it safe to run against production data: it only ever
  * appends, it only ever appends the three workflow permissions, and it never
- * touches a row that already matches the permission it would add — which is
+ * touches a row that already matches the permission it would add, which is
  * what keeps a `*` holder from being rewritten into an explicit list.
  */
 const MIGRATIONS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "migrations");
@@ -40,7 +40,7 @@ const statements = sql
 
 describe("0055 grandfather workflow permissions", () => {
   it("is registered in the drizzle journal", () => {
-    // An unregistered file is a file that never runs — and the runtime shim it
+    // An unregistered file is a file that never runs, and the runtime shim it
     // replaces is gone, so pre-split grants would simply lose workflow access.
     expect(journal.entries.some((e) => e.tag === TAG)).toBe(true);
   });
@@ -56,7 +56,7 @@ describe("0055 grandfather workflow permissions", () => {
 
   it("appends rather than replaces, and appends only workflow permissions", () => {
     for (const statement of statements) {
-      // `col = col || '[...]'` — an assignment that does not re-read the column
+      // `col = col || '[...]'`: an assignment that does not re-read the column
       // would discard whatever the org had granted.
       expect(statement).toMatch(
         /SET "(permissions|scopes)" = "\1" \|\| '\["workflows:(read|write|approve)"\]'::jsonb/,

@@ -1,12 +1,12 @@
 /**
  * ClickHouse aggregates feeding the commitment modules
- * (`../commitments/{coverage,utilization,planner}.ts` — all pure; every
+ * (`../commitments/{coverage,utilization,planner}.ts`: all pure; every
  * query here exists to hand them their inputs and nothing else).
  *
  * ─── Everything here is amortized, and that is not a preference ────────────
  *
  * Every money expression below is {@link amortizedAmountExpr}, never `amount`.
- * Cash is not merely a different view for these three readers — it is
+ * Cash is not merely a different view for these three readers: it is
  * structurally zero on exactly the rows they are about:
  *
  * - AWS prices RI-covered usage at an unblended rate of zero ("For Amazon EC2
@@ -17,7 +17,7 @@
  *
  * The money left the account when the commitment was *bought*, so on a cash
  * basis covered spend is nothing, everywhere, forever. A coverage ratio built
- * on it reads 0% no matter how much an org has committed — which is worse than
+ * on it reads 0% no matter how much an org has committed, which is worse than
  * the honest "unavailable" it replaced, because 0% looks like an answer.
  *
  * The consequence is a rule: **numerator and denominator must share this
@@ -27,33 +27,33 @@
  * `getCommitmentCoverageCells`, the delivered total behind utilization, and the
  * planner's uncovered series are all amortized too. For uncovered on-demand
  * usage the two bases agree anyway (nothing to spread), so this costs nothing
- * where it does not apply — it just removes the chance of them disagreeing.
+ * where it does not apply: it just removes the chance of them disagreeing.
  *
  * ─── What counts as covered ───────────────────────────────────────────────
  *
  * Two independent signals, because no provider supplies both universally:
  *
- * - `charge_type = 'commitment_covered_usage'` — "a commitment covered this
+ * - `charge_type = 'commitment_covered_usage'`: "a commitment covered this
  *   hour". AWS can say this (`RECORD_TYPE` of `DiscountedUsage` /
  *   `SavingsPlanCoveredUsage`) and cannot say which commitment: Cost Explorer's
  *   `SAVINGS_PLAN_ARN` and `RESERVATION_ID` are filter-only dimensions and
  *   cannot be grouped by.
- * - `commitment_id != ''` — "*this* commitment covered it". Azure can say this
+ * - `commitment_id != ''`: "*this* commitment covered it". Azure can say this
  *   (`BenefitId`) but only on EA/MCA agreements.
  *
  * Coverage counts a row carrying **either**, and a row carrying both exactly
- * once — see the `OR` in the numerator and its exact complement in the
+ * once: see the `OR` in the numerator and its exact complement in the
  * denominator. Per-commitment utilization, which cannot work from the charge
  * type alone, still requires the id.
  *
  * ─── Which rows are eligible at all ───────────────────────────────────────
  *
- * Coverage and utilization restrict to consumption —
+ * Coverage and utilization restrict to consumption:
  * `charge_type IN ('usage', 'commitment_covered_usage')`. A commitment fee in
  * a coverage denominator double-counts the purchase against the usage it
  * bought, and a negative discount line can push coverage past 100%. The caller
  * further restricts to accounts whose plugin declares `chargeTypes` (via the
- * `accountIds` parameters) — for everyone else `usage` is just the default
+ * `accountIds` parameters), for everyone else `usage` is just the default
  * stamp, not a claim.
  */
 import { and, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
@@ -71,7 +71,7 @@ const COVERED_CHARGE_TYPE = "commitment_covered_usage";
 
 /**
  * Consumption, at whatever rate it was billed. Both members, because covered
- * usage is still usage — dropping it here would shrink every denominator by
+ * usage is still usage: dropping it here would shrink every denominator by
  * exactly the spend a commitment touches.
  */
 export const CONSUMPTION_CHARGE_TYPES: readonly string[] = ["usage", COVERED_CHARGE_TYPE];
@@ -85,7 +85,7 @@ export function coveredCondition(): SQL {
   return sql`(${eq(costDaily.charge_type, COVERED_CHARGE_TYPE)} OR ${ne(costDaily.commitment_id, "")})`;
 }
 
-/** Carries neither — the exact complement of {@link coveredCondition}, so no row is counted twice. */
+/** Carries neither: the exact complement of {@link coveredCondition}, so no row is counted twice. */
 export function uncoveredCondition(): SQL {
   return sql`(${ne(costDaily.charge_type, COVERED_CHARGE_TYPE)} AND ${eq(costDaily.commitment_id, "")})`;
 }
@@ -95,9 +95,9 @@ export type CoverageRowClass = "covered" | "uncovered" | "not_consumption";
 
 /**
  * The specification the three SQL fragments above transliterate: every row
- * lands in **exactly one** class, so a row carrying both coverage signals — a
+ * lands in **exactly one** class, so a row carrying both coverage signals; a
  * `commitment_covered_usage` row that also names its commitment, which is what
- * a provider reporting both produces — is counted once, not twice.
+ * a provider reporting both produces; is counted once, not twice.
  *
  * Kept as real code rather than prose because the partition is the property
  * that makes the ratio a percentage: `coveredCondition` and `uncoveredCondition`
@@ -109,7 +109,7 @@ export function classifyCoverageRow(chargeType: string, commitmentId: string): C
   return chargeType === COVERED_CHARGE_TYPE || commitmentId !== "" ? "covered" : "uncovered";
 }
 
-/** One coverage aggregate — the pure module's `CoverageCell`, unmapped. */
+/** One coverage aggregate: the pure module's `CoverageCell`, unmapped. */
 export interface CoverageCellRow {
   account_id: string;
   plugin_id: string;
@@ -171,7 +171,7 @@ export async function getCommitmentCoverageCells(
 }
 
 /**
- * Which days each account has *any* cost rows for — the days-we-have-data
+ * Which days each account has *any* cost rows for: the days-we-have-data
  * set that keeps a collection gap from reading as an idle commitment. Any
  * charge type counts: a day with only a tax line is still a day the
  * collection ran.
@@ -220,8 +220,8 @@ export interface CommitmentDeliveredRow {
 
 /**
  * Amortized consumption attributable to each specific commitment. Unlike
- * coverage this *does* need `commitment_id` — "was this plan used" is a
- * per-holding question and the charge type alone cannot answer it — so
+ * coverage this *does* need `commitment_id` ("was this plan used" is a
+ * per-holding question and the charge type alone cannot answer it) so
  * providers that report covered usage without an id contribute nothing here
  * and their holdings report utilization as unmeasured rather than as 0%.
  */
@@ -268,7 +268,7 @@ export interface UncoveredDailyRow {
 
 /**
  * The planner's raw series: uncovered consumption per cell per day. Days a
- * cell spent nothing simply have no row — the pure planner treats absence
+ * cell spent nothing simply have no row: the pure planner treats absence
  * as zero.
  *
  * `uncoveredCondition` here is the same predicate coverage's denominator uses,

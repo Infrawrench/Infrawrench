@@ -2,7 +2,7 @@
  * Normalizing collection failures for storage.
  *
  * Cost collection runs unattended and backs off on failure, so the reason has
- * to survive as data on the account row — otherwise a misconfigured provider
+ * to survive as data on the account row, otherwise a misconfigured provider
  * shows up as a permanently empty graph and the explanation only exists in a
  * poller log line nobody reads.
  */
@@ -13,7 +13,7 @@ import { renderableHelpLink } from "../help-links";
  * What the host stores (and later renders) for a failed collection.
  *
  * This is the same object every client reads back off `GET /costs/status`, so
- * the shape is `CostPollError` in `@infrawrench/client-core` — aliased rather
+ * the shape is `CostPollError` in `@infrawrench/client-core`: aliased rather
  * than restated so a change to either end fails the other's build.
  */
 export type CostFailureDescription = CostPollError;
@@ -44,7 +44,7 @@ export function describeCostFailure(e: unknown): CostFailureDescription {
   ) {
     const { label, url } = link as { label?: unknown; url?: unknown };
     // Only ever hand the UI a link it can safely render as an anchor. The rule
-    // lives in `../help-links` so the quota path enforces the identical one —
+    // lives in `../help-links` so the quota path enforces the identical one:
     // a second copy is a second chance to get it wrong, and the wrong version
     // fails open.
     const helpLink = renderableHelpLink(label, url);

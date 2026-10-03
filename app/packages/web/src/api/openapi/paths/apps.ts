@@ -6,7 +6,7 @@ import type { BuildContext } from "../context";
  * Linux application host setup.
  *
  * The application *session* is a WebSocket and deliberately absent from this
- * document — it carries a binary frame protocol, not JSON. These two routes are
+ * document: it carries a binary frame protocol, not JSON. These two routes are
  * the part a client can usefully hold: what a host is missing, and installing
  * it.
  */

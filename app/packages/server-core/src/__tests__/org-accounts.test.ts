@@ -33,7 +33,7 @@ describe("getOrgAccountClient", () => {
     mockApplyRewriters.mockResolvedValue(undefined);
   });
 
-  // Keys in projection order — see helpers/fake-postgres.ts.
+  // Keys in projection order: see helpers/fake-postgres.ts.
   function selectAccount(rows: Array<Record<string, unknown>>) {
     pg.setRows(rows);
   }

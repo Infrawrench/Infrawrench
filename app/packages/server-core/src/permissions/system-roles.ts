@@ -41,7 +41,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "dashboards:write",
       // Workflows used to ride on `dashboards:*`, so members have always been
       // able to write, run, and approve them. All three land here to keep that
-      // exactly as it was — carving `workflows:approve` out of the default
+      // exactly as it was: carving `workflows:approve` out of the default
       // would silently 403 members who approve today. The split earns its keep
       // through custom roles: withholding `workflows:approve` from the authors
       // is now expressible, which is the whole point of an approval gate.
@@ -49,7 +49,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "workflows:write",
       "workflows:approve",
       // Three levels, because previewing and shipping are genuinely different
-      // risks. `read` is the history and the declared environments — inert.
+      // risks. `read` is the history and the declared environments: inert.
       // `plan` runs the repo's plan() against the org's host, so it IS code
       // execution, but it builds nothing and ships nothing; members get it so
       // they can see what a deploy would do. `write` actually builds and ships,
@@ -75,13 +75,13 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // Members read the IaC reconciliation for the same reason they read the
       // change timeline: "is this thing managed?" is a question you have to be
       // able to answer before you touch anything. Uploading a state document is
-      // withheld — that is the org declaring what its estate looks like.
+      // withheld: that is the org declaring what its estate looks like.
       "iac:read",
       "team:read",
       "audit:read",
       // Members are exactly who break-glass is for: ask for what you need,
       // when you need it, instead of being made an admin so you never have to
-      // ask. Reading the queue comes with it — an elevation regime nobody can
+      // ask. Reading the queue comes with it: an elevation regime nobody can
       // see is not a control. Deciding (`access:approve`) does not.
       "access:read",
       "access:request",
@@ -91,14 +91,14 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // Chat was never gated for session callers, so members have always had
       // it in practice; these were missing from this list rather than
       // deliberately withheld. Listing them keeps that behaviour now that
-      // `authenticateChat` actually enforces the permission — and makes the
+      // `authenticateChat` actually enforces the permission, and makes the
       // restriction expressible: a custom role that omits `chat:*` now blocks
       // chat instead of being silently ignored.
       "chat:read",
       "chat:write",
       // Read only, matching the other `:read`-for-members entries above and the
       // way `pages:write` is withheld. Members need this so a findings list can
-      // show them "already filed as OPS-412" — without it the marker would be
+      // show them "already filed as OPS-412": without it the marker would be
       // invisible to exactly the people most likely to file a duplicate. Filing
       // itself stays with admins/owners because it writes into a third-party
       // tracker under the org's single shared Atlassian credential and cannot be
@@ -109,10 +109,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // "already filed as ENG-123" or they are exactly the people who file the
       // duplicate, while filing itself writes into a third-party tracker under
       // the org's single shared Linear API key and cannot be undone from
-      // Infrawrench — an org that wants members filing grants `linear:write`
+      // Infrawrench; an org that wants members filing grants `linear:write`
       // through a custom role.
       "linear:read",
-      // `invoices:*` is deliberately absent — all three of them.
+      // `invoices:*` is deliberately absent: all three of them.
       //
       // Members get `costs:read` because the org's own spend is something the
       // people spending it should be able to see. A managed account is not
@@ -120,7 +120,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // was quoted, which is commercial information about a third party rather
       // than an internal figure. Same call as `session-recordings:read`.
       //
-      // `invoices:write` and `invoices:issue` follow for the obvious reason —
+      // `invoices:write` and `invoices:issue` follow for the obvious reason:
       // an invoice is a document sent to somebody outside the organisation.
       // Admins and owners get all three for free (their sets are
       // catalog-derived); an org whose billing clerk is a member grants

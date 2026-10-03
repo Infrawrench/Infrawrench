@@ -31,7 +31,7 @@ describe("audit action → permission mapping", () => {
 
   it("never claims to witness a read permission", () => {
     // Reads leave no audit row, so an absence of evidence about them proves
-    // nothing — and the report must never conclude one is unused.
+    // nothing, and the report must never conclude one is unused.
     const reads: readonly string[] = ALL_PERMISSIONS.filter((p) => p.endsWith(":read"));
     const witnessedReads = WITNESSED_PERMISSIONS.filter((p) => reads.includes(p));
     // `secrets:read` and `session-recordings:read` are the deliberate

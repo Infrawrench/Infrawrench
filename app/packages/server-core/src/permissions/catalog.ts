@@ -20,7 +20,7 @@ export const ALL_PERMISSIONS = [
   "storage:write",
   "dashboards:read",
   "dashboards:write",
-  // Workflows are sandboxed automations, not dashboard content — they get their
+  // Workflows are sandboxed automations, not dashboard content: they get their
   // own family. `approve` is separate from `write` on purpose: landing the
   // decision on someone else's `infra.waitForApproval(...)` is a different
   // trust level from editing the automation, and separating them is what makes
@@ -41,14 +41,14 @@ export const ALL_PERMISSIONS = [
   "freezes:read",
   "freezes:write",
   "freezes:override",
-  // Declared incidents (incident mode) — not provider status incidents, which
+  // Declared incidents (incident mode), not provider status incidents, which
   // ride `resources:read` with the rest of the correlation feeds.
   //
   // `incidents:write` sits with the *members* rather than the admins, which is
   // unusual for a write permission and deliberate: the people who notice an
   // outage at 03:14 are rarely admins, and a product where declaring needs an
   // admin is a product where nobody declares. What declaring can *do* keeps its
-  // own gates — opening a change freeze still needs `freezes:write`, and a
+  // own gates: opening a change freeze still needs `freezes:write`, and a
   // declaration by someone without it records the freeze as a failed artefact
   // naming the permission instead of quietly escalating.
   "incidents:read",
@@ -59,7 +59,7 @@ export const ALL_PERMISSIONS = [
   "tag-policy:override",
   // Org config as code: exporting and applying the one JSON document that
   // carries dashboards, workflows, budgets, custom graphs, alert rules and
-  // policies. Its own family because the *document* is the unit of trust —
+  // policies. Its own family because the *document* is the unit of trust:
   // `config:read` hands over every workflow's source in one call, and
   // `config:write` rewrites nine surfaces at once. Neither is a substitute for
   // the per-section permissions: apply requires both, so a role denied
@@ -69,7 +69,7 @@ export const ALL_PERMISSIONS = [
   // IaC reconciliation: uploading the Terraform state an org already has, and
   // reading the managed / drifted / unmanaged classification it produces. Its
   // own family rather than `resources:*` because the two verbs are different
-  // in kind — reading the classification is a reporting act over inventory
+  // in kind: reading the classification is a reporting act over inventory
   // somebody already has `resources:read` for, while uploading a state
   // document hands the org a picture of its whole Terraform estate and is not
   // a mutation of any cloud resource, so neither half fits `resources:write`.
@@ -101,7 +101,7 @@ export const ALL_PERMISSIONS = [
   // Recorded SSH sessions. Its own family rather than `ssh-keys:*` or
   // `audit:read`, because watching a colleague's terminal back is a distinct
   // and much sharper capability than either holding a key or reading the audit
-  // log — and the people who should hold it (compliance, security) are often
+  // log, and the people who should hold it (compliance, security) are often
   // not the people who administer keys. `write` covers the org's recording
   // policy and deleting tapes; both are the kind of thing an investigation
   // would want to know had happened, so both are audit-logged.
@@ -124,7 +124,7 @@ export const ALL_PERMISSIONS = [
   // and cannot be retracted from here.
   "jira:read",
   "jira:write",
-  // Linear issue tracking — the same split as Jira, for the same reasons:
+  // Linear issue tracking: the same split as Jira, for the same reasons:
   // `read` covers the integration's redacted config and the finding→issue
   // links a list view needs to render "already filed"; `write` covers
   // configuring the API key and filing. The "already filed" marker is useless
@@ -132,7 +132,7 @@ export const ALL_PERMISSIONS = [
   // under the org's shared credential and cannot be retracted from here.
   "linear:read",
   "linear:write",
-  // Managed accounts and their invoices — the managed-service-provider surface.
+  // Managed accounts and their invoices: the managed-service-provider surface.
   //
   // Its own family rather than more `costs:*` because the acts are of a
   // different kind. `costs:write` is "name a report, define a cost centre, save
@@ -145,7 +145,7 @@ export const ALL_PERMISSIONS = [
   // Three, not two, because generating and issuing are genuinely different
   // risks and the split is exactly what an org will want to express. `write`
   // prepares: create a customer, raise a draft, edit a period. `issue` is the
-  // irreversible half — approving freezes the numbers, sending states that the
+  // irreversible half: approving freezes the numbers, sending states that the
   // customer has them, and voiding withdraws a document already in their hands.
   // A billing clerk can hold `write` and prepare a month's invoices while only
   // the finance lead holds `issue`; collapsing them would make maker-checker
@@ -188,7 +188,7 @@ export function hasPermission(granted: readonly string[], required: string): boo
  * Expand a wildcard permission entry against the full catalog. `*` expands to
  * every permission; `team:*` expands to every permission starting with `team:`
  * (matching segment-by-segment). Non-wildcard entries pass through unchanged
- * (even if not in the catalog — unknown strings are simply themselves).
+ * (even if not in the catalog: unknown strings are simply themselves).
  *
  * Exported for {@link intersectPermissions}.
  */
@@ -220,7 +220,7 @@ export function expandPermission(entry: string): string[] {
  *
  * Used to confine an API key to its stored scopes: the key's holder can never
  * exceed the scopes it was minted with, nor the permissions of the role the
- * owning user currently has — whichever is narrower wins on each entry.
+ * owning user currently has, whichever is narrower wins on each entry.
  */
 export function intersectPermissions(base: readonly string[], limit: readonly string[]): string[] {
   const allowed = new Set(limit.flatMap((entry) => expandPermission(entry)));

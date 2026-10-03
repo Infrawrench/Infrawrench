@@ -28,14 +28,14 @@ import type { AuthSession } from "../auth-middleware";
 import { parseObjectBody } from "../object-body";
 
 /**
- * Ephemeral environments — capture a set of resources as a parameterised
+ * Ephemeral environments: capture a set of resources as a parameterised
  * template, stamp copies of it out with a mandatory TTL, and tear them down.
  *
  * Permissions follow the **leases stance**, deliberately, rather than adding a
  * new permission family: reads are `resources:read` (a template is a view over
  * the org's own resources), template edits are `resources:write`, and
  * teardown is `resources:delete`. Instantiation requires `resources:write`
- * **and** `resources:delete` — every instance carries an auto-delete lease,
+ * **and** `resources:delete`: every instance carries an auto-delete lease,
  * which is the same standing-deletion argument `POST /leases` makes for
  * `autoDelete: true`. The org's TTL ceiling is `org:settings:write`, because
  * it is a governance decision about spend rather than an edit to a resource.
@@ -111,7 +111,7 @@ app.put("/settings", async (c) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Preview a capture. Persists nothing — the draft is what the editor shows so
+ * Preview a capture. Persists nothing: the draft is what the editor shows so
  * the user can pick which fields to vary before anything is saved.
  */
 app.post("/capture", async (c) => {

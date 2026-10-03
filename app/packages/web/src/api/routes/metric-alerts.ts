@@ -25,14 +25,14 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/org/:orgId/metric-alerts — list rules with live firing status. */
+/** GET /api/org/:orgId/metric-alerts: list rules with live firing status. */
 app.get("/", async (c) => {
   requirePermission(c, "metric-alerts:read");
   const organizationId = c.get("organizationId");
   return c.json(await listRulesWithStatus(organizationId));
 });
 
-/** POST /api/org/:orgId/metric-alerts — create a rule. */
+/** POST /api/org/:orgId/metric-alerts: create a rule. */
 app.post("/", async (c) => {
   requirePermission(c, "metric-alerts:write");
   const organizationId = c.get("organizationId");
@@ -48,7 +48,7 @@ app.post("/", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/metric-alerts/metric-keys — the series labels that
+ * GET /api/org/:orgId/metric-alerts/metric-keys: the series labels that
  * actually exist for the org (optionally narrowed to plugin/type), so the
  * rule builder offers real metrics rather than asking for internal names.
  */
@@ -60,14 +60,14 @@ app.get("/metric-keys", async (c) => {
   return c.json(await listMetricSeriesKeys(organizationId, { pluginId, resourceTypeId }));
 });
 
-/** GET /api/org/:orgId/metric-alerts/selector-options — what there is to select on. */
+/** GET /api/org/:orgId/metric-alerts/selector-options: what there is to select on. */
 app.get("/selector-options", async (c) => {
   requirePermission(c, "metric-alerts:read");
   const organizationId = c.get("organizationId");
   return c.json(await listSelectorOptions(organizationId));
 });
 
-/** GET /api/org/:orgId/metric-alerts/selector-preview — what a selector matches now. */
+/** GET /api/org/:orgId/metric-alerts/selector-preview: what a selector matches now. */
 app.get("/selector-preview", async (c) => {
   requirePermission(c, "metric-alerts:read");
   const organizationId = c.get("organizationId");
@@ -83,7 +83,7 @@ app.get("/selector-preview", async (c) => {
   return c.json(await previewSelector(organizationId, parsed.data));
 });
 
-/** GET /api/org/:orgId/metric-alerts/events — recent firings, org-wide or per rule. */
+/** GET /api/org/:orgId/metric-alerts/events: recent firings, org-wide or per rule. */
 app.get("/events", async (c) => {
   requirePermission(c, "metric-alerts:read");
   const organizationId = c.get("organizationId");
@@ -116,7 +116,7 @@ app.put("/:id", async (c) => {
   return c.json(updated);
 });
 
-/** DELETE /api/org/:orgId/metric-alerts/:id — soft delete; history stays. */
+/** DELETE /api/org/:orgId/metric-alerts/:id: soft delete; history stays. */
 app.delete("/:id", async (c) => {
   requirePermission(c, "metric-alerts:write");
   const organizationId = c.get("organizationId");

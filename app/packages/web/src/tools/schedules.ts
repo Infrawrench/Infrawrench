@@ -1,5 +1,5 @@
 /**
- * Sleep/wake schedule tools — list the org's schedules (next transitions +
+ * Sleep/wake schedule tools: list the org's schedules (next transitions +
  * projected savings) and create new ones. Same permission split as the HTTP
  * routes: reads ride `resources:read`, creation is `resources:write` (a
  * schedule is a standing instruction to invoke the same lifecycle actions

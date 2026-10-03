@@ -4,7 +4,7 @@
  * Hand-rolled rather than pulling in Turndown, which is what Claude Code uses.
  * Turndown needs a DOM (it bundles a shim), and the whole of what we want from
  * it here is "throw away the chrome, keep the prose, keep the links and code
- * fences" — the output is never rendered, only read by a model, so fidelity
+ * fences": the output is never rendered, only read by a model, so fidelity
  * beyond that buys nothing. This keeps the server bundle's dependency surface
  * where it is; the same instinct as the CLI's hand-rolled ANSI output.
  *
@@ -102,7 +102,7 @@ export function extractTitle(html: string): string | null {
 /**
  * Resolve `href` against the page URL so the model gets links it can actually
  * pass back to the fetch tool. A relative link in the output would otherwise be
- * unusable — and worse, guessable-wrong.
+ * unusable, and worse, guessable-wrong.
  */
 function absolute(href: string, base: string): string | null {
   try {

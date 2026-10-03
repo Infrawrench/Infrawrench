@@ -20,7 +20,7 @@ export interface NetworkFlowSettings {
 /**
  * Defaults for an org that has never touched the switch.
  *
- * Off. See the table comment in `db/network-flow-schema.ts` — the query costs
+ * Off. See the table comment in `db/network-flow-schema.ts`: the query costs
  * the customer money, so consent is explicit and the absence of a row is a
  * "no", never an "unset, assume yes".
  */

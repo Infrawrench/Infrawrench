@@ -4,7 +4,7 @@
  * The 2026-07-28 MCP spec deprecates Dynamic Client Registration (RFC 7591) in
  * favour of Client ID Metadata Documents (CIMD), where the client's `client_id`
  * is an HTTPS URL the authorization server fetches metadata from. Both are
- * authorization-server mechanisms — for WorkOS AuthKit each is a Dashboard
+ * authorization-server mechanisms, for WorkOS AuthKit each is a Dashboard
  * toggle under Connect → Configuration, and clients discover them from the
  * AS metadata (`client_id_metadata_document_supported` / `registration_endpoint`)
  * that our `/.well-known/oauth-authorization-server` redirect points at.
@@ -14,7 +14,7 @@
  * finds neither mechanism advertised dies inside its own OAuth flow, far from
  * our logs. So whenever discovery metadata is served, we probe the upstream
  * AS document once (TTL-cached, fire-and-forget) and say out loud which
- * registration mechanisms it advertises — and warn when it advertises none.
+ * registration mechanisms it advertises, and warn when it advertises none.
  */
 
 const PROBE_TTL_MS = 5 * 60 * 1000;
@@ -84,7 +84,7 @@ export async function probeClientRegistrationSupport(authServer: string): Promis
     );
   } catch (e) {
     // Unreachable AS (offline dev, egress-restricted deploys): worth a line,
-    // not a warning — the operator may know exactly why.
+    // not a warning; the operator may know exactly why.
     console.log(
       `[mcp-auth] could not probe ${authServer}/.well-known/oauth-authorization-server for ` +
         `client-registration support: ${e instanceof Error ? e.message : String(e)}`,

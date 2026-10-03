@@ -5,7 +5,7 @@
  * One rule for both surfaces, because a source is one idea: the caller's stable
  * name for the system doing the pushing. It ends up in a cost account id, a
  * reserved tag value, a filter pill, a paging cooldown key, and the "from" line
- * of a notification — so it is a slug (`checkout-api`), not a sentence.
+ * of a notification, so it is a slug (`checkout-api`), not a sentence.
  */
 
 const SOURCE_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;

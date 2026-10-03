@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * survive it. Without the filter they keep appearing on the Quotas page, keep
  * being counted by the weekly digest's `quotasAtRisk` line, and keep paging
  * somebody under the `quotaAlerts` trigger about a limit nobody can act on any
- * more — indefinitely, because the collection pass stops running for a deleted
+ * more: indefinitely, because the collection pass stops running for a deleted
  * account and so nothing ever supersedes the last reading.
  *
  * The test is behavioural rather than an assertion about SQL text: the drizzle
@@ -69,7 +69,7 @@ function matches(pred: unknown, row: Record<string, unknown>): boolean {
   }
 }
 
-/** One stored quota reading per account — both accounts have one. */
+/** One stored quota reading per account: both accounts have one. */
 function quotaRow(accountId: string) {
   return {
     accountId,
@@ -197,7 +197,7 @@ describe("getQuotaFeed — plugin-supplied link safety", () => {
   });
 
   // An unsafe stored value must not silently promote the manifest fallback
-  // either — but a safe fallback beside a poisoned row is still the right link.
+  // either, but a safe fallback beside a poisoned row is still the right link.
   it("falls through to a safe manifest URL when the stored one is rejected", async () => {
     storedDocsUrl = "javascript:alert(1)";
     increaseUrl = "https://console.aws.amazon.com/servicequotas/home";

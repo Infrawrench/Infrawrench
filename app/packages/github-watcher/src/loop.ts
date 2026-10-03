@@ -91,7 +91,7 @@ export class GithubWatcher extends TickLoop {
    * what it hands back.
    */
   private async deploymentPass(): Promise<void> {
-    // Claiming *consumes* the push — the claim advances `last_sha` as it hands
+    // Claiming *consumes* the push: the claim advances `last_sha` as it hands
     // the trigger over. With no runner wired that commit would be recorded as
     // deployed and never deployed, so don't claim at all until there is one.
     const runner = runDeployment;
@@ -115,7 +115,7 @@ export class GithubWatcher extends TickLoop {
         env: t.env,
         answers: t.answers,
         interactive: false,
-        // Recorded as `trigger`, not `web` — the audit trail has to say a
+        // Recorded as `trigger`, not `web`: the audit trail has to say a
         // push fired this, and the paid-plan refusal has to name the feature
         // that was refused rather than a screen nobody was on.
         origin: "trigger",
@@ -149,7 +149,7 @@ export class GithubWatcher extends TickLoop {
         .returning({ id: workflows.id });
       if (claimed.length === 0) return; // another instance claimed this transition
 
-      // Don't run on the very first observation (i.e. on connect) — only on
+      // Don't run on the very first observation (i.e. on connect), only on
       // subsequent commits.
       if (observed == null) return;
 

@@ -7,7 +7,7 @@
  * `dnsServiceHosts` on their resource types, the shared pure half lives in
  * `@infrawrench/client-core` (`computeDnsInventory`), and this module only
  * maps Postgres rows onto its input. No plugin clients, no credentials, no
- * provider API calls — and no DNS resolution.
+ * provider API calls, and no DNS resolution.
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { computeDnsInventory, type DnsInventoryResponse } from "@infrawrench/client-core";
@@ -24,7 +24,7 @@ export interface ListDnsOptions {
  * Every declared zone and record on the org's stored resources, with each
  * record target classified against the rest of the workspace. Soft-deleted
  * accounts and resources are excluded, so a zone can never outlive the account
- * it belongs to — and, load-bearing here, a deleted bucket stops claiming the
+ * it belongs to, and, load-bearing here, a deleted bucket stops claiming the
  * hostname that points at it, which is exactly how a record becomes dangling.
  */
 export async function listDns(

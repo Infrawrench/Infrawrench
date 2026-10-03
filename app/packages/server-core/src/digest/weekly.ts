@@ -1,5 +1,5 @@
 /**
- * Weekly digest — data gathering, scheduling, and delivery. The composition
+ * Weekly digest: data gathering, scheduling, and delivery. The composition
  * itself is pure and lives in `./compose.ts`; this module is everything that
  * touches the database, ClickHouse, and the Slack/Teams/email transports.
  *
@@ -10,13 +10,13 @@
  * (`DIGESTS_PER_TICK`) and each batch runs concurrently. See that constant for
  * why an unbounded pass is a problem and why deferring is free.
  *
- * Restart- and replica-safety come from conditional UPDATEs — one per claimed
+ * Restart- and replica-safety come from conditional UPDATEs: one per claimed
  * org, so bounding the batch does not weaken them:
  *
  *   * `claimDueDigestOrgs` moves `last_sent_week_start` forward and returns
  *     only the rows it actually changed, so of any number of concurrent
  *     pollers exactly one instance sends a given org's digest for a given week.
- *     The column only ever moves forward — it is never rolled back — which is
+ *     The column only ever moves forward (it is never rolled back) which is
  *     what keeps that invariant true even across timezone changes.
  *   * `claimRetryDigestOrgs` does the same trick on `next_attempt_at` for the
  *     bounded retries after a *total* delivery failure. Nulling the gate in
@@ -129,7 +129,7 @@ function dayRange(from: string, to: string): { fromDate: Date; toDatePlusOne: Da
  *
  * The window's dates are the org's *local* calendar week; the stores they are
  * matched against bucket by UTC day. That approximation is deliberate and
- * unchanged from when UTC was the only option — provider billing exports are
+ * unchanged from when UTC was the only option: provider billing exports are
  * themselves dated to a day, not an instant, so there is no finer truth to
  * align to. It shifts at most a few hours of spend between two adjacent weeks
  * for a far-from-UTC org, and both weeks are reported.
@@ -153,7 +153,7 @@ export async function buildWeeklyDigest(
       filters: [],
     }),
     // The digest is the org's own weekly report, so it follows the org's own
-    // display-currency setting — there is no per-request opt-in to consult.
+    // display-currency setting: there is no per-request opt-in to consult.
     // Unset (every org that has not configured one) still emits the one line
     // per currency it always did.
     getOrgCurrencySettings(organizationId).catch(() => ({
@@ -234,7 +234,7 @@ export async function buildWeeklyDigest(
         ),
       ),
     // Deadlines currently inside the org's expiry lead time. A point-in-time
-    // headcount, not a weekly delta — "what needs attention now" is the useful
+    // headcount, not a weekly delta: "what needs attention now" is the useful
     // digest line for deadlines. Defensive: a broken feed must cost the digest
     // one line, not the whole send.
     listExpiring(organizationId)
@@ -244,7 +244,7 @@ export async function buildWeeklyDigest(
         return 0;
       }),
     // Current critical/high posture findings. Like the expiry line, a
-    // point-in-time headcount — and defensive: a broken feed must cost the
+    // point-in-time headcount, and defensive: a broken feed must cost the
     // digest one line, not the whole send.
     listPosture(organizationId)
       .then((feed) => ({ critical: feed.counts.critical, high: feed.counts.high }))
@@ -262,7 +262,7 @@ export async function buildWeeklyDigest(
         console.error(`[quotas] digest feed for org ${organizationId} failed:`, err);
         return 0;
       }),
-    // Open access-review findings on the customer's cloud principals — a
+    // Open access-review findings on the customer's cloud principals: a
     // separate line from Posture because it is a separate question ("who can
     // get in?" rather than "what is exposed?"). Same point-in-time headcount
     // and the same defensive catch.
@@ -325,14 +325,14 @@ const MAX_CHANGES_PER_COST_MOVER = 200;
 /**
  * The single change that moved the run rate most last week.
  *
- * Measured, not estimated — this is the provider's own daily cost either side
+ * Measured, not estimated: this is the provider's own daily cost either side
  * of the edit, so it is a different (and stronger) claim than the projection
  * line above. Wrapped whole: like the projection, it must never be the reason
  * a digest fails to send.
  *
  * Only `measured` impacts with better than `none` confidence are eligible. A
  * week in which nothing could be measured yields null and the line is dropped,
- * rather than reporting "no cost-moving changes" — which would assert we had
+ * rather than reporting "no cost-moving changes", which would assert we had
  * looked and found nothing, when in fact we could not look.
  */
 async function buildCostMover(
@@ -400,7 +400,7 @@ async function buildCostMover(
 /**
  * The run-rate the week's churn leaves behind, from the plugins'
  * `estimateCost`. Runs *after* the counts above rather than alongside them
- * because it is the one part of the digest that talks to provider APIs — it
+ * because it is the one part of the digest that talks to provider APIs: it
  * is bounded (see `MAX_RESOURCES_PER_PROJECTION`), and it must never be the
  * reason a digest fails to send, so the whole thing is wrapped.
  *
@@ -477,7 +477,7 @@ export interface DigestDeliveryResult {
  * the `weeklyDigest` trigger, and to every address on the org's digest email
  * list. Never throws (all three transports already swallow and log).
  *
- * `origin` labels the send — scheduled vs. a "Send now" — in the per-message
+ * `origin` labels the send: scheduled vs. a "Send now": in the per-message
  * trace key, so Mailgun's logs distinguish the week's automatic mail from a
  * manual one. It is a breadcrumb only: Mailgun has no idempotency keys, and
  * nothing here relies on the provider collapsing duplicates. What actually
@@ -506,7 +506,7 @@ export async function deliverWeeklyDigest(
 
   // Built even when mail is unconfigured, on purpose: `sendEmails` is what logs
   // the "you have recipients but no mail provider" line, and short-circuiting
-  // here would make that case silent — the exact failure mode this feature is
+  // here would make that case silent; the exact failure mode this feature is
   // meant not to have.
   const text = recipients.length > 0 ? formatDigestEmailText(digest, narrative, url) : "";
   const html = recipients.length > 0 ? formatDigestEmailHtml(digest, narrative, url) : "";
@@ -521,8 +521,8 @@ export async function deliverWeeklyDigest(
   // `bypassQuietHours`: the digest already goes out at an hour the org chose
   // in `org_digest_settings`, so letting a routing rule hold it until a
   // *different* hour the org chose is two schedules arguing. Email is not a
-  // routable destination — the recipient list is an org-level address book
-  // that reaches people without an Infrawrench login — so it stays beside the
+  // routable destination (the recipient list is an org-level address book
+  // that reaches people without an Infrawrench login) so it stays beside the
   // routed transports rather than inside them.
   const [routed, email] = await Promise.all([
     routeAlert(
@@ -576,7 +576,7 @@ export function scheduleFromRow(row: {
 
 /**
  * Classify a delivery. The distinction that matters is *total* failure (worth
- * retrying — nothing landed anywhere) versus *partial* (Slack took it, Teams
+ * retrying; nothing landed anywhere) versus *partial* (Slack took it, Teams
  * 500'd), which must never be retried: re-sending would post the digest into
  * Slack a second time. Email's idempotency keys make its half safe either way,
  * but Slack and Teams have no such guard, so partial is terminal.
@@ -648,7 +648,7 @@ const DUE_COLUMNS = {
  * comparison. It is computed here instead: the due check maps a row to the week
  * it owes right now (or nothing), and the UPDATE is issued per claimed org with
  * that org's own `weekStart`. Each UPDATE is still a single conditional
- * statement, so the exactly-once guarantee is unchanged — only the batching is.
+ * statement, so the exactly-once guarantee is unchanged, only the batching is.
  *
  * At most `limit` orgs are claimed; the rest ride the next tick (see
  * {@link DIGESTS_PER_TICK}). Deferring cannot starve an org: a claim moves
@@ -676,7 +676,7 @@ export async function claimDueDigestOrgs(
     // Cheap pre-filter so a settled org costs a comparison, not a write.
     if (row.lastSentWeekStart !== null && row.lastSentWeekStart >= window.weekStart) continue;
     // Over budget for this tick. Keep counting so the log can say how far
-    // behind the send is, but claim nothing more — an unclaimed org is
+    // behind the send is, but claim nothing more: an unclaimed org is
     // untouched state, which is exactly what makes deferring safe.
     if (claimed.length >= limit) {
       deferred += 1;
@@ -718,7 +718,7 @@ export async function claimDueDigestOrgs(
 /**
  * Atomically claim up to `limit` orgs whose last attempt failed outright and
  * whose backoff has elapsed. Nulling `next_attempt_at` inside the same UPDATE
- * is what makes this a claim rather than a query — two replicas arriving at
+ * is what makes this a claim rather than a query: two replicas arriving at
  * once cannot both take the row, so a retry is one send attempt, not two.
  *
  * Only rows whose `lastStatus` is `failed` are eligible, so a partial delivery
@@ -729,7 +729,7 @@ export async function claimDueDigestOrgs(
  * matches. The reason is the bound: a claimed retry *must* be attempted (its
  * gate is gone and its attempt is spent), so the batch has to be limited at
  * claim time and not afterwards. Splitting it per row leaves the claim itself
- * untouched — the WHERE still requires the gate to be set and in the past, so
+ * untouched: the WHERE still requires the gate to be set and in the past, so
  * whichever replica's UPDATE lands first is the only one that gets the row.
  *
  * Ordering by the gate means the longest-waiting retry goes first, so a backlog
@@ -781,7 +781,7 @@ export async function claimRetryDigestOrgs(
   return claimed;
 }
 
-/** Record what an attempt did. Never throws — bookkeeping must not mask the send. */
+/** Record what an attempt did. Never throws: bookkeeping must not mask the send. */
 async function recordAttempt(
   organizationId: string,
   now: Date,
@@ -797,7 +797,7 @@ async function recordAttempt(
         lastAttemptAt: now,
         // `lastSentAt` means "a digest actually reached someone", so it moves
         // for a full or partial success and stays put on a failure. Claiming
-        // no longer touches it — the old behaviour reported a send that had
+        // no longer touches it: the old behaviour reported a send that had
         // not happened yet.
         ...(outcome.status === "succeeded" || outcome.status === "partial"
           ? { lastSentAt: now }
@@ -966,7 +966,7 @@ export interface DigestSettingsPatch {
 /**
  * Update the digest settings. Enabling marks the current window as already
  * sent so the first scheduled digest goes out at the next send time rather than
- * the moment the toggle flips — the settings UI offers "Send now" for immediate
+ * the moment the toggle flips: the settings UI offers "Send now" for immediate
  * feedback instead.
  *
  * A schedule change also clears any parked failure state: the org has changed
@@ -1034,7 +1034,7 @@ export async function updateOrgDigestSettings(
         // every save would mean that toggling the narrative at 06:00 on send
         // day silently swallowed that day's digest. Re-enabling after a gap
         // also skips the stale backlog week; GREATEST keeps the column
-        // monotonic, which is what the exactly-once claim depends on — a
+        // monotonic, which is what the exactly-once claim depends on: a
         // timezone move can shift the local week start by a day and must never
         // walk it backwards.
         ...(patch.enabled === true
@@ -1063,7 +1063,7 @@ export async function setOrgDigestEnabled(
 /**
  * Compose last week's digest and send it immediately, ignoring the schedule
  * and the enabled flag. Backs the settings UI's "Send now" button, so unlike
- * the scheduler this throws when nothing could be delivered — the user needs
+ * the scheduler this throws when nothing could be delivered: the user needs
  * to see why.
  *
  * A successful manual send also clears any parked failure state: it is the

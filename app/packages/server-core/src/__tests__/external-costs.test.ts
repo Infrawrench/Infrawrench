@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * important invariant is the reserved `infrawrench:source` tag: it is what
  * keeps a pushed batch's ReplacingMergeTree key disjoint from provider-collected
  * rows, so attributing spend to a real account can never overwrite the poller's
- * data — and what keeps two sources from overwriting each other.
+ * data, and what keeps two sources from overwriting each other.
  */
 
 import { fakePostgres } from "./helpers/fake-postgres";
@@ -75,7 +75,7 @@ describe("writeExternalCostRows", () => {
     knownAccounts([{ id: "acc1" }]);
     await write([{ ...ROW, accountId: "acc1" }]);
     expect(inserted()[0]).toMatchObject({ account_id: "acc1", plugin_id: "external" });
-    // Still tagged — this is what keeps the key disjoint from AWS's own rows.
+    // Still tagged: this is what keeps the key disjoint from AWS's own rows.
     expect(inserted()[0]?.["tags"]).toMatchObject({ "infrawrench:source": "snowflake-invoices" });
   });
 

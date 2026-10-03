@@ -3,8 +3,8 @@
  * (`POST /api/org/{orgId}/costs/rows`).
  *
  * Same escape hatch as `infra.costs.write`, for spend that is easier to report
- * from where it is already known — a nightly job that already parses the
- * Snowflake invoice, a chargeback service, a colo bill — than to fetch from a
+ * from where it is already known (a nightly job that already parses the
+ * Snowflake invoice, a chargeback service, a colo bill) than to fetch from a
  * workflow. Rows land in the same `cost_daily` table the provider collectors
  * write to, so they appear in cost graphs, dimension filters, and budgets with
  * no special-casing downstream.
@@ -12,7 +12,7 @@
  * Rows are grouped under a caller-chosen `source` name rather than a workflow
  * id: it becomes the reserved tag value, the synthetic account id when a row
  * names no real account, and the label the account picker shows. Re-pushing the
- * same source over the same days replaces its own rows and nothing else — see
+ * same source over the same days replaces its own rows and nothing else: see
  * `cost/cost-ingest.ts` for why that holds.
  */
 import { isValidSourceName, SOURCE_NAME_HELP } from "../source-name";

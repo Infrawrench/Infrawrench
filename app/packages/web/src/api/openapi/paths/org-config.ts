@@ -11,7 +11,7 @@ import {
 
 /**
  * Org config as code. The schemas here mirror
- * `web/src/services/org-config/schema.ts` — that file is what actually
+ * `web/src/services/org-config/schema.ts`: that file is what actually
  * validates a request; this one publishes the same shape so generated SDKs can
  * build a document without reverse-engineering it.
  */

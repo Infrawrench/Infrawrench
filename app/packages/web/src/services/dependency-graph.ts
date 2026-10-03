@@ -4,8 +4,8 @@
  * This lives in a service rather than in its route because two endpoints need
  * the same topology: `GET /dependency-graph` renders it, and `GET
  * /blast-radius` walks it inbound to answer "what breaks if I delete this?".
- * A second walker over a second assembly would be two answers to one question
- * — the impact report has to see exactly the edges the graph draws, or a
+ * A second walker over a second assembly would be two answers to one question:
+ * the impact report has to see exactly the edges the graph draws, or a
  * dependant shown on the Dependencies tab could be missing from the warning on
  * the delete dialog.
  */
@@ -47,7 +47,7 @@ function selectResources() {
 /**
  * How many tokens a focused query is willing to push into the candidate SQL.
  * Each costs one regex match over the org's resource JSON per column, and
- * `focusPrefilterTokens` returns them longest-first — the long ones identify
+ * `focusPrefilterTokens` returns them longest-first: the long ones identify
  * something, a three-letter name matches half the org.
  */
 const MAX_FOCUS_TOKENS = 8;
@@ -58,12 +58,12 @@ const MAX_FOCUS_TOKENS = 8;
  * a flattened list, and by `:` when they are an unquoted number.
  *
  * This is one predicate covering all three, where `LIKE` needed several and had
- * no way to express the optional space — plugins join lists with `", "`, so the
+ * no way to express the optional space: plugins join lists with `", "`, so the
  * `%,token%` pattern this replaces matched only ever the *first* element and
  * quietly dropped every dependent that listed the focus later in a list.
  *
- * It only narrows the candidate rows — `inferDependencyEdges` still does the
- * exact matching — so an over-broad match costs time, never correctness.
+ * It only narrows the candidate rows (`inferDependencyEdges` still does the
+ * exact matching) so an over-broad match costs time, never correctness.
  */
 function jsonValuePattern(token: string): string {
   const escaped = token.replace(/[\\^$.|?*+()[\]{}]/g, (ch) => `\\${ch}`);
@@ -75,16 +75,16 @@ function jsonValuePattern(token: string): string {
  *
  * Edges come from two places:
  *
- *  - **Output references** — the `associations` topology rows plus the
+ *  - **Output references**: the `associations` topology rows plus the
  *    `secret_field_states` output-ref rows (both are written when a reference
  *    is created; the shared model dedupes the overlap by consumer field).
- *  - **Synced cloud data** — `inferDependencyEdges` reads the wiring back out
+ *  - **Synced cloud data**: `inferDependencyEdges` reads the wiring back out
  *    of what the poller already stored: `parent_resource_id`, and field values
  *    that exactly match another resource's identity (external id, name,
  *    endpoint, IP…). This is what makes the graph non-empty for an org that
  *    has never hand-wired a reference, which is most of them.
  *
- * Nodes are the org resources that participate in at least one edge — the
+ * Nodes are the org resources that participate in at least one edge: the
  * graph is about wiring, not inventory.
  *
  * `focusId` narrows the answer to one resource's direct neighbourhood: only
@@ -92,7 +92,7 @@ function jsonValuePattern(token: string): string {
  * The Dependencies tab on the resource-detail page asks for exactly that and
  * discards everything else, so without the filter the busiest page in the app
  * would pull the org's entire topology on every mount. Pass `null` for the
- * whole org — which is what a transitive walk needs, since a one-hop
+ * whole org, which is what a transitive walk needs, since a one-hop
  * neighbourhood cannot produce a blast radius.
  *
  * Fully generic over the data: no plugin ever contributes edges directly, so
@@ -108,7 +108,7 @@ export async function loadDependencyGraph(
   const touchesFocus = (consumer: AnyPgColumn, provider: AnyPgColumn) =>
     focusId ? or(eq(consumer, focusId), eq(provider, focusId)) : undefined;
 
-  // Independent reads — none feeds another's query, so they go to the pool
+  // Independent reads: none feeds another's query, so they go to the pool
   // together instead of waterfalling. The consumer join scopes both edge
   // sources to the org; provider ids are then validated against the resource
   // set below (buildDependencyGraph does it again client-side, but there's no
@@ -262,14 +262,14 @@ function toInferenceResource(row: ResourceRow): InferenceResource {
  * output-reference rows named, and the candidates inference could pair it with.
  *
  * Inference matches exact values, so a candidate must contain one of the focus'
- * tokens *somewhere* in its JSON — which `ILIKE` can answer without loading the
+ * tokens *somewhere* in its JSON, which `ILIKE` can answer without loading the
  * org. Both directions are covered by one predicate list: the focus' identity
  * tokens find resources pointing *at* it, its field values find the resources
  * it points at. The rows come back with everything that merely mentions a
  * token; `inferDependencyEdges` is what decides which mentions are edges.
  *
  * The one thing this loses versus the org-wide path is ambiguity detection over
- * resources that share a token with each other but not with the focus — they
+ * resources that share a token with each other but not with the focus: they
  * never make it into the candidate set, so a token that is ambiguous org-wide
  * can look unique here. Candidates claiming the same token as the focus *are*
  * fetched, which is the collision that would actually mis-draw this graph.
@@ -279,9 +279,9 @@ function toInferenceResource(row: ResourceRow): InferenceResource {
  * indexed the same way: a leading-wildcard regex over a jsonb cast forces a
  * sequential scan of the org's resources, once per mount of the resource-detail
  * page. The token budget bounds the predicate count, not the row count. The fix
- * if this ever bites is an indexable exact-match structure — a maintained
+ * if this ever bites is an indexable exact-match structure: a maintained
  * column holding each resource's field/output values as a jsonb array, GIN
- * indexed and queried with `@>` — which matches these semantics exactly, since
+ * indexed and queried with `@>`, which matches these semantics exactly, since
  * inference only ever wants exact values. That's a schema change and wants a
  * measurement first, so it is deliberately not done here.
  */

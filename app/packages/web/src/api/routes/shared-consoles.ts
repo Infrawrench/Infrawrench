@@ -3,13 +3,13 @@
  *
  * ## The trust model, in one place
  *
- * Sharing a console does not create a capability. Everyone on one — the person
- * who opened it and everyone they invite — must independently hold
+ * Sharing a console does not create a capability. Everyone on one (the person
+ * who opened it and everyone they invite) must independently hold
  * `resources:execute` in this organization, which is the same permission the
  * WebSocket gateway requires to open a terminal at all. The invite link says
  * *which* session; it never says *whether*. That is why there is no
  * `shared-consoles:*` permission family: a new family would imply a share is a
- * lesser thing than a shell, and it is not — a guest can be handed the
+ * lesser thing than a shell, and it is not; a guest can be handed the
  * keyboard, and is watching every byte regardless.
  *
  * Three consequences worth stating out loud, because they are the questions a
@@ -148,7 +148,7 @@ function shareAuditMetadata(share: SharedConsoleRow, extra: Record<string, unkno
 
 // ------------------------------------------------------------------ listing
 
-/** GET / — shares currently live in this org. */
+/** GET /: shares currently live in this org. */
 app.get("/", async (c) => {
   requirePermission(c, "resources:execute");
   const shares = await listActiveSharedConsoles(orgId(c));
@@ -169,8 +169,8 @@ const createSchema = z
   .object({
     /**
      * The pty to share, as the WebSocket reported it in `ssh:connected`.
-     * Everything else about the session — which host, which account, which
-     * recording — is read from the proxy's own registration rather than from
+     * Everything else about the session (which host, which account, which
+     * recording) is read from the proxy's own registration rather than from
      * this body.
      */
     liveConsoleId: z.string().uuid(),
@@ -186,7 +186,7 @@ const createSchema = z
   .strict();
 
 /**
- * POST / — share a live session, and mint the first invite.
+ * POST /: share a live session, and mint the first invite.
  *
  * Refuses when the pty is not registered on *this* replica, which is the
  * cross-replica caveat the hub's module comment describes. That refusal is the
@@ -270,7 +270,7 @@ app.post("/", async (c) => {
 // ------------------------------------------------------------------ reading
 
 /**
- * GET /:id — the share and its people.
+ * GET /:id: the share and its people.
  *
  * Visible to participants and to anyone who could revoke it. Deliberately not
  * to every member with `resources:execute`: knowing that a named colleague has
@@ -293,11 +293,11 @@ app.get("/:id", async (c) => {
 });
 
 /**
- * GET /invites/:token — what a join link points at, before joining.
+ * GET /invites/:token: what a join link points at, before joining.
  *
  * The join screen has to say "you are about to watch root@db-prod-1, shared by
  * Priya" before anyone commits, and it has to say it to somebody who is not
- * yet a participant. So this route is reachable with a valid token — but only
+ * yet a participant. So this route is reachable with a valid token, but only
  * by a signed-in member who already holds `resources:execute`, and it returns
  * the host, the sharer and the session's shape, never anything from the
  * session itself.
@@ -332,7 +332,7 @@ app.get("/invites/:token", async (c) => {
 const joinSchema = z.object({ token: z.string().min(1).max(200) }).strict();
 
 /**
- * POST /:id/join — redeem an invite and become a participant.
+ * POST /:id/join: redeem an invite and become a participant.
  *
  * The invite is consumed by the first person it admits and by nobody
  * afterwards; somebody already on the share resumes their own row without a
@@ -402,7 +402,7 @@ app.post("/:id/join", async (c) => {
   });
 });
 
-/** POST /:id/leave — step off the console without ending it. */
+/** POST /:id/leave: step off the console without ending it. */
 app.post("/:id/leave", async (c) => {
   const share = await getSharedConsole(c.req.param("id"));
   if (!share || share.organizationId !== orgId(c)) return c.json({ error: "Not found" }, 404);
@@ -429,7 +429,7 @@ app.post("/:id/leave", async (c) => {
 const handoverSchema = z.object({ participantId: z.string().uuid() }).strict();
 
 /**
- * POST /:id/handover — move the keyboard.
+ * POST /:id/handover: move the keyboard.
  *
  * Authorised by the current driver (it is theirs to give) or by the owner (it
  * is their box). Two simultaneous grants cannot both win: the partial unique
@@ -494,7 +494,7 @@ app.post("/:id/handover", async (c) => {
 });
 
 /**
- * POST /:id/request-driver — ask for the keyboard.
+ * POST /:id/request-driver: ask for the keyboard.
  *
  * Grants nothing. It sets a flag the driver and the owner can see, which is
  * the whole mechanism: an observer cannot promote themselves, and a request
@@ -541,7 +541,7 @@ const inviteSchema = z
   })
   .strict();
 
-/** POST /:id/invites — mint a replacement invite (the last one is dead). */
+/** POST /:id/invites: mint a replacement invite (the last one is dead). */
 app.post("/:id/invites", async (c) => {
   const parsed = inviteSchema.safeParse((await c.req.json().catch(() => ({}))) ?? {});
   if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
@@ -573,7 +573,7 @@ app.post("/:id/invites", async (c) => {
   return c.json({ ...(await stateResponse(refreshed)), inviteToken: invite.token });
 });
 
-/** DELETE /:id/invites — withdraw the outstanding link without ending the share. */
+/** DELETE /:id/invites: withdraw the outstanding link without ending the share. */
 app.delete("/:id/invites", async (c) => {
   const share = await getSharedConsole(c.req.param("id"));
   if (!share || share.organizationId !== orgId(c)) return c.json({ error: "Not found" }, 404);
@@ -598,7 +598,7 @@ app.delete("/:id/invites", async (c) => {
 });
 
 /**
- * DELETE /:id/participants/:participantId — eject somebody.
+ * DELETE /:id/participants/:participantId: eject somebody.
  *
  * `removed`, not `left`: an ejected guest cannot resume on their own row and
  * needs a fresh invite. Their socket goes immediately on the replica holding
@@ -645,7 +645,7 @@ app.delete("/:id/participants/:participantId", async (c) => {
 });
 
 /**
- * DELETE /:id — revoke the share. The SSH session itself carries on.
+ * DELETE /:id: revoke the share. The SSH session itself carries on.
  *
  * Note what this route does *not* require: `resources:execute`. Ending access
  * must never be gated on still holding the access, or an owner whose role was

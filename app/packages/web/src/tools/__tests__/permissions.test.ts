@@ -162,7 +162,7 @@ describe("tool registry permission declarations", () => {
     // Invoices are their own family, not `costs:*`: a managed account holds a
     // customer's contact details and the price that customer was quoted, which
     // is commercial information about a third party rather than the org's own
-    // spend. Every invoice tool is read-only — approving and sending are acts a
+    // spend. Every invoice tool is read-only: approving and sending are acts a
     // person takes, with their name on the audit entry.
     ["list_managed_accounts", "invoices:read"],
     ["get_managed_account", "invoices:read"],
@@ -170,7 +170,7 @@ describe("tool registry permission declarations", () => {
     ["get_invoice", "invoices:read"],
     ["write_custom_graph", "dashboards:write"],
     ["delete_custom_graph", "dashboards:write"],
-    // Workflows have their own family now — custom graphs above deliberately
+    // Workflows have their own family now: custom graphs above deliberately
     // stay on `dashboards:*` because they really are dashboard content.
     ["list_workflows", "workflows:read"],
     ["get_workflow", "workflows:read"],

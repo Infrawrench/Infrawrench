@@ -119,7 +119,7 @@ function toPairView(
  * Per-account capability and collection state.
  *
  * Every live account is listed, including the ones whose plugin cannot report
- * flows at all — with `supportsFlows: false` and nothing else. That is the
+ * flows at all: with `supportsFlows: false` and nothing else. That is the
  * "degrade to nothing rather than to zero" rule made concrete: an Azure account
  * appears in this list saying we cannot see its flows, rather than appearing in
  * the totals contributing 0 bytes, which would read as "Azure sends no traffic".
@@ -176,7 +176,7 @@ async function loadAccountStatuses(organizationId: string): Promise<NetworkFlowA
 /**
  * The rate cards in play, so a figure on the screen can be traced to the
  * published number it came from and the date that number was last checked.
- * Only cards for plugins the org actually has an account on — a rate card for a
+ * Only cards for plugins the org actually has an account on: a rate card for a
  * provider they do not use is noise that makes the ones they do use harder to
  * audit.
  */

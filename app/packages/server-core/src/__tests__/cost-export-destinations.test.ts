@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - **aborting a failed multipart upload**, since an abandoned one is
  *    billable storage forever on most providers;
  *  - **URL construction**, where path-style vs virtual-hosted addressing is
- *    the difference between working on MinIO and working on AWS — and, for
+ *    the difference between working on MinIO and working on AWS, and, for
  *    HTTPS, where any mutation of a pre-signed URL is a total upload outage;
  *  - **error text**, because "403" is not something a user can act on and
  *    S3's own `<Message>` is.
@@ -231,7 +231,7 @@ describe("S3 upload — large objects", () => {
     expect(parts).toHaveLength(3);
     expect(complete).toHaveLength(1);
 
-    // Every part but the last is exactly one part's worth — this is the
+    // Every part but the last is exactly one part's worth: this is the
     // bounded-memory guarantee, expressed as a request shape.
     expect(parts[0]!.bodyLength).toBe(PART_SIZE);
     expect(parts[1]!.bodyLength).toBe(PART_SIZE);
@@ -334,7 +334,7 @@ describe("HTTPS upload", () => {
   /**
    * The regression this guards: appending `?key=` to the destination URL. A
    * pre-signed URL signs its query string, so one extra parameter makes the
-   * receiver reject every upload — and the key is already in a header.
+   * receiver reject every upload, and the key is already in a header.
    */
   it.each([
     // AWS SigV4 (also R2, Spaces, Scaleway).

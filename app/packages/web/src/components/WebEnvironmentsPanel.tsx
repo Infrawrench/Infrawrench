@@ -13,7 +13,7 @@ interface WebEnvironmentsPanelProps {
 }
 
 /**
- * Ephemeral environments — templates and the live copies stamped out of them.
+ * Ephemeral environments: templates and the live copies stamped out of them.
  * The panel lives in `@infrawrench/ui` so desktop renders the identical
  * screen; this component is the web host. Rendered as a workspace tab (the
  * "environments" kind) by WebWorkspaceTabsViewport.

@@ -1,5 +1,5 @@
 /**
- * Org-scoped cost query execution — shared by the HTTP routes
+ * Org-scoped cost query execution: shared by the HTTP routes
  * (api/routes/costs.ts) and the tool registry (tools/costs.ts) so the graph
  * API and the MCP/chat surface stay behaviourally identical.
  */
@@ -46,7 +46,7 @@ import {
 // The scenario overlay lives in its own module rather than growing this
 // function: everything it needs is already computed by the time it runs.
 import { CostScenarioError, attachCostScenario } from "./cost-scenario-query";
-// The db-free id module, not the writer — importing the writer here would drag
+// The db-free id module, not the writer: importing the writer here would drag
 // its db/ClickHouse imports into every cost read path (and its tests).
 import {
   WORKFLOW_COST_PLUGIN_ID,
@@ -75,11 +75,11 @@ export interface CostQueryTextError {
   /** Zero-based character offset into the submitted `query`. */
   offset: number;
   length: number;
-  /** Valid alternatives at that offset — the dimension names, the operators. */
+  /** Valid alternatives at that offset: the dimension names, the operators. */
   expected: string[];
 }
 
-/** Invalid caller input — routes map this to a 400, tools to an error result. */
+/** Invalid caller input: routes map this to a 400, tools to an error result. */
 export class CostQueryError extends Error {
   /**
    * Set only for a cost-query-language parse failure. Optional so every
@@ -100,13 +100,13 @@ export class CostQueryError extends Error {
  *
  * The two are alternatives, never a merge and never a precedence rule. A caller
  * that sends both has expressed two different intentions and there is no
- * reading of "which one wins" that is not a silent wrong answer — so it is an
+ * reading of "which one wins" that is not a silent wrong answer, so it is an
  * error. An empty `filters` alongside a query is fine: it is what every client
  * built on `CostQueryRequest` sends, because the field is required and `[]` is
  * the absence of a filter rather than a filter.
  *
  * Compiling here rather than in the HTTP route is what keeps the MCP tool and
- * the API behaviourally identical — both go through `runCostQuery`.
+ * the API behaviourally identical: both go through `runCostQuery`.
  */
 function resolveQueryFilters(q: CostQueryRequest): CostQueryRequest["filters"] {
   const text = q.query?.trim();
@@ -271,7 +271,7 @@ async function labelSeries(
 function totalsOf(groups: CostSeriesGroup[], binning: CostQueryRequest["binning"]) {
   const totals: Record<string, number> = {};
   for (const g of groups) {
-    // Cumulative points are running sums — the period total is the last point.
+    // Cumulative points are running sums: the period total is the last point.
     const sum =
       binning === "cumulative"
         ? (g.points[g.points.length - 1]?.amount ?? 0)
@@ -302,11 +302,11 @@ export async function runCostQuery(
   }
 
   // Text queries are compiled to the structured filter here and nowhere else.
-  // Everything below — and everything in `cost-readers.ts` — sees only
+  // Everything below (and everything in `cost-readers.ts`) sees only
   // `CostFilter[]`, whose values are bound as ClickHouse parameters.
   //
   // A saved filter is different from the query/filters pair: those are two
-  // spellings of one filter (alternatives), while `savedFilterId` composes —
+  // spellings of one filter (alternatives), while `savedFilterId` composes;
   // its resolved terms are ANDed with whichever inline spelling was sent.
   // Resolving here, in the shared service rather than the HTTP route, is what
   // gives MCP, chat and the CLI identical behaviour. A reference that fails to
@@ -329,7 +329,7 @@ export async function runCostQuery(
 
   // The org's billing rules, resolved here for exactly the reason saved
   // filters are: one resolver, so the HTTP API, MCP, chat and the CLI all get
-  // the same adjusted number. Resolved only when asked — an unadjusted query
+  // the same adjusted number. Resolved only when asked: an unadjusted query
   // does not read the rules table at all, so the common path is unchanged.
   //
   // A rule set is always produced when `adjusted` is set, even when the org has
@@ -346,7 +346,7 @@ export async function runCostQuery(
       rawTotals: {},
       // Fixed amounts are arithmetic over the range, not a scan: they have no
       // cost row, no day and no provider behind them. Computed once here and
-      // reported separately — never folded into `totals`, which is the sum of
+      // reported separately, never folded into `totals`, which is the sum of
       // the series and has to stay that way for every existing client.
       fixedTotals: fixedTotalsForRange(resolved.adjustments.fixed, q.from, q.to),
     };
@@ -366,7 +366,7 @@ export async function runCostQuery(
     ...(adjustments && !billingAdjustmentsAreEmpty(adjustments) ? { adjustments } : {}),
     ...(q.groupByTagKey ? { groupByTagKey: q.groupByTagKey } : {}),
     // Carried on the base query so the comparison period is measured on the
-    // same basis and the same charge types — a cash previous period against an
+    // same basis and the same charge types: a cash previous period against an
     // amortized current one is a comparison of two different questions.
     ...(q.costBasis ? { costBasis: q.costBasis } : {}),
     ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
@@ -374,12 +374,12 @@ export async function runCostQuery(
 
   // Conversion is opt-in twice over: the caller has to ask for a display
   // currency AND the org has to have configured one. Absent either, this
-  // resolves to `{ displayCurrency: null }` and every step below is a no-op —
+  // resolves to `{ displayCurrency: null }` and every step below is a no-op:
   // the response is byte-identical to what it has always been.
   const { displayCurrency, rates } = await loadConversionContext(organizationId, q.displayCurrency);
 
   /**
-   * Convert, then merge, then fold — in that order, deliberately.
+   * Convert, then merge, then fold: in that order, deliberately.
    *
    * Folding first would rank the top N *within each currency* and then merge,
    * giving up to N series per currency and an "Other" per currency, which is
@@ -406,7 +406,7 @@ export async function runCostQuery(
   // The raw-vs-adjusted contract, honoured here and nowhere else: an adjusted
   // response cannot leave this function without the collected totals and the
   // rules that moved them. When no rule was in force the reader never emitted
-  // `rawPoints`, and the collected totals are the totals — which is the true
+  // `rawPoints`, and the collected totals are the totals, which is the true
   // answer, not a placeholder.
   if (adjustmentSummary) {
     const rawTotals = rawTotalsOf(grouped, q.binning);
@@ -457,7 +457,7 @@ export async function runCostQuery(
       ...(q.chargeTypes && q.chargeTypes.length > 0 ? { chargeTypes: q.chargeTypes } : {}),
     });
     // The fit sums across currencies, so converting first is what makes the
-    // projection mean anything at all in a mixed-currency org — otherwise it
+    // projection mean anything at all in a mixed-currency org, otherwise it
     // adds euros to dollars and trends the result.
     const { groups: fitConverted } = convertGroups(fitGroups, displayCurrency, rates);
     const dailyTotals = new Map<string, number>();
@@ -484,7 +484,7 @@ export async function runCostQuery(
   // The scenario overlay. Deliberately the last thing that happens, on top of
   // an already-complete response: `response.forecast` is the trend and stays
   // the trend, and `response.scenario` is the same days with the model applied.
-  // Both are returned, always — see `client-core/cost-scenarios.ts`.
+  // Both are returned, always: see `client-core/cost-scenarios.ts`.
   if (q.scenarioModelId) {
     try {
       const scenario = await attachCostScenario({
@@ -611,7 +611,7 @@ async function workflowCostAccountLabels(
 /**
  * Labels for the synthetic `external:<source>` cost accounts a server writes to
  * when it pushes rows without naming a real account. Unlike workflows there is
- * no row to look up — the source name IS the label — so this is purely local.
+ * no row to look up (the source name IS the label) so this is purely local.
  */
 function externalCostAccountLabels(values: string[]): Map<string, string> {
   const labels = new Map<string, string>();
@@ -626,8 +626,8 @@ function externalCostAccountLabels(values: string[]): Map<string, string> {
  * Per-account cost capability + collection state. Drives "Backfilling AWS
  * history…" empty states, the config UI, and the get_cost_status tool.
  *
- * Annotated with the client-side contract so this producer — not just its
- * three consumers (web, mobile, the `infrawrench costs` CLI) — is checked
+ * Annotated with the client-side contract so this producer, not just its
+ * three consumers (web, mobile, the `infrawrench costs` CLI): is checked
  * against `CostAccountStatus`.
  */
 export async function getOrgCostStatus(organizationId: string): Promise<CostAccountStatus[]> {

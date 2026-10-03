@@ -2,7 +2,7 @@
  * Query monitors: a SQL query on a schedule, with a threshold.
  *
  * One table. The run history is deliberately **not** stored: a monitor's value
- * over time is a metric, and the product already has a place for metrics — a
+ * over time is a metric, and the product already has a place for metrics; a
  * second, worse time series here would be a table nobody prunes. What is kept
  * is the last outcome, which is what the list renders and what the fold needs.
  *
@@ -32,7 +32,7 @@ export const queryMonitors = pgTable(
     /**
      * Cascades: a monitor is a query against one account's connection, so it
      * cannot outlive the account. Unlike most references here that is not a
-     * data-loss risk — the query text is the only thing worth keeping, and a
+     * data-loss risk: the query text is the only thing worth keeping, and a
      * query nobody can run is not worth keeping.
      */
     accountId: text("account_id")

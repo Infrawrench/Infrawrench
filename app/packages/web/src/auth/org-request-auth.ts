@@ -7,19 +7,19 @@
  *  3. Infrawrench API key (`iwk_*`), programmatic.
  *
  * In all cases it produces a principal pinned to the org in the URL, and in all
- * cases that principal must hold `requiredScope` — see
+ * cases that principal must hold `requiredScope`: see
  * {@link denyUnlessPermitted}. Returns a 401/403 `Response` the caller should
  * return directly when auth fails, the org doesn't match, or the permission is
  * missing.
  *
  * The org tree now accepts `iwk_` keys too, through `apiKeyOrgMiddleware` in
- * `api/auth-middleware.ts` — the same `authenticateApiRequest` and the same
+ * `api/auth-middleware.ts`: the same `authenticateApiRequest` and the same
  * `effectivePermissions` intersection, so there is one rule about what a key
  * may do, not two. This function stays for the four routers that sit *outside*
  * that tree on purpose (chat, cost ingest, paging): they are mounted ahead of
  * it, they authenticate per-handler rather than per-request, and their failure
  * responses are part of a published contract. Folding them in would change the
- * order the checks run in and the wording of three error bodies for no gain —
+ * order the checks run in and the wording of three error bodies for no gain:
  * see the note on {@link authenticateOrgRequest}.
  */
 import type { Context } from "hono";
@@ -53,7 +53,7 @@ export interface OrgAuthResult {
  *
  * This runs for every auth path, not just API keys. `requireScope` only ever
  * looked at a key's stored scopes, so session and OAuth callers would reach
- * these routes on membership alone — the permissions exist in the catalog but
+ * these routes on membership alone: the permissions exist in the catalog but
  * would be unenforceable for the UI, which is the surface that actually
  * matters.
  *
@@ -89,7 +89,7 @@ async function denyUnlessPermitted(
  *  - The session branch upserts the user's email (`onConflictDoUpdate`), where
  *    `sessionMiddleware` inserts and leaves an existing row alone.
  *
- * The duplication that mattered — a second answer to "what may this key do" —
+ * The duplication that mattered (a second answer to "what may this key do")
  * is already gone: both paths resolve through {@link effectivePermissions}.
  */
 export async function authenticateOrgRequest(
@@ -97,7 +97,7 @@ export async function authenticateOrgRequest(
   pathOrgId: string,
   requiredScope: string,
 ): Promise<OrgAuthResult | Response> {
-  // 1) Bearer token — either iwk_ API key or WorkOS access token.
+  // 1) Bearer token: either iwk_ API key or WorkOS access token.
   const bearer = c.req.header("authorization");
   if (bearer?.startsWith("Bearer ")) {
     if (bearer.slice(7).startsWith("iwk_")) {
@@ -129,7 +129,7 @@ export async function authenticateOrgRequest(
       if (auth.email) result.email = auth.email;
       // Carried, not established: `AsyncLocalStorage.enterWith` only reaches
       // the current execution's descendants, and this function is awaited by
-      // its callers — a store entered here is gone by the time the handler
+      // its callers; a store entered here is gone by the time the handler
       // resumes. Callers that go on to write audit rows call
       // `enterAuditPrincipal` themselves; see `api/routes/chat.ts`.
       if (auth.apiKeyId) result.apiKeyId = auth.apiKeyId;
@@ -140,7 +140,7 @@ export async function authenticateOrgRequest(
     if (!claims?.sub) return c.json({ error: "Unauthorized" }, 401);
     // An agent token's `sub` is a registration id, not a user id. These routes
     // resolve a person and provision one on sight, so an agent reaching here
-    // would mint a `users` row keyed by that registration — including a
+    // would mint a `users` row keyed by that registration, including a
     // revoked or already-reaped one, which no table lookup can rule out. See
     // `looksLikeAgentRegistrationId`.
     if (looksLikeAgentRegistrationId(claims.sub)) {

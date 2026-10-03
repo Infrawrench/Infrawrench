@@ -45,7 +45,7 @@ describe("apiFetch", () => {
     mockFetch({ ok: false, status: 401, text: async () => "" });
     const promise = apiFetch("/api/test");
     // Should set location but never resolve. The `return_to` matters for pages
-    // whose URL carries single-use state — `/claim?code=…` is handed over once
+    // whose URL carries single-use state: `/claim?code=…` is handed over once
     // by an agent and cannot be reissued, so losing it spends the link.
     await vi.waitFor(() => {
       expect(locationMock.href).toBe(

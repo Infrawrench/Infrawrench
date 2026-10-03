@@ -1,15 +1,15 @@
 /**
  * Minting and parsing shared-console invite links.
  *
- * Pure but for `node:crypto` — no database — so the token format can be tested
+ * Pure but for `node:crypto` (no database) so the token format can be tested
  * on its own. That matters more here than it looks: the token is the one part
  * of this feature a user copies into a chat window, and every property it has
  * (what is stored, what is guessable, how long it lives) is decided in this
  * file rather than at the call site.
  *
  * The format is `<shareId>.<64 hex chars>`. Two halves because a join URL has
- * to resolve to a share *before* the secret is checked — the join screen has
- * to say "you are about to watch root@db-prod-1" — and threading a second
+ * to resolve to a share *before* the secret is checked (the join screen has
+ * to say "you are about to watch root@db-prod-1") and threading a second
  * query parameter through a link people paste by hand is a way to lose it. The
  * id half is not secret; the secret half is 256 bits of `randomBytes` and is
  * never stored, only its sha256.

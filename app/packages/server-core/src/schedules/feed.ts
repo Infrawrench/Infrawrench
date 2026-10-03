@@ -1,5 +1,5 @@
 /**
- * Wire-shape assembly for the schedules API — rows joined with resource and
+ * Wire-shape assembly for the schedules API: rows joined with resource and
  * account display names, annotated with the projected monthly saving computed
  * from trailing `cost_daily` spend and the schedule's weekly off-hours
  * fraction. Shared by the HTTP routes, the MCP tools and (for the preview)
@@ -7,7 +7,7 @@
  *
  * Cost annotation follows the orphan finder exactly: best-effort, matched in
  * memory against `resources.external_id`, mixed-currency matches dropped, and
- * a ClickHouse failure yields `null` — a missing bill quotes nothing, never
+ * a ClickHouse failure yields `null`; a missing bill quotes nothing, never
  * $0.00.
  */
 import { and, eq, inArray } from "drizzle-orm";
@@ -36,7 +36,7 @@ interface CostTotalEntry {
 
 /**
  * Trailing-window spend per `${accountId} ${externalId}` key. Returns null
- * when ClickHouse is unreachable/unconfigured — schedules still work without
+ * when ClickHouse is unreachable/unconfigured: schedules still work without
  * billing data.
  */
 async function loadCostTotals(organizationId: string): Promise<Map<string, CostTotalEntry> | null> {

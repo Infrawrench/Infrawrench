@@ -37,7 +37,7 @@ export const MAX_RETENTION_DAYS = 3650;
  * that recording is off, which is the answer for most orgs most of the time.
  * Thirty seconds is short enough that enabling recording takes effect while
  * the operator is still looking at the settings page, and the writer
- * invalidates anyway — the TTL only covers the other replicas, which is
+ * invalidates anyway: the TTL only covers the other replicas, which is
  * exactly the window where "one more unrecorded session" is the acceptable
  * cost of not querying on every connect.
  */

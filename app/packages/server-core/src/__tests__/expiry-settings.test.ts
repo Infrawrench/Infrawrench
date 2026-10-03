@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * The settings module is the API surface of the expiry radar's tunables. What
  * matters here is the server-side bounds (a zero lead would silence the radar
  * through the API, a huge one would page about everything) and the invariant
- * that a settings save can never touch `lastNotifiedAt` — that column is the
+ * that a settings save can never touch `lastNotifiedAt`: that column is the
  * poller's cooldown claim, and writing it from the form would re-open or
  * close a quiet period mid-window.
  */
@@ -13,8 +13,8 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 // Real Drizzle over a recording driver against the real schema: the select and
 // the upsert render their actual SQL (and shadow-validate under
-// test:postgres:shadow). An update issues two queries in order — the
-// current-row select, then the upsert's `returning()` — so results are queued.
+// test:postgres:shadow). An update issues two queries in order: the
+// current-row select, then the upsert's `returning()`, so results are queued.
 const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 
@@ -83,7 +83,7 @@ describe("updateExpirySettings — bounds", () => {
   it("accepts the full valid range", async () => {
     queueUpdate([], settingsRow({ leadDays: 1 }));
     expect((await updateExpirySettings(ORG, { leadDays: 1 })).leadDays).toBe(1);
-    // lead_days in the values tuple — the clamp passed the value through.
+    // lead_days in the values tuple: the clamp passed the value through.
     expect(upsert()?.params[2]).toBe(1);
 
     pg.reset();

@@ -80,7 +80,7 @@ describe("PUT /:id/schedule body validation", () => {
   });
 
   // A truthy non-boolean would otherwise be stored as `enabled` while
-  // `computeSchedule` reads it as enabled — a disabled workflow with a live
+  // `computeSchedule` reads it as enabled: a disabled workflow with a live
   // next_run_at.
   it.each([["false"], [0], [1], [null]])("rejects a non-boolean enabled: %o", async (enabled) => {
     const res = await putSchedule({ expression: "0 9 * * 1", enabled });

@@ -19,7 +19,7 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** POST /api/associations — create or update an association */
+/** POST /api/associations: create or update an association */
 app.post("/", async (c) => {
   requirePermission(c, "secrets:write");
   const organizationId = c.get("organizationId");
@@ -93,7 +93,7 @@ app.post("/", async (c) => {
   return c.json({ ok: true });
 });
 
-/** POST /api/associations/literal — set a secret field to a literal value */
+/** POST /api/associations/literal: set a secret field to a literal value */
 app.post("/literal", async (c) => {
   requirePermission(c, "secrets:write");
   const organizationId = c.get("organizationId");

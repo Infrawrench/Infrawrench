@@ -5,8 +5,8 @@ import { buildTestApp } from "./test-utils";
  * Conversation creation, specifically which model a new chat opens on.
  *
  * The interesting case is the caller that sends no model. That used to fall
- * through to the `chat_conversations.model` column default — which was
- * `claude-opus-5`, the most expensive of the four — so the desktop sidebar's
+ * through to the `chat_conversations.model` column default (which was
+ * `claude-opus-5`, the most expensive of the four) so the desktop sidebar's
  * New chat button silently opened billed Opus conversations while every picker
  * in the product said the default was Gemini Flash. The route now always
  * writes a model, and this pins that.

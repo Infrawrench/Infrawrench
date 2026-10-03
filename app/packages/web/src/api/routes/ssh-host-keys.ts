@@ -51,7 +51,7 @@ export function hostKeyTrustResponse(c: Context, err: HostKeyTrustRequiredError)
 
 const app = new Hono();
 
-/** GET /api/org/:orgId/ssh-host-keys — list all pinned fingerprints. */
+/** GET /api/org/:orgId/ssh-host-keys: list all pinned fingerprints. */
 app.get("/", async (c) => {
   requirePermission(c, "accounts:read");
   const organizationId = c.get("organizationId");
@@ -83,7 +83,7 @@ const trustBody = z.object({
   previousFingerprint: z.string().optional(),
 });
 
-/** POST /api/org/:orgId/ssh-host-keys/trust — pin a fingerprint after user consent. */
+/** POST /api/org/:orgId/ssh-host-keys/trust: pin a fingerprint after user consent. */
 app.post("/trust", async (c) => {
   requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
@@ -120,7 +120,7 @@ app.post("/trust", async (c) => {
   return c.json({ ok: true });
 });
 
-/** DELETE /api/org/:orgId/ssh-host-keys/:id — remove a pin. */
+/** DELETE /api/org/:orgId/ssh-host-keys/:id: remove a pin. */
 app.delete("/:id", async (c) => {
   requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");

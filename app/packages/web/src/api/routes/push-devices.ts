@@ -121,7 +121,7 @@ const pushOrgRoutes = new Hono();
  * One array in place of eleven booleans. The shape change is the whole point of
  * the routing refactor at this layer: a new trigger no longer needs a column, a
  * payload field, a default, an insert value, an upsert branch and an audit key
- * — six edits in this file alone — because "not muted" is the default for any
+ * (six edits in this file alone) because "not muted" is the default for any
  * name the member has not written down.
  */
 interface PreferencesPayload {
@@ -140,7 +140,7 @@ pushOrgRoutes.get("/preferences", async (c) => {
         eq(pushPreferences.organizationId, organizationId),
       ),
     );
-  // No row means the shipped defaults, not "nothing muted" — `resourceDrift`
+  // No row means the shipped defaults, not "nothing muted": `resourceDrift`
   // ships muted, and returning an empty list would tell the client the opposite.
   const payload: PreferencesPayload = {
     mutedTriggers: (row?.mutedTriggers as AlertTrigger[] | undefined) ?? [

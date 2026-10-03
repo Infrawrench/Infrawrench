@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * The digest runs inside the poller's 15s tick, behind account polling and in
  * front of cost collection and retention. One org costs two ClickHouse queries,
  * an optional Anthropic call bounded at 30s, and a fan-out to Slack, Teams and
- * one request per email address — so the interesting case is the one every
+ * one request per email address, so the interesting case is the one every
  * deployment hits: every org on the default Monday 07:00 UTC schedule comes due
  * in the *same* tick. Processed one after another that is a stall measured in
  * minutes, with account syncs and workflow scheduling queued behind it.
@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *
  *   - a tick claims at most `DIGESTS_PER_TICK` orgs per phase, and runs them
  *     concurrently rather than one at a time;
- *   - an org deferred to a later tick is *deferred*, not starved — later ticks
+ *   - an org deferred to a later tick is *deferred*, not starved: later ticks
  *     pick up the orgs the earlier ones left, and no org is ever sent twice.
  *
  * The DB is an in-memory fake over an array of settings rows, with predicate
@@ -205,7 +205,7 @@ vi.mock("../clickhouse/cost-readers", () => ({ queryCosts: async () => [] }));
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -232,7 +232,7 @@ function routed(over: Record<string, unknown> = {}) {
     unrouted: false,
     matchedRuleIds: ["rule1"],
     // The tracked-Slack half of the result. Present by default because
-    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // `byTransport.slack` is 1: a result claiming a Slack delivery with no
     // message to show for it is a shape the real function never returns.
     slackMessages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
     deliveryIds: [],
@@ -240,7 +240,7 @@ function routed(over: Record<string, unknown> = {}) {
   };
 }
 
-/** A delivery that reached nobody — no rule matched, or every channel failed. */
+/** A delivery that reached nobody: no rule matched, or every channel failed. */
 function unroutedResult() {
   return routed({
     attempted: 0,
@@ -281,7 +281,7 @@ const orgIds = () => settingsRows.map((r) => r.organizationId as string);
 const sentOrgIds = () =>
   settingsRows.filter((r) => r.lastSentWeekStart === "2026-07-20").map((r) => r.organizationId);
 
-/** Monday 2026-07-27 07:00 UTC — the moment the week of 2026-07-20 comes due. */
+/** Monday 2026-07-27 07:00 UTC: the moment the week of 2026-07-20 comes due. */
 const DUE = new Date("2026-07-27T07:00:00Z");
 const tickAt = (minutes: number) => new Date(DUE.getTime() + minutes * 60 * 1000);
 
@@ -299,7 +299,7 @@ describe("a tick with more due orgs than it can send", () => {
 
     expect(delivered).toHaveLength(DIGESTS_PER_TICK);
     expect(sentOrgIds()).toHaveLength(DIGESTS_PER_TICK);
-    // The 36 it did not get to are untouched — no half-claimed state.
+    // The 36 it did not get to are untouched: no half-claimed state.
     const untouched = settingsRows.filter((r) => r.lastSentWeekStart === "2026-07-13");
     expect(untouched).toHaveLength(40 - DIGESTS_PER_TICK);
     for (const row of untouched) expect(row).toMatchObject({ lastStatus: null, attemptCount: 0 });
@@ -380,7 +380,7 @@ describe("a tick with a pile of due retries", () => {
 
     expect(delivered).toHaveLength(DIGESTS_PER_TICK);
     // A retry that was not claimed keeps its gate and its attempt count, so it
-    // is still owed one — an unclaimed row is untouched state.
+    // is still owed one: an unclaimed row is untouched state.
     const untouched = settingsRows.filter((r) => r.lastStatus === "failed");
     expect(untouched).toHaveLength(20 - DIGESTS_PER_TICK);
     for (const row of untouched) {

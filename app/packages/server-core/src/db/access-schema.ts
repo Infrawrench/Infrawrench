@@ -1,7 +1,7 @@
 /**
  * Break-glass access: time-boxed permission elevation.
  *
- * The shape is the one `workflow_approvals` already established — a pending
+ * The shape is the one `workflow_approvals` already established: a pending
  * row, a fan-out to whatever transports the org has configured, and a
  * conditional UPDATE that makes two racing deciders produce exactly one
  * decision. What is new is that the request stands on its own (no run is
@@ -9,7 +9,7 @@
  * during which the requester holds permissions their role does not grant.
  *
  * One table, not two. A grant is not a separate object from the request that
- * produced it — splitting them would let a grant exist whose request said
+ * produced it: splitting them would let a grant exist whose request said
  * something else, which is precisely the thing an auditor is checking. The
  * row is the request, the decision, and the window, in that order.
  */
@@ -24,7 +24,7 @@ import { organizations, users } from "./core-schema.js";
  * inside `[granted_at, grant_expires_at)`. Nothing sweeps expiry: the window is
  * evaluated on every permission resolution, so a grant stops applying the
  * instant it lapses rather than whenever a job next runs. That is the only
- * correct behaviour for something that hands out authority — a sweeper that
+ * correct behaviour for something that hands out authority: a sweeper that
  * fell behind would be a sweeper that extended everyone's access.
  */
 export const accessRequests = pgTable(
@@ -46,7 +46,7 @@ export const accessRequests = pgTable(
      * holds, so a request can never mint authority nobody in the room had.
      */
     permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
-    /** Why. Required by the route — an unexplained elevation is not auditable. */
+    /** Why. Required by the route: an unexplained elevation is not auditable. */
     reason: text("reason").notNull(),
     /** How long the elevation should last once granted. */
     durationMinutes: integer("duration_minutes").notNull(),

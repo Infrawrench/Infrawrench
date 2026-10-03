@@ -8,7 +8,7 @@ import { buildTestApp } from "./test-utils";
  * Transport contract for cost exports. Three things this file owns:
  *
  *  - **the permission split**, which is the deliberate part of the design:
- *    reads are `costs:read`, but every write — including "run now" — is
+ *    reads are `costs:read`, but every write (including "run now") is
  *    `org:settings:write`, because creating an export is standing
  *    authorisation to ship the org's billing history somewhere;
  *  - **that no response can carry a credential**, which is asserted by

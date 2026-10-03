@@ -263,7 +263,7 @@ describe("duplex write / final paths", () => {
     const before = ws.sent().filter((m) => (m as { op: string }).op === "data").length;
     vi.useFakeTimers();
     sock.write(Buffer.from("delayed"));
-    // Still buffered — nothing sent yet.
+    // Still buffered: nothing sent yet.
     expect(ws.sent().filter((m) => (m as { op: string }).op === "data").length).toBe(before);
     // Drain below low watermark and advance the polling interval.
     ws.bufferedAmount = 0;

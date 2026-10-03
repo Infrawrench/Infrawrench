@@ -1,11 +1,11 @@
 /**
- * Idle-commitment detection — **pure**. No db, no ClickHouse, no clock, no
+ * Idle-commitment detection: **pure**. No db, no ClickHouse, no clock, no
  * network.
  *
  * Utilization has been computed and rendered since commitments shipped
  * (`utilization.ts`); nothing has ever *told* anyone about it. A commitment at
  * 20% is money that already left the account and bought nothing, and unlike
- * every other finding in the cost surface it does not get worse — it just
+ * every other finding in the cost surface it does not get worse: it just
  * keeps not getting better until someone looks at the page.
  *
  * ## Rule 1: never alert on a null utilization
@@ -14,11 +14,11 @@
  * loudly as the code allows. {@link computeCommitmentUtilization} returns
  * `null` in four situations, and every one of them means **unknown**:
  *
- * - `unit_denominated` — a GCP CUD commits vCPUs, not dollars. Cost rows
+ * - `unit_denominated`: a GCP CUD commits vCPUs, not dollars. Cost rows
  *   cannot say how many of the committed vCPUs ran.
- * - `no_data_days` — every active day in the window is a day collection never
+ * - `no_data_days`: every active day in the window is a day collection never
  *   covered (backfill in flight, provider export lagging).
- * - `no_active_days` — the commitment's term does not overlap the window.
+ * - `no_active_days`: the commitment's term does not overlap the window.
  * - a zero obligation, which would make the ratio 0/0.
  *
  * In a table, "unknown" and "unused" look different. In a threshold
@@ -32,7 +32,7 @@
  * The same rule covers the fifth null this module adds itself: an account
  * whose plugin does not declare `costs.chargeTypes` produces cost rows with no
  * commitment attribution, so delivered reads 0 for a plan that is working
- * perfectly. `attributed: false` skips before anything is measured — the same
+ * perfectly. `attributed: false` skips before anything is measured: the same
  * decision `commitments/feed.ts` makes when it reports
  * `reason: "unattributed_rows"` rather than 0%.
  *
@@ -42,8 +42,8 @@
  * (Σdelivered ÷ Σobligation over the days that carried data), not from a count
  * of bad days. That is what makes "a weekend is not a finding" true by
  * construction rather than by a fudge factor: a weekday-only workload on a
- * 30-day window sits around 71% — five sevenths of the term, plus whatever
- * runs at the weekend — which is above the 70% default and does not fire. Drop
+ * 30-day window sits around 71%; five sevenths of the term, plus whatever
+ * runs at the weekend, which is above the 70% default and does not fire. Drop
  * the window to a week and the same workload reads the same 71%, because the
  * ratio is scale-free. What a short window actually costs is *confidence*, and
  * {@link IdleCommitmentOptions.minMeasuredDays} is the knob that buys it back.
@@ -52,7 +52,7 @@
  *
  * A 20% commitment is a headline; `obligation − delivered` is the number
  * somebody takes to a renewal meeting. Every finding carries it, and the floor
- * that decides whether to speak at all is denominated in it — a 4% commitment
+ * that decides whether to speak at all is denominated in it: a 4% commitment
  * wasting $3 a month is true and worthless.
  */
 import {
@@ -62,7 +62,7 @@ import {
 
 /** Why a commitment produced no finding. Returned, never silently dropped. */
 export type IdleCommitmentSkipReason =
-  /** Utilization was not measurable — see rule 1. Carries which case it was. */
+  /** Utilization was not measurable: see rule 1. Carries which case it was. */
   | CommitmentUtilizationUnavailableReason
   /** The account's cost rows carry no commitment attribution. */
   | "unattributed_rows"
@@ -70,7 +70,7 @@ export type IdleCommitmentSkipReason =
   | "not_active"
   /** Too few days in the window carried cost data to judge on. */
   | "insufficient_measured_days"
-  /** At or above the threshold — the commitment is doing its job. */
+  /** At or above the threshold: the commitment is doing its job. */
   | "not_idle"
   /** Idle, but the money involved is too small to say anything about. */
   | "waste_below_floor";
@@ -80,7 +80,7 @@ export interface IdleCommitmentInput {
   commitmentId: string;
   description: string;
   kind: string;
-  /** "active" | "queued" | "expired" — the provider's own word. */
+  /** "active" | "queued" | "expired": the provider's own word. */
   state: string;
   currency: string | null;
   /** Committed spend per hour; null/undefined for unit-denominated records. */
@@ -91,7 +91,7 @@ export interface IdleCommitmentInput {
   /**
    * False when the account's plugin does not declare `costs.chargeTypes`, so
    * its rows carry no commitment id and delivered would read 0 for a healthy
-   * plan. Skipped outright — see rule 1.
+   * plan. Skipped outright: see rule 1.
    */
   attributed: boolean;
   /** ISO days on which the account has any cost rows at all. */
@@ -127,7 +127,7 @@ export interface IdleCommitmentFinding {
   /** hourly × 24 × measuredDays, in `currency` units. */
   obligationAmount: number;
   deliveredAmount: number;
-  /** obligation − delivered, floored at 0 — the money that bought nothing. */
+  /** obligation − delivered, floored at 0: the money that bought nothing. */
   wastedAmount: number;
   measuredDays: number;
   /** Active window days with no cost data. Reported so the reader can discount. */

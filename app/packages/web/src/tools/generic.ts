@@ -159,7 +159,7 @@ export function genericTools(): ToolDefinition[] {
         "or unexplained drift.",
       inputSchema: {},
       risk: "read",
-      // Mirrors `GET /status-incidents` — correlation reads the org's resource set.
+      // Mirrors `GET /status-incidents`: correlation reads the org's resource set.
       permission: "resources:read",
       handler: async (_input, auth) => {
         return ok(await getOrgStatusIncidents(auth.organizationId));
@@ -196,7 +196,7 @@ export function genericTools(): ToolDefinition[] {
           .describe("Only return deadlines of this kind."),
       },
       risk: "read",
-      // Mirrors `GET /expiring` — the feed is computed over the org's resource set.
+      // Mirrors `GET /expiring`: the feed is computed over the org's resource set.
       permission: "resources:read",
       handler: async (input, auth) => {
         const severity = input["severity"] as string | undefined;
@@ -245,7 +245,7 @@ export function genericTools(): ToolDefinition[] {
           ),
       },
       risk: "read",
-      // Mirrors `GET /environment-diff` — it reads the same rows as the account pages.
+      // Mirrors `GET /environment-diff`: it reads the same rows as the account pages.
       permission: "resources:read",
       handler: async (input, auth) => {
         const rows = await db
@@ -311,7 +311,7 @@ export function genericTools(): ToolDefinition[] {
           ),
       },
       risk: "read",
-      // Mirrors `GET /posture` — the findings are computed over the org's resource set.
+      // Mirrors `GET /posture`: the findings are computed over the org's resource set.
       permission: "resources:read",
       handler: async (input, auth) => {
         const severity = input["severity"] as string | undefined;
@@ -349,7 +349,7 @@ export function genericTools(): ToolDefinition[] {
         "list_posture_findings returns.",
       inputSchema: {
         // `.min(1)` so a blank id is a tool-input error rather than the plain
-        // `Error` `dismissPostureFinding` throws past the handler — the HTTP
+        // `Error` `dismissPostureFinding` throws past the handler: the HTTP
         // route guards this, and this second entry point has to as well.
         resourceId: z.string().min(1).describe("Infrawrench resource id the finding is on."),
         ruleId: z.string().min(1).describe("The matched rule's id, as returned on the finding."),
@@ -436,7 +436,7 @@ export function genericTools(): ToolDefinition[] {
           .describe("Only return zones and records under this domain (suffix match)."),
       },
       risk: "read",
-      // Mirrors `GET /dns` — the inventory is computed over the org's resource set.
+      // Mirrors `GET /dns`: the inventory is computed over the org's resource set.
       permission: "resources:read",
       handler: async (input, auth) => {
         const status = input["status"] as string | undefined;
@@ -528,7 +528,7 @@ export function genericTools(): ToolDefinition[] {
           return true;
         });
         // `totalCount` always describes every record so a filtered view still
-        // shows the overall picture — the list_posture_findings stance.
+        // shows the overall picture: the list_posture_findings stance.
         return ok({
           ownership: records,
           matchedCount: records.length,
@@ -1263,7 +1263,7 @@ export function genericTools(): ToolDefinition[] {
         );
         if (!ctx) return err("Account or peer resource not found");
         if (!ctx.client.invokeAction) return err("Plugin does not support actions");
-        // Freeze gate — only actions the plugin flags `destructive: true` in
+        // Freeze gate, only actions the plugin flags `destructive: true` in
         // its detail schema are blocked; the schema walk only runs while a
         // freeze is in effect.
         if (

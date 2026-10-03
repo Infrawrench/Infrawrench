@@ -1,22 +1,22 @@
 /**
- * Pure spend-anomaly detection maths. No I/O, no dates beyond ISO strings —
+ * Pure spend-anomaly detection maths. No I/O, no dates beyond ISO strings:
  * the evaluator (`anomaly-eval.ts`) feeds it series read from ClickHouse and
  * persists whatever it flags. Kept separate so the statistics are unit-testable
  * without a database.
  *
  * Two findings live here, and they are mutually exclusive by construction:
  *
- * - `detectSpike` — a day's spend for a (dimension, key) exceeds the trailing
+ * - `detectSpike`: a day's spend for a (dimension, key) exceeds the trailing
  *   window's mean + `sigmas`·stddev AND exceeds the mean by at least
  *   `minDeltaAbs` units of that series' currency. The absolute floor keeps
  *   penny-noise quiet: a $0.02 day against a $0.001 baseline is many sigmas
  *   out and still not worth waking anyone for.
- * - `detectNewSpendSource` — a key that spent (effectively) nothing across the
+ * - `detectNewSpendSource`: a key that spent (effectively) nothing across the
  *   whole trailing window suddenly costs real money. No sigma bar can catch
  *   this: with an all-zero baseline the mean and stddev are both zero, so
  *   "mean + 3σ" is $0 and the observed-days guard silences the key anyway. It
- *   is also the single most valuable thing to catch — $0 to $5,000 is how a
- *   leaked key or a fat-fingered instance type shows up — so it gets its own
+ *   is also the single most valuable thing to catch ($0 to $5,000 is how a
+ *   leaked key or a fat-fingered instance type shows up) so it gets its own
  *   absolute floor instead of a statistical one.
  *
  * Both take their thresholds as parameters. The per-org settings that supply
@@ -32,7 +32,7 @@ export interface AnomalyDetectionOptions {
    * sigmas it is.
    *
    * `DEFAULT_ANOMALY_OPTIONS` states this in USD; a series billed in another
-   * currency needs it converted first — see `optionsForCurrency`.
+   * currency needs it converted first: see `optionsForCurrency`.
    */
   minDeltaAbs: number;
   /**
@@ -41,8 +41,8 @@ export interface AnomalyDetectionOptions {
    * trusting, so `detectSpike` skips it; `detectNewSpendSource` is what
    * catches the interesting half of that population.
    *
-   * It doubles as the least *collection coverage* — days of cost data the org
-   * holds at all — `detectNewSpendSource` will call "no prior spend" over.
+   * It doubles as the least *collection coverage*: days of cost data the org
+   * holds at all; `detectNewSpendSource` will call "no prior spend" over.
    * Note the two readings differ on purpose: a spike needs days on which this
    * key spent, a new source needs days on which we were *looking* and it did
    * not. Counting spending days for the second would silence it always, since
@@ -62,10 +62,10 @@ export interface AnomalyDetectionOptions {
 
 export const DEFAULT_ANOMALY_OPTIONS: AnomalyDetectionOptions = {
   sigmas: 3,
-  /** ~$10. Denominated in USD — `optionsForCurrency` converts per series. */
+  /** ~$10. Denominated in USD: `optionsForCurrency` converts per series. */
   minDeltaAbs: 10,
   minBaselineDays: 7,
-  /** ~$25. Higher than the spike floor — a new source has no history backing it. */
+  /** ~$25. Higher than the spike floor: a new source has no history backing it. */
   minNewSourceAbs: 25,
 };
 
@@ -75,7 +75,7 @@ export const DEFAULT_ANOMALY_OPTIONS: AnomalyDetectionOptions = {
  *
  * These are not exchange rates and must never be used as such: nothing here
  * converts a displayed amount, and a stale entry costs nothing but a slightly
- * wrong quiet threshold. Only the order of magnitude matters — the failure it
+ * wrong quiet threshold. Only the order of magnitude matters: the failure it
  * exists to prevent is a floor of "10 units" being ~$0.07 in JPY, which lets
  * penny noise page someone, or ~$10 in USD, which is the intent. Currencies
  * not listed fall back to 1, i.e. treated as USD-scale.
@@ -121,7 +121,7 @@ const UNITS_PER_USD: Readonly<Record<string, number>> = {
  * The one primitive behind {@link optionsForCurrency}, exported because the
  * efficiency detectors (`commitments/idle-eval.ts`,
  * `cost/unit-cost-regression-eval.ts`) hold money floors of their own and must
- * scale them the same way — an org that sets "$50 of waste" means fifty
+ * scale them the same way: an org that sets "$50 of waste" means fifty
  * dollars whether the commitment is priced in USD or in KRW, and a floor
  * compared raw against a KRW amount is off by three orders of magnitude in the
  * direction that alerts on everything.
@@ -184,7 +184,7 @@ function stddevOf(values: number[], mean: number): number {
  * amounts, oldest first, zero-filled for missing days). Returns the evidence
  * or null.
  *
- * A flat baseline (stddev 0 — e.g. a fixed daily license fee) still detects:
+ * A flat baseline (stddev 0, e.g. a fixed daily license fee) still detects:
  * the threshold degenerates to mean + minDeltaAbs, so a genuine jump fires
  * while ordinary flatness never does.
  */
@@ -227,8 +227,8 @@ export interface DetectedNewSource {
  * "Effectively zero baseline" is defined as: the key spent less across the
  * *entire* trailing window than the floor for a single qualifying day. That
  * phrasing does two useful things a strict `=== 0` test does not. It tolerates
- * the rounding dust and sub-cent trial usage real billing data is full of — a
- * key that billed $0.30 over 28 days has no baseline in any meaningful sense —
+ * the rounding dust and sub-cent trial usage real billing data is full of (a
+ * key that billed $0.30 over 28 days has no baseline in any meaningful sense)
  * and it scales with the floor, so it means the same thing in every currency
  * once `optionsForCurrency` has run.
  *
@@ -243,7 +243,7 @@ export interface DetectedNewSource {
  * `baseline`. Callers zero-fill (`fillDailySeries`), so the array is the full
  * window wide whether or not any of it was collected, and "the key spent $0
  * that day" and "we hold no data for that day" arrive as the same `0`. Reading
- * `baseline.length` instead — as this function once did — is a guard that can
+ * `baseline.length` instead (as this function once did) is a guard that can
  * never fire. Counting non-zero entries, the way `detectSpike` legitimately
  * does, would be worse: a real new spend source has an all-zero baseline by
  * definition, so that test never passes and the detector never fires.
@@ -253,9 +253,9 @@ export interface DetectedNewSource {
  * precisely what this detector exists to catch, and must still fire.
  *
  * Callers must judge `detectSpike` first and only fall through to this when it
- * returns null. In practice the two can never both fire — a baseline this
+ * returns null. In practice the two can never both fire: a baseline this
  * small has fewer than `minBaselineDays` observed days, or a mean so near zero
- * that the sigma bar is meaningless — but the ordering is what makes a
+ * that the sigma bar is meaningless, but the ordering is what makes a
  * (day, key) exactly one kind of finding rather than a race between two.
  */
 export function detectNewSpendSource(

@@ -9,7 +9,7 @@ describe("attachmentDisposition", () => {
   });
 
   it("neutralizes a quote that would break out of the quoted string", () => {
-    // `;` may stay — it's harmless inside a quoted-string. The quotes are what
+    // `;` may stay: it's harmless inside a quoted-string. The quotes are what
     // would end the value early and let an attacker append their own params.
     expect(attachmentDisposition('a";x="y')).toContain('filename="a_;x=_y"');
   });

@@ -1,14 +1,14 @@
 /**
  * Change-based cost alert evaluation. Runs from the poller after each
- * successful cost collection for an org — the same trigger point as budget
+ * successful cost collection for an org: the same trigger point as budget
  * and anomaly evaluation, because org cost data only changes when collection
  * runs.
  *
- * The arithmetic lives in `change-detect.ts` (pure, unit-tested — window
+ * The arithmetic lives in `change-detect.ts` (pure, unit-tested: window
  * definitions, thresholds, the new/vanished-group rules); this module reads
  * the series from ClickHouse, converts currencies the org holds rates for,
  * persists what fired, and notifies through the alert routing layer under
- * the `costChangeAlerts` trigger — routing rules, quiet hours and escalation
+ * the `costChangeAlerts` trigger; routing rules, quiet hours and escalation
  * apply exactly as they do to budgets and anomalies.
  *
  * ## Restatement and dedup
@@ -19,7 +19,7 @@
  * alerts re-examine each of the trailing `CHANGE_EVALUATION_DAYS` complete
  * days, and the weekly/monthly windows contain the restatement horizon by
  * construction. The unique index on `cost_alert_events`
- * (alert, period, group, currency) absorbs the re-fires — an insert with
+ * (alert, period, group, currency) absorbs the re-fires: an insert with
  * `onConflictDoNothing` + RETURNING says whether this firing is fresh, and
  * only fresh firings notify. That is the `budget_alert_events`
  * once-per-month protocol, applied per cadence period.
@@ -28,8 +28,8 @@
  *
  * Comparison is per (group, currency): amounts in different currencies are
  * never summed. When the org has a display currency, spend the org holds
- * rates for is converted into it first — the same `convertGroups` path the
- * budget evaluator uses — so a mixed-currency scope compares one number. A
+ * rates for is converted into it first (the same `convertGroups` path the
+ * budget evaluator uses) so a mixed-currency scope compares one number. A
  * currency with no rate stays in its own currency and is compared there,
  * never dropped.
  */
@@ -58,7 +58,7 @@ import { orgAppUrl } from "../app-url";
  * Least time between full evaluations of one org. Same shape and reasoning
  * as the anomaly evaluator's gate: evaluation is invoked once per collected
  * account, the ClickHouse reads are the expensive half, and correctness
- * never rests on this — the events-table unique index does that — so an
+ * never rests on this (the events-table unique index does that) so an
  * in-process map is enough.
  */
 const MIN_EVAL_INTERVAL_MS = 60 * 60 * 1000;
@@ -110,7 +110,7 @@ async function evaluateAlert(
 ): Promise<Array<{ eventId: string; window: ChangeWindow; finding: ChangeFinding }>> {
   const fired: Array<{ eventId: string; window: ChangeWindow; finding: ChangeFinding }> = [];
   for (const window of windows) {
-    // One read covers both spans — the previous window always precedes the
+    // One read covers both spans: the previous window always precedes the
     // current one, so [previous.from, current.to] contains everything the
     // comparison needs (daily cadence fetches five ignored days in between,
     // which is cheaper than a second round trip).
@@ -178,7 +178,7 @@ function windowPhrase(cadence: ChangeCadence, window: ChangeWindow): string {
 
 /**
  * Evaluate every enabled change alert in an org and notify fresh firings
- * through the alert routing layer. Errors are logged, never thrown — like
+ * through the alert routing layer. Errors are logged, never thrown: like
  * budget and anomaly evaluation, this must not break the poller's cost pass.
  *
  * Rate-limited per org (`MIN_EVAL_INTERVAL_MS`); pass `force` to bypass,
@@ -239,7 +239,7 @@ export async function evaluateCostChangeAlertsForOrg(
         thresholdAmountCents: row.thresholdAmountCents,
         direction: row.direction,
       };
-      // An alert with no threshold at all judges nothing — the API refuses
+      // An alert with no threshold at all judges nothing: the API refuses
       // to store one, but a hand-edited row must not fire on every wobble.
       if (alert.thresholdPercent === null && alert.thresholdAmountCents === null) continue;
 
@@ -270,7 +270,7 @@ export async function evaluateCostChangeAlertsForOrg(
             groupKey: finding.groupKey,
           },
           // `facts` are what routing rules match on. The amount is the
-          // *change*, not the total — "cost changes over $500 → #incidents"
+          // *change*, not the total: "cost changes over $500 → #incidents"
           // means the move, which is also the number in the message.
           facts: {
             amountCents: Math.abs(finding.currentAmountCents - finding.previousAmountCents),
@@ -283,7 +283,7 @@ export async function evaluateCostChangeAlertsForOrg(
         });
         // `alertReached`, not `succeeded > 0`: a quiet-hours hold is a
         // delivery that has not happened yet. The events row already
-        // deduplicates, so an unreached firing stays eligible for nothing —
+        // deduplicates, so an unreached firing stays eligible for nothing:
         // `notifiedAt` is bookkeeping for the UI, not a retry gate.
         if (alertReached(routed)) {
           await db

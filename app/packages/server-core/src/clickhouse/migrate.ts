@@ -27,7 +27,7 @@ function ddl(fragment: SQL): string {
  * Materialized views.
  *
  * The dialect has no materialized-view builder, so the `CREATE MATERIALIZED
- * VIEW … TO … AS` wrapper is written out — but the SELECT inside it is built
+ * VIEW … TO … AS` wrapper is written out, but the SELECT inside it is built
  * with the query builder against the same tables everything else reads. That is
  * the point: renaming a column in `schema.ts` fails to compile here rather than
  * silently producing a view that writes into nothing.
@@ -104,7 +104,7 @@ const MV_METRIC_POINTS_1H = materializedView(
  * Additive column migrations.
  *
  * The CREATEs above are all `IF NOT EXISTS`, which does nothing to a table that
- * already exists — so a column added to a table in `schema.ts` after it shipped
+ * already exists, so a column added to a table in `schema.ts` after it shipped
  * never appears on any deployment that already ran. That is what these are for.
  *
  * The rules, all three load-bearing:
@@ -116,11 +116,11 @@ const MV_METRIC_POINTS_1H = materializedView(
  *    `cost_daily` it must not be changed at all: the ORDER BY *is* the
  *    ReplacingMergeTree identity of a row, and rewriting it would re-key (and
  *    silently merge away) three years of history. A new dimension that needs to
- *    keep rows distinct is folded into `tags_hash` instead — see
+ *    keep rows distinct is folded into `tags_hash` instead: see
  *    `cost-writers.ts`.
  * 3. Every added column carries a DEFAULT, because rows written before it
  *    existed have no value for it. `charge_type DEFAULT 'usage'` is what makes
- *    the entire back catalogue read as usage — which is what it is — rather than
+ *    the entire back catalogue read as usage (which is what it is) rather than
  *    as an empty string that matches no filter. The default is declared on the
  *    column in `schema.ts` and rendered from there, so the CREATE and the ALTER
  *    cannot disagree about it.
@@ -163,9 +163,9 @@ export function migrationStatements(): string[] {
  * Rewrites MergeTree-family engines to their Replicated* counterparts.
  * ClickHouse Cloud replicates plain MergeTree DDL transparently, but on the
  * self-hosted 2-replica cluster (infra/terraform/clickhouse.tf) only
- * Replicated* engines replicate data. Engine arguments are preserved —
+ * Replicated* engines replicate data. Engine arguments are preserved;
  * `ReplacingMergeTree(ingested_at)` becomes
- * `ReplicatedReplacingMergeTree(ingested_at)` — and the ZooKeeper
+ * `ReplicatedReplacingMergeTree(ingested_at)`, and the ZooKeeper
  * path/replica arguments are deliberately omitted: the tables live in a
  * `Replicated` database, which derives them.
  *

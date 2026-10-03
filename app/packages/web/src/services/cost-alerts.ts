@@ -1,5 +1,5 @@
 /**
- * Org-scoped change-based cost alert CRUD + fired-event listing — shared by
+ * Org-scoped change-based cost alert CRUD + fired-event listing: shared by
  * the HTTP routes (api/routes/cost-alerts.ts) and the tool registry
  * (tools/cost-alerts.ts), like every other cost service.
  *
@@ -189,7 +189,7 @@ export async function softDeleteCostAlert(
 /**
  * Recently fired events, newest first, optionally scoped to one alert.
  *
- * The org-wide list hides events whose alert was soft-deleted — the section
+ * The org-wide list hides events whose alert was soft-deleted: the section
  * header they would render under no longer exists. Scoped to an `alertId`,
  * the alert is looked up first and null means "no such alert" (a 404),
  * distinct from "no events yet" (an empty array).

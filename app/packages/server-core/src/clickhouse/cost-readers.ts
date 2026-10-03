@@ -14,7 +14,7 @@ import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./cl
 import { costDaily } from "./schema";
 
 /**
- * The query vocabulary is the cost contract in `@infrawrench/client-core` —
+ * The query vocabulary is the cost contract in `@infrawrench/client-core`:
  * the same dimensions, binnings, and filters the widget config stores and the
  * API validates. `budgets.filters` is read through this module *and* through
  * the client-side type, so restating it here would let the two halves of one
@@ -29,7 +29,7 @@ export type { CostBasis, CostChargeType, CostFilter };
  * knobs (`topN`, `comparePreviousPeriod`, `forecast`) that the web service
  * layer resolves into extra queries before getting here.
  *
- * `query` — the cost query language's text form — is omitted for a different
+ * `query` (the cost query language's text form) is omitted for a different
  * reason, and deliberately: it is compiled to `filters` by the service layer,
  * and this type is where that is enforced. Query *text* has no meaning down
  * here and must never acquire one; the only thing that reaches the SQL below is
@@ -44,7 +44,7 @@ export type CostQuery = Omit<
    * The org's billing rules, already compiled and ordered by the caller.
    *
    * The wire request's `adjusted: boolean` is resolved to this by the service
-   * layer — a boolean has no meaning down here, the same way `query` text has
+   * layer: a boolean has no meaning down here, the same way `query` text has
    * none. Absent means the SQL below is byte-identical to what it has always
    * been: no factor, no reallocation, no second aggregate, not even a projected
    * `raw_amount`. That is what every unattended reader (budgets, anomalies,
@@ -59,7 +59,7 @@ export interface CostSeriesGroup {
   currency: string;
   points: CostSeriesPoint[];
   /**
-   * The same buckets, unadjusted — set only when `adjustments` were applied.
+   * The same buckets, unadjusted: set only when `adjustments` were applied.
    *
    * Per-bucket rather than a single total so it converts through exactly the
    * code path `points` does: a raw period total would have no day to pick an
@@ -70,7 +70,7 @@ export interface CostSeriesGroup {
    * Read as a partition of the raw money by *adjusted* group, so summing it
    * across every group is the org's collected total for the range. Reading one
    * group's entry as "what this series was before" is only true when no
-   * reallocation moved anything into or out of it — which is why the wire shape
+   * reallocation moved anything into or out of it, which is why the wire shape
    * (`CostAdjustmentSummary.rawTotals`) only exposes the sum.
    */
   rawPoints?: CostSeriesPoint[];
@@ -120,14 +120,14 @@ function dimensionExpr(dimension: CostDimension, tagKey: string | undefined): SQ
  * It falls back to `amount` when the row carries no amortized opinion. That
  * fallback is not a nicety: an org running one provider that amortizes and one
  * that doesn't would otherwise see the second provider's spend vanish entirely
- * the moment the amortized view was selected — not shown as an approximation,
- * not flagged, just gone — and the total would read as a dramatic saving.
+ * the moment the amortized view was selected (not shown as an approximation,
+ * not flagged, just gone) and the total would read as a dramatic saving.
  *
  * **"No opinion" is `amortized_reported = 0`, not `amortized_amount = 0`.**
  * Zero is a real amortized amount: a commitment purchase's cash lands on one
  * day and its *value* belongs to the days it buys, so its honest amortized
  * amount on the purchase day is nothing. Falling back for it would render the
- * purchase at full cash price alongside every amortized slice of it —
+ * purchase at full cash price alongside every amortized slice of it:
  * double-counting precisely what amortization exists to smooth.
  *
  * The `OR amortized_amount != 0` arm is what keeps three years of history
@@ -149,7 +149,7 @@ function amountExpr(basis: CostBasis | undefined): SQL {
  *
  * Shared so no reader can get the comparison wrong. `day` is a `Date` column and
  * the bounds are `"YYYY-MM-DD"` strings, which the column's own mapping renders
- * as `toDate('…')` — comparing a `String` against a `Date` is a hard error in
+ * as `toDate('…')`: comparing a `String` against a `Date` is a hard error in
  * ClickHouse rather than a coercion, and this is what keeps it from happening.
  *
  * The builder also qualifies the column as `cost_daily`.`day`, which matters
@@ -165,7 +165,7 @@ export function dayRange(from: string, to: string): SQL {
 
 /**
  * `charge_type IN (...)` when the caller narrowed the charge types, otherwise
- * nothing. Absent means every type, credits and refunds included — that is what
+ * nothing. Absent means every type, credits and refunds included: that is what
  * makes an unfiltered total the net number the provider would invoice.
  */
 function chargeTypeCondition(chargeTypes: CostChargeType[] | undefined): SQL | undefined {
@@ -191,7 +191,7 @@ export function membershipCondition(expr: SQL, op: CostFilter["op"], values: str
  * ------------------------------------------------------------------ */
 
 /**
- * The SQL conditions a rule's match compiles to — an AND of the fields it sets,
+ * The SQL conditions a rule's match compiles to: an AND of the fields it sets,
  * or `1` (matches everything) when it sets none.
  *
  * Shared by allocation rules and billing rules on purpose: they match on the
@@ -222,7 +222,7 @@ function matchConditions(match: BillingRuleMatch): SQL {
  * The adjusted money expression: the raw one multiplied by every matching
  * percentage rule's factor.
  *
- * `amount * if(c1, 1.1, 1) * if(c2, 0.85, 1)` — a **product of conditional
+ * `amount * if(c1, 1.1, 1) * if(c2, 0.85, 1)`: a **product of conditional
  * factors**, not a `multiIf`. That is the composition half of the ordering
  * model in SQL: markups genuinely compose, so two 10% rules must give ×1.21,
  * and a first-match-wins expression would silently give ×1.10. Multiplication
@@ -250,7 +250,7 @@ function adjustedAmountExpr(raw: SQL, factors: CompiledBillingAdjustments["facto
  * reallocation rules.
  *
  * `kind` is the dimension being rewritten; rules targeting the *other* kind
- * still appear as branches that evaluate to `fallback`. That is not padding —
+ * still appear as branches that evaluate to `fallback`. That is not padding:
  * it is what keeps first-match-wins global. A cost-centre rule at priority 0
  * and an account rule at priority 1 that both match the same row must move it
  * to the centre and leave the account alone, and dropping the centre rule from
@@ -292,7 +292,7 @@ function bucketExpr(binning: CostBinning): SQL {
  * One row of {@link queryCosts}'s scan.
  *
  * `raw_amount` is optional because the column is only *projected* when billing
- * rules are in force — not defaulted to zero when they are not. A cost reader
+ * rules are in force, not defaulted to zero when they are not. A cost reader
  * that hands back a plausible `0` for "what we collected" is worse than one that
  * hands back nothing: `undefined` fails loudly at the first arithmetic, a zero
  * renders as a number somebody bills against.
@@ -307,7 +307,7 @@ interface QueryCostsRow {
 
 /**
  * Aggregate cost_daily into per-bucket, per-group, per-currency sums.
- * Currencies are never merged — mixed-currency orgs get one series per
+ * Currencies are never merged: mixed-currency orgs get one series per
  * currency and the UI labels them. Uses FINAL so restated rows
  * (ReplacingMergeTree versions) never double-count.
  *
@@ -318,8 +318,8 @@ interface QueryCostsRow {
  * ## Billing rules
  *
  * `adjustments`, when present, compiles the org's rules **into this same
- * statement** — percentage factors into the summed expression, account
- * reallocations into the group expression — and adds one extra aggregate,
+ * statement**: percentage factors into the summed expression, account
+ * reallocations into the group expression, and adds one extra aggregate,
  * `sum(raw)`, so the collected figure comes back from the same pass. One scan
  * answers both questions; there is no second query and no post-processing of
  * rows in application code.
@@ -335,7 +335,7 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   const moneyExpr = adjustments ? adjustedAmountExpr(rawExpr, adjustments.factors) : rawExpr;
 
   let groupExpr = q.groupBy === "none" ? sql`''` : dimensionExpr(q.groupBy, q.groupByTagKey);
-  // Only the account dimension can be re-attributed here — it is the only
+  // Only the account dimension can be re-attributed here: it is the only
   // grouping a reallocation names. Grouping by service or region is untouched
   // by a rule that moves an account's spend, which is correct: the money is
   // still that service's, it is just booked to somebody else.
@@ -360,7 +360,7 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
 
   // The collected figure rides along as a second aggregate over the same scan.
   // It is what makes "an adjusted total is never shown without the raw one" a
-  // property of the query rather than a convention callers have to remember —
+  // property of the query rather than a convention callers have to remember,
   // and it is projected **only** when there are rules, so an unadjusted read
   // cannot hand anything a zero that looks like a collected total.
   //
@@ -437,7 +437,7 @@ export interface ResourceCostTotal {
  * cost dimension produce rows here, so sparse results are expected.
  *
  * `costBasis` is offered because "what does this idle volume cost us" is an
- * amortized question wherever a commitment covers it — but it defaults to cash,
+ * amortized question wherever a commitment covers it, but it defaults to cash,
  * since the orphan finder's number is a bill the reader recognises.
  */
 export async function getResourceCostTotals(
@@ -524,7 +524,7 @@ export interface UntaggedSpendRows {
 /**
  * Untagged spend over the org's required tag keys: how much of the range's
  * spend is on rows missing at least one required key, overall and per key.
- * "Carries the key" is `mapContains` — a present-but-empty value counts as
+ * "Carries the key" is `mapContains`: a present-but-empty value counts as
  * tagged here (billing exports rarely emit empty tag values, and spend-side
  * strictness belongs to the resource compliance report, not the money view).
  *
@@ -548,7 +548,7 @@ export async function getUntaggedSpend(
 
   // One `sumIf` per required key, selected alongside the totals so the whole
   // report is a single scan. The keys are the org's own configuration, but the
-  // aliases they land under are generated here rather than derived from them —
+  // aliases they land under are generated here rather than derived from them:
   // a tag key is arbitrary user text and has no business being an identifier.
   const perKey = Object.fromEntries(
     requiredKeys.map((key, i) => [
@@ -632,7 +632,7 @@ export interface ShowbackRule {
  * Spend per cost centre via first-match-wins allocation rules, compiled into
  * one `multiIf` so ClickHouse walks `cost_daily` once. `rules` must already be
  * in evaluation order (ascending priority). Rows no rule claims come back
- * under the empty-string centre id — the caller labels that "Unallocated".
+ * under the empty-string centre id: the caller labels that "Unallocated".
  *
  * Follows the caller's `costBasis`. Showback is the report where the basis
  * matters most: charging a team the full cash value of a three-year commitment
@@ -641,8 +641,8 @@ export interface ShowbackRule {
  * Cost centres nest, and deliberately none of that reaches here: this stays a
  * flat, pre-ordered rule list resolving each row to exactly one centre id in a
  * single scan. Parent/child precedence is already baked into the order the
- * caller passes (see `orderAllocationRules`), and the tree — own spend versus
- * subtree spend — is assembled from these sums afterwards in
+ * caller passes (see `orderAllocationRules`), and the tree (own spend versus
+ * subtree spend) is assembled from these sums afterwards in
  * `services/showback.ts`. A query per segment would be one scan of `cost_daily`
  * per node of the tree for an answer one scan already contains.
  *
@@ -651,7 +651,7 @@ export interface ShowbackRule {
  * `adjustments` layers the org's billing rules on top **inside the same
  * statement**: percentage factors multiply the summed amount, and cost-centre
  * reallocations wrap the allocation `multiIf` in a second one that overrides
- * it. Reallocation is why the two `multiIf`s nest rather than merge — the
+ * it. Reallocation is why the two `multiIf`s nest rather than merge: the
  * allocation rules answer "where did this land", the billing rules answer "and
  * where should it be billed instead", and collapsing them would make a
  * reallocation indistinguishable from someone editing the allocation rules.
@@ -683,7 +683,7 @@ export async function getShowbackSpend(
     currency: costDaily.currency,
     amount: sql<number>`sum(${moneyExpr})`.as("amount"),
   };
-  // Projected only when rules are in force — see `QueryCostsRow` for why an
+  // Projected only when rules are in force: see `QueryCostsRow` for why an
   // unadjusted read must return no collected figure rather than a zero one.
   const rows: Array<{
     centre: unknown;
@@ -716,7 +716,7 @@ export async function getShowbackSpend(
   }));
 }
 
-/** Earliest and latest cost day per account — drives backfill/status UI. */
+/** Earliest and latest cost day per account: drives backfill/status UI. */
 export async function getCostCoverage(
   organizationId: string,
 ): Promise<Map<string, { firstDay: string; lastDay: string }>> {

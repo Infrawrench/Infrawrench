@@ -1,12 +1,12 @@
 /**
- * Custom-graph tools — let MCP clients and the chat agent create script-defined
+ * Custom-graph tools; let MCP clients and the chat agent create script-defined
  * dashboard charts: sandboxed TypeScript that queries org cost data, provider
  * metrics, and external APIs, declares its own controls (selects, checkboxes,
  * buttons), and returns a render spec with its own refresh policy.
  *
  * The pairing mirrors workflows: `get_custom_graph_typings` hands back the
  * ambient `graph.d.ts`, and `write_custom_graph` type-checks source against it
- * before saving — a graph with type errors is rejected with diagnostics
+ * before saving; a graph with type errors is rejected with diagnostics
  * instead of being persisted and rendering an error tile.
  *
  * Everything routes through services/custom-graphs.ts, the same module behind

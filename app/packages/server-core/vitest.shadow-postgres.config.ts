@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
  * Shadow run of the mocked Postgres suites (`pnpm test:postgres:shadow`): the
  * same unit tests, unchanged and in place, but with `helpers/fake-postgres.ts`
  * also PREPARE-validating every captured statement against the real server at
- * DATABASE_URL — see the shadow-mode notes in that helper. Collection is by
+ * DATABASE_URL; see the shadow-mode notes in that helper. Collection is by
  * content, not location: any `src/__tests__` suite using the helper is picked
  * up automatically, so migrating a suite off its hand-rolled db stub is what
  * enrols it here.

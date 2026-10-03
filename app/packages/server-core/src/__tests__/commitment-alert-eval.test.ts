@@ -5,7 +5,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 /**
  * Commitment alert evaluation tests that exercise the *pipeline*, not the
- * maths — the pure detectors have their own suites.
+ * maths: the pure detectors have their own suites.
  *
  * What this file is for:
  *
@@ -38,7 +38,7 @@ vi.mock("../cost/efficiency-settings", () => ({ getOrgEfficiencySettings }));
 
 /**
  * The transports. Mocked purely so the assertions below can prove nothing
- * called them — see point 1.
+ * called them: see point 1.
  */
 const sendPushToOrg = vi.fn();
 const sendSlackToChannels = vi.fn();
@@ -50,7 +50,7 @@ vi.mock("../slack", () => ({
 }));
 vi.mock("../msteams", () => ({ sendMsTeamsToWebhooks }));
 
-// Real Drizzle over a recording driver against the real schema — every
+// Real Drizzle over a recording driver against the real schema: every
 // statement renders its actual SQL (and shadow-validates under
 // test:postgres:shadow). `prime()` below queues each pass's rows FIFO.
 const pg = fakePostgres();
@@ -72,7 +72,7 @@ const idleInserts = () =>
 /**
  * Prime the recording driver for one pass, in execution order: the account
  * list, then the holdings. The fire-once inserts' RETURNING is served by the
- * default rows — every claim lands (or none does, when `insertWins` is off) —
+ * default rows: every claim lands (or none does, when `insertWins` is off),
  * and the notified-at updates ignore their rows.
  */
 function prime() {
@@ -108,7 +108,7 @@ const SETTINGS = {
   unitCostMinSpendCents: 10_000,
 };
 
-/** The 30 days ending today — the window the driver builds. */
+/** The 30 days ending today: the window the driver builds. */
 function windowDays(): Set<string> {
   const days = new Set<string>();
   const end = new Date("2026-08-10T00:00:00Z").valueOf();
@@ -117,7 +117,7 @@ function windowDays(): Set<string> {
 }
 
 /**
- * A collected holding — keys in the `account_commitments` column order (the
+ * A collected holding: keys in the `account_commitments` column order (the
  * full-row select decodes positionally; see helpers/fake-postgres.ts). Date
  * values pass through the column mapping unchanged, exactly as the real
  * driver's parsed dates would.
@@ -249,7 +249,7 @@ describe("evaluateCommitmentAlertsForOrg — fire once", () => {
     insertWins = false;
     prime();
     await evaluate("org1", NOW, true);
-    // Both detectors still ran and both still tried to record — they just
+    // Both detectors still ran and both still tried to record: they just
     // lost the race with their own earlier pass.
     expect(expiryInserts().length + idleInserts().length).toBe(2);
     expect(routeAlert).not.toHaveBeenCalled();
@@ -258,7 +258,7 @@ describe("evaluateCommitmentAlertsForOrg — fire once", () => {
   it("keys the expiry row on the term end, so an extension re-warns", async () => {
     prime();
     await evaluate("org1", NOW, true);
-    // (id, organizationId, accountId, commitmentId), termEndDay, horizonDays —
+    // (id, organizationId, accountId, commitmentId), termEndDay, horizonDays:
     // the rendered statement's column order.
     expect(expiryInserts()).toHaveLength(1);
     expect(expiryInserts()[0]!.params[4]).toBe("2026-09-09");
@@ -288,7 +288,7 @@ describe("evaluateCommitmentAlertsForOrg — unmeasurable utilization", () => {
 
   it("never calls a commitment idle when the account carries no attribution", async () => {
     loadPlugins.mockResolvedValue([
-      // Lists commitments, but stamps no charge types — every row reads as
+      // Lists commitments, but stamps no charge types: every row reads as
       // plain uncovered usage, so delivered would be 0 for a healthy plan.
       { plugin: { manifest: { id: "aws", commitments: { kinds: ["savings_plan"] } } } },
     ]);

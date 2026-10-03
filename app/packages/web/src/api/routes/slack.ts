@@ -8,7 +8,7 @@
  *
  * Public OAuth callback (`/api/slack/oauth/callback`): Slack redirects the
  * browser here after the user approves the install; we verify the signed state
- * and exchange the code for a bot token. No session needed — the signed state
+ * and exchange the code for a bot token. No session needed: the signed state
  * authorizes the org binding, exactly as the GitHub App setup callback does.
  */
 import { Hono } from "hono";
@@ -110,7 +110,7 @@ app.get("/install-url", async (c) => {
   return c.json({ url: slackAuthorizeUrl(state, redirectUri()) });
 });
 
-/** Channels the install can see, for the picker. Live call — not cached. */
+/** Channels the install can see, for the picker. Live call, not cached. */
 app.get("/installations/:installationId/available-channels", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -156,7 +156,7 @@ interface ChannelBody {
  *
  * Adding a channel no longer decides what it receives: that is an
  * `alert_rules` row (`PUT /alert-rules`). An org with no rules yet falls back
- * to the synthesized default — everything except drift, everywhere — so a
+ * to the synthesized default (everything except drift, everywhere) so a
  * freshly added channel still starts receiving alerts without a second step.
  */
 app.post("/channels", async (c) => {
@@ -170,7 +170,7 @@ app.post("/channels", async (c) => {
   if (!channelId) return c.json({ error: "channelId is required" }, 400);
   if (!channelName) return c.json({ error: "channelName is required" }, 400);
 
-  // The install must belong to this org — otherwise a caller could attach a
+  // The install must belong to this org, otherwise a caller could attach a
   // channel to someone else's workspace by guessing an installation id.
   const installs = await liveInstallations(organizationId);
   if (!installs.some((i) => i.id === body.installationId)) {

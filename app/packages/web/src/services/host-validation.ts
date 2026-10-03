@@ -5,7 +5,7 @@
  * reserved/private range (RFC1918, loopback, link-local, etc.). Applied to
  * the bastion endpoint (`sshHost`) of an SSH tunnel, where the server itself
  * is the one making the outbound connection. Inner `remoteHost` is _not_
- * validated — reaching private hosts via the bastion is the whole point.
+ * validated: reaching private hosts via the bastion is the whole point.
  *
  * {@link resolveSafeHost} is the only entry point on purpose. An
  * `assertHostNotInternal(host)` wrapper used to sit alongside it and read as
@@ -50,14 +50,14 @@ function isBlockedIp(ip: string): boolean {
     if (lower.startsWith("fe80:") || lower.startsWith("fe80::")) return true; // link-local
     if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique-local fc00::/7
     if (lower.startsWith("ff")) return true; // multicast
-    // IPv4-mapped IPv6 (::ffff:1.2.3.4) — extract and recheck as v4.
+    // IPv4-mapped IPv6 (::ffff:1.2.3.4): extract and recheck as v4.
     const mappedMatch = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
     if (mappedMatch?.[1]) return isBlockedIp(mappedMatch[1]);
     return false;
   }
 
   const ipInt = ipv4ToInt(ip);
-  if (ipInt === null) return true; // unparseable — refuse
+  if (ipInt === null) return true; // unparseable: refuse
 
   // Reserved IPv4 ranges
   const blockedRanges: Array<[string, number]> = [
@@ -117,7 +117,7 @@ export async function resolveSafeHost(host: string): Promise<string> {
   if (addrs.length === 0) {
     throw new Error(`SSH host ${trimmed} did not resolve to any address`);
   }
-  // Every answer must be clean, not just the one we pick — a name that returns
+  // Every answer must be clean, not just the one we pick: a name that returns
   // both a public and a private address is being used to straddle the check.
   for (const a of addrs) {
     if (isBlockedIp(a.address)) {

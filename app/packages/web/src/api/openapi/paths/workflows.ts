@@ -4,7 +4,7 @@ import type { BuildContext } from "../context";
 
 /**
  * Workflow schedule + typings. The rest of the workflow CRUD surface (source,
- * runs, metrics, check, run) is not yet in the published spec — registering it
+ * runs, metrics, check, run) is not yet in the published spec: registering it
  * is a follow-up. Schedule is what CI/SDKs automate; typings is what editors
  * and agents load against the org's real accounts.
  */

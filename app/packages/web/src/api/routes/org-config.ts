@@ -7,7 +7,7 @@
  *
  * ## Permissions
  *
- * Every route needs `config:read` (export/plan) or `config:write` (apply) —
+ * Every route needs `config:read` (export/plan) or `config:write` (apply),
  * **and** the per-section permission for each section involved. That second
  * check is the point: `config:write` on its own would otherwise be a way around
  * a role that deliberately withholds `workflows:write`, since a document can
@@ -83,7 +83,7 @@ function requireSectionPermissions(
   }
 }
 
-/** `?sections=budgets,workflows` — the export's optional narrowing. */
+/** `?sections=budgets,workflows`: the export's optional narrowing. */
 function parseSections(c: Context): OrgConfigSection[] {
   const raw = c.req.query("sections");
   if (!raw) return [...ORG_CONFIG_SECTIONS];
@@ -110,7 +110,7 @@ async function organizationName(organizationId: string): Promise<string> {
 }
 
 /**
- * GET /api/org/:orgId/config/export — the whole configuration as one document.
+ * GET /api/org/:orgId/config/export: the whole configuration as one document.
  *
  * `?sections=` narrows it. Narrowing matters for more than payload size: a
  * document that carries only `budgets` can be applied in `replace` mode without
@@ -141,7 +141,7 @@ app.get("/export", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/config/plan — what applying this document would do.
+ * POST /api/org/:orgId/config/plan: what applying this document would do.
  *
  * Read-only, so it rides `config:read` plus each named section's *read*
  * permission: previewing a change is not making one, and a reviewer on a PR
@@ -171,7 +171,7 @@ app.post("/plan", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/config/apply — apply the document, in one transaction.
+ * POST /api/org/:orgId/config/apply: apply the document, in one transaction.
  *
  * `mode: "replace"` also deletes what the document does not name *within the
  * sections it carries*. It is never the default, and the CLI puts a

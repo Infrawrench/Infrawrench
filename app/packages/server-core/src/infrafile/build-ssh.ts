@@ -1,5 +1,5 @@
 /**
- * Builds, pushes and runs images on a remote host over SSH — the web app's
+ * Builds, pushes and runs images on a remote host over SSH: the web app's
  * build path.
  *
  * The browser has no working tree and the `web`/`poller` pods have no Docker
@@ -57,7 +57,7 @@ function q(value: string): string {
 
 /**
  * One remote command. Streams both channels into the run log and throws with
- * the tail of stderr on failure — an exit code alone sends people hunting.
+ * the tail of stderr on failure: an exit code alone sends people hunting.
  */
 async function exec(
   deps: SshDeps,
@@ -116,7 +116,7 @@ function workspaceFor(gitSha: string): string {
  * The clone URL carries a short-lived installation token for a private repo,
  * so it goes up as a file and the remote never sees it in a command line. The
  * origin remote is reset to the canonical URL afterwards, so the token does not
- * linger in `.git/config` either — the same precaution agent VM setup takes.
+ * linger in `.git/config` either: the same precaution agent VM setup takes.
  */
 export async function buildOverSsh(
   request: BuildRequest,
@@ -143,7 +143,7 @@ export async function buildOverSsh(
   // would not do: the remote shell expands it *before* exec, so the
   // credentialed URL lands in argv[1] and is visible in `ps` to every user on
   // the host. Instead git gets a URL carrying only the username, and asks for
-  // the password through GIT_ASKPASS — which reads it from a 0600 file.
+  // the password through GIT_ASKPASS, which reads it from a 0600 file.
   const askpass = `${workspace}/.git-askpass`;
   const tokenPath = `${workspace}/.clone-token`;
   const url = new URL(ctx.cloneUrl);
@@ -202,7 +202,7 @@ export async function buildOverSsh(
         })
       ).trim() || undefined;
   } catch {
-    // Cosmetic — the image exists either way.
+    // Cosmetic: the image exists either way.
   }
 
   return digest ? { image, digest, workspace } : { image, workspace };
@@ -244,7 +244,7 @@ export async function runOverSsh(
 ): Promise<RunInImageResult> {
   const deps = buildWorkflowSshDeps(ctx.organizationId, ctx.signal ? { signal: ctx.signal } : {});
   const workdir = request.workdir || RUN_WORKDIR;
-  // Always explicit — see the same note in the local driver: container args are
+  // Always explicit; see the same note in the local driver: container args are
   // appended to the image's ENTRYPOINT, which would otherwise mangle the command.
   const entrypoint = request.entrypoint ?? "sh";
   const parts = ["docker run --rm", `-w ${q(workdir)}`, `--entrypoint ${q(entrypoint)}`];
@@ -253,7 +253,7 @@ export async function runOverSsh(
     parts.push(`-v ${q(`${ctx.workspace}/src:${RUN_WORKDIR}`)}`);
   }
 
-  // Environment is credentials more often than not — file, never argv.
+  // Environment is credentials more often than not: file, never argv.
   let envPath: string | undefined;
   const env = request.env ?? {};
   if (Object.keys(env).length > 0) {
@@ -324,7 +324,7 @@ export async function copyToOverSsh(
   );
 
   const to = { accountId: target.accountId, typeId: target.resourceTypeId, resourceId: target.id };
-  // Create the destination BEFORE writing into it — an SFTP put to a path whose
+  // Create the destination BEFORE writing into it: an SFTP put to a path whose
   // parent does not exist fails, which is every first copy to a fresh host.
   await deps.sshExec!({ ...to, command: `mkdir -p ${q(remotePath)}` });
   await deps.sftpPut!(to, `${remotePath}/source.tgz`, bytes.base64);

@@ -22,7 +22,7 @@
  * that is the right boundary and what stops it being the only one.
  *
  * The lease is heartbeat-based rather than deleted-on-exit, because the case
- * that matters most is the one where no cleanup runs — a pod that is OOM
+ * that matters most is the one where no cleanup runs: a pod that is OOM
  * killed, evicted mid-rollout, or partitioned. A row whose `heartbeatAt` has
  * gone stale is claimable by anybody; see `services/replica-relay.ts` for the
  * single statement that does it.
@@ -32,7 +32,7 @@ import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 export const replicaSessionOwners = pgTable(
   "replica_session_owners",
   {
-    /** `${kind}:${key}` — the session this row leases. */
+    /** `${kind}:${key}`: the session this row leases. */
     id: text("id").primaryKey(),
     /** The feature the session belongs to, e.g. `linux-app`. */
     kind: text("kind").notNull(),

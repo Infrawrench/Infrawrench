@@ -1,7 +1,7 @@
 /**
  * Cross-cloud access review routes (`/api/org/:orgId/access-review*`).
  *
- * These are the principals inside the *customer's* clouds — IAM users and
+ * These are the principals inside the *customer's* clouds: IAM users and
  * roles, service accounts, app registrations, role bindings, long-lived API
  * keys. Not Infrawrench's own team roles (`/team/*`) and not the credentials
  * Infrawrench holds for you (`/credential-hygiene`).
@@ -13,7 +13,7 @@
  * Permissions mirror posture exactly. Reading is `resources:read`; accepting a
  * finding is `resources:write`, because it is a statement about one resource
  * ("that break-glass role is meant to be admin") at the same trust level as
- * changing it — and members, who can read the screen, deliberately cannot
+ * changing it, and members, who can read the screen, deliberately cannot
  * silence it. Both dismissal routes are audited.
  *
  * There is no settings route: the review has no switch of its own. Its
@@ -60,7 +60,7 @@ function readStaleDays(raw: string | undefined): number | { error: string } {
 }
 
 /**
- * GET /api/org/:orgId/access-review — every synced principal in the org, plus
+ * GET /api/org/:orgId/access-review: every synced principal in the org, plus
  * the findings that have evidence against them.
  */
 app.get("/", async (c) => {
@@ -71,7 +71,7 @@ app.get("/", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/access-review/export?format=csv|json — the review as a
+ * GET /api/org/:orgId/access-review/export?format=csv|json: the review as a
  * downloadable evidence file.
  *
  * Its own route rather than a query parameter on the list, because it answers
@@ -100,7 +100,7 @@ app.get("/export", async (c) => {
   const filename = `access-review-${stamp}.${format}`;
 
   // Exporting the review is a disclosure of who holds standing access across
-  // every connected account — worth a row in the audit log even though the
+  // every connected account: worth a row in the audit log even though the
   // same facts are on the screen.
   void logAudit({
     organizationId,
@@ -126,7 +126,7 @@ app.get("/export", async (c) => {
   return c.body(accessReviewToCsv(review));
 });
 
-// POST /api/org/:orgId/access-review/dismissals and its DELETE — the shared
+// POST /api/org/:orgId/access-review/dismissals and its DELETE: the shared
 // implementation over the dismissal store both security surfaces use. The
 // store is `posture_dismissals`, shared with the posture screen: the key is
 // `(organizationId, resourceId, ruleId)`, the rule-id namespaces are disjoint

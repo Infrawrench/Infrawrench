@@ -28,7 +28,7 @@ import {
   type ResourceChangeEvent,
 } from "./resource-changes";
 
-/** Returns resource types listed in the sidebar — top-level plus child types
+/** Returns resource types listed in the sidebar: top-level plus child types
  * that opted in via `showInSidebar`. Duplicated from @infrawrench/ui to avoid
  * a server→React-package dependency. */
 function listableTopLevelTypes<
@@ -153,7 +153,7 @@ async function loadPriorSnapshots(
  * snapshot-load failure upstream) can never break a sync.
  *
  * The hook exists rather than a direct call to the drift notifier so this
- * module keeps knowing nothing about notification transports — the same
+ * module keeps knowing nothing about notification transports: the same
  * separation `onTypeDone` gives the sync-failure pager, which the poller (not
  * this file) wires to `notePollOutcome`.
  */
@@ -318,7 +318,7 @@ export async function syncAccountResources(
 
   // Soft-delete resources whose type succeeded but no longer exist upstream.
   // The provider's list is authoritative: anything we have for a succeeded type
-  // that isn't in the live response is gone. Never delete across failed types —
+  // that isn't in the live response is gone. Never delete across failed types:
   // transient API errors must not wipe data.
   const liveIds = allResources.map((r) => r.id);
   if (succeededTypeIds.length > 0) {
@@ -516,7 +516,7 @@ async function refreshPinnedStats(
 }
 
 /**
- * Server-side analogue of fetchPeerMetricSeries in the web package — calls
+ * Server-side analogue of fetchPeerMetricSeries in the web package: calls
  * each `exposeMetricsToParent` peer's `fetchMetricSeries` against credentials
  * resolved from the parent. Series get prefixed with the peer's tab label so
  * downstream charts can distinguish them from the parent's own metrics.
@@ -572,7 +572,7 @@ async function fetchPeerMetricSeriesForPoller(
  *
  * The source resource usually lives in a *different* account/provider, so we
  * load a client for `source_account_id` to resolve it. Per-reference failures
- * (provider down, output gone, plugin can't update) are swallowed — one broken
+ * (provider down, output gone, plugin can't update) are swallowed: one broken
  * reference must not stall the rest.
  */
 export async function reconcileAccountReferences(
@@ -609,7 +609,7 @@ export async function reconcileAccountReferences(
 
   // Cache one client per source account across the batch. A failure is cached
   // as the error itself so we don't re-attempt a broken credential once per
-  // reference — but it is rethrown every time, so the per-reference handler
+  // reference, but it is rethrown every time, so the per-reference handler
   // below logs which references were skipped and why.
   type SourceClient = Awaited<ReturnType<typeof loadAccountClient>>;
   const sourceClients = new Map<string, SourceClient | Error>();

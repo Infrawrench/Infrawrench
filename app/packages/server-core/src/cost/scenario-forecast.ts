@@ -2,8 +2,8 @@
  * Query-time resolution and application of a scenario model.
  *
  * Lives in server-core, not the web package, because the two consumers span
- * both: `runCostQuery` (web — the HTTP API, the MCP tools and therefore the
- * CLI) and `budgetMonthStatus` (here — also driven by the poller's budget
+ * both: `runCostQuery` (web; the HTTP API, the MCP tools and therefore the
+ * CLI) and `budgetMonthStatus` (here; also driven by the poller's budget
  * evaluation pass). One implementation is what keeps a chart's scenario line
  * and a budget's scenario-adjusted threshold from ever disagreeing about what
  * the same model means.
@@ -20,8 +20,8 @@
  *    Same stance as saved filters, and for the same reason from the other
  *    direction: a chart labelled "Scenario: Q4 plan" that quietly contains no
  *    plan is worse than a chart that refuses to draw.
- * 2. **History is untouched.** Only the days the caller hands over — which are
- *    by construction the projected ones — are ever adjusted.
+ * 2. **History is untouched.** Only the days the caller hands over (which are
+ *    by construction the projected ones) are ever adjusted.
  * 3. **Currencies are never silently mixed.** A model's amounts are added only
  *    when the projection is denominated in the model's own currency, or when
  *    the org has stated a rate that converts them into it. Otherwise the
@@ -66,7 +66,7 @@ export class CostScenarioResolutionError extends Error {
   }
 }
 
-/** A model that cannot be applied to this projection — currency, mostly. */
+/** A model that cannot be applied to this projection: currency, mostly. */
 export class CostScenarioApplicationError extends Error {
   override readonly name = "CostScenarioApplicationError";
 }
@@ -119,7 +119,7 @@ export interface ScenarioForecastOptions {
   organizationId: string;
   model: CostScenarioModel;
   /**
-   * The unadjusted trend projection the caller already computed — the exact
+   * The unadjusted trend projection the caller already computed: the exact
    * days the scenario may touch, and no others.
    */
   baseline: ScenarioDayPoint[];
@@ -132,7 +132,7 @@ export interface ScenarioForecastOptions {
   /**
    * The currency the baseline amounts are in, or null when the projection sums
    * more than one currency and the org has not chosen a display currency. Null
-   * makes any model carrying an amount unapplicable — see below.
+   * makes any model carrying an amount unapplicable: see below.
    */
   baselineCurrency: string | null;
   /** The org's display currency, when conversion is active. */
@@ -157,8 +157,8 @@ export async function forecastWithScenario(
 
   // One sub-baseline per *distinct* scope, not per adjustment: three rate
   // changes all scoped to `provider = 'aws'` are one extra query, not three.
-  // Only rate changes need one — an absolute amount is a number, not a
-  // percentage of anything — so a model of pure amounts costs nothing extra.
+  // Only rate changes need one (an absolute amount is a number, not a
+  // percentage of anything) so a model of pure amounts costs nothing extra.
   const scopeKeys = new Map<string, CostFilter[]>();
   for (const adjustment of adjustments) {
     if (adjustment.kind !== "rate_change") continue;
@@ -205,7 +205,7 @@ export async function forecastWithScenario(
  *
  * The cases, in order:
  *
- * - A model with **no amounts at all** (pure rate changes) is currency-free —
+ * - A model with **no amounts at all** (pure rate changes) is currency-free:
  *   a percentage of the trend is denominated in whatever the trend is. It
  *   applies to any projection.
  * - The projection is already in the model's currency: rate 1, no conversion.
@@ -213,7 +213,7 @@ export async function forecastWithScenario(
  *   currency to the display currency: convert, and say so on the result.
  * - Anything else throws. Adding dollars to a euro projection, or to a
  *   projection that is itself a sum of both, produces a number that means
- *   nothing — and it would sit on a chart under a confident dashed line.
+ *   nothing, and it would sit on a chart under a confident dashed line.
  */
 function resolveScenarioCurrency(options: ScenarioForecastOptions): {
   amountRate: number;
@@ -256,7 +256,7 @@ function resolveScenarioCurrency(options: ScenarioForecastOptions): {
 
 /**
  * The trend projection for one narrowed scope, over the same horizon as the
- * chart's own — this is what a rate change's percentage is a percentage *of*.
+ * chart's own: this is what a rate change's percentage is a percentage *of*.
  *
  * Fitted exactly the way the main forecast is (same window, same basis, same
  * charge types, converted before fitting), because a delta measured against a

@@ -51,7 +51,7 @@ vi.mock("@infrawrench/server-core/workflows/runner", () => ({
 }));
 
 // Avoid pulling server-core's AI billing (and its real db client / drizzle `sql`
-// usage) into this suite — the drizzle-orm mock above is intentionally partial.
+// usage) into this suite: the drizzle-orm mock above is intentionally partial.
 vi.mock("@infrawrench/server-core/workflows/ai", () => ({
   isWorkflowAiConfigured: () => false,
 }));

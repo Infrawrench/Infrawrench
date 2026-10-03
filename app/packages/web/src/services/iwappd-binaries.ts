@@ -22,7 +22,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { constants as zlibConstants, gzip } from "node:zlib";
 // `xz-decompress` is CJS with no ESM entry, and Node's cjs-module-lexer cannot
-// see the class through its UMD wrapper — a named import resolves under the
+// see the class through its UMD wrapper: a named import resolves under the
 // esbuild bundle that `pnpm build` produces and throws under `tsx watch` in
 // dev. Taking the default and destructuring works in both.
 import xzDecompressModule from "xz-decompress";
@@ -45,7 +45,7 @@ const DOWNLOADER_ORIGIN = "https://iwappd-hash-asset-downloader.infrawrench.com"
  * How long a resolved set of binaries is served before the pointer is checked
  * again. A deploy of new binaries reaches every web instance within this
  * window without a restart, and the cost of the window is that a host enrolled
- * in the first minutes after a release may get the previous build — which is
+ * in the first minutes after a release may get the previous build, which is
  * fine, because the archive is versioned by content and the compositor
  * negotiates its protocol version with the client anyway.
  */
@@ -168,7 +168,7 @@ async function fetchBinaries(hash: string): Promise<Pick<CachedBinaries, "x86_64
 async function refresh(previous: CachedBinaries | undefined): Promise<CachedBinaries> {
   const hash = await fetchLatestHash();
   if (previous && previous.hash === hash) {
-    // Still the current build — keep the compressed buffers and just restart
+    // Still the current build: keep the compressed buffers and just restart
     // the clock.
     previous.checkedAt = Date.now();
     return previous;

@@ -64,7 +64,7 @@ describe("posture dismissal routes", () => {
         reason: "static site",
         userId: "user-1",
       });
-      // The wire shape only — the record's row id and organizationId are
+      // The wire shape only: the record's row id and organizationId are
       // internal and the documented body forbids them.
       expect(await res.json()).toEqual({
         resourceId: "r-1",

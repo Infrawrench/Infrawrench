@@ -62,7 +62,7 @@ import { apiDelete, apiGet, apiPost, apiPut } from "./api";
  * Exported because the dashboard needs it without the budget/report halves.
  * It used to build its own three-method literal, and the pickers that gate on
  * an optional loader (scenarios, saved filters, unit costs) silently vanished
- * from a graph editor opened from a dashboard — never construct a second one.
+ * from a graph editor opened from a dashboard, never construct a second one.
  */
 export function createWebCostApi(orgId: string): CostApi {
   return {
@@ -87,14 +87,14 @@ export function createWebCostApi(orgId: string): CostApi {
     createSavedFilter: (input: SavedCostFilterInput) =>
       apiPost<SavedCostFilter>(`/api/org/${orgId}/saved-cost-filters`, input),
     // Scenario models ride the base CostApi for the same reason saved filters
-    // do: every surface that can author or draw a cost graph needs the list —
+    // do: every surface that can author or draw a cost graph needs the list;
     // the picker in the editor, and the card that labels an applied scenario.
     listScenarioModels: async () => {
       const res = await apiGet<{ models: CostScenarioModel[] }>(`/api/org/${orgId}/cost-scenarios`);
       return res.models;
     },
     // Annotations ride the base CostApi so an org-wide note is drawn on every
-    // cost chart — the dashboard card as much as the saved report. The writes
+    // cost chart: the dashboard card as much as the saved report. The writes
     // are included unconditionally (server-side `costs:write`), so a viewer's
     // 403 surfaces as the action's error rather than as a missing button.
     listCostAnnotations: async (reportId?: string) => {
@@ -112,7 +112,7 @@ export function createWebCostApi(orgId: string): CostApi {
       await apiDelete(`/api/org/${orgId}/cost-annotations/${annotationId}`);
     },
     // Business metrics ride the base CostApi for the same reason saved filters
-    // do: every surface that can author or draw a cost graph needs them — the
+    // do: every surface that can author or draw a cost graph needs them; the
     // picker in the editor, and the card that divides spend by one.
     listBusinessMetrics: async () => {
       const res = await apiGet<{ metrics: BusinessMetric[] }>(`/api/org/${orgId}/business-metrics`);
@@ -130,8 +130,8 @@ export function createWebCostApi(orgId: string): CostApi {
  * The full Costs panel client: the read calls above plus budget CRUD and the
  * dashboard-placement calls.
  *
- * Adding a placement is a plain widget POST — the same call the dashboard "+"
- * menu makes — because "add an existing budget to a dashboard" and "create a
+ * Adding a placement is a plain widget POST (the same call the dashboard "+"
+ * menu makes) because "add an existing budget to a dashboard" and "create a
  * budget and show it here" only differ in whether a budget row is created
  * first.
  */
@@ -295,7 +295,7 @@ export function createWebCostsClient(orgId: string): CostsClient {
 }
 
 /**
- * The Cost reports client — the same read calls again, plus report CRUD and the
+ * The Cost reports client: the same read calls again, plus report CRUD and the
  * dashboard-placement calls for `cost_report` cards.
  *
  * A separate client from {@link createWebCostsClient} because a report is its

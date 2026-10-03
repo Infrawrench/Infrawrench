@@ -49,7 +49,7 @@ export function ConnectResourceModal({
 
   const templatesKey = `${orgId}/${source.pluginId}/${source.resourceTypeId}/${targetAccountId}/${targetPluginId}`;
 
-  // Template loading state — folded into a keyed store so it derives during
+  // Template loading state: folded into a keyed store so it derives during
   // render instead of resetting synchronously when the request identity changes.
   const [templateStore, setTemplateStore] = useState<{
     forKey: string;

@@ -5,8 +5,8 @@
  * is produced incrementally and never exists as one string. They also both
  * append the two provenance columns that make a restated export reconcilable:
  *
- *   * `exported_at` — when *this copy* of the object was produced.
- *   * `collection_watermark` — the newest day for which every cost-collecting
+ *   * `exported_at`: when *this copy* of the object was produced.
+ *   * `collection_watermark`: the newest day for which every cost-collecting
  *     account in the org had reported when the run started. Rows dated after it
  *     are still arriving, so a consumer can hold back a period rather than
  *     publishing a number that is about to change.
@@ -84,7 +84,7 @@ export async function* toCsv(
   }
 }
 
-/** One JSON object per line — the shape BigQuery, Snowflake and DuckDB all load. */
+/** One JSON object per line: the shape BigQuery, Snowflake and DuckDB all load. */
 export async function* toNdjson(
   rows: AsyncIterable<CostExportRow>,
   columns: CostExportColumns,

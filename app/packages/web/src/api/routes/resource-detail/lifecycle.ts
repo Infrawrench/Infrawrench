@@ -225,7 +225,7 @@ export function registerLifecycleRoutes(app: Hono): void {
             },
             ref.value,
           );
-          // Best-effort topology row — provider FK may not exist yet.
+          // Best-effort topology row: provider FK may not exist yet.
           try {
             await db
               .insert(associations)
@@ -312,7 +312,7 @@ export function registerLifecycleRoutes(app: Hono): void {
       return c.json({ error: message }, 400);
     }
 
-    // Every applied edit lands in the audit trail — resource updates carry
+    // Every applied edit lands in the audit trail: resource updates carry
     // real provider mutations (a resize restarts the machine).
     void logAudit({
       organizationId,
@@ -323,7 +323,7 @@ export function registerLifecycleRoutes(app: Hono): void {
       metadata: {
         pluginId: input.pluginId,
         resourceTypeId: input.resourceTypeId,
-        // Keys only — edited values can include write-only password fields,
+        // Keys only: edited values can include write-only password fields,
         // which must never land in the audit table.
         fieldKeys: Object.keys(input.fields ?? {}),
       },
@@ -331,7 +331,7 @@ export function registerLifecycleRoutes(app: Hono): void {
 
     // Mirror the refreshed fields/displayName into the DB so the next page
     // load sees the new values without waiting for a sync cycle. Peer-managed
-    // resources skip this — they aren't owned by the account's native plugin.
+    // resources skip this: they aren't owned by the account's native plugin.
     if (ctx.account.pluginId === input.pluginId) {
       try {
         await db
@@ -382,7 +382,7 @@ export function registerLifecycleRoutes(app: Hono): void {
     return c.json(config);
   });
 
-  /** POST /api/resources/picker-resources — get resources for resource-picker field */
+  /** POST /api/resources/picker-resources: get resources for resource-picker field */
   app.post("/picker-resources", async (c) => {
     requirePermission(c, "resources:read");
     const organizationId = c.get("organizationId");
@@ -392,7 +392,7 @@ export function registerLifecycleRoutes(app: Hono): void {
       regionHint?: string;
       /**
        * When true, search every account in the org whose plugin matches a
-       * source — used by reference-mode pickers (e.g. DNS content) where the
+       * source: used by reference-mode pickers (e.g. DNS content) where the
        * target resource usually lives in a different account/provider.
        */
       crossAccount?: boolean;
@@ -444,7 +444,7 @@ export function registerLifecycleRoutes(app: Hono): void {
           );
           for (const resource of resources) {
             try {
-              // Prefer the value the lister already populated — avoids an N+1
+              // Prefer the value the lister already populated: avoids an N+1
               // re-list when resolveOutput would just re-fetch the same data.
               const preResolved = resource.resolvedOutputs[source.outputKey];
               const outputValue =
@@ -481,7 +481,7 @@ export function registerLifecycleRoutes(app: Hono): void {
     return c.json(results);
   });
 
-  /** POST /api/resources/create-pricing — get size pricing for create form */
+  /** POST /api/resources/create-pricing: get size pricing for create form */
   app.post("/create-pricing", async (c) => {
     requirePermission(c, "resources:read");
     const organizationId = c.get("organizationId");
@@ -512,7 +512,7 @@ export function registerLifecycleRoutes(app: Hono): void {
     return c.json(pricing ?? {});
   });
 
-  /** POST /api/resources/field-action — execute an in-form field action (e.g. mint an IAM role) */
+  /** POST /api/resources/field-action: execute an in-form field action (e.g. mint an IAM role) */
   app.post("/field-action", async (c) => {
     requirePermission(c, "resources:write");
     const organizationId = c.get("organizationId");
@@ -552,11 +552,11 @@ export function registerLifecycleRoutes(app: Hono): void {
   });
 
   /**
-   * POST /api/resources/cost-estimate — monthly cost of a configuration.
+   * POST /api/resources/cost-estimate: monthly cost of a configuration.
    *
    * One route for all three questions the UI asks: what would this create
    * cost (`fields`), what does this resource cost (`resourceId`), and what
-   * would this edit cost (both — `fields` is merged over the resource's
+   * would this edit cost (both; `fields` is merged over the resource's
    * stored fields, so the caller sends only what changed).
    *
    * A peer-resource client (`pluginId` + `parentResourceId`) is resolved here

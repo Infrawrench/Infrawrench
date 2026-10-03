@@ -18,7 +18,7 @@
  *    anything; a token that is perfectly valid still admits nobody who could
  *    not have opened the shell themselves.
  * 2. **Input comes from exactly one participant.** Not "the UI hides the
- *    keyboard for observers" — {@link evaluateInput} is called on the server
+ *    keyboard for observers": {@link evaluateInput} is called on the server
  *    for every inbound byte, and an observer's keystrokes are dropped there.
  *    A client that lies about its role changes nothing.
  * 3. **Authority is re-derived, never remembered.** A participant row records
@@ -36,7 +36,7 @@ export type ParticipantRole = "observer" | "driver";
 /** Whether a participant is currently on the console. */
 export type ParticipantStatus = "joined" | "left" | "removed";
 
-/** Lifecycle of the share itself — the wire vocabulary, owned by client-core. */
+/** Lifecycle of the share itself: the wire vocabulary, owned by client-core. */
 export type { SharedConsoleStatus };
 
 /**
@@ -70,7 +70,7 @@ export interface ParticipantState {
   status: ParticipantStatus;
 }
 
-/** The caller, as resolved from their session — never from what they sent. */
+/** The caller, as resolved from their session, never from what they sent. */
 export interface CallerState {
   userId: string;
   organizationId: string;
@@ -123,8 +123,8 @@ function grants(permissions: readonly string[], required: string): boolean {
  *
  * A caller who was removed from the org resolves to an empty permission set
  * (see `permissions/resolver.ts`, which returns nothing at all for a
- * non-member), so lost membership and lost permission land on the same denial
- * — which is correct, because they are the same answer to the same question.
+ * non-member), so lost membership and lost permission land on the same denial,
+ * which is correct, because they are the same answer to the same question.
  */
 function checkBaseline(
   share: SharedConsoleState,
@@ -181,7 +181,7 @@ export type JoinDecision = Decision<{
  *
  * The ordering matters. Permission is checked *before* the token, so a person
  * without `resources:execute` learns they lack the permission rather than
- * learning whether the token they were handed was any good — the token is not
+ * learning whether the token they were handed was any good: the token is not
  * the thing being tested, and an error message that grades it would make it
  * feel like it were.
  *
@@ -275,7 +275,7 @@ export interface InputInput {
  * Called per inbound frame on the server. Returns a plain boolean because
  * there is nothing useful to tell the sender: an observer's client already
  * knows it is an observer, and a client that does not is one we have no reason
- * to help. Dropped input is silent by design — echoing "denied" per keystroke
+ * to help. Dropped input is silent by design: echoing "denied" per keystroke
  * would be a fine way to turn a stuck caps-lock into a message flood.
  */
 export function evaluateInput(input: InputInput): boolean {
@@ -312,7 +312,7 @@ export type HandoverDecision = Decision<{
  *
  * Two people can authorise this and they authorise different things. The
  * **current driver** may hand over, because the keyboard is theirs to give.
- * The **owner** — whose credentials the session runs on, whose box it is —
+ * The **owner**: whose credentials the session runs on, whose box it is;
  * may take it back or move it without asking, because they are the one who
  * carries the consequences and asking permission from someone who has stopped
  * responding is not a control, it is a hostage situation.
@@ -321,7 +321,7 @@ export type HandoverDecision = Decision<{
  * `not-driver`; asking is {@link evaluateHandoverRequest}, which changes
  * nothing on its own.
  *
- * The race between two grants is *not* resolved here — this function is pure
+ * The race between two grants is *not* resolved here: this function is pure
  * and cannot see a concurrent transaction. It is resolved by the partial
  * unique index on `shared_console_participants`, and the caller turns the
  * resulting unique violation into "the keyboard already moved". This function
@@ -427,7 +427,7 @@ export interface OwnerActionInput {
   actor: CallerState;
   /**
    * True when the actor holds an org-wide administrative permission. An admin
-   * can always pull the plug on a share they can see — a session nobody but
+   * can always pull the plug on a share they can see: a session nobody but
    * its own author can stop is not something a security team will accept.
    */
   isOrgAdmin: boolean;
@@ -520,7 +520,7 @@ export function evaluateAttached(
  * somebody's terminal has to be the one that counts. It is the driver's: they
  * are the person whose `vim` has to lay out correctly, and a size chosen by
  * someone who cannot type into it is a size nobody asked for. Everyone else
- * renders that geometry at whatever scale fits their own window — letterboxed,
+ * renders that geometry at whatever scale fits their own window: letterboxed,
  * with bars, rather than reflowed.
  *
  * The alternative, resizing to the smallest attached viewport, sounds
@@ -529,7 +529,7 @@ export function evaluateAttached(
  * geometry changes every time somebody joins.
  *
  * Falls back to the last agreed size when the driver has not reported a
- * viewport yet, and to 80x24 when nothing is known — never to zero, which is
+ * viewport yet, and to 80x24 when nothing is known, never to zero, which is
  * what a hidden or unmounted terminal reports and what would otherwise reach
  * `setWindow` as a degenerate pty.
  */

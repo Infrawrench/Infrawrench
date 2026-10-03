@@ -1,5 +1,5 @@
 /**
- * Chat auth — session cookie, WorkOS Bearer token, or `iwk_` API key, pinned to
+ * Chat auth: session cookie, WorkOS Bearer token, or `iwk_` API key, pinned to
  * the org in the URL and gated on `chat:read` / `chat:write`.
  *
  * The mechanism is shared with every other route that has to serve both the UI

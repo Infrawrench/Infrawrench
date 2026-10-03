@@ -1,12 +1,12 @@
 /**
  * Jira issue-tracking routes (`/api/org/:orgId/jira/*`).
  *
- * Turns a finding — cost anomaly, orphan, oversized resource, posture finding,
- * expiring credential, failed probe — into a Jira issue, and keeps the link so
+ * Turns a finding (cost anomaly, orphan, oversized resource, posture finding,
+ * expiring credential, failed probe) into a Jira issue, and keeps the link so
  * a list view can show "already filed" instead of offering the button again.
  *
  * The org's Jira API token is a bearer credential for a whole Atlassian
- * account. It is stored encrypted and **never returned by any route here** —
+ * account. It is stored encrypted and **never returned by any route here**:
  * `GET /` answers with a redacted `tokenHint` in its place, and `PUT /` accepts
  * an omitted token to mean "keep the stored one".
  *
@@ -49,7 +49,7 @@ const app = new Hono();
  *
  * The distinction that matters to a client: 400 means "fix your input and try
  * again" (bad site URL, missing token, project rejected the fields), while 502
- * means "Jira itself is unhappy" — a revoked token, a permission the account
+ * means "Jira itself is unhappy"; a revoked token, a permission the account
  * lacks, an outage. Both carry Jira's own wording, because "Jira rejected the
  * credentials (401)" is the only thing that tells the user what to do next.
  */
@@ -76,7 +76,7 @@ const integrationBody = z.object({
 });
 
 /**
- * GET /api/org/:orgId/jira — the org's connection, redacted.
+ * GET /api/org/:orgId/jira: the org's connection, redacted.
  *
  * `jira:read` rather than `jira:write`: members need to know whether filing is
  * available at all, and this response deliberately contains nothing secret.
@@ -87,7 +87,7 @@ app.get("/", async (c) => {
   return c.json({ integration });
 });
 
-/** PUT /api/org/:orgId/jira — connect Jira, or update the connection. */
+/** PUT /api/org/:orgId/jira: connect Jira, or update the connection. */
 app.put("/", async (c) => {
   requirePermission(c, "jira:write");
   const organizationId = c.get("organizationId");
@@ -130,7 +130,7 @@ app.put("/", async (c) => {
   }
 });
 
-/** DELETE /api/org/:orgId/jira — disconnect. Existing issue links are kept. */
+/** DELETE /api/org/:orgId/jira: disconnect. Existing issue links are kept. */
 app.delete("/", async (c) => {
   requirePermission(c, "jira:write");
   const organizationId = c.get("organizationId");
@@ -156,7 +156,7 @@ const verifyBody = z.object({
 });
 
 /**
- * POST /api/org/:orgId/jira/verify — check credentials against Jira.
+ * POST /api/org/:orgId/jira/verify: check credentials against Jira.
  *
  * With a full triple in the body this tests credentials the user has typed but
  * not yet saved, which is the point: Save can tell them the token is wrong
@@ -188,7 +188,7 @@ app.post("/verify", async (c) => {
 // --- Pickers ---
 
 /**
- * GET /api/org/:orgId/jira/projects — projects for the project picker.
+ * GET /api/org/:orgId/jira/projects: projects for the project picker.
  *
  * `jira:read`, not `jira:write`: this also backs the read-only display of a
  * project key as a name in a list view.
@@ -202,7 +202,7 @@ app.get("/projects", async (c) => {
   }
 });
 
-/** GET /api/org/:orgId/jira/projects/:key/issue-types — types valid in one project. */
+/** GET /api/org/:orgId/jira/projects/:key/issue-types: types valid in one project. */
 app.get("/projects/:key/issue-types", async (c) => {
   requirePermission(c, "jira:read");
   try {
@@ -225,12 +225,12 @@ const createIssueBody = z.object({
 });
 
 /**
- * POST /api/org/:orgId/jira/issues — file a finding as an issue.
+ * POST /api/org/:orgId/jira/issues: file a finding as an issue.
  *
  * Order matters: the issue is created first, then the link row is written. The
  * reverse would leave a link pointing at an issue that does not exist if the
  * create failed. As it stands the worst case is a created issue whose link row
- * failed to save, which surfaces as an offer to file again — visible and
+ * failed to save, which surfaces as an offer to file again: visible and
  * recoverable, where a dangling link is neither.
  */
 app.post("/issues", async (c) => {

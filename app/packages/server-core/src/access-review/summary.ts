@@ -1,11 +1,11 @@
 /**
  * Pure capping and rendering for the access-review half of the security alert.
- * No I/O lives here, so the message shape is unit-testable without a database
- * — the same split `posture/summary.ts` and `expiry/summary.ts` use.
+ * No I/O lives here, so the message shape is unit-testable without a database:
+ * the same split `posture/summary.ts` and `expiry/summary.ts` use.
  *
  * **Access-review findings ride the posture alert rather than a channel of
- * their own.** They are the same kind of thing — a security finding recomputed
- * from synced state, suppressible by the same dismissal — they answer to the
+ * their own.** They are the same kind of thing (a security finding recomputed
+ * from synced state, suppressible by the same dismissal) they answer to the
  * same `/posture/settings` switch, and an org that wants one paged wants the
  * other. Two independent 24h claims would deliver two messages a day about one
  * review, and a second trigger would cost three schema columns, both webhook
@@ -37,7 +37,7 @@ export interface AccessAlertSummary {
   total: number;
   /** Count per alertable severity; every bucket present, zeros included. */
   counts: Record<AccessAlertSeverity, number>;
-  /** The findings named in the body — the worst, capped. */
+  /** The findings named in the body: the worst, capped. */
   findings: AccessFinding[];
   /** How many findings the body does not name. */
   omitted: number;
@@ -78,11 +78,11 @@ function untrustedFragments(finding: AccessFinding): [string, string] {
 }
 
 /**
- * `"<principal> (<account>) — <title> (high)"`. The account is in the line
+ * `"<principal> (<account>): <title> (high)"`. The account is in the line
  * because a principal named `deploy` exists in most of them.
  *
  * **Both names are synced from the customer's cloud**, so a transport that
- * interprets markup has to be handed an `escape` that neutralises them — see
+ * interprets markup has to be handed an `escape` that neutralises them: see
  * `escapeMrkdwnFragment`. The default is identity, for the plain-text
  * transports (Teams strips markdown in its Adaptive Card escaper; a push
  * banner renders none).
@@ -150,8 +150,8 @@ export function securityAlertTitle(
 
 /**
  * The blocks joined into one body. Empty blocks are dropped rather than left
- * as a blank paragraph, so a window with only one half — or one whose access
- * half failed — still reads as one message.
+ * as a blank paragraph, so a window with only one half (or one whose access
+ * half failed) still reads as one message.
  */
 export function joinSecurityBody(blocks: readonly string[]): string {
   return blocks.filter((b) => b !== "").join("\n\n");

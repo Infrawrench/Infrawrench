@@ -1,5 +1,5 @@
 /**
- * Org-scoped workflow CRUD, typings generation, and source type checking —
+ * Org-scoped workflow CRUD, typings generation, and source type checking:
  * shared by the HTTP routes (api/routes/workflows.ts) and the tool registry
  * (tools/workflows.ts), mirroring how services/budgets.ts backs both surfaces.
  *
@@ -98,7 +98,7 @@ function triggerDerived(
     // fire). Seeding "now" instead would make every save of a cron workflow
     // fire it immediately on the next poller tick. `validateTrigger` has
     // already rejected unparseable expressions, so a null here only means the
-    // schedule never matches — leave it unscheduled.
+    // schedule never matches: leave it unscheduled.
     return { nextRunAt: cronNextRun(trigger), webhookToken: null };
   }
   if (trigger.kind === "git") {
@@ -121,7 +121,7 @@ function cronNextRun(trigger: Extract<WorkflowTrigger, { kind: "cron" }>): Date 
 
 /**
  * Reject a trigger the runner could never act on. Budget triggers are checked
- * against the org's real budgets — a typo'd id would otherwise save cleanly and
+ * against the org's real budgets: a typo'd id would otherwise save cleanly and
  * then silently never fire.
  */
 async function validateTrigger(organizationId: string, trigger: WorkflowTrigger): Promise<void> {
@@ -312,7 +312,7 @@ export interface WorkflowScheduleView {
   expression: string;
   /** IANA zone the expression is evaluated in; null means UTC. */
   timezone: string | null;
-  /** Mirrors the workflow's `enabled` flag — a disabled workflow never fires. */
+  /** Mirrors the workflow's `enabled` flag: a disabled workflow never fires. */
   enabled: boolean;
   lastRunAt: Date | null;
   nextRunAt: Date | null;
@@ -337,7 +337,7 @@ export function workflowScheduleView(row: WorkflowRow): WorkflowScheduleView | n
       ...(trigger.timezone ? { timezone: trigger.timezone } : {}),
     });
   } catch {
-    // Stored expression predates validation and no longer parses — show none.
+    // Stored expression predates validation and no longer parses: show none.
   }
   return {
     expression: trigger.expression,
@@ -404,7 +404,7 @@ export type WorkflowTypingsOpts = {
   triggerKind?: WorkflowTrigger["kind"];
   /**
    * When true, hit provider APIs for precise `create({...})` field unions and
-   * live sidecar capability flags. Slow on a cold cache — callers that need
+   * live sidecar capability flags. Slow on a cold cache: callers that need
    * the big surface immediately (editor first paint, chat init) leave this
    * off and upgrade in a second pass.
    */
@@ -414,7 +414,7 @@ export type WorkflowTypingsOpts = {
 /**
  * Gather the org-specific inputs for typings generation. The default path is
  * static plugin defs + DB accounts (no provider calls). Enrichment and SSH-key
- * listing are best-effort niceties — never let them fail the whole thing
+ * listing are best-effort niceties, never let them fail the whole thing
  * (which would drop the caller back to `infra: any`).
  */
 async function workflowTypingsInput(
@@ -441,7 +441,7 @@ async function workflowTypingsInput(
     costs: true,
     // Cloud runs have the approvals surface, so `infra.waitForApproval` is available.
     approvals: true,
-    // Available only when this deployment holds an Anthropic key — otherwise
+    // Available only when this deployment holds an Anthropic key, otherwise
     // the editor says so instead of the run failing.
     ai: isWorkflowAiConfigured(),
     sshKeyNames,
@@ -477,7 +477,7 @@ export async function checkWorkflowSource(
   source: string,
   opts: WorkflowTypingsOpts = {},
 ): Promise<TypecheckResult> {
-  // Typecheck stays on the static path — precise create-field unions are an
+  // Typecheck stays on the static path: precise create-field unions are an
   // editor nicety, and a cold enrich would make every check pay provider latency.
   const dts = await generateWorkflowTypings(organizationId, {
     ...opts,

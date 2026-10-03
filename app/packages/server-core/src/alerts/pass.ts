@@ -2,7 +2,7 @@
  * The follow-up pass: release quiet-hours holds, escalate what nobody
  * acknowledged.
  *
- * Both halves are the same shape — rows with a deadline in a timestamp column —
+ * Both halves are the same shape (rows with a deadline in a timestamp column)
  * so both use the claim the poller already uses for due accounts and due
  * workflows (`poller/src/claim.ts`): a single
  *
@@ -16,9 +16,9 @@
  * locked rows, so a held alert is released exactly once even with N pollers.
  *
  * This is deliberately *not* the cooldown protocol that decides whether an
- * alert is raised at all. Those live with each detector — `inCooldown` in
+ * alert is raised at all. Those live with each detector: `inCooldown` in
  * `cost/anomaly-eval.ts`, `PageCooldownStore` in `paging/deliver.ts`,
- * `org_drift_alert_settings.last_notified_at` — and are untouched by routing. A
+ * `org_drift_alert_settings.last_notified_at`, and are untouched by routing. A
  * row only reaches this table after one of them was already won, so nothing
  * here can cause a second alert about the same event.
  */
@@ -44,8 +44,8 @@ const BATCH = 50;
 
 /**
  * Give up on a row after this many *delivery attempts*. A row that keeps
- * failing is failing for a reason that will not fix itself — a deleted channel,
- * a revoked webhook — and retrying it forever would mean the pass never drains.
+ * failing is failing for a reason that will not fix itself (a deleted channel,
+ * a revoked webhook) and retrying it forever would mean the pass never drains.
  *
  * The claim increments `attemptCount` before `flushHold`/`escalate` read it, so
  * the guards below compare with `>`: claim N runs the Nth send, and claim
@@ -142,7 +142,7 @@ async function finish(id: string, state: string, now: Date): Promise<void> {
  * The queued destinations are what the rule said when the alert happened, which
  * is the honest answer.
  *
- * Returns true only when the message actually went somewhere — a dropped
+ * Returns true only when the message actually went somewhere: a dropped
  * payload, an exhausted row and a send that reached nobody all return false.
  */
 async function flushHold(row: Row, now: Date): Promise<boolean> {
@@ -163,7 +163,7 @@ async function flushHold(row: Row, now: Date): Promise<boolean> {
 
   // Sent through `routeAlert` with exactly one pinned leg, so the held copy
   // goes out through the same fan-out, de-duplication and channel-only-push
-  // rules the immediate copy would have used — rather than a second, subtly
+  // rules the immediate copy would have used, rather than a second, subtly
   // different send path that only quiet-hours users ever exercise.
   //
   // `ackDeliveryId` hands it *this* row: the escalation clock is already
@@ -198,14 +198,14 @@ async function flushHold(row: Row, now: Date): Promise<boolean> {
   }
 
   // A held alert that also escalates starts its acknowledgement clock *now*,
-  // not when it was raised — nobody could have acknowledged a message that had
+  // not when it was raised: nobody could have acknowledged a message that had
   // not been sent yet, so carrying the original deadline forward would escalate
   // it the instant the quiet window closed.
   //
   // `attemptCount` is reset with it. The counter is shared by both halves of
   // this pass, so a hold that needed four flush attempts would otherwise reach
   // the escalation half with one claim left and give up before it ever reached
-  // the escalation destinations — exactly the silence the policy exists to
+  // the escalation destinations: exactly the silence the policy exists to
   // prevent. The flush attempts are spent; the escalation gets its own budget.
   await db
     .update(alertDeliveries)
@@ -277,7 +277,7 @@ async function escalate(row: Row, now: Date): Promise<boolean> {
 export interface AlertFollowUpStats {
   /**
    * Rows that actually went somewhere. A claim that dropped an unreadable
-   * payload, gave up on an exhausted row, or sent to nobody is not counted —
+   * payload, gave up on an exhausted row, or sent to nobody is not counted:
    * this number is read as "follow-ups that worked", so counting claims here
    * would report successful deliveries for rows that delivered nothing.
    */
@@ -286,7 +286,7 @@ export interface AlertFollowUpStats {
 }
 
 /**
- * One tick of the follow-up pass. Never throws — like every other poller pass,
+ * One tick of the follow-up pass. Never throws: like every other poller pass,
  * a failure here must not stop the ones after it.
  */
 export async function runAlertFollowUpPass(now = new Date()): Promise<AlertFollowUpStats> {

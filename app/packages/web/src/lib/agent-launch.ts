@@ -2,7 +2,7 @@
 //
 // An SSH tab opened for an agent session carries launch metadata (managed key
 // + launch command/cwd) on its workspace-tab target. That metadata survives
-// in-app navigation but not deep links or restored tabs — the URL only
+// in-app navigation but not deep links or restored tabs: the URL only
 // carries `?agentSession=...`. When pieces are missing we rehydrate them from
 // the server (POST /agents/sessions/:id/open) and gate auto-connect until the
 // resolution settles. Mirrors desktop's ResourcePanel agent-launch resolution.
@@ -14,7 +14,7 @@ export { NO_AGENT_LAUNCH_DEFAULTS } from "@infrawrench/ui/agents";
 
 /**
  * Key identifying an agent-launch lookup that still needs server resolution.
- * Returns null when no lookup should run — CRITICALLY, plain SSH views
+ * Returns null when no lookup should run; CRITICALLY, plain SSH views
  * (no agentSessionId) must never trigger a session lookup: a VM that once
  * hosted an agent session would otherwise silently attach the agent's screen.
  */
@@ -49,7 +49,7 @@ interface EffectiveAgentLaunch {
   sshKeyName?: string | undefined;
   initialCommand?: string | undefined;
   initialCwd?: string | undefined;
-  /** False while agent metadata is still resolving — auto-connect must wait. */
+  /** False while agent metadata is still resolving: auto-connect must wait. */
   autoConnectReady: boolean;
 }
 

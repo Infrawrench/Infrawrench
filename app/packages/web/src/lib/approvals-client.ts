@@ -1,5 +1,5 @@
 /**
- * Browser-side ApprovalsClient — the org-wide `/api/org/:orgId/workflow-approvals`
+ * Browser-side ApprovalsClient: the org-wide `/api/org/:orgId/workflow-approvals`
  * routes over fetch (session cookie auth).
  *
  * The per-workflow approvals card in the Workflows tab uses the same endpoints

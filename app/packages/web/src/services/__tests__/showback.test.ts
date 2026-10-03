@@ -4,7 +4,7 @@
  * The two things worth pinning here are the ones a reader of the numbers would
  * be hurt by if they broke silently: an org that never nests must report byte
  * for byte what it always did, and a cost row must be allocated exactly once no
- * matter how many rules could have claimed it — a parent's rule and a child's
+ * matter how many rules could have claimed it; a parent's rule and a child's
  * included. The rollup arithmetic itself is unit-tested in client-core; what
  * this file adds is that the service wires it to one single-pass query.
  */
@@ -27,12 +27,12 @@ vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
 }));
 
 // Same reason: the billing-rule resolver reaches Postgres. None of these cases
-// asks for an adjusted report, so it is never called — it only has to exist.
+// asks for an adjusted report, so it is never called: it only has to exist.
 vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({
   resolveBillingAdjustments: vi.fn(),
 }));
 
-// The conversion *arithmetic* is deliberately left real — it is pure — so a
+// The conversion *arithmetic* is deliberately left real (it is pure) so a
 // report that silently stopped converting subtree totals would fail here.
 vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   loadConversionContext: vi.fn().mockResolvedValue({ displayCurrency: null, rates: [] }),
@@ -173,7 +173,7 @@ describe("getShowbackReport — parent and child rules", () => {
 
     expect(mockGetShowbackSpend).toHaveBeenCalledTimes(1);
     const [, rules] = mockGetShowbackSpend.mock.calls[0]!;
-    // Exactly the order `listAllocationRules` produced — the service does not
+    // Exactly the order `listAllocationRules` produced: the service does not
     // re-sort, and it does not expand the list per level of the tree.
     expect(rules).toEqual([
       { costCentreId: "search", match: { tagKey: "team" } },

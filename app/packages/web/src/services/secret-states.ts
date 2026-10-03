@@ -7,7 +7,7 @@ import type { SecretFieldState, SecretResolution } from "@infrawrench/plugin-bas
 /**
  * Loads any persisted secretStates for a resource and decrypts each literal
  * row into a `plaintext` resolution. Plugins receive plaintext or output-ref
- * shapes — they never see ciphertext or master-key-derived values.
+ * shapes: they never see ciphertext or master-key-derived values.
  */
 export async function loadSecretStatesForResource(resourceId: string): Promise<SecretFieldState[]> {
   const rows = await db

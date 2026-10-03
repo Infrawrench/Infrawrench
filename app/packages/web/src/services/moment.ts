@@ -1,10 +1,10 @@
 /**
- * The moment view union — "what changed around 03:14?".
+ * The moment view union: "what changed around 03:14?".
  *
  * Read-only merge of every feed the platform already indexes into one
  * chronological window: resource changes, provider status incidents, cost
  * anomalies, workflow runs, deployments, audit entries, change freezes, and
- * the drift/expiry alert delivery claims. No new tables, no new writes —
+ * the drift/expiry alert delivery claims. No new tables, no new writes:
  * each loader reuses the same table + permission the feed's own endpoint
  * reads.
  *
@@ -14,7 +14,7 @@
  *   own endpoint requires; feeds the caller can't read are `omitted` (never
  *   errored, never leaked).
  * - **Partial-failure tolerant.** One feed's query throwing marks that feed
- *   `error` and the rest of the response still comes back — the screen shows
+ *   `error` and the rest of the response still comes back: the screen shows
  *   "workflow runs unavailable" instead of blanking.
  *
  * Wire contract lives in `@infrawrench/client-core` (`moment.ts`) so web,
@@ -54,7 +54,7 @@ import {
 /**
  * The permission each feed's own endpoint enforces. Drift/expiry alert
  * delivery timestamps are gated at `resources:read` like the feeds whose
- * content they summarize (`/changes`, `/expiring`) — `org:settings:write`
+ * content they summarize (`/changes`, `/expiring`): `org:settings:write`
  * only guards *editing* the alert settings.
  */
 export const MOMENT_FEED_PERMISSIONS: Record<MomentFeedId, string> = {
@@ -69,7 +69,7 @@ export const MOMENT_FEED_PERMISSIONS: Record<MomentFeedId, string> = {
   expiryAlerts: "resources:read",
 };
 
-/** Per-feed row cap — enough for any sane window, small enough to stay cheap. */
+/** Per-feed row cap: enough for any sane window, small enough to stay cheap. */
 const FEED_ROW_CAP = 300;
 
 export interface MomentQuery {
@@ -77,7 +77,7 @@ export interface MomentQuery {
   at?: Date | undefined;
   /** Half-window in minutes; clamped to `MOMENT_WINDOW_LIMITS`. */
   windowMinutes?: number | undefined;
-  /** The caller's effective permission grants — decides which feeds load. */
+  /** The caller's effective permission grants: decides which feeds load. */
   permissions: readonly string[];
 }
 
@@ -165,7 +165,7 @@ export async function computeMoment(
 }
 
 /**
- * Log the real failure server-side and hand the client an opaque reason —
+ * Log the real failure server-side and hand the client an opaque reason:
  * driver/internal error text (hosts, table names, SQL) must not reach API
  * clients through `MomentFeedStatus.error`.
  */
@@ -182,7 +182,7 @@ function describeError(error: unknown, feed: MomentFeedId): string {
  */
 export function parseMomentTimestamp(raw: string): Date | null {
   // ISO date-time with a time part but no zone designator (no trailing Z or
-  // ±hh[:mm]) — pin it to UTC.
+  // ±hh[:mm]): pin it to UTC.
   const offsetless = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(raw.trim());
   const at = new Date(offsetless ? `${raw.trim()}Z` : raw);
   return Number.isNaN(at.getTime()) ? null : at;
@@ -193,10 +193,10 @@ function within(value: Date | null, from: Date, to: Date): value is Date {
 }
 
 /* ------------------------------------------------------------------ *
- * Feed loaders — one per feed, mirroring the feed's own endpoint query
+ * Feed loaders: one per feed, mirroring the feed's own endpoint query
  * ------------------------------------------------------------------ */
 
-/** `resource_changes` in the window — same query shape as `GET /changes`. */
+/** `resource_changes` in the window: same query shape as `GET /changes`. */
 const loadChanges: FeedLoader = async (organizationId, from, to) => {
   const rows = await db
     .select({
@@ -343,7 +343,7 @@ function incidentEvents(spans: MomentIncidentSpan[], from: Date, to: Date): Feed
   return { events };
 }
 
-/** `cost_anomalies` by detection time — same table as `GET /costs/anomalies`. */
+/** `cost_anomalies` by detection time: same table as `GET /costs/anomalies`. */
 const loadCostAnomalies: FeedLoader = async (organizationId, from, to) => {
   const rows = await db
     .select()
@@ -512,7 +512,7 @@ const loadDeployments: FeedLoader = async (organizationId, from, to) => {
   return { events, ...(truncated ? { truncated: true } : {}) };
 };
 
-/** `audit_logs` in the window — same query shape as `GET /audit-logs`. */
+/** `audit_logs` in the window: same query shape as `GET /audit-logs`. */
 const loadAudit: FeedLoader = async (organizationId, from, to) => {
   const rows = await db
     .select({
@@ -622,7 +622,7 @@ const loadFreezes: FeedLoader = async (organizationId, from, to) => {
 };
 
 /**
- * Drift alerts keep no per-event history — only the per-org cooldown claim
+ * Drift alerts keep no per-event history, only the per-org cooldown claim
  * (`org_drift_alert_settings.last_notified_at`), so the feed contributes at
  * most one "a drift digest was delivered" event per window.
  */

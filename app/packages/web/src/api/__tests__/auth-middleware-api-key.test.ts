@@ -4,7 +4,7 @@
  * Each `describe` below pins one of the five properties the widening had to
  * hold. They are written against a Hono app assembled the way `api/index.ts`
  * assembles the real one, with real `requirePermission`, real
- * `effectivePermissions` and a real `intersectPermissions` — only the two
+ * `effectivePermissions` and a real `intersectPermissions`, only the two
  * things that talk to Postgres or WorkOS (`authenticateApiRequest`,
  * `resolveEffectivePermissions`) and the `db` handle are stubbed. Mocking the
  * intersection would have made the headline property untestable.
@@ -104,8 +104,8 @@ vi.mock("@/auth/workos", () => ({
 }));
 
 /**
- * Only the DB-backed role lookup is stubbed. `effectivePermissions` — and the
- * `intersectPermissions` inside it — run for real, which is the point.
+ * Only the DB-backed role lookup is stubbed. `effectivePermissions` (and the
+ * `intersectPermissions` inside it) run for real, which is the point.
  */
 const mockResolveEffectivePermissions = vi.fn();
 vi.mock("@infrawrench/server-core/permissions", () => ({
@@ -164,7 +164,7 @@ function buildApp(): Hono {
     snapshot(c);
     return c.json({ ok: true });
   });
-  // Deliberately ungated, to prove the deny list — not a permission check — is
+  // Deliberately ungated, to prove the deny list (not a permission check) is
   // what closes these.
   org.post("/api-keys", (c) => c.json({ minted: true }));
   org.get("/team", (c) => c.json({ members: [] }));
@@ -415,7 +415,7 @@ describe("routes that stay human-only whatever the key holds", () => {
  * The cost surface, which is the one the Terraform provider is mostly about.
  *
  * Nothing in the deny list touches it, so reachability is decided entirely by
- * the scope intersection — which means the Create API Key dialog's list is the
+ * the scope intersection, which means the Create API Key dialog's list is the
  * real ceiling. It used to offer eleven strings, none of them `costs:*`, so
  * every key an org could actually mint was refused here. The last case is what
  * ties the enforcement below to the thing a person clicks.
@@ -502,7 +502,7 @@ describe("property 4 — revoked, expired and orphaned keys fail closed", () => 
       apiKeyId: KEY_ID,
       scopes: ["*"],
     });
-    selectQueue.push([]); // no users row — the owner was deleted
+    selectQueue.push([]); // no users row: the owner was deleted
     const res = await buildApp().request(`/api/org/${ORG}/costs`, { headers: KEY_HEADERS });
     expect(res.status).toBe(401);
     expect(mockResolveEffectivePermissions).not.toHaveBeenCalled();

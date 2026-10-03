@@ -265,7 +265,7 @@ describe("getWorkspaceNavigateArgs", () => {
       hash: "window",
       // A number, not a string: the router JSON-encodes search values, so "4"
       // reaches the URL as %224%22 and reads back out of the query string with
-      // its quotes on — which made the window unidentifiable and sent the tab
+      // its quotes on, which made the window unidentifiable and sent the tab
       // to the resource detail.
       search: { window: 4, session: "sess-9", accountId: "acc-1" },
     });
@@ -329,8 +329,8 @@ describe("getWorkspaceNavigateArgs", () => {
   });
 
   it("answers null for a window hash without an identifiable window", () => {
-    // Mid-navigation the router's hash can be ahead of the query string —
-    // @tanstack/history flushes history.pushState asynchronously — so
+    // Mid-navigation the router's hash can be ahead of the query string
+    // (@tanstack/history flushes history.pushState asynchronously) so
     // "#window with no window" is a transient inconsistency, not a request
     // for the resource page. Demoting to the resource detail here is what
     // replaced a freshly launched app's tab with the VM info page.
@@ -819,7 +819,7 @@ describe("workflows tab", () => {
 
   it("round-trips through the route sync", () => {
     // The URL is what records the open workflow on the tab, so a target that
-    // does not survive this round trip loses the workflow on reload — and a
+    // does not survive this round trip loses the workflow on reload, and a
     // leftover /workflows/{id} path with no matching route used to paint
     // TanStack Router's default "Not Found" under the panel.
     for (const target of [workflowsTabTarget(), workflowsTabTarget("wf-1")]) {
@@ -846,7 +846,7 @@ describe("isRouteHostedTabPanel", () => {
 
   it("takes the Settings panel back as soon as the URL leaves settings", () => {
     // The layout route is unmounted here but the tab is still in the strip, so
-    // the viewport owes it a panel — otherwise its aria-controls dangles.
+    // the viewport owes it a panel, otherwise its aria-controls dangles.
     for (const path of ["/org/myorg/dashboard/d1", "/org/myorg/costs", "/onboarding", "/"]) {
       expect(isRouteHostedTabPanel(syncWorkspaceRouteFromPath(path), settingsTab)).toBe(false);
     }

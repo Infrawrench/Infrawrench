@@ -1,10 +1,10 @@
 /**
- * The credit burndown feed — every prepaid pot an org holds, with its burn
+ * The credit burndown feed: every prepaid pot an org holds, with its burn
  * rate and runway.
  *
  * The reason this is a screen at all: a provider that bills in arrears sends
  * an invoice you can argue with, but a prepaid pot that empties simply stops
- * answering. Running out of DeepSeek credit is an outage, not a bill — and the
+ * answering. Running out of DeepSeek credit is an outage, not a bill, and the
  * balance on its own is not actionable. "You have $42" tells you nothing;
  * "$42, six days left at your current burn" is a decision.
  */
@@ -33,7 +33,7 @@ import {
 export const BURN_WINDOW_DAYS = 30;
 
 // The feed's wire shapes are the client contract, owned by client-core
-// (`credits.ts` — where `CreditBurndownFeed` is `CreditBurndown`) and
+// (`credits.ts`, where `CreditBurndownFeed` is `CreditBurndown`) and
 // re-exported here so this builder cannot drift from what the surfaces decode.
 export type { CreditPot, CreditPollFailure };
 
@@ -43,7 +43,7 @@ export type CreditBurndownFeed = CreditBurndown;
  * Every pot the org holds, most urgent first.
  *
  * Sorted by urgency and then by days remaining, so the thing about to break is
- * the first row — not the biggest balance, which is the sort a "credits" screen
+ * the first row, not the biggest balance, which is the sort a "credits" screen
  * would naively pick and which buries exactly the account that needs attention.
  */
 export async function getCreditBurndown(

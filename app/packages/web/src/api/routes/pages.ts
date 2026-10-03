@@ -1,5 +1,5 @@
 /**
- * Paging — `POST /api/org/:orgId/pages` and `DELETE /api/org/:orgId/pages`.
+ * Paging: `POST /api/org/:orgId/pages` and `DELETE /api/org/:orgId/pages`.
  *
  * The same alert a workflow raises with `infra.page(...)`, for code that runs
  * somewhere Infrawrench does not: a health check, a deploy script, a cron on a
@@ -8,12 +8,12 @@
  * the caller doesn't embed any of them.
  *
  * Repeat pages under the same `(source, key)` are suppressed for the cooldown
- * window rather than rejected — a monitor that fires every minute pages once
+ * window rather than rejected: a monitor that fires every minute pages once
  * and then reports `suppressed: true` with the `retryAt` it can page again.
  *
  * Mounted outside the org tree's middleware stack because that stack 401s
  * `iwk_` API keys, and an unattended server has nothing else to authenticate
- * with — see `auth/org-request-auth.ts`.
+ * with: see `auth/org-request-auth.ts`.
  */
 import { Hono } from "hono";
 import { z } from "zod";
@@ -44,7 +44,7 @@ const pageSchema = z.object({
   voice: z.boolean().optional(),
 });
 
-/** POST /api/org/:orgId/pages — raise an alert to the org's on-call transports. */
+/** POST /api/org/:orgId/pages: raise an alert to the org's on-call transports. */
 app.post("/", async (c) => {
   const orgId = c.req.param("orgId");
   if (!orgId) return c.json({ error: "Missing organization ID" }, 400);
@@ -92,7 +92,7 @@ app.post("/", async (c) => {
 });
 
 /**
- * DELETE /api/org/:orgId/pages?source=&key= — clear a key's cooldown so the
+ * DELETE /api/org/:orgId/pages?source=&key= - clear a key's cooldown so the
  * next page under it delivers immediately. Call it when the condition you
  * alerted on recovers; the workflow equivalent is `infra.page.clear(key)`.
  */

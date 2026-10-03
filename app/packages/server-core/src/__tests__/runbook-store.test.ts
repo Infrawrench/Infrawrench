@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * - a patch is validated **after** merging, so changing only the steps still
  *   has to leave a runbook that is valid as a whole;
  * - the name conflict comes from the unique index rather than a pre-check,
- *   because check-then-insert loses the race — and the race is two people
+ *   because check-then-insert loses the race, and the race is two people
  *   writing up the same incident afterwards;
  * - starting a run **snapshots** every step, so rewriting the runbook next week
  *   cannot rewrite the history of what somebody was asked to do.
@@ -103,7 +103,7 @@ describe("createRunbook", () => {
 
   it("assigns ids to new steps", async () => {
     selectResults.set("runbooks", []);
-    // The follow-up read returns nothing, so creation throws after inserting —
+    // The follow-up read returns nothing, so creation throws after inserting:
     // the insert is what this asserts on.
     await createRunbook(
       "org",
@@ -171,7 +171,7 @@ describe("listRunbooks", () => {
     // `lastRunAt` is a raw-sql subquery, so drizzle's timestamp mapping never
     // runs on it: postgres-js hands back "2026-08-25 16:42:28.855". Calling
     // `.toISOString()` on that directly is the crash that 500ed the runbooks
-    // list the moment the org's first run existed — and a bare `new Date()`
+    // list the moment the org's first run existed, and a bare `new Date()`
     // would parse it as server-local time rather than the UTC it stores.
     selectResults.set("runbooks", [
       { ...existingRunbook, runCount: "3", lastRunAt: "2026-08-25 16:42:28.855" },

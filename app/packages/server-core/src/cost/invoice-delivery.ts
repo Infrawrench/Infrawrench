@@ -14,7 +14,7 @@
  * **partial delivery is terminal.** Mailgun has no idempotency keys, so a retry
  * after a partial success posts a second copy of the same bill into an inbox
  * that already has it. {@link classifyInvoiceDelivery} therefore only ever
- * calls a delivery retryable when *zero* addresses were reached — and even then
+ * calls a delivery retryable when *zero* addresses were reached, and even then
  * the retry is a person pressing the button again, because this feature has no
  * poller pass. Automatically re-mailing a customer's bill is not something a
  * background tick should decide.
@@ -31,7 +31,7 @@
  * The CSV rides as a Mailgun multipart attachment (see `email.ts`). Mailgun
  * takes attachments in the same form post the message already is, so it costs
  * no object store and no second request. A link would need a URL that serves a
- * document naming a customer's spend to whoever holds it, and it would rot —
+ * document naming a customer's spend to whoever holds it, and it would rot:
  * an invoice has to still open when someone queries it eleven months later.
  */
 import {
@@ -57,7 +57,7 @@ export interface InvoiceDeliveryOutcome {
  * Addresses to bill, read off the customer's contact email.
  *
  * The field is one text column, so a customer with an AP mailbox *and* a named
- * contact is written as a comma- or semicolon-separated list — the shape people
+ * contact is written as a comma- or semicolon-separated list: the shape people
  * already type into a contact field. Parsing it here rather than adding a
  * second column keeps the customer's API shape unchanged and costs nothing:
  * a single address parses to a single address.
@@ -146,7 +146,7 @@ function bodyLines(
   return lines;
 }
 
-/** The plain-text part. Always sent — some readers never render the HTML. */
+/** The plain-text part. Always sent: some readers never render the HTML. */
 export function formatInvoiceEmailText(
   invoice: ManagedInvoice,
   orgName: string | null,
@@ -157,7 +157,7 @@ export function formatInvoiceEmailText(
     .join("\n\n");
 }
 
-/** The HTML part — the digest's hand-rolled inline-style shape. */
+/** The HTML part: the digest's hand-rolled inline-style shape. */
 export function formatInvoiceEmailHtml(
   invoice: ManagedInvoice,
   orgName: string | null,
@@ -178,7 +178,7 @@ export function formatInvoiceEmailHtml(
  * The report deliveries' rule, verbatim, because the hazard is identical:
  * **only a total failure is retryable.** Mailgun cannot collapse a duplicate,
  * so a retry after a partial success sends a second copy of the same bill to
- * the addresses that already received it — and a customer paying an invoice
+ * the addresses that already received it, and a customer paying an invoice
  * twice is a worse outcome than a customer's second contact not receiving it.
  */
 export function classifyInvoiceDelivery(result: {

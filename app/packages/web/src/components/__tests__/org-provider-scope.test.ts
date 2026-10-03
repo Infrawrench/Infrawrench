@@ -9,7 +9,7 @@ import path from "node:path";
  * The shell renders two siblings: `WebWorkspaceTabsViewport`, which draws every
  * workspace tab, and `<Outlet />`, which draws the route-rendered pages. A
  * context provided by the `/org/$orgId` layout route therefore reaches the
- * outlet and *nothing in a tab* — and almost every screen is a tab. That is how
+ * outlet and *nothing in a tab*, and almost every screen is a tab. That is how
  * "File in Jira" / "File in Linear" and the already-filed badges came to render
  * nowhere on web while the same components worked on desktop, and it is the
  * same trap three tab panels had each worked around with their own `/team/me`
@@ -42,7 +42,7 @@ describe("org-scoped providers are mounted above the workspace-tab viewport", ()
 
     // The authenticated shell's own outlet is the last one in the file (the
     // earlier ones are the no-org early returns: public status pages, invites,
-    // /admin, sign-in redirects — none of which have an org to scope to).
+    // /admin, sign-in redirects; none of which have an org to scope to).
     const outlet = root.lastIndexOf("<Outlet");
     expect(outlet, "the shell's outlet must render inside <OrgProviders>").toBeGreaterThan(open);
     expect(outlet).toBeLessThan(close);

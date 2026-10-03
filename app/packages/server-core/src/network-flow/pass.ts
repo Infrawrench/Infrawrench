@@ -2,8 +2,8 @@
  * The poller's network-flow pass.
  *
  * Structurally the credits/commitments pass: a side table doubles as the claim
- * lease, N replicas claim disjoint rows — here by writing the lease only if the
- * row is still due, see `claimDueNetworkFlowAccounts` — and a replica that dies
+ * lease, N replicas claim disjoint rows (here by writing the lease only if the
+ * row is still due, see `claimDueNetworkFlowAccounts`) and a replica that dies
  * mid-work simply lets the row come due again at lease expiry. Three things
  * differ, all because the work costs the *customer* money:
  *
@@ -18,7 +18,7 @@
  *   has acknowledged.** Every other pass here sizes its lease at a guess of the
  *   worst-case run and accepts that an overrun means someone else redoing the
  *   work; the worst case for this one is hours, and redoing the work is a
- *   charge on the customer's bill. See `./lease.ts` — a renewing lease is what
+ *   charge on the customer's bill. See `./lease.ts`: a renewing lease is what
  *   makes the exclusivity below mean anything past the first thirty minutes,
  *   and authorizing work against the last *confirmed* renewal rather than
  *   against elapsed time is what keeps that true when the database goes quiet.
@@ -48,13 +48,13 @@ export {
   NETWORK_FLOW_MIN_WORK_WINDOW_MS,
 } from "./lease";
 
-/** Nominal cadence — once a day, plus jitter so orgs don't stampede. */
+/** Nominal cadence: once a day, plus jitter so orgs don't stampede. */
 export const NETWORK_FLOW_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const NETWORK_FLOW_JITTER_MS = 60 * 60 * 1000;
 export const NETWORK_FLOW_BASE_BACKOFF_MS = 60 * 60 * 1000;
 export const NETWORK_FLOW_MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
 /**
- * How long to wait after a *setup* failure — no flow logs, an unreadable
+ * How long to wait after a *setup* failure: no flow logs, an unreadable
  * destination, a missing permission. Much longer than the transient backoff:
  * nothing about the account will change until a human changes it, and retrying
  * a setup gap hourly is a request the provider still charges to answer.
@@ -73,7 +73,7 @@ export interface ClaimedNetworkFlowAccount {
    * matched against, so a holder whose lease lapsed can tell "still mine" from
    * "somebody else's now" rather than blindly pushing the column forward. It
    * identifies the claim rather than its state, which is what makes that answer
-   * survive a renewal whose outcome this process never learned — see
+   * survive a renewal whose outcome this process never learned: see
    * `./lease.ts`. Undefined only if the claim's `RETURNING` lost the column,
    * which the claim test pins against.
    */
@@ -88,7 +88,7 @@ export interface ClaimedNetworkFlowAccount {
  * conflict.** The `SELECT` half reads a snapshot, so two replicas ticking at the
  * same moment both see the same account as due and both reach the upsert. An
  * unconditional `DO UPDATE` would then re-lease and *return* the row to both of
- * them, and each would run the flow-log query — which the provider bills to the
+ * them, and each would run the flow-log query, which the provider bills to the
  * customer's own account, per gigabyte scanned. Postgres re-checks the
  * `DO UPDATE`'s `WHERE` against the latest committed version of the conflicting
  * row while holding a lock on it, so the loser of the race sees the winner's
@@ -161,8 +161,8 @@ function jittered(base: number, jitter: number): Date {
  * replica still holds.
  *
  * The lease's owner token is the fence. A collection that overran badly enough
- * to lose the lease — the heartbeat could not reach the database for a whole
- * lease period, say — would otherwise finish and write its reschedule over the
+ * to lose the lease (the heartbeat could not reach the database for a whole
+ * lease period, say) would otherwise finish and write its reschedule over the
  * top of whichever replica has the account now, releasing a lease that is not
  * ours to release. Matching zero rows is the correct outcome there: the new
  * holder records the run it actually performed.
@@ -170,7 +170,7 @@ function jittered(base: number, jitter: number): Date {
  * **The fence is the claim's identity, not any value the lease has been
  * moving.** Fencing on the deadline instead meant fencing on the column the
  * heartbeat rewrites every ten minutes, so the write only landed if this
- * process had correctly tracked every renewal — and one whose answer was lost
+ * process had correctly tracked every renewal, and one whose answer was lost
  * left it tracking a deadline the row had stopped having, which silently
  * dropped the reschedule and re-ran the whole customer-billed scan. The token
  * moves only when the account is claimed by somebody else, so there is nothing
@@ -203,7 +203,7 @@ async function runOne(claimed: ClaimedNetworkFlowAccount, claimedAt: number): Pr
     result = await collectAccountNetworkFlows(claimed.accountId, claimed.organizationId, { lease });
   } catch (e) {
     // Before anything else: the heartbeat must not outlive the work it was
-    // guarding — hence awaiting, which also waits out a renewal in flight so
+    // guarding, hence awaiting, which also waits out a renewal in flight so
     // this pass leaves no write of its own behind it.
     await lease.stop();
     if (e instanceof NetworkFlowLeaseLostError) {
@@ -247,7 +247,7 @@ async function runOne(claimed: ClaimedNetworkFlowAccount, claimedAt: number): Pr
       // Handing the lease back in the same statement that schedules tomorrow.
       // The two belong together: `next_poll_at` stops being a lease and goes
       // back to being a due time at exactly this point, and clearing the token
-      // is what makes that stick — a renewal that escaped `stop()` because its
+      // is what makes that stick; a renewal that escaped `stop()` because its
       // answer was lost, and which the database may still apply, now matches
       // nothing and cannot put a lease back over tomorrow's schedule.
       leaseOwner: null,
@@ -268,7 +268,7 @@ async function runOne(claimed: ClaimedNetworkFlowAccount, claimedAt: number): Pr
 }
 
 /**
- * One network-flow tick. Every account is individually guarded — one failure
+ * One network-flow tick. Every account is individually guarded: one failure
  * never blocks the rest of the batch, and nothing here throws into the tick.
  */
 export async function runNetworkFlowPass(
@@ -282,7 +282,7 @@ export async function runNetworkFlowPass(
   // The lease each row is held under expires a fixed period after the database
   // ran this statement, so the earliest instant this process can prove that
   // statement had not yet run is the only honest anchor for the deadline it
-  // wrote — see `startNetworkFlowLease`. Taking it afterwards would credit the
+  // wrote: see `startNetworkFlowLease`. Taking it afterwards would credit the
   // lease with the round trip.
   const claimedAt = Date.now();
   const claimed = await claimDueNetworkFlowAccounts(

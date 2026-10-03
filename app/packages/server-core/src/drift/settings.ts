@@ -22,7 +22,7 @@ export const DRIFT_ALERT_LIMITS = {
   /**
    * Never below 5 minutes. The poller's cycle is minutes, so a smaller
    * cooldown would put the notification rate back in the hands of the sync
-   * rate — the exact coupling the batching exists to break.
+   * rate: the exact coupling the batching exists to break.
    */
   cooldownMinutes: { min: 5, max: 24 * 60 },
   minChanges: { min: 1, max: 1000 },

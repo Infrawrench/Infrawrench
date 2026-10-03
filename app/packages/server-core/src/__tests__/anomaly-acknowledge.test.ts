@@ -49,7 +49,7 @@ describe("planAnomalyAcknowledgement", () => {
         startDate: "2026-07-30",
         endDate: null,
         text: "Migrated the API fleet to Graviton",
-        // Org-wide — the whole point of acknowledging rather than commenting.
+        // Org-wide: the whole point of acknowledging rather than commenting.
         costReportId: null,
       },
     });
@@ -70,7 +70,7 @@ describe("planAnomalyAcknowledgement", () => {
   });
 
   it("does not resurrect a note that was deleted on purpose", () => {
-    // Acknowledged before, but `annotation_id` is null — the foreign key nulled
+    // Acknowledged before, but `annotation_id` is null: the foreign key nulled
     // it when somebody deleted the marker. Correcting the sentence updates the
     // record; it does not put the marker back.
     const plan = planAnomalyAcknowledgement(
@@ -159,7 +159,7 @@ describe("explained findings stop nagging without disappearing", () => {
       row({ id: "a3" }),
     ];
     expect(countUnexplainedCostAnomalies(rows)).toBe(2);
-    // The explained row is still in the list — the detection record survives.
+    // The explained row is still in the list: the detection record survives.
     expect(rows).toHaveLength(3);
   });
 

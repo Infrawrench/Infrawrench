@@ -77,7 +77,7 @@ function setupBastionAgentSocket(
     console.error(`[bastion] markActive failed for ${bastion.bastionId}:`, err);
   });
 
-  // Heartbeat — kill the connection if we don't hear a pong in time.
+  // Heartbeat: kill the connection if we don't hear a pong in time.
   let lastSeenMs = Date.now();
   const heartbeat = setInterval(() => {
     const elapsed = Date.now() - lastSeenMs;
@@ -125,7 +125,7 @@ function setupBastionAgentSocket(
     clearInterval(heartbeat);
     closed = true;
     // If registration is still in flight, the .then() below notices `closed`
-    // and unregisters as soon as it lands — otherwise the entry (and its
+    // and unregisters as soon as it lands, otherwise the entry (and its
     // undici Agent) would sit in the registry forever.
     if (registered) {
       void unregisterAgentConnection(bastion.bastionId);
@@ -142,7 +142,7 @@ function setupBastionAgentSocket(
     .then(() => {
       registered = true;
       if (closed) {
-        // Socket closed while registration was in flight — the close handler
+        // Socket closed while registration was in flight: the close handler
         // saw registered=false, so unregister here.
         void unregisterAgentConnection(bastion.bastionId);
         return;

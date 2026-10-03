@@ -2,7 +2,7 @@
  * Hosted Docker builds on Google Cloud Build.
  *
  * This is the default for a web deploy, so a paying customer does not have to
- * own a build host — which also makes the non-container targets (a Worker, a
+ * own a build host, which also makes the non-container targets (a Worker, a
  * static site) deployable from the web app at all, since those projects
  * frequently have no VM anywhere.
  *
@@ -59,7 +59,7 @@ export interface CloudBuildConfig {
    * Every hosted build pushes here, even when the Infrafile never publishes
    * anywhere. That is what makes `run()` possible at all: a Cloud Build step
    * pulls its image from a registry, and an image built inside one build's
-   * daemon does not exist on the next build's worker. This is scratch space —
+   * daemon does not exist on the next build's worker. This is scratch space:
    * the *deployed* image still goes to the customer's own registry.
    */
   stagingRepo: string;
@@ -93,7 +93,7 @@ export interface CloudBuildContext {
   signal?: AbortSignal;
   /**
    * Set by {@link buildOnCloudBuild}: the GCS object the source was staged to,
-   * and the staged image tag. `run()` reuses both — the same source so
+   * and the staged image tag. `run()` reuses both: the same source so
    * `/workspace` holds the project, and the staged tag so the worker has an
    * image it can actually pull.
    */
@@ -109,7 +109,7 @@ export interface HostedBuildResult extends BuildResult {
 
 /**
  * Base URL for the Builds API. A configured region routes to the regional
- * endpoint — without this, `GCP_BUILD_REGION` was read into the config and then
+ * endpoint: without this, `GCP_BUILD_REGION` was read into the config and then
  * ignored, so "regional builds" silently ran in the global pool.
  */
 function buildsApiBase(config: CloudBuildConfig): string {
@@ -130,7 +130,7 @@ let cached: CachedToken | null = null;
 /**
  * An access token for our own Google APIs.
  *
- * Prefers the GKE metadata server (workload identity — no key material to hold
+ * Prefers the GKE metadata server (workload identity: no key material to hold
  * or rotate) and falls back to a service-account key for environments that have
  * no metadata server, such as a self-hosted deployment or local development.
  *
@@ -273,7 +273,7 @@ export async function buildOnCloudBuild(
       entrypoint: "sh",
       args: [
         "-c",
-        // Flatten ONLY a tarball that is wrapped in exactly one directory —
+        // Flatten ONLY a tarball that is wrapped in exactly one directory:
         // GitHub's signature. An earlier version took the first directory it
         // saw, so an unwrapped archive whose root happened to contain `src/`
         // had *that* flattened instead, silently destroying the layout and
@@ -407,7 +407,7 @@ async function createBuildSecret(
   }
   const secret = (await created.json()) as { name: string };
 
-  // From here the secret exists, so every exit path below has to destroy it —
+  // From here the secret exists, so every exit path below has to destroy it,
   // including a *thrown* fetch, which the !ok check alone does not cover.
   let added: Response;
   try {
@@ -427,7 +427,7 @@ async function createBuildSecret(
   return secret.name;
 }
 
-/** Delete a one-build secret. Best effort — a leftover is cleaned by TTL policy. */
+/** Delete a one-build secret. Best effort: a leftover is cleaned by TTL policy. */
 async function destroyBuildSecret(token: string, secretName: string): Promise<void> {
   await fetch(`https://secretmanager.googleapis.com/v1/${secretName}`, {
     method: "DELETE",
@@ -478,7 +478,7 @@ export async function runOnCloudBuild(
   const shell = entrypoint === "sh" || entrypoint === "bash" || entrypoint === "/bin/sh";
 
   // `run()` may carry credentials, and a step's args are recorded in this
-  // project's build history — so they go through Secret Manager exactly as the
+  // project's build history, so they go through Secret Manager exactly as the
   // registry password does, one secret per variable.
   const env = request.env ?? {};
   const secretNames: Record<string, string> = {};
@@ -519,7 +519,7 @@ export async function runOnCloudBuild(
       args: shell ? ["-lc", wrapped] : [request.command],
     };
     // Cloud Build extracts the source into /workspace, which is also the step's
-    // working directory — so the project is mounted the same way the local
+    // working directory, so the project is mounted the same way the local
     // driver mounts it.
     if (request.workdir) step["dir"] = request.workdir;
     if (Object.keys(secretNames).length > 0) step["secretEnv"] = Object.keys(secretNames);
@@ -568,7 +568,7 @@ export async function runOnCloudBuild(
     if (!buildId) throw new Error("Cloud Build did not return a build id.");
 
     const status = await waitForBuild(config, buildId, ctx);
-    // The command's output is the whole point of run() — `const v = await
+    // The command's output is the whole point of run(): `const v = await
     // run(...)` has to return what it printed, or the same Infrafile behaves
     // differently depending on where it was deployed from.
     const raw = await readBuildLog(config, buildId).catch(() => "");
@@ -607,7 +607,7 @@ function stripStepPrefixes(raw: string): string {
  * Everything is delimited by nonce markers rather than matched by shape. An
  * earlier version filtered Cloud Build's banners by regex, which silently ate
  * any line of the command's own output that happened to start with `DONE`,
- * `BUILD` or `PUSH`. Returns null when the markers are absent — the step died
+ * `BUILD` or `PUSH`. Returns null when the markers are absent: the step died
  * before it could report, so the caller falls back to the build's verdict.
  */
 function parseWrappedOutput(raw: string, nonce: string): RunInImageResult | null {
@@ -636,7 +636,7 @@ export const __parseWrappedOutputForTests = parseWrappedOutput;
  * A finished build's raw log text.
  *
  * Cloud Build writes it to `logsBucket` as `log-<id>.txt` when logging is
- * GCS_ONLY. Returned verbatim — the caller decides what is output and what is
+ * GCS_ONLY. Returned verbatim: the caller decides what is output and what is
  * Cloud Build's own chatter, using markers rather than guessing.
  */
 async function readBuildLog(config: CloudBuildConfig, buildId: string): Promise<string> {

@@ -1,8 +1,8 @@
 /**
  * Build a safe `Content-Disposition: attachment` header value.
  *
- * Filenames here come from remote systems — an object key in someone's bucket,
- * a directory entry over SFTP — so they can contain quotes, backslashes,
+ * Filenames here come from remote systems (an object key in someone's bucket,
+ * a directory entry over SFTP) so they can contain quotes, backslashes,
  * newlines, and non-ASCII. Interpolating one straight into a quoted string
  * lets it break out of the quotes and append header parameters, and a raw
  * CR/LF makes Node reject the whole response.

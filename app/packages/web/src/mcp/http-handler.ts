@@ -43,7 +43,7 @@ function reqUrlString(req: IncomingMessage): string {
 export async function handleMcpHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
   // `server.ts` routes /api/mcp at the Node HTTP level, ahead of the Hono
   // listener, so the `securityHeaders()` middleware never sees these responses.
-  // Set them here — before the auth check, so the 401 and the malformed-body
+  // Set them here: before the auth check, so the 401 and the malformed-body
   // 400 carry them too, not just the SDK handler's own writes.
   applySecurityHeaders(res);
 
@@ -70,8 +70,8 @@ export async function handleMcpHttp(req: IncomingMessage, res: ServerResponse): 
     }
   }
 
-  // Modern (2026-07-28) requests — the per-request `_meta` envelope, no
-  // handshake — go to the SDK's stateless handler, which owns version
+  // Modern (2026-07-28) requests (the per-request `_meta` envelope, no
+  // handshake) go to the SDK's stateless handler, which owns version
   // negotiation, `server/discover`, the SEP-2243 header checks, and the
   // envelope error answers. Everything is built fresh per request; there is
   // no session state to share, so a per-request handler is exactly as
@@ -104,7 +104,7 @@ export async function handleMcpHttp(req: IncomingMessage, res: ServerResponse): 
     await server.connect(transport);
     try {
       // JSON mode: the response resolves complete, so teardown can follow
-      // immediately — nothing streams after this returns.
+      // immediately; nothing streams after this returns.
       return await transport.handleRequest(request, options);
     } finally {
       void transport.close();

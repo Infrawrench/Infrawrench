@@ -4,8 +4,8 @@
  * Two callers page today and they must behave identically, so the cooldown
  * protocol and the transport fan-out live here rather than in either of them:
  *
- * - `workflows/paging.ts` — a workflow calling `infra.page(...)`.
- * - `paging/external-pages.ts` — a server calling `POST /pages`.
+ * - `workflows/paging.ts`: a workflow calling `infra.page(...)`.
+ * - `paging/external-pages.ts`: a server calling `POST /pages`.
  *
  * The transports are the same ones the sync-failure pager and budget alerts
  * use: Twilio SMS (plus voice on request) sent directly, and push / Slack /
@@ -40,7 +40,7 @@ export interface PageAudience {
   context: string;
   /** Deep link behind the Slack/Teams button, or null when APP_URL is unset. */
   url: string | null;
-  /** Mobile deep-link payload — the routing contract with the app. */
+  /** Mobile deep-link payload: the routing contract with the app. */
   pushData: PushData;
 }
 
@@ -51,7 +51,7 @@ export interface PriorPage {
 
 /**
  * The cooldown row for one (pager, key) pair. `claim` must be a single
- * conditional statement — a read-then-write loses the race it exists to win.
+ * conditional statement: a read-then-write loses the race it exists to win.
  */
 export interface PageCooldownStore {
   /** The current row, or null when this key has never paged. */
@@ -112,9 +112,9 @@ export async function deliverPage(
     ...(spec.voice ? { voice: true } : {}),
   });
   // `bypassQuietHours`: `infra.page()` is the author saying "wake someone".
-  // The org can still route it wherever it likes — and can give the rule an
+  // The org can still route it wherever it likes, and can give the rule an
   // escalation policy, which is what makes an unanswered 3am page ring a second
-  // channel — but holding a page until morning would defeat the one call in the
+  // channel, but holding a page until morning would defeat the one call in the
   // whole API whose entire purpose is to interrupt.
   const routed = await routeAlert(
     {

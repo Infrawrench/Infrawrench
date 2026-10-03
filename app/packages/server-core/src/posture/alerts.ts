@@ -10,16 +10,16 @@
  * store, so two claims and two triggers would mean two messages a day about
  * one review. See `access-review/summary.ts`.
  *
- * Invoked from the poller loop (a bounded batch per tick), not from sync — a
+ * Invoked from the poller loop (a bounded batch per tick), not from sync: a
  * bucket does not get more public because a sync pass ran, so the cadence is
  * the wall clock's, not the poller's.
  *
  * The claim/cooldown protocol is the shared engine in
  * `../alerts/daily-window.ts`, with one posture-specific wrinkle on top: a
  * scan **whose access half threw while posture found nothing** is rolled back
- * (`scan-failed`) rather than spent — it established nothing, and spending the
+ * (`scan-failed`) rather than spent; it established nothing, and spending the
  * window on it would make a broken feed indistinguishable from a quiet day for
- * 24 hours. Never throws — every error is logged with the `[posture]` prefix.
+ * 24 hours. Never throws: every error is logged with the `[posture]` prefix.
  */
 import { alertableAccessFindings, alertablePostureFindings } from "@infrawrench/client-core";
 import { orgPostureSettings } from "../db/schema";
@@ -74,7 +74,7 @@ type PostureScanOutcome =
   /**
    * The access review threw and posture found nothing alertable, so this scan
    * established nothing. The claim is rolled back on the way out and the next
-   * tick retries — a failed scan must never spend the window, or one broken
+   * tick retries: a failed scan must never spend the window, or one broken
    * feed silences the org for a day.
    */
   | { status: "scan-failed"; error: string };
@@ -94,7 +94,7 @@ const store = dailyWindowStore<PostureSettingsRecord>({
   }),
 });
 
-/** The scan-and-deliver body run under a won claim — see the engine's contract. */
+/** The scan-and-deliver body run under a won claim: see the engine's contract. */
 async function deliverWindow(
   organizationId: string,
   _settings: PostureSettingsRecord,
@@ -103,11 +103,11 @@ async function deliverWindow(
 ): Promise<PostureScanOutcome> {
   // One security window covering both recomputed-finding surfaces. The access
   // review answers to this same `postureAlerts` trigger and this same 24h
-  // claim on purpose — see `access-review/summary.ts` for the argument.
+  // claim on purpose: see `access-review/summary.ts` for the argument.
   //
   // The access half is caught rather than thrown so a broken review cannot
   // stop a posture alert going out. What it must never do is *look like a
-  // clean review* — see the `scan-failed` branch below.
+  // clean review*: see the `scan-failed` branch below.
   const [feed, review] = await Promise.all([
     listPosture(organizationId, { now: now.getTime() }),
     listAccessReview(organizationId, { now: now.getTime() }).then(
@@ -124,13 +124,13 @@ async function deliverWindow(
     if (!review.ok) {
       // A half that threw is not a quiet scan. Spending the window here would
       // suppress both the retry and every access finding for 24h, and would
-      // make a broken feed indistinguishable from a clean org — the same
+      // make a broken feed indistinguishable from a clean org: the same
       // unknown-versus-clean distinction the findings themselves keep. Leaving
       // `spent` false means the engine's guard on the way out rolls the claim
       // back and the next tick tries again.
       return { status: "scan-failed", error: review.error };
     }
-    // A completed scan consumes the cooldown even when it found nothing —
+    // A completed scan consumes the cooldown even when it found nothing:
     // `last_notified_at` means "last alert scan", and a clean org re-scanned
     // every tick would only reconfirm the same silence until a sync changes
     // a field.
@@ -172,11 +172,11 @@ async function deliverWindow(
     url,
     pushData: { type: "posture_alert", orgId: organizationId },
   });
-  // A hold counts as spent — see the same note in `drift/alerts.ts`.
+  // A hold counts as spent: see the same note in `drift/alerts.ts`.
   delivery.succeeded += routed.succeeded + routed.held;
 
   // Nobody is routed here, or every transport failed. Either way this window
-  // was not spent — the engine rolls the claim back on the way out so the next
+  // was not spent: the engine rolls the claim back on the way out so the next
   // tick can retry instead of waiting out a cooldown nobody heard about.
   if (delivery.succeeded === 0) {
     return {

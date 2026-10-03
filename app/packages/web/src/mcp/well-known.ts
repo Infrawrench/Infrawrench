@@ -4,7 +4,7 @@ import { probeClientRegistrationSupport } from "./registration-probe";
 
 /**
  * The AuthKit authorization server URL used for OAuth discovery. This must be
- * the AuthKit domain (e.g. `https://auth.example.com`) — it is the only origin
+ * the AuthKit domain (e.g. `https://auth.example.com`): it is the only origin
  * that serves `/.well-known/oauth-authorization-server` with the `oauth2/*`
  * endpoints MCP clients need. `https://api.workos.com/user_management` does
  * *not* serve that document, so there is deliberately no fallback here: an
@@ -38,7 +38,7 @@ export function buildResourceMetadataUrl(reqUrl: string): string {
 const app = new Hono();
 
 /**
- * RFC 9728 — OAuth 2.0 Protected Resource Metadata. MCP clients fetch this
+ * RFC 9728: OAuth 2.0 Protected Resource Metadata. MCP clients fetch this
  * after a 401 with a `WWW-Authenticate: Bearer resource_metadata="…"` hint
  * to learn which authorization server backs this resource.
  *
@@ -67,7 +67,7 @@ function protectedResourceMetadata(c: Context) {
   return c.json({
     resource: `${baseUrl}/api/mcp`,
     authorization_servers: [authServer],
-    // Must be scopes the AuthKit authorization server actually grants —
+    // Must be scopes the AuthKit authorization server actually grants:
     // advertising anything else makes the client's authorize call fail with
     // `invalid_scope`.
     scopes_supported: ["openid", "profile", "email", "offline_access"],

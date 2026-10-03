@@ -35,7 +35,7 @@ describe("forwardable addresses", () => {
   });
 
   it("refuses anything that is not a private pod address", () => {
-    // The table is written by our own pods, so this is defence in depth — but
+    // The table is written by our own pods, so this is defence in depth, but
     // a row naming a public host would turn every replica into an open
     // forwarder for an authenticated internal endpoint.
     for (const address of [

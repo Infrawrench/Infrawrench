@@ -32,20 +32,20 @@ interface TargetDevice {
 /**
  * Resolve the active devices of all org members who have not muted `trigger`.
  *
- * This used to pick a boolean column out of an eleven-entry map — one of the
+ * This used to pick a boolean column out of an eleven-entry map: one of the
  * six places a new trigger had to be added. `push_preferences.muted_triggers`
  * makes it a containment test instead, so an unknown or newly added trigger is
  * simply not in anyone's mute list and needs no migration to start arriving.
  *
  * The two branches are the "no row means the shipped defaults" contract. For a
- * trigger that ships **on**, a missing row is a yes. For one that ships **muted**
- * — `resourceDrift`, for the reason `ALERT_TRIGGERS` gives — a missing row must
+ * trigger that ships **on**, a missing row is a yes. For one that ships **muted**:
+ * `resourceDrift`, for the reason `ALERT_TRIGGERS` gives: a missing row must
  * be a no, so it needs a row that positively does *not* mute it. Getting this
  * backwards would start buzzing every phone in every org that has never opened
  * the notifications screen, which is exactly what the old `.default(false)`
  * column existed to prevent.
  *
- * `userId`, when given, narrows the same query to one member — used by
+ * `userId`, when given, narrows the same query to one member: used by
  * owner-routed alerts. It is a filter on top of the membership join, never a
  * replacement for it: a user who has left the org must stop receiving its
  * alerts even if something still records them as an owner.
@@ -124,7 +124,7 @@ async function noteTickets(devices: TargetDevice[], tickets: ExpoTicket[]): Prom
 type IosInterruptionLevel = NonNullable<ExpoPushMessage["interruptionLevel"]>;
 
 /**
- * Every push we send is an alert — a sync incident, a budget breach, a workflow
+ * Every push we send is an alert: a sync incident, a budget breach, a workflow
  * page, or the test that proves those will arrive. So all of them go out at the
  * top delivery tier on both platforms:
  *
@@ -133,14 +133,14 @@ type IosInterruptionLevel = NonNullable<ExpoPushMessage["interruptionLevel"]>;
  *   Android defaults to normal and an inherited default is not a guarantee.
  * - `interruptionLevel` is `time-sensitive` for everything, with pages the one
  *   trigger that can go higher (see `interruptionLevelFor`). Time-sensitive
- *   (iOS 15+) lights the screen and breaks through Focus and Do Not Disturb —
+ *   (iOS 15+) lights the screen and breaks through Focus and Do Not Disturb:
  *   the setting that decides whether a 3am page wakes anyone. It needs the
  *   time-sensitive entitlement, declared in mobile's `app.config.ts`; without
  *   it iOS quietly downgrades to `active`. The Android equivalent is the
  *   `incidents` channel, already created at `AndroidImportance.HIGH`.
  *
- * The user still has the last word — iOS exposes a per-app "Time Sensitive
- * Notifications" toggle — which is the right place for that decision to live.
+ * The user still has the last word (iOS exposes a per-app "Time Sensitive
+ * Notifications" toggle) which is the right place for that decision to live.
  */
 function toExpoMessage(
   device: TargetDevice,
@@ -170,7 +170,7 @@ function toExpoMessage(
  * in both directions:
  *
  * - `critical` needs `com.apple.developer.usernotifications.critical-alerts`,
- *   which Apple grants case by case via a request form — not an entitlement we
+ *   which Apple grants case by case via a request form, not an entitlement we
  *   can grant ourselves the way time-sensitive is. Apple documents the entitled
  *   behaviour only; what an unentitled `critical` degrades to is unspecified,
  *   and "quietly treated as `active`" would make pages *quieter* than the
@@ -209,14 +209,14 @@ export async function sendPushToOrg(
 }
 
 /**
- * Send `msg` to one member of the org — the owner-routed half of an alert.
+ * Send `msg` to one member of the org: the owner-routed half of an alert.
  *
  * Same trigger opt-in and same membership requirement as the org fan-out; the
  * only difference is who is asked. Callers use it *in addition to*
  * `sendPushToOrg`, never instead of it: naming the owner makes an alert
  * personal, but it must not make the rest of the team blind to an outage
  * because one person is on holiday. Expo de-duplicates nothing, so an owner
- * who is also in the org fan-out is spoken to twice — accepted deliberately,
+ * who is also in the org fan-out is spoken to twice: accepted deliberately,
  * since suppressing the personal copy is the failure mode that matters.
  *
  * Never throws: like the org fan-out, delivery must not break a poller pass.

@@ -2,15 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CostScenarioAdjustment, CostScenarioModel } from "@infrawrench/client-core";
 
 /**
- * `runCostQuery`'s scenario semantics — the properties the feature hangs on,
+ * `runCostQuery`'s scenario semantics: the properties the feature hangs on,
  * asserted against the real composition engine and the real orchestration, with
  * only the stores mocked:
  *
- * 1. **history is never modified** — the drawn series come back byte-identical
+ * 1. **history is never modified**: the drawn series come back byte-identical
  *    whether or not a scenario is applied;
- * 2. **both projections are retrievable** — `forecast` stays the unadjusted
+ * 2. **both projections are retrievable**: `forecast` stays the unadjusted
  *    trend and `scenario.points` is the adjusted one, always side by side;
- * 3. **overlapping adjustments compose in the defined order** — rate changes
+ * 3. **overlapping adjustments compose in the defined order**: rate changes
  *    against the trend first, absolute amounts added afterwards;
  * 4. **a scoped scenario does not touch out-of-scope spend**; and
  * 5. a scenario with no forecast, or one that fails to resolve, is an **error**
@@ -34,8 +34,8 @@ vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   loadConversionContext: vi.fn(async () => ({ displayCurrency: null, rates: [] })),
 }));
 
-// The one piece of the scenario path that needs Postgres. Everything else —
-// the sub-scope fits, the currency resolution, the composition — runs for real.
+// The one piece of the scenario path that needs Postgres. Everything else
+// (the sub-scope fits, the currency resolution, the composition) runs for real.
 const mockResolveModel = vi.fn();
 vi.mock("@infrawrench/server-core/db/client", () => ({ db: {} }));
 vi.mock("@infrawrench/server-core/cost/scenario-forecast", async () => {
@@ -66,7 +66,7 @@ function daysBetween(from: string, to: string): string[] {
   return out;
 }
 
-/** The drawn series — flat $10/day of AWS spend and $10/day of GCP. */
+/** The drawn series: flat $10/day of AWS spend and $10/day of GCP. */
 const drawnSeries = [
   {
     key: "aws",
@@ -86,7 +86,7 @@ beforeEach(() => {
     (_org: string, q: { groupBy: string; from: string; to: string; filters?: unknown[] }) => {
       // The drawn query.
       if (q.groupBy === "provider") return drawnSeries;
-      // A fit — the whole chart, or one adjustment's scope. Flat, so the
+      // A fit: the whole chart, or one adjustment's scope. Flat, so the
       // least-squares trend is exactly the daily amount and the arithmetic
       // below is readable rather than approximate.
       const scoped = (q.filters ?? []).length > 0;
@@ -212,7 +212,7 @@ describe("runCostQuery with a scenario model", () => {
 
   it("measures a scoped rate change against its own sub-baseline only", async () => {
     // The chart trends at $10/day; the AWS slice trends at $4. −50% on AWS
-    // takes $2 off, never $5 — the other $6 is out of scope.
+    // takes $2 off, never $5: the other $6 is out of scope.
     mockResolveModel.mockResolvedValue(
       model([
         adjustment({
@@ -262,7 +262,7 @@ describe("runCostQuery with a scenario model", () => {
     await expect(
       runCostQuery("org1", { ...baseRequest, forecast: false, scenarioModelId: "model-1" }),
     ).rejects.toBeInstanceOf(CostQueryError);
-    // The model is never even loaded — the request is wrong before that matters.
+    // The model is never even loaded: the request is wrong before that matters.
     expect(mockResolveModel).not.toHaveBeenCalled();
   });
 

@@ -2,7 +2,7 @@
  * Quota radar routes (`/api/org/:orgId/quotas*`).
  *
  * The feed is assembled in server-core (`quotas/feed.ts`) so the web API, the
- * weekly digest and the poller's alert pass share one computation — and so the
+ * weekly digest and the poller's alert pass share one computation, and so the
  * page's severity buckets and the alert's are the same code, not two
  * implementations of "over threshold". Purely a read over already-collected
  * readings: no provider API calls happen here (the collection is the poller's
@@ -34,7 +34,7 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * GET /api/org/:orgId/quotas — every provider limit the org has a reading for,
+ * GET /api/org/:orgId/quotas: every provider limit the org has a reading for,
  * worst first, with the trend fitted over the last fortnight of snapshots.
  *
  * Also carries the per-account collection status and the list of plugins that
@@ -66,7 +66,7 @@ app.get("/settings", async (c) => {
  * Update the quota alert settings. Every field is optional so a single toggle
  * can be saved on its own. Bounds live in server-core so the API and the
  * poller cannot disagree about what a valid threshold is, and they *reject*
- * rather than clamp — a form that silently shows 0.5 after the user typed 0.4
+ * rather than clamp: a form that silently shows 0.5 after the user typed 0.4
  * reads as the setting not having saved. `lastNotifiedAt` is deliberately not
  * writable: it is the poller's cooldown claim.
  */

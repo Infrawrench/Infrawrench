@@ -61,7 +61,7 @@ const CurrencyConfig = strict({
 }).openapi("CurrencyConfig");
 
 /**
- * The conversion report every converted cost payload carries — a converted
+ * The conversion report every converted cost payload carries: a converted
  * number that does not say it was converted is the one outcome this whole
  * surface exists to prevent.
  */

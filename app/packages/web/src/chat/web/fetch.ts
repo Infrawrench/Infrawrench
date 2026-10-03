@@ -6,7 +6,7 @@
  * (`app/packages/egress-proxy`, client in
  * `@infrawrench/server-core/workflows/fetch`) rather than leaving from the web
  * pod. That proxy was built for workflow `fetch()`, and its README warns against
- * reusing it for the app's own server-side HTTP — but the warning is about
+ * reusing it for the app's own server-side HTTP, but the warning is about
  * traffic to fixed, known hosts (provider APIs, Slack, Twilio), where a hop
  * through Cloudflare adds latency and a failure mode for no benefit. This is the
  * opposite case and the one the Worker exists for: the destination is chosen by
@@ -20,8 +20,8 @@
  * redirect hop is re-validated; `set-cookie` is stripped; the response is capped
  * and *errors* rather than truncating.
  *
- * The tool is GET-only by construction — no method, headers, or body parameter
- * exists — so it cannot be turned into a way to POST to an internal-ish webhook,
+ * The tool is GET-only by construction (no method, headers, or body parameter
+ * exists) so it cannot be turned into a way to POST to an internal-ish webhook,
  * and it stays honestly a `read` for the approval flow.
  */
 import {

@@ -9,7 +9,7 @@
  * deciding what to bill.
  *
  * **Approval is the freeze.** {@link approveInvoice} computes the figures one
- * last time and writes them onto the row — the lines, the four totals, the
+ * last time and writes them onto the row: the lines, the four totals, the
  * exchange rates *and the day they were read*, the billing rules that were in
  * force, and the names everything in scope had at that moment. Every later read
  * of an `approved`, `sent` or `void` invoice returns those bytes and never
@@ -17,21 +17,21 @@
  * being restated, a cost centre being renamed or moved to another customer:
  * none of them can change a number that has already been sent to a customer.
  *
- * The figures are computed *outside* the transaction that stores them — the
+ * The figures are computed *outside* the transaction that stores them: the
  * computation reads ClickHouse and a transaction held open across it would be
- * a lock held across a network — so approval is **optimistically concurrent**:
+ * a lock held across a network, so approval is **optimistically concurrent**:
  * every input that fed the computation is re-read under a row lock at the
  * moment of writing and compared, and any change refuses the approval rather
  * than freezing figures that belong to a different question. See
  * {@link figureInputsOf}.
  *
  * **Sending** changes nothing about the figures; it records that the document
- * left the building, who let it, and — since delivery landed — where it went
+ * left the building, who let it, and (since delivery landed) where it went
  * and whether it arrived. Delivery only ever writes the delivery columns.
  *
  * **Void** is the only correction. There is no update path and no delete path
- * for an issued invoice — {@link managedInvoiceBlocker} refuses both here, in
- * the service, not merely in a disabled button — so a wrong invoice is voided
+ * for an issued invoice ({@link managedInvoiceBlocker} refuses both here, in
+ * the service, not merely in a disabled button) so a wrong invoice is voided
  * with a reason and superseded by a corrective one, and both survive. The void,
  * the corrective draft and *both* directions of the link between them are one
  * transaction: a void is irreversible, so a half-applied supersede would strand
@@ -42,7 +42,7 @@
  * One pass of `getShowbackSpend` over the org's **real, unmodified** allocation
  * rules, exactly as `services/showback.ts` runs it. That is what makes an
  * invoice line for a cost centre identical to the showback row for the same
- * centre and period — the customer and the provider are reading the same
+ * centre and period: the customer and the provider are reading the same
  * number, which is the whole basis for being paid.
  *
  * Accounts in scope are appended to the *end* of that rule list, so they claim
@@ -137,7 +137,7 @@ type ManagedAccountRow = typeof managedAccounts.$inferSelect;
 /**
  * Compute an invoice's lines from live spend.
  *
- * Pure of side effects and of the invoice row itself — it takes the customer
+ * Pure of side effects and of the invoice row itself: it takes the customer
  * and a period and nothing else, which is what lets the approval path call it
  * one last time and store the answer without any risk of storing something
  * different from what the draft was showing a second earlier.
@@ -177,7 +177,7 @@ export async function computeInvoiceFigures(
     ...scopeAccountIds.filter((id) => !accountNameById.has(id)),
   ];
 
-  // The org's rule list, unmodified and in evaluation order — the same list
+  // The org's rule list, unmodified and in evaluation order: the same list
   // `services/showback.ts` compiles. Keeping it whole is what makes an invoice
   // line equal to the showback row: filtering it to the customer's centres
   // would let a row that a *different* centre's higher-priority rule claims
@@ -328,7 +328,7 @@ export async function computeInvoiceFigures(
       refId: rule.targetId ?? null,
       label: rule.name,
       currency: rule.currency,
-      // Nothing was collected for a fixed fee — it is entirely an adjustment,
+      // Nothing was collected for a fixed fee: it is entirely an adjustment,
       // which is what keeps `collected + adjustment === adjusted` true.
       collected: 0,
       adjustment: amount,
@@ -350,7 +350,7 @@ export async function computeInvoiceFigures(
 
   const lines: ManagedInvoiceLine[] = rawLines.map((line) => {
     if (line.currency === invoiceCurrency) {
-      // Passed through, never multiplied by a stated rate of 1 — a self-rate
+      // Passed through, never multiplied by a stated rate of 1: a self-rate
       // cannot exist (`buildExchangeRateTable` drops it).
       return { ...line, rate: 1, billed: line.adjusted };
     }
@@ -398,7 +398,7 @@ export async function computeInvoiceFigures(
  * resolved bundle. Kept here rather than imported so the fixed-rule branch
  * above and this one cannot drift: fixed rules are applied as lines, not in the
  * scan, so a rule set that is *only* fixed rules must still skip the adjusted
- * query path — otherwise every row comes back with a `rawAmount` equal to its
+ * query path, otherwise every row comes back with a `rawAmount` equal to its
  * amount and the invoice claims an adjustment happened when none did.
  */
 function billingAdjustmentsAreEmptyLocal(
@@ -497,7 +497,7 @@ export interface InvoiceListFilter {
 }
 
 /**
- * Invoices newest first. Summaries only — see {@link ManagedInvoiceSummary} for
+ * Invoices newest first. Summaries only: see {@link ManagedInvoiceSummary} for
  * why a draft's totals are null here rather than recomputed.
  */
 export async function listInvoices(
@@ -569,8 +569,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
  * Read and row-lock one invoice inside a transaction.
  *
  * `FOR UPDATE` is what turns "check then write" into a decision: a concurrent
- * edit either committed before this read — in which case the caller sees it and
- * refuses — or blocks until this transaction ends, by which point its own
+ * edit either committed before this read (in which case the caller sees it and
+ * refuses) or blocks until this transaction ends, by which point its own
  * `status = 'draft'` guard no longer matches. There is no third ordering.
  */
 async function lockInvoice(tx: Tx, organizationId: string, id: string): Promise<InvoiceRow | null> {
@@ -607,19 +607,19 @@ async function lockManagedAccount(
 /**
  * Every input that decides what an invoice's figures say.
  *
- * The reported race was the period — edit a draft's period while an approval is
+ * The reported race was the period: edit a draft's period while an approval is
  * mid-flight and the approval freezes the old period's lines onto a row that
  * now claims the new one. But the period is only the instance. *Every* field
  * below changes the figures the same way, and each is editable while a draft
  * sits there:
  *
- * - `periodFrom` / `periodTo` — which days are summed (`PUT /invoices/:id`);
- * - `costCentreIds` / `accountIds` — whose spend is summed;
- * - `costBasis` — cash or amortized, a different number for the same days;
- * - `applyBillingRules` — markups and fixed fees in or out;
- * - `billingCurrency` — the conversion target *and* the stored `currency`;
- * - `name` — frozen onto the row as `managedAccountName`;
- * - `managedAccountId` — belt and braces; nothing edits it today.
+ * - `periodFrom` / `periodTo`: which days are summed (`PUT /invoices/:id`);
+ * - `costCentreIds` / `accountIds` (whose spend is summed;
+ * - `costBasis`) cash or amortized, a different number for the same days;
+ * - `applyBillingRules` (markups and fixed fees in or out;
+ * - `billingCurrency`) the conversion target *and* the stored `currency`;
+ * - `name` (frozen onto the row as `managedAccountName`;
+ * - `managedAccountId`) belt and braces; nothing edits it today.
  *
  * (all six of the customer's fields move together on `PUT /managed-accounts/:id`.)
  *
@@ -704,7 +704,7 @@ function normalizeNotes(notes: string | null | undefined): string | null {
 
 /**
  * Insert a draft and, when it corrects one, link it to the original **both
- * ways** — inside the caller's transaction.
+ * ways**: inside the caller's transaction.
  *
  * Two statements that must not be separable. `supersedes` without
  * `superseded_by` is a correction the original does not know about, which is
@@ -770,7 +770,7 @@ function assertSupersedable(original: InvoiceRow | null): asserts original is In
 }
 
 /**
- * Raise a draft. Always `draft`, never anything else — generating and issuing
+ * Raise a draft. Always `draft`, never anything else: generating and issuing
  * are two acts, and collapsing them would mean a mis-typed period could be sent
  * to a customer without anyone having looked at the numbers.
  *
@@ -859,7 +859,7 @@ export async function updateInvoice(
   return toWire(updated, figures, true);
 }
 
-/** Delete a draft. Refused on anything issued — that is what void is for. */
+/** Delete a draft. Refused on anything issued: that is what void is for. */
 export async function deleteInvoice(organizationId: string, id: string): Promise<boolean> {
   const row = await getInvoiceRow(organizationId, id);
   if (!row) return false;
@@ -903,7 +903,7 @@ async function nextInvoiceNumber(
 }
 
 /**
- * Approve — the freeze.
+ * Approve: the freeze.
  *
  * Computes the figures one last time and writes them onto the row together with
  * the rates, the rules and the names. From here the invoice is a document, not
@@ -916,7 +916,7 @@ async function nextInvoiceNumber(
  * the figure nobody can explain.
  *
  * Refused, too, when the arithmetic does not reconcile. That should be
- * impossible — the identity is maintained line by line — which is precisely why
+ * impossible (the identity is maintained line by line) which is precisely why
  * it is worth checking before anything is made permanent.
  *
  * ## Why this is optimistically concurrent
@@ -982,8 +982,8 @@ export async function approveInvoice(
   const now = new Date();
   // Three attempts: the number is derived from a read, so a concurrent approval
   // in the same org and year can take it. The unique index is what actually
-  // decides, and a duplicate rolls this transaction back — a failed statement
-  // poisons the whole transaction in Postgres — so the retry re-runs the
+  // decides, and a duplicate rolls this transaction back (a failed statement
+  // poisons the whole transaction in Postgres) so the retry re-runs the
   // transaction rather than continuing inside a dead one. The figures are
   // computed once, outside the loop: they do not depend on the number.
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -1024,7 +1024,7 @@ export async function approveInvoice(
             status: "approved",
             number,
             // The customer's name and currency are stored from the same read
-            // the figures were computed from — and the comparison above is what
+            // the figures were computed from, and the comparison above is what
             // guarantees that read is still current.
             managedAccountName: inputs.accountName,
             currency: inputs.billingCurrency,
@@ -1057,8 +1057,8 @@ export async function approveInvoice(
  *
  * `status`, `sentAt` and `sentByUserId` are the **release**: a person with
  * `invoices:issue` decided this document may go to the customer. They are
- * written once, on the first send, and no retry or second copy overwrites them
- * — the audit question is "who let this out", and it has one answer.
+ * written once, on the first send, and no retry or second copy overwrites them:
+ * the audit question is "who let this out", and it has one answer.
  *
  * The delivery columns are the **transport**: which addresses were tried, how
  * many the mail provider took, when, and what went wrong. A failed delivery
@@ -1072,7 +1072,7 @@ export async function approveInvoice(
  * advisory. One conditional `UPDATE` on `(status, delivery_attempt_count)`
  * moves the counter forward and marks the attempt `pending`; only the caller
  * whose update returned a row runs the transport. Two people pressing Send at
- * the same instant therefore produce one email and one 409, not two emails —
+ * the same instant therefore produce one email and one 409, not two emails:
  * Mailgun has no idempotency key that could have undone the second.
  *
  * {@link managedInvoiceBlocker} then decides whether a *later* send needs the
@@ -1193,7 +1193,7 @@ export async function sendInvoice(
  * Void an issued invoice, optionally raising the correction in the same act.
  *
  * The original is never touched beyond its status and the reason: its lines,
- * totals, rates and rules stay exactly as they were sent. That is the point —
+ * totals, rates and rules stay exactly as they were sent. That is the point:
  * "we billed you this, it was wrong, here is the corrected one" is a story a
  * customer can follow, and "we changed the invoice" is not.
  *
@@ -1201,8 +1201,8 @@ export async function sendInvoice(
  *
  * Void is irreversible by design: there is no un-void, and the corrective
  * invoice is the only way forward. A sequence that commits the void, then
- * inserts the draft, then writes the back-link can stop after any one of them —
- * a crash, a failed connection, a request the client abandoned — and every
+ * inserts the draft, then writes the back-link can stop after any one of them
+ * (a crash, a failed connection, a request the client abandoned) and every
  * stopping point strands the user somewhere they cannot get out of:
  *
  * - after the void: a withdrawn invoice, no correction, and `void` refuses
@@ -1212,7 +1212,7 @@ export async function sendInvoice(
  *
  * All three statements therefore run in one transaction, and it either applies
  * whole or not at all. The only work left outside is computing the new draft's
- * figures, which reads ClickHouse — a draft recomputes on every read, so that
+ * figures, which reads ClickHouse: a draft recomputes on every read, so that
  * is a display concern, not state, and the pair is already durable when it runs.
  */
 export async function voidInvoice(
@@ -1300,7 +1300,7 @@ export async function voidInvoice(
 
   // Outside the transaction on purpose: this reads cost data, and the pair is
   // already committed. A failure here costs the caller the draft's *numbers*,
-  // never the draft — which the next read recomputes anyway.
+  // never the draft, which the next read recomputes anyway.
   let figures: InvoiceFigures;
   try {
     figures = await computeInvoiceFigures(
@@ -1325,7 +1325,7 @@ export async function voidInvoice(
  * ------------------------------------------------------------------ */
 
 /**
- * The invoice as CSV — the derivation, not a pretty document.
+ * The invoice as CSV: the derivation, not a pretty document.
  *
  * Every column an accounts-payable clerk needs to check the arithmetic is here:
  * what was collected, what the rules added, what that came to, the rate and the

@@ -5,7 +5,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 /**
  * Unit-cost regression evaluation tests that exercise the *pipeline*, not the
- * maths — `unit-cost-regression.test.ts` covers the gap rules and thresholds.
+ * maths: `unit-cost-regression.test.ts` covers the gap rules and thresholds.
  *
  * What this file is for: the trigger goes through `routeAlert` and never
  * through a transport; the fire-once row is keyed on the window end; a gap in
@@ -44,7 +44,7 @@ vi.mock("../slack", () => ({
 }));
 vi.mock("../msteams", () => ({ sendMsTeamsToWebhooks }));
 
-// Real Drizzle over a recording driver against the real schema — every
+// Real Drizzle over a recording driver against the real schema: every
 // statement renders its actual SQL (and shadow-validates under
 // test:postgres:shadow). `prime()` below queues each pass's rows FIFO.
 const pg = fakePostgres();
@@ -66,7 +66,7 @@ const stamps = () =>
 
 /**
  * Prime the recording driver for one pass, in execution order: the metric
- * list, then — where a finding lands — the insert claim's RETURNING and the
+ * list, then (where a finding lands) the insert claim's RETURNING and the
  * cooldown count. Entries a pass never reaches stay queued, harmlessly.
  */
 function prime() {
@@ -207,7 +207,7 @@ describe("evaluateUnitCostRegressionsForOrg — dedup", () => {
     await evaluate("org1", NOW, true);
     expect(inserts()).toHaveLength(1);
     // (id, organizationId), metricId, currency, windowFrom, windowTo,
-    // previousFrom, previousTo — the rendered statement's column order.
+    // previousFrom, previousTo: the rendered statement's column order.
     expect(inserts()[0]!.params.slice(2, 8)).toEqual([
       "metric1",
       "USD",
@@ -229,7 +229,7 @@ describe("evaluateUnitCostRegressionsForOrg — dedup", () => {
 
   it("stores the row but stays quiet inside the cross-day cooldown", async () => {
     // The windows slide daily, so a regression that persists is a fresh row
-    // every morning — the cooldown is what stops fourteen alerts about one
+    // every morning: the cooldown is what stops fourteen alerts about one
     // level shift.
     notifiedInCooldown = 1;
     prime();

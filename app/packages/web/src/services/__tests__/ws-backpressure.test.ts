@@ -33,7 +33,7 @@ describe("makeWsBackpressure", () => {
     vi.advanceTimersByTime(100);
     expect(resume).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(500); // poller stopped — no repeat resumes
+    vi.advanceTimersByTime(500); // poller stopped: no repeat resumes
     expect(resume).toHaveBeenCalledTimes(1);
   });
 

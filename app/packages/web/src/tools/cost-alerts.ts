@@ -1,5 +1,5 @@
 /**
- * Change-based cost alert tools — manage the org's "tell me when spend on
+ * Change-based cost alert tools: manage the org's "tell me when spend on
  * this scope moves more than X% (or $Y) versus the prior period" alerts from
  * chat and MCP.
  *

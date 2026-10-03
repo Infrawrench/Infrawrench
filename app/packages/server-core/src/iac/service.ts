@@ -18,7 +18,7 @@ import { IacInputError, getIacState, getLatestIacState, loadIacStateResources } 
 /**
  * The server half of **IaC reconciliation**: load the org's inventory and a
  * stored state document, run the pure classifier from client-core, then answer
- * the question the classifier cannot — *who* made the unmanaged things, and
+ * the question the classifier cannot; *who* made the unmanaged things, and
  * *when*. That join is the whole point of the feature; a list of unmanaged
  * resources with no name against it is a list nobody acts on.
  *
@@ -70,7 +70,7 @@ interface InventoryRow {
 
 /**
  * A stored row as the export mappers expect it. Same normalisation the
- * eject-to-Terraform service does — mappers read primitives, so anything
+ * eject-to-Terraform service does: mappers read primitives, so anything
  * structured is dropped rather than stringified.
  */
 function toResourceInstance(row: InventoryRow): ResourceInstance {
@@ -129,7 +129,7 @@ async function loadInventory(
 }
 
 /**
- * When the change timeline first saw each resource appear — the "and when"
+ * When the change timeline first saw each resource appear: the "and when"
  * half of attribution. Only `created` events count: an `updated` row says
  * somebody touched it, not that they made it.
  */
@@ -187,7 +187,7 @@ export async function runIacReconciliation({
     typeMap,
   });
 
-  // Attribution is only interesting for the things Terraform does not manage —
+  // Attribution is only interesting for the things Terraform does not manage,
   // and it is two extra queries, so it is scoped to those rows.
   const unmanagedIds = result.resources
     .filter((r) => r.status === "unmanaged")
@@ -214,13 +214,13 @@ export async function runIacReconciliation({
 
 /**
  * Generate `import` blocks plus the matching resource stanzas for a set of
- * unmanaged resources — the payoff. Built on the *existing* export mappers and
+ * unmanaged resources: the payoff. Built on the *existing* export mappers and
  * HCL serializer, so what this emits is what "Export to Terraform…" would
  * produce for the same resources, plus the adoption blocks.
  *
  * Uses `exportResourcesForAdoption`, not the plain export: the document is
  * advertised as safe to paste and `terraform plan`, so a resource that cannot
- * be imported must not be *declared* either — it would plan a create for a
+ * be imported must not be *declared* either; it would plan a create for a
  * resource that already exists. Those come back in `unsupported` with a reason.
  */
 export async function buildIacImportPlan(
@@ -267,7 +267,7 @@ export async function buildIacImportPlan(
 /**
  * The managed/unmanaged badge for one resource detail page. Cheap on purpose:
  * it reconciles against the newest state document only, and answers `null`
- * when the org has uploaded none — a resource detail must not imply "nobody
+ * when the org has uploaded none: a resource detail must not imply "nobody
  * manages this" when the truth is "nobody has told us".
  */
 export async function getIacResourceStatus(
@@ -301,7 +301,7 @@ export async function getIacResourceStatus(
   if (!row) return empty;
 
   // Two scopes may legitimately cover this resource: a document uploaded for
-  // its own account, and an org-wide one. Nothing else does — falling back to
+  // its own account, and an org-wide one. Nothing else does: falling back to
   // "the newest document in the org" would happily reconcile this resource
   // against a *different account's* state and report a confident, wrong badge.
   // "No state covers this account" is a true answer; a wrong badge is not.

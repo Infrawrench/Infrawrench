@@ -71,7 +71,7 @@ function parseInput(raw: unknown):
 
 const app = new Hono();
 
-/** GET /api/org/:orgId/change-freezes — list freeze windows, newest first. */
+/** GET /api/org/:orgId/change-freezes: list freeze windows, newest first. */
 app.get("/", async (c) => {
   requirePermission(c, "freezes:read");
   const freezes = await listChangeFreezes(c.get("organizationId"));
@@ -79,7 +79,7 @@ app.get("/", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/change-freezes/status — the freeze currently in effect,
+ * GET /api/org/:orgId/change-freezes/status: the freeze currently in effect,
  * if any. What the app-wide banner and pre-flight warnings poll.
  */
 app.get("/status", async (c) => {
@@ -88,7 +88,7 @@ app.get("/status", async (c) => {
   return c.json({ freeze: freeze ? toWire(freeze) : null });
 });
 
-/** POST /api/org/:orgId/change-freezes — declare a freeze window. */
+/** POST /api/org/:orgId/change-freezes: declare a freeze window. */
 app.post("/", async (c) => {
   requirePermission(c, "freezes:write");
   const organizationId = c.get("organizationId");
@@ -113,7 +113,7 @@ app.post("/", async (c) => {
   return c.json(toWire(freeze));
 });
 
-/** PUT /api/org/:orgId/change-freezes/:id — update name/reason/window. */
+/** PUT /api/org/:orgId/change-freezes/:id: update name/reason/window. */
 app.put("/:id", async (c) => {
   requirePermission(c, "freezes:write");
   const organizationId = c.get("organizationId");
@@ -138,7 +138,7 @@ app.put("/:id", async (c) => {
   return c.json(toWire(freeze));
 });
 
-/** POST /api/org/:orgId/change-freezes/:id/end — end the freeze now. */
+/** POST /api/org/:orgId/change-freezes/:id/end: end the freeze now. */
 app.post("/:id/end", async (c) => {
   requirePermission(c, "freezes:write");
   const organizationId = c.get("organizationId");
@@ -157,7 +157,7 @@ app.post("/:id/end", async (c) => {
   return c.json(toWire(freeze));
 });
 
-/** DELETE /api/org/:orgId/change-freezes/:id — remove a freeze window. */
+/** DELETE /api/org/:orgId/change-freezes/:id: remove a freeze window. */
 app.delete("/:id", async (c) => {
   requirePermission(c, "freezes:write");
   const organizationId = c.get("organizationId");

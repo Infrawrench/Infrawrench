@@ -4,7 +4,7 @@
  * The browser cannot open a TCP connection, so it speaks the app protocol to
  * this endpoint over a WebSocket and the server holds the SSH connection. The
  * destination is resolved from the authenticated resource and the org's own SSH
- * key — the browser names an account, a resource and a key id, never a host —
+ * key (the browser names an account, a resource and a key id, never a host)
  * and `resolveSafeHost` refuses internal address space before anything is
  * dialled, exactly as the SSH terminal proxy does.
  *
@@ -54,7 +54,7 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
    * Frames that arrive before the app server is up.
    *
    * The browser sends `hello` the instant the socket opens, while getting the
-   * server running takes seconds — connect, stage a megabyte, exec. A listener
+   * server running takes seconds: connect, stage a megabyte, exec. A listener
    * attached after that would miss the handshake entirely: `ws` drops messages
    * with no listener, so the client would wait for a `welcome` that never comes
    * and the host for a `hello` it never got. So listen immediately and hold
@@ -73,7 +73,7 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
 
   // Registered here rather than after the session exists, which is seconds of
   // connecting, staging a megabyte and starting a process away. A browser that
-  // goes away in that window — a reload, a closed tab — makes the socket emit
+  // goes away in that window (a reload, a closed tab) makes the socket emit
   // `error`, and a WebSocket with no error listener throws it, which on this
   // server means every other session dies with it. The SSH terminal proxy
   // registers its teardown before dialling for exactly this reason.
@@ -124,8 +124,8 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
       metadata: { accountId: params.accountId, host: params.host },
     });
 
-    // Anything the client sent while the server was starting — the handshake,
-    // and whatever followed it — goes in now, in order.
+    // Anything the client sent while the server was starting (the handshake,
+    // and whatever followed it) goes in now, in order.
     for (const buffer of queued.splice(0)) session.write(buffer);
 
     session.onData((chunk) => {

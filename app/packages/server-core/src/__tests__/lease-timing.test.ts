@@ -76,7 +76,7 @@ describe("nextLeaseStep", () => {
     const now = E + HOUR;
     expect(nextLeaseStep(state({ expiresAt: E }), now)).toEqual({ kind: "warn1" });
 
-    // Warning 1 just went out — warning 2 is floored a minimum gap later.
+    // Warning 1 just went out: warning 2 is floored a minimum gap later.
     const afterLateWarn1 = state({ expiresAt: E, firstWarningAt: now });
     expect(nextLeaseStep(afterLateWarn1, now)).toEqual({
       kind: "wait",
@@ -86,7 +86,7 @@ describe("nextLeaseStep", () => {
       kind: "warn2",
     });
 
-    // Both sent and expiry passed — only now is the delete due.
+    // Both sent and expiry passed, only now is the delete due.
     const afterBoth = state({
       expiresAt: E,
       firstWarningAt: now,

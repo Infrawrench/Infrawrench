@@ -28,7 +28,7 @@ const mockCreateIssue = vi.fn();
 const mockRecordLink = vi.fn();
 const mockListLinks = vi.fn();
 
-/** The real error class — the route branches on `instanceof` and on `status`. */
+/** The real error class: the route branches on `instanceof` and on `status`. */
 class LinearApiError extends Error {
   readonly status: number | null;
   constructor(message: string, status: number | null = null) {
@@ -226,7 +226,7 @@ describe("POST /verify", () => {
   });
 
   /**
-   * Linear reports a bad key as GraphQL errors on HTTP 400 — the caller can
+   * Linear reports a bad key as GraphQL errors on HTTP 400: the caller can
    * fix it (re-enter the key), so it stays a 400, carrying Linear's wording.
    */
   it("keeps a Linear 400 as 400 with Linear's wording", async () => {
@@ -236,7 +236,7 @@ describe("POST /verify", () => {
     expect((await res.json()).error).toMatch(/rejected the API key/);
   });
 
-  /** A 5xx from Linear is their side — 502. */
+  /** A 5xx from Linear is their side: 502. */
   it("maps a Linear 503 to 502", async () => {
     mockVerifyStored.mockRejectedValue(new LinearApiError("Linear is unavailable (HTTP 503)", 503));
     const res = await writer().request("/verify", json({}));
@@ -304,7 +304,7 @@ describe("POST /issues", () => {
   });
 
   /**
-   * The link must never claim an issue that was not created — a dangling link
+   * The link must never claim an issue that was not created: a dangling link
    * silently suppresses the file button for a finding nobody filed.
    */
   it("records no link when Linear refuses the create", async () => {

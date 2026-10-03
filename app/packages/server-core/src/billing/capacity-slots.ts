@@ -2,7 +2,7 @@
  * Prepaid seat capacity: a **capacity slot** is one seat bought outright for a
  * fixed term instead of rented by the month.
  *
- * The monthly plan rents seats — the Stripe subscription carries a quantity and
+ * The monthly plan rents seats: the Stripe subscription carries a quantity and
  * `releaseSeat`/`addSeat` move it up and down. A capacity slot is the opposite
  * trade: one payment now, one seat guaranteed for {@link CAPACITY_SLOT_TERM_MONTHS}
  * months, nothing to cancel and nothing to true up.
@@ -39,7 +39,7 @@ import { capacitySlots } from "../db/schema.js";
 export const CAPACITY_SLOT_TERM_MONTHS = 24;
 
 /**
- * List price of one slot, in whole dollars — for copy only. The amount actually
+ * List price of one slot, in whole dollars, for copy only. The amount actually
  * charged comes from the Stripe price named by `STRIPE_CAPACITY_SLOT_PRICE_ID`,
  * and what was charged is stored per row as `amountPaidCents`. Keep this in step
  * with that price object; it is quoted in the billing UI and the docs plan table
@@ -56,7 +56,7 @@ export type { CapacitySlot };
  *
  * Calendar months, not 730 days: someone who buys on the 3rd expects to lose it
  * on the 3rd. The one irregular case is a Feb 29 purchase, which lands on Mar 1
- * two years later — that is `setUTCMonth` overflow and it favours the customer,
+ * two years later: that is `setUTCMonth` overflow and it favours the customer,
  * so it stands.
  */
 export function capacitySlotExpiry(
@@ -70,7 +70,7 @@ export function capacitySlotExpiry(
 
 /**
  * Seats granted by this org's slots that are still inside their term and not
- * refunded. `0` when the org has never bought one, which is the common case —
+ * refunded. `0` when the org has never bought one, which is the common case:
  * callers can treat it as "no prepaid capacity" without a null check.
  */
 export async function activeCapacitySeats(organizationId: string): Promise<number> {
@@ -90,7 +90,7 @@ export async function activeCapacitySeats(organizationId: string): Promise<numbe
 }
 
 /**
- * Every slot the org has ever bought, newest first — including lapsed and
+ * Every slot the org has ever bought, newest first, including lapsed and
  * refunded ones, because the billing page shows purchase history, not just
  * current capacity. Callers that want capacity want {@link activeCapacitySeats}.
  */
@@ -120,7 +120,7 @@ export interface RecordCapacitySlotInput {
   organizationId: string;
   /** Seats bought together, from the settled Checkout line item. */
   quantity: number;
-  /** Unique per purchase — this is what makes the grant idempotent. */
+  /** Unique per purchase: this is what makes the grant idempotent. */
   stripeCheckoutSessionId: string;
   stripePaymentIntentId: string | null;
   amountPaidCents: number | null;
@@ -132,7 +132,7 @@ export interface RecordCapacitySlotInput {
  * Grant a purchased slot, once.
  *
  * Stripe redelivers webhook events, and a `checkout.session.completed` arriving
- * twice must not hand out the seats twice — so the insert leans on the unique
+ * twice must not hand out the seats twice, so the insert leans on the unique
  * index over `stripeCheckoutSessionId` and does nothing on conflict. The return
  * value says whether this call was the one that granted, which is worth logging
  * but never worth failing on: a duplicate delivery is normal operation, not an
@@ -167,8 +167,8 @@ export async function recordCapacitySlotPurchase(
 }
 
 /**
- * Void the slots paid for by a refunded charge. Capacity drops immediately —
- * money back means seats back — but the row stays so the purchase history still
+ * Void the slots paid for by a refunded charge. Capacity drops immediately
+ * (money back means seats back) but the row stays so the purchase history still
  * shows what happened.
  */
 export async function refundCapacitySlots(stripePaymentIntentId: string): Promise<number> {

@@ -1,5 +1,5 @@
 /**
- * SSH key tools — expose the org SSH key store (Settings → SSH keys) to MCP
+ * SSH key tools: expose the org SSH key store (Settings → SSH keys) to MCP
  * clients and the chat agent, with the same permission model as the HTTP API:
  * `ssh-keys:read` / `ssh-keys:write`, and `team:role:write` extending deletion
  * to other members' keys.

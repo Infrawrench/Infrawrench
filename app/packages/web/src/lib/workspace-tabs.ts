@@ -322,7 +322,7 @@ export function getWorkspaceNavigateArgs(
     case "linux-app": {
       const rid = normalizeResourceId(target.resourceId);
       // Without the host's own plugin and type there is no resource URL to
-      // build, and guessing one addresses a resource that does not exist —
+      // build, and guessing one addresses a resource that does not exist:
       // the account is the honest fallback. Every launcher supplies them.
       if (!target.pluginId || !target.resourceTypeId) {
         return {
@@ -407,7 +407,7 @@ export function navigateToWorkspaceTarget(
 }
 
 /**
- * True when the Settings router subtree — not `WorkspaceTabsViewport` — is
+ * True when the Settings router subtree (not `WorkspaceTabsViewport`) is
  * rendering this tab's panel.
  *
  * Settings is the one workspace tab on web whose content is route-rendered:
@@ -415,7 +415,7 @@ export function navigateToWorkspaceTarget(
  * `__root`'s `<Outlet />`, a sibling of the viewport, so the viewport hides
  * every panel (`showActive === false`) while the Settings tab still reads as
  * selected in the strip. Left alone that means an `aria-selected` tab whose
- * `role="tabpanel"` is empty and `display: none` — present in the DOM but
+ * `role="tabpanel"` is empty and `display: none`: present in the DOM but
  * absent from the accessibility tree, and unrelated to the settings UI the
  * user is actually looking at.
  *
@@ -423,7 +423,7 @@ export function navigateToWorkspaceTarget(
  * container (making it the panel) and the viewport skips the tab. Both halves
  * are driven from this one predicate: the moment the URL leaves settings, the
  * layout route unmounts and the viewport must render the panel element again,
- * or the tab — still in the strip — controls nothing.
+ * or the tab (still in the strip) controls nothing.
  *
  * Desktop needs no equivalent: its `/settings` route is a no-op stub and
  * `DesktopSettingsPanel` renders inside the viewport's panel like every other
@@ -441,7 +441,7 @@ export function isRouteHostedTabPanel(
  *
  * The router JSON-encodes search values, so a value it wrote from a string
  * comes back quoted (`window=%224%22`) while one written from a number does
- * not. We write numbers, and this reads either — a bare `Number()` on the
+ * not. We write numbers, and this reads either: a bare `Number()` on the
  * quoted form is NaN, which silently demotes a window URL to its resource.
  */
 function searchInt(value: string | null): number {
@@ -490,12 +490,12 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "cost-reports") {
     // /cost-reports is the list; /cost-reports/{id} is one report. Both are the
-    // same tab — the id is remembered state, not a second tab.
+    // same tab: the id is remembered state, not a second tab.
     return costReportsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "invoices") {
     // /invoices is the list; /invoices/{id} is one invoice. Both are the same
-    // tab — the id is remembered state, not a second tab.
+    // tab: the id is remembered state, not a second tab.
     return invoicesTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "graph") {
@@ -581,7 +581,7 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "resources" && s[1] && s[2] && s[3]) {
     const pluginId = decodeURIComponent(s[1]);
     const resourceTypeId = decodeURIComponent(s[2]);
-    // Pass the raw path segment through — the shared target factories decode
+    // Pass the raw path segment through: the shared target factories decode
     // it exactly once via normalizeResourceId (decoding here too would
     // double-decode IDs containing literal %-sequences).
     const resourceId = s[3];
@@ -633,7 +633,7 @@ export function syncWorkspaceRouteFromPath(
 }
 
 /**
- * Document title for *plain* routes — pages that render outside the
+ * Document title for *plain* routes: pages that render outside the
  * workspace-tab system, where `syncWorkspaceRouteFromPath` returns null and
  * the active tab's title would therefore go stale in the browser tab.
  * Labels match the sidebar tiles the pages are opened from. Returns null on

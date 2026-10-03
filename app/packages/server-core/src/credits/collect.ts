@@ -4,7 +4,7 @@
  * Deliberately parallel to `cost/collect.ts`: the host owns scheduling,
  * storage and rendering; the plugin owns the one provider call. What differs
  * is that a balance is a point-in-time reading rather than a backfillable
- * series, so there is no history to fetch — the series is the one we build by
+ * series, so there is no history to fetch: the series is the one we build by
  * reading repeatedly, which is why every collection appends a snapshot even
  * when the number has not moved. A flat stretch is evidence of an idle
  * account, and dropping it would make an idle pot indistinguishable from an
@@ -27,7 +27,7 @@ export interface CreditCollectionResult {
 /**
  * Read the account's balances and record them.
  *
- * Throws on failure — the caller (the poller's credits pass) owns backoff and
+ * Throws on failure: the caller (the poller's credits pass) owns backoff and
  * the error write, exactly as the cost pass does.
  */
 export async function collectAccountCredits(
@@ -128,7 +128,7 @@ export async function markCreditPollSuccess(
  *
  * A {@link CreditAccessError} is stored with its help link intact so the panel
  * can say "this key cannot see the balance, here is how to fix it" rather than
- * reporting a generic outage — those want completely different reactions from
+ * reporting a generic outage: those want completely different reactions from
  * the reader.
  */
 export async function markCreditPollFailure(

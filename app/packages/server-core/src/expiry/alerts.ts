@@ -3,14 +3,14 @@
  * the org's lead time, delivered through the existing push / Slack / Teams
  * transports under the `expiryAlerts` trigger.
  *
- * Invoked from the poller loop (a bounded batch per tick), not from sync — a
+ * Invoked from the poller loop (a bounded batch per tick), not from sync: a
  * certificate does not get closer to expiring because a sync pass ran, so the
  * cadence is the wall clock's, not the poller's.
  *
  * The claim/cooldown protocol (one message per org per 24h, "last alert scan"
  * semantics, rollback when a message reached nobody) is the shared engine in
  * `../alerts/daily-window.ts`; this module supplies what is expiry's alone:
- * the settings table, the feed, and the message. Never throws — every error is
+ * the settings table, the feed, and the message. Never throws: every error is
  * logged with the `[expiry]` prefix.
  */
 import { itemsWithinLead } from "@infrawrench/client-core";
@@ -61,7 +61,7 @@ const store = dailyWindowStore<ExpirySettingsRecord>({
   }),
 });
 
-/** The scan-and-deliver body run under a won claim — see the engine's contract. */
+/** The scan-and-deliver body run under a won claim: see the engine's contract. */
 async function deliverWindow(
   organizationId: string,
   settings: ExpirySettingsRecord,
@@ -74,7 +74,7 @@ async function deliverWindow(
   });
   const due = itemsWithinLead(feed);
   if (due.length === 0) {
-    // A completed scan consumes the cooldown even when it found nothing —
+    // A completed scan consumes the cooldown even when it found nothing:
     // `last_notified_at` means "last alert scan", and a quiet org re-scanned
     // every tick would only reconfirm the same silence until a day boundary.
     delivery.spent = true;
@@ -102,7 +102,7 @@ async function deliverWindow(
   delivery.succeeded += routed.succeeded + routed.held;
 
   // Nobody is routed here, or every transport failed. Either way this window
-  // was not spent — the engine rolls the claim back on the way out so the next
+  // was not spent: the engine rolls the claim back on the way out so the next
   // tick can retry instead of waiting out a cooldown nobody heard about.
   if (delivery.succeeded === 0) {
     return { status: "undelivered" as const, deadlines: due.length };

@@ -26,7 +26,7 @@ vi.mock("../drivers", () => ({
 }));
 
 // --- DB --------------------------------------------------------------------
-// Real Drizzle over a recording driver against the real schema — the secret
+// Real Drizzle over a recording driver against the real schema: the secret
 // and bastion lookups render their actual SQL (and shadow-validate under
 // test:postgres:shadow). See helpers/fake-postgres.ts.
 import { fakePostgres } from "./helpers/fake-postgres";

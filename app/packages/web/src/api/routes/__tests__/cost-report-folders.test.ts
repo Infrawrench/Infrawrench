@@ -3,7 +3,7 @@ import { buildTestApp } from "./test-utils";
 
 // The service is mocked rather than exercised, matching cost-reports.test.ts:
 // it reaches the Drizzle client, which throws at import time without
-// DATABASE_URL. These tests are about the transport contract — permissions,
+// DATABASE_URL. These tests are about the transport contract: permissions,
 // validation, status codes, error mapping, audit. The tree rules themselves
 // (cycle rejection, the depth limit) are pure logic in client-core's
 // `costReportFolderMoveBlocker`, tested exhaustively there; here we prove the
@@ -126,7 +126,7 @@ describe("PUT /:id", () => {
 
   it("rejects reparenting a folder under its own descendant with a clear 400", async () => {
     // The service raises when the requested parent sits inside the folder's
-    // own subtree — the write that would make parent_folder_id cyclic.
+    // own subtree: the write that would make parent_folder_id cyclic.
     mockUpdate.mockRejectedValue(
       new FakeCostReportFolderError(
         "A folder cannot be moved inside itself or one of its subfolders.",

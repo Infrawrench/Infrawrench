@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * This is the behaviour the whole feature turns on: a source that throws is
  * named on the screen and the wall goes amber, because a wallboard showing
  * green because a query failed is worse than a blank one. It is also the
- * behaviour that is easy to trip over — the wallboard once shipped reading a
+ * behaviour that is easy to trip over: the wallboard once shipped reading a
  * `query_monitors` table whose migration had not landed, and the guard duly
  * named a source no org had yet and held every screen amber. Hence a test that
  * pins both directions: a failing source is named, and every source the module
@@ -108,7 +108,7 @@ describe("getWallboard", () => {
     const wall = await getWallboard("org_1", { now: NOW });
 
     expect(wall.failedSources).toEqual(["incidents"]);
-    // A probe down is `down` whatever else failed — that is the state that
+    // A probe down is `down` whatever else failed: that is the state that
     // means customers are affected right now.
     expect(wall.status).toBe("down");
     expect(wall.failures).toEqual([
@@ -167,7 +167,7 @@ describe("getWallboard", () => {
 
     const wall = await getWallboard("org_1", { now: NOW });
 
-    // Not breaching — the number stays 0 — but the wall is not green either.
+    // Not breaching (the number stays 0) but the wall is not green either.
     expect(wall.tiles.find((tile) => tile.id === "monitors")).toMatchObject({
       value: "0",
       detail: "1 not reporting",

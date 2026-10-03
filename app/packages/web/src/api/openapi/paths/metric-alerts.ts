@@ -8,7 +8,7 @@ const Comparator = z.enum([">", ">=", "<", "<="]).openapi({ example: ">" });
  * The rule fields shared by the input and response schemas. Spread into flat
  * `strict` objects rather than composed with `.extend()`: extending a
  * registered schema emits `allOf` over the registered `$ref`, and an `allOf`
- * whose branches are all `additionalProperties: false` can never validate —
+ * whose branches are all `additionalProperties: false` can never validate;
  * each branch rejects the other's fields.
  */
 const ruleInputShape = {

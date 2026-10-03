@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *
  * The invariant under test is the one PR #22 traded away: a build or send that
  * fails *after* the weekly claim must not burn the week, but it also must not
- * be recovered by rolling the claim back — two replicas would then race into
+ * be recovered by rolling the claim back; two replicas would then race into
  * the same slot and resend. So the claim column only ever moves forward and the
  * retry lives in its own claimable gate (`next_attempt_at`), with an attempt
  * counter bounding it.
@@ -220,7 +220,7 @@ vi.mock("../clickhouse/cost-readers", () => ({
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -259,7 +259,7 @@ function routed(over: Record<string, unknown> = {}) {
     unrouted: false,
     matchedRuleIds: ["rule1"],
     // The tracked-Slack half of the result. Present by default because
-    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // `byTransport.slack` is 1: a result claiming a Slack delivery with no
     // message to show for it is a shape the real function never returns.
     slackMessages: [],
     deliveryIds: [],
@@ -267,7 +267,7 @@ function routed(over: Record<string, unknown> = {}) {
   };
 }
 
-/** A delivery that reached nobody — no rule matched, or every channel failed. */
+/** A delivery that reached nobody: no rule matched, or every channel failed. */
 function unroutedResult() {
   return routed({
     attempted: 0,
@@ -309,7 +309,7 @@ function seed(overrides: Row = {}): void {
   };
 }
 
-/** Monday 2026-07-27 07:00 UTC — the moment the week of 2026-07-20 comes due. */
+/** Monday 2026-07-27 07:00 UTC: the moment the week of 2026-07-20 comes due. */
 const DUE = new Date("2026-07-27T07:00:00Z");
 
 beforeEach(() => {
@@ -497,7 +497,7 @@ describe("runWeeklyDigests state machine", () => {
     await runWeeklyDigests(DUE);
 
     expect(settingsRow).toMatchObject({
-      // The claim is *not* reverted — that is the whole point.
+      // The claim is *not* reverted: that is the whole point.
       lastSentWeekStart: "2026-07-20",
       lastStatus: "failed",
       attemptCount: 1,
@@ -547,7 +547,7 @@ describe("runWeeklyDigests state machine", () => {
       nextAttemptAt: null,
     });
 
-    // And it stays parked — a later tick in the same week claims nothing.
+    // And it stays parked: a later tick in the same week claims nothing.
     updates = [];
     await runWeeklyDigests(new Date(clock.getTime() + 24 * 60 * 60 * 1000));
     expect(updates.filter((u) => u.matched)).toHaveLength(0);
@@ -563,7 +563,7 @@ describe("runWeeklyDigests state machine", () => {
       nextAttemptAt: null,
       attemptCount: 1,
     });
-    // `lastSentAt` moves — the digest did reach someone.
+    // `lastSentAt` moves: the digest did reach someone.
     expect(settingsRow?.lastSentAt).toBeInstanceOf(Date);
 
     updates = [];
@@ -599,7 +599,7 @@ describe("runWeeklyDigests state machine", () => {
 
   it("does not fire before the org's local send hour", async () => {
     seed({ timezone: "America/New_York" });
-    // 07:00 UTC is 03:00 in New York — well before the 07:00 local send hour.
+    // 07:00 UTC is 03:00 in New York: well before the 07:00 local send hour.
     await runWeeklyDigests(DUE);
     expect(updates.filter((u) => u.matched)).toHaveLength(0);
 

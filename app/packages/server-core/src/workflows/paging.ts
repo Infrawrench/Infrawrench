@@ -2,7 +2,7 @@
  * Cloud delivery for `infra.page(...)`.
  *
  * A workflow raises an alert; this module supplies the cooldown row and the
- * deep links, and `paging/deliver.ts` does the rest — the cooldown protocol and
+ * deep links, and `paging/deliver.ts` does the rest: the cooldown protocol and
  * the fan-out over Twilio, mobile push, Slack, and Microsoft Teams, shared with
  * pages a server raises over the HTTP API.
  *

@@ -67,8 +67,8 @@ export async function recordResourceChanges(
  *
  * The table is append-only and every poll can add rows, so it needs a bound.
  * 90 days is chosen against what actually reads it: neither consumer asks for
- * a fixed range — the org feed (`GET /changes`) is offset-paginated with
- * optional `from`/`to`, and the per-resource tab asks for the last N events —
+ * a fixed range; the org feed (`GET /changes`) is offset-paginated with
+ * optional `from`/`to`, and the per-resource tab asks for the last N events,
  * so any window is a truncation of "scroll back forever" and the only question
  * is where the floor sits. A quarter covers the questions the feed exists to
  * answer ("when did this change?", "what moved last quarter?"), and it is an
@@ -86,7 +86,7 @@ export const CHANGE_RETENTION_DAYS = 90;
 
 /**
  * How often the retention pass does real work. Pruning is cheap but pointless
- * to run on the poller's 15s tick — an hour keeps the table bounded to within
+ * to run on the poller's 15s tick: an hour keeps the table bounded to within
  * an hour of the window with ~24 passes a day.
  */
 export const CHANGE_RETENTION_INTERVAL_MS = 60 * 60 * 1000;
@@ -99,7 +99,7 @@ const PRUNE_BATCH_SIZE = 2_000;
 
 /**
  * Ceiling on batches per org per pass (100k rows). Whatever is left over is
- * simply pruned on the next pass an hour later — a backlog must not turn one
+ * simply pruned on the next pass an hour later: a backlog must not turn one
  * retention pass into an unbounded loop.
  */
 const MAX_PRUNE_BATCHES_PER_ORG = 50;
@@ -189,7 +189,7 @@ export async function pruneResourceChanges(now = new Date()): Promise<ChangeRete
         const removed = affectedRows(result);
         deleted += removed;
         // A short batch means the org is drained (or another replica holds the
-        // rest — same outcome: stop here).
+        // rest; same outcome: stop here).
         if (removed < PRUNE_BATCH_SIZE) break;
         if (batch === MAX_PRUNE_BATCHES_PER_ORG - 1) {
           truncated = true;

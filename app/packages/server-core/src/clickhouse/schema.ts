@@ -12,20 +12,20 @@
  * Drizzle's convention is a camelCase property mapped onto a snake_case column.
  * These tables deliberately do not follow it: the property name *is* the column
  * name, so `cost_daily`'s `organization_id` is `organization_id` in TypeScript
- * too. The row shapes here are a wire contract that leaves this process — the
+ * too. The row shapes here are a wire contract that leaves this process: the
  * cost ingest API accepts them, `cost-reconcile.ts` compares stored rows against
  * about-to-be-written ones field by field, and the export writes them into
- * customer buckets — and every one of those is specified in the database's
+ * customer buckets, and every one of those is specified in the database's
  * spelling. A camelCase mirror would put a translation layer between two things
  * that are the same thing.
  *
  * ## Timestamps the writers own are `mode: "string"`
  *
- * Every column a writer fills — `metric_points_raw.ts`, `dashboard_stats.ts`,
- * `poll_outcomes.ts` — is declared `{ mode: "string" }` and carries the ISO
+ * Every column a writer fills (`metric_points_raw.ts`, `dashboard_stats.ts`,
+ * `poll_outcomes.ts`) is declared `{ mode: "string" }` and carries the ISO
  * instant the writer produced. Those rows go in through `JSONEachRow` (see
  * `writers.ts`), where the value is JSON text that ClickHouse parses itself, not
- * a literal the dialect renders — so `mode: "date"` would buy a `Date` in
+ * a literal the dialect renders, so `mode: "date"` would buy a `Date` in
  * TypeScript at the cost of a round-trip through a formatter that is not the one
  * doing the parsing. `ingested_at`, which only ever holds the server's `now()`,
  * is left as a `Date`.
@@ -35,7 +35,7 @@
  * `AggregateFunction(avg, Float64)` has no Drizzle builder, so it is declared
  * through {@link aggregateFunction}, a `customType`. Its TypeScript type is
  * `string` and that is honest: an aggregate state is opaque bytes, and nothing
- * ever selects one directly — readers finalize it with `avgMerge(...)` and get a
+ * ever selects one directly; readers finalize it with `avgMerge(...)` and get a
  * `Float64` back.
  *
  * ## Changing this file changes a live database
@@ -43,7 +43,7 @@
  * `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so a
  * column added to a table below never appears on a deployment that already ran.
  * Adding one means adding it here *and* to `ADDITIVE_COLUMNS` in `migrate.ts`.
- * The sort keys of `cost_daily` and `network_flow_daily` are frozen outright —
+ * The sort keys of `cost_daily` and `network_flow_daily` are frozen outright:
  * see the commentary in `migrate.ts` for what re-keying them would destroy.
  */
 import { sql } from "drizzle-orm";
@@ -67,7 +67,7 @@ import {
 } from "drizzle-orm/clickhouse-core";
 
 /**
- * `AggregateFunction(fn, T)` — the partial aggregation state an
+ * `AggregateFunction(fn, T)`: the partial aggregation state an
  * AggregatingMergeTree stores.
  *
  * Surfaced as `string` because the state is opaque: it is written by a
@@ -83,7 +83,7 @@ export const aggregateFunction = customType<{
   dataType: (config) => `AggregateFunction(${config.fn}, ${config.type})`,
 });
 
-/** A `LowCardinality(String)` column — the dictionary-encoded label type. */
+/** A `LowCardinality(String)` column: the dictionary-encoded label type. */
 function label(name: string) {
   return lowCardinality(name, string());
 }
@@ -94,7 +94,7 @@ function label(name: string) {
  * `Required<T>` is not enough: Drizzle types a defaulted column as
  * `charge_type?: string | undefined`, and dropping the `?` leaves the explicit
  * `| undefined` behind. The writer row types below use this so a producer that
- * forgets `charge_type` or `amortized_reported` fails to compile — those two
+ * forgets `charge_type` or `amortized_reported` fails to compile: those two
  * decide how the row reads, and "left to the default" is not a decision anything
  * writing cost data gets to make implicitly.
  */
@@ -136,7 +136,7 @@ export const metricPointsRaw = clickhouseTable(
 /**
  * Per-minute avg/min/max states, fed by `mv_metric_points_1m`. Thirty days: the
  * right-sizing window (14 days) and the metric-alert evaluator both live inside
- * it, and both need minute resolution — a p95 of *hourly* averages flattens the
+ * it, and both need minute resolution; a p95 of *hourly* averages flattens the
  * peaks a recommendation has to respect.
  */
 export const metricPoints1m = clickhouseTable(
@@ -218,7 +218,7 @@ export const accountResourceCounts = clickhouseTable(
   ],
 );
 
-/** One poll's outcome per (account, plugin) — the connection health feed. */
+/** One poll's outcome per (account, plugin): the connection health feed. */
 export const pollOutcomes = clickhouseTable(
   "poll_outcomes",
   {
@@ -251,13 +251,13 @@ export const pollOutcomes = clickhouseTable(
  *
  * ReplacingMergeTree keyed on the full dimension tuple: re-fetching a day
  * (restatement window, backfill retry) writes newer `ingested_at` versions that
- * supersede the old rows — readers query with `FINAL`. `tags_hash` is a
+ * supersede the old rows; readers query with `FINAL`. `tags_hash` is a
  * writer-computed stable hash of the canonicalized tags map, in the key because
  * `Map` columns cannot be key columns and rows differing only by tags must not
  * collapse.
  *
  * **The sort key is frozen.** It is the ReplacingMergeTree identity of a row;
- * rewriting it would re-key — and silently merge away — three years of history.
+ * rewriting it would re-key (and silently merge away) three years of history.
  * A new dimension that has to keep rows distinct is folded into `tags_hash`
  * instead (see `cost-writers.ts`).
  *
@@ -304,7 +304,7 @@ export const costDaily = clickhouseTable(
      * commitment purchase's honest amortized value on its purchase day is zero
      * (the cash landed there, the value belongs to the days it buys). Without
      * this flag the reader's `amortized_amount != 0` test reads that honest zero
-     * as "not reported" and falls back to the full cash amount — so the
+     * as "not reported" and falls back to the full cash amount, so the
      * amortized view would show the purchase at full price *and* every amortized
      * slice of it, double-counting the exact thing amortization exists to
      * smooth.
@@ -342,14 +342,14 @@ export const costDaily = clickhouseTable(
  * aggregate read as "top N by money over a range"), but a *separate table on
  * purpose*: the money in it is flow logs times a published rate card, and
  * folding it into `cost_daily` would add a second, estimated opinion of
- * data-transfer spend on top of the provider's own billed line — double-counting
+ * data-transfer spend on top of the provider's own billed line; double-counting
  * every budget, anomaly, export and invoice that reads that table. Nothing joins
  * the two.
  *
  * **It is affordable only because the aggregation already happened.** Raw flow
  * logs are gigabytes a day per VPC. The plugin groups them inside the provider's
  * own query engine, and `network-flow/aggregate.ts` caps what is stored at 500
- * pairs plus one residual row per (scope, direction) per account-day — ≤518
+ * pairs plus one residual row per (scope, direction) per account-day: ≤518
  * rows, hard, whatever the network does.
  *
  * `pair_hash` plays the role `tags_hash` plays in `cost_daily`, and the same

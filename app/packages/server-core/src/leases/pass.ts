@@ -1,9 +1,9 @@
 /**
- * The poller's lease pass — walks auto-delete leases through their
+ * The poller's lease pass: walks auto-delete leases through their
  * announcement schedule and deletes the resource at expiry.
  *
  * Only leases with `auto_delete = true` and `status = "active"` are ever
- * claimed; nag-only leases need no pass — the expiry radar (which active
+ * claimed; nag-only leases need no pass: the expiry radar (which active
  * leases ride as kind `"lease"`) nags them through the existing alert pass.
  *
  * Correctness properties, in the order they bite:
@@ -12,15 +12,15 @@
  *   `resource_schedules.next_transition_at` protocol): N poller replicas
  *   claim disjoint rows, a replica that dies mid-work lets the row come due
  *   again at lease expiry, and every completion write is guarded on the
- *   column still holding the claimed value — so an edit (which resets
+ *   column still holding the claimed value, so an edit (which resets
  *   `next_check_at`) always beats a stale run.
  * - **Two announcements before any delete, always.** The schedule lives in
  *   `./timing.ts` (pure, unit-tested): first warning ~72h out, final ~24h
  *   out, proportionally compressed for short leases, and a delete is never
- *   yielded until both warning stamps are set AND `expires_at` has passed —
+ *   yielded until both warning stamps are set AND `expires_at` has passed,
  *   even when that pushes the delete later.
  * - **Freezes are respected.** An in-effect org change freeze *defers* the
- *   delete (bumps `next_check_at`, records the deferral in `last_error`) —
+ *   delete (bumps `next_check_at`, records the deferral in `last_error`):
  *   unlike a missed sleep-window transition, the delete is still wanted the
  *   moment the freeze lifts, so it is deferred and surfaced, never skipped
  *   and never silently executed.
@@ -72,11 +72,11 @@ export interface LeasePassResult {
 /** A claimed row: its id plus the claim token the completion must present. */
 interface ClaimedLease {
   id: string;
-  /** Postgres' own text rendering of the lease instant — the claim token. */
+  /** Postgres' own text rendering of the lease instant: the claim token. */
   claimToken: string;
 }
 
-/** Claim due auto-delete leases — the `claimDueAccounts` protocol. */
+/** Claim due auto-delete leases: the `claimDueAccounts` protocol. */
 async function claimDueLeases(limit: number): Promise<ClaimedLease[]> {
   const rows = await db.execute(sql`
     UPDATE resource_leases
@@ -143,15 +143,15 @@ async function guardedUpdate(
 }
 
 /**
- * Fan a lease message out on the `expiryAlerts` trigger — routed by the org's
+ * Fan a lease message out on the `expiryAlerts` trigger: routed by the org's
  * rules like every other alert. Returns how many destinations were reached; a
  * zero is logged, never thrown, and never blocks the schedule (an org with no
  * transports still gets its lease honored).
  *
  * When `resourceId` names a resource with a recorded owner, that person gets
  * the announcement on their own devices as well. A lease countdown is the
- * clearest case for owner routing in the product — "your test cluster is
- * deleted in 24 hours" is addressed to somebody in particular — but the org
+ * clearest case for owner routing in the product ("your test cluster is
+ * deleted in 24 hours" is addressed to somebody in particular) but the org
  * fan-out still happens, so a colleague can act when the owner is away.
  *
  * The three per-transport try/catch blocks this replaced are now `routeAlert`'s
@@ -159,7 +159,7 @@ async function guardedUpdate(
  *
  * Takes the whole lease row rather than just its org id so the routing `facts`
  * can carry the lease's scope. Without them an `accountId`, `pluginId` or
- * `resourceTypeId` condition can never match a lease warning — a rule saying
+ * `resourceTypeId` condition can never match a lease warning: a rule saying
  * "expiries on the prod account go to #prod-oncall" would silently do nothing,
  * which reads to the user as a broken rule rather than a missing fact.
  */
@@ -198,7 +198,7 @@ async function notifyOrg(row: LeaseRecord, message: LeaseMessage): Promise<numbe
   return succeeded;
 }
 
-/** Best-effort audit row for the poller-side delete — no request context. */
+/** Best-effort audit row for the poller-side delete: no request context. */
 async function auditAutoDelete(row: LeaseRecord, outcome: "deleted" | "failed", now: number) {
   try {
     await db.insert(auditLogs).values({
@@ -254,7 +254,7 @@ async function executeLease(
   if (step.kind === "warn1" || step.kind === "warn2") {
     // Record the announcement first, then fan out: a crash between the two
     // costs one announcement's delivery, never a delete without its two
-    // announcements — and a failed transport must not re-announce forever.
+    // announcements, and a failed transport must not re-announce forever.
     const stamp = new Date(now);
     const after = nextLeaseStep(
       {
@@ -274,7 +274,7 @@ async function executeLease(
         : { finalWarningAt: stamp, nextCheckAt: nextAt },
       now,
     );
-    if (!recorded) return "noop"; // superseded by an edit — its schedule wins
+    if (!recorded) return "noop"; // superseded by an edit: its schedule wins
     await notifyOrg(row, leaseWarningMessage(step.kind, messageInput(row), now));
     console.log(
       `[leases] ${step.kind === "warn1" ? "first" : "final"} auto-delete warning sent for ` +
@@ -283,7 +283,7 @@ async function executeLease(
     return "warned";
   }
 
-  // step.kind === "delete" — both announcements are on record and the lease
+  // step.kind === "delete": both announcements are on record and the lease
   // has expired. Respect an in-effect change freeze by *deferring*: the
   // delete is still wanted once the freeze lifts, so bump the check time and
   // surface the deferral; never silently delete during a freeze.
@@ -311,7 +311,7 @@ async function executeLease(
     .where(and(eq(resources.id, row.resourceId), eq(resources.organizationId, row.organizationId)))
     .limit(1);
   if (!resource || resource.deletedAt !== null) {
-    // Already gone (deleted upstream or by hand) — the lease's goal is met.
+    // Already gone (deleted upstream or by hand): the lease's goal is met.
     console.log(
       `[leases] resource ${row.resourceId} (lease ${row.id}) is already gone; completing without a provider call`,
     );
@@ -362,7 +362,7 @@ async function executeLease(
     const ctx = await getOrgAccountClient(row.accountId, row.organizationId);
     if (!ctx) throw new Error("Account not found or its plugin failed to load");
     if (!ctx.client.deleteResource) {
-      // Retrying cannot help — the plugin has no delete. Give up immediately.
+      // Retrying cannot help: the plugin has no delete. Give up immediately.
       return fail(`Plugin ${row.pluginId} does not support deletion`, true);
     }
     await ctx.client.deleteResource(row.resourceTypeId, row.resourceId, row.accountId);
@@ -400,7 +400,7 @@ async function executeLease(
 
 /**
  * One lease-pass tick: claim due auto-delete leases and advance each one a
- * step (announce, defer, or delete). Every lease is individually guarded —
+ * step (announce, defer, or delete). Every lease is individually guarded:
  * one failure never blocks the rest of the batch, and nothing here throws
  * into the poller's tick.
  */

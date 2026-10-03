@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * `collectAccountCosts` decides when an account stops backfilling history and
  * settles into the short restatement window. Getting that wrong is invisible
- * in production — the account looks healthy and simply never fetches the days
- * it skipped — so the flag write is pinned here.
+ * in production (the account looks healthy and simply never fetches the days
+ * it skipped) so the flag write is pinned here.
  *
  * Everything external is mocked or faked: the DB (real Drizzle over a
  * recording driver, so the flag UPDATE renders its actual SQL), the
@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *
  * "Today" is frozen mid-month so a short history window stays inside one
  * calendar month. Without that, near the 1st the same windows span two months
- * and `monthChunks` yields two fetches — each mock returns a row, so
+ * and `monthChunks` yields two fetches: each mock returns a row, so
  * `rowCount` becomes 2 and these assertions flake.
  */
 

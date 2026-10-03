@@ -17,7 +17,7 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/search?q=... — search resources across all accounts */
+/** GET /api/search?q=...: search resources across all accounts */
 app.get("/", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
@@ -90,7 +90,7 @@ app.get("/", async (c) => {
     if (results.length >= 50) break;
   }
 
-  // Workflows are navigation targets too — index them by name.
+  // Workflows are navigation targets too: index them by name.
   const wfRows = await db
     .select({ id: workflows.id, name: workflows.name, trigger: workflows.trigger })
     .from(workflows)

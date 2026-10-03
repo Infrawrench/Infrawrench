@@ -244,7 +244,7 @@ export function ResourceDetailClient({
   // The resource's standing monthly estimate, from the plugin's
   // `estimateCost`. Same call the create form makes, so the figure quoted
   // here is the one the user was shown when they created it. Null whenever
-  // the plugin can't price this type, which is most of them — the header chip
+  // the plugin can't price this type, which is most of them: the header chip
   // simply doesn't render.
   const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
   const loadCostEstimate = useCallback(
@@ -308,7 +308,7 @@ export function ResourceDetailClient({
     gt,
   ]);
 
-  // Direct neighbors in the org's output-reference graph — drives the
+  // Direct neighbors in the org's output-reference graph: drives the
   // "Dependencies" tab. Best-effort: on failure the tab simply doesn't show.
   const [dependencies, setDependencies] = useState<ResourceDependencies | null>(null);
   useEffect(() => {
@@ -385,9 +385,9 @@ export function ResourceDetailClient({
   const hasSshPanel = hasSshTerminal || !!sshHost;
 
   // Rehydrate launch metadata ONLY for agent tabs (agentSessionId present)
-  // that are missing pieces of it (deep link or restored tab — the URL never
+  // that are missing pieces of it (deep link or restored tab: the URL never
   // carries initialCommand/initialCwd). Plain SSH tabs must never look up
-  // agent sessions — a VM that once hosted an agent session would otherwise
+  // agent sessions: a VM that once hosted an agent session would otherwise
   // silently attach the agent's screen.
   const launchLookupKey = agentLaunchLookupKey({
     isSshView,
@@ -408,7 +408,7 @@ export function ResourceDetailClient({
 
   useEffect(() => {
     if (!launchLookupKey || !agentSessionId) {
-      // Shared constant, not a fresh `{}` — `gt` is in this effect's deps and
+      // Shared constant, not a fresh `{}`: `gt` is in this effect's deps and
       // is not referentially stable, so the effect re-runs on every render and
       // a new object here would loop forever. See NO_AGENT_LAUNCH_DEFAULTS.
       setAgentLaunchDefaults(NO_AGENT_LAUNCH_DEFAULTS);
@@ -471,7 +471,7 @@ export function ResourceDetailClient({
 
   useEffect(() => {
     const keyId = agentLaunch.sshKeyId;
-    // Auto-connect only applies to the full-screen SSH view — mirrors desktop,
+    // Auto-connect only applies to the full-screen SSH view: mirrors desktop,
     // where this effect lives in SshViewPane and never mounts for other views.
     if (!isSshView || !sshHost || !keyId || sshQuickConnect || wsToken) return;
     if (!agentLaunch.autoConnectReady) return;
@@ -1069,7 +1069,7 @@ export function ResourceDetailClient({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* SFTP view — full screen (hidden while provisioning) */}
+      {/* SFTP view: full screen (hidden while provisioning) */}
       {isSftpView && hasSftpBrowser && (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {sshHost && !sshQuickConnect ? (
@@ -1100,7 +1100,7 @@ export function ResourceDetailClient({
         </div>
       )}
 
-      {/* SSH view — full screen */}
+      {/* SSH view: full screen */}
       {isSshView && (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {/* Sharing rides on the cloud SSH proxy, so it is offered exactly
@@ -1244,7 +1244,7 @@ export function ResourceDetailClient({
         </div>
       )}
 
-      {/* Detail view — shown when not in SSH or SFTP view */}
+      {/* Detail view: shown when not in SSH or SFTP view */}
       {isAppsView &&
         (sshHost && sshQuickConnect ? (
           <WebAppLauncherPanel
@@ -1541,7 +1541,7 @@ export function ResourceDetailClient({
         </div>
       )}
 
-      {/* Bottom panels — KV, Docker, Storage (inline like desktop, only when not in SSH/SFTP) */}
+      {/* Bottom panels: KV, Docker, Storage (inline like desktop, only when not in SSH/SFTP) */}
       {!isSshView && !isSftpView && hasKvConsole && !isMongoDb && (
         <KvConsole
           accountId={accountId}
@@ -1559,7 +1559,7 @@ export function ResourceDetailClient({
         <DockerActionsPanel accountId={accountId} containerId={containerId} />
       )}
 
-      {/* SSH bottom bar — connection info */}
+      {/* SSH bottom bar: connection info */}
       {isSshView && (wsToken || sshQuickConnect) && (
         <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-t border-border bg-surface">
           <span className="size-1.5 rounded-full bg-green-500 shrink-0" />

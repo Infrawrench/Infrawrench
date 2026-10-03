@@ -1,7 +1,7 @@
 /**
  * Provider quota readings, their history, and the collection bookkeeping.
  *
- * Three tables, the `credit-schema.ts` shape for the same reasons — "what is
+ * Three tables, the `credit-schema.ts` shape for the same reasons: "what is
  * the headroom right now" wants one row per quota, overwritten, so the panel
  * is an indexed read rather than a max-over-history; "is it trending to
  * exhaustion" wants the series; and "why is this account showing nothing" wants
@@ -10,12 +10,12 @@
  * One difference from credits, and it is the whole point of the feature: the
  * `limit` is stored on every row, current and historical. A quota's ceiling
  * moves when a support ticket is approved, and a trend computed against
- * today's limit would rewrite last week's utilisation the moment it did — an
+ * today's limit would rewrite last week's utilisation the moment it did: an
  * account that was at 95% and got an increase would retroactively read as
  * having been fine all along, which is the opposite of the fact worth keeping.
  *
  * Neither carries an FK to `accounts` beyond the cascade: an account deleted
- * takes its quota history with it, which is right — headroom on an account
+ * takes its quota history with it, which is right; headroom on an account
  * that no longer exists is not a fact anybody needs.
  */
 import {
@@ -33,7 +33,7 @@ import { accounts, organizations, users } from "./core-schema.js";
 
 /**
  * The latest reading for one quota. `(account_id, quota_key)` is the identity,
- * where `quota_key` is the plugin's own stable id — derived from the
+ * where `quota_key` is the plugin's own stable id: derived from the
  * provider's quota code and scope, never from the label or the value, so a
  * limit increase continues one series instead of starting a fresh empty one.
  */
@@ -52,7 +52,7 @@ export const accountQuotaUsage = pgTable(
     /** Provider service in the provider's own vocabulary (`ec2`, `compute`). */
     service: text("service").notNull(),
     name: text("name").notNull(),
-    /** Null — never the string "global" — for an account-wide quota. */
+    /** Null (never the string "global") for an account-wide quota. */
     region: text("region"),
     quotaLimit: doublePrecision("quota_limit").notNull(),
     used: doublePrecision("used").notNull(),
@@ -97,7 +97,7 @@ export const accountQuotaUsage = pgTable(
  *
  * A quota whose *usage* has not moved still gets a row. A flat stretch is
  * evidence of a stable account, and dropping it would make a stable quota
- * indistinguishable from an uncollected one — the `credit-schema.ts` rule.
+ * indistinguishable from an uncollected one: the `credit-schema.ts` rule.
  */
 export const accountQuotaSnapshots = pgTable(
   "account_quota_snapshots",
@@ -158,7 +158,7 @@ export const accountQuotaPolls = pgTable(
      * log line. Cleared on the next success.
      */
     lastError: text("last_error"),
-    /** Set when the plugin threw `QuotaAccessError` — a fixable permission gap. */
+    /** Set when the plugin threw `QuotaAccessError`: a fixable permission gap. */
     lastErrorHelpLabel: text("last_error_help_label"),
     lastErrorHelpUrl: text("last_error_help_url"),
   },
@@ -173,7 +173,7 @@ export const accountQuotaPolls = pgTable(
  * shipped defaults, the `org_expiry_settings` / `org_drift_alert_settings`
  * contract.
  *
- * `last_notified_at` is a **claim**, not bookkeeping — see
+ * `last_notified_at` is a **claim**, not bookkeeping: see
  * `server-core/src/quotas/alerts.ts`. It records the last alert *scan*: a scan
  * that found nothing over threshold keeps the window spent, because quota
  * utilisation moves on the scale of provisioning decisions and re-scanning a

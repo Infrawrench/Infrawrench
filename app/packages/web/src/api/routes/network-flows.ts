@@ -25,9 +25,9 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * Default window: the last 14 days.
  *
- * Shorter than the cost surface's 30 because flow retention is shorter — AWS
+ * Shorter than the cost surface's 30 because flow retention is shorter (AWS
  * CloudWatch log groups commonly keep 7 or 30 days and the plugin will not ask
- * beyond 14 — so a 30-day default would open on a chart that is empty for the
+ * beyond 14) so a 30-day default would open on a chart that is empty for the
  * first half and look broken.
  */
 function parseRange(c: Context): { from: string; to: string } | null {
@@ -40,11 +40,11 @@ function parseRange(c: Context): { from: string; to: string } | null {
 }
 
 /**
- * GET / — the whole network-costs screen: boundary summary, top pairs,
+ * GET /; the whole network-costs screen: boundary summary, top pairs,
  * per-account collection state and the rate cards the money came from.
  *
- * `costs:read`, not a permission of its own. This is spend information — the
- * same class of fact as "what did EC2 cost" — and splitting it behind a second
+ * `costs:read`, not a permission of its own. This is spend information (the
+ * same class of fact as "what did EC2 cost") and splitting it behind a second
  * read permission would mean an org could grant someone the bill without the
  * explanation of it, which is the pairing nobody wants.
  */
@@ -75,14 +75,14 @@ app.get("/", async (c: Context) => {
   );
 });
 
-/** GET /settings — the org's collection switch, without the data. */
+/** GET /settings: the org's collection switch, without the data. */
 app.get("/settings", async (c: Context) => {
   requirePermission(c, "costs:read");
   return c.json(await getNetworkFlowSettings(c.get("organizationId") as string));
 });
 
 /**
- * PUT /settings — turn collection on or off.
+ * PUT /settings: turn collection on or off.
  *
  * `org:settings:write`, deliberately not `costs:write`. Turning this on does
  * not edit a cost object; it authorizes Infrawrench to run queries that the

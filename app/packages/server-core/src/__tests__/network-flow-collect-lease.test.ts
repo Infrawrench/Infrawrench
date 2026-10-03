@@ -107,8 +107,8 @@ beforeEach(() => {
 });
 
 /*
- * A day is not a bounded unit of work — it is a walk over every flow log on the
- * account, each with its own query timeout — so the lease that entitles the
+ * A day is not a bounded unit of work (it is a walk over every flow log on the
+ * account, each with its own query timeout) so the lease that entitles the
  * collector to spend the customer's money can run out in the middle of one. All
  * three of these are about what the collector does with a day it was not
  * allowed to finish, and the answer is the same every time: nothing. The
@@ -129,7 +129,7 @@ describe("collectAccountNetworkFlows under a lease that runs out", () => {
   });
 
   // Nothing is competing for the account on a backfill or a one-off, so there
-  // is no entitlement to hand over and the plugin runs unguarded — exactly as
+  // is no entitlement to hand over and the plugin runs unguarded: exactly as
   // it did before any of this existed.
   it("passes no signal at all when it is running without a lease", async () => {
     fetchNetworkFlows.mockResolvedValue({ sources: [], flows: [], totals: [] });
@@ -161,7 +161,7 @@ describe("collectAccountNetworkFlows under a lease that runs out", () => {
     // and its terminal write records a success rather than backoff.
     expect(result.daysCollected).toBe(1);
     // The first day is banked, the interrupted one is not, and the third was
-    // never started — so the next pass picks up from 08-09.
+    // never started, so the next pass picks up from 08-09.
     expect(watermarks()).toEqual([{ collectedThrough: DAYS[0] }]);
     expect(inserted).toHaveLength(1);
     expect(fetchNetworkFlows).toHaveBeenCalledTimes(2);
@@ -169,7 +169,7 @@ describe("collectAccountNetworkFlows under a lease that runs out", () => {
 
   // The contract says throw, and our own plugin does. A plugin that instead
   // swallowed the abort would be handing back a day assembled from a partial
-  // scan, and the collector cannot tell that apart from a quiet day — so it
+  // scan, and the collector cannot tell that apart from a quiet day, so it
   // does not try to, and drops any answer that arrived after the entitlement
   // was withdrawn.
   it("discards a day a plugin answered after authorization was withdrawn", async () => {
@@ -192,7 +192,7 @@ describe("collectAccountNetworkFlows under a lease that runs out", () => {
   });
 
   // The cheap half of the gate: a checkpoint that says no stops the pass before
-  // a single provider call, which is the common ending — a spent runtime budget
+  // a single provider call, which is the common ending; a spent runtime budget
   // or a lease that is no longer confirmed far enough ahead.
   it("starts no day at all once the checkpoint stops authorizing them", async () => {
     let allowed = 1;
@@ -210,7 +210,7 @@ describe("collectAccountNetworkFlows under a lease that runs out", () => {
   });
 
   // A failure that is not the lease is still a failure, and must still reach
-  // the pass — which records it against the account with backoff. Swallowing
+  // the pass, which records it against the account with backoff. Swallowing
   // everything that happened to be thrown near an abort would turn a broken
   // account into an account that silently never collects.
   it("still throws when the day failed for a reason of its own", async () => {

@@ -18,7 +18,7 @@ interface WebAccessReviewPanelProps {
 /**
  * Web host for the shared access review: fetches the org's principals and
  * findings and refreshes when resources change. Same wiring as
- * WebPosturePanel — a failed *refresh* must not blank a drawn list, so the
+ * WebPosturePanel: a failed *refresh* must not blank a drawn list, so the
  * last loaded data stays on screen under the section's banner.
  */
 export function WebAccessReviewPanel({ orgId, openResource }: WebAccessReviewPanelProps) {
@@ -61,7 +61,7 @@ export function WebAccessReviewPanel({ orgId, openResource }: WebAccessReviewPan
   );
 
   /**
-   * Revoke through the ordinary invoke-action path — the same endpoint the
+   * Revoke through the ordinary invoke-action path: the same endpoint the
    * resource detail view's action buttons use, with the same permission, the
    * same change-freeze gate and the same audit row. The review never talks to
    * a provider itself; it only knows which action the plugin declared.

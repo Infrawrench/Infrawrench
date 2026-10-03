@@ -2,7 +2,7 @@
  * The background half of "no member runs without an expiry".
  *
  * Every recovery layer in `instantiate.ts` used to hang off `GET /instances`,
- * which made the safety net conditional on somebody opening the page — and the
+ * which made the safety net conditional on somebody opening the page, and the
  * environment whose creation failed badly is precisely the one nobody opens
  * again, and the one still billing. A guarantee that depends on a human's
  * curiosity is not a guarantee.
@@ -12,8 +12,8 @@
  * self-healing) but it is no longer the only trigger.
  *
  * Concurrency: repair **claims** its rows with the `resource_leases`
- * `next_check_at` protocol — `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP
- * LOCKED) RETURNING` — because it is not idempotent work: it creates leases
+ * `next_check_at` protocol; `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP
+ * LOCKED) RETURNING`, because it is not idempotent work: it creates leases
  * and can delete a resource. Reconciliation deliberately does not claim: every
  * write it makes is idempotent (mark a member `deleted`, close an instance),
  * so two replicas doing it at once reach the same state, and a claim column
@@ -32,7 +32,7 @@ export interface EnvironmentRepairPassOptions {
   limit?: number;
   /**
    * Narrow to one organization. The read path passes this so opening the page
-   * repairs that org's members promptly without touching anyone else's — and,
+   * repairs that org's members promptly without touching anyone else's, and,
    * because it goes through the same claim, without racing the poller.
    */
   organizationId?: string | undefined;
@@ -63,8 +63,8 @@ export interface ClaimedRepairMember {
 /**
  * Claim members holding a resource with no lease on it.
  *
- * The predicate is the one `memberNeedsLeaseRepair` states — a resource id
- * with no lease — and deliberately carries **no instance-status filter**, for
+ * The predicate is the one `memberNeedsLeaseRepair` states (a resource id
+ * with no lease) and deliberately carries **no instance-status filter**, for
  * the reason recorded in `instantiate.ts`: instance status summarises how a
  * run went and only correlates with what it still holds.
  */
@@ -182,7 +182,7 @@ export async function runEnvironmentRepairPass(
 }
 
 /**
- * Close out instances whose members are confirmed gone. Unclaimed on purpose —
+ * Close out instances whose members are confirmed gone. Unclaimed on purpose:
  * every write is idempotent, so concurrent replicas converge.
  */
 export async function runEnvironmentReconcilePass(

@@ -3,7 +3,7 @@ import { pgTable, text, integer, timestamp, index, jsonb } from "drizzle-orm/pg-
 import { accounts, organizations, users } from "./core-schema.js";
 
 /**
- * **IaC reconciliation** (the ClickOps detector) — an org uploads the
+ * **IaC reconciliation** (the ClickOps detector): an org uploads the
  * Terraform state it already has, and every synced resource is classified as
  * managed / drifted / unmanaged.
  *
@@ -15,7 +15,7 @@ import { accounts, organizations, users } from "./core-schema.js";
  * **A state document can contain secrets.** Attributes Terraform marks
  * sensitive are dropped by the parser before they reach this table (the key
  * name survives in `redactedAttributeKeys` so the UI can say a comparison was
- * skipped), and only attribute values are stored at all — never the document.
+ * skipped), and only attribute values are stored at all, never the document.
  */
 export const iacStates = pgTable(
   "iac_states",
@@ -73,7 +73,7 @@ export const iacManagedResources = pgTable(
     address: text("address").notNull(),
     /** Module address, null in the root module. */
     module: text("module"),
-    /** "managed" or "data" — data sources are recorded but never matched. */
+    /** "managed" or "data": data sources are recorded but never matched. */
     mode: text("mode").$type<"managed" | "data">().notNull(),
     terraformType: text("terraform_type").notNull(),
     terraformName: text("terraform_name").notNull(),
@@ -82,7 +82,7 @@ export const iacManagedResources = pgTable(
     providerName: text("provider_name"),
     /** Lower-cased `id`/`arn`/`self_link` values, the matching keys. */
     identifiers: jsonb("identifiers").$type<string[]>().notNull().default([]),
-    /** Redacted, truncated attribute bag — see the table comment above. */
+    /** Redacted, truncated attribute bag: see the table comment above. */
     attributes: jsonb("attributes").$type<Record<string, unknown>>().notNull().default({}),
     /** Keys whose values were dropped as sensitive, so drift can say "not compared". */
     redactedAttributeKeys: jsonb("redacted_attribute_keys").$type<string[]>().notNull().default([]),

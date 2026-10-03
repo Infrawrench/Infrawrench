@@ -3,7 +3,7 @@
  *
  * Everything else in `clickhouse/cost-readers.ts` returns an array, because
  * everything else draws a graph: a few hundred aggregated points. An export is
- * the opposite shape — a year of daily per-resource rows for a large estate is
+ * the opposite shape: a year of daily per-resource rows for a large estate is
  * millions of rows, and `await rs.json()` on that is a poller-wide OOM, not a
  * slow request.
  *
@@ -14,7 +14,7 @@
  * upstream of the destination sink ever holds more than one chunk.
  *
  * The query still carries an explicit `ORDER BY` over the full grouping key.
- * That is not for the database's benefit — it is so two runs of the same period
+ * That is not for the database's benefit: it is so two runs of the same period
  * produce byte-identical objects, which is what makes "the key was overwritten"
  * a verifiable claim rather than a hope. If a future client build ever drops
  * `stream()`, that same total order is what a fallback keyset pager would need,
@@ -52,7 +52,7 @@ export interface CostExportRowQuery {
 export type CostExportRow = Record<string, string | number>;
 
 /**
- * The column a dimension reads from. Mirrors `cost-readers.ts#dimensionExpr` —
+ * The column a dimension reads from. Mirrors `cost-readers.ts#dimensionExpr`:
  * restated rather than exported from there because the export needs the column
  * *name* alongside the expression, and the two vocabularies must stay pinned to
  * the same `CostDimensionId` union either way.
@@ -91,7 +91,7 @@ function dimensionColumn(dimension: string): string {
  * The amount expression. Imported from `cost-readers.ts` rather than restated:
  * an export is the artefact someone reconciles a graph against, so the two must
  * be the same arithmetic by construction. A restated copy silently drifted once
- * already — it kept the pre-`amortized_reported` form, which reads a commitment
+ * already: it kept the pre-`amortized_reported` form, which reads a commitment
  * purchase's honest amortized zero as "not reported" and falls back to full
  * cash, so an amortized export double-counted every purchase against its own
  * amortized slices while the graph beside it did not.
@@ -130,7 +130,7 @@ function tagExpr(key: string): SQL {
  * Built with the query builder, then rendered to text: the streaming read below
  * needs `ResultSet.stream()`, which is on the driver rather than on Drizzle, so
  * this hands the driver a finished statement. Values are literals the dialect
- * escaped, not interpolation — the only thing assembled by hand here is the
+ * escaped, not interpolation: the only thing assembled by hand here is the
  * *column list*, whose names come from `tagColumnName`.
  */
 export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
@@ -143,7 +143,7 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
         return expr ? [[dimensionColumn(d), expr.as(dimensionColumn(d))] as const] : [];
       })
       // A dimension listed twice is one column, and `Object.fromEntries` would
-      // keep the last of the duplicates rather than erroring — this makes the
+      // keep the last of the duplicates rather than erroring: this makes the
       // projection agree with `resolveColumns`, which de-duplicates too.
       .filter(([name], i, all) => all.findIndex(([n]) => n === name) === i),
   );
@@ -201,7 +201,7 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
  * Stream one period's rows out of ClickHouse.
  *
  * Yields decoded row objects one at a time. Back-pressure is the consumer's
- * `for await` — the underlying `Readable` stays paused while the destination
+ * `for await`: the underlying `Readable` stays paused while the destination
  * sink is busy uploading a part, so a slow bucket throttles the query rather
  * than filling the heap.
  *
@@ -227,7 +227,7 @@ export async function* streamCostExportRows(
     }
   } finally {
     // Releasing the result set closes the underlying socket if the consumer
-    // bailed out early (an upload failure aborts the whole run) — otherwise a
+    // bailed out early (an upload failure aborts the whole run), otherwise a
     // failed export would leak a ClickHouse connection per attempt.
     try {
       await rs.close();

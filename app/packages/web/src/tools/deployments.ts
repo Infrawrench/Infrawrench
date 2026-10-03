@@ -1,5 +1,5 @@
 /**
- * Deployment tools — let MCP clients and the chat agent read deploy history,
+ * Deployment tools: let MCP clients and the chat agent read deploy history,
  * preview what an Infrafile would do, and put a known-good image back.
  *
  * There is deliberately NO `deploy` tool. Building and shipping a release is
@@ -7,8 +7,8 @@
  * take back; a model deciding on its own that now is a good time to deploy is
  * exactly the failure this omission prevents. A human starts a deploy from the
  * UI or the CLI, where the interactive `select(...)` round trip lives anyway.
- * What the model gets instead is everything needed to *reason* about a deploy —
- * the history, one run in full, the repo list, and a plan-only preview — plus
+ * What the model gets instead is everything needed to *reason* about a deploy
+ * (the history, one run in full, the repo list, and a plan-only preview) plus
  * rollback, which is the one deploy-shaped action that makes things safer
  * rather than riskier.
  *
@@ -44,7 +44,7 @@ function toolError(e: unknown): ToolResult {
 }
 
 /**
- * `void promise` discards the value but not the rejection — an audit write
+ * `void promise` discards the value but not the rejection: an audit write
  * failing would take the whole process down as an unhandled rejection, after
  * the tool call it was recording had already succeeded.
  */
@@ -165,7 +165,7 @@ export function deploymentTools(): ToolDefinition[] {
       },
       // Destructive-tier despite building nothing. `plan()` is arbitrary code
       // from the repository, executed in the isolate against this org's full
-      // `infra` host — it can create or delete real resources on the way to
+      // `infra` host: it can create or delete real resources on the way to
       // returning a plan. Same reasoning as run_workflow: the risk tier tracks
       // what the code *can* do, not what the stage is named. The separate
       // `deployments:plan` permission is the orthogonal axis, sitting between

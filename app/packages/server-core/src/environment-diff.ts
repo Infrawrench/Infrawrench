@@ -4,7 +4,7 @@
  *
  * The comparison itself is the pure `computeEnvironmentDiff` in
  * `@infrawrench/client-core`, which is in turn a second caller of the
- * change-timeline differ. This module only maps Postgres rows onto its input —
+ * change-timeline differ. This module only maps Postgres rows onto its input:
  * the same arrangement as the posture feed and the expiry radar. No plugin
  * clients, no credentials, no provider API calls: the answer is as fresh as the
  * last sync and costs two indexed reads.
@@ -46,8 +46,8 @@ export interface EnvironmentDiffOptions {
  * Compare two accounts' inventories.
  *
  * Throws {@link EnvironmentDiffAccountNotFoundError} for an account outside the
- * organization — the org scope is enforced in the query, so a caller cannot
- * reach across orgs by guessing ids — and
+ * organization (the org scope is enforced in the query, so a caller cannot
+ * reach across orgs by guessing ids) and
  * {@link EnvironmentDiffPluginMismatchError} when the two use different
  * providers. The route maps both onto 404/400.
  */

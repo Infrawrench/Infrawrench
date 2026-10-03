@@ -37,7 +37,7 @@ function SettingsLayout() {
     }
   }
 
-  // Hidden outright without the permission — the page would only be able to
+  // Hidden outright without the permission: the page would only be able to
   // tell them they can't see it.
   // Section labels are msg()-encoded in the registry; m() decodes + translates.
   const m = useMessages();
@@ -53,7 +53,7 @@ function SettingsLayout() {
     // the strip like any other, but its content is route-rendered here rather
     // than by WorkspaceTabsViewport, which skips the tab while this route is
     // mounted (isRouteHostedTabPanel) so there is exactly one panel with this
-    // id — the visible one. Without it the selected tab's aria-controls
+    // id: the visible one. Without it the selected tab's aria-controls
     // pointed at an empty, display:none panel.
     <div className="flex h-full" {...workspaceTabPanelProps(SETTINGS_TAB_ID)}>
       <nav className="w-48 border-r border-border p-4 flex-shrink-0 flex flex-col">

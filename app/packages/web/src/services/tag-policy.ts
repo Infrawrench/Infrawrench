@@ -48,7 +48,7 @@ function tagPolicyBlockedPayload(policy: TagPolicy, violations: TagPolicyViolati
 /**
  * Whether the plugin's create form for this type declares a tag-capable field
  * (`tags` / `labels`). Only consulted when the submitted fields carry no tag
- * field at all — the extra provider round-trip is confined to enforcing orgs.
+ * field at all: the extra provider round-trip is confined to enforcing orgs.
  * Unresolvable configs are treated as tag-incapable (the convention is
  * opt-in), the same fail-open stance as `isActionDestructive`.
  */
@@ -132,7 +132,7 @@ export async function checkTagPolicyOnCreate(
       });
       return null;
     }
-    // An override attempt without the permission is still a block — record it.
+    // An override attempt without the permission is still a block: record it.
   }
 
   void logAudit({
@@ -148,7 +148,7 @@ export async function checkTagPolicyOnCreate(
 
 /**
  * Untagged spend over the org's required tag keys, with account display
- * labels resolved. When the org has no required tags the report is empty —
+ * labels resolved. When the org has no required tags the report is empty:
  * "untagged" is only meaningful against a policy.
  */
 export async function getUntaggedSpendReport(
@@ -171,8 +171,8 @@ export async function getUntaggedSpendReport(
       topUntagged: [],
     };
   }
-  // Two independent reads — ClickHouse spend and the Postgres account labels
-  // it is joined against — so they go out together rather than one after the
+  // Two independent reads (ClickHouse spend and the Postgres account labels
+  // it is joined against) so they go out together rather than one after the
   // other. Follows the caller's basis: this report's number is a share of total
   // spend, and it has to be a share of the same total the graphs above it draw.
   const [rows, accountRows] = await Promise.all([
@@ -221,7 +221,7 @@ export async function getUntaggedSpendReport(
  * evaluated when its stored record (fields + cached outputs) exposes a tag
  * map under the generic `tags`/`labels` convention; the score is the share of
  * evaluated resources satisfying every required tag. Resources whose types
- * expose no tags don't drag the score — they're reported in `totalResources`
+ * expose no tags don't drag the score: they're reported in `totalResources`
  * so the gap is visible, not hidden.
  */
 export async function getAccountTagCompliance(

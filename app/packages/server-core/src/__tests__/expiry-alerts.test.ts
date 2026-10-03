@@ -7,10 +7,10 @@ import { fakePostgres } from "./helpers/fake-postgres";
  * `expiry-summary.test.ts`; what matters here is the claim/cooldown protocol,
  * which is drift's with one deliberate difference: a completed scan that found
  * nothing due KEEPS the window spent (`last_notified_at` means "last alert
- * scan", not "last message"), while a scan whose message reached nobody — or
- * that threw — is rolled back so the next tick retries.
+ * scan", not "last message"), while a scan whose message reached nobody (or
+ * that threw) is rolled back so the next tick retries.
  *
- * The DB is real Drizzle over a recording driver against the real schema —
+ * The DB is real Drizzle over a recording driver against the real schema:
  * the due-org query, the claim upsert and the release update render their
  * actual SQL (and shadow-validate under test:postgres:shadow). Sequential
  * results are queued: [due orgs], then [the claim's RETURNING].
@@ -34,7 +34,7 @@ vi.mock("../expiry/feed", () => ({
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -104,7 +104,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   pg.reset();
   pg.queueRows([{ organizationId: ORG }]); // the due-org query
-  pg.queueRows([{ organizationId: ORG }]); // the claim's RETURNING — claim won
+  pg.queueRows([{ organizationId: ORG }]); // the claim's RETURNING: claim won
   getExpirySettings.mockResolvedValue(settings());
   listExpiring.mockResolvedValue(feed([feedItem()]));
   routeAlert.mockResolvedValue(routed());
@@ -121,7 +121,7 @@ describe("the due batch", () => {
 
   it("survives the due query failing, without throwing into the poller", async () => {
     // A row the recording driver cannot decode makes the due query itself
-    // reject — the closest a canned driver gets to "db is down".
+    // reject: the closest a canned driver gets to "db is down".
     pg.reset();
     pg.queueRows([null as never]);
     const spy = hushErrors();
@@ -151,7 +151,7 @@ describe("cooldown claim", () => {
   it("stays silent when another replica already holds the window", async () => {
     pg.reset();
     pg.queueRows([{ organizationId: ORG }]);
-    pg.queueRows([]); // the claim's RETURNING — another replica holds it
+    pg.queueRows([]); // the claim's RETURNING: another replica holds it
     const result = await runExpiryAlerts({ limit: 4 }, NOW);
     expect(result.outcomes[ORG]).toEqual({ status: "cooling-down" });
     expect(listExpiring).not.toHaveBeenCalled();
@@ -235,7 +235,7 @@ describe("release semantics", () => {
 
   it("keeps the claim for a day quiet hours held rather than delivered", async () => {
     // A held leg has `succeeded: 0` but the digest *will* arrive. Rolling the
-    // claim back would rebuild the same day tomorrow and deliver it twice —
+    // claim back would rebuild the same day tomorrow and deliver it twice:
     // once from the queue, once fresh. The rule is "spend the day iff somebody
     // heard, or is guaranteed to".
     getExpirySettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));

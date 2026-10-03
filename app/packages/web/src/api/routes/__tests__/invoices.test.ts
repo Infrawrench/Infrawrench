@@ -4,8 +4,8 @@ import { buildTestApp } from "./test-utils";
 /**
  * The invoice routes' permission boundary and its error mapping.
  *
- * The boundary is the interesting half. `invoices:write` prepares — add a
- * customer, raise a draft — and `invoices:issue` is the irreversible half:
+ * The boundary is the interesting half. `invoices:write` prepares (add a
+ * customer, raise a draft) and `invoices:issue` is the irreversible half:
  * approving freezes what a customer will be sent, sending states that they have
  * it, voiding withdraws a document already in their hands. An org that wants a
  * billing clerk preparing the month while only the finance lead issues it needs

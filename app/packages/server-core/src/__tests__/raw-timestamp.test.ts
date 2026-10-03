@@ -4,8 +4,8 @@ import { rawTimestampToDate } from "../db/raw-timestamp";
 
 /**
  * Raw-`sql` selections skip drizzle's timestamp mapping, so postgres-js hands
- * back the zoneless wire string. The helper has to read that string as UTC —
- * the way drizzle reads the column itself — not as server-local time, or every
+ * back the zoneless wire string. The helper has to read that string as UTC
+ * (the way drizzle reads the column itself) not as server-local time, or every
  * aggregate timestamp skews by the host's UTC offset.
  */
 describe("rawTimestampToDate", () => {

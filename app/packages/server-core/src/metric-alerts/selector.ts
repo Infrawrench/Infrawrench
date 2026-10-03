@@ -1,12 +1,12 @@
 /**
  * Resolving a metric alert rule's resource selector against the live
- * `resources` table. Rules select by *query* — plugin + resource type + tag —
+ * `resources` table. Rules select by *query*: plugin + resource type + tag,
  * never by id list, so a rule automatically covers resources created after it
  * was written and stops covering resources that are deleted or re-tagged.
  *
  * Plugin and type narrow in SQL; the tag half filters in JS through
  * `extractRecordTags`, the same tags/labels convention the tag-compliance
- * report reads (`web/src/services/tag-policy.ts`) — tags live inside
+ * report reads (`web/src/services/tag-policy.ts`): tags live inside
  * `fields_json`/`outputs_json`, not in a column.
  */
 import { and, asc, eq, isNull } from "drizzle-orm";
@@ -37,7 +37,7 @@ export const MAX_SELECTED_RESOURCES = 500;
 /**
  * Most rows a tag-filtered selector reads from Postgres before matching in
  * JS. Tags live inside the JSON payloads, so the tag half cannot narrow in
- * SQL — this bounds the memory of that scan the way
+ * SQL: this bounds the memory of that scan the way
  * {@link MAX_SELECTED_RESOURCES} bounds the ClickHouse read. Both caps take
  * rows in `id` order, so an over-cap selector picks a stable subset instead
  * of flapping between passes.

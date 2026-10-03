@@ -7,7 +7,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
  * Slack transport tests. Two halves:
  *
  *  - the signed install `state`, which is the only thing binding an OAuth
- *    round-trip to an org — a forgeable one would let anyone attach their
+ *    round-trip to an org: a forgeable one would let anyone attach their
  *    workspace to someone else's org;
  *  - the fan-out, where the interesting behavior is that channels are addressed
  *    by stored row id (routing itself is `alerts/route.ts`' job now), and that
@@ -32,7 +32,7 @@ const ORG = "org1";
 
 /** One live installation whose token decrypts to `xoxb-1`. */
 function installation(overrides: Record<string, unknown> = {}) {
-  // Keys in slack_installations column order — see helpers/fake-postgres.ts.
+  // Keys in slack_installations column order: see helpers/fake-postgres.ts.
   return {
     id: "inst1",
     organizationId: ORG,
@@ -81,7 +81,7 @@ beforeEach(() => {
   process.env["SLACK_CLIENT_ID"] = "cid";
   process.env["SLACK_CLIENT_SECRET"] = "csecret";
   pg.reset();
-  // A fresh Response per call — a body can only be read once, so a shared one
+  // A fresh Response per call: a body can only be read once, so a shared one
   // would make every call after the first look like a failure.
   fetchSpy = vi
     .spyOn(globalThis, "fetch")
@@ -193,7 +193,7 @@ describe("sendSlackToChannels", () => {
     // The fixture reads as the result of the `inArray(slackChannels.id, rowIds)`
     // filter rather than as every row in the org. (The recording driver ignores
     // predicates; the filter itself is the query's job, covered by the route
-    // tests — but the rendered SQL below pins that the filter is issued.)
+    // tests, but the rendered SQL below pins that the filter is issued.)
     queueChannels([
       { channelId: "C1", channelName: "alerts", installationId: "inst1" },
       { channelId: "C2", channelName: "oncall", installationId: "inst1" },
@@ -258,7 +258,7 @@ describe("sendSlackToChannels", () => {
 
   it("skips a channel whose install has been disconnected", async () => {
     // resolveSlackChannels joins on a live install, but the token map is built
-    // separately — a row that survives the join without a token must not post.
+    // separately: a row that survives the join without a token must not post.
     queueChannels([{ channelId: "C1", channelName: "alerts", installationId: "gone" }]);
     queueInstallations([]);
     const { sendSlackToChannels } = await import("../slack");
@@ -276,7 +276,7 @@ describe("listSlackChannels", () => {
    * Slack's reference says `conversations.list` accepts `application/json`, but
    * it does not honour arguments sent that way: it answers `ok: true` with
    * `types` defaulted to public channels only. That is invisible from the
-   * response — the bug looked like a missing scope or a missing invite — so the
+   * response (the bug looked like a missing scope or a missing invite) so the
    * encoding is pinned here rather than left to whoever edits slackCall next.
    */
   it("asks for private channels form-encoded, because JSON is silently ignored", async () => {

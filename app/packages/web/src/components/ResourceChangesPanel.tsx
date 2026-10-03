@@ -15,7 +15,7 @@ interface ResourceChangesPanelProps {
 }
 
 /**
- * The "Changes" tab body on a resource detail page — the resource's slice of
+ * The "Changes" tab body on a resource detail page: the resource's slice of
  * the org change timeline, recorded by the poller each sync cycle.
  */
 export function ResourceChangesPanel({ orgId, resourceId }: ResourceChangesPanelProps) {

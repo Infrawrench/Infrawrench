@@ -363,9 +363,9 @@ describe("Team routes", () => {
   describe("trial organizations", () => {
     const trialExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
 
-    // A caller with `reason: "trial"` cannot actually reach this route today —
-    // agents are denied it outright and no human is a member of an org that is
-    // still a trial — but the expiry clamp is kept defensive, and this pins it.
+    // A caller with `reason: "trial"` cannot actually reach this route today
+    // (agents are denied it outright and no human is a member of an org that is
+    // still a trial) but the expiry clamp is kept defensive, and this pins it.
     it("clamps the invite so its link cannot outlive the workspace", async () => {
       vi.mocked(planAccess).mockResolvedValueOnce({
         paid: true,

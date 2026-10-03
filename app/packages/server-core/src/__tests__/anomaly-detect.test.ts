@@ -51,7 +51,7 @@ describe("detectSpike", () => {
   });
 
   it("skips keys with too few observed days", () => {
-    // Only 3 nonzero days — below minBaselineDays, however big the jump.
+    // Only 3 nonzero days: below minBaselineDays, however big the jump.
     const sparse = [0, 0, 0, 0, 0, 20, 22, 21];
     expect(detectSpike(sparse, 500, OPTS)).toBeNull();
   });
@@ -78,10 +78,10 @@ describe("detectSpike", () => {
   });
 
   /* ---------------------------------------------------------------- *
-   * Per-org tuning — the thresholds are parameters, not constants.
+   * Per-org tuning: the thresholds are parameters, not constants.
    * ---------------------------------------------------------------- */
 
-  // mean 100, stddev 10 — so 2σ is 120 and 3σ is 130, far enough apart to
+  // mean 100, stddev 10, so 2σ is 120 and 3σ is 130, far enough apart to
   // show a sigma change moving the bar rather than the floor doing the work.
   const VOLATILE = [90, 110, 90, 110, 90, 110, 90, 110, 90, 110];
 
@@ -169,7 +169,7 @@ describe("detectNewSpendSource", () => {
 
   it("scales the floor with the series currency", () => {
     const yen = optionsForCurrency("JPY", OPTS);
-    // ¥1,000 is ~$7 — a new source, but not a material one.
+    // ¥1,000 is ~$7: a new source, but not a material one.
     expect(detectNewSpendSource(new Array(28).fill(0), 1000, ESTABLISHED, yen)).toBeNull();
     // ¥500,000 is ~$3,300.
     expect(detectNewSpendSource(new Array(28).fill(0), 500_000, ESTABLISHED, yen)).not.toBeNull();
@@ -187,7 +187,7 @@ describe("detectNewSpendSource", () => {
   });
 
   /* ---------------------------------------------------------------- *
-   * Collection coverage — the guard that keeps day one quiet.
+   * Collection coverage: the guard that keeps day one quiet.
    *
    * Coverage is a fact about the org, passed in, because the baseline
    * cannot carry it: the caller zero-fills to a fixed width, so "we
@@ -196,7 +196,7 @@ describe("detectNewSpendSource", () => {
    * ---------------------------------------------------------------- */
 
   it("refuses to judge an org with too little collection coverage", () => {
-    // A dense, full-width window — exactly what `detectForDimension` builds —
+    // A dense, full-width window (exactly what `detectForDimension` builds)
     // for an org that started collecting two days ago. A `baseline.length`
     // guard sees 28 here and passes; only the coverage fact catches it.
     expect(EMPTY_WINDOW).toHaveLength(28);
@@ -235,7 +235,7 @@ describe("detectNewSpendSource", () => {
   });
 
   it("still fires for a key born yesterday inside an established org", () => {
-    // The same construction, the same all-zero per-key history — only the
+    // The same construction, the same all-zero per-key history, only the
     // org's coverage differs, and that is the entire distinction.
     const day = "2026-07-14";
     const coverageDays = daysBetween("2026-01-01", day);
@@ -270,7 +270,7 @@ describe("daysBetween", () => {
 
   it("fails closed on a day that does not exist, rather than rolling it over", () => {
     // `new Date("2024-02-30T00:00:00Z")` is February 30th rolled to March 1st,
-    // not an Invalid Date — so a NaN check alone would accept it and report a
+    // not an Invalid Date, so a NaN check alone would accept it and report a
     // day *more* coverage than reality, which fails open.
     expect(daysBetween("2024-02-30", "2024-03-08")).toBe(0);
     expect(daysBetween("2026-02-29", "2026-03-08")).toBe(0);
@@ -311,7 +311,7 @@ describe("optionsForCurrency", () => {
   });
 
   it("scales the noise floor for small-unit currencies", () => {
-    // ~$10 of yen, not 10 yen (~$0.07) — otherwise the floor filters nothing.
+    // ~$10 of yen, not 10 yen (~$0.07), otherwise the floor filters nothing.
     expect(optionsForCurrency("JPY", OPTS).minDeltaAbs).toBeGreaterThan(1000);
     expect(optionsForCurrency("IDR", OPTS).minDeltaAbs).toBeGreaterThan(100_000);
   });
@@ -332,7 +332,7 @@ describe("optionsForCurrency", () => {
   it("keeps a genuine JPY spike detectable while filtering yen-scale noise", () => {
     const yenBaseline = STABLE.map((v) => v * 150);
     const opts = optionsForCurrency("JPY", OPTS);
-    // A ¥12,000 rise is ~$80 — a real spike.
+    // A ¥12,000 rise is ~$80: a real spike.
     expect(detectSpike(yenBaseline, 27_000, opts)).not.toBeNull();
     // A ¥20 rise over a ¥15,000 baseline is pennies; the unscaled floor of
     // 10 units would have let this through on sigmas alone.

@@ -1,5 +1,5 @@
 /**
- * The moment view — `GET /api/org/{orgId}/moment?at=…&window=…`.
+ * The moment view: `GET /api/org/{orgId}/moment?at=…&window=…`.
  *
  * Thin route: the union itself (nine feeds, per-feed permission gating,
  * per-feed partial-failure tolerance) lives in `services/moment.ts`, shared

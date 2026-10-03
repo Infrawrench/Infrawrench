@@ -1,5 +1,5 @@
 /**
- * Org-scoped business-metric CRUD — shared by the HTTP routes
+ * Org-scoped business-metric CRUD: shared by the HTTP routes
  * (api/routes/business-metrics.ts) and the tool registry, mirroring
  * services/saved-cost-filters.ts, so the MCP/chat surface and the API cannot
  * drift into behaving differently.
@@ -14,7 +14,7 @@
  * hard delete only, so the values simply stop being reachable). Unlike a saved
  * filter, a metric has no referents that could be silently re-scoped: a graph
  * config pointing at a deleted metric fails its query loudly, which is the
- * behaviour we want — a unit-cost card that quietly reverted to plain spend
+ * behaviour we want; a unit-cost card that quietly reverted to plain spend
  * would be a chart claiming to be something it is not.
  */
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
@@ -146,7 +146,7 @@ async function keyTaken(organizationId: string, key: string, excludeId?: string)
  * The org's metrics, by key, each with its reported coverage.
  *
  * Coverage rides along rather than being a second call because a metric with no
- * values is not broken — it was just created — but every unit-cost chart drawn
+ * values is not broken (it was just created) but every unit-cost chart drawn
  * from it is one continuous gap, and a list that did not say so would leave the
  * user to discover that on the chart.
  */
@@ -215,8 +215,8 @@ export async function createBusinessMetric(
 /**
  * Replace a metric's definition. Null when not found.
  *
- * A full replace, matching budgets and saved filters. `key` may change — the
- * values are keyed on the metric's id, so a rename never orphans history — but
+ * A full replace, matching budgets and saved filters. `key` may change (the
+ * values are keyed on the metric's id, so a rename never orphans history) but
  * a workflow writing to the old key starts failing, which is the honest outcome
  * and is why the key exists separately from the display name in the first place.
  */

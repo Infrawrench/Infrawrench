@@ -182,7 +182,7 @@ function nodeHttpsRequest(req: {
   const parsed = new URL(req.url);
   const isHttps = parsed.protocol === "https:";
   // A custom CA strongly implies the caller intended TLS. Refuse to silently
-  // strip the CA pin and downgrade to plaintext — better to error than to
+  // strip the CA pin and downgrade to plaintext: better to error than to
   // give the caller a false sense of security.
   if (req.caCert && !isHttps) {
     throw new Error(
@@ -248,7 +248,7 @@ async function getAccountBastionId(accountId: string): Promise<string | null> {
 /**
  * Inspects the plugin manifest and builds the appropriate HostServices for use with createClient().
  *
- * Pass `accountId` when the credentials come from a stored account row — that
+ * Pass `accountId` when the credentials come from a stored account row: that
  * lets the HTTP service route through the account's bastion (if any). Callers
  * who already know the bastion id (e.g. peer-pane resolution) can pass
  * `bastionId` directly to skip the DB round-trip.

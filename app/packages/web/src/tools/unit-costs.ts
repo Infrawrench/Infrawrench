@@ -1,13 +1,13 @@
 /**
- * Business-metric and unit-cost tools — "what does a customer cost us?" for
+ * Business-metric and unit-cost tools: "what does a customer cost us?" for
  * MCP clients and the chat agent.
  *
  * These sit alongside `tools/costs.ts` and share its stance: org-wide spend
  * data, so every handler enforces the same permissions as the HTTP API, and
  * every description explains *how to read the numbers* rather than only naming
  * the fields. That matters more here than anywhere else in the cost surface,
- * because the two ways to misread a unit cost are both silent — treating a gap
- * as a zero, and treating an average of daily ratios as a period ratio — and a
+ * because the two ways to misread a unit cost are both silent (treating a gap
+ * as a zero, and treating an average of daily ratios as a period ratio) and a
  * model summarising this data will happily do either unless told not to.
  */
 import { z } from "zod";

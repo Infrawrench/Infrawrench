@@ -2,27 +2,27 @@
  * Where a cost export run writes.
  *
  * Two sinks, both fed by an async iterable of strings and both bounded in
- * memory. The contract is deliberately narrow — {@link uploadCostExportObject}
- * takes a body stream and a key, and returns the byte count — because the run
+ * memory. The contract is deliberately narrow ({@link uploadCostExportObject}
+ * takes a body stream and a key, and returns the byte count) because the run
  * loop should not know how many HTTP requests a destination needed.
  *
  * **S3-compatible** covers AWS S3, Cloudflare R2, DigitalOcean Spaces,
  * Scaleway, Backblaze B2 and MinIO in one implementation: they differ only in
  * endpoint, region and whether the bucket is a subdomain or a path segment, and
  * all of them speak SigV4. Signing goes through `signedS3Fetch` in
- * `@infrawrench/plugin-base` — the same signer the AWS, Spaces and Scaleway
+ * `@infrawrench/plugin-base`: the same signer the AWS, Spaces and Scaleway
  * plugins use. A fourth copy of a security primitive is not something to add
  * for a feature.
  *
  * A small object goes out as a single `PUT`. Anything larger becomes a
  * multipart upload with {@link PART_SIZE} parts, which is what keeps a year of
  * per-resource rows off the heap: the run holds one part at a time, uploads it,
- * and drops it. The alternative — buffering the object to size it for a single
- * `PUT`'s `Content-Length` — is exactly the OOM this feature has to avoid.
+ * and drops it. The alternative (buffering the object to size it for a single
+ * `PUT`'s `Content-Length`) is exactly the OOM this feature has to avoid.
  *
  * **HTTPS** posts the body as a streamed request. The URL is treated as a
  * bearer credential (a pre-signed URL carries its own signature), so it is
- * stored encrypted, never returned, and sent byte-for-byte as stored — see
+ * stored encrypted, never returned, and sent byte-for-byte as stored: see
  * {@link uploadToHttp} for why nothing may be appended to its query string.
  */
 import { Readable } from "node:stream";
@@ -33,7 +33,7 @@ import type { CostExportCredentials } from "./store";
 /**
  * 8 MiB. Above S3's 5 MiB multipart minimum with headroom, and small enough
  * that a run's steady-state memory is a rounding error next to the poller.
- * S3 allows 10,000 parts, so this caps one object at 80 GiB — orders of
+ * S3 allows 10,000 parts, so this caps one object at 80 GiB: orders of
  * magnitude beyond any org's daily cost rows.
  */
 export const PART_SIZE = 8 * 1024 * 1024;
@@ -75,7 +75,7 @@ export interface UploadResult {
 
 /**
  * Metadata headers, in each transport's spelling. Object metadata is a
- * convenience for an operator poking at the bucket — the authoritative copy of
+ * convenience for an operator poking at the bucket: the authoritative copy of
  * the same facts is in the rows, because metadata does not survive most load
  * paths (see `serialize.ts`).
  */
@@ -92,7 +92,7 @@ function stampHeaders(stamp: ObjectStamp, prefix: string): Record<string, string
 /**
  * Re-chunk a string stream into byte buffers of at most `size`.
  *
- * The last chunk is whatever is left and may be short — which is legal for the
+ * The last chunk is whatever is left and may be short, which is legal for the
  * final part of a multipart upload and for a single PUT, and is the only place
  * a short chunk is produced.
  */
@@ -263,7 +263,7 @@ async function multipartUpload(
       body: xml,
     });
     if (!completeRes.ok) throw await failure(completeRes, "S3 CompleteMultipartUpload");
-    // S3 answers 200 with an error document for some Complete failures — the
+    // S3 answers 200 with an error document for some Complete failures: the
     // status alone is not the outcome.
     const completeBody = await completeRes.text();
     if (xmlTag(completeBody, "Error") !== null || completeBody.includes("<Error>")) {
@@ -317,20 +317,20 @@ async function uploadToHttp(req: UploadRequest): Promise<UploadResult> {
     duplex: "half",
   } as unknown as Parameters<typeof fetch>[1];
 
-  // The stored URL is sent exactly as it was given to us — nothing is appended
+  // The stored URL is sent exactly as it was given to us: nothing is appended
   // to its query string, and it is not even round-tripped through `new URL`.
   //
   // The object key travels in `x-infrawrench-object-key` (and its period in the
   // stamp headers), which is everything a receiver needs to route on. A `?key=`
   // parameter would be a second copy of that same fact, bought by mutating a
-  // URL we do not own — and a pre-signed URL signs its query string, so one
+  // URL we do not own, and a pre-signed URL signs its query string, so one
   // extra parameter turns every single upload into a rejection: `X-Amz-Signature`
   // (S3/R2/Spaces), `X-Goog-Signature` (GCS), `sig` (an Azure SAS), or whatever
   // opaque `token=` an ingest endpoint issues.
   //
   // Detecting those parameter names instead was considered and rejected. The
   // set of signature spellings is open-ended, so a blocklist is wrong exactly
-  // in the case that matters — a destination nobody here has seen — and the
+  // in the case that matters (a destination nobody here has seen) and the
   // failure it produces is a silent, total upload outage on a nightly job.
   // Even for an unsigned URL, quietly overwriting a `key` parameter the user
   // deliberately put in their endpoint is a surprise nobody debugs quickly.

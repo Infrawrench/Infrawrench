@@ -3,7 +3,7 @@
  * `workflow-schema.ts`) as well as by `schema.ts` itself.
  *
  * These live in their own module (with no internal imports) so the satellites
- * can reference them without importing `schema.ts` — which re-exports the
+ * can reference them without importing `schema.ts`, which re-exports the
  * satellites and would otherwise form an import cycle. Everything here is
  * re-exported from `schema.ts`, so consumers keep importing from
  * `@infrawrench/server-core/db/schema` as before.
@@ -34,7 +34,7 @@ export const organizations = pgTable(
      * Platform-granted free ride: the org is never billed, gets every paid-plan
      * perk, and chat usage is uncapped by default (an org-set
      * chatMonthlyCapMicros still applies) and never reported to Stripe.
-     * Set by platform admins via /api/admin — see web/src/auth/platform-admin.ts.
+     * Set by platform admins via /api/admin: see web/src/auth/platform-admin.ts.
      */
     complimentary: boolean("complimentary").notNull().default(false),
     /**
@@ -44,7 +44,7 @@ export const organizations = pgTable(
      *
      * Also the paid-plan grant: `planAccess` treats a future `trialExpiresAt` as
      * paid access (`reason: "trial"`), which is how a trial gets the full product
-     * without a card. Cleared — not merely ignored — when the org is claimed, so
+     * without a card. Cleared (not merely ignored) when the org is claimed, so
      * there is exactly one place that says whether the clock is running.
      */
     trialExpiresAt: timestamp("trial_expires_at"),
@@ -98,7 +98,7 @@ export const bastionVms = pgTable(
     tokenPrefix: text("token_prefix").notNull(),
     agentVersion: text("agent_version"),
     lastSeenAt: timestamp("last_seen_at"),
-    /** "pending" | "active" | "revoked" — purely descriptive; "active" doesn't mean "currently connected". */
+    /** "pending" | "active" | "revoked": purely descriptive; "active" doesn't mean "currently connected". */
     status: text("status").notNull().default("pending"),
     revokedAt: timestamp("revoked_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -132,7 +132,7 @@ export const accounts = pgTable(
     nextPollAt: timestamp("next_poll_at"),
     pollFailureCount: integer("poll_failure_count").notNull().default(0),
     /**
-     * Cost-collection schedule — parallel to the resource-poll columns but on
+     * Cost-collection schedule: parallel to the resource-poll columns but on
      * a ~daily cadence (provider billing APIs are rate-limited and sometimes
      * billed per request). Only meaningful for accounts whose plugin declares
      * a `costs` capability; NULL costNextPollAt means "due now".

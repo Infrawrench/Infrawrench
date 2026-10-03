@@ -19,7 +19,7 @@ import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 /**
  * Web implementation of the shared environments client, per org.
  *
- * The write methods are always present here — the server is the permission
+ * The write methods are always present here: the server is the permission
  * boundary and answers 403 for a caller that may not spend money. The optional
  * shape exists for desktop's local-only mode, where there is no org to spend
  * in at all.

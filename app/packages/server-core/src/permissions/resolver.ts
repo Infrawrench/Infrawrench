@@ -19,7 +19,7 @@ import {
  * Nothing is expanded here, deliberately. Grants written before workflows had
  * permissions of their own were rewritten in place by migration
  * `0055_grandfather_workflow_permissions`, so a stored array already says
- * everything the role grants — and a role written after that means exactly
+ * everything the role grants, and a role written after that means exactly
  * what it says, including one that hands out `workflows:write` while
  * withholding `workflows:approve`.
  */
@@ -103,7 +103,7 @@ export interface EffectiveAccess {
   /**
    * Live break-glass grants folded into `permissions`, or `[]`.
    *
-   * Surfaced separately so a caller can say *why* someone can do something —
+   * Surfaced separately so a caller can say *why* someone can do something:
    * "you have this until 14:32 because you asked for it" is a materially
    * different statement from "your role grants this", and an interface that
    * cannot tell them apart quietly normalises elevation.
@@ -113,7 +113,7 @@ export interface EffectiveAccess {
 
 export interface ResolveOptions {
   /**
-   * Fold in live break-glass grants. Default true — for a person at a keyboard
+   * Fold in live break-glass grants. Default true, for a person at a keyboard
    * their elevation *is* part of what they can currently do.
    *
    * **API keys pass false.** A break-glass grant is authority handed to a human

@@ -20,14 +20,14 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/org/:orgId/budgets — list budgets with current-month status. */
+/** GET /api/org/:orgId/budgets: list budgets with current-month status. */
 app.get("/", async (c) => {
   requirePermission(c, "budgets:read");
   const organizationId = c.get("organizationId");
   return c.json(await listBudgetsWithStatus(organizationId));
 });
 
-/** POST /api/org/:orgId/budgets — create a budget. */
+/** POST /api/org/:orgId/budgets: create a budget. */
 app.post("/", async (c) => {
   requirePermission(c, "budgets:write");
   const organizationId = c.get("organizationId");
@@ -42,7 +42,7 @@ app.post("/", async (c) => {
     return c.json(await createBudget(organizationId, parsed.data, session.userId ?? null));
   } catch (e) {
     // A budget must not be born pointing at a saved filter that doesn't
-    // resolve — it would error every evaluation from day one.
+    // resolve: it would error every evaluation from day one.
     if (e instanceof SavedCostFilterResolutionError) return c.json({ error: e.message }, 400);
     throw e;
   }
@@ -78,7 +78,7 @@ app.put("/:id", async (c) => {
   }
 });
 
-/** DELETE /api/org/:orgId/budgets/:id — soft delete. */
+/** DELETE /api/org/:orgId/budgets/:id: soft delete. */
 app.delete("/:id", async (c) => {
   requirePermission(c, "budgets:write");
   const organizationId = c.get("organizationId");
@@ -88,7 +88,7 @@ app.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** GET /api/org/:orgId/budgets/:id/events — alert history. */
+/** GET /api/org/:orgId/budgets/:id/events: alert history. */
 app.get("/:id/events", async (c) => {
   requirePermission(c, "budgets:read");
   const organizationId = c.get("organizationId");

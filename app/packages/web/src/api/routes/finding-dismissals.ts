@@ -2,7 +2,7 @@
  * The shared dismissal routes for recomputed security findings.
  *
  * Posture checks and the cross-cloud access review are two surfaces over one
- * decision store (`posture_dismissals` — the rule-id namespaces are disjoint,
+ * decision store (`posture_dismissals`: the rule-id namespaces are disjoint,
  * so a dismissal for one surface is simply inert on the other), and their
  * `POST /dismissals` + `DELETE /dismissals` handlers were byte-for-byte
  * identical apart from the audit action names. This registrar is that one
@@ -11,8 +11,8 @@
  *
  * The permission is `resources:write`, not `resources:read`: accepting a
  * finding is a statement about one resource ("this bucket is public on
- * purpose"), the same trust level as changing it, and members — who can read
- * the screen — deliberately cannot silence it. Both routes are audited;
+ * purpose"), the same trust level as changing it, and members (who can read
+ * the screen) deliberately cannot silence it. Both routes are audited;
  * silencing a security finding is exactly the kind of decision an audit
  * reader goes looking for later.
  */
@@ -36,18 +36,18 @@ declare module "hono" {
 /**
  * Register `POST /dismissals` and `DELETE /dismissals` on `app`.
  *
- * `auditPrefix` names the surface in the audit log — `posture` or
- * `access_review` — producing `<prefix>.finding.dismissed` and
+ * `auditPrefix` names the surface in the audit log (`posture` or
+ * `access_review`) producing `<prefix>.finding.dismissed` and
  * `<prefix>.finding.restored`.
  */
 export function registerFindingDismissalRoutes(app: Hono, auditPrefix: string): void {
   /**
-   * POST /dismissals — accept a finding, so it leaves the list and stops
+   * POST /dismissals: accept a finding, so it leaves the list and stops
    * feeding the alerts.
    *
    * Idempotent: re-dismissing rewrites the note and the author. The finding
-   * itself is still evaluated on every scan — this suppresses it, it does not
-   * delete it — and the feed reports it back under `dismissed`.
+   * itself is still evaluated on every scan (this suppresses it, it does not
+   * delete it) and the feed reports it back under `dismissed`.
    */
   app.post("/dismissals", async (c) => {
     requirePermission(c, "resources:write");
@@ -102,7 +102,7 @@ export function registerFindingDismissalRoutes(app: Hono, auditPrefix: string): 
   });
 
   /**
-   * DELETE /dismissals?resourceId=…&ruleId=… — undo a dismissal.
+   * DELETE /dismissals?resourceId=…&ruleId=…: undo a dismissal.
    *
    * The key is in the query string, not the path: resource ids are
    * provider-native and routinely contain slashes (GCP's

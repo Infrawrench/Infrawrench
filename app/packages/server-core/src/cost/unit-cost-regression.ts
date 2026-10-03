@@ -1,5 +1,5 @@
 /**
- * Unit-cost regression detection — **pure**. No db, no ClickHouse, no clock,
+ * Unit-cost regression detection: **pure**. No db, no ClickHouse, no clock,
  * no network.
  *
  * ## The signal the other cost alerts cannot see
@@ -27,13 +27,13 @@
  * That is rule 3 of `unit-costs.ts` ("a bucket's numerator and denominator
  * cover the same days") and here it is the difference between a finding and a
  * fabrication. Fold in the spend of a day whose volume was never reported and
- * the numerator grows while the denominator does not — a metric whose nightly
+ * the numerator grows while the denominator does not: a metric whose nightly
  * ingest failed for three days of a fortnight would show a unit cost up 27%
  * and page somebody about a pipeline outage dressed as a cost regression.
  *
  * The second consequence is that a window which is *mostly* gaps has no unit
  * cost at all. It does not read low, it does not read high, it reads
- * **nothing** — and a comparison against nothing is not a regression, it is a
+ * **nothing**, and a comparison against nothing is not a regression, it is a
  * missing measurement. Both windows must clear
  * {@link UnitCostRegressionOptions.minReportedDays} independently, and a
  * window that fails returns a skip reason rather than a quiet "no regression",
@@ -46,7 +46,7 @@
  * finding. Two weeks a side covers two whole weekly cycles, so a weekday-shaped
  * unit cost compares like with like; 10 of 14 means a window is more
  * measurement than gap. A metric someone updates twice a month has no unit
- * cost to regress and will never fire, which is correct — the alert would be
+ * cost to regress and will never fire, which is correct: the alert would be
  * an artefact of when the two updates landed.
  *
  * ## Currencies
@@ -102,7 +102,7 @@ export interface UnitCostRegressionOptions {
 export interface UnitCostWindowSummary {
   /** Σcost ÷ Σvalue over the reported days only. */
   unitCost: number | null;
-  /** Σcost over the reported days only — never the whole window's spend. */
+  /** Σcost over the reported days only, never the whole window's spend. */
   cost: number;
   /** Σvalue over the reported days. */
   metricValue: number;
@@ -119,7 +119,7 @@ export type UnitCostRegressionSkipReason =
   | "insufficient_previous_history"
   /**
    * The prior window measured a unit cost of exactly zero (spend of nothing
-   * over real volume). A rise from zero has no percentage — see the note on
+   * over real volume). A rise from zero has no percentage: see the note on
    * {@link detectUnitCostRegression}.
    */
   | "no_previous_unit_cost"
@@ -155,7 +155,7 @@ function addDay(day: string): string {
  * "Usable" is `value > 0`, matching `gapFor` in `cost/unit-costs.ts`: a zero
  * denominator is the ∞ case and a negative one is the sign-flip case, and
  * neither is a number a ratio can be built from. A *zero numerator* over a
- * positive denominator is fine and is not a gap — spend of nothing over 300
+ * positive denominator is fine and is not a gap: spend of nothing over 300
  * customers genuinely is 0 per customer.
  */
 function reportedDaysIn(window: UnitCostWindow, byDay: Map<string, number>): Set<string> {
@@ -176,7 +176,7 @@ function windowDayCount(window: UnitCostWindow): number {
 /**
  * Summarise one window for one currency.
  *
- * Both sums run over `reported` only — the same day set on both sides, which
+ * Both sums run over `reported` only: the same day set on both sides, which
  * is the rule this module exists to keep. Exported so the tests can assert the
  * gap arithmetic directly rather than through a threshold.
  */
@@ -209,8 +209,8 @@ export function summarizeUnitCostWindow(
  * as a headline; it also almost always means the prior window's spend had not
  * landed yet rather than that the service was genuinely free. The change-alert
  * family solved the analogous problem by calling it "new" rather than a
- * percentage, but "new" is not a thing a *unit cost* can be — the metric was
- * being reported the whole time — so there is nothing honest to say and the
+ * percentage, but "new" is not a thing a *unit cost* can be (the metric was
+ * being reported the whole time) so there is nothing honest to say and the
  * comparison is declined.
  */
 export function detectUnitCostRegression(
@@ -236,7 +236,7 @@ export function detectUnitCostRegression(
       skipped.push({ currency: series.currency, reason });
     };
 
-    // A window that is mostly gaps has no unit cost — not a low one, not a
+    // A window that is mostly gaps has no unit cost, not a low one, not a
     // high one. Checked before the ratios are looked at so a two-day window
     // that happens to divide cleanly can never become a finding.
     if (current.reportedDays < options.minReportedDays || current.unitCost === null) {
@@ -283,7 +283,7 @@ export function detectUnitCostRegression(
  *
  * Both are complete UTC days and neither includes today: today is still
  * accruing, so its spend is a fraction of a day divided by whatever share of
- * the day's volume has been reported — a ratio of two unrelated partials. The
+ * the day's volume has been reported; a ratio of two unrelated partials. The
  * change-alert family declines the accruing day for exactly the same reason.
  */
 export function unitCostWindows(

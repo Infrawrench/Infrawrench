@@ -98,7 +98,7 @@ describe("recordingParticipantsOf", () => {
   it("keeps somebody who has since left in the attribution", () => {
     const before = recordingParticipantsOf([participant({ userId: "u-2", userName: "Sam" })]);
     // A later update that no longer lists them must not erase the fact that
-    // they were here — the tape is evidence, not a live roster.
+    // they were here: the tape is evidence, not a live roster.
     const after = recordingParticipantsOf(
       [participant({ userId: "u-1", userName: "Priya", role: "driver" })],
       before,

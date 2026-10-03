@@ -13,11 +13,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * The three properties that make the decision safe rather than merely stated:
  *
  * 1. a budget with no `scenarioModelId` behaves **byte-identically** to before
- *    scenarios existed — the model is never even loaded;
+ *    scenarios existed: the model is never even loaded;
  * 2. a budget that opts in judges its forecast thresholds on the adjusted
  *    figure, keeps the unadjusted one alongside it, and **names the model in
  *    the alert body** so "why was I paged" is answerable from the message; and
- * 3. `actual` thresholds are untouched either way — they measure money already
+ * 3. `actual` thresholds are untouched either way: they measure money already
  *    spent, which no scenario can move.
  */
 
@@ -44,7 +44,7 @@ vi.mock("../cost/scenario-forecast", async () => {
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
-// Real Drizzle over a recording driver against the real schema — the budget
+// Real Drizzle over a recording driver against the real schema: the budget
 // select, the alert-event insert and the notifiedAt update render their actual
 // SQL (and shadow-validate under test:postgres:shadow). Results are queued in
 // execution order: the budget select, then the insert's RETURNING.
@@ -92,7 +92,7 @@ function flatSpend() {
 }
 
 /**
- * A model that adds $500 on the 20th — inside the projected region, so it moves
+ * A model that adds $500 on the 20th: inside the projected region, so it moves
  * the month forecast and nothing else.
  */
 const model = {
@@ -120,7 +120,7 @@ const model = {
 };
 
 // The select has no projection, so keys are in the budgets table's column
-// order — see helpers/fake-postgres.ts.
+// order: see helpers/fake-postgres.ts.
 function budget(over: Record<string, unknown> = {}) {
   return {
     id: "b1",
@@ -178,7 +178,7 @@ describe("budgetMonthStatus — the scenario opt-in", () => {
       "model-1",
     );
 
-    // The trend is still the trend — both numbers are comparable on a card.
+    // The trend is still the trend: both numbers are comparable on a card.
     expect(status.forecastCents).toBe(31_000);
     // ...and the adjusted one carries the $500 landing on the 20th.
     expect(status.scenarioForecastCents).toBe(81_000);
@@ -210,7 +210,7 @@ describe("evaluateBudgetsForOrg — which thresholds a scenario can move", () =>
     arrange([budget()]);
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
     // $310 forecast against a $500 threshold: nothing fires, exactly as before
-    // scenarios existed — and no model was consulted.
+    // scenarios existed, and no model was consulted.
     expect(routeAlert).not.toHaveBeenCalled();
     expect(resolveCostScenarioModel).not.toHaveBeenCalled();
   });

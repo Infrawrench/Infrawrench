@@ -9,7 +9,7 @@
  * come due again when the lease expires. The normal completion path
  * overwrites the lease with the true next cadence.
  *
- * Never throws — this runs inside the poller loop and must not fail a tick.
+ * Never throws: this runs inside the poller loop and must not fail a tick.
  */
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";

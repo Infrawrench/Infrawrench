@@ -3,7 +3,7 @@
  *
  * By the time this runs the response is complete: the series are aggregated,
  * the currencies are resolved, and `response.forecast` holds the trend
- * projection. All that is left is to load the named model and overlay it — so
+ * projection. All that is left is to load the named model and overlay it, so
  * that is all this module does, and `runCostQuery` grows one `if`.
  *
  * The one decision made here rather than downstream is **what currency the
@@ -28,8 +28,8 @@ import {
 
 /**
  * Anything that stops a scenario being applied, in one class the caller can
- * map to a 400. Both underlying failures are the caller's problem to fix — a
- * deleted model, or a currency the org has stated no rate for — and neither is
+ * map to a 400. Both underlying failures are the caller's problem to fix (a
+ * deleted model, or a currency the org has stated no rate for) and neither is
  * ever recoverable by quietly returning an unadjusted projection.
  */
 export class CostScenarioError extends Error {
@@ -43,7 +43,7 @@ export interface AttachCostScenarioOptions {
   forecast: CostSeriesPoint[] | undefined;
   /** The chart's resolved filters (saved filter and text query included). */
   filters: CostFilter[];
-  /** The query's range end — where the sub-scope fits end too. */
+  /** The query's range end, where the sub-scope fits end too. */
   fitTo: string;
   costBasis?: CostBasis | undefined;
   chargeTypes?: CostChargeType[] | undefined;
@@ -56,7 +56,7 @@ export interface AttachCostScenarioOptions {
 /**
  * Apply a scenario model to a response's forecast.
  *
- * Returns undefined when there is no forecast to adjust — an org with fewer
+ * Returns undefined when there is no forecast to adjust: an org with fewer
  * than a week of data gets no projection at all, and a scenario line hanging in
  * space with no trend beside it would be a claim about the future built on
  * nothing. That is not an error; there is simply nothing to draw.
@@ -82,7 +82,7 @@ export async function attachCostScenario(
       ...(options.chargeTypes ? { chargeTypes: options.chargeTypes } : {}),
       // The currency the projection is denominated in. Conversion wins when it
       // is on (every series was folded into the display currency); otherwise a
-      // single-currency org has one, and a mixed one has none — which makes any
+      // single-currency org has one, and a mixed one has none, which makes any
       // model carrying an amount unapplicable, loudly, rather than adding
       // dollars to a sum of dollars and euros.
       baselineCurrency: options.currencies.length === 1 ? (options.currencies[0] ?? null) : null,

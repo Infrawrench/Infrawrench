@@ -40,7 +40,7 @@ async function isComplimentary(orgId: string): Promise<boolean> {
  * The org's Stripe customer, created on first purchase.
  *
  * One customer per org, shared by the monthly subscription and one-time capacity
- * slot purchases — a second customer would split the org's invoices and payment
+ * slot purchases: a second customer would split the org's invoices and payment
  * methods across two portals. The customer id lives on the `subscriptions` row
  * even when there is no subscription yet: a row with no
  * `stripeSubscriptionId` grants nothing (see `isPaidRow` in entitlements), so
@@ -91,14 +91,14 @@ app.get("/status", async (c) => {
         }
       : null,
     capacity: {
-      // False on deployments with no one-time price configured — the UI hides
+      // False on deployments with no one-time price configured: the UI hides
       // the option rather than offering a purchase that would 503.
       purchasable: getStripeCapacitySlotPriceId() !== null,
       termMonths: CAPACITY_SLOT_TERM_MONTHS,
       priceUsd: CAPACITY_SLOT_PRICE_USD,
       /** Seats from slots still inside their term; excludes lapsed and refunded. */
       seats: capacitySeats,
-      /** Full purchase history, newest first — lapsed and refunded included. */
+      /** Full purchase history, newest first: lapsed and refunded included. */
       slots,
     },
   });
@@ -123,7 +123,7 @@ app.post("/checkout", async (c) => {
   const checkoutSession = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: "subscription",
-    // Metered prices take no quantity — Stripe bills them from the meter.
+    // Metered prices take no quantity: Stripe bills them from the meter.
     line_items: [
       { price: priceId, quantity: 1, adjustable_quantity: { enabled: true, minimum: 1 } },
       ...(chatPriceId ? [{ price: chatPriceId }] : []),
@@ -138,18 +138,18 @@ app.post("/checkout", async (c) => {
 });
 
 /**
- * Largest number of slots one checkout can buy. Not a business rule — a guard
+ * Largest number of slots one checkout can buy. Not a business rule: a guard
  * so a fat-fingered quantity can't open a five-figure payment page. Buying more
  * than this is a second purchase, or a conversation with sales.
  */
 const MAX_SLOTS_PER_PURCHASE = 25;
 
 /**
- * POST /api/billing/capacity/checkout — buy prepaid capacity slots.
+ * POST /api/billing/capacity/checkout: buy prepaid capacity slots.
  *
  * `payment` mode, not `subscription`: a slot is bought outright for its term, so
  * there is nothing to renew and nothing to cancel. The seats are granted by the
- * webhook once Stripe confirms the payment, never here — returning a URL only
+ * webhook once Stripe confirms the payment, never here: returning a URL only
  * means the user was sent to a payment page.
  */
 app.post("/capacity/checkout", async (c) => {
@@ -202,8 +202,8 @@ app.post("/capacity/checkout", async (c) => {
     // invoices come for free, one-time payments do not unless asked for.
     invoice_creation: { enabled: true },
     metadata,
-    // Mirrored onto the PaymentIntent so `charge.refunded` — which carries the
-    // payment intent, not the session — can still be traced back.
+    // Mirrored onto the PaymentIntent so `charge.refunded` (which carries the
+    // payment intent, not the session) can still be traced back.
     payment_intent_data: { metadata },
     success_url: `${billingUrl}?capacity=purchased`,
     cancel_url: billingUrl,

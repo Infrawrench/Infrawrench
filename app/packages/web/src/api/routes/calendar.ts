@@ -5,7 +5,7 @@
  * iCalendar subscription route and any future digest section share one
  * computation. Purely a read over already-synced state: no provider API calls.
  *
- * Reads take `resources:read` — the calendar is a view over the org's own
+ * Reads take `resources:read`: the calendar is a view over the org's own
  * records, and every one of its six sources is already readable with that
  * permission or less. Subscriptions take `org:settings:write`: minting an
  * unauthenticated URL that exposes the org's schedule to anyone holding it is
@@ -79,7 +79,7 @@ function parseWindow(query: {
 }
 
 /**
- * GET /api/org/:orgId/calendar — every dated thing the org holds, in one
+ * GET /api/org/:orgId/calendar: every dated thing the org holds, in one
  * window, soonest first.
  */
 app.get("/", async (c) => {
@@ -93,14 +93,14 @@ app.get("/", async (c) => {
   return c.json(await listCalendarEvents(c.get("organizationId"), parsed.value));
 });
 
-/** GET /api/org/:orgId/calendar/subscriptions — the org's iCalendar feeds. */
+/** GET /api/org/:orgId/calendar/subscriptions: the org's iCalendar feeds. */
 app.get("/subscriptions", async (c) => {
   requirePermission(c, "org:settings:write");
   return c.json({ subscriptions: await listCalendarSubscriptions(c.get("organizationId")) });
 });
 
 /**
- * POST /api/org/:orgId/calendar/subscriptions — mint one.
+ * POST /api/org/:orgId/calendar/subscriptions: mint one.
  *
  * The response carries the only copy of the token, as an absolute URL ready to
  * paste into a calendar client. The audit entry deliberately records the name
@@ -146,7 +146,7 @@ app.post("/subscriptions", async (c) => {
   }
 });
 
-/** DELETE /api/org/:orgId/calendar/subscriptions/:id — revoke one. */
+/** DELETE /api/org/:orgId/calendar/subscriptions/:id: revoke one. */
 app.delete("/subscriptions/:subscriptionId", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");

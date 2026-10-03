@@ -1,7 +1,7 @@
 /**
  * The pure half of metric alert evaluation: given the per-minute samples of
  * one series on one resource, decide whether the rule's condition held for
- * the whole trailing window. No I/O, no clock reads — everything a test needs
+ * the whole trailing window. No I/O, no clock reads: everything a test needs
  * comes in as arguments (the `anomaly-detect.ts` stance).
  *
  * "Held for the whole window" is judged over the samples that exist, plus a
@@ -10,7 +10,7 @@
  * - any sample inside the window that does NOT breach → `cleared`
  * - no samples at all → `no_data` (a gap is not evidence either way)
  * - all samples breach, but there are too few of them or they cluster in one
- *   corner of the window → `insufficient` — an open firing stays open, but a
+ *   corner of the window → `insufficient`: an open firing stays open, but a
  *   new one is not opened on that little evidence
  * - all samples breach, with enough of them spread across the window →
  *   `breaching`

@@ -3,19 +3,19 @@
  *
  * Four sources: declared incidents, synthetic probes, query monitors and
  * account sync health. Every one of them is a read of a table this product
- * already keeps, and every one is guarded independently — a wallboard that goes
+ * already keeps, and every one is guarded independently: a wallboard that goes
  * blank because one query threw is a television showing nothing to a room that
  * was relying on it.
  *
- * A source belongs here once the table it reads exists — the query monitors
+ * A source belongs here once the table it reads exists: the query monitors
  * source arrives in the same change as `query_monitors` itself for that reason.
  * An earlier attempt to read it ahead of its migration, tolerating the absence,
  * put "Could not read: query monitors" on every wall in the building instead:
  * a guard cannot tell a missing table from a broken query, and should not try.
  *
  * **A source that fails is named on the screen and makes the wall amber.** The
- * alternative — swallowing the error and rendering the remaining sources green
- * — is the single worst thing this feature could do: a wall actively telling a
+ * alternative (swallowing the error and rendering the remaining sources green)
+ * is the single worst thing this feature could do: a wall actively telling a
  * room that everything is fine because a query failed.
  *
  * There is deliberately no history, no trend and no breakdown here. A wallboard
@@ -46,7 +46,7 @@ interface SourceResult<T> {
   failed: boolean;
 }
 
-/** "4213 > 1000" — what the monitor saw, against what it watches for. */
+/** "4213 > 1000": what the monitor saw, against what it watches for. */
 function describeBreach(monitor: {
   mode: "scalar" | "rowCount";
   operator: keyof typeof QUERY_MONITOR_OPERATOR_LABELS;
@@ -63,7 +63,7 @@ function describeBreach(monitor: {
 /**
  * Run one source, returning a fallback and a flag rather than throwing.
  *
- * The flag is what reaches the screen — see the module note on why a silent
+ * The flag is what reaches the screen: see the module note on why a silent
  * fallback would be the worst possible behaviour here.
  */
 async function guard<T>(
@@ -142,7 +142,7 @@ export async function getWallboard(
     }),
 
     // Query monitors: what the data says, which is the half of an incident no
-    // metric reports. Both states that mean "not fine" go on the wall — a
+    // metric reports. Both states that mean "not fine" go on the wall: a
     // monitor that is breaching, and one whose query failed, because a monitor
     // that cannot run has told the room nothing and rendering that as green is
     // exactly the lie this feature exists to avoid. A monitor that has never
@@ -179,8 +179,8 @@ export async function getWallboard(
             label: row.name,
             detail:
               row.state === "breaching" ? describeBreach(row) : (row.lastError ?? "did not run"),
-            // The breach's own start is not kept — a monitor stores its last
-            // outcome, not a history — and inventing one from the streak would
+            // The breach's own start is not kept (a monitor stores its last
+            // outcome, not a history) and inventing one from the streak would
             // put a number on the wall that nothing backs.
             since: null,
           })),
@@ -294,7 +294,7 @@ export async function getWallboard(
       label: "Accounts syncing",
       // The denominator is accounts and the numerator subtracts *incidents*,
       // so an account with two broken resource types reads as more than one
-      // problem — which is what it is, and what the pager already says.
+      // problem, which is what it is, and what the pager already says.
       value: `${Math.max(0, accountResult.value.total - accountResult.value.broken.length)}/${accountResult.value.total}`,
       detail: accountResult.failed ? "could not be read" : null,
       status: accountResult.failed

@@ -62,7 +62,7 @@ describe("changeWindows — daily", () => {
     const monday = changeWindows("daily", "2026-08-10").map((w) => w.periodKey);
     const tuesday = changeWindows("daily", "2026-08-11").map((w) => w.periodKey);
     // Two of Monday's three windows are re-examined on Tuesday under
-    // identical keys — that is what lets the unique index absorb re-fires.
+    // identical keys: that is what lets the unique index absorb re-fires.
     expect(tuesday.filter((k) => monday.includes(k))).toEqual(["2026-08-08", "2026-08-09"]);
   });
 });
@@ -98,7 +98,7 @@ describe("changeWindows — monthly", () => {
   });
 
   it("clamps the prior window to the prior month's length", () => {
-    // 30 complete March days vs all 28 of February — day 30 does not exist.
+    // 30 complete March days vs all 28 of February: day 30 does not exist.
     const [w] = changeWindows("monthly", "2026-03-31");
     expect(w!.current).toEqual({ from: "2026-03-01", to: "2026-03-30" });
     expect(w!.previous).toEqual({ from: "2026-02-01", to: "2026-02-28" });

@@ -1,6 +1,6 @@
 /**
- * A Postgres double that is a *real* Drizzle database over a recording driver
- * — the Postgres counterpart of `fake-clickhouse.ts`, built on Drizzle's
+ * A Postgres double that is a *real* Drizzle database over a recording driver:
+ * the Postgres counterpart of `fake-clickhouse.ts`, built on Drizzle's
  * pg-proxy driver so every chain renders through the real dialect against the
  * real `db/schema.ts` tables. The hand-rolled chainable stubs this replaces
  * assert the test's idea of the query builder; this asserts the SQL and
@@ -20,7 +20,7 @@
  *   `new Date(value + "+0000")`, so a `Z`-suffixed ISO string SILENTLY
  *   becomes Invalid Date. Use `"2026-08-01 00:00:00.000"`-shaped strings, or
  *   a `Date` object (non-strings pass through untouched).
- * - Every statement consumes one FIFO slot — interleaved inserts/updates need
+ * - Every statement consumes one FIFO slot: interleaved inserts/updates need
  *   `queueRows([])` padding before the read that wants rows. `insert/update
  *   … returning(…)` decodes positionally like a select (method "all"); plain
  *   writes and raw `db.execute` return rows as-is (method "execute").
@@ -29,7 +29,7 @@
  *   "select")` for a call.
  *
  * `db.transaction` is shimmed flat (pg-proxy's own throws): the callback runs
- * against this same recording db, with no BEGIN/COMMIT captured — the shape
+ * against this same recording db, with no BEGIN/COMMIT captured; the shape
  * every hand stub faked too. Statements inside record and shadow-validate
  * individually. Transaction *semantics* (rollback on throw, savepoints,
  * `tx.rollback()`) are not modelled; the real-server postgres.test.ts suite
@@ -38,7 +38,7 @@
  * ## Shadow mode (`INFRAWRENCH_SHADOW_POSTGRES=1`)
  *
  * Every captured statement is also `PREPARE`d against the real DATABASE_URL
- * server and deallocated — never executed, so nothing is written and fixture
+ * server and deallocated, never executed, so nothing is written and fixture
  * params can reference rows that don't exist. That validates syntax, tables,
  * columns and parameter types against the migrated schema, which is exactly
  * what a chainable stub can never do. Run via `pnpm test:postgres:shadow`
@@ -69,7 +69,7 @@ function shadowConnection(): postgres.Sql | null {
 }
 
 async function shadowValidate(statement: string): Promise<void> {
-  // A real network round trip cannot complete under vi.useFakeTimers() —
+  // A real network round trip cannot complete under vi.useFakeTimers():
   // postgres.js's connection machinery schedules real timers, so the PREPARE
   // would hang until the test times out. Statements issued inside a
   // fake-timer window are skipped; in practice the same statements are also
@@ -129,7 +129,7 @@ export function fakePostgres(): FakePostgres {
     { schema },
   );
 
-  // Flat transaction shim — see the module comment.
+  // Flat transaction shim: see the module comment.
   Object.assign(db, {
     transaction: (fn: (tx: typeof db) => Promise<unknown>) => fn(db),
   });

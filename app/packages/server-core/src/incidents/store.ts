@@ -5,7 +5,7 @@
  * Slack or touches a status page. Composition lives one layer up, in web's
  * `services/incidents.ts`, so that the durable record of an incident can always
  * be written even when every integration it wanted to use is on fire. That
- * ordering — persist first, then attempt, then record the outcome — is the
+ * ordering (persist first, then attempt, then record the outcome) is the
  * whole partial-failure design, and it only works if this layer cannot fail for
  * an integration's reasons.
  *
@@ -64,7 +64,7 @@ function trimmedTitle(raw: unknown): string {
   // Control characters are stripped on the way in, not just on the way out:
   // this text is written by one org member and read by another on surfaces
   // that are not all HTML, and a terminal treats ANSI/CSI/OSC bytes as
-  // instructions. Defence in depth — the CLI sanitises again at its render
+  // instructions. Defence in depth: the CLI sanitises again at its render
   // boundary for rows written before this existed.
   const title = typeof raw === "string" ? stripControlCharacters(raw).trim() : "";
   if (!title) throw new IncidentInputError("An incident needs a title.");
@@ -88,7 +88,7 @@ function normalizeSummary(raw: unknown): string | null {
   return summary;
 }
 
-/** Dedupe, drop blanks, and cap — an id list is user input like any other. */
+/** Dedupe, drop blanks, and cap: an id list is user input like any other. */
 function normalizeIds(raw: readonly string[] | undefined, max: number, what: string): string[] {
   if (!raw) return [];
   const seen = new Set<string>();
@@ -191,7 +191,7 @@ export interface ListIncidentsOptions {
 
 /**
  * The org's incidents, newest first, each with its artefacts. One extra query
- * for artefacts and one for declarer names rather than N — a list of fifty
+ * for artefacts and one for declarer names rather than N: a list of fifty
  * incidents is three round trips.
  */
 export async function listIncidentRecords(
@@ -318,7 +318,7 @@ export async function listIncidentNoteRecords(incidentId: string): Promise<Incid
 
 /**
  * Persist the incident. This is the call that must succeed before any artefact
- * is attempted — everything else about a declaration is recoverable, and this
+ * is attempted: everything else about a declaration is recoverable, and this
  * is not.
  */
 export async function createIncidentRecord(
@@ -483,7 +483,7 @@ export interface ArtifactRecordInput {
   refSecondary?: string | null;
   error?: string | null;
   /**
-   * What was asked for. Recorded on **failure as well as success** — a retry
+   * What was asked for. Recorded on **failure as well as success**: a retry
    * that cannot see the original request is how a status-page notice loses the
    * components the operator picked and goes out against the whole page.
    */
@@ -494,7 +494,7 @@ export interface ArtifactRecordInput {
  * Write (or overwrite) the artefact of this kind for this incident.
  *
  * Upsert rather than insert because retrying a failed Slack post should replace
- * the failure, not queue a second row beside it — the unique index on
+ * the failure, not queue a second row beside it: the unique index on
  * (incident, kind) is what makes "did this incident open a freeze?" a
  * single-row question at resolve time.
  */
@@ -549,7 +549,7 @@ export async function closeIncidentArtifact(
  *
  * The status has to move to `close_failed` and not merely gain an error string.
  * An artefact left in `created` with an error attached is invisible to the
- * retry path, which selects on status — so the incident would sit resolved with
+ * retry path, which selects on status, so the incident would sit resolved with
  * a change freeze still blocking every destructive action in the org, or a
  * status page still telling customers there is an outage, and nothing in the
  * product able to finish the job. That is the same class of bug the create side

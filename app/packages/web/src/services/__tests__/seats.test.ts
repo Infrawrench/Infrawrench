@@ -23,7 +23,7 @@ const mockGetStripe = vi.fn(() => ({
 vi.mock("@/services/stripe", () => ({ getStripe: () => mockGetStripe() }));
 
 // Prepaid capacity is its own query against its own table, so it is stubbed
-// rather than threaded through selectSequence — these tests are about how seat
+// rather than threaded through selectSequence: these tests are about how seat
 // accounting combines the two sources, not about the slot query itself.
 const mockActiveCapacitySeats = vi.fn<() => Promise<number>>();
 vi.mock("@infrawrench/server-core/billing/capacity-slots", () => ({
@@ -141,7 +141,7 @@ describe("releaseSeat", () => {
 
   it("shrinks past the member count when prepaid slots cover those members", async () => {
     // 4 members remain but 3 are covered by prepaid slots, so only 1 needs a
-    // rented seat — the monthly floor is 1, not 4.
+    // rented seat: the monthly floor is 1, not 4.
     mockActiveCapacitySeats.mockResolvedValue(3);
     selectSequence([subRow()], [{ n: 4 }]);
     mockRetrieve.mockResolvedValue(stripeSub([{ id: "si_seats", quantity: 4 }]));
@@ -213,7 +213,7 @@ describe("checkSeatAvailability", () => {
 
   it("enforces prepaid capacity for an org with no subscription at all", async () => {
     // The gap this closes: a slot-only org is paid, so the invite route's plan
-    // gate lets it through — without capacity here it could invite without limit.
+    // gate lets it through; without capacity here it could invite without limit.
     mockActiveCapacitySeats.mockResolvedValue(2);
     selectSequence([], [{ n: 2 }], [{ n: 0 }]);
     expect(await checkSeatAvailability("org-1")).toEqual({

@@ -75,7 +75,7 @@ describe("TokenBucketRegistry", () => {
     const reg = new TokenBucketRegistry();
     const cfg = { capacity: 1, refillPerSecond: 1000 };
     expect(reg.tryTake("p", "a", cfg)).toBe(true);
-    // same instant — elapsed is 0 so no refill
+    // same instant: elapsed is 0 so no refill
     expect(reg.tryTake("p", "a", cfg)).toBe(false);
   });
 

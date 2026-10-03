@@ -1,5 +1,5 @@
 /**
- * Ephemeral environments — row access and wire assembly for templates,
+ * Ephemeral environments: row access and wire assembly for templates,
  * instances and the org's TTL rails.
  *
  * Every judgement about *what* a template means lives in
@@ -50,7 +50,7 @@ export class EnvironmentInputError extends Error {
 // ---------------------------------------------------------------------------
 
 /**
- * The org's TTL rails. Absent until someone changes them — a missing row
+ * The org's TTL rails. Absent until someone changes them: a missing row
  * normalizes into the shipped defaults rather than being seeded, so a new org
  * has working guardrails without a migration having to invent them.
  */
@@ -264,7 +264,7 @@ export async function updateEnvironmentTemplateRecord(
 
 /**
  * Delete a template. Live instances are deliberately **not** blocked and not
- * torn down — they own real resources with their own TTL, and the template is
+ * torn down: they own real resources with their own TTL, and the template is
  * only where they came from. `environment_instances.template_id` is set null
  * by the FK; the denormalized `template_name` is what the surface reads.
  */
@@ -420,7 +420,7 @@ export async function getEnvironmentInstance(
   return instanceToWire(row, await getInstanceMemberRows(row.id));
 }
 
-/** How many instances still own cloud resources — the per-org spend rail. */
+/** How many instances still own cloud resources: the per-org spend rail. */
 export async function countLiveInstances(organizationId: string): Promise<number> {
   const rows = await db
     .select({ id: environmentInstances.id })
@@ -455,7 +455,7 @@ export interface InsertInstanceInput {
 
 /**
  * Write the instance and **every** member row up front, all `pending`, in one
- * transaction — before a single provider call goes out.
+ * transaction: before a single provider call goes out.
  *
  * This is the ordering the whole feature rests on. If the plan is recorded
  * first, then a create that succeeds and a process that dies immediately
@@ -551,7 +551,7 @@ export async function markMemberLease(
 }
 
 /**
- * Record a member failure — and, when the provider already handed a resource
+ * Record a member failure, and, when the provider already handed a resource
  * back, its id, in the **same** statement.
  *
  * Splitting these was a way to lose a running resource: if the create

@@ -101,7 +101,7 @@ describe("runFanout host pinning", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // accountLabel's lookup — the only query an account target makes.
+    // accountLabel's lookup: the only query an account target makes.
     const limit = vi.fn().mockResolvedValue([{ displayName: "bastion" }]);
     const where = vi.fn().mockReturnValue({ limit });
     const from = vi.fn().mockReturnValue({ where });

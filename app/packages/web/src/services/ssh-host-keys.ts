@@ -9,7 +9,7 @@
  *
  * A swapped key on a known host throws `HostKeyMismatchError` (a subclass of
  * `HostKeyTrustRequiredError`) with both the stored and presented
- * fingerprints — the operator can compare them and explicitly accept the new
+ * fingerprints: the operator can compare them and explicitly accept the new
  * key.
  */
 import { sha256Fingerprint } from "@infrawrench/ssh-tunnel-core";
@@ -101,7 +101,7 @@ async function verifyHostKey(
 
 /**
  * Record (or replace) a pin after the user has explicitly accepted the
- * presented fingerprint. Idempotent — re-pinning the same fingerprint is a
+ * presented fingerprint. Idempotent: re-pinning the same fingerprint is a
  * no-op; pinning a different fingerprint replaces the existing row.
  */
 export async function trustHostKey(
@@ -132,7 +132,7 @@ export async function trustHostKey(
         fingerprint: presentedFingerprint,
       });
     } catch {
-      // Concurrent insert — re-read and check fingerprint matches.
+      // Concurrent insert: re-read and check fingerprint matches.
       const [raced] = await db
         .select({ fingerprint: sshHostKeys.fingerprint })
         .from(sshHostKeys)

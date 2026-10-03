@@ -13,7 +13,7 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * GET /api/org/:orgId/dependency-graph — the org's resource dependency graph.
+ * GET /api/org/:orgId/dependency-graph: the org's resource dependency graph.
  *
  * `?resourceId=` narrows it to one resource's direct neighbourhood. The
  * assembly itself lives in `services/dependency-graph.ts`, shared with the

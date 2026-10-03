@@ -7,7 +7,7 @@
  * second table and a crashed replica's monitors simply come due again.
  *
  * Pushing `next_run_at` forward **before** running is deliberate. The
- * alternative — run, then reschedule — means a monitor whose query hangs until
+ * alternative (run, then reschedule) means a monitor whose query hangs until
  * the process dies is claimed again immediately by the next replica, and a slow
  * query becomes a stampede against the customer's own database.
  */
@@ -132,7 +132,7 @@ async function runOne(monitor: ClaimedMonitor): Promise<boolean> {
  * Run every monitor that has come due.
  *
  * Never throws: the pass runs inside the poller loop and must not be able to
- * fail a tick. Monitors run **sequentially** rather than concurrently — each
+ * fail a tick. Monitors run **sequentially** rather than concurrently: each
  * one opens a connection to a customer database, and a batch fanned out in
  * parallel is a connection spike against somebody else's production.
  */

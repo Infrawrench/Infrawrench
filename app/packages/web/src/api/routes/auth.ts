@@ -13,7 +13,7 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/auth/me — return current session + onboarding status */
+/** GET /api/auth/me: return current session + onboarding status */
 app.get("/me", async (c) => {
   const session = c.get("session");
 
@@ -39,13 +39,13 @@ app.get("/me", async (c) => {
   });
 });
 
-/** GET /api/auth/orgs — list all orgs the user belongs to */
+/** GET /api/auth/orgs: list all orgs the user belongs to */
 app.get("/orgs", async (c) => {
   const session = c.get("session");
 
-  // Deliberately carries no trial deadline. A trial org has no human members —
+  // Deliberately carries no trial deadline. A trial org has no human members:
   // an agent opens it alone, agents cannot invite, and claiming clears
-  // `trialExpiresAt` in the same statement that precedes adding the claimer —
+  // `trialExpiresAt` in the same statement that precedes adding the claimer,
   // so this endpoint could only ever report null for it. The people who need
   // that deadline get it where they actually are: the agent, from
   // `trial_expires_in_ms` on every `/api/agent/identity` poll (and it is told
@@ -63,7 +63,7 @@ app.get("/orgs", async (c) => {
   return c.json(rows);
 });
 
-/** POST /api/auth/sign-out — clear the session cookie */
+/** POST /api/auth/sign-out: clear the session cookie */
 app.post("/sign-out", async (c) => {
   deleteCookie(c, "wos-session", { path: "/" });
   return c.json({ ok: true });

@@ -1,7 +1,7 @@
 /**
  * Per-million-token pricing for AI usage, by model. Base rates are provider
  * list prices (USD per million tokens) multiplied by a fixed 1.5x platform
- * markup — the charge is always exactly 1.5x what the API bills us, nothing
+ * markup: the charge is always exactly 1.5x what the API bills us, nothing
  * configurable. Unknown models fall back to the most expensive tier so we never
  * undercharge.
  *
@@ -49,8 +49,8 @@ export interface TokenUsage {
 
 /**
  * Per-search fees, USD per single web search query, before markup. Both search
- * backends bill per query rather than per request — one call to the search tool
- * can fan out into several — so the unit here is the query, counted from what
+ * backends bill per query rather than per request (one call to the search tool
+ * can fan out into several) so the unit here is the query, counted from what
  * the backend reports it actually ran.
  *
  * These are on top of the sub-model's token cost, which prices through
@@ -58,7 +58,7 @@ export interface TokenUsage {
  *
  * Known imprecision, deliberate: Google gives 5,000 free search queries a month
  * aggregated across Gemini 3 models, and that allowance belongs to the Google
- * Cloud project — one pool shared by every organization on the deployment, with
+ * Cloud project; one pool shared by every organization on the deployment, with
  * no way to attribute a share of it to the org that used it. Rather than invent
  * an allocation, we charge from the first query, so early-month searches are
  * billed at list while the platform is still inside the free allowance. It is

@@ -54,7 +54,7 @@ export interface NetworkFlowCollectionResult {
 }
 
 /**
- * Collect flows for one account. Throws on failure — the caller (the poller
+ * Collect flows for one account. Throws on failure: the caller (the poller
  * pass) owns backoff and reschedule, exactly as `collectAccountCosts` does.
  *
  * `lease`, when supplied, is the claim that entitles this process to spend the
@@ -134,14 +134,14 @@ export async function collectAccountNetworkFlows(
   for (const day of days) {
     // The gate in front of the money. Every iteration of this loop is at least
     // one provider query the customer is billed for, and `MAX_DAYS_PER_PASS`
-    // bounds how many of them there are but not how long they take — a day is a
+    // bounds how many of them there are but not how long they take: a day is a
     // serial walk over every usable flow log on the account, each one a query
     // with its own multi-minute timeout, so a single day can outlast the lease
     // it was started under. Asking here means the lease is re-asserted against
     // the database immediately before each spend, and answered against the last
     // deadline the database actually acknowledged: a pass that is out of
-    // authorized time — its runtime budget spent, or its lease no longer
-    // confirmed far enough ahead — stops with its watermark intact and the rest
+    // authorized time (its runtime budget spent, or its lease no longer
+    // confirmed far enough ahead) stops with its watermark intact and the rest
     // of the backlog waits for the next pass, and a pass that has lost the
     // lease outright throws rather than scanning days a second replica is
     // already scanning.
@@ -156,7 +156,7 @@ export async function collectAccountNetworkFlows(
     // And the gate that travels with the money: a day is not a bounded unit, so
     // the entitlement is handed to the plugin rather than only checked before
     // it. It is withdrawn if the lease is lost, or if the last deadline this
-    // process could confirm is about to pass — see `./lease.ts`.
+    // process could confirm is about to pass: see `./lease.ts`.
     let fetched: NetworkFlowRecord[] | NetworkFlowFetchResult;
     try {
       fetched = await client.fetchNetworkFlows(accountId, {

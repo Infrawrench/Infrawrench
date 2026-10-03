@@ -1,5 +1,5 @@
 /**
- * Change-based cost alert arithmetic — **pure**. No db, no ClickHouse, no
+ * Change-based cost alert arithmetic: **pure**. No db, no ClickHouse, no
  * clock of its own (callers pass "today"), which is what makes the window
  * definitions and threshold rules exhaustively testable.
  *
@@ -16,22 +16,22 @@
  * ## Windows, exactly
  *
  * All windows are inclusive complete UTC days. The current (accruing) day is
- * never part of any window — a partial day always reads as a dip.
+ * never part of any window: a partial day always reads as a dip.
  *
- * - `daily` — one complete day `D` vs **the same weekday one week earlier**
+ * - `daily`: one complete day `D` vs **the same weekday one week earlier**
  *   (`D-7`). Not `D-1`: most estates have weekday seasonality, and comparing
  *   Monday to Sunday would fire every week. Each complete day inside the
  *   restatement horizon is its own window, keyed by `D`, so a day re-judged
  *   after late-arriving data uses the same key and the events-table unique
  *   index absorbs the re-fire.
- * - `weekly` — the last 7 complete days `[today-7, today-1]` vs the 7
+ * - `weekly`: the last 7 complete days `[today-7, today-1]` vs the 7
  *   complete days before them `[today-14, today-8]`. The window slides as
  *   days complete; the period key is the ISO week of the window's *end* day,
  *   so a sustained change fires once per calendar week, not once per day.
- * - `monthly` — month-to-date, meaning the current month's complete days
+ * - `monthly`: month-to-date, meaning the current month's complete days
  *   `[1st, today-1]`, vs **the same number of days from the start of the
  *   prior month** (clamped to that month's length: 30 March days compare to
- *   all 28 of February). Never MTD vs the *full* prior month — that classic
+ *   all 28 of February). Never MTD vs the *full* prior month: that classic
  *   mistake compares 9 days to 31 and reads "down 70%" until the month is
  *   nearly over. On the 1st there are no complete days yet and there is no
  *   window at all. The period key is the month, so one month fires once.
@@ -39,19 +39,19 @@
  * ## Thresholds
  *
  * A percent threshold, an absolute (cents) threshold, or both. When both are
- * set **both must hold** — that is the design, not an accident: percent alone
+ * set **both must hold**; that is the design, not an accident: percent alone
  * pages someone about a 50% jump on $2 of spend, absolute alone pages about a
  * 0.4% wobble on a huge bill. Direction filters which sign of movement counts.
  *
  * ## Groups that appear and disappear
  *
  * - Present now, absent in the prior window: **new spend**. The percent
- *   change is infinite, not a number — `changePercent` is `null`, any percent
+ *   change is infinite, not a number: `changePercent` is `null`, any percent
  *   threshold is treated as satisfied (an infinite change exceeds every
  *   percent), and the absolute threshold still applies. An alert with only a
  *   percent threshold therefore flags every new group, however small; the
  *   editor nudges users toward an absolute floor for exactly this reason.
- * - Absent now, present before: **gone** — a -100% change with
+ * - Absent now, present before: **gone**; a -100% change with
  *   `changePercent: -100`, judged like any other decrease.
  * - Absent in both: nothing happened; no finding.
  *
@@ -59,7 +59,7 @@
  * currencies are never summed or compared against each other. `change-eval`
  * converts what it can into the org display currency *before* calling in;
  * a currency with no stated rate arrives unconverted and is compared in its
- * own currency — surfaced, never dropped.
+ * own currency: surfaced, never dropped.
  */
 import { addDays } from "./dates";
 
@@ -79,7 +79,7 @@ export interface ChangeWindow {
   current: DaySpan;
   previous: DaySpan;
   /**
-   * The cadence period this window belongs to — the events-table dedup key.
+   * The cadence period this window belongs to: the events-table dedup key.
    * The day for `daily`, `YYYY-Www` for `weekly`, `YYYY-MM` for `monthly`.
    */
   periodKey: string;
@@ -125,7 +125,7 @@ export function isoWeekKey(day: string): string {
 
 /**
  * The comparisons a cadence should run when evaluated on `today` (a UTC
- * `YYYY-MM-DD`). Empty when no complete window exists yet — the 1st of the
+ * `YYYY-MM-DD`). Empty when no complete window exists yet: the 1st of the
  * month for `monthly`.
  *
  * `daily` returns one window per complete day in the restatement horizon,
@@ -171,7 +171,7 @@ export function changeWindows(
       const days = daysInclusive(start, end);
       const prevStart = monthStart(addDays(start, -1));
       // Same number of days from the prior month's start, clamped to its
-      // length — 30 days of March compare to all 28 of February.
+      // length: 30 days of March compare to all 28 of February.
       const prevEndUnclamped = addDays(prevStart, days - 1);
       const prevEnd =
         prevEndUnclamped < monthEnd(prevStart) ? prevEndUnclamped : monthEnd(prevStart);
@@ -193,7 +193,7 @@ function daysInclusive(from: string, to: string): number {
   return Math.round((b - a) / 86_400_000) + 1;
 }
 
-/** The minimum a series needs for windowing — matches `CostSeriesGroup`. */
+/** The minimum a series needs for windowing: matches `CostSeriesGroup`. */
 export interface ChangeSeriesGroup {
   /** Group key; "" when the alert watches one ungrouped total. */
   key: string;
@@ -212,9 +212,9 @@ export interface ChangeGroupTotals {
 /**
  * Sum each group's points inside the two windows. Groups that never touch
  * either window vanish; a group with spend in exactly one window survives
- * with a zero on the other side — that zero is what the new/vanished rules
+ * with a zero on the other side: that zero is what the new/vanished rules
  * in {@link detectChanges} key on. Two input groups sharing (key, currency)
- * — as `convertGroups` can produce before merging — are folded together.
+ * (as `convertGroups` can produce before merging) are folded together.
  */
 export function windowTotals(
   groups: ChangeSeriesGroup[],
@@ -257,8 +257,8 @@ export interface ChangeFinding {
   previousAmountCents: number;
   currentAmountCents: number;
   /**
-   * Signed percent change, rounded. Null when the prior window had no spend
-   * — the change is infinite, and every surface says "new" instead of
+   * Signed percent change, rounded. Null when the prior window had no spend:
+   * the change is infinite, and every surface says "new" instead of
    * printing a made-up number. -100 when the group vanished.
    */
   changePercent: number | null;
@@ -278,7 +278,7 @@ export interface ChangeFinding {
  *   window): spend moving from -$50 to $100 is an increase.
  * - No prior spend at all (previous rounds to zero cents, current does not)
  *   is **new spend**: `changePercent` is null and a percent threshold is
- *   treated as satisfied — an infinite change exceeds any percent. The
+ *   treated as satisfied; an infinite change exceeds any percent. The
  *   absolute threshold still applies, which is what keeps a $0.30 new group
  *   from paging anyone whose alert carries a floor.
  * - When both thresholds are set, both must hold.

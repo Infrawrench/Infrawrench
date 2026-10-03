@@ -1,8 +1,8 @@
 /**
  * Period and schedule arithmetic for scheduled cost exports.
  *
- * Pure functions over civil (wall-clock) dates in an IANA zone — no database,
- * no ClickHouse — so the two rules that make an export reconcilable can be
+ * Pure functions over civil (wall-clock) dates in an IANA zone (no database,
+ * no ClickHouse) so the two rules that make an export reconcilable can be
  * tested directly:
  *
  *   1. **One object per period, always written whole.** A run that re-exports
@@ -55,7 +55,7 @@ export function periodContaining(cadence: CostExportCadence, isoDate: string): C
     }
     case "monthly": {
       const from = `${isoDate.slice(0, 7)}-01`;
-      // First of the next month, minus a day — avoids a month-length table.
+      // First of the next month, minus a day: avoids a month-length table.
       const [y, m] = from.split("-").map((n) => Number.parseInt(n, 10));
       const nextMonth =
         (m ?? 1) === 12
@@ -90,7 +90,7 @@ export interface PeriodWindowOptions {
  * were true on the 1st.
  *
  * `restatementDays: 0` degenerates to "just the period containing yesterday",
- * which is the no-restatement behaviour — correct only for an org whose
+ * which is the no-restatement behaviour: correct only for an org whose
  * providers never revise, and the reason the field defaults to 7 instead.
  *
  * Periods come back oldest-first so a consumer watching the destination sees
@@ -113,7 +113,7 @@ export function periodsToExport(opts: PeriodWindowOptions): CostExportPeriod[] {
       from: period.from,
       // A period still in progress is exported up to yesterday. Its key does
       // not change, so tomorrow's run replaces it with a longer version of the
-      // same object — that is the mechanism, not a special case.
+      // same object: that is the mechanism, not a special case.
       to: period.to < windowEnd ? period.to : windowEnd,
     });
     period = nextPeriod(opts.cadence, period);
@@ -124,7 +124,7 @@ export function periodsToExport(opts: PeriodWindowOptions): CostExportPeriod[] {
 /**
  * Offset between `tz` wall-clock and UTC at `instant`, in milliseconds.
  * Positive east of Greenwich. Derived by formatting the instant in the zone and
- * reading the result back as if it were UTC — the platform's tz database is the
+ * reading the result back as if it were UTC: the platform's tz database is the
  * only source of truth here, and the repo has no date library to reuse.
  */
 function zoneOffsetMs(instant: Date, timeZone: string): number {
@@ -157,7 +157,7 @@ function zoneOffsetMs(instant: Date, timeZone: string): number {
  * Two passes: guess the instant assuming UTC, look up the zone's offset at that
  * guess, correct, then look up again in case the correction crossed a DST
  * boundary. On the "spring forward" hour, which does not exist locally, this
- * lands on the instant the clock jumps to — an hour later than asked, which for
+ * lands on the instant the clock jumps to: an hour later than asked, which for
  * a nightly export is the right kind of wrong.
  */
 export function zonedInstant(isoDate: string, hour: number, timeZone: string): Date {

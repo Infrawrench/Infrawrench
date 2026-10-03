@@ -12,7 +12,7 @@
  * every fetch/parse failure is both logged with the plugin id + URL *and*
  * persisted to `provider_status_feeds.last_status`/`last_error`, with an
  * exponential backoff so a dead feed doesn't get hammered. A failure never
- * silently reports "no incidents" — the previous cache stays as-is.
+ * silently reports "no incidents": the previous cache stays as-is.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, lt, sql } from "drizzle-orm";
@@ -27,7 +27,7 @@ import { notifyOrgsOfIncidents } from "./notify.js";
  * upstream, and incident latency of a few minutes is fine for a banner. */
 const SUCCESS_INTERVAL_MS = 3 * 60 * 1000;
 
-/** Lease while a fetch is in flight — generous vs. the 20s fetch timeout. */
+/** Lease while a fetch is in flight: generous vs. the 20s fetch timeout. */
 const FEED_LEASE_MS = 5 * 60 * 1000;
 
 /** Feeds fetched per tick across all replicas (each fetch is one HTTP GET). */
@@ -49,7 +49,7 @@ async function statusFeedPlugins(): Promise<LoadedPlugin[]> {
 /**
  * Run one collection tick: ensure a feed row exists per capable plugin,
  * claim the due ones, and collect each. Individual feed failures are
- * contained — one broken provider never blocks the rest.
+ * contained: one broken provider never blocks the rest.
  */
 export async function runStatusFeedCollection(limit = FEEDS_PER_TICK): Promise<void> {
   const capable = await statusFeedPlugins();
@@ -70,7 +70,7 @@ export async function runStatusFeedCollection(limit = FEEDS_PER_TICK): Promise<v
   }
 }
 
-/** Same shape as `claimDueAccounts` — see `poller/src/claim.ts`. */
+/** Same shape as `claimDueAccounts`: see `poller/src/claim.ts`. */
 async function claimDueFeeds(pluginIds: string[], limit: number): Promise<string[]> {
   const rows = await db.execute(sql`
     UPDATE provider_status_feeds

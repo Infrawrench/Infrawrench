@@ -4,7 +4,7 @@
  * A key's effective permissions are its stored scopes intersected with its
  * owner's current role (`auth/effective-permissions.ts`), so an unlisted scope
  * is a 403 and nothing else. The dialog is the only way to mint a key, which
- * makes its list the real ceiling on what any key can do — and for a long time
+ * makes its list the real ceiling on what any key can do, and for a long time
  * it offered eleven strings out of sixty-four, which is how the Terraform
  * provider came to need `costs:read` / `costs:write` and be unable to get them.
  *

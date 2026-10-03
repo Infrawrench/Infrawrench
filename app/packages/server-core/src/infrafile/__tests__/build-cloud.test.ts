@@ -53,7 +53,7 @@ describe("parseWrappedOutput", () => {
   });
 
   it("returns null when the step died before reporting", () => {
-    // No markers — the caller then falls back to the build's own verdict
+    // No markers: the caller then falls back to the build's own verdict
     // rather than inventing an exit code.
     expect(parse(log(["container failed to start"]), N)).toBeNull();
   });

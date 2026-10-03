@@ -1,5 +1,5 @@
 /**
- * Browser-side DeploymentClient — org-scoped `/api/org/:orgId/deployments`.
+ * Browser-side DeploymentClient: org-scoped `/api/org/:orgId/deployments`.
  *
  * Everything that answers in one shot goes over fetch. The full deploy goes
  * over the websocket, because `select(...)` needs a live round trip and a build

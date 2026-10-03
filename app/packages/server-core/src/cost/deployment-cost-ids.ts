@@ -11,13 +11,13 @@
 /** Tag key stamped on every hosted-build row. Reserved from user tags. */
 export const DEPLOYMENT_COST_TAG = "infrawrench:deployment";
 
-/** `plugin_id` for hosted-build rows — the "Deployments" provider dimension. */
+/** `plugin_id` for hosted-build rows: the "Deployments" provider dimension. */
 export const DEPLOYMENT_COST_PLUGIN_ID = "deployment";
 
 /** Provider-dimension display name for {@link DEPLOYMENT_COST_PLUGIN_ID}. */
 export const DEPLOYMENT_COST_PROVIDER_LABEL = "Deployments";
 
-/** `service` on every hosted-build row — what the service dimension shows. */
+/** `service` on every hosted-build row: what the service dimension shows. */
 export const HOSTED_BUILD_SERVICE = "Hosted builds";
 
 /** Prefix of the synthetic `account_id` hosted-build rows are grouped under. */
@@ -27,8 +27,8 @@ const DEPLOYMENT_ACCOUNT_PREFIX = "deployment:";
  * The synthetic cost account id for one deployment environment.
  *
  * Per-environment rather than per-org so the account dimension answers the
- * question people actually ask of build spend — "how much is staging costing
- * us?" — without needing a tag filter.
+ * question people actually ask of build spend ("how much is staging costing
+ * us?") without needing a tag filter.
  */
 export function deploymentCostAccountId(env: string): string {
   return `${DEPLOYMENT_ACCOUNT_PREFIX}${env}`;
@@ -43,8 +43,8 @@ export function envFromCostAccountId(accountId: string): string | null {
 
 /**
  * Labels for the synthetic `deployment:<env>` cost accounts. Like the external
- * ones and unlike workflows there is no row to look up — the environment name
- * IS the label — so this is purely local; without it the account picker shows a
+ * ones and unlike workflows there is no row to look up (the environment name
+ * IS the label) so this is purely local; without it the account picker shows a
  * raw `deployment:prod` id.
  */
 export function deploymentCostAccountLabels(values: string[]): Map<string, string> {

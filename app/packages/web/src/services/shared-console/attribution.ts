@@ -25,7 +25,7 @@ export function recordingParticipantsOf(
     seen.set(p.userId, {
       userId: p.userId,
       userName: p.userName,
-      // Highest role held, not current role — see the note above.
+      // Highest role held, not current role: see the note above.
       role: before?.role === "driver" || p.role === "driver" ? "driver" : "observer",
       joinedAt: (before ? new Date(before.joinedAt) : p.joinedAt).toISOString(),
       leftAt: p.leftAt ? p.leftAt.toISOString() : null,

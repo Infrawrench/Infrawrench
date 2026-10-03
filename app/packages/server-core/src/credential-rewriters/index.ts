@@ -6,7 +6,7 @@ const rewriters: CredentialRewriter[] = [sshTunnelRewriter];
 /**
  * Register an additional rewriter. Rewriters run in registration order, so
  * later registrations see credentials already mutated by earlier ones. Use
- * this to plug in transports that depend on a tunneled base (rare — most
+ * this to plug in transports that depend on a tunneled base (rare: most
  * rewriters operate on the raw credential values).
  */
 export function registerCredentialRewriter(rewriter: CredentialRewriter): void {

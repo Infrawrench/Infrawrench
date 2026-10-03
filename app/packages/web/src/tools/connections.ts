@@ -1,5 +1,5 @@
 /**
- * UI-parity tools — exposes SQL, KV, Docker, SSH-exec, storage, secret-version,
+ * UI-parity tools: exposes SQL, KV, Docker, SSH-exec, storage, secret-version,
  * and credential-export operations as agent-callable tools. Wraps the same
  * services that back `/api/...` routes used by the React UI.
  */
@@ -351,8 +351,8 @@ export function connectionTools(): ToolDefinition[] {
 
         // SSRF: `sshHost` is whatever the tool call said. MCP exposes every
         // tool regardless of `risk` (see tools/types.ts), so this is reachable
-        // by an API key holding nothing but `resources:execute` — the same
-        // permission the WebSocket terminal needs — and it takes no DNS
+        // by an API key holding nothing but `resources:execute` (the same
+        // permission the WebSocket terminal needs) and it takes no DNS
         // trickery at all, just typing 169.254.169.254. Vet it and dial the
         // address that cleared, exactly as /ssh-tunnels/exec does.
         //
@@ -360,7 +360,7 @@ export function connectionTools(): ToolDefinition[] {
         // when the host about to be dialed is the one the caller named. When
         // the plugin supplies the endpoint (Fly, Hetzner, an SSH account's
         // stored credentials) `resolveSshConfig` ignores `sshHost` entirely,
-        // and that host is configuration written with `accounts:write` — the
+        // and that host is configuration written with `accounts:write`: the
         // same trust tier as every SQL and Docker credential host this server
         // already dials unguarded, including `docker_command` above. See the
         // SSH SSRF section in KNOWLEDGE.md for why that line sits there.

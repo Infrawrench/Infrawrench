@@ -79,8 +79,8 @@ describe("Audit routes", () => {
 
   /**
    * "Which key did this?" is the question an operator asks after a credential
-   * leaks. `userId` cannot answer it — a person and every key they minted share
-   * one user id — so the filter has to be on the key itself.
+   * leaks. `userId` cannot answer it (a person and every key they minted share
+   * one user id) so the filter has to be on the key itself.
    */
   it("filters by apiKeyId", async () => {
     const { entriesWhere } = setup([], 0);

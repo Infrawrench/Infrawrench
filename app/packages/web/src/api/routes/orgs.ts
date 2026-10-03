@@ -13,7 +13,7 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** POST /api/orgs — create a new organization */
+/** POST /api/orgs: create a new organization */
 app.post("/", async (c) => {
   const session = c.get("session");
   const { displayName } = await c.req.json<{ displayName: string }>();

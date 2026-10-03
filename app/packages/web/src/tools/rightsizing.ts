@@ -1,5 +1,5 @@
 /**
- * Right-sizing tool — the MCP/chat view of the savings finder's "Oversized"
+ * Right-sizing tool: the MCP/chat view of the savings finder's "Oversized"
  * section. Read-only: applying a recommendation goes through the ordinary
  * resource-update path (the web/desktop Apply button), which is what carries
  * change-freeze enforcement and audit logging.

@@ -10,7 +10,7 @@ import { changeFreezes } from "./db/schema";
  * a freeze: a scheduled stop/start during a freeze window is skipped and
  * surfaced as `skipped_freeze`, never silently executed.
  *
- * "In effect" = active AND started AND not past its end — computed, never
+ * "In effect" = active AND started AND not past its end: computed, never
  * stored, so ending or extending a freeze applies immediately.
  */
 

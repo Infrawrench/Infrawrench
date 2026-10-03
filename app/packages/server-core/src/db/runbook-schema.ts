@@ -3,8 +3,8 @@
  * record of who did what.
  *
  * Three tables, and the split between the last two is the load-bearing
- * decision. A run's steps could have been one jsonb column on the run — the
- * runbook's own steps are exactly that — but two responders working the same
+ * decision. A run's steps could have been one jsonb column on the run (the
+ * runbook's own steps are exactly that) but two responders working the same
  * incident tick different steps at the same time, and a read-modify-write of a
  * shared jsonb loses whichever update lands second. Per-step rows make each
  * tick an independent `UPDATE`, so the failure mode simply cannot occur.
@@ -31,7 +31,7 @@ import { organizations, users } from "./core-schema.js";
 /**
  * The stored shape of a step. Structurally the client-core `RunbookStep`, and
  * spelled with explicit `| undefined` so it stays assignable from it under
- * `exactOptionalPropertyTypes` — the schema deliberately does not import from
+ * `exactOptionalPropertyTypes`: the schema deliberately does not import from
  * client-core, since a db module's only dependency is `core-schema`.
  */
 interface StoredRunbookStep {
@@ -50,7 +50,7 @@ interface StoredRunbookStep {
  * short opaque identifiers with no commas, only ever read whole.
  *
  * `createdByUserId` is nulled rather than cascaded when the user leaves. The
- * org's runbook outlives whoever typed it in — and unlike most authored rows,
+ * org's runbook outlives whoever typed it in, and unlike most authored rows,
  * this one is read *by strangers under pressure*, so losing it because someone
  * offboarded would be the worst-timed data loss in the product.
  */
@@ -70,7 +70,7 @@ export const runbooks = pgTable(
     tagKey: text("tag_key"),
     tagValue: text("tag_value"),
     /**
-     * Off keeps the row and hides it from the "what applies here" lookup — the
+     * Off keeps the row and hides it from the "what applies here" lookup: the
      * schedules `paused` stance. Retiring a runbook must not cost you the
      * history of the runs performed against it.
      */
@@ -105,7 +105,7 @@ export const runbookRuns = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     /**
      * Cascade-deleted with the runbook, unlike the incident link. Deleting a
-     * runbook is an explicit "this procedure is gone" — keeping orphan runs
+     * runbook is an explicit "this procedure is gone": keeping orphan runs
      * whose steps reference a document nobody can read would be worse than
      * losing them, and `enabled: false` exists precisely so nobody has to.
      */
@@ -143,7 +143,7 @@ export const runbookRuns = pgTable(
  *
  * `title` and `kind` are snapshots of the step as it was when the run started.
  * A postmortem that renders today's wording against last month's run is not
- * merely stale — it is quietly wrong about what somebody was asked to do.
+ * merely stale: it is quietly wrong about what somebody was asked to do.
  */
 export const runbookRunSteps = pgTable(
   "runbook_run_steps",
@@ -171,7 +171,7 @@ export const runbookRunSteps = pgTable(
   },
   (t) => ({
     runIdx: index("runbook_run_steps_run_idx").on(t.runId, t.position),
-    /** One row per step per run — what makes a tick an idempotent update. */
+    /** One row per step per run: what makes a tick an idempotent update. */
     runStepUnique: uniqueIndex("runbook_run_steps_run_step_unique").on(t.runId, t.stepId),
   }),
 );

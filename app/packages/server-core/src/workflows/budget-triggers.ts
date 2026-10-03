@@ -3,7 +3,7 @@
  *
  * Cost data only moves when the poller collects it, so evaluation piggybacks on
  * the same pass that fires budget alert pages (`cost/budget-eval.ts`) and reuses
- * the month status it already computed — no extra ClickHouse queries.
+ * the month status it already computed: no extra ClickHouse queries.
  *
  * Firing exactly once per month is enforced with a conditional UPDATE on
  * `workflows.budget_last_fired_key` rather than a marker table: the key encodes
@@ -51,7 +51,7 @@ export interface BudgetTriggerWorkflow {
 }
 
 /**
- * Enabled workflows in the org that watch a budget. Returns `[]` on failure —
+ * Enabled workflows in the org that watch a budget. Returns `[]` on failure:
  * a broken query here must never take down the budget-alert pass.
  */
 export async function listBudgetTriggerWorkflows(
@@ -109,7 +109,7 @@ export async function fireBudgetTriggerWorkflows(opts: {
           : DEFAULT_BUDGET_TRIGGER_PERCENT;
 
       const observed = observedCents(status, metric);
-      // A null forecast means there wasn't enough data to fit one — that is not
+      // A null forecast means there wasn't enough data to fit one: that is not
       // the same as "spend is zero", so don't treat it as below the threshold.
       if (observed === null || observed === 0) continue;
       if (observed < Math.round((budget.amountCents * percent) / 100)) continue;
@@ -144,7 +144,7 @@ export async function fireBudgetTriggerWorkflows(opts: {
       };
 
       // Imported lazily: this module is reached from the cost/budget path,
-      // which the web server pulls in for plain budget reads — the runner drags
+      // which the web server pulls in for plain budget reads; the runner drags
       // in the QuickJS sandbox, and only an actual crossing needs it.
       const { runOrgWorkflow } = await import("./runner.js");
       await runOrgWorkflow({

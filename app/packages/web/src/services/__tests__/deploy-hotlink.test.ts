@@ -4,7 +4,7 @@ import { parseRepoPath } from "../../routes/deploy.$";
 
 /**
  * The hotlink is meant to survive being pasted from an address bar, a git
- * remote, or a chat client that helpfully appended punctuation — so the shapes
+ * remote, or a chat client that helpfully appended punctuation, so the shapes
  * it accepts are the point rather than an implementation detail.
  */
 describe("parseRepoPath", () => {

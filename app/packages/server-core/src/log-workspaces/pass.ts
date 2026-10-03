@@ -1,5 +1,5 @@
 /**
- * The poller's log-alert pass — periodically evaluates alert-enabled saved
+ * The poller's log-alert pass: periodically evaluates alert-enabled saved
  * log queries by fetching a bounded tail of each stream through the same
  * plugin `getLogs` contract the workspace UI uses, and notifies on match.
  *
@@ -15,13 +15,13 @@
  *   superseded run's completion matches nothing.
  * - **Bounded lookback.** Each stream fetch is capped at
  *   `LOG_WORKSPACE_LIMITS.alertTailLines` tail lines and match counting stops
- *   at `alertMatchCap` — a pathological log volume can never make an
+ *   at `alertMatchCap`: a pathological log volume can never make an
  *   evaluation unbounded.
  * - **Cooldown.** A notification is dispatched at most once per
  *   `alertCooldownMs` per query (`last_alerted_at`), so a query that keeps
  *   matching reports "still matching" on the next cooldown boundary instead
  *   of re-firing every pass. `last_alerted_at` is only stamped when at least
- *   one channel actually delivered — the anomaly-pipeline rule.
+ *   one channel actually delivered: the anomaly-pipeline rule.
  * - **Failures are never silent.** Per-stream failures are aggregated into
  *   `last_eval_error` (surfaced in every saved-query list) and logged with a
  *   `[log-match]` prefix; one query's failure never blocks the rest of the
@@ -67,7 +67,7 @@ interface ClaimedQuery {
   claimToken: string;
 }
 
-/** Claim due, alert-enabled queries — the `claimDueAccounts` protocol. */
+/** Claim due, alert-enabled queries: the `claimDueAccounts` protocol. */
 async function claimDueQueries(limit: number): Promise<ClaimedQuery[]> {
   const rows = await db.execute(sql`
     UPDATE log_workspace_queries
@@ -90,7 +90,7 @@ async function claimDueQueries(limit: number): Promise<ClaimedQuery[]> {
   }));
 }
 
-/** WHERE fragment shared by the completion writes — see the module header. */
+/** WHERE fragment shared by the completion writes: see the module header. */
 function claimGuard(rowId: string, claimToken: string) {
   return and(
     eq(logWorkspaceQueries.id, rowId),
@@ -143,7 +143,7 @@ interface StreamMatchResult {
 
 /**
  * Display names for the query's resources; missing rows report as gone. A
- * sidecar selector's stream is never a stored row — the anchor is its parent
+ * sidecar selector's stream is never a stored row: the anchor is its parent
  * (whose outputs mint the peer client), so the lookup keys on the parent id
  * and the stream name is derived from the peer resource id's tail.
  */
@@ -265,7 +265,7 @@ async function evaluateQuery(
     return { matched: false, notified: false, failed: true };
   }
   if (search.matchAll) {
-    // An empty expression matches every line — alerting on it would fire
+    // An empty expression matches every line: alerting on it would fire
     // forever. The store rejects this combination; a legacy row degrades to
     // a recorded error instead of a notification storm.
     await completeEval(row, now, claimToken, {
@@ -365,7 +365,7 @@ async function evaluateQuery(
 
 /**
  * One log-alert tick: claim due queries and evaluate them. Every query is
- * individually guarded — one failure never blocks the rest of the batch, and
+ * individually guarded: one failure never blocks the rest of the batch, and
  * nothing here throws into the poller's tick.
  */
 export async function runLogAlertPass(

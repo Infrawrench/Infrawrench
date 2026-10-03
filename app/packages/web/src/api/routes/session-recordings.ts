@@ -4,7 +4,7 @@
  *
  * Reading is `session-recordings:read`; changing the org's recording policy or
  * deleting a tape is `session-recordings:write`. Neither is in the `member`
- * system role — see the note in the permission catalog.
+ * system role: see the note in the permission catalog.
  *
  * Every route here is audit-logged, including the reads. That is unusual in
  * this codebase and deliberate: the only thing worse than an unwatched
@@ -53,7 +53,7 @@ function parseInstant(raw: string | undefined): Date | undefined | null {
   return Number.isNaN(at.getTime()) ? null : at;
 }
 
-/** GET / — the org's recordings, newest first. */
+/** GET /: the org's recordings, newest first. */
 app.get("/", async (c) => {
   requirePermission(c, "session-recordings:read");
   const rawStatus = c.req.query("status");
@@ -80,7 +80,7 @@ app.get("/", async (c) => {
 });
 
 /**
- * GET /settings — the org's recording policy plus what it currently stores.
+ * GET /settings: the org's recording policy plus what it currently stores.
  *
  * Usage rides along with the policy rather than sitting on its own route
  * because the only question anyone asks about retention is "and what is that
@@ -104,7 +104,7 @@ const settingsSchema = z
   })
   .strict();
 
-/** PUT /settings — partial update of the org's recording policy. */
+/** PUT /settings: partial update of the org's recording policy. */
 app.put("/settings", async (c) => {
   requirePermission(c, "session-recordings:write");
   const parsed = settingsSchema.safeParse(await c.req.json().catch(() => null));
@@ -125,7 +125,7 @@ app.put("/settings", async (c) => {
   return c.json({ ...after, usage });
 });
 
-/** GET /:id — one recording's metadata (no payload). */
+/** GET /:id: one recording's metadata (no payload). */
 app.get("/:id", async (c) => {
   requirePermission(c, "session-recordings:read");
   const recording = await getSessionRecording(orgId(c), c.req.param("id"));
@@ -134,7 +134,7 @@ app.get("/:id", async (c) => {
 });
 
 /**
- * GET /:id/cast — the asciicast v2 document.
+ * GET /:id/cast: the asciicast v2 document.
  *
  * Served as `text/plain` with a `Content-Disposition` filename so the same URL
  * is both what the in-app player fetches and what an auditor saves to disk and
@@ -177,7 +177,7 @@ app.get("/:id/cast", async (c) => {
   });
 });
 
-/** DELETE /:id — remove one recording and its chunks. */
+/** DELETE /:id: remove one recording and its chunks. */
 app.delete("/:id", async (c) => {
   requirePermission(c, "session-recordings:write");
   const id = c.req.param("id");

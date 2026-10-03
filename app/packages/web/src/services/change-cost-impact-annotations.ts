@@ -1,7 +1,7 @@
 /**
  * Pin a change's or a deploy's cost impact onto the cost graphs.
  *
- * The impact itself is never stored — `cost/change-impact-load.ts` recomputes
+ * The impact itself is never stored: `cost/change-impact-load.ts` recomputes
  * it on every read so late-arriving and restated provider cost keeps moving the
  * number. What this writes is a **cost annotation**: a dated note the charts
  * already draw, so "the run rate stepped up here, and this is why" appears on
@@ -14,7 +14,7 @@
  * week later once the provider has finished restating, and without the link
  * every restatement would leave another marker on the same day.
  *
- * The note's **date is not rewritten** on a re-pin, and neither is its scope —
+ * The note's **date is not rewritten** on a re-pin, and neither is its scope:
  * the same rule anomaly re-acknowledgement follows, and for the same reason:
  * somebody may have widened or moved it deliberately. Only the text changes.
  *
@@ -97,7 +97,7 @@ async function resolveSubject(
   const deployment = await loadDeploymentCostImpact(organizationId, request.subjectId, options);
   if (!deployment) return null;
   const label = await describeDeploymentSubject(organizationId, request.subjectId);
-  // A deploy has no single impact — it has a breakdown. The note carries the
+  // A deploy has no single impact: it has a breakdown. The note carries the
   // sum, with the same rule the API applies: unknown resources contribute
   // nothing rather than zero, and the confidence is the weakest contributor's.
   const rolled = sumChangeCostImpacts(deployment.resources.map((r) => r.impact));
@@ -131,7 +131,7 @@ export class ChangeImpactAnnotationError extends Error {}
  * Write (or reword) the annotation for one subject.
  *
  * Returns null when the subject does not belong to the org. Throws
- * {@link ChangeImpactAnnotationError} when there is nothing worth annotating —
+ * {@link ChangeImpactAnnotationError} when there is nothing worth annotating:
  * an unmeasurable impact must not become a note saying "$0", which is the
  * failure this whole feature is arranged to avoid.
  */
@@ -183,7 +183,7 @@ export async function writeChangeImpactAnnotation(
     );
 
     // Attaching is a compare-and-swap on the still-null column, not a plain
-    // UPDATE — the same conditional-UPDATE protocol the deployment-trigger and
+    // UPDATE: the same conditional-UPDATE protocol the deployment-trigger and
     // digest claims use. Two writers can hold the same freshly claimed link
     // (the claim above only agrees on the row, not on who fills it), and only
     // the one that moves the column off null owns the note it just wrote.
@@ -201,7 +201,7 @@ export async function writeChangeImpactAnnotation(
     if (won) return { annotationId: created.id, impact: resolved.impact, text };
 
     // Somebody attached first. Ours must not survive as a second marker on the
-    // same day — that is the whole reason this link table exists — so it is
+    // same day (that is the whole reason this link table exists) so it is
     // deleted and the winner's note is reworded instead. Both writers then
     // agree on one note carrying the same text.
     await deleteCostAnnotation(organizationId, created.id);

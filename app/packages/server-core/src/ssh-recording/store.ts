@@ -23,10 +23,10 @@ export type { RecordingParticipant };
  * list view calls it abandoned.
  *
  * A session whose web replica was killed never gets its closing write, and a
- * row left saying "recording" forever is worse than useless — it is a live
+ * row left saying "recording" forever is worse than useless: it is a live
  * session that is not live. Two minutes is well clear of the recorder's 60s
- * idle heartbeat (and its 5s chunk flush), so a genuinely live session — even
- * a quiet shell with no I/O — is never mislabelled.
+ * idle heartbeat (and its 5s chunk flush), so a genuinely live session (even
+ * a quiet shell with no I/O) is never mislabelled.
  */
 const ABANDONED_AFTER_MS = 2 * 60 * 1000;
 
@@ -59,7 +59,7 @@ export interface SessionRecordingSummary {
    * Everyone who was attached, and the highest role each held.
    *
    * Null or empty for an ordinary solo session. Once a session can be shared,
-   * `userId` alone stops answering "whose hands were on this box" — this is
+   * `userId` alone stops answering "whose hands were on this box": this is
    * what does, and it is a snapshot rather than a join so it still names
    * people who have since left the organization.
    */
@@ -83,8 +83,8 @@ export interface ListSessionRecordingsOptions {
  *
  * Derived rather than written back on the list path: a sweep that rewrote the
  * column would race the recorder's own closing update on a session that was
- * merely idle. Activity is `last_activity_at` (chunk flush or idle heartbeat)
- * — never the session start alone.
+ * merely idle. Activity is `last_activity_at` (chunk flush or idle heartbeat),
+ * never the session start alone.
  */
 function toSummary(
   row: typeof sshSessionRecordings.$inferSelect,
@@ -260,7 +260,7 @@ export async function getSessionRecordingUsage(
       recordingCount: sql<number>`count(*)::int`,
       capturedBytes: sql<number>`coalesce(sum(${sshSessionRecordings.outputBytes}), 0)::bigint`,
       // Raw aggregate, so drizzle's timestamp mapping never runs; the driver
-      // returns the zoneless wire string — see `rawTimestampToDate`.
+      // returns the zoneless wire string: see `rawTimestampToDate`.
       oldestStartedAt: sql<Date | string | null>`min(${sshSessionRecordings.startedAt})`,
     })
     .from(sshSessionRecordings)

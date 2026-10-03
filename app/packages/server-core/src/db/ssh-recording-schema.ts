@@ -4,7 +4,7 @@
  * Cloud-mode SSH already goes through the server (`services/ssh-proxy.ts`
  * bridges the browser's WebSocket to ssh2), so every byte of the pty is
  * already in our hands. Recording is therefore a tee on a stream we hold, not
- * an agent on the customer's host — which is the whole reason this is cheap
+ * an agent on the customer's host, which is the whole reason this is cheap
  * for us and expensive for everyone else.
  *
  * Casts are stored in the shape asciinema already defined
@@ -52,7 +52,7 @@ export interface RecordingParticipant {
 }
 
 /**
- * Per-org recording policy. Absent row means "not recording" — recording is
+ * Per-org recording policy. Absent row means "not recording": recording is
  * opt-in, never a default, because a terminal capture is a wiretap on your own
  * staff and turning that on is a decision an organization makes deliberately.
  */
@@ -68,7 +68,7 @@ export const orgSessionRecordingSettings = pgTable("org_session_recording_settin
    * Off by default and separate from `enabled` for a specific reason: output
    * capture answers "what happened on this host", which is the compliance
    * question, while input capture also records anything typed at a prompt the
-   * remote host chose not to echo — a sudo password, a token pasted into an
+   * remote host chose not to echo; a sudo password, a token pasted into an
    * editor. That is a materially different promise to make to the people being
    * recorded, so it is its own switch.
    */
@@ -83,18 +83,18 @@ export const orgSessionRecordingSettings = pgTable("org_session_recording_settin
 });
 
 /**
- * One recorded SSH session — the index row, never the payload.
+ * One recorded SSH session: the index row, never the payload.
  *
  * `status` is `"recording"` for a live session. A session whose proxy process
  * dies mid-stream never gets its closing write, so a row that is still
  * `"recording"` well after `last_activity_at` is an abandoned one; the list
  * route settles those on read rather than leaving them to look live forever.
- * Activity is both chunk flushes and an idle heartbeat — a quiet shell still
+ * Activity is both chunk flushes and an idle heartbeat: a quiet shell still
  * open is not abandoned.
  *
  * `accountId` / `resourceId` are deliberately not foreign keys. A recording
- * outlives what it was taken against — the whole point of an audit artifact is
- * that deleting the box does not delete the evidence — and an FK with a
+ * outlives what it was taken against (the whole point of an audit artifact is
+ * that deleting the box does not delete the evidence) and an FK with a
  * cascade would do exactly the wrong thing.
  */
 export const sshSessionRecordings = pgTable(
@@ -125,14 +125,14 @@ export const sshSessionRecordings = pgTable(
     hasInput: boolean("has_input").notNull().default(false),
     /**
      * The `shared_consoles` row, when this session was shared while it ran.
-     * Null for an ordinary solo session. No FK — a share row is operational
+     * Null for an ordinary solo session. No FK: a share row is operational
      * state that can be cleaned up, and a recording outlives it.
      */
     sharedConsoleId: text("shared_console_id"),
     /**
      * Everyone who was attached, and in what role. Empty for a solo session.
      *
-     * This is the answer to "whose hands were on this box" — which, once a
+     * This is the answer to "whose hands were on this box", which, once a
      * session can be shared, `user_id` alone no longer is. The cast carries
      * the same facts in-band as asciicast `"m"` marker events so a person
      * watching the tape sees *when* the keyboard moved; this column is what a
@@ -150,7 +150,7 @@ export const sshSessionRecordings = pgTable(
      * Last time the live recorder touched this row (chunk flush or idle
      * heartbeat). Settle/list treat a stale value as abandoned; prune refuses
      * to delete anything whose activity is still inside the retention window.
-     * Null only on pre-migration rows — readers fall back to started_at.
+     * Null only on pre-migration rows: readers fall back to started_at.
      */
     lastActivityAt: timestamp("last_activity_at").notNull().defaultNow(),
     endedAt: timestamp("ended_at"),
@@ -178,7 +178,7 @@ export const sshSessionRecordings = pgTable(
  * Chunked rather than one growing column because the proxy appends while the
  * session is live: rewriting a single column per flush is O(session²) writes
  * and holds the whole cast in memory to do it. Appending immutable chunks is
- * O(session), and playback is `ORDER BY seq` — which is also exactly the order
+ * O(session), and playback is `ORDER BY seq`, which is also exactly the order
  * a download streams them in.
  *
  * gzip because terminal output is the single most compressible thing a server

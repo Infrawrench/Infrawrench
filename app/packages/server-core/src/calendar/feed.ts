@@ -4,7 +4,7 @@
  * Six sources, each a plain read: change freezes, sleep/wake schedules, the
  * expiry feed (which already merges plugin-declared deadlines with resource
  * leases), commitment term ends, cron-triggered workflows, and declared
- * incidents. No provider API calls, no credentials — the orphan-finder stance.
+ * incidents. No provider API calls, no credentials: the orphan-finder stance.
  *
  * Every source is independently guarded. A calendar is a *summary* surface: if
  * the commitments read throws because an account is half-migrated, the right
@@ -54,7 +54,7 @@ export interface ListCalendarOptions {
 
 /**
  * Alias rather than an extension: the wire shape is `CalendarResponse`, and the
- * one place a second name would be tempting — `failedKinds` — belongs on the
+ * one place a second name would be tempting (`failedKinds`) belongs on the
  * wire type, because every surface has to render the degradation.
  */
 export type CalendarFeedResult = CalendarResponse;
@@ -62,7 +62,7 @@ export type CalendarFeedResult = CalendarResponse;
 /**
  * What an open-ended span means to the overlap test.
  *
- * `overlapsWindow` reads a null end as *a point in time* — which is right for a
+ * `overlapsWindow` reads a null end as *a point in time*, which is right for a
  * deadline and exactly wrong for a freeze held until further notice. The two
  * readings are both needed, so the span sources say which one they mean here
  * rather than leaving it to the shape of the value.
@@ -81,7 +81,7 @@ function iso(value: Date | number): string {
  * the month being viewed; sending its real start would make every consumer
  * clamp it themselves, and sending nothing would lose it. So the event carries
  * the true `startsAt` when it falls inside the window and the window's own edge
- * when it does not — with `openEnded` set, which is what tells a renderer the
+ * when it does not: with `openEnded` set, which is what tells a renderer the
  * bar continues past the edge rather than stopping there.
  */
 function clampSpan(
@@ -287,7 +287,7 @@ async function commitmentEvents(
       endsAt: null,
       openEnded: false,
       allDay: true,
-      // Lapsing onto on-demand pricing is a cost event, not an outage — but an
+      // Lapsing onto on-demand pricing is a cost event, not an outage, but an
       // expensive one, and the whole reason the commitment-expiry alert exists.
       severity: row.state === "active" ? "warning" : "info",
       link: { target: "tab", tab: "costs" },
@@ -319,7 +319,7 @@ async function workflowScheduleEvents(
   for (const row of rows) {
     const trigger = row.trigger as { kind?: string; cron?: string; timezone?: string } | null;
     if (!trigger || trigger.kind !== "cron" || typeof trigger.cron !== "string") continue;
-    // A stored expression can be invalid — it was valid when saved and the
+    // A stored expression can be invalid: it was valid when saved and the
     // parser has moved, or it arrived through config-as-code. Skip it rather
     // than throwing the whole calendar away for one bad row.
     if (validateCronExpression(trigger.cron) !== null) continue;

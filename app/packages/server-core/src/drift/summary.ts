@@ -1,8 +1,8 @@
 /**
  * Pure batching, capping and rendering for resource-drift alerts.
  *
- * No I/O lives here so the volume rules — the part that decides whether a
- * notification is usable or a pager storm — are unit-testable without a
+ * No I/O lives here so the volume rules (the part that decides whether a
+ * notification is usable or a pager storm) are unit-testable without a
  * database. `alerts.ts` does the reads, the cooldown claim and the fan-out.
  *
  * The volume problem, and the three caps that answer it
@@ -16,7 +16,7 @@
  * 1. **Message count** is capped by the cooldown claim in `alerts.ts`, not by
  *    anything here: at most one drift message per org per `cooldownMinutes`
  *    (default 60), no matter how many accounts synced or how many rows landed.
- *    That is the hard ceiling — 24 messages a day in the worst case.
+ *    That is the hard ceiling: 24 messages a day in the worst case.
  * 2. **Read size** is capped by {@link MAX_SCANNED_CHANGES}: the window query
  *    asks for at most one row beyond it, so a pathological window is reported
  *    as "500+ changes" instead of loading an unbounded result set.
@@ -101,7 +101,7 @@ export interface DriftSummary {
 /**
  * Fold a window's rows into the message the transports render.
  *
- * `rows` may hold one row beyond {@link MAX_SCANNED_CHANGES} — that extra row
+ * `rows` may hold one row beyond {@link MAX_SCANNED_CHANGES}: that extra row
  * is how the caller signals "there were more", and it is dropped here rather
  * than counted, so `total` never overstates what was actually read.
  */
@@ -180,7 +180,7 @@ function itemLine(row: DriftChangeRow, includeAccount: boolean): string {
 }
 
 /**
- * The body as plain-text lines, shared by every transport — the same split the
+ * The body as plain-text lines, shared by every transport: the same split the
  * weekly digest uses. `bold` wraps a fragment in the transport's bold markup,
  * or returns it unchanged for plain text (the Teams Adaptive Card escaper turns
  * `*` into a literal asterisk, so Teams must not receive mrkdwn).
@@ -215,14 +215,14 @@ export function formatDriftSlackBody(summary: DriftSummary): string {
   return driftLines(summary, (s) => `*${s}*`).join("\n");
 }
 
-/** Teams plain-text body — the Adaptive Card escaper strips markdown anyway. */
+/** Teams plain-text body: the Adaptive Card escaper strips markdown anyway. */
 export function formatDriftTeamsBody(summary: DriftSummary): string {
   return driftLines(summary, (s) => s).join("\n\n");
 }
 
 /**
  * Mobile push body. A notification banner shows two or three lines, so it gets
- * the counts only — the deep link carries the reader to the full timeline.
+ * the counts only: the deep link carries the reader to the full timeline.
  */
 export function formatDriftPushBody(summary: DriftSummary): string {
   const scope =

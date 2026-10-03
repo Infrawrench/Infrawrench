@@ -1,12 +1,12 @@
 /**
- * iCalendar subscriptions — the one thing the operations calendar stores.
+ * iCalendar subscriptions: the one thing the operations calendar stores.
  *
  * A subscription is an unauthenticated URL, so the rules here are the API key
  * rules: the token is shown exactly once, stored as a hash, looked up in
  * constant work, and revoked rather than deleted so the audit trail still
- * resolves. What differs is the failure mode this guards against — an API key
+ * resolves. What differs is the failure mode this guards against: an API key
  * leaks into a script, a calendar URL leaks into a shared team calendar, a
- * screenshot, or an intern's laptop — which is why the feed carries only
+ * screenshot, or an intern's laptop, which is why the feed carries only
  * *scheduling* facts (names, times, kinds) and never a credential, a cost, or a
  * resource id someone could act on.
  */
@@ -119,7 +119,7 @@ export async function createCalendarSubscription(
     );
   }
 
-  // 32 bytes, base64url — the same shape as the OAuth state nonce. Long enough
+  // 32 bytes, base64url: the same shape as the OAuth state nonce. Long enough
   // that the SHA-256 lookup has no guessable preimage, short enough to paste.
   const token = randomBytes(32).toString("base64url");
   const id = randomUUID();
@@ -147,7 +147,7 @@ export async function createCalendarSubscription(
   return { subscription: toWire(row), token };
 }
 
-/** Revoke a subscription. Idempotent — a second revoke is not an error. */
+/** Revoke a subscription. Idempotent: a second revoke is not an error. */
 export async function revokeCalendarSubscription(
   organizationId: string,
   subscriptionId: string,
@@ -183,7 +183,7 @@ export interface ResolvedCalendarSubscription {
 /**
  * Resolve a bare token to its subscription, or null.
  *
- * Null covers every failure — unknown token, revoked feed — because the caller
+ * Null covers every failure (unknown token, revoked feed) because the caller
  * is an unauthenticated route and the difference between "never existed" and
  * "was revoked" is exactly what an attacker probing tokens would want to learn.
  */

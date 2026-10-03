@@ -25,7 +25,7 @@ import type { AuthSession } from "../auth-middleware";
 import { parseObjectBody } from "../object-body";
 
 /**
- * Synthetic probes — HTTP uptime/latency checks run on an interval from the
+ * Synthetic probes: HTTP uptime/latency checks run on an interval from the
  * egress-proxy Worker (an external vantage point). Execution happens in the
  * poller (`server-core/src/probes/pass.ts`); these routes manage the rows,
  * mine endpoint suggestions from synced resource outputs, and read the
@@ -33,7 +33,7 @@ import { parseObjectBody } from "../object-body";
  *
  * Permissions follow the schedules stance: reads are `resources:read` (the
  * suggestions list is derived from the org's resource set), mutations are
- * `resources:write` — a probe is a standing instruction to poll an endpoint
+ * `resources:write`; a probe is a standing instruction to poll an endpoint
  * the org's resources expose.
  */
 
@@ -139,7 +139,7 @@ const MAX_SUGGESTIONS = 100;
 
 /**
  * Turn one output value into an absolute URL, or null when it can't name an
- * endpoint. Bare hosts and IPs get `https://` — the safe default; the user
+ * endpoint. Bare hosts and IPs get `https://`: the safe default; the user
  * can edit the URL before saving.
  */
 function suggestionUrl(value: unknown): string | null {
@@ -150,14 +150,14 @@ function suggestionUrl(value: unknown): string | null {
   const normalized = normalizeProbeUrl(candidate);
   if ("error" in normalized) return null;
   // A single-label host (a k8s service name, "localhost") can't be reached
-  // from the edge proxy anyway — only suggest hosts with a dot in them.
+  // from the edge proxy anyway, only suggest hosts with a dot in them.
   const host = new URL(normalized.url).hostname;
   if (!host.includes(".")) return null;
   return normalized.url;
 }
 
 /**
- * Endpoint candidates mined from the org's synced resources — a cheap
+ * Endpoint candidates mined from the org's synced resources; a cheap
  * Postgres read over the `outputs_json`/`fields_json` caches (the
  * `expiry/feed.ts` stance: no plugin clients, no credentials, no provider
  * calls). Deduped by URL, first resource wins.
@@ -311,7 +311,7 @@ app.delete("/:id", async (c) => {
   }
 });
 
-/** The recorded Latency/Up series — straight out of the shared metric store. */
+/** The recorded Latency/Up series: straight out of the shared metric store. */
 app.get("/:id/metrics", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");

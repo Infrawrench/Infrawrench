@@ -2,18 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The shared halves of interactive Slack approvals: the button `value` a click
- * echoes back (which must round-trip and refuse anything malformed — it is
+ * echoes back (which must round-trip and refuse anything malformed; it is
  * attacker-adjacent input on a public endpoint), and the post-decision update
  * that retires every recorded copy of a request.
  */
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
-// Real Drizzle over a recording driver against the real schema — the
+// Real Drizzle over a recording driver against the real schema: the
 // recorded-copy insert and the status/message selects render their actual SQL
 // (and shadow-validate under test:postgres:shadow). Each test queues its
 // results in execution order: the insert (result ignored), the approval-status
-// read, then — only when the status came back decided — the message read-back.
+// read, then (only when the status came back decided) the message read-back.
 const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 
@@ -22,7 +22,7 @@ const inserts = () =>
   pg.queries.filter((q) => q.sql.startsWith('insert into "slack_approval_messages"'));
 
 /**
- * A recorded copy as the unprojected select returns it — keys in
+ * A recorded copy as the unprojected select returns it: keys in
  * slack_approval_messages column order (see helpers/fake-postgres.ts).
  */
 function messageRow(over: Partial<Record<string, unknown>> = {}) {

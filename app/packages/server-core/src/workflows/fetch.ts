@@ -5,14 +5,14 @@
  * place a workflow's outbound request should originate: from inside that
  * network, `fetch("http://10.x.x.x/")` reaches other pods and
  * `http://169.254.169.254/` reaches the node's metadata credentials. Rather
- * than trying to make an in-pod fetch safe, we don't make one at all — the
+ * than trying to make an in-pod fetch safe, we don't make one at all: the
  * request is handed to a proxy Worker on Cloudflare's edge
  * (`app/packages/egress-proxy`), which has no route into the cluster or the GCP
  * project and refuses private address space besides.
  *
  * Config (env):
- *   WORKFLOW_FETCH_PROXY_URL    — e.g. https://egress.infrawrench.com
- *   WORKFLOW_FETCH_PROXY_TOKEN  — the Worker's PROXY_TOKEN secret
+ *   WORKFLOW_FETCH_PROXY_URL    - e.g. https://egress.infrawrench.com
+ *   WORKFLOW_FETCH_PROXY_TOKEN  - the Worker's PROXY_TOKEN secret
  *
  * With either missing, `fetch` inside a workflow throws and says so. That is
  * deliberate and load-bearing: a deployment that hasn't stood up a proxy gets

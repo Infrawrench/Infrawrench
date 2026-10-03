@@ -11,7 +11,7 @@ import type { PollAccountRow } from "./poll-account";
  * More often than costs (which refresh daily at best) because a prepaid pot is
  * a live gauge: an account that starts burning hard should not spend a full day
  * looking fine. Not much more often, because the burn rate is derived from the
- * *series* and a denser series does not make a 30-day rate more accurate — it
+ * *series* and a denser series does not make a 30-day rate more accurate: it
  * only makes the provider calls more frequent, and these are the same
  * rate-limited management APIs the rest of the plugin shares.
  *
@@ -33,8 +33,8 @@ export async function pollAccountCredits(account: PollAccountRow): Promise<void>
       new Date(Date.now() + CREDIT_INTERVAL_MS + jitter),
     );
     if (result.potCount === 0) {
-      // Not an error — a plugin can legitimately report no pots (a project
-      // with no prepaid balance) — but worth a line, because the alternative
+      // Not an error: a plugin can legitimately report no pots (a project
+      // with no prepaid balance), but worth a line, because the alternative
       // explanation is a credential that cannot see them.
       console.log(`[poller] credit read for ${account.id} (${account.pluginId}) returned no pots`);
     }

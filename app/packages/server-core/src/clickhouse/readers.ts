@@ -68,7 +68,7 @@ export async function getLatestStats(
 }
 
 /**
- * Latest MetricSeries[] for one resource — most recent ~60min of raw points,
+ * Latest MetricSeries[] for one resource: most recent ~60min of raw points,
  * grouped back into per-series shape so the dashboard sparkline logic works
  * unchanged.
  */
@@ -108,7 +108,7 @@ export async function getLatestMetrics(
   return [...bySeries.values()];
 }
 
-/** Batch variant — returns Map keyed by resourceId. */
+/** Batch variant: returns Map keyed by resourceId. */
 export async function getLatestMetricsBatch(
   organizationId: string,
   resourceIds: string[],
@@ -246,7 +246,7 @@ export async function getLatestAccountCountsBatch(
   return result;
 }
 
-/** Per-series quantiles over a window — the right-sizing utilisation read. */
+/** Per-series quantiles over a window: the right-sizing utilisation read. */
 export interface MetricSeriesQuantiles {
   label: string;
   unit: string;
@@ -261,11 +261,11 @@ export interface MetricSeriesQuantiles {
 /**
  * Batch p05/p95/max per series over the 1m rollup for many resources at once.
  *
- * Reads `metric_points_1m` (30-day TTL — callers must stay inside it; the
+ * Reads `metric_points_1m` (30-day TTL; callers must stay inside it; the
  * right-sizing window is 14 days) rather than the 1h rollup: a p95 of hourly
  * averages flattens the very peaks the recommendation must respect. The inner
  * query finalizes the avg-state per minute, the outer one takes quantiles
- * over those per-minute points. Series identity is (resource, label) — a
+ * over those per-minute points. Series identity is (resource, label): a
  * series whose unit string changed mid-window still combines into one row,
  * with a representative unit via `any(unit)`.
  */
@@ -335,7 +335,7 @@ export async function getMetricQuantilesBatch(
 
 /**
  * A metric series that actually exists for the org (optionally narrowed to a
- * plugin / resource type), for the metric-alert rule builder's key picker —
+ * plugin / resource type), for the metric-alert rule builder's key picker:
  * the user picks from what their resources really report instead of having to
  * know internal series labels.
  *
@@ -389,7 +389,7 @@ export interface MetricMinuteSample {
 }
 
 /**
- * Per-minute averages of one series for many resources over a window — the
+ * Per-minute averages of one series for many resources over a window: the
  * metric-alert evaluator's read. Uses the 1m rollup (30-day TTL) rather than
  * raw points so the "held for the whole window" judgement runs over evenly
  * bucketed samples regardless of how bursty the plugin's reporting is.
@@ -434,7 +434,7 @@ export async function getMetricMinuteSeriesBatch(
 }
 
 /**
- * Average of one series per resource over a window, from the 1m rollup — the
+ * Average of one series per resource over a window, from the 1m rollup: the
  * probe list's uptime read (averaging the 0/1 "Up" series over 24h yields the
  * up fraction). The inner GROUP BY finalizes the per-minute avg state first so
  * bursty raw reporting can't weight some minutes more than others.
@@ -488,7 +488,7 @@ export interface MetricDailyAverage {
 }
 
 /**
- * Daily averages of one series per resource, from the 1h rollup — the status
+ * Daily averages of one series per resource, from the 1h rollup: the status
  * page's uptime history read (averaging the 0/1 "Up" series per day yields a
  * daily up fraction).
  *
@@ -501,7 +501,7 @@ export interface MetricDailyAverage {
  * never as a day of downtime, and never as a day of perfect uptime.
  *
  * Hours are weighted equally within a day, as minutes are within an hour in
- * `getMetricSeriesAverageBatch` — an hour of sparse sampling counts the same as
+ * `getMetricSeriesAverageBatch`: an hour of sparse sampling counts the same as
  * a busy one, which is what keeps a retry storm from skewing the figure.
  */
 export async function getMetricDailyAverageBatch(

@@ -6,7 +6,7 @@ import { getXtermTerminalOptions, type MountPlaybackTerminal } from "@infrawrenc
  * xterm.js behind the session-recording player's terminal contract.
  *
  * Lives in the host rather than in `@infrawrench/ui` because that package
- * stays free of an xterm dependency (see `xterm-options.ts`) — the player owns
+ * stays free of an xterm dependency (see `xterm-options.ts`): the player owns
  * the clock, the host owns the screen. The desktop app has its own copy of
  * this file for the same reason its terminal components are not shared.
  *
@@ -24,8 +24,8 @@ export const mountPlaybackTerminal: MountPlaybackTerminal = (container, geometry
     cols: geometry.cols,
     rows: geometry.rows,
     cursorBlink: false,
-    // A replay has no scrollback of its own to hunt through — seeking is the
-    // scrollback — and a buffer sized for a live session costs memory per
+    // A replay has no scrollback of its own to hunt through (seeking is the
+    // scrollback) and a buffer sized for a live session costs memory per
     // recording opened.
     scrollback: 1000,
     disableStdin: true,

@@ -54,7 +54,7 @@ app.post("/pull", async (c) => {
 
   // Validated, not just typed. Every row starts at sync_version 0, so an
   // unchecked negative here turns `syncVersion > lastSyncVersion` into "match
-  // everything" — which is how a caller reached rows the query didn't intend
+  // everything", which is how a caller reached rows the query didn't intend
   // to return. The org scoping below is the real fix; this keeps a bad value
   // from widening any future query that forgets one.
   const body = await c.req
@@ -74,7 +74,7 @@ app.post("/pull", async (c) => {
         pluginId: accounts.pluginId,
         displayName: accounts.displayName,
         // Deliberately NOT the ciphertext. It is sealed with the server's
-        // master key, so no client can read it — shipping it put
+        // master key, so no client can read it: shipping it put
         // credential-shaped material on the wire and in client logs for
         // exactly zero benefit. Callers that genuinely need a credential use
         // `GET /accounts/:id/credentials`, which is gated on `secrets:read`
@@ -117,7 +117,7 @@ app.post("/pull", async (c) => {
         and(eq(dashboards.organizationId, orgId), gt(dashboards.syncVersion, lastSyncVersion)),
       ),
     // `dashboard_pins` and `associations` carry no organization_id of their
-    // own — they are scoped transitively through the row they hang off. Both
+    // own: they are scoped transitively through the row they hang off. Both
     // MUST join to that parent and filter on it, or the pull returns every
     // organization's rows to any caller.
     db
@@ -335,7 +335,7 @@ app.get("/status", async (c) => {
 
   // Must cover every table `/pull` returns. A client that advances its
   // watermark to this number would otherwise step straight over changes in any
-  // table missing here and never see them again — the counter only moves
+  // table missing here and never see them again: the counter only moves
   // forward. Pins and associations join their parent for the org filter,
   // having no `organization_id` of their own.
   const [maxVersions] = await db

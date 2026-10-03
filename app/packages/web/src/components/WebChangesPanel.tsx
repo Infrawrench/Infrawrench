@@ -6,7 +6,7 @@ import { createWebStatusIncidentsClient } from "@/lib/status-incidents-client";
 
 /**
  * Org-wide change timeline. The feed itself lives in `@infrawrench/ui` so
- * desktop renders the identical panel; this component is the web host — an
+ * desktop renders the identical panel; this component is the web host: an
  * `apiGet`-backed client and the resource link. Rendered as a workspace tab
  * (the "changes" kind) by WebWorkspaceTabsViewport.
  */

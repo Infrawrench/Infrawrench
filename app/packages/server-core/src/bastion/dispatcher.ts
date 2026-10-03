@@ -1,7 +1,7 @@
 /**
  * undici `Dispatcher` that opens TCP sockets through a connected bastion
  * agent rather than directly via `net.connect`. The dispatcher itself is
- * what gets handed to `undici.fetch({ dispatcher })` — TLS is still
+ * what gets handed to `undici.fetch({ dispatcher })`: TLS is still
  * negotiated client-side, so bytes the agent sees are already encrypted.
  *
  * Pitfalls baked in here (see plan.md):
@@ -50,7 +50,7 @@ export class BastionAgentConnection {
   private readonly streams = new Map<number, ActiveStream>();
   private readonly dispatcherInstance: Dispatcher;
   private destroyed = false;
-  /** Hostnames allowed to be tunneled — mirrors what we told the agent. */
+  /** Hostnames allowed to be tunneled: mirrors what we told the agent. */
   private allowlist: Set<string> = new Set();
   /** Wildcard suffixes like `.amazonaws.com` (without the leading `*`). */
   private allowlistSuffixes: string[] = [];
@@ -60,7 +60,7 @@ export class BastionAgentConnection {
     this.ws = ws;
     this.dispatcherInstance = new Agent({
       // Custom connect: skip TCP entirely; hand undici a Duplex backed by the WS.
-      // We synthesize a socket-shaped object — undici only needs `Duplex`-level
+      // We synthesize a socket-shaped object: undici only needs `Duplex`-level
       // semantics plus a handful of `Socket` no-op methods that the Duplex
       // factory below stubs out.
       connect: (opts, cb) => {
@@ -70,7 +70,7 @@ export class BastionAgentConnection {
           .then((duplex) => cb(null, duplex as unknown as Socket))
           .catch((err) => cb(err as Error, null));
       },
-      // Don't pool aggressively — each cloud-API call is fine opening a fresh stream.
+      // Don't pool aggressively: each cloud-API call is fine opening a fresh stream.
       keepAliveTimeout: 1000,
       keepAliveMaxTimeout: 5000,
     });
@@ -93,7 +93,7 @@ export class BastionAgentConnection {
     }
   }
 
-  /** Allowlist getter — used to keep the agent in sync via the hello message. */
+  /** Allowlist getter: used to keep the agent in sync via the hello message. */
   currentAllowlist(): string[] {
     return [...this.allowlist, ...this.allowlistSuffixes.map((s) => `*${s}`)];
   }
@@ -200,7 +200,7 @@ export class BastionAgentConnection {
         cb(err);
       },
     }).on("error", () => {
-      // Swallow — undici reports errors via the callback we returned from connect().
+      // Swallow: undici reports errors via the callback we returned from connect().
       void paused;
     });
   }

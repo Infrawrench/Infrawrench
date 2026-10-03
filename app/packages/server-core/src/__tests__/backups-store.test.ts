@@ -7,14 +7,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * transactions: two concurrent creates with one slot left both observe a count
  * below the limit and both take it. Under READ COMMITTED even folding it into
  * a single `INSERT … SELECT … WHERE count < limit` would not close the window,
- * because each transaction counts against its own snapshot — so the check runs
+ * because each transaction counts against its own snapshot, so the check runs
  * inside a transaction behind an org-scoped advisory lock, the stance
  * `probes/store.ts` and `schedules/store.ts` already take.
  *
  * These assertions are structural rather than concurrent: a genuine race needs
  * two live Postgres sessions, which this suite has no database for. What can
  * be pinned down without one is that the count and the insert are issued on
- * the transaction handle and are preceded by the lock — which is exactly what
+ * the transaction handle and are preceded by the lock, which is exactly what
  * was missing, and what the fix restores.
  */
 
@@ -99,8 +99,8 @@ describe("createBackupPolicy limit enforcement", () => {
     expect(lock?.kind).toBe("execute");
     expect(lock?.sqlText).toContain("pg_advisory_xact_lock");
     // Scoped to the org, so two different orgs never serialize against each
-    // other — a global lock would make policy creation a system-wide
-    // chokepoint — and namespaced by table so it cannot collide with the
+    // other (a global lock would make policy creation a system-wide
+    // chokepoint) and namespaced by table so it cannot collide with the
     // probe or schedule locks taken on the same org id.
     expect(lock?.sqlText).toContain("backup_policies:org-1");
   });

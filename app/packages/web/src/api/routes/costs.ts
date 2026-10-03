@@ -48,15 +48,15 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * POST /api/org/:orgId/costs/query — aggregate cost series for a graph.
+ * POST /api/org/:orgId/costs/query: aggregate cost series for a graph.
  *
  * The filter can be sent either structurally (`filters`) or as text in the cost
  * query language (`query`, e.g. `provider = 'aws' AND tag['env'] != 'dev'`).
  * Both at once is a 400: they are two spellings of one filter, and picking a
  * winner would silently answer a different question than the caller asked.
  *
- * A parse failure comes back as a 400 whose body carries `queryError` — the
- * offset, the span length, and the valid alternatives at that point — so a
+ * A parse failure comes back as a 400 whose body carries `queryError` (the
+ * offset, the span length, and the valid alternatives at that point) so a
  * client can underline the mistake rather than restate the message.
  */
 app.post("/query", async (c) => {
@@ -104,7 +104,7 @@ app.get("/dimensions", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/costs/anomalies?days=30 — spend anomalies detected by
+ * GET /api/org/:orgId/costs/anomalies?days=30: spend anomalies detected by
  * the poller's daily pass, newest day first.
  */
 app.get("/anomalies", async (c) => {
@@ -121,12 +121,12 @@ app.get("/anomalies", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/costs/anomalies/:id/acknowledge — explain a finding.
+ * POST /api/org/:orgId/costs/anomalies/:id/acknowledge: explain a finding.
  *
  * Body: `{ "explanation": "Migrated the API fleet to Graviton" }`.
  *
  * Acknowledging records the sentence on the anomaly **and** creates the
- * annotation that says it on every cost chart covering that day — the point of
+ * annotation that says it on every cost chart covering that day: the point of
  * the whole thing being that "we migrated the fleet" is not a fact about
  * whichever chart the reader happened to open. The reply is the updated
  * anomaly, carrying the acknowledgement and the id of the note it made.
@@ -177,14 +177,14 @@ app.post("/anomalies/:id/acknowledge", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/costs/anomaly-settings — the org's detection thresholds.
+ * GET /api/org/:orgId/costs/anomaly-settings: the org's detection thresholds.
  * An org that has never changed them reads as the shipped defaults.
  *
  * `smsConfigured` rides along because `smsAlerts` alone cannot tell a form the
  * truth: an org can ask for texts while having no Twilio credentials or no
  * recipient opted into SMS, and nothing would be sent. The Twilio routes that
  * hold that fact are `org:settings:write`, which a `costs:read` member does not
- * have — so the answer is derived here rather than fetched by the client.
+ * have, so the answer is derived here rather than fetched by the client.
  */
 app.get("/anomaly-settings", async (c) => {
   requirePermission(c, "costs:read");
@@ -197,7 +197,7 @@ app.get("/anomaly-settings", async (c) => {
 });
 
 /**
- * PUT /api/org/:orgId/costs/anomaly-settings — retune detection.
+ * PUT /api/org/:orgId/costs/anomaly-settings: retune detection.
  *
  * Gated on `costs:write`, the permission the other mutating cost route
  * (`POST /costs/rows`) uses. It is not a budget, so `budgets:write` would be
@@ -220,7 +220,7 @@ app.put("/anomaly-settings", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/costs/efficiency-alerts?kind=&limit= — what the three
+ * GET /api/org/:orgId/costs/efficiency-alerts?kind=&limit= - what the three
  * efficiency detectors have fired, newest first.
  *
  * One feed rather than three endpoints: every surface renders them in one
@@ -262,7 +262,7 @@ app.get("/efficiency-alerts", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/costs/efficiency-alert-settings — the org's tuning for
+ * GET /api/org/:orgId/costs/efficiency-alert-settings: the org's tuning for
  * commitment expiry, idle commitments and unit-cost regression. An org that
  * has never changed one reads back the defaults.
  */
@@ -272,7 +272,7 @@ app.get("/efficiency-alert-settings", async (c) => {
 });
 
 /**
- * PUT /api/org/:orgId/costs/efficiency-alert-settings — retune the three
+ * PUT /api/org/:orgId/costs/efficiency-alert-settings: retune the three
  * efficiency detectors.
  *
  * `costs:write`, matching `PUT /costs/anomaly-settings` and for the same
@@ -294,8 +294,8 @@ app.put("/efficiency-alert-settings", async (c) => {
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * `?basis=cash|amortized` for the reports that follow one. Anything else — an
- * absent param, or a typo — reads as cash, the basis these reports have always
+ * `?basis=cash|amortized` for the reports that follow one. Anything else (an
+ * absent param, or a typo) reads as cash, the basis these reports have always
  * been computed on. A typo silently changing which money is reported would be
  * worse than ignoring it.
  */
@@ -318,7 +318,7 @@ function parseRange(c: {
 }
 
 /**
- * GET /api/org/:orgId/costs/untagged?from&to — spend on rows missing at least
+ * GET /api/org/:orgId/costs/untagged?from&to: spend on rows missing at least
  * one of the org's required tag keys, overall and per key, plus the largest
  * untagged (account, service) buckets. Empty when no tag policy is set.
  */
@@ -332,7 +332,7 @@ app.get("/untagged", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/costs/showback?from&to&currency= — spend grouped by cost
+ * GET /api/org/:orgId/costs/showback?from&to&currency= - spend grouped by cost
  * centre through the org's allocation rules; unclaimed spend lands in
  * "Unallocated".
  *
@@ -343,7 +343,7 @@ app.get("/untagged", async (c) => {
  *
  * `?adjusted=true` is the other opt-in: the org's billing rules applied, with
  * the collected totals returned beside them in `adjustment`. Off by default,
- * like every adjusted surface — a chargeback report that silently showed
+ * like every adjusted surface: a chargeback report that silently showed
  * marked-up numbers is one the receiving team could not reconcile.
  */
 app.get("/showback", async (c) => {
@@ -364,7 +364,7 @@ app.get("/showback", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/costs/status — per-account cost capability + collection
+ * GET /api/org/:orgId/costs/status: per-account cost capability + collection
  * state. Drives "Backfilling AWS history…" empty states and the config UI.
  */
 app.get("/status", async (c) => {

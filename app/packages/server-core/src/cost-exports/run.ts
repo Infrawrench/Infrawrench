@@ -5,7 +5,7 @@
  * watermark, then for each period stream `cost_daily` → serialiser →
  * destination, one object per period, at a deterministic key.
  *
- * ## Restatements — the decision, and why
+ * ## Restatements: the decision, and why
  *
  * Provider spend is restated for days after the fact: credits land late, tax
  * lines are recomputed, and amortization schedules shift when a commitment is
@@ -19,7 +19,7 @@
  *   1. **Re-export a trailing window.** Every run re-writes every period
  *      overlapping the last `restatementDays` days (default 7), *in full*, at
  *      the key that period already occupies. Because the key derives from the
- *      period start alone, that is an overwrite — the consumer's copy of July
+ *      period start alone, that is an overwrite: the consumer's copy of July
  *      is replaced by a better copy of July, never joined by a second one.
  *   2. **Stamp the watermark.** Every row carries `exported_at` and
  *      `collection_watermark`: the newest day for which *every* account that
@@ -56,7 +56,7 @@ import {
  *
  * The minimum of each account's latest day, not the maximum: a period is only
  * settled once the slowest collector has caught up to it. Accounts that have
- * never reported anything are invisible here — they have no last day to
+ * never reported anything are invisible here: they have no last day to
  * minimise over, and their absence is the cost-status surface's problem, not
  * something to express by pinning the watermark to the epoch forever.
  *
@@ -102,8 +102,8 @@ export interface RunCostExportOptions {
 /**
  * Backoff between attempts to write a run's outcome. Four attempts over ~7s.
  *
- * The window this has to cover is a database blip — a failover, a dropped
- * connection, a pool exhausted by a neighbouring pass — not an outage, and it
+ * The window this has to cover is a database blip (a failover, a dropped
+ * connection, a pool exhausted by a neighbouring pass) not an outage, and it
  * has to stay far inside `COST_EXPORT_LEASE_MS` (30 minutes) so a retrying run
  * can never still be holding the lease when it expires.
  */
@@ -153,7 +153,7 @@ async function persistRunOutcome(
  * Whether re-running this destination is free of consequence.
  *
  * S3 writes each period to a key derived from the period start alone, so a
- * second run of the same periods overwrites the first — that is already the
+ * second run of the same periods overwrites the first: that is already the
  * mechanism restatements rely on. An HTTPS `POST`/`PUT` to somebody else's
  * endpoint carries no such promise: it is an append as far as we know, and a
  * duplicate is a duplicate row in their warehouse.
@@ -169,14 +169,14 @@ function toleratesRedelivery(destination: CostExportDestination): boolean {
  * by one org's bad bucket) or a "Run now" route (which wants the failure as
  * data so it can render it). The failure is written to `lastStatus`/`lastError`
  * and returned, which is what makes a silently-failing nightly export
- * impossible — the settings UI reads exactly those columns.
+ * impossible: the settings UI reads exactly those columns.
  *
  * ## Delivering exactly once to an endpoint that cannot absorb a duplicate
  *
  * The claim leases the row by pushing `next_run_at` out (`pass.ts`), and the
  * outcome write is what replaces that lease with the real schedule. So a run
  * that delivers and then fails to persist is a run that gets claimed again when
- * the lease expires — and delivers again. For S3 that is a no-op overwrite. For
+ * the lease expires, and delivers again. For S3 that is a no-op overwrite. For
  * HTTPS it is a second POST to a warehouse that has already ingested the first,
  * repeating every 30 minutes for as long as the database stays unhappy.
  *
@@ -192,12 +192,12 @@ function toleratesRedelivery(destination: CostExportDestination): boolean {
  *      to `lastStatus`/`lastError` instead.
  *
  * The order matters. A marker write that fails happens *before* any delivery,
- * so it simply fails the run — nothing was sent, and the export retries on its
+ * so it simply fails the run: nothing was sent, and the export retries on its
  * normal schedule. Every unsafe outcome is therefore either prevented or
  * announced; the one thing that cannot happen is a silent duplicate.
  *
  * The recovery run is where the visibility actually lands, and it is reliable
- * precisely because it only runs after a claim has succeeded — which proves the
+ * precisely because it only runs after a claim has succeeded, which proves the
  * database is answering again. It also costs the export one cycle: the skip is
  * recorded as a failure with a message saying so, and the next scheduled run
  * proceeds normally. A "Run now" click behaves the same way, and clicking it a
@@ -384,7 +384,7 @@ export async function runCostExport(
     rowCount: totalRows,
     collectionWatermark: watermark || null,
     // `status` describes the delivery. A non-null `error` on a succeeded run
-    // means the delivery happened but the record of it did not — the caller
+    // means the delivery happened but the record of it did not: the caller
     // ("Run now") has to be told that, or the inconsistency is invisible until
     // somebody notices the settings page disagreeing with their warehouse.
     error:

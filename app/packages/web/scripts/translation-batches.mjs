@@ -6,14 +6,14 @@
  * block is extracted as a *tree* (`{t,i,c}` nodes with `{i,k,v}` variable
  * placeholders), which cannot be handed to a translator as a string. This tool
  * flattens each tree's text leaves into ordinary units, then rebuilds the tree
- * around the translations — structure and variables preserved byte-for-byte,
+ * around the translations: structure and variables preserved byte-for-byte,
  * because only string leaves are ever replaced.
  *
  *   node scripts/translation-batches.mjs emit <dir> [--size 800]
  *   node scripts/translation-batches.mjs merge <dir>
  *
  * emit  writes `units.json` (the master list) plus `<locale>-<n>.json` batches
- *       of `[{i, s}]` — the shape a translation agent answers as `[{i, t}]`.
+ *       of `[{i, s}]`: the shape a translation agent answers as `[{i, t}]`.
  * merge reads `<locale>-<n>.out.json`, checks every batch for length, index
  *       coverage, ICU-placeholder parity, forbidden characters and empties,
  *       refuses to write anything if a single check fails, then updates both
@@ -65,7 +65,7 @@ function mapLeaves(node, visit, path = []) {
   if (node && typeof node === "object" && "c" in node) {
     return { ...node, c: mapLeaves(node.c, visit, [...path, "c"]) };
   }
-  return node; // variable placeholder or other non-text node — never translated
+  return node; // variable placeholder or other non-text node, never translated
 }
 
 const icuVars = (s) => [...String(s).matchAll(/\{([A-Za-z0-9_]+)\}/g)].map((m) => m[1]).sort();

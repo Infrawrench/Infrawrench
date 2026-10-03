@@ -12,9 +12,9 @@
  * question asked once, in one place, for all four transports.
  *
  * Config (env):
- *   SLACK_CLIENT_ID      — the Slack app's client id
- *   SLACK_CLIENT_SECRET  — the Slack app's client secret
- *   SLACK_SIGNING_SECRET — verifies inbound requests (slash commands, buttons)
+ *   SLACK_CLIENT_ID      - the Slack app's client id
+ *   SLACK_CLIENT_SECRET  - the Slack app's client secret
+ *   SLACK_SIGNING_SECRET: verifies inbound requests (slash commands, buttons)
  *
  * Without the first two, `isSlackConfigured()` is false, the settings UI says
  * so, and every send here is a no-op. That is the same shape as the GitHub
@@ -39,7 +39,7 @@ const SLACK_REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * Scopes requested at install. `chat:write.public` is what lets the bot post to
- * a public channel it hasn't been invited to — without it every channel the
+ * a public channel it hasn't been invited to: without it every channel the
  * org picks would need a manual `/invite`. Private channels still require an
  * invite; the settings UI says so. `commands` registers the `/infrawrench`
  * slash command in the workspace.
@@ -81,7 +81,7 @@ export function isSlackInboundConfigured(): boolean {
   return isSlackConfigured() && Boolean(slackSigningSecret());
 }
 
-/** Slack's signature scheme version — also the required signature prefix. */
+/** Slack's signature scheme version: also the required signature prefix. */
 const SLACK_SIGNATURE_VERSION = "v0";
 
 /** Slack's documented replay window: reject timestamps older than 5 minutes. */
@@ -92,7 +92,7 @@ const SLACK_SIGNATURE_MAX_AGE_SECONDS = 5 * 60;
  * scheme: HMAC-SHA256 over `v0:<timestamp>:<raw body>`, hex-encoded, prefixed
  * `v0=`, compared in constant time; stale timestamps are rejected outright so
  * a captured request can't be replayed later. The body must be the *raw* bytes
- * as received — re-serialized form data won't match.
+ * as received: re-serialized form data won't match.
  */
 export function verifySlackRequestSignature(args: {
   rawBody: string;
@@ -265,7 +265,7 @@ function formEncode(body: Record<string, unknown>): string {
  * `conversations.list`, but it does not actually *honour* arguments sent that
  * way: the call returns `ok: true` with the arguments silently defaulted. Sent
  * as JSON, `types: "public_channel,private_channel"` came back byte-identical
- * to sending no `types` at all — i.e. public channels only, with no error to
+ * to sending no `types` at all, i.e. public channels only, with no error to
  * notice. So reads go up form-encoded. `chat.postMessage` genuinely needs JSON
  * (its `blocks` are a structured array), and it honours it.
  */
@@ -472,7 +472,7 @@ export async function listSlackChannels(
     };
     if (cursor) body["cursor"] = cursor;
     // Form-encoded, not JSON: sent as JSON, Slack ignores `types` and returns
-    // public channels only — silently, with ok: true. See slackCall.
+    // public channels only; silently, with ok: true. See slackCall.
     const res = await slackCall<ConversationsListResponse>(
       "conversations.list",
       token,
@@ -532,7 +532,7 @@ function truncate(s: string, max: number): string {
 }
 
 /**
- * Block Kit payload for one alert. `text` is set too — it is the fallback used
+ * Block Kit payload for one alert. `text` is set too: it is the fallback used
  * in notifications and by clients that don't render blocks.
  */
 function alertBlocks(alert: SlackAlert): { text: string; blocks: unknown[] } {
@@ -574,7 +574,7 @@ function alertBlocks(alert: SlackAlert): { text: string; blocks: unknown[] } {
  * The escapers live in the database-free `slack-escape.ts` leaf so a module
  * that only renders a message body does not have to import this file (and with
  * it `db/client`). Re-exported here because this is where every existing
- * caller — the approval-message updater, the inbound handler — imports them
+ * caller (the approval-message updater, the inbound handler) imports them
  * from, and one definition is the point.
  */
 export { escapeMrkdwnFragment } from "./slack-escape";
@@ -617,7 +617,7 @@ export async function resolveSlackChannels(
     );
 }
 
-/** Every live channel the org has connected — what the default rule expands to. */
+/** Every live channel the org has connected: what the default rule expands to. */
 export async function listLiveSlackChannelIds(organizationId: string): Promise<string[]> {
   const rows = await db
     .select({ id: slackChannels.id })
@@ -633,7 +633,7 @@ export async function listLiveSlackChannelIds(organizationId: string): Promise<s
 export interface SlackPostedMessage {
   installationId: string;
   channelId: string;
-  /** Slack message timestamp — the id `chat.update` and threads key on. */
+  /** Slack message timestamp: the id `chat.update` and threads key on. */
   ts: string;
 }
 
@@ -647,7 +647,7 @@ interface PostMessageResponse extends SlackEnvelope {
 }
 
 /**
- * Post one alert to a specific set of stored channel rows. Never throws — a
+ * Post one alert to a specific set of stored channel rows. Never throws: a
  * Slack outage must not fail the poller, the budget evaluator, or the workflow
  * that raised the alert. Per-channel errors are logged and counted as failures
  * so the caller can still tell whether anything landed.
@@ -667,7 +667,7 @@ export async function sendSlackToChannels(
 
 /**
  * `sendSlackToChannels`, but every delivered message comes back with its
- * channel and timestamp so the caller can later update it in place — approval
+ * channel and timestamp so the caller can later update it in place: approval
  * requests flip to "Approved by …" once decided, and an alert with an
  * Acknowledge button flips to "Acked by …". Same never-throws contract.
  */
@@ -754,7 +754,7 @@ export async function postSlackThreadReply(
 
 /**
  * Post a payload to a `response_url` from a slash-command or interaction
- * payload. No token — the URL is its own short-lived credential. Only ever
+ * payload. No token: the URL is its own short-lived credential. Only ever
  * called with URLs from signature-verified Slack payloads, which is what makes
  * posting to a caller-supplied URL safe.
  */
@@ -774,7 +774,7 @@ export async function postToSlackResponseUrl(
 /**
  * Send a one-off test message to every channel the org has added, regardless of
  * routing rules. Throws (unlike `sendSlackToChannels`) so the settings UI can show
- * the actual Slack error — `not_in_channel` on a private channel is the common
+ * the actual Slack error: `not_in_channel` on a private channel is the common
  * one, and the user needs to see it.
  */
 export async function sendSlackTest(organizationId: string): Promise<{

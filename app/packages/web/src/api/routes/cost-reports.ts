@@ -1,7 +1,7 @@
 /**
  * HTTP API for cost reports (org-scoped, mounted at /api/org/:orgId/cost-reports).
  *
- * A report is a named, saved cost graph — the object dashboards reference by id
+ * A report is a named, saved cost graph: the object dashboards reference by id
  * through the `cost_report` widget kind. CRUD plus `POST /:id/run`, which
  * executes the report server-side so a caller never has to reassemble its
  * config to get the numbers.
@@ -37,13 +37,13 @@ declare module "hono" {
 
 const app = new Hono();
 
-/** GET /api/org/:orgId/cost-reports — list reports with dashboard placements. */
+/** GET /api/org/:orgId/cost-reports: list reports with dashboard placements. */
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
   return c.json(await listCostReports(c.get("organizationId")));
 });
 
-/** POST /api/org/:orgId/cost-reports — create a report. */
+/** POST /api/org/:orgId/cost-reports: create a report. */
 app.post("/", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -80,7 +80,7 @@ app.get("/:id", async (c) => {
   return c.json(report);
 });
 
-/** PUT /api/org/:orgId/cost-reports/:id — replace name, description, config. */
+/** PUT /api/org/:orgId/cost-reports/:id: replace name, description, config. */
 app.put("/:id", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -110,7 +110,7 @@ app.put("/:id", async (c) => {
 });
 
 /**
- * DELETE /api/org/:orgId/cost-reports/:id — soft delete.
+ * DELETE /api/org/:orgId/cost-reports/:id: soft delete.
  *
  * Every dashboard card pointing at the report goes with it; see
  * `softDeleteCostReport` for why a card cannot be left behind.
@@ -135,7 +135,7 @@ app.delete("/:id", async (c) => {
 });
 
 /**
- * POST /api/org/:orgId/cost-reports/:id/run — execute the report and return the
+ * POST /api/org/:orgId/cost-reports/:id/run: execute the report and return the
  * series, with the window its relative preset resolved to.
  *
  * A read despite the method: there is no body and nothing is written; POST is

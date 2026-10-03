@@ -5,7 +5,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 
 process.env["ENCRYPTION_MASTER_KEY"] = randomBytes(32).toString("base64");
 
-// Real Drizzle over a recording driver against the real schema — the
+// Real Drizzle over a recording driver against the real schema: the
 // ssh_tunnel_configs lookup renders its actual SQL (and shadow-validates
 // under test:postgres:shadow). Every test either finds an existing tunnel
 // (no query) or gets the default empty result (no config row).

@@ -11,7 +11,7 @@
  * - **The meter value is build SECONDS, not micro-dollars.** Chat has to
  *   pre-price because cost-per-token varies by model, so its meter unit is
  *   money. Build seconds are uniform (one machine type, deliberately not
- *   configurable), so the price belongs in Stripe — a per-second unit price on
+ *   configurable), so the price belongs in Stripe: a per-second unit price on
  *   the metered price object, adjustable there without a deploy. The
  *   `HOSTED_BUILD_USD_PER_SECOND` constant in cost/deployment-costs.ts is for
  *   the org's own cost graphs and never reaches an invoice.
@@ -37,7 +37,7 @@ export interface BuildMeterInput {
 /**
  * Emit one meter event for a run's hosted build time. Best-effort by contract:
  * the run row records what was consumed either way, and `meter_event_id` being
- * null is what a future replay job would key on — the same arrangement chat's
+ * null is what a future replay job would key on: the same arrangement chat's
  * `chat_usage_unreported_idx` anticipates.
  *
  * Silently does nothing when: the meter isn't configured, the org is
@@ -50,7 +50,7 @@ export async function reportHostedBuildToMeter(input: BuildMeterInput): Promise<
   if (!eventName || !secretKey) return;
   if (!Number.isFinite(input.buildSeconds) || input.buildSeconds <= 0) return;
 
-  // Complimentary orgs are never billed — the cost row still exists for their
+  // Complimentary orgs are never billed: the cost row still exists for their
   // own graphs, but no meter event is emitted.
   const [org] = await db
     .select({ complimentary: organizations.complimentary })

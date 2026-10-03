@@ -15,7 +15,7 @@ interface AuditParams {
 }
 
 /**
- * Log an audit event. Fire-and-forget — errors are logged but not thrown.
+ * Log an audit event. Fire-and-forget: errors are logged but not thrown.
  *
  * `apiKeyId` falls back to the credential the current request authenticated
  * with (see `services/audit-context.ts`), so a write made through an `iwk_` key
@@ -26,7 +26,7 @@ interface AuditParams {
  * and should: they record a change to Infrawrench's own database, so an audit
  * insert that fails failed alongside the thing it was describing. It exists for
  * the handful of callers that record an **irreversible side effect on somebody
- * else's system** — a revert's provider write is the first — where the mutation
+ * else's system**: a revert's provider write is the first, where the mutation
  * outlives the failure and "we could not say who did this" is a fact worth
  * surfacing rather than swallowing.
  *

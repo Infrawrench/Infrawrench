@@ -1,7 +1,7 @@
 /**
  * Integration tests against a real Postgres. Skipped unless DATABASE_URL is
  * set (`pnpm test:postgres`); the database must already have the drizzle
- * migrations applied (`pnpm --filter @infrawrench/web db:migrate`) — the
+ * migrations applied (`pnpm --filter @infrawrench/web db:migrate`): the
  * docker-compose.dev.yml stack on localhost:5433 fits. Every write happens
  * inside a transaction that rolls back, so the target keeps no test rows,
  * but still: point this at a scratch database, never at production.
@@ -98,7 +98,7 @@ describe.skipIf(!connectionString)("postgres against a real server", () => {
         (err: unknown) => err,
       );
     // Drizzle wraps the server error ("Failed query: …"), with the Postgres
-    // error on the cause chain — the constraint name lives there.
+    // error on the cause chain; the constraint name lives there.
     const messages: string[] = [];
     for (let err = failure; err instanceof Error; err = err.cause) messages.push(err.message);
     expect(messages.join("\n")).toMatch(/ssh_snippets_org_name_unique/);

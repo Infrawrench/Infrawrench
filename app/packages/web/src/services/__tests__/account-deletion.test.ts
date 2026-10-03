@@ -6,7 +6,7 @@ import { isOwnerRole } from "../org-roles";
  * What deleting an account does to each organization the user is in. The
  * cascade on `organization_members.user_id` is unconditional, so this
  * classification is the only thing standing between a deletion and an
- * ownerless — or memberless — organization with a live subscription.
+ * ownerless (or memberless) organization with a live subscription.
  */
 
 const ME = "user_me";
@@ -22,7 +22,7 @@ function member(
     organizationName: opts.name ?? organizationId,
     userId,
     // A row either carries a `roles.systemKey` (current) or falls back to the
-    // legacy text column — never both, which is what `isOwnerRole` encodes.
+    // legacy text column, never both, which is what `isOwnerRole` encodes.
     legacyRole: opts.legacy ? role : null,
     systemKey: opts.legacy ? null : role,
   };
@@ -33,7 +33,7 @@ describe("classifyMemberships", () => {
     // A claimed trial keeps the agent's `organization_members` row. Counting it
     // as a person turns "you are alone in here" into "you solely own a shared
     // organization" and refuses the deletion over a principal that cannot own
-    // anything — and that the user has no obvious way to remove.
+    // anything, and that the user has no obvious way to remove.
     const rows = [
       member("org_claimed", ME, "owner"),
       member("org_claimed", "agent_reg-1", "member"),

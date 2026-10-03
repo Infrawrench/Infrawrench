@@ -1,7 +1,7 @@
 /**
  * Global setup for the Postgres shadow run (vitest.shadow-postgres.config.ts):
  * fail fast with a usable message when DATABASE_URL is missing or the target
- * was never migrated — otherwise every shadowed PREPARE would fail with the
+ * was never migrated, otherwise every shadowed PREPARE would fail with the
  * same "relation does not exist" noise.
  */
 import postgres from "postgres";

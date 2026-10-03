@@ -21,7 +21,7 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * POST /api/org/:orgId/bastions — register a new bastion. Returns a one-time
+ * POST /api/org/:orgId/bastions: register a new bastion. Returns a one-time
  * enrollment token the user runs the agent container with; the token is
  * never recoverable after this response.
  */
@@ -60,7 +60,7 @@ app.post("/", async (c) => {
   return c.json({ id, name: name.trim(), token, tokenPrefix });
 });
 
-/** GET /api/org/:orgId/bastions — list bastions in this org. */
+/** GET /api/org/:orgId/bastions: list bastions in this org. */
 app.get("/", async (c) => {
   requirePermission(c, "bastions:read");
   const organizationId = c.get("organizationId");
@@ -108,7 +108,7 @@ app.get("/", async (c) => {
   );
 });
 
-/** DELETE /api/org/:orgId/bastions/:id — revoke. Accounts referencing it have bastionId set NULL by FK. */
+/** DELETE /api/org/:orgId/bastions/:id: revoke. Accounts referencing it have bastionId set NULL by FK. */
 app.delete("/:id", async (c) => {
   requirePermission(c, "bastions:write");
   const session = c.get("session");

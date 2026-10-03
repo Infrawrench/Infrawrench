@@ -1,5 +1,5 @@
 /**
- * Capture — turn a selection of live resources into a draft template.
+ * Capture: turn a selection of live resources into a draft template.
  *
  * The only provider-specific thing this file touches is each plugin's own
  * `getCreateConfig`, which is what makes the whole feature declarative: the set
@@ -186,7 +186,7 @@ async function loadOutputRefs(
  * Ask each distinct plugin/type in the selection for its create-form fields,
  * once per (account, type) pair. A type whose plugin has no `getCreateConfig`
  * simply yields nothing and the pure builder reports it as skipped, with a
- * reason — a resource that cannot be created cannot be stamped out, and saying
+ * reason: a resource that cannot be created cannot be stamped out, and saying
  * so is better than silently shipping a template that fails on apply.
  */
 async function loadCreateFields(
@@ -229,7 +229,7 @@ async function loadCreateFields(
 }
 
 /**
- * Build a draft template from a selection. Persists nothing — the editor shows
+ * Build a draft template from a selection. Persists nothing: the editor shows
  * the draft, the user picks which fields to vary, and the resulting document
  * is what gets saved.
  */

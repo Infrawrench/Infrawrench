@@ -11,7 +11,7 @@
  *
  * The one thing it reaches outside Postgres for is billing: orphaned backups
  * are pure spend, and a number is what makes anyone delete them. That read is
- * best-effort — ClickHouse being unreachable leaves every cost null, never
+ * best-effort: ClickHouse being unreachable leaves every cost null, never
  * zero, and the coverage itself is unaffected (the `schedules/feed.ts` rule).
  */
 import { and, eq, isNull } from "drizzle-orm";
@@ -39,7 +39,7 @@ export interface ListBackupCoverageOptions {
 
 /**
  * Trailing-window spend per `"<accountId> <externalId>"`. Null when ClickHouse
- * is unreachable or unconfigured — the same shape and the same failure stance
+ * is unreachable or unconfigured: the same shape and the same failure stance
  * as the schedules preview quote.
  */
 async function loadCostTotals(
@@ -74,7 +74,7 @@ async function loadCostTotals(
 /**
  * Every stateful resource the plugin declarations let us judge, the backups
  * protecting it, and the gaps. Soft-deleted accounts and resources are
- * excluded, so a finding can never outlive the thing it belongs to — and an
+ * excluded, so a finding can never outlive the thing it belongs to, and an
  * orphan claim can never be made against a source we merely stopped syncing
  * within the same account.
  */

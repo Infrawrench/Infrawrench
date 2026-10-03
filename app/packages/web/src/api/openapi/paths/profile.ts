@@ -20,7 +20,7 @@ const Profile = strict({
     .openapi({ description: "Connected OAuth accounts, if any" }),
 }).openapi("Profile");
 
-// The PATCH response omits `identities` — updating a name can't change them,
+// The PATCH response omits `identities`: updating a name can't change them,
 // and re-listing them would cost an extra WorkOS round trip.
 const ProfileSummary = strict({
   id: z.string(),

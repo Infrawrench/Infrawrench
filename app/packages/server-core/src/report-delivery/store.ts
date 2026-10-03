@@ -1,11 +1,11 @@
 /**
- * Report notification rows — CRUD, validation, and the delivery-target
+ * Report notification rows: CRUD, validation, and the delivery-target
  * catalogue, shared by the web API and the poller pass.
  *
  * Scheduled report delivery follows the **digest pattern, not alert routing**
  * (see `compose.ts`): destinations live on the schedule row itself, not in
  * `alert_rules`. What this store validates on the way in is therefore the
- * whole trust story — a Slack channel or Teams webhook id must be a row the
+ * whole trust story: a Slack channel or Teams webhook id must be a row the
  * org already connected, and email addresses are normalized and bounded.
  */
 import { randomUUID } from "node:crypto";
@@ -171,7 +171,7 @@ async function normalizeInput(
     );
   }
 
-  // Slack / Teams ids must be rows the org already connected — a schedule can
+  // Slack / Teams ids must be rows the org already connected: a schedule can
   // only point at destinations an admin approved, never at a raw channel id.
   const slackIds = [...new Set((input.slackChannelIds ?? []).map(String))];
   if (slackIds.length > REPORT_NOTIFICATION_LIMITS.maxSlackChannels) {
@@ -244,7 +244,7 @@ export async function listReportNotifications(
 }
 
 /**
- * Every schedule in the org, one call — what the CLI's schedules column reads
+ * Every schedule in the org, one call: what the CLI's schedules column reads
  * instead of a request per report. Joined to live reports only: a soft-deleted
  * report's schedules are disabled state, not something to keep listing.
  */
@@ -309,7 +309,7 @@ export async function createReportNotification(
       organizationId,
       costReportId: reportId,
       ...normalized,
-      // Armed at the schedule's true next fire — never "right now", so
+      // Armed at the schedule's true next fire, never "right now", so
       // creating a schedule at 07:59 for 08:00 sends at 08:00, and creating
       // one at 08:01 sends tomorrow. "Send now" exists for immediacy.
       nextSendAt: normalized.enabled ? nextReportSendAt(scheduleOf(normalized), now) : null,
@@ -321,7 +321,7 @@ export async function createReportNotification(
 
 /**
  * Full replace, like a report's own PUT. Recomputes `next_send_at` from the
- * new schedule and clears any parked failure state — the user changed what
+ * new schedule and clears any parked failure state: the user changed what
  * they asked for, so a stale error about the old schedule would only confuse.
  */
 export async function updateReportNotification(
@@ -403,7 +403,7 @@ export async function disableReportNotificationsForReport(
 /**
  * What a schedule can be pointed at right now: the org's live Slack channels
  * and Teams webhooks, plus whether this deployment can send mail. Backs the
- * schedule editor's pickers — the user picks a channel, never types an id.
+ * schedule editor's pickers: the user picks a channel, never types an id.
  */
 export async function listReportDeliveryTargets(
   organizationId: string,
@@ -426,7 +426,7 @@ export async function listReportDeliveryTargets(
   ]);
   return {
     slackChannels: slack.map((ch) => ({ id: ch.id, label: `#${ch.channelName}` })),
-    // The label is `msteams_webhooks.label`, never the URL — the URL is a
+    // The label is `msteams_webhooks.label`, never the URL: the URL is a
     // credential and no route surfaces it.
     teamsWebhooks: teams.map((w) => ({ id: w.id, label: w.label })),
     emailAvailable: isEmailConfigured(),

@@ -1,6 +1,6 @@
 /**
  * Cost anomaly evaluation. Runs from the poller after each successful cost
- * collection for an org — the same trigger point as budget evaluation, because
+ * collection for an org: the same trigger point as budget evaluation, because
  * org cost data only changes when collection runs, so a daily-per-account
  * collection cadence gives a daily detection cadence for free.
  *
@@ -8,10 +8,10 @@
  * the series from ClickHouse, persists what was flagged, and fans out through
  * the existing notification transports under the `anomalyAlerts` trigger. The
  * thresholds it judges against are per-org (`anomaly-settings.ts`), read once
- * per pass — the detector itself stays pure and takes them as arguments.
+ * per pass: the detector itself stays pure and takes them as arguments.
  *
- * Two findings share this pipeline: a statistical `spike`, and a `new_source`
- * — a provider or service with no prior spend that suddenly costs money, which
+ * Two findings share this pipeline: a statistical `spike`, and a `new_source`;
+ * a provider or service with no prior spend that suddenly costs money, which
  * no sigma bar can catch. They share the table, the dedup index, the cooldown,
  * the list endpoint and the fan-out, and differ only in a `kind` discriminator
  * and the wording of the alert.
@@ -78,7 +78,7 @@ const COOLDOWN_DAYS = 7;
  * in `collect.ts`); and an org's accounts collect at jittered times spread
  * over a 24h cycle, so the first account to run sees an org-wide total for
  * "yesterday" that is missing every other account's share. A day looked at
- * once, early, could read as unremarkable and never be reconsidered — a real
+ * once, early, could read as unremarkable and never be reconsidered: a real
  * spike lost for good. Re-examining the same window collection re-fetches
  * means a day is judged again as it fills in.
  */
@@ -89,8 +89,8 @@ const EVALUATION_DAYS = 3;
  *
  * Detection is invoked per account, so an org with N cost accounts would
  * otherwise issue 2N grouped 29-day ClickHouse reads a day for an answer that
- * only moves when a day's data changes. Correctness never rests on this gate —
- * the unique index does that — so an in-process map is enough: the cost of a
+ * only moves when a day's data changes. Correctness never rests on this gate
+ * (the unique index does that) so an in-process map is enough: the cost of a
  * poller restart, or of a second replica, is an extra pass, not a double
  * alert.
  */
@@ -99,7 +99,7 @@ const MIN_EVAL_INTERVAL_MS = 60 * 60 * 1000;
 /** orgId → epoch ms of the last evaluation. Best-effort, per process. */
 const lastEvaluatedAt = new Map<string, number>();
 
-/** The two breakdowns evaluated — matches the `dimension` column's type. */
+/** The two breakdowns evaluated: matches the `dimension` column's type. */
 const DIMENSIONS = ["provider", "service"] as const;
 type AnomalyDimension = (typeof DIMENSIONS)[number];
 
@@ -207,7 +207,7 @@ function judgeDay(
  *
  * The upsert refreshes the stored amounts, because a day re-judged after more
  * of its data has landed is the more accurate reading of it. `notifiedAt` is
- * deliberately left alone — it is what makes an alert fire once.
+ * deliberately left alone: it is what makes an alert fire once.
  */
 async function detectForDimension(
   organizationId: string,
@@ -241,7 +241,7 @@ async function detectForDimension(
     for (const day of days) {
       const baseline = fillDailySeries(byDay, addDays(day, -BASELINE_DAYS), addDays(day, -1));
       const actual = byDay.get(day) ?? 0;
-      // Days of collection behind this day — 0 when the org has no cost data
+      // Days of collection behind this day: 0 when the org has no cost data
       // at all, which can only mean there is nothing here worth judging.
       const coverageDays = firstCostDay === null ? 0 : daysBetween(firstCostDay, day);
       const finding = judgeDay(baseline, actual, coverageDays, scoped);
@@ -298,7 +298,7 @@ async function detectForDimension(
 
 /**
  * True when the same key was *notified* about within the cooldown window.
- * Stored-but-unnotified rows are ignored on purpose — see the module note.
+ * Stored-but-unnotified rows are ignored on purpose: see the module note.
  */
 async function inCooldown(organizationId: string, anomaly: PendingAnomaly): Promise<boolean> {
   const rows = await db
@@ -321,7 +321,7 @@ async function inCooldown(organizationId: string, anomaly: PendingAnomaly): Prom
 /**
  * Evaluate an org's recent spend against its trailing baseline, per provider
  * and per service, and notify anomalies that have not been delivered yet
- * through push/Slack/Teams. Errors are logged, never thrown — anomaly
+ * through push/Slack/Teams. Errors are logged, never thrown: anomaly
  * evaluation must not break the poller's cost pass. Amounts compare in
  * currency units; the stored rows are cents, matching the budget tables.
  *
@@ -341,15 +341,15 @@ export async function detectCostAnomaliesForOrg(
 
   // Per-org settings (`org_cost_anomaly_settings`), read once per pass rather
   // than per key: an org that has never opened the form gets the shipped
-  // defaults. The thresholds become detector options — an explicit `options`
-  // argument wins, which is what a test or a one-off caller wants — and the
+  // defaults. The thresholds become detector options (an explicit `options`
+  // argument wins, which is what a test or a one-off caller wants) and the
   // SMS opt-in is read from the same row, so a caller that supplies its own
   // thresholds still pages the way the org asked to be paged.
   const settings = await getOrgAnomalySettings(organizationId);
   const tuning = options ?? anomalyOptionsFor(settings);
 
-  // Yesterday is the latest day worth judging — today is still accruing and
-  // would read as a dip, never a spike — back through the restatement window,
+  // Yesterday is the latest day worth judging (today is still accruing and
+  // would read as a dip, never a spike) back through the restatement window,
   // oldest first so a day that only now looks anomalous alerts before the
   // fresher days that may share its cooldown key.
   const newest = addDays(isoDay(now), -1);
@@ -359,7 +359,7 @@ export async function detectCostAnomaliesForOrg(
 
   // How far back the org's cost data goes, read once per pass and shared by
   // both dimensions. A failure here degrades rather than aborts: spikes still
-  // detect, and only new-source findings — the ones that need this fact — go
+  // detect, and only new-source findings (the ones that need this fact) go
   // quiet for the pass.
   let firstCostDay: string | null = null;
   try {
@@ -371,7 +371,7 @@ export async function detectCostAnomaliesForOrg(
   // Everything this pass alerted on, for the one batched SMS sent after both
   // dimensions have run. `delivered` records whether another transport already
   // stamped `notifiedAt`, so an org whose *only* transport is Twilio still gets
-  // its rows stamped — by the text itself, once it lands.
+  // its rows stamped: by the text itself, once it lands.
   const paged: Array<{ anomaly: PendingAnomaly; delivered: boolean }> = [];
 
   for (const dimension of DIMENSIONS) {
@@ -387,11 +387,11 @@ export async function detectCostAnomaliesForOrg(
       try {
         // Root-cause hints: what the change timeline and audit log say
         // happened in the anomaly's window. Computed before the cooldown
-        // check on purpose — a suppressed anomaly still renders in the list
+        // check on purpose: a suppressed anomaly still renders in the list
         // UI and should carry its hints there. Stored on the row so clients
         // read them without re-running the window queries; failures degrade
         // to an un-annotated alert (`buildAnomalyHints` never throws, but the
-        // store is guarded too — hints must never cost a delivery).
+        // store is guarded too: hints must never cost a delivery).
         let hints: string[] = [];
         try {
           hints = await buildAnomalyHints(organizationId, {
@@ -429,7 +429,7 @@ export async function detectCostAnomaliesForOrg(
 
         // Slack and Teams have room for the full list; a push notification is
         // one or two lines on a lock screen, so it carries only the top hint.
-        // The batched SMS carries none — its 320-character budget is already
+        // The batched SMS carries none: its 320-character budget is already
         // spent naming the anomalies themselves (`anomaly-sms.ts`).
         const hintedBody = hints.length > 0 ? `${body}\n\nAround then: ${hints.join("; ")}.` : body;
         const pushBody = hints.length > 0 ? `${body}\nLikely related: ${hints[0]}.` : body;
@@ -487,7 +487,7 @@ export async function detectCostAnomaliesForOrg(
 
 /**
  * The pass's single SMS, sent after both dimensions rather than inside the
- * loop — see `anomaly-sms.ts` for why one text per anomaly is a flood.
+ * loop: see `anomaly-sms.ts` for why one text per anomaly is a flood.
  *
  * Stamping is the subtle half. An anomaly the text named but no other transport
  * delivered has no `notifiedAt` yet; leaving it unstamped would re-alert it on

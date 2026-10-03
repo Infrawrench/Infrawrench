@@ -4,8 +4,8 @@
  * The session itself is a WebSocket (`/api/apps`, handled in `server.ts`)
  * because it carries a binary protocol. These two are plain requests, and they
  * have to be: the check exists to answer on a host where opening a session
- * would fail — the missing piece may be the `gunzip` that unpacks the app
- * server — so it cannot live inside the session it is there to protect.
+ * would fail (the missing piece may be the `gunzip` that unpacks the app
+ * server) so it cannot live inside the session it is there to protect.
  *
  * `POST /setup` is the only route in the app-streaming surface that changes the
  * customer's machine. It takes requirement ids, never a command; it needs
@@ -53,7 +53,7 @@ const REQUIREMENT_IDS = ["gzip", "xkb", "dbus", "fonts", "mesa", "icons"] as con
 const setupSchema = targetSchema
   .extend({
     /**
-     * Which requirements to satisfy. Omitted means every missing required one —
+     * Which requirements to satisfy. Omitted means every missing required one:
      * the "install everything needed" case, which is what the button does.
      */
     requirements: z.array(z.enum(REQUIREMENT_IDS)).min(1).max(REQUIREMENT_IDS.length).optional(),
@@ -71,7 +71,7 @@ function sshFailure(c: Parameters<typeof hostKeyTrustResponse>[0], error: unknow
  * POST /api/org/:orgId/apps/check
  *
  * A POST rather than a GET because it opens an SSH connection to somewhere the
- * caller named, which is not something to leave sitting in a URL — and because
+ * caller named, which is not something to leave sitting in a URL, and because
  * it must not be cached: the whole value is that it says what the host is
  * *now*, after an install.
  */
@@ -134,7 +134,7 @@ app.post("/setup", async (c) => {
   };
 
   // Started before the response is returned, and deliberately not awaited: the
-  // body is the progress. A failure has to reach the client *in* the stream —
+  // body is the progress. A failure has to reach the client *in* the stream:
   // the status line has already gone by the time anything can go wrong.
   void (async () => {
     try {
@@ -153,8 +153,8 @@ app.post("/setup", async (c) => {
       write({ outcome });
     } catch (error) {
       // A host key that changed between the check and the install cannot use the
-      // 409 the other route sends — the status line went out before the first
-      // package was touched — so the same fields travel inside the stream, and
+      // 409 the other route sends (the status line went out before the first
+      // package was touched) so the same fields travel inside the stream, and
       // the client can still prompt with a fingerprint rather than a bare code.
       if (error instanceof HostKeyTrustRequiredError) {
         write({

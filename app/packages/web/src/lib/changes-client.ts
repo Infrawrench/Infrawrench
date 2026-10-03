@@ -23,7 +23,7 @@ export function createWebChangeRevertClient(orgId: string): ChangeRevertClient {
   };
 }
 
-/** Web binding for the shared change-timeline panel — a thin `apiGet` wrapper. */
+/** Web binding for the shared change-timeline panel: a thin `apiGet` wrapper. */
 export function createWebChangesClient(orgId: string): ChangesClient {
   return {
     listChanges: (query: ChangeFeedQuery) => {
@@ -37,7 +37,7 @@ export function createWebChangesClient(orgId: string): ChangesClient {
     },
     listAccounts: () => apiGet<ChangeFeedAccount[]>(`/api/org/${orgId}/accounts`),
     // Batched per page rather than per row, and POSTed because the body is a
-    // list of ids — it stores nothing.
+    // list of ids: it stores nothing.
     costImpacts: async (changeIds) => {
       const { impacts } = await apiPost<{ impacts: ChangeCostImpactEntry[] }>(
         `/api/org/${orgId}/changes/cost-impacts`,

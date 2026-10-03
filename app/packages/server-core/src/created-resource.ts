@@ -1,8 +1,8 @@
 /**
  * Persisting a resource that was just created upstream.
  *
- * Four flows create resources — the REST create route, the two agent-tool
- * create paths, and agent-VM provisioning — and each has to land a `resources`
+ * Four flows create resources (the REST create route, the two agent-tool
+ * create paths, and agent-VM provisioning) and each has to land a `resources`
  * row immediately so the detail page can find the resource before the next
  * sync. They all wrote the same upsert by hand, which is how one of them ended
  * up not refreshing `external_id` on conflict.

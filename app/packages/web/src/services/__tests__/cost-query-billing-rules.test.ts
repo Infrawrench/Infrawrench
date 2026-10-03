@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
- * `runCostQuery`'s raw-vs-adjusted contract — the properties every surface
+ * `runCostQuery`'s raw-vs-adjusted contract: the properties every surface
  * relies on to label a number honestly.
  *
  * 1. **Absent `adjusted` is byte-identical to before billing rules existed.**
@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  *    `adjustment` field comes back. Every unattended reader (budgets, anomaly
  *    detection, change alerts, the digest, cost exports) lives on this path.
  * 2. **`adjusted` always produces an `adjustment` block**, even for an
- *    organisation with no rules — its absence must mean "collected" and nothing
+ *    organisation with no rules: its absence must mean "collected" and nothing
  *    else, so an org with no rules must not be able to fake it.
  * 3. **`rawTotals` is the collected figure for the same rows**, carried out of
  *    the same scan, so nothing can render an adjusted total without it.
@@ -137,7 +137,7 @@ describe("an adjusted query", () => {
   it("still returns an adjustment block when the org has no rules", async () => {
     // The absence of this field is the only signal that a figure is collected,
     // so "adjusted, but nothing applied" must be distinguishable from
-    // "unadjusted" — and the raw totals are then simply the totals.
+    // "unadjusted", and the raw totals are then simply the totals.
     mockResolveBilling.mockResolvedValue(EMPTY);
     mockQueryCosts.mockResolvedValue([
       { key: "", currency: "USD", points: [{ bucket: "2026-09-01", amount: 42 }] },

@@ -37,7 +37,7 @@ export const workflows = pgTable(
     webhookToken: text("webhook_token"),
     /**
      * HMAC secret the git provider signs delivery bodies with. When set, an
-     * unsigned or badly-signed delivery is rejected — the token alone is not
+     * unsigned or badly-signed delivery is rejected: the token alone is not
      * enough. Null on workflows created before signing existed, and on
      * providers that don't sign.
      */
@@ -48,7 +48,7 @@ export const workflows = pgTable(
      * Dedupe key for budget triggers: `"<YYYY-MM>:<metric>:<percent>"` of the
      * crossing that last fired. A conditional UPDATE on this column is what
      * makes a budget trigger fire exactly once per month across competing
-     * poller replicas — and re-arms immediately when the threshold is edited.
+     * poller replicas, and re-arms immediately when the threshold is edited.
      */
     budgetLastFiredKey: text("budget_last_fired_key"),
     /** Next scheduled run for cron triggers (poller picks these up). */
@@ -176,7 +176,7 @@ export const workflowMetrics = pgTable(
  * A monitoring cron finds the same problem on every tick, so paging is
  * throttled per key rather than per run. `lastPagedAt` is only advanced when a
  * page is actually sent, and the send is gated by a conditional upsert on this
- * row — that single statement is what keeps two poller replicas racing the same
+ * row: that single statement is what keeps two poller replicas racing the same
  * workflow from double-paging. `infra.page.clear(key)` deletes the row so a
  * recovered-then-recurring condition alerts again immediately.
  */
@@ -192,7 +192,7 @@ export const workflowPages = pgTable(
       .references(() => workflows.id, { onDelete: "cascade" }),
     /** The author-chosen throttle key; "default" when unspecified. */
     key: text("key").notNull(),
-    /** When this key last delivered a page — the start of its cooldown. */
+    /** When this key last delivered a page: the start of its cooldown. */
     lastPagedAt: timestamp("last_paged_at").notNull().defaultNow(),
     /** The message that was sent, for the run log and the settings UI. */
     lastMessage: text("last_message"),
@@ -257,7 +257,7 @@ export const workflowApprovals = pgTable(
  *
  * `workflow_id` and `run_id` are plain columns, not foreign keys, on purpose:
  * these are billing records, and deleting a workflow (or pruning its runs) must
- * not delete the spend it caused — an org could otherwise reset its free tier
+ * not delete the spend it caused: an org could otherwise reset its free tier
  * by deleting the workflow that spent it.
  */
 export const workflowAiUsage = pgTable(

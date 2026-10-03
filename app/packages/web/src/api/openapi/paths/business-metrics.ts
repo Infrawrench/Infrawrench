@@ -352,7 +352,7 @@ export function registerBusinessMetricPaths(ctx: BuildContext) {
       params: idParam(),
       // `limit` is a query parameter, so it belongs in `query` rather than
       // `params`. Declaring it inside `params` marks it `in: "path"`, and the
-      // `in: "query"` override then collides with that at registration time —
+      // `in: "query"` override then collides with that at registration time,
       // which fails the whole spec build, not just this operation.
       query: strict({
         limit: z.coerce

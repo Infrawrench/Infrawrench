@@ -1,5 +1,5 @@
 /**
- * On-call rotations — CRUD, and the resolve the alert path calls.
+ * On-call rotations: CRUD, and the resolve the alert path calls.
  *
  * The rotation arithmetic itself is in `@infrawrench/client-core`
  * (`resolveOnCall`, `nextOnCall`, `upcomingOnCallShifts`), which is the same
@@ -252,7 +252,7 @@ export async function listOnCallOverrides(
   const filters = [eq(onCallOverrides.organizationId, organizationId)];
   if (options.scheduleId) filters.push(eq(onCallOverrides.scheduleId, options.scheduleId));
   // A cover overlaps the window when it starts before the window ends and ends
-  // after it starts — not when both endpoints are inside it.
+  // after it starts, not when both endpoints are inside it.
   if (options.to) filters.push(lte(onCallOverrides.startsAt, options.to));
   if (options.from) filters.push(gte(onCallOverrides.endsAt, options.from));
 
@@ -338,7 +338,7 @@ export async function deleteOnCallOverride(
 }
 
 // ---------------------------------------------------------------------------
-// Resolve — what the alert path calls
+// Resolve: what the alert path calls
 // ---------------------------------------------------------------------------
 
 export interface ResolvedOnCall {
@@ -351,8 +351,8 @@ export interface ResolvedOnCall {
  * Who to wake for one schedule, right now.
  *
  * Never throws and never rejects: it is called on the alert delivery path, and
- * an alert lost because a rotation was misconfigured — or because this query
- * failed — is strictly worse than an alert delivered to the rule's other
+ * an alert lost because a rotation was misconfigured (or because this query
+ * failed) is strictly worse than an alert delivered to the rule's other
  * destinations without the on-call leg. Failure is logged and returns nobody.
  */
 export async function resolveOnCallNow(

@@ -6,7 +6,7 @@ import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert"
  *
  * The pure detector's own suite can only feed it arrays it invents. This one
  * goes through `detectForDimension`, so the baselines under test are built the
- * way production builds them — `fillDailySeries` zero-filled to a dense 28
+ * way production builds them: `fillDailySeries` zero-filled to a dense 28
  * entries whether or not the org has 28 days of data. That distinction is
  * exactly what a `baseline.length` guard cannot see, and what let every key of
  * a brand-new org alert as a new spend source on day one.
@@ -15,7 +15,7 @@ import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert"
  * Postgres is real Drizzle over a recording driver (helpers/fake-postgres.ts):
  * a pass issues the settings select, then one upsert per finding, then per
  * pending anomaly a hints update (when there are hints), the cooldown count and
- * the notifiedAt stamp, and finally the SMS claim's read + conditional update —
+ * the notifiedAt stamp, and finally the SMS claim's read + conditional update:
  * results are queued FIFO in that order (`queuePass` / `queueSmsClaim` below).
  * What the pass wrote is read back from the captured SQL.
  */
@@ -45,7 +45,7 @@ vi.mock("../db/client", () => ({ db: pg.db }));
 const snakeToCamel = (s: string) => s.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
 
 /**
- * Every row `detectForDimension` upserted, in order — decoded from each
+ * Every row `detectForDimension` upserted, in order: decoded from each
  * rendered `insert into "cost_anomalies"` statement's column list and params.
  */
 function inserted(): Array<Record<string, unknown>> {
@@ -61,7 +61,7 @@ function inserted(): Array<Record<string, unknown>> {
 }
 
 /**
- * The column names of every upsert conflict's `set` — what a re-judged day
+ * The column names of every upsert conflict's `set`: what a re-judged day
  * actually overwrites. It exists so a test can prove what is *not* in it.
  */
 function conflictSets(): string[][] {
@@ -77,7 +77,7 @@ function conflictSets(): string[][] {
 
 /**
  * The org's `org_cost_anomaly_settings` row, or `null` for an org that has
- * never opened the form (which reads as the shipped defaults — SMS off).
+ * never opened the form (which reads as the shipped defaults: SMS off).
  * Queued at the top of each pass by {@link queuePass}.
  */
 let settingsRow: Record<string, unknown> | null = null;
@@ -119,7 +119,7 @@ function queuePass(anomalies: number) {
  * Queue the rest of a pass whose SMS claim must succeed: the per-anomaly
  * notify-loop statements (each delivered anomaly issues its cooldown count and
  * its notifiedAt stamp, plus a hints update when hints were built), then the
- * claim's prior read and the conditional UPDATE — which either matches the row
+ * claim's prior read and the conditional UPDATE, which either matches the row
  * or it doesn't. A test whose window is already spent simply skips this helper
  * and lets the claim resolve to the empty default.
  */
@@ -131,7 +131,7 @@ function queueSmsClaim(anomalies: number, { hintsPerAnomaly = 0 } = {}) {
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
- * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * these tests mock. `alertReached` is the real predicate rather than a stub:
  * it decides whether a cooldown or claim is kept, and faking it would hide
  * exactly the bug it exists to prevent.
  */
@@ -198,7 +198,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
   it("stays silent for an org whose collection started two days ago", async () => {
     // The day-one storm: three providers, all material spend, none of which
     // has any history because the org has none. The baseline handed to the
-    // detector is still a dense 28 zeros — length alone cannot tell.
+    // detector is still a dense 28 zeros: length alone cannot tell.
     getCostCoverage.mockResolvedValue(coverage("2026-07-13"));
     providerCosts([
       { key: "aws", currency: "USD", points: flatPoints("2026-07-13", YESTERDAY, 4000) },
@@ -226,7 +226,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
 
   it("still flags a key that first appears inside an established org", async () => {
     // The feature itself: months of collection, and a provider that shows up
-    // yesterday with real money. Per-key history is all zeros — only the
+    // yesterday with real money. Per-key history is all zeros, only the
     // *org's* coverage may silence a finding.
     getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
     providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
@@ -320,7 +320,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
 
   it("does not let a young org's spike detection break either", async () => {
     // Spikes are guarded by observed spending days, which the young org has
-    // too few of — so a young org is silent in both detectors.
+    // too few of, so a young org is silent in both detectors.
     getCostCoverage.mockResolvedValue(coverage("2026-07-13"));
     providerCosts([
       {
@@ -365,7 +365,7 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     };
   }
 
-  /** N brand-new spend sources in one pass — the fan-out this design fears. */
+  /** N brand-new spend sources in one pass: the fan-out this design fears. */
   function manyNewSources(count: number) {
     getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
     providerCosts(
@@ -506,7 +506,7 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
 
     await anomalyEval.detectCostAnomaliesForOrg("org-undelivered", NOW, OPTS, true);
 
-    // Claimed with `now`, then restored to the prior value — an outage must not
+    // Claimed with `now`, then restored to the prior value: an outage must not
     // buy six hours of silence.
     expect(smsClaimWrites()).toEqual([NOW, null]);
   });
@@ -572,13 +572,13 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
 /**
  * The hints leg. `buildAnomalyHints` itself is tested in
  * `anomaly-hints.test.ts`; what matters here is what the evaluator does with
- * its answer — store it, put it in the right transports' bodies, and survive
+ * its answer: store it, put it in the right transports' bodies, and survive
  * it failing.
  */
 describe("detectCostAnomaliesForOrg — root-cause hints", () => {
   const HINTS = ["12 gce-instance resources appeared", 'Astrid ran workflow "Nightly rebuild"'];
 
-  /** One new spend source inside an established org — one pending anomaly. */
+  /** One new spend source inside an established org: one pending anomaly. */
   function oneNewSource() {
     getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
     providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
@@ -683,7 +683,7 @@ describe("detectCostAnomaliesForOrg — an explained anomaly is not a suppressed
   it("flags a second spike for the same key on a later day as its own row", async () => {
     // A key that spiked on 07-12 (say, explained the same afternoon) and spikes
     // again on 07-14. The unique index is per (org, day, key), so the later day
-    // is a new row and a new finding — there is no state anywhere that could
+    // is a new row and a new finding: there is no state anywhere that could
     // make an explanation reach forwards in time.
     getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
     const points = flatPoints(addDays(YESTERDAY, -40), YESTERDAY, 100);

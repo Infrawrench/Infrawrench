@@ -8,7 +8,7 @@
  * the burn rate is measured rather than guessed.
  *
  * Neither carries an FK to `accounts` beyond the cascade: an account deleted
- * takes its credit history with it, which is right — a burn rate for an
+ * takes its credit history with it, which is right; a burn rate for an
  * account that no longer exists is not a fact anybody needs.
  */
 import {
@@ -24,7 +24,7 @@ import {
 import { accounts, organizations } from "./core-schema.js";
 
 /**
- * The latest reading for one pot. `(account_id, pot_key)` is the identity —
+ * The latest reading for one pot. `(account_id, pot_key)` is the identity:
  * a provider that splits credit by currency or by project gets a row each,
  * because "$40 and ¥300" is not a number and one project running dry while
  * another has headroom is exactly what this is for.
@@ -128,7 +128,7 @@ export const accountCreditPolls = pgTable(
      * than leaving the user to guess. Cleared on the next success.
      */
     lastError: text("last_error"),
-    /** Set when the plugin threw `CreditAccessError` — a permission gap. */
+    /** Set when the plugin threw `CreditAccessError`: a permission gap. */
     lastErrorHelpLabel: text("last_error_help_label"),
     lastErrorHelpUrl: text("last_error_help_url"),
   },

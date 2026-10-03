@@ -21,7 +21,7 @@ app.get("/", async (c) => {
   const action = c.req.query("action");
   const entityType = c.req.query("entityType");
   const userId = c.req.query("userId");
-  // "Which key did this?" — the question an operator asks after a credential
+  // "Which key did this?": the question an operator asks after a credential
   // leaks. Filtering by owner is not a substitute: a person and every key they
   // minted share a `userId`.
   const apiKeyId = c.req.query("apiKeyId");

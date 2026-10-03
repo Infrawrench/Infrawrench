@@ -50,7 +50,7 @@ export async function pollAccount(
           buckets.penalize(account.pluginId, account.id, PENALTY_DURATION_MS);
         }
       }
-      // Fire-and-forget — the pager swallows its own errors so it can never
+      // Fire-and-forget: the pager swallows its own errors so it can never
       // block or break the poll loop.
       void notePollOutcome({
         organizationId: account.organizationId,

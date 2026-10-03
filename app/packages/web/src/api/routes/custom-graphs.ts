@@ -10,7 +10,7 @@
  * renders are paid-plan-gated in the service (402 via PlanRequiredError).
  *
  * NOTE: like workflows, custom graphs reuse the dashboards:read /
- * dashboards:write permissions — they are dashboard content.
+ * dashboards:write permissions; they are dashboard content.
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
@@ -57,7 +57,7 @@ const renderRequestSchema = z.object({
 app.get("/", async (c) => {
   requirePermission(c, "dashboards:read");
   const rows = await listCustomGraphs(orgId(c));
-  // The list is for pickers and sidebars — no need to ship every source blob.
+  // The list is for pickers and sidebars: no need to ship every source blob.
   return c.json(
     rows.map(({ id, name, description, createdAt, updatedAt }) => ({
       id,

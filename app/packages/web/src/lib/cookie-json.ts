@@ -15,7 +15,7 @@ export async function jsonOrThrow<T>(res: Response): Promise<T> {
       const body = (await res.json()) as { error?: string };
       detail = body.error ? `: ${body.error}` : "";
     } catch {
-      // Non-JSON error body — the status alone will have to do.
+      // Non-JSON error body: the status alone will have to do.
     }
     throw new Error(`Request failed (${res.status})${detail}`);
   }

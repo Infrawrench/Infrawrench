@@ -4,7 +4,7 @@
  *
  * 1. Coverage is measured on **amortized** money. Both AWS and Azure price
  *    commitment-covered usage at zero cash, so a cash ratio is 0% for every org
- *    that has ever bought a commitment — an answer-shaped non-answer.
+ *    that has ever bought a commitment: an answer-shaped non-answer.
  * 2. The covered/uncovered split is a **partition**. A row carrying both
  *    coverage signals must be counted once.
  * 3. The amortized money expression distinguishes an amortized amount of zero
@@ -62,7 +62,7 @@ function evaluateAmortized(expr: SQL, row: StoredRow): number {
 
 describe("commitment coverage is computed on amortized money", () => {
   it("uses the amortized expression on both sides of the ratio, never `amount`", () => {
-    // Numerator and denominator must be the same kind of money — a mixed-basis
+    // Numerator and denominator must be the same kind of money: a mixed-basis
     // ratio is not a percentage of anything.
     const expr = render(amortizedAmountExpr());
     expect(expr).toContain("amortized_amount");
@@ -103,9 +103,9 @@ describe("commitment coverage is computed on amortized money", () => {
 // ─── 2. The partition ───────────────────────────────────────────────────────
 
 /**
- * Aggregate rows into one cell the way the coverage query's two `sumIf`s do —
- * by routing each row through {@link classifyCoverageRow}, the same rule the
- * SQL transliterates — and return the resulting broad ratio.
+ * Aggregate rows into one cell the way the coverage query's two `sumIf`s do
+ * (by routing each row through {@link classifyCoverageRow}, the same rule the
+ * SQL transliterates) and return the resulting broad ratio.
  *
  * `[chargeType, commitmentId, amortizedAmount]` per row.
  */
@@ -153,7 +153,7 @@ describe("the covered/uncovered split is a partition", () => {
 
   it("counts a row carrying both signals exactly once", () => {
     // A provider that can report both produces this shape, and it must not be
-    // added to the numerator twice — nor appear in the denominator as well.
+    // added to the numerator twice, nor appear in the denominator as well.
     const both = classifyCoverageRow("commitment_covered_usage", "sp-arn-1");
     expect(both).toBe("covered");
     expect(both).not.toBe("uncovered");
@@ -276,7 +276,7 @@ describe("amortized money distinguishes a reported zero from no report", () => {
 /**
  * Both sums are net of refunds, credits and corrections, so a window's spend
  * can land at zero or below. Coverage is read as a purchasing signal, and a
- * wrong number there is worse than a missing one — every one of these has to
+ * wrong number there is worse than a missing one: every one of these has to
  * report unavailable rather than arithmetic.
  */
 describe("coverage reports unavailable rather than a meaningless ratio", () => {
@@ -302,7 +302,7 @@ describe("coverage reports unavailable rather than a meaningless ratio", () => {
     const r = report(100, -400);
     expect(r.broadRatio).toBeNull();
     expect(r.narrowRatio).toBeNull();
-    // The underlying sums are still reported — the report says what it saw,
+    // The underlying sums are still reported: the report says what it saw,
     // it just declines to divide by it.
     expect(r.coveredAmount).toBe(100);
     expect(r.uncoveredAmount).toBe(-400);

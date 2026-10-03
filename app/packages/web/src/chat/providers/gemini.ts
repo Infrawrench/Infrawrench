@@ -6,7 +6,7 @@
  * normal Google Cloud SKU billed to the project, so Google Cloud credits and
  * committed-use discounts apply to it. Gemini Developer API usage is explicitly
  * excluded from Google Cloud welcome/free-trial credits. It also means there is
- * no API key to store or rotate — in GKE the pod authenticates as a Google
+ * no API key to store or rotate: in GKE the pod authenticates as a Google
  * service account through Workload Identity, and locally ADC comes from
  * `gcloud auth application-default login`.
  *
@@ -19,7 +19,7 @@ import type { ChatContentBlock } from "@infrawrench/ui";
 import type { ChatProvider, ProviderEvent, ProviderTool, TurnRequest } from "./types";
 
 /**
- * Vertex location. `global` is the multi-region endpoint — it has the broadest
+ * Vertex location. `global` is the multi-region endpoint: it has the broadest
  * model availability and the least capacity-driven 429s, and Gemini 3.x is
  * offered there. Override with GOOGLE_CLOUD_LOCATION when a data-residency
  * requirement pins inference to a single region.
@@ -159,7 +159,7 @@ export const geminiProvider: ChatProvider = {
     for await (const chunk of stream) {
       const usage = chunk.usageMetadata;
       if (usage) {
-        // Cumulative, not per-chunk — last one present wins.
+        // Cumulative, not per-chunk: last one present wins.
         promptTokens = usage.promptTokenCount ?? promptTokens;
         candidateTokens = usage.candidatesTokenCount ?? candidateTokens;
         thoughtTokens = usage.thoughtsTokenCount ?? thoughtTokens;

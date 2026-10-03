@@ -10,7 +10,7 @@
  *
  * The choice is independent of the conversation's model on purpose. Search is a
  * sub-call, not part of the main turn, so pairing it with the chat model would
- * only mean a Claude conversation loses search on a Gemini-only deployment —
+ * only mean a Claude conversation loses search on a Gemini-only deployment:
  * paying nothing for the coupling.
  *
  * `INFRAWRENCH_CHAT_SEARCH_BACKEND` overrides the order for operators who have

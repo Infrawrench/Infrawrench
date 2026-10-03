@@ -12,7 +12,7 @@ function series(...remaining: number[]) {
 
 describe("estimateBurn", () => {
   it("returns no rate from a single reading", () => {
-    // Not 0 — "nothing is being spent" is a claim, and one reading cannot
+    // Not 0: "nothing is being spent" is a claim, and one reading cannot
     // support it.
     expect(estimateBurn(series(100)).perDay).toBeNull();
   });

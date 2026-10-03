@@ -1,9 +1,9 @@
 /**
- * Chat API — conversation CRUD plus a streaming SSE endpoint that runs the
+ * Chat API: conversation CRUD plus a streaming SSE endpoint that runs the
  * agent loop, a pending-action approval endpoint that gates destructive tool
  * calls, a structured-answer endpoint for `ask_question`, and a human-only
  * secret-request handoff. Authenticates via session cookie, WorkOS Bearer, or
- * API key with the `chat:write` scope — see ../../chat/auth.ts.
+ * API key with the `chat:write` scope: see ../../chat/auth.ts.
  */
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -43,7 +43,7 @@ import {
 const app = new Hono();
 
 /* -------------------------------------------------------------------------- */
-/* GET /  — list conversations for the caller (most recent first)             */
+/* GET /  - list conversations for the caller (most recent first)             */
 /* -------------------------------------------------------------------------- */
 app.get("/conversations", async (c) => {
   const orgId = c.req.param("orgId") ?? "";
@@ -72,7 +72,7 @@ app.get("/conversations", async (c) => {
   return c.json({ conversations: rows });
 });
 
-/* POST / — create */
+/* POST /: create */
 app.post("/conversations", async (c) => {
   const orgId = c.req.param("orgId") ?? "";
   const auth = await authenticateChat(c, orgId, "chat:write");
@@ -101,7 +101,7 @@ app.post("/conversations", async (c) => {
   return c.json({ id });
 });
 
-/* PATCH /:id — update settings (currently just the model) */
+/* PATCH /:id: update settings (currently just the model) */
 app.patch("/conversations/:id", async (c) => {
   const orgId = c.req.param("orgId") ?? "";
   const auth = await authenticateChat(c, orgId, "chat:write");
@@ -132,7 +132,7 @@ app.patch("/conversations/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/* GET /:id — fetch with messages */
+/* GET /:id: fetch with messages */
 app.get("/conversations/:id", async (c) => {
   const orgId = c.req.param("orgId") ?? "";
   const auth = await authenticateChat(c, orgId, "chat:read");
@@ -173,7 +173,7 @@ app.get("/conversations/:id", async (c) => {
   return c.json({ conversation: conv, messages, pendingActions: pending, pendingSecretRequests });
 });
 
-/* DELETE /:id — archive */
+/* DELETE /:id: archive */
 app.delete("/conversations/:id", async (c) => {
   const orgId = c.req.param("orgId") ?? "";
   const auth = await authenticateChat(c, orgId, "chat:write");
@@ -193,7 +193,7 @@ app.delete("/conversations/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/* GET /spend — current month-to-date spend + cap */
+/* GET /spend: current month-to-date spend + cap */
 app.get("/spend", async (c) => {
   const orgId = c.req.param("orgId") ?? "";
   const auth = await authenticateChat(c, orgId, "chat:read");
@@ -203,7 +203,7 @@ app.get("/spend", async (c) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* POST /:id/messages — SSE: start a turn (either with a new user message or  */
+/* POST /:id/messages; SSE: start a turn (either with a new user message or  */
 /* by resuming from approved pending actions)                                  */
 /* -------------------------------------------------------------------------- */
 app.post("/conversations/:id/messages", async (c) => {
@@ -244,8 +244,8 @@ app.post("/conversations/:id/messages", async (c) => {
   // Most of the tool layer passes `source` to `logAudit` and drops
   // `apiKeyId`, so a key-driven `resource.delete` would otherwise read as if
   // the owner did it by hand. Entered here rather than inside
-  // `authenticateChat`: `enterWith` reaches this execution's descendants —
-  // which is the tool loop — but not the caller of an awaited function.
+  // `authenticateChat`: `enterWith` reaches this execution's descendants
+  // (which is the tool loop) but not the caller of an awaited function.
   if (auth.apiKeyId) enterAuditPrincipal({ apiKeyId: auth.apiKeyId, userId: auth.userId });
 
   // Title auto-rename: if conversation still has the default title and the
@@ -284,7 +284,7 @@ app.post("/conversations/:id/messages", async (c) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* POST /pending/:pendingId — approve or reject a destructive tool call       */
+/* POST /pending/:pendingId: approve or reject a destructive tool call       */
 /* -------------------------------------------------------------------------- */
 app.post("/conversations/:id/pending/:pendingId", async (c) => {
   const orgId = c.req.param("orgId") ?? "";
@@ -340,8 +340,8 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
   // Most of the tool layer passes `source` to `logAudit` and drops
   // `apiKeyId`, so a key-driven `resource.delete` would otherwise read as if
   // the owner did it by hand. Entered here rather than inside
-  // `authenticateChat`: `enterWith` reaches this execution's descendants —
-  // which is the tool loop — but not the caller of an awaited function.
+  // `authenticateChat`: `enterWith` reaches this execution's descendants
+  // (which is the tool loop) but not the caller of an awaited function.
   if (auth.apiKeyId) enterAuditPrincipal({ apiKeyId: auth.apiKeyId, userId: auth.userId });
 
   // Name the decider the way every other approval surface does: display name
@@ -354,7 +354,7 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
   const decidedByName = decider?.displayName ?? auth.email ?? null;
 
   // Retire the interactive Slack copies of this request, whatever the
-  // decision. Fire-and-forget (the helper never throws) — the decision below
+  // decision. Fire-and-forget (the helper never throws): the decision below
   // is the record; Slack is presentation.
   const noteDecided = (decision: "approved" | "denied") =>
     void noteChatToolApprovalDecided({
@@ -368,7 +368,7 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
     });
 
   // Claim the row conditioned on it still being `pending`: the returned row
-  // count makes two racing deciders — this route, a Slack button, or both —
+  // count makes two racing deciders (this route, a Slack button, or both)
   // produce exactly one decision. The loser gets the same 409 as the
   // status pre-check above.
   const claimed = await db
@@ -408,7 +408,7 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
         resolvedAt: new Date(),
       })
       .where(eq(chatPendingActions.id, pendingId));
-    // The approval itself landed — only the execution failed — so the Slack
+    // The approval itself landed (only the execution failed) so the Slack
     // copies' decision controls still retire.
     noteDecided("approved");
     return c.json({ error: e instanceof Error ? e.message : "Execution failed" }, 500);
@@ -416,7 +416,7 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* POST /pending/:pendingId/answer — structured reply to ask_question         */
+/* POST /pending/:pendingId/answer: structured reply to ask_question         */
 /* -------------------------------------------------------------------------- */
 app.post("/conversations/:id/pending/:pendingId/answer", async (c) => {
   const orgId = c.req.param("orgId") ?? "";
@@ -492,7 +492,7 @@ app.post("/conversations/:id/pending/:pendingId/answer", async (c) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* POST /secret-requests/:requestId — human-only, write-only secret handoff   */
+/* POST /secret-requests/:requestId: human-only, write-only secret handoff   */
 /* -------------------------------------------------------------------------- */
 app.post("/conversations/:id/secret-requests/:requestId", async (c) => {
   const orgId = c.req.param("orgId") ?? "";

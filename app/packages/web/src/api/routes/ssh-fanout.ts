@@ -1,5 +1,5 @@
 /**
- * Fan-out SSH API routes — list SSH-capable targets, run one command across
+ * Fan-out SSH API routes: list SSH-capable targets, run one command across
  * many of them, and CRUD org-shared saved command snippets.
  *
  * Runs are freeze-gated (running arbitrary commands on fleet hosts is a
@@ -65,7 +65,7 @@ app.post("/run", async (c) => {
   const input = parsed.data;
   const commandSnippet = input.command.slice(0, 200);
 
-  // Fan-out exec is a mutating operation — respect change freezes, with the
+  // Fan-out exec is a mutating operation: respect change freezes, with the
   // standard override header for holders of freezes:override.
   const frozen = await checkChangeFreeze(c, {
     action: "ssh.fanout.run",
@@ -115,7 +115,7 @@ const snippetInputSchema = z
   })
   .strict();
 
-/** GET /api/org/:orgId/ssh-fanout/snippets — org-shared saved commands. */
+/** GET /api/org/:orgId/ssh-fanout/snippets: org-shared saved commands. */
 app.get("/snippets", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
@@ -136,7 +136,7 @@ app.get("/snippets", async (c) => {
   });
 });
 
-/** POST /api/org/:orgId/ssh-fanout/snippets — save a command for reuse. */
+/** POST /api/org/:orgId/ssh-fanout/snippets: save a command for reuse. */
 app.post("/snippets", async (c) => {
   requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
@@ -174,7 +174,7 @@ app.post("/snippets", async (c) => {
   return c.json({ id });
 });
 
-/** PUT /api/org/:orgId/ssh-fanout/snippets/:id — update a saved command. */
+/** PUT /api/org/:orgId/ssh-fanout/snippets/:id: update a saved command. */
 app.put("/snippets/:id", async (c) => {
   requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");

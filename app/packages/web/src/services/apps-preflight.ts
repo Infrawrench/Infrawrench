@@ -1,5 +1,5 @@
 /**
- * "Can this host run applications, and can we make it able to?" — server side.
+ * "Can this host run applications, and can we make it able to?": server side.
  *
  * Both halves are one SSH connection each, opened and closed here rather than
  * borrowed from the session: the point of the check is to answer on a host
@@ -7,7 +7,7 @@
  * started.
  *
  * The install is deliberately narrow. The caller names which *requirements* to
- * satisfy, never a command — the commands come from `planInstall` in
+ * satisfy, never a command: the commands come from `planInstall` in
  * `@infrawrench/appstream-host`, from a probe this server just ran. There is no
  * shape of request that turns this into "run something as root over there".
  */

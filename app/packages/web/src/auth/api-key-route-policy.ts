@@ -3,7 +3,7 @@
  * scopes it holds.
  *
  * Letting keys authenticate against the org tree widens *who can present
- * credentials*. It must not widen *what a credential may do* — every route
+ * credentials*. It must not widen *what a credential may do*: every route
  * keeps the `requirePermission` gate it already had, and the key's effective
  * permissions are its scopes intersected with its owner's current role (see
  * `auth/effective-permissions.ts`). That covers authorization.
@@ -11,7 +11,7 @@
  * It does not cover a smaller, separate question: a handful of endpoints are
  * *acts a person performs*, where "the permission was held" is not the whole
  * control. Approving a colleague's break-glass request is one. Minting a
- * credential is another — a key that can mint keys can mint a longer-lived,
+ * credential is another: a key that can mint keys can mint a longer-lived,
  * differently-scoped one and outlive its own revocation, which turns "revoke
  * that key" from a decision into a race.
  *
@@ -24,7 +24,7 @@
  * already unreachable: `/api/profile/*` (session management, MFA, email
  * change), `/api/orgs/*` (org creation and deletion) and `/api/admin/*` sit
  * under the `authed` group, not the org tree, and that group still runs the
- * unmodified `sessionMiddleware` — it 401s an `iwk_` key exactly as it does
+ * unmodified `sessionMiddleware`; it 401s an `iwk_` key exactly as it does
  * today. `auth/step-up.ts` denies bearer principals independently on top.
  */
 
@@ -44,13 +44,13 @@ interface DenyRule {
 }
 
 /**
- * Ordered only for readability — every rule is evaluated, first match wins.
+ * Ordered only for readability: every rule is evaluated, first match wins.
  */
 export const API_KEY_DENY_RULES: readonly DenyRule[] = [
   {
     // Key minting is the escalation the whole feature has to avoid. A key
     // holding `apikeys:write` could mint a second key with a later expiry and
-    // a different name, so revoking the first would not end the access — the
+    // a different name, so revoking the first would not end the access: the
     // credential inventory would stop being an inventory. Reads go with it:
     // there is no automation that needs to enumerate the org's credentials,
     // and listing them (name, prefix, scopes, owner) is reconnaissance that
@@ -62,7 +62,7 @@ export const API_KEY_DENY_RULES: readonly DenyRule[] = [
   {
     // Checkout sessions, the customer portal, plan changes and payment
     // methods. Commercial state, largely irreversible, and every endpoint here
-    // answers with a Stripe URL meant to be opened by a person in a browser —
+    // answers with a Stripe URL meant to be opened by a person in a browser:
     // an unattended caller has nothing to do with the response but leak it.
     prefix: "/billing",
     methods: "*",
@@ -82,7 +82,7 @@ export const API_KEY_DENY_RULES: readonly DenyRule[] = [
     // seat changes: all of them manufacture or destroy durable authority for
     // *other* principals. `isSubsetOfCallerPerms` already stops a key granting
     // more than it holds, which bounds the damage but does not change its
-    // kind — a key should not be able to create a new person who holds what it
+    // kind: a key should not be able to create a new person who holds what it
     // holds, nor remove one who does. Reads stay open: inventorying members and
     // roles is ordinary automation (offboarding checks, drift reports).
     prefix: "/team",
@@ -95,7 +95,7 @@ export const API_KEY_DENY_RULES: readonly DenyRule[] = [
     // is authority handed to a person for a bounded window on a stated reason,
     // and a key requesting, approving, denying or revoking one removes the
     // human from the loop the control exists to keep. Reads stay open so a
-    // monitor can watch the queue — an elevation nobody can see is not a
+    // monitor can watch the queue: an elevation nobody can see is not a
     // control.
     prefix: "/access-requests",
     methods: MUTATING,
@@ -108,7 +108,7 @@ export const API_KEY_DENY_RULES: readonly DenyRule[] = [
     // the length of a conversation; joining one is that colleague accepting.
     // Neither act has an unattended reading. A key that could redeem an invite
     // would turn a link pasted into a chat window into a durable, unwatched
-    // foothold on the box — which is exactly the failure mode the short expiry
+    // foothold on the box, which is exactly the failure mode the short expiry
     // and the single-use invite exist to prevent, reintroduced from the other
     // side. Reads stay open so a monitor can see which sessions are shared
     // right now; that is the visibility half of the control.
@@ -142,7 +142,7 @@ function matchesPrefix(subPath: string, prefix: string): boolean {
  * The reason this request is closed to API keys, or `null` if it is open.
  *
  * `pathname` is the full request path (`/api/org/<id>/api-keys`). A path that
- * is not under the org tree is never denied here — this function only speaks
+ * is not under the org tree is never denied here: this function only speaks
  * for routes the API-key middleware actually guards.
  */
 export function apiKeyRouteDenial(method: string, pathname: string): string | null {
@@ -166,7 +166,7 @@ export function apiKeyRouteDenial(method: string, pathname: string): string | nu
 export const AGENT_DENY_RULES: readonly DenyRule[] = [
   {
     // The same escalation `/api-keys` is closed for, one level up. An agent
-    // that can revoke registrations can revoke *the other agents* — including,
+    // that can revoke registrations can revoke *the other agents*, including,
     // in an org running several, the one a colleague is mid-conversation with.
     // Reads stay open: an agent listing its org's agents is inventory, and the
     // page it powers is the one a human uses to notice something unexpected.
@@ -189,8 +189,8 @@ export const AGENT_DENY_RULES: readonly DenyRule[] = [
 /**
  * The reason this request is closed to an agent credential, or `null`.
  *
- * Checks the API-key table first — an agent is strictly more restricted than a
- * key, never less — then the agent-only additions.
+ * Checks the API-key table first (an agent is strictly more restricted than a
+ * key, never less) then the agent-only additions.
  */
 export function agentRouteDenial(method: string, pathname: string): string | null {
   const fromKeys = apiKeyRouteDenial(method, pathname);

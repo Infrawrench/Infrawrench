@@ -15,7 +15,7 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * GET /api/org/:orgId/tag-policy — the org's required-tag policy. Readable by
+ * GET /api/org/:orgId/tag-policy: the org's required-tag policy. Readable by
  * anyone who can see resources: the create form needs it to pre-fill required
  * tags, and the compliance report is meaningless without it.
  */
@@ -24,7 +24,7 @@ app.get("/", async (c) => {
   return c.json(await getOrgTagPolicy(c.get("organizationId")));
 });
 
-/** PUT /api/org/:orgId/tag-policy — replace the policy. Org-settings gated. */
+/** PUT /api/org/:orgId/tag-policy: replace the policy. Org-settings gated. */
 app.put("/", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -51,7 +51,7 @@ app.put("/", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/tag-policy/compliance — per-account compliance scores:
+ * GET /api/org/:orgId/tag-policy/compliance: per-account compliance scores:
  * the share of each account's tag-capable resources carrying every required
  * tag (with an allowed value where the policy restricts one).
  */

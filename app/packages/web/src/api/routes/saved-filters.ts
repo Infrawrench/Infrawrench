@@ -10,7 +10,7 @@
  * Reads are `costs:read` and writes `costs:write`, like cost reports: a saved
  * filter is a statement about cost data, not dashboard furniture. DELETE is
  * refused with a 409 (body carries `referents`) while anything still points at
- * the filter — see services/saved-cost-filters.ts for the policy rationale.
+ * the filter: see services/saved-cost-filters.ts for the policy rationale.
  * The logic lives in that service so the MCP/chat tools drive exactly the same
  * code path; this file is transport only.
  */
@@ -59,13 +59,13 @@ function writeError(c: Context, e: unknown) {
   throw e;
 }
 
-/** GET /api/org/:orgId/saved-cost-filters — list, alphabetically. */
+/** GET /api/org/:orgId/saved-cost-filters: list, alphabetically. */
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
   return c.json(await listSavedCostFilters(c.get("organizationId")));
 });
 
-/** POST /api/org/:orgId/saved-cost-filters — create. */
+/** POST /api/org/:orgId/saved-cost-filters: create. */
 app.post("/", async (c) => {
   requirePermission(c, "costs:write");
   const organizationId = c.get("organizationId");
@@ -105,10 +105,10 @@ app.get("/:id", async (c) => {
 });
 
 /**
- * PUT /api/org/:orgId/saved-cost-filters/:id — replace name, description and
+ * PUT /api/org/:orgId/saved-cost-filters/:id: replace name, description and
  * filters. This is the high-leverage write: every graph, report and budget
  * referencing the filter runs the new terms on its next query. The audit entry
- * records the new query text for that reason — "who re-scoped every prod
+ * records the new query text for that reason: "who re-scoped every prod
  * budget" must be answerable.
  */
 app.put("/:id", async (c) => {
@@ -139,12 +139,12 @@ app.put("/:id", async (c) => {
 });
 
 /**
- * DELETE /api/org/:orgId/saved-cost-filters/:id — soft delete.
+ * DELETE /api/org/:orgId/saved-cost-filters/:id: soft delete.
  *
  * Refused with a 409 while any budget, report or dashboard graph references
  * the filter; the body lists the referents so the client can name them.
  * Deleting a referenced filter would silently widen every referent to all
- * spend — for a budget, an alert-firing change — so detachment is deliberate,
+ * spend (for a budget, an alert-firing change) so detachment is deliberate,
  * never a side effect of deletion.
  */
 app.delete("/:id", async (c) => {
@@ -174,7 +174,7 @@ app.delete("/:id", async (c) => {
 });
 
 /**
- * GET /api/org/:orgId/saved-cost-filters/:id/referents — every budget, report
+ * GET /api/org/:orgId/saved-cost-filters/:id/referents: every budget, report
  * and dashboard graph referencing this filter. What a delete would be refused
  * over, and what an editor shows before letting someone re-scope the filter.
  */

@@ -3,8 +3,8 @@
  *
  * Deliberately parallel to `credits/collect.ts`: the host owns scheduling,
  * storage and rendering; the plugin owns the provider calls. A collection is
- * a full snapshot — the provider's list APIs return the entire holding,
- * expired records included — so storage is an upsert per record plus a sweep
+ * a full snapshot (the provider's list APIs return the entire holding,
+ * expired records included) so storage is an upsert per record plus a sweep
  * of rows the provider stopped reporting. A commitment that vanished from
  * the provider (account access moved, record aged out) is deleted rather
  * than left at its last reading: stale holdings are exactly what a coverage
@@ -27,7 +27,7 @@ export interface CommitmentCollectionResult {
 /**
  * Fetch and store the account's commitments.
  *
- * Throws on failure — the caller (the poller's commitments pass) owns backoff
+ * Throws on failure: the caller (the poller's commitments pass) owns backoff
  * and the error write, exactly as the cost and credits passes do. The plugin
  * side has the same contract (a per-region failure fails the whole fetch), so
  * a partial provider outage never masquerades as commitments having ended.
@@ -60,7 +60,7 @@ export async function collectAccountCommitments(
       endDate: record.endDate ? new Date(record.endDate) : null,
       termDays: record.termDays ?? null,
       paymentOption: record.paymentOption ?? null,
-      // Money fields stay NULL when unreported — "not reported" and "free"
+      // Money fields stay NULL when unreported: "not reported" and "free"
       // must never render the same.
       currency: record.currency ?? null,
       upfrontAmount: record.upfrontAmount ?? null,

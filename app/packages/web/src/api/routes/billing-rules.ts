@@ -21,7 +21,7 @@ declare module "hono" {
 }
 
 /**
- * Billing rules — the org's own adjustments to collected spend.
+ * Billing rules: the org's own adjustments to collected spend.
  *
  * ## The permission split, and why it is not `costs:write`
  *
@@ -31,7 +31,7 @@ declare module "hono" {
  *
  * Writes ride **`org:settings:write`**, not `costs:write`, and that is the
  * deliberate part. `costs:write` is the "name a report, define a cost centre,
- * save a filter" scope — acts that add a view of the org's spend. A billing
+ * save a filter" scope: acts that add a view of the org's spend. A billing
  * rule is not a view: it changes what every internal figure in the
  * organisation says, in the Costs panel, in an opted-in budget's thresholds, in
  * a chargeback statement a finance team sends to another department. Somebody
@@ -39,8 +39,8 @@ declare module "hono" {
  * number the org reports about itself.
  *
  * This is the same reasoning `PUT /currency` and `POST /cost-exports` already
- * follow — stating an exchange rate restates every total, and creating an
- * export ships the billing history somewhere — and it puts all three of the
+ * follow (stating an exchange rate restates every total, and creating an
+ * export ships the billing history somewhere) and it puts all three of the
  * "this changes the org's money story" acts behind one scope.
  *
  * Every mutation is audit-logged. A markup nobody can trace back to a person
@@ -54,13 +54,13 @@ function writeError(c: Context, e: unknown) {
   throw e;
 }
 
-/** GET /api/org/:orgId/billing-rules — rules in evaluation order. */
+/** GET /api/org/:orgId/billing-rules: rules in evaluation order. */
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
   return c.json(await listBillingRules(c.get("organizationId")));
 });
 
-/** GET /api/org/:orgId/billing-rules/:id — one rule. */
+/** GET /api/org/:orgId/billing-rules/:id: one rule. */
 app.get("/:id", async (c) => {
   requirePermission(c, "costs:read");
   const rule = await getBillingRule(c.get("organizationId"), c.req.param("id"));
@@ -68,7 +68,7 @@ app.get("/:id", async (c) => {
   return c.json(rule);
 });
 
-/** POST /api/org/:orgId/billing-rules — create a rule. */
+/** POST /api/org/:orgId/billing-rules: create a rule. */
 app.post("/", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -97,7 +97,7 @@ app.post("/", async (c) => {
 });
 
 /**
- * PUT /api/org/:orgId/billing-rules/:id — full replace.
+ * PUT /api/org/:orgId/billing-rules/:id: full replace.
  *
  * The whole rule, including `enabled`: switching a markup off for a quarter is
  * an edit of the rule, not a separate verb, so there is one audited action for

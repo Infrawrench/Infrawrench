@@ -14,8 +14,8 @@
  * **Capacity is the sum of two sources**, and every function here has to read
  * both: the subscription's rented monthly seats, and prepaid capacity slots
  * (`server-core/billing/capacity-slots.ts`) bought outright for a fixed term.
- * Reading `subscriptions.seatCount` alone under-counts a slot-holding org — it
- * would refuse an invite the org has already paid for — and an org can hold
+ * Reading `subscriptions.seatCount` alone under-counts a slot-holding org (it
+ * would refuse an invite the org has already paid for) and an org can hold
  * slots with no subscription row whatsoever.
  *
  * Free-tier and self-hosted orgs have neither, so every entry point below
@@ -51,7 +51,7 @@ export interface SeatLimitStatus {
   seatsUsed: number;
   /**
    * Whether one more monthly seat can be bought on the spot. False for an org
-   * whose capacity is entirely prepaid slots — there is no subscription item to
+   * whose capacity is entirely prepaid slots: there is no subscription item to
    * increment, so the remedy is buying another slot on the billing page, and
    * the caller's prompt has to say so rather than offering a one-click add.
    */
@@ -73,7 +73,7 @@ export async function checkSeatAvailability(
   if (capacity === 0) return null;
 
   // Agent memberships are excluded: an agent whose trial was adopted or merged
-  // in is not a person and must not consume a seat — counted, it would refuse
+  // in is not a person and must not consume a seat; counted, it would refuse
   // a real hire's invite while a phantom "member" nobody can see in a billing
   // sense holds the slot.
   const members = await countRows(
@@ -87,7 +87,7 @@ export async function checkSeatAvailability(
         ),
       ),
   );
-  // A pending, unexpired invite reserves a seat — otherwise two invites sent
+  // A pending, unexpired invite reserves a seat, otherwise two invites sent
   // against one free seat would both be honoured on accept.
   const pending = await countRows(
     db
@@ -108,7 +108,7 @@ export async function checkSeatAvailability(
 }
 
 /**
- * Buy one more *monthly* seat. Throws on any failure — callers only reach this
+ * Buy one more *monthly* seat. Throws on any failure: callers only reach this
  * after {@link checkSeatAvailability} said the plan is full, and the invite must
  * not go out if the seat purchase didn't happen.
  *
@@ -128,7 +128,7 @@ export async function addSeat(organizationId: string): Promise<void> {
 
   const target = (seatItem.quantity ?? 1) + 1;
   // Default proration: the new seat is billed pro-rata from today on the next
-  // invoice, unlike releaseSeat's "none" — you pay for what you start using.
+  // invoice, unlike releaseSeat's "none"; you pay for what you start using.
   await stripe.subscriptionItems.update(seatItem.id, { quantity: target });
 
   await db
@@ -149,7 +149,7 @@ export async function releaseSeat(organizationId: string): Promise<void> {
   const sub = await liveSubscription(organizationId);
   if (!sub) return;
 
-  // People only — an agent membership must not hold the subscription's floor
+  // People only: an agent membership must not hold the subscription's floor
   // up, or the org keeps paying for a seat no person occupies.
   const remaining = await countRows(
     db
@@ -171,7 +171,7 @@ export async function releaseSeat(organizationId: string): Promise<void> {
 
   const current = seatItem.quantity ?? 1;
   // Drop one seat, but never below the people still in the org, never below
-  // one, and never upward — undersold orgs are an enforcement gap, not ours to
+  // one, and never upward: undersold orgs are an enforcement gap, not ours to
   // charge. (Extra seats bought deliberately beyond the member count stay.)
   //
   // Prepaid slots cover that many members already, so the monthly floor is only

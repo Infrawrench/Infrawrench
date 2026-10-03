@@ -8,7 +8,7 @@
  * four, and so the four files cannot quietly drift into disagreeing about what
  * a successful delivery looks like.
  *
- * The `vi.mock("../alerts/route")` call itself stays in each test file —
+ * The `vi.mock("../alerts/route")` call itself stays in each test file:
  * Vitest hoists it per module, so it cannot be shared from here.
  */
 
@@ -31,7 +31,7 @@ export function routed(over: Record<string, unknown> = {}) {
   };
 }
 
-/** A delivery that reached nobody — no rule matched, or every channel failed. */
+/** A delivery that reached nobody: no rule matched, or every channel failed. */
 export function unroutedResult() {
   return routed({
     attempted: 0,
@@ -49,7 +49,7 @@ export function unroutedResult() {
  *
  * Deliberately not a stub: it decides whether a detector keeps its cooldown or
  * rolls its claim back, and a faked one would hide exactly the bug it exists to
- * prevent — a held alert counting as a total failure.
+ * prevent; a held alert counting as a total failure.
  */
 export function alertReachedImpl(
   r: { succeeded?: number; held?: number } | null | undefined,

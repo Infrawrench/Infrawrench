@@ -5,8 +5,8 @@
  * launch an application, see it (a screenshot the model can look at, or the
  * accessibility tree a screen reader would read), and act on it (click, type,
  * scroll, keys). Everything reaches customer infrastructure and synthesises
- * input, so they carry `resources:execute` — the same permission the SSH
- * terminal and `ssh_exec` need — and are audit-logged.
+ * input, so they carry `resources:execute` (the same permission the SSH
+ * terminal and `ssh_exec` need) and are audit-logged.
  *
  * A window is addressed by its numeric id, which `launch_app` and
  * `list_app_windows` return; the coordinates a screenshot shows, a click

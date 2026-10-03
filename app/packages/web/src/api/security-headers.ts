@@ -1,17 +1,17 @@
 /**
  * Baseline security response headers, applied to every response this server
- * emits — API JSON, the SPA shell, static assets, MCP, and `/healthz`.
+ * emits: API JSON, the SPA shell, static assets, MCP, and `/healthz`.
  *
  * The header set is defined once, in {@link securityHeaderEntries}, and applied
  * through two thin adapters because responses leave this server by two
  * different routes:
  *
- *   - {@link securityHeaders} — Hono middleware, mounted on `api` (the API
+ *   - {@link securityHeaders}: Hono middleware, mounted on `api` (the API
  *     surface in dev and prod) and on the prod-only `prodApp` that also serves
  *     `dist/client`. Both, because `prodApp` emits the SPA shell and static
  *     assets that `api` never sees, and the framing defence matters most on
  *     exactly that HTML document. Setting identical values twice is a no-op.
- *   - {@link applySecurityHeaders} — for the two handlers that write to a raw
+ *   - {@link applySecurityHeaders}: for the two handlers that write to a raw
  *     `node:http` `ServerResponse` and never touch Hono at all: `/api/mcp`
  *     (`mcp/http-handler.ts`) and `/healthz`. `server.ts` intercepts both paths
  *     at the Node HTTP level *before* the Hono listener, so middleware cannot
@@ -37,7 +37,7 @@
  *
  * A `script-src` that covers those honestly needs nonce plumbing through
  * `index.html`, pinning Monaco to the bundle, and a route-specific relaxation
- * for `/docs` — then testing against the editor, the terminal, and the docs
+ * for `/docs`, then testing against the editor, the terminal, and the docs
  * page. Shipping `'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net` in
  * the meantime would read as a CSP while permitting exactly the injection a CSP
  * exists to stop, so this module states the gap instead of pretending to close
@@ -46,7 +46,7 @@
  * The gap is narrower than it was for one class of injection site: the plugin
  * logos rendered with `dangerouslySetInnerHTML` all read `manifest.logoSvg`,
  * which `pluginManifestSchema` now refines through `isInertSvg`
- * (`plugin-base/src/svg-safety.ts`) — a logo carrying a script, an event
+ * (`plugin-base/src/svg-safety.ts`); a logo carrying a script, an event
  * handler or an external reference fails to load rather than reaching a
  * renderer. That closes those call sites at their trust boundary; it says
  * nothing about the rest of the app, and is not a substitute for the CSP.
@@ -65,7 +65,7 @@ import type { ServerResponse } from "node:http";
  * HSTS is production-only. On `http://localhost:3000` browsers ignore the
  * header over plain HTTP anyway, but a developer who once reaches the dev
  * server through a local HTTPS proxy would pin `localhost` to HTTPS for two
- * years — across every project on that machine, not just this one.
+ * years: across every project on that machine, not just this one.
  */
 function buildHeaders(): ReadonlyArray<readonly [string, string]> {
   const headers: Array<readonly [string, string]> = [
@@ -109,7 +109,7 @@ export function resetSecurityHeadersCache(): void {
 
 /**
  * Apply the headers to a raw `node:http` response. For handlers that bypass
- * Hono entirely — see the module docstring. Safe to call more than once, and
+ * Hono entirely: see the module docstring. Safe to call more than once, and
  * must be called before the first `write`/`end`, like any header write.
  */
 export function applySecurityHeaders(res: ServerResponse): void {

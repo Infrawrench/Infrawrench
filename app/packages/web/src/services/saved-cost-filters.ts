@@ -1,5 +1,5 @@
 /**
- * Org-scoped saved-cost-filter CRUD and referent scanning — shared by the HTTP
+ * Org-scoped saved-cost-filter CRUD and referent scanning: shared by the HTTP
  * routes (api/routes/saved-filters.ts) and the tool registry, mirroring
  * services/cost-reports.ts.
  *
@@ -9,12 +9,12 @@
  * it here change every referent at once.
  *
  * The one policy decision worth stating: **deletion is refused while anything
- * references the filter.** The alternative — inline the rows into each
- * referent and detach — silently rewrites configs the deleter may never have
+ * references the filter.** The alternative (inline the rows into each
+ * referent and detach) silently rewrites configs the deleter may never have
  * looked at, and turns "one object, referenced" back into the copies this
  * feature exists to remove. Worse, either alternative that *doesn't* rewrite
  * would leave dangling references, and a dangling reference resolving to "no
- * filter" would widen a budget's scope to all spend — an alert-firing change
+ * filter" would widen a budget's scope to all spend: an alert-firing change
  * nobody asked for. So the delete comes back as a 409 listing the referents,
  * and the user detaches them deliberately.
  */
@@ -69,7 +69,7 @@ function toSavedCostFilter(row: SavedCostFilterRow): SavedCostFilter {
   } catch {
     // Input validation refuses the one unrenderable shape (a tag term with no
     // key), so this only happens for a corrupt row. An empty string keeps the
-    // list readable — the structured filters are still returned in full.
+    // list readable: the structured filters are still returned in full.
   }
   return {
     id: row.id,
@@ -116,7 +116,7 @@ export async function getSavedCostFilter(
 
 /**
  * Whether a live filter other than `excludeId` already uses `name`
- * (case-insensitively — "Prod" and "prod" addressing different filters from
+ * (case-insensitively: "Prod" and "prod" addressing different filters from
  * the CLI would be a trap). The partial unique index backs this up for exact
  * matches; the check exists to answer with a message instead of a constraint
  * violation.
@@ -207,7 +207,7 @@ export async function updateSavedCostFilter(
  *
  * Budgets carry the reference as a real column; reports and ad-hoc graph
  * widgets carry it inside their `CostGraphConfig` jsonb, so those are found by
- * scanning `config->>'savedFilterId'` — the same way budget and report
+ * scanning `config->>'savedFilterId'`: the same way budget and report
  * placements are found. There is deliberately no foreign key behind any of
  * these (see the schema comment), so this scan *is* the referential integrity.
  */
@@ -279,7 +279,7 @@ export async function listSavedCostFilterReferents(
  * Soft-delete a saved filter. False when not found.
  *
  * @throws {SavedCostFilterInUseError} while any budget, report or dashboard
- * graph references it — see the module comment for why refusal, not detach.
+ * graph references it: see the module comment for why refusal, not detach.
  */
 export async function softDeleteSavedCostFilter(
   organizationId: string,

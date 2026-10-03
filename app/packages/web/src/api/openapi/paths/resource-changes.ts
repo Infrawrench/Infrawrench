@@ -92,7 +92,7 @@ const DriftAlertSettings = strict({
   }),
 }).openapi("DriftAlertSettings");
 
-// Registered under its own name — `.partial()` on a registered schema would
+// Registered under its own name: `.partial()` on a registered schema would
 // otherwise collapse back into the full $ref in the generated document.
 const DriftAlertSettingsUpdate = strict({
   notifyCreated: z.boolean().optional(),

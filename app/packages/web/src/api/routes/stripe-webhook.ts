@@ -21,7 +21,7 @@ function seatQuantity(sub: Stripe.Subscription): number {
  *
  * Only ever called for a session whose `payment_status` is `paid`. Seat quantity
  * is read back from the settled line items rather than the metadata we set at
- * creation time, because Checkout lets the buyer adjust it — trusting our own
+ * creation time, because Checkout lets the buyer adjust it: trusting our own
  * number would grant what we offered instead of what they paid for.
  *
  * Idempotent through the unique index on the session id, so Stripe's redeliveries
@@ -54,7 +54,7 @@ async function grantCapacitySlots(stripe: Stripe, session: Stripe.Checkout.Sessi
   });
 
   // A repeat delivery is normal operation, so this is a log line rather than an
-  // error — but it should be visible, because the alternative explanation is a
+  // error, but it should be visible, because the alternative explanation is a
   // session id colliding across orgs.
   console.log(
     granted
@@ -181,7 +181,7 @@ app.post("/", async (c) => {
       }
 
       // Refunding a capacity slot takes its seats back. Keyed on the payment
-      // intent because a charge carries no session id — which is why the
+      // intent because a charge carries no session id, which is why the
       // purchase route mirrors its metadata onto the PaymentIntent. Partial
       // refunds void the whole purchase: a half-refunded seat is not a thing,
       // and leaving the capacity standing would be the costlier mistake.

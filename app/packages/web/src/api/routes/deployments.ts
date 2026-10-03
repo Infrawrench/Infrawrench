@@ -1,7 +1,7 @@
 /**
  * HTTP API for deployments (org-scoped, mounted at /api/org/:orgId/deployments).
  *
- * The interactive run is NOT here — `select(...)` needs a live round trip, so
+ * The interactive run is NOT here: `select(...)` needs a live round trip, so
  * it goes over the websocket (`services/deployment-ws.ts`), exactly as an
  * interactive workflow run does. What is here is everything that answers in one
  * shot: the repo picker's source list, a plan-only preview, and the history.
@@ -85,7 +85,7 @@ app.post("/envs", async (c) => {
  */
 app.post("/plan", async (c) => {
   // Its own permission, between read and write: a plan evaluates the repo's
-  // Infrafile against this org's host, so it is code execution and not a read —
+  // Infrafile against this org's host, so it is code execution and not a read,
   // but it builds nothing and ships nothing, so it is not a write either.
   requirePermission(c, "deployments:plan");
   const body = (await c.req.json()) as {
@@ -134,12 +134,12 @@ app.get("/runs/:id", async (c) => {
 });
 
 /**
- * GET /runs/:id/cost-impact — what this deploy did to the run rate, broken
+ * GET /runs/:id/cost-impact: what this deploy did to the run rate, broken
  * down over the resources it provisioned.
  *
  * Recomputed on every read rather than stored, because provider cost arrives
  * late and is then restated; a frozen answer would be a wrong answer that
- * never corrects itself. `costs:read` on top of `deployments:read` — the
+ * never corrects itself. `costs:read` on top of `deployments:read`: the
  * response is spend.
  */
 app.get("/runs/:id/cost-impact", async (c) => {
@@ -159,7 +159,7 @@ app.get("/runs/:id/cost-impact", async (c) => {
 
 /**
  * Roll back to a previous run: re-run its `deploy()` with the image and plan it
- * recorded, building nothing. Non-interactive by design — the plan is replayed
+ * recorded, building nothing. Non-interactive by design: the plan is replayed
  * rather than recomputed, so there is nothing to ask.
  */
 app.post("/runs/:id/rollback", async (c) => {
@@ -170,7 +170,7 @@ app.post("/runs/:id/rollback", async (c) => {
     entityId: c.req.param("id"),
   });
   if (frozen) return frozen;
-  // The body is optional — a bare rollback has nothing to say.
+  // The body is optional: a bare rollback has nothing to say.
   const body = (await c.req.json().catch(() => ({}))) as { deleteCreated?: unknown };
   try {
     const { runId, result } = await rollbackDeployment({
@@ -188,7 +188,7 @@ app.post("/runs/:id/rollback", async (c) => {
 
 /**
  * Record a run that happened elsewhere. The CLI builds on the operator's own
- * machine, so the server never sees that run — it is told what happened, which
+ * machine, so the server never sees that run: it is told what happened, which
  * is what keeps one history across both origins.
  */
 app.post("/runs", async (c) => {
@@ -213,7 +213,7 @@ app.get("/triggers", async (c) => {
 
 /**
  * Create or update a trigger. `deployments:write`, because a trigger is a
- * standing instruction to deploy — arming one is the same authority as
+ * standing instruction to deploy: arming one is the same authority as
  * deploying, just deferred.
  */
 app.post("/triggers", async (c) => {
@@ -246,7 +246,7 @@ app.patch("/triggers/:id", async (c) => {
   requirePermission(c, "deployments:write");
   const body = (await c.req.json()) as { enabled?: unknown };
   // Explicit or nothing. `enabled !== false` treated an empty body as "enable",
-  // and enabling a trigger arms a real deploy on the next push — not something
+  // and enabling a trigger arms a real deploy on the next push, not something
   // a missing field should ever do.
   if (typeof body.enabled !== "boolean") {
     return c.json({ error: "enabled must be true or false" }, 400);

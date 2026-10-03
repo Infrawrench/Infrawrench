@@ -15,7 +15,7 @@ import { apiGet } from "@/lib/api";
  *
  * Which workflow is open lives in the URL, the IncidentsPanel stance: that is
  * what records it on the tab so a reload comes back to it, and it makes a
- * workflow a link somebody can paste — Slack/Teams `infra.page()` buttons
+ * workflow a link somebody can paste; Slack/Teams `infra.page()` buttons
  * already mint `/org/{org}/workflows/{id}`.
  */
 export function WebWorkflowsPanel({
@@ -53,7 +53,7 @@ export function WebWorkflowsPanel({
     }
   }, [orgId]);
 
-  // Budgets are read once — the picker only needs id/name/amount, and a member
+  // Budgets are read once: the picker only needs id/name/amount, and a member
   // without `budgets:read` simply gets an empty list (and no Budget option).
   const refreshBudgets = useCallback(async () => {
     setBudgetsLoading(true);
@@ -79,7 +79,7 @@ export function WebWorkflowsPanel({
     void refreshBudgets();
   }, [refresh, refreshBudgets]);
 
-  // Re-check when the window regains focus — e.g. after the user installs the
+  // Re-check when the window regains focus, e.g. after the user installs the
   // app / picks repos in the GitHub tab and comes back.
   useEffect(() => {
     const onFocus = () => void refresh();

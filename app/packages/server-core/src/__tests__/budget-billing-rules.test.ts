@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * The budget/billing-rule decision, pinned.
  *
  * The decision: **a budget measures collected spend unless that budget
- * explicitly opts in.** A billing rule is organisation policy — a markup that
- * recovers overhead, a discount negotiated outside the provider's pricing — and
+ * explicitly opts in.** A billing rule is organisation policy (a markup that
+ * recovers overhead, a discount negotiated outside the provider's pricing) and
  * a budget threshold decides when a real person is paged. If a markup silently
  * raised measured spend, adding one settings row would move every on-call rota
  * in the organisation at once, and every resulting page would be for money
@@ -23,7 +23,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *    reach a threshold it was not invited to;
  * 2. an opted-in budget judges on the adjusted figure, carries the collected
  *    figure alongside it, and **says so in the alert body**; and
- * 3. `rawActualCents` is null — not a copy — on an un-opted budget, so a card
+ * 3. `rawActualCents` is null (not a copy) on an un-opted budget, so a card
  *    cannot caption every budget in the organisation and make the adjusted ones
  *    invisible.
  */
@@ -51,7 +51,7 @@ vi.mock("../cost/billing-rules", () => ({ resolveBillingAdjustments }));
 
 import { fakePostgres } from "./helpers/fake-postgres";
 
-// Real Drizzle over a recording driver against the real schema — the budget
+// Real Drizzle over a recording driver against the real schema: the budget
 // select, the alert-event insert and the notifiedAt update render their actual
 // SQL (and shadow-validate under test:postgres:shadow). Results are queued in
 // execution order: the budget select, then the insert's RETURNING.
@@ -88,7 +88,7 @@ const NOW = new Date("2026-07-15T12:00:00Z");
 
 /**
  * What the reader returns for an adjusted query: $20/day adjusted against
- * $10/day collected — a flat 100% markup — for the trailing 60 days.
+ * $10/day collected (a flat 100% markup) for the trailing 60 days.
  */
 function spend(adjusted: boolean) {
   const points: Array<{ bucket: string; amount: number }> = [];
@@ -114,7 +114,7 @@ const MARKUP = {
 };
 
 // The select has no projection, so keys are in the budgets table's column
-// order — see helpers/fake-postgres.ts.
+// order: see helpers/fake-postgres.ts.
 function budget(over: Record<string, unknown> = {}) {
   return {
     id: "b1",
@@ -123,7 +123,7 @@ function budget(over: Record<string, unknown> = {}) {
     amountCents: 100_000, // $1000
     currency: "USD",
     filters: [],
-    // $500. Collected month-to-date is $150, adjusted is $300 — so an `actual`
+    // $500. Collected month-to-date is $150, adjusted is $300, so an `actual`
     // threshold at 50% fires on neither, which is what makes the *forecast*
     // pair below the discriminating case.
     thresholds: [{ type: "forecast", percent: 50 }],
@@ -144,7 +144,7 @@ let budgetEval: typeof import("../cost/budget-eval");
 beforeEach(async () => {
   vi.clearAllMocks();
   pg.reset();
-  // The reader decides what to return from whether adjustments were passed —
+  // The reader decides what to return from whether adjustments were passed:
   // exactly as the real one does.
   queryCosts.mockImplementation(async (_org: string, q: { adjustments?: unknown }) =>
     spend(Boolean(q.adjustments)),
@@ -162,7 +162,7 @@ describe("budgetMonthStatus — the billing-rule opt-in", () => {
     expect(status.actualCents).toBe(15_000);
     expect(status.forecastCents).toBe(31_000);
     expect(status.adjustedSpend).toBe(false);
-    // Null, not a copy of actualCents — see the header.
+    // Null, not a copy of actualCents: see the header.
     expect(status.rawActualCents).toBeNull();
   });
 
@@ -219,7 +219,7 @@ describe("budgetMonthStatus — the billing-rule opt-in", () => {
 describe("evaluateBudgetsForOrg — what pages a human", () => {
   it("does not fire on a markup the budget never opted into", async () => {
     // Collected forecast is $310, the threshold is $500. The markup would take
-    // it to $620 — which must not happen for an un-opted budget.
+    // it to $620, which must not happen for an un-opted budget.
     arrange([budget()]);
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
 
@@ -236,7 +236,7 @@ describe("evaluateBudgetsForOrg — what pages a human", () => {
     const body = sendBudgetAlertPage.mock.calls[0]![1];
     expect(body).toContain("forecasted spend");
     // "Why is this number bigger than the bill" has to be answerable from the
-    // message itself — it is often the only place the figure is ever read.
+    // message itself: it is often the only place the figure is ever read.
     expect(body).toContain("billing rules applied");
     expect(body).toContain("collected spend");
   });

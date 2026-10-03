@@ -15,7 +15,7 @@ import { fakePostgres } from "./helpers/fake-postgres";
 const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 
-// Typed with its argument so `mock.calls` carries it — an untyped `vi.fn()`
+// Typed with its argument so `mock.calls` carries it: an untyped `vi.fn()`
 // gives back an empty tuple and every read of a call needs a cast.
 interface ChCommand {
   query: string;
@@ -167,7 +167,7 @@ describe("destroyOrganization", () => {
   it("leaves Postgres untouched when the ClickHouse purge throws", async () => {
     chCommand.mockRejectedValueOnce(new Error("clickhouse down"));
     await expect(destroy.destroyOrganization("org-doomed")).rejects.toThrow("clickhouse down");
-    // The org survives to be retried next tick — half-deleted state across
+    // The org survives to be retried next tick: half-deleted state across
     // three stores is the outcome the ordering exists to prevent.
     expect(deletes("organizations")).toHaveLength(0);
   });
@@ -470,7 +470,7 @@ describe("claimTrialOrg", () => {
       expect(result.historyMoved).toBe(true);
       const queries = chCommand.mock.calls.map(([a]) => a.query);
       expect(queries.every((q) => q.includes("UPDATE organization_id"))).toBe(true);
-      // The delete is not issued at all — skipping it is what removes the
+      // The delete is not issued at all: skipping it is what removes the
       // dependence on ClickHouse mutation ordering.
       expect(queries.some((q) => q.includes("DELETE"))).toBe(false);
     });

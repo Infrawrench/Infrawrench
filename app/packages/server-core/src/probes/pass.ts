@@ -5,24 +5,24 @@
  *
  * `synthetic_probes.next_probe_at` is the due-time column AND the claim lease
  * (the `metric_alert_rules.next_eval_at` protocol) with one twist: the claim
- * writes `now() + interval_seconds` — the lease IS the next cadence, so the
+ * writes `now() + interval_seconds`; the lease IS the next cadence, so the
  * normal completion path never has to reschedule, and a replica that dies
  * mid-probe simply lets the probe come due again at its own interval.
  *
  * Probing happens from OUTSIDE the cluster on purpose: the request leaves
  * from the egress-proxy Worker on Cloudflare's edge, so latency and
  * reachability are measured from an external vantage point (and the pod never
- * makes arbitrary outbound requests itself — the same reasoning as
+ * makes arbitrary outbound requests itself; the same reasoning as
  * `workflows/fetch.ts`).
  *
  * Configuration is the workflow proxy's own env pair
- * (`WORKFLOW_FETCH_PROXY_URL` / `WORKFLOW_FETCH_PROXY_TOKEN`) — but where a
+ * (`WORKFLOW_FETCH_PROXY_URL` / `WORKFLOW_FETCH_PROXY_TOKEN`), but where a
  * workflow's fetch throws when they're missing, probes SKIP: monitoring is a
  * best-effort surface (the ClickHouse stance), and a deployment without the
  * proxy simply has probes that never run rather than a poller that logs an
  * error every tick.
  *
- * Never throws — this runs inside the poller loop and must not fail a tick.
+ * Never throws: this runs inside the poller loop and must not fail a tick.
  */
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
@@ -117,7 +117,7 @@ export async function claimDueProbes(limit: number): Promise<ProbeRecord[]> {
 
 /**
  * Run one probe through the proxy. Returns null when the *proxy itself*
- * failed (unreachable, bad token, 5xx) — that is an infrastructure problem,
+ * failed (unreachable, bad token, 5xx): that is an infrastructure problem,
  * not evidence about the endpoint, so the caller records nothing rather than
  * marking a healthy endpoint down.
  */
@@ -179,8 +179,8 @@ async function notifyDown(probe: ProbeRecord, result: ProbeProxyResult): Promise
   const detail = describeFailure(result);
   const title = `Probe down: ${probe.name}`;
   // A probe links to the resource whose output suggested its URL, so a down
-  // endpoint usually has an owner. Name them in the team-wide copy — "the API
-  // is down" is more actionable with "and it's Sam's" attached — and send the
+  // endpoint usually has an owner. Name them in the team-wide copy ("the API
+  // is down" is more actionable with "and it's Sam's" attached) and send the
   // owner their own copy in the second person.
   const owner = await lookupOwnerQuietly(probe);
   const ownerLine = ownerContextLine(owner);
@@ -230,7 +230,7 @@ async function notifyRecovered(probe: ProbeRecord, result: ProbeProxyResult): Pr
   await routeAlert({
     organizationId: probe.organizationId,
     trigger: "probeAlerts",
-    // Recovery is not a page — see the same call in `metric-alerts/eval.ts`.
+    // Recovery is not a page: see the same call in `metric-alerts/eval.ts`.
     severity: "info",
     title,
     body,
@@ -248,7 +248,7 @@ async function notifyRecovered(probe: ProbeRecord, result: ProbeProxyResult): Pr
 
 /**
  * Record one result: two metric points (Latency in ms, Up as 0/1) beside the
- * plugin metric series, the `last_*` columns, and the state machine —
+ * plugin metric series, the `last_*` columns, and the state machine;
  * `consecutiveFailures` climbs to `failureThreshold` before "down" fires, and
  * any success snaps back to "up" (with a recovery notification only when the
  * probe was previously down).
@@ -327,7 +327,7 @@ let warnedUnconfigured = false;
 
 /** Claim and run a bounded batch of due probes. Never throws. */
 export async function runProbePass(options: { limit?: number } = {}): Promise<ProbePassOutcome> {
-  // No proxy, no probes — but say so once, or a misconfigured deployment
+  // No proxy, no probes, but say so once, or a misconfigured deployment
   // reads as "everything is up" with zero samples to show for it.
   if (!isProbeProxyConfigured()) {
     if (!warnedUnconfigured) {

@@ -10,7 +10,7 @@ import { evaluateUnitCostRegressionsForOrg } from "@infrawrench/server-core/cost
 import type { PollAccountRow } from "./poll-account";
 
 /**
- * Cost collection runs roughly once a day per account — provider billing
+ * Cost collection runs roughly once a day per account: provider billing
  * APIs refresh daily at best and some charge per request (AWS Cost Explorer).
  * Jitter spreads the fleet so a restart doesn't stampede every account onto
  * the same tick a day later.
@@ -41,13 +41,13 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
       })
       .where(eq(accounts.id, account.id));
 
-    // Fresh cost data may cross budget thresholds — evaluate now (its own
+    // Fresh cost data may cross budget thresholds: evaluate now (its own
     // errors are swallowed; it never fails the collection).
     await evaluateBudgetsForOrg(account.organizationId);
 
     // Same trigger point for anomaly detection: cost data only changes when
     // collection runs. This fires once per account, so for a multi-account org
-    // most calls are redundant — the ClickHouse reads are the expensive half
+    // most calls are redundant: the ClickHouse reads are the expensive half
     // and the row dedup does nothing to avoid them. detectCostAnomaliesForOrg
     // rate-limits itself per org and returns immediately when called again
     // inside that window.

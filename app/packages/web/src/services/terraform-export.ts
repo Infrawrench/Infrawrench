@@ -8,7 +8,7 @@ import { getPlugin } from "../plugins/loader";
 
 /**
  * Bridge between stored `resources` rows and the shared plugin-base
- * "eject to Terraform" pipeline. Mapping runs entirely from persisted state —
+ * "eject to Terraform" pipeline. Mapping runs entirely from persisted state:
  * no plugin client, credentials, or provider API calls are involved.
  */
 

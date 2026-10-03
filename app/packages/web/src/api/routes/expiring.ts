@@ -32,7 +32,7 @@ declare module "hono" {
 const app = new Hono();
 
 /**
- * GET /api/org/:orgId/expiring — every declared deadline on the org's synced
+ * GET /api/org/:orgId/expiring: every declared deadline on the org's synced
  * resources (TLS certs, domains, tokens, key-rotation budgets), soonest first,
  * bucketed by severity against the org's lead time.
  */
@@ -59,7 +59,7 @@ app.get("/settings", async (c) => {
  * Update the expiry alert settings. Every field is optional so a single toggle
  * can be saved on its own. Bounds live in server-core so the API and the
  * poller cannot disagree about what a valid lead time is. `lastNotifiedAt` is
- * deliberately not writable — it is the poller's cooldown claim.
+ * deliberately not writable: it is the poller's cooldown claim.
  */
 app.put("/settings", async (c) => {
   requirePermission(c, "org:settings:write");

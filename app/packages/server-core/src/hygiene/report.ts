@@ -1,5 +1,5 @@
 /**
- * Credential hygiene — the credentials an organization is carrying that it
+ * Credential hygiene: the credentials an organization is carrying that it
  * probably should not be.
  *
  * Three questions, all answerable from Postgres we already own, with no
@@ -22,7 +22,7 @@
  * report at all.
  *
  * The second guard is the window itself. An org three days old has three days
- * of audit history, and "unused in 90 days" means nothing against it — so the
+ * of audit history, and "unused in 90 days" means nothing against it, so the
  * report measures how much history actually exists and refuses to draw the
  * unused-permission conclusion until there is enough of it.
  */
@@ -178,7 +178,7 @@ async function apiKeyFindings(
         id: `api-key:${key.id}:expired`,
         kind: "api_key_expired_not_revoked",
         // It can no longer authenticate, so this is tidiness rather than
-        // exposure — but a list full of dead keys is a list nobody reads.
+        // exposure, but a list full of dead keys is a list nobody reads.
         severity: "low",
         title: `Expired API key still listed: ${label}`,
         detail: `Expired ${daysSince(key.expiresAt, now)} days ago and has not been revoked. It can no longer authenticate.`,
@@ -368,7 +368,7 @@ async function sshKeyFindings(
  * When each SSH key was last used, from audit rows that name one.
  *
  * `metadata->>'sshKeyId'` is the shared shape across `ssh.session.opened`,
- * `ssh.fanout.run`, `ssh.exec` and `ssh.agent.session_opened` — every path
+ * `ssh.fanout.run`, `ssh.exec` and `ssh.agent.session_opened`: every path
  * that dials with an org key. There is no column to index here, so this is a
  * scan of the org's window rather than a lookup; the report is a periodic
  * review rather than a hot path, and the alternative (denormalizing a
@@ -380,7 +380,7 @@ async function sshKeyLastUse(organizationId: string, since: Date): Promise<Map<s
     .select({
       sshKeyId: sql<string>`${auditLogs.metadata}->>'sshKeyId'`,
       // Raw aggregate, so drizzle's timestamp mapping never runs; the driver
-      // returns the zoneless wire string — see `rawTimestampToDate`.
+      // returns the zoneless wire string: see `rawTimestampToDate`.
       usedAt: sql<Date | string>`max(${auditLogs.createdAt})`,
     })
     .from(auditLogs)
@@ -451,7 +451,7 @@ async function memberPermissionFindings(
     // Owners are skipped on purpose. An organization must have at least one,
     // the role is `*` by definition, and "the owner did not exercise
     // billing:write this quarter" is not a finding anybody can act on. Every
-    // other role — admin, member, custom — is fair game.
+    // other role (admin, member, custom) is fair game.
     if (systemKey === "owner") continue;
 
     const granted =
@@ -512,7 +512,7 @@ async function exercisedPermissionsByUser(
         eq(auditLogs.organizationId, organizationId),
         gte(auditLogs.createdAt, since),
         sql`${auditLogs.userId} is not null`,
-        // A key's actions are the key's evidence, not the owner's — they may
+        // A key's actions are the key's evidence, not the owner's: they may
         // have been minted long ago and be firing from a cron nobody watches.
         isNull(auditLogs.apiKeyId),
       ),

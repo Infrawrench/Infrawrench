@@ -1,5 +1,5 @@
 /**
- * The quota radar feed — every provider limit an org is close to, with the
+ * The quota radar feed: every provider limit an org is close to, with the
  * trend that says whether it is getting closer.
  *
  * The reason this is a screen at all: quota exhaustion is currently discovered
@@ -81,7 +81,7 @@ export async function getQuotaFeed(
   // `account_quota_usage` rows survive the deletion and would otherwise keep
   // appearing on the Quotas page, keep being counted by the weekly digest, and
   // keep paging somebody about a limit on an account nobody can act on any
-  // more — indefinitely, because the collection pass stops running for it and
+  // more: indefinitely, because the collection pass stops running for it and
   // so nothing ever supersedes the last reading.
   //
   // Filtering here rather than in each of the three reads below is what makes
@@ -223,7 +223,7 @@ const MAX_SNAPSHOT_PRUNE_BATCHES = 25;
  * Batched like every other prune here: a first run against a long-neglected
  * table must not hold locks for minutes. Whatever is left goes on the next
  * pass an hour later. Idempotent, so replicas repeating it costs an index
- * probe and nothing else — no claim is warranted (the `pruneResourceChanges`
+ * probe and nothing else: no claim is warranted (the `pruneResourceChanges`
  * stance).
  */
 export async function pruneQuotaSnapshots(now = new Date()): Promise<number> {
