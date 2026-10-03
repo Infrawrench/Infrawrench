@@ -5,6 +5,7 @@ import {
   computeAppendedLines,
   evaluateLogMatches,
   hasCatastrophicRegexShape,
+  logMatchProbes,
   logStreamKey,
   splitLogLines,
   validateLogWorkspaceQuery,
@@ -86,11 +87,80 @@ describe("hasCatastrophicRegexShape", () => {
     expect(hasCatastrophicRegexShape("(?:x{2,}){3,}")).toBe(true);
   });
 
+  it("counts optional quantifiers inside a repeated group", () => {
+    // Each of these passed the old guard, which only counted `*`, `+`, `{}`.
+    expect(hasCatastrophicRegexShape("(a?){25}a{25}")).toBe(true);
+    expect(hasCatastrophicRegexShape("(?:a?){25}a{25}x")).toBe(true);
+    expect(hasCatastrophicRegexShape("(a{0,1}){30}")).toBe(true);
+    expect(hasCatastrophicRegexShape("(\\w??)+x")).toBe(true);
+    expect(hasCatastrophicRegexShape("((ab)?)+")).toBe(true);
+  });
+
+  it("sees quantifiers and alternation nested at any depth", () => {
+    expect(hasCatastrophicRegexShape("(?:(?:a+))+")).toBe(true);
+    expect(hasCatastrophicRegexShape("((?:a|aa))+")).toBe(true);
+    expect(hasCatastrophicRegexShape("(?<word>(?:x?y)){2,}")).toBe(true);
+    expect(hasCatastrophicRegexShape("(a+?)*")).toBe(true);
+  });
+
   it("passes plain groups, escaped metacharacters and character classes", () => {
     expect(hasCatastrophicRegexShape("(a|b)c+")).toBe(false);
     expect(hasCatastrophicRegexShape("\\(a+\\)+")).toBe(false);
-    expect(hasCatastrophicRegexShape("[+*]+")).toBe(false);
+    expect(hasCatastrophicRegexShape("[+*?]+")).toBe(false);
     expect(hasCatastrophicRegexShape("(a+)?")).toBe(false);
+    expect(hasCatastrophicRegexShape("(a?){1}")).toBe(false);
+  });
+
+  it("does not read a group prefix or a lazy suffix as a quantifier", () => {
+    expect(hasCatastrophicRegexShape("(?:ab)+")).toBe(false);
+    expect(hasCatastrophicRegexShape("(?=x)(?:ab)+")).toBe(false);
+    expect(hasCatastrophicRegexShape("(?<id>\\d)+")).toBe(false);
+    expect(hasCatastrophicRegexShape("(?<!a)(bc)*")).toBe(false);
+    expect(hasCatastrophicRegexShape("a+?(bc)*")).toBe(false);
+  });
+
+  it("keeps common log patterns usable", () => {
+    for (const p of [
+      "HTTP [45]\\d\\d",
+      "(GET|POST) /api/\\S+ 5\\d\\d",
+      "\\b(?:error|fatal)\\b",
+      "took (\\d+)ms",
+      "user=(\\w+)? ",
+      "(?:\\d+\\.)?\\d+ms",
+    ]) {
+      expect(hasCatastrophicRegexShape(p), p).toBe(false);
+    }
+  });
+});
+
+describe("compiled regex metadata", () => {
+  it("exposes the source and flags of a regex search only", () => {
+    expect(compileLogSearch("/fatal|panic/i").regex).toEqual({ source: "fatal|panic", flags: "i" });
+    expect(compileLogSearch("/HTTP 5\\d\\d/").regex).toEqual({ source: "HTTP 5\\d\\d", flags: "" });
+    expect(compileLogSearch("error -health").regex).toBeNull();
+    expect(compileLogSearch("").regex).toBeNull();
+    expect(compileLogSearch("/(a?){25}/").regex).toBeNull();
+  });
+});
+
+describe("logMatchProbes", () => {
+  it("returns the distinct non-empty, length-capped probes", () => {
+    const long = `${"x".repeat(5000)}`;
+    expect(logMatchProbes(`a\n\nb\na\n${long}\n`)).toEqual(["a", "b", "x".repeat(2000)]);
+  });
+
+  it("covers every string evaluateLogMatches tests", () => {
+    const text = `one error\n\nerror two\n${"y".repeat(3000)} error\n`;
+    const seen: string[] = [];
+    evaluateLogMatches(text, {
+      ...compileLogSearch("error"),
+      test: (probe) => {
+        seen.push(probe);
+        return false;
+      },
+    });
+    const probes = new Set(logMatchProbes(text));
+    for (const probe of seen) expect(probes.has(probe)).toBe(true);
   });
 });
 

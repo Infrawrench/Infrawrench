@@ -332,6 +332,23 @@ describe("runLogAlertPass — guard rails", () => {
     expect(completionWrites().at(-1)!["last_eval_error"]).toMatch(/Invalid regex/);
   });
 
+  it("matches a regex search through the isolated evaluator", async () => {
+    queryRow = baseRow({ search: "/^error \\w+$/i" });
+    const result = await runPass();
+    expect(result.matched).toBe(1);
+    expect(routeAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a regex that outruns its deadline instead of stalling the pass", async () => {
+    // Passes the shape guard, backtracks exponentially on the line below.
+    queryRow = baseRow({ search: `/${"a?".repeat(40)}${"a".repeat(40)}/` });
+    getLogs.mockResolvedValue({ text: `${"a".repeat(40)}\n`, containers: [], activeContainer: "" });
+    const result = await runPass();
+    expect(result.failed).toBe(1);
+    expect(routeAlert).not.toHaveBeenCalled();
+    expect(completionWrites().at(-1)!["last_eval_error"]).toMatch(/took longer than/);
+  });
+
   it("aggregates per-stream failures into lastEvalError without blocking others", async () => {
     queryRow = baseRow({
       resources: [

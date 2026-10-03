@@ -21,6 +21,7 @@
 import { loadAsyncQuickJs } from "@sebastianwessel/quickjs";
 import releaseAsyncVariant from "@jitl/quickjs-ng-wasmfile-release-asyncify";
 
+import { testRegexBounded } from "./bounded-regex.js";
 import { dispatch, type WorkflowHost, type WorkflowRunContext } from "./host.js";
 import type { RunLimits, RunResult } from "./types.js";
 
@@ -103,10 +104,17 @@ export async function runIsolate(opts: RunIsolateOptions): Promise<IsolateOutcom
   if (!opts.dispatcher && !hostForDispatch) {
     throw new Error("runIsolate needs a host or a dispatcher.");
   }
+  // Author-supplied `ask` patterns never run on this (possibly shared) thread.
+  const ctx: WorkflowRunContext = opts.ctx.testPattern
+    ? opts.ctx
+    : {
+        ...opts.ctx,
+        testPattern: async (source, input) => (await testRegexBounded(source, "", [input]))[0]!,
+      };
   const route =
     opts.dispatcher ??
     ((method: string, args: Record<string, unknown>) =>
-      dispatch(hostForDispatch!, opts.ctx, method, args));
+      dispatch(hostForDispatch!, ctx, method, args));
   const paused =
     opts.extraPausedMethods && opts.extraPausedMethods.length > 0
       ? new Set([...PAUSED_METHODS, ...opts.extraPausedMethods])

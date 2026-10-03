@@ -920,6 +920,17 @@ describe("ask() — free-form questions", () => {
     expect(result.error?.message).toContain("does not match");
   });
 
+  it("stops a backtracking pattern instead of blocking the host", async () => {
+    // Exponential under V8's backtracking engine; on a shared cloud host this
+    // used to run inline on the event loop.
+    const pattern = `${"a?".repeat(40)}${"a".repeat(40)}`;
+    const result = await run(
+      askPlan(`return { v: await ask("tag", "Tag", { pattern: ${JSON.stringify(pattern)} }) };`),
+      hostFor({ answers: { tag: "a".repeat(40) } }),
+    );
+    expect(result.error?.message).toMatch(/took longer than \d+ ms/);
+  });
+
   it("falls back to the default when the answer is blank", async () => {
     const result = await run(
       askPlan(`return { n: await ask("replicas", "Replicas", { kind: "number", default: 2 }) };`),

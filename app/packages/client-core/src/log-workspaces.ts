@@ -138,6 +138,12 @@ export interface CompiledLogSearch {
   error: string | null;
   /** True for the empty expression, which matches every line. */
   matchAll: boolean;
+  /**
+   * The compiled pattern for the `/regex/` form (null for term searches and
+   * errors), so a host that must not run user regexes on its own thread can
+   * hand it to an isolated evaluator instead of calling `test`.
+   */
+  regex: { source: string; flags: string } | null;
 }
 
 interface SearchTerm {
@@ -163,62 +169,109 @@ function tokenizeSearch(expr: string): SearchTerm[] {
 
 /**
  * Best-effort static rejection of regex shapes whose backtracking can blow up
- * on a hostile line: a `*`/`+`/`{n,m}` quantifier applied to a group that
- * itself contains a quantifier (`(a+)+`, `(\w*)*`, `(?:x{2,}){3,}`; "star
- * height" > 1), or applied to a group with top-level alternation (`(a|aa)+`),
- * whose overlapping branches backtrack the same way. This is a shape check,
- * not a full ReDoS analysis: patterns it cannot see through (e.g. adjacent
- * ambiguous quantifiers like `a*a*a*b`) are additionally bounded by the
- * per-line input cap the alert pass applies in `evaluateLogMatches`.
+ * on a hostile line: a repeating quantifier (`*`, `+`, `{n,}`, `{n,m}` with
+ * m > 1) applied to a group that itself contains any quantifier, including
+ * the optional ones (`?`, `{0,1}`), at any depth (`(a+)+`, `(\w*)*`,
+ * `(?:a?){20}`, `((ab)?)+`; "star height" > 1), or applied to a group with
+ * alternation (`(a|aa)+`), whose overlapping branches backtrack the same way.
+ *
+ * This is a UX check, not a security boundary: it gives the editors an inline
+ * error for the common exponential shapes, but it cannot see every ambiguous
+ * pattern (adjacent ambiguous quantifiers like `a?a?a?…aaa` stay invisible).
+ * The server-side alert pass therefore never runs a tenant regex on its own
+ * event loop; it evaluates in a worker with a hard deadline (server-core
+ * `log-workspaces/bounded-match.ts`).
  */
 export function hasCatastrophicRegexShape(pattern: string): boolean {
-  /** Does an unbounded-ish quantifier (`*`, `+` or `{…}`) start at `i`? */
-  const quantifierAt = (i: number): boolean => {
+  /**
+   * Length and repeat bound of the quantifier starting at `i`, or null when
+   * none starts there. `repeats` is false for the at-most-once quantifiers
+   * (`?`, `{0,1}`, `{1}`, `{0}`).
+   */
+  const quantifierAt = (i: number): { length: number; repeats: boolean } | null => {
     const ch = pattern[i];
-    return ch === "*" || ch === "+" || (ch === "{" && /^\{\d+(,\d*)?\}/.test(pattern.slice(i)));
+    if (ch === "*" || ch === "+") return { length: 1, repeats: true };
+    if (ch === "?") return { length: 1, repeats: false };
+    if (ch === "{") {
+      const m = /^\{(\d+)(,(\d*))?\}/.exec(pattern.slice(i));
+      if (!m) return null;
+      const min = Number(m[1]);
+      const max = m[2] === undefined ? min : m[3] === "" ? Infinity : Number(m[3]);
+      return { length: m[0].length, repeats: max > 1 };
+    }
+    return null;
+  };
+  /** Consume a quantifier at `i` plus its lazy `?` suffix; returns it and the next index. */
+  const takeQuantifier = (i: number) => {
+    const q = quantifierAt(i);
+    if (!q) return null;
+    let next = i + q.length;
+    if (pattern[next] === "?") next++;
+    return { repeats: q.repeats, next };
   };
   interface GroupState {
     sawQuantifier: boolean;
     sawAlternation: boolean;
   }
+  const fresh = (): GroupState => ({ sawQuantifier: false, sawAlternation: false });
   const stack: GroupState[] = [];
-  let current: GroupState = { sawQuantifier: false, sawAlternation: false };
+  let current = fresh();
   let inClass = false;
-  for (let i = 0; i < pattern.length; i++) {
+  let i = 0;
+  while (i < pattern.length) {
     const ch = pattern[i];
     if (ch === "\\") {
-      i++;
+      i += 2;
       continue;
     }
     if (inClass) {
       if (ch === "]") inClass = false;
+      i++;
       continue;
     }
     if (ch === "[") {
       inClass = true;
+      i++;
       continue;
     }
     if (ch === "(") {
       stack.push(current);
-      current = { sawQuantifier: false, sawAlternation: false };
+      current = fresh();
+      i++;
+      // Skip a group prefix (`?:`, `?=`, `?!`, `?<=`, `?<!`, `?<name>`) so its
+      // `?` is not read as a quantifier.
+      if (pattern[i] === "?") {
+        const prefix = /^\?(?::|=|!|<=|<!|<[^>]*>)/.exec(pattern.slice(i));
+        i += prefix ? prefix[0].length : 1;
+      }
       continue;
     }
     if (ch === ")") {
       const inner = current;
-      const outer = stack.pop() ?? { sawQuantifier: false, sawAlternation: false };
-      const quantified = quantifierAt(i + 1);
-      if (quantified && (inner.sawQuantifier || inner.sawAlternation)) return true;
+      const outer = stack.pop() ?? fresh();
+      const q = takeQuantifier(i + 1);
+      if (q?.repeats && (inner.sawQuantifier || inner.sawAlternation)) return true;
       current = {
-        sawQuantifier: outer.sawQuantifier || inner.sawQuantifier || quantified,
-        sawAlternation: outer.sawAlternation,
+        sawQuantifier: outer.sawQuantifier || inner.sawQuantifier || q !== null,
+        // An alternation nested anywhere inside a group still overlaps under
+        // an outer repeat: `((a|aa)b)+` backtracks like `(a|aa)+`.
+        sawAlternation: outer.sawAlternation || inner.sawAlternation,
       };
+      i = q ? q.next : i + 1;
       continue;
     }
     if (ch === "|") {
       current.sawAlternation = true;
+      i++;
       continue;
     }
-    if (quantifierAt(i)) current.sawQuantifier = true;
+    const q = takeQuantifier(i);
+    if (q) {
+      current.sawQuantifier = true;
+      i = q.next;
+      continue;
+    }
+    i++;
   }
   return false;
 }
@@ -236,13 +289,14 @@ export function hasCatastrophicRegexShape(pattern: string): boolean {
  *
  * Regex patterns are guarded: over-long patterns and shapes prone to
  * catastrophic backtracking (see `hasCatastrophicRegexShape`) compile to an
- * error rather than a predicate, so a user-supplied pattern can never
- * monopolize the alert poller (or the filter box) synchronously.
+ * error rather than a predicate. That guard is best-effort, so the alert
+ * poller does not call `test` on a regex search: it evaluates `regex` in an
+ * isolated worker with a deadline instead.
  */
 export function compileLogSearch(expression: string): CompiledLogSearch {
   const expr = expression.trim();
   if (expr.length === 0) {
-    return { test: () => true, error: null, matchAll: true };
+    return { test: () => true, error: null, matchAll: true, regex: null };
   }
 
   const regexForm = /^\/(.+)\/(i?)$/.exec(expr);
@@ -253,29 +307,42 @@ export function compileLogSearch(expression: string): CompiledLogSearch {
         test: () => false,
         error: `Invalid regex: pattern must be at most ${LOG_WORKSPACE_LIMITS.maxSearchLength} characters`,
         matchAll: false,
+        regex: null,
       };
     }
     if (hasCatastrophicRegexShape(pattern)) {
       return {
         test: () => false,
         error:
-          "Invalid regex: a quantified group containing a quantifier or alternation " +
-          "(e.g. `(a+)+`, `(a|aa)*`) can backtrack catastrophically and is not supported",
+          "Invalid regex: a repeated group containing a quantifier or alternation " +
+          "(e.g. `(a+)+`, `(a?){20}`, `(a|aa)*`) can backtrack catastrophically and is not supported",
         matchAll: false,
+        regex: null,
       };
     }
     try {
-      const regex = new RegExp(pattern, regexForm[2] === "i" ? "i" : "");
-      return { test: (line) => regex.test(line), error: null, matchAll: false };
+      const flags = regexForm[2] === "i" ? "i" : "";
+      const regex = new RegExp(pattern, flags);
+      return {
+        test: (line) => regex.test(line),
+        error: null,
+        matchAll: false,
+        regex: { source: pattern, flags },
+      };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      return { test: () => false, error: `Invalid regex: ${message}`, matchAll: false };
+      return {
+        test: () => false,
+        error: `Invalid regex: ${message}`,
+        matchAll: false,
+        regex: null,
+      };
     }
   }
 
   const terms = tokenizeSearch(expr);
   if (terms.length === 0) {
-    return { test: () => true, error: null, matchAll: true };
+    return { test: () => true, error: null, matchAll: true, regex: null };
   }
   const needles = terms.map((t) => ({ value: t.value.toLowerCase(), negated: t.negated }));
   return {
@@ -289,6 +356,7 @@ export function compileLogSearch(expression: string): CompiledLogSearch {
     },
     error: null,
     matchAll: false,
+    regex: null,
   };
 }
 
@@ -309,14 +377,30 @@ const SAMPLE_LINE_MAX_LENGTH = 300;
 
 /**
  * Max characters of a line fed to `search.test` during a server-side
- * evaluation. Together with the pattern-shape guard in `compileLogSearch`
- * this bounds regex backtracking cost in the alert poller: the shape guard
- * rejects the exponential patterns it can see, and this cap keeps the cost of
- * anything it can't see (polynomially ambiguous patterns) small on hostile
- * log lines. The trade-off: a match that only begins past this offset in a
- * single very long line is not counted.
+ * evaluation. This keeps the cost of polynomially ambiguous patterns small on
+ * hostile log lines; it does nothing against exponential ones, which is why
+ * the alert pass also runs regex searches in a worker with a deadline. The
+ * trade-off: a match that only begins past this offset in a single very long
+ * line is not counted.
  */
 const EVAL_LINE_MAX_LENGTH = 2000;
+
+function probeOf(line: string): string {
+  return line.length > EVAL_LINE_MAX_LENGTH ? line.slice(0, EVAL_LINE_MAX_LENGTH) : line;
+}
+
+/**
+ * The distinct strings `evaluateLogMatches` may pass to `search.test` for this
+ * text. A host that evaluates the regex out of process computes the matching
+ * set over these and hands back a lookup as `test`.
+ */
+export function logMatchProbes(text: string): string[] {
+  const probes = new Set<string>();
+  for (const line of splitLogLines(text)) {
+    if (line.length > 0) probes.add(probeOf(line));
+  }
+  return [...probes];
+}
 
 function clipLine(line: string): string {
   return line.length > SAMPLE_LINE_MAX_LENGTH ? `${line.slice(0, SAMPLE_LINE_MAX_LENGTH)}…` : line;
@@ -350,8 +434,7 @@ export function evaluateLogMatches(
     const line = lines[i]!;
     if (line.length === 0) continue;
     // Cap the input the (user-supplied) predicate sees: see EVAL_LINE_MAX_LENGTH.
-    const probe = line.length > EVAL_LINE_MAX_LENGTH ? line.slice(0, EVAL_LINE_MAX_LENGTH) : line;
-    if (!search.test(probe)) continue;
+    if (!search.test(probeOf(line))) continue;
     matchCount += 1;
     if (samples.length < sampleCap) samples.push(clipLine(line));
     if (matchCount >= matchCap) {

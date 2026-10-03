@@ -17,6 +17,10 @@
  *   `LOG_WORKSPACE_LIMITS.alertTailLines` tail lines and match counting stops
  *   at `alertMatchCap`: a pathological log volume can never make an
  *   evaluation unbounded.
+ * - **Tenant regexes run off-thread.** A `/regex/` search is matched in a
+ *   worker with a deadline (`bounded-match.ts`), so a catastrophically
+ *   backtracking pattern fails its own row with a recorded error instead of
+ *   stalling the poller for every org.
  * - **Cooldown.** A notification is dispatched at most once per
  *   `alertCooldownMs` per query (`last_alerted_at`), so a query that keeps
  *   matching reports "still matching" on the next cooldown boundary instead
@@ -30,10 +34,10 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   compileLogSearch,
-  evaluateLogMatches,
   LOG_WORKSPACE_LIMITS,
   type LogStreamSelector,
 } from "@infrawrench/client-core";
+import { evaluateLogMatchesBounded } from "./bounded-match";
 import { db } from "../db/client";
 import { logWorkspaceQueries, resources } from "../db/schema";
 import { getOrgAccountClient } from "../org-accounts";
@@ -230,7 +234,7 @@ async function evaluateStream(
         ...(selector.container ? { container: selector.container } : {}),
       },
     );
-    const evaluated = evaluateLogMatches(result.text, search, {
+    const evaluated = await evaluateLogMatchesBounded(result.text, search, {
       matchCap: LOG_WORKSPACE_LIMITS.alertMatchCap,
     });
     return {

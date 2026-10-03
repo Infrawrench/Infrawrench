@@ -30,7 +30,7 @@ The search box is deliberately grep-simple:
 - `error -healthcheck` — a leading `-` excludes lines containing the term.
 - `/HTTP [45]\d\d/` — wrap the whole expression in slashes for a regular expression (`/…/i` for case-insensitive).
 
-The same expression is evaluated by the server-side alert pass, so what matches in the filter box is exactly what an alert would fire on. One guard rail: regex shapes prone to catastrophic backtracking — a quantified group that itself contains a quantifier or alternation, like `(a+)+` or `(a|aa)*` — are rejected with an inline error, since the same pattern would otherwise run in the alert poller.
+The same expression is evaluated by the server-side alert pass, so what matches in the filter box is exactly what an alert would fire on. Two guard rails apply to regexes. Shapes prone to catastrophic backtracking, a repeated group that itself contains a quantifier (optional ones included) or an alternation, like `(a+)+`, `(a?){20}` or `(a|aa)*`, are rejected with an inline error. And because no static check catches every slow pattern, the alert pass evaluates each regex with a time limit of about two seconds per stream: a pattern that runs past it is stopped, and the saved query shows the error instead of alerting.
 
 ## Saved queries
 
