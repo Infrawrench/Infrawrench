@@ -83,7 +83,7 @@ export function ConditionRow({
   // Every control in the row is labelled off the field name in the leading
   // span. The span is visible text, but it sits beside the controls rather than
   // wrapping them, so a screen reader has nothing to tie the two together
-  // without these — and "at least / exactly" on its own says nothing about what
+  // without these, and "at least / exactly" on its own says nothing about what
   // is being compared.
   const fieldLabel = conditionLabels[condition.field];
 
@@ -213,8 +213,8 @@ export function ConditionRow({
  * The text is held locally while the field has focus, because deriving it from
  * `cents` on every keystroke fights the user: `12.` round-trips to `12` the
  * instant the decimal point is typed, and `12.50` loses its trailing zero. The
- * committed value still updates on each change — only the *rendering* is
- * deferred — so nothing has to be saved for the rule to be valid. On blur the
+ * committed value still updates on each change (only the *rendering* is
+ * deferred) so nothing has to be saved for the rule to be valid. On blur the
  * field re-syncs to the canonical value, which is what normalizes `12.005` and
  * an empty box.
  */
@@ -249,7 +249,7 @@ function AmountInput({
 
 /**
  * A checkbox list for the enumerable fields, and a comma-separated text input
- * for resource type ids — there are hundreds of those across 49 plugins, and a
+ * for resource type ids: there are hundreds of those across 49 plugins, and a
  * picker over all of them is worse than typing the one you mean.
  */
 function MultiSelect({

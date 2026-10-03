@@ -82,7 +82,7 @@ export function DestinationPicker({
   // `push` is always an option, so the list is never empty and the checkboxes
   // are always rendered. An earlier version treated "only push" as the empty
   // state and hid every checkbox, which left an org that uses push alone unable
-  // to build a working rule — and made an existing push destination invisible
+  // to build a working rule, and made an existing push destination invisible
   // and so unremovable. The hint is additional, not a replacement.
   const noChannels = catalog.slackChannels.length === 0 && catalog.msTeamsWebhooks.length === 0;
 

@@ -142,7 +142,7 @@ export function InvoiceDetail({
   const approveBlocker = managedInvoiceBlocker(invoice, "approve");
   const sendBlocker = managedInvoiceBlocker(invoice, "send");
   // The server allows a second copy with `resend`, so the button is offered
-  // whenever only that flag stands in the way — with a confirmation, because
+  // whenever only that flag stands in the way: with a confirmation, because
   // the thing being written to is a customer's inbox. A void invoice is refused
   // either way, and this asks the same function the server does.
   const resendBlocker = managedInvoiceBlocker(invoice, "send", { resend: true });
@@ -365,7 +365,7 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
             </thead>
             <tbody className="divide-y divide-border">
               {/* `kind:refId:currency` is a true key for the cost-centre and
-                  account lines — one line per scope entry per collected
+                  account lines: one line per scope entry per collected
                   currency. It is not one for a fixed charge, whose `refId` is
                   the rule's *target*, not the rule: two fixed rules billing the
                   same centre in the same currency are two lines with one

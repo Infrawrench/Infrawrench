@@ -40,7 +40,7 @@ export function toggle(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 }
 
-/** The last complete calendar month — the period an invoice almost always covers. */
+/** The last complete calendar month: the period an invoice almost always covers. */
 export function lastMonth(): { from: string; to: string } {
   const now = new Date();
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));

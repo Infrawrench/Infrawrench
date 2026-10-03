@@ -16,7 +16,7 @@ type Gt = ReturnType<typeof useGT>;
 
 /**
  * The drill half of the screen, supplied by the host. Undefined means the host
- * does not offer drills at all, which hides the tab — rather than showing an
+ * does not offer drills at all, which hides the tab, rather than showing an
  * empty one, which would read as "nobody has ever drilled".
  */
 export interface DrillCoverage {
@@ -62,7 +62,7 @@ function outcomeLabel(gt: Gt, outcome: DrillOutcome): string {
 }
 
 /**
- * The Drills tab — where each protected resource stands on restore, and the
+ * The Drills tab, where each protected resource stands on restore, and the
  * form for recording that somebody tried.
  *
  * Kept as its own component rather than inlined because it owns a form with

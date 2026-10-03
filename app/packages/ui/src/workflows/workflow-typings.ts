@@ -24,7 +24,7 @@ function renderMetricsInterface(defs: WorkflowMetricDef[]): string {
 /**
  * Swap the `InfraMetrics` block in the generated typings for one reflecting the
  * metrics the user is *currently* editing, so `infra.metrics.<key>` is typed
- * live — before the workflow is even saved.
+ * live: before the workflow is even saved.
  */
 export function overlayMetricTypings(dts: string, defs: WorkflowMetricDef[]): string {
   const block = renderMetricsInterface(defs);

@@ -1,7 +1,7 @@
 import type { CloudFetch } from "./fetch";
 
 /* ------------------------------------------------------------------ *
- * Cost anomalies — GET /costs/anomalies.
+ * Cost anomalies: GET /costs/anomalies.
  * ------------------------------------------------------------------ */
 
 /** The breakdowns anomaly detection evaluates. */
@@ -10,8 +10,8 @@ export type CostAnomalyDimension = "provider" | "service";
 /**
  * What kind of finding a row is.
  *
- * - `spike` — spend far above the key's own trailing baseline.
- * - `new_source` — a key that spent (effectively) nothing across the whole
+ * - `spike`: spend far above the key's own trailing baseline.
+ * - `new_source`: a key that spent (effectively) nothing across the whole
  *   trailing window and suddenly has material spend. It can never be a
  *   `spike`: with a zero baseline there is no mean or sigma to exceed, and the
  *   observed-days guard silences brand-new keys on purpose.
@@ -34,7 +34,7 @@ export type CostAnomalyKind = "spike" | "new_source";
  * - **`explanation` is stored on the anomaly, not read back from the note.**
  *   The note is a living overlay anyone may reword or delete; this is the
  *   record of what was said when the finding was closed. Deleting the
- *   annotation therefore removes the chart marker and nulls `annotationId` —
+ *   annotation therefore removes the chart marker and nulls `annotationId`:
  *   it never turns the anomaly back into an open question.
  * - **Acknowledging does not suppress detection.** An explained spike is
  *   explained, not exempt: the same key spiking again on a later day is a new
@@ -43,12 +43,12 @@ export type CostAnomalyKind = "spike" | "new_source";
 export interface CostAnomalyAcknowledgement {
   /** The sentence. Also the text of the annotation this created. */
   explanation: string;
-  /** When the *current* explanation was recorded — restamped by a correction. */
+  /** When the *current* explanation was recorded: restamped by a correction. */
   acknowledgedAt: string;
   acknowledgedByUserId: string | null;
   /**
    * The annotation drawn on the charts, or null once that note has been
-   * deleted. Null here never means "unexplained" — see above.
+   * deleted. Null here never means "unexplained": see above.
    */
   annotationId: string | null;
 }
@@ -70,7 +70,7 @@ export interface CostAnomaly {
    */
   kind: CostAnomalyKind;
   dimension: CostAnomalyDimension;
-  /** The dimension's value — a plugin id or a service name. */
+  /** The dimension's value: a plugin id or a service name. */
   dimensionKey: string;
   currency: string;
   actualCents: number;
@@ -85,7 +85,7 @@ export interface CostAnomaly {
   /** Null when delivery failed or the cooldown suppressed the notification. */
   notifiedAt: string | null;
   /**
-   * Root-cause hints computed when the anomaly fired — what the change
+   * Root-cause hints computed when the anomaly fired: what the change
    * timeline and audit log say happened in the anomaly's window ("12
    * gce-instance resources appeared", "Astrid ran workflow \"Nightly
    * rebuild\""), ranked, at most three. Empty for anomalies detected before
@@ -141,7 +141,7 @@ export function costAnomalyDeltaPercent(
 /**
  * Recently detected spend anomalies, newest day first (`GET /costs/anomalies`,
  * permission `costs:read`). Detection itself runs server-side after each cost
- * collection pass — there is nothing to trigger from a client.
+ * collection pass: there is nothing to trigger from a client.
  */
 export async function listCostAnomalies(
   api: CloudFetch,
@@ -172,7 +172,7 @@ export function isCostAnomalyExplained(anomaly: Pick<CostAnomaly, "acknowledgeme
 }
 
 /**
- * How many of these findings nobody has explained yet — the number worth
+ * How many of these findings nobody has explained yet: the number worth
  * printing next to the section heading.
  *
  * This is what "an acknowledged anomaly stops nagging" means here: explained
@@ -188,7 +188,7 @@ export function countUnexplainedCostAnomalies(anomalies: readonly CostAnomaly[])
  * Explain a finding (`POST /costs/anomalies/:id/acknowledge`, permission
  * `costs:write`).
  *
- * The server creates the annotation — at the anomaly's own day, org-wide — so
+ * The server creates the annotation (at the anomaly's own day, org-wide) so
  * no client can put the note on the wrong date, and the model calling this
  * through MCP gets the same artifact a person clicking "Explain" does. Sending
  * it again replaces the sentence (and rewords the note it already made) rather
@@ -209,13 +209,13 @@ export async function acknowledgeCostAnomaly(
 }
 
 /* ------------------------------------------------------------------ *
- * Anomaly tuning — GET/PUT /costs/anomaly-settings.
+ * Anomaly tuning: GET/PUT /costs/anomaly-settings.
  * ------------------------------------------------------------------ */
 
 /**
- * The per-org knobs on anomaly detection. Everything else about the model —
+ * The per-org knobs on anomaly detection. Everything else about the model
  * the 28-day baseline, the 3-day re-judged window, the 7-day cooldown, the
- * 7-observed-day guard — is fixed, because those are properties of the data
+ * 7-observed-day guard) is fixed, because those are properties of the data
  * rather than a preference.
  *
  * Money is in cents and denominated in USD; the detector converts each floor
@@ -226,7 +226,7 @@ export async function acknowledgeCostAnomaly(
  * Which anomalies, if any, also page the org's Twilio recipients by SMS.
  *
  * Deliberately one nested choice rather than two orthogonal booleans. The three
- * values order themselves — off ⊂ new sources ⊂ everything — so there is never
+ * values order themselves (off ⊂ new sources ⊂ everything) so there is never
  * a combination that needs two different text messages out of one evaluation
  * pass, and the middle value is the one worth having: a spend source appearing
  * from nothing is what a leaked key or a fat-fingered instance type looks like,
@@ -276,7 +276,7 @@ export interface CostAnomalySettings {
  * What `GET`/`PUT /costs/anomaly-settings` answer with: the stored settings
  * plus one derived, read-only fact.
  *
- * `smsAlerts` on its own is not enough for a form to tell the truth — an org
+ * `smsAlerts` on its own is not enough for a form to tell the truth: an org
  * can select "every anomaly" while having no Twilio credentials, or none of its
  * recipients opted into SMS, and nothing would ever be sent. The server knows;
  * the client cannot (the Twilio settings routes are `org:settings:write`, which
@@ -297,14 +297,14 @@ export interface CostAnomalySettingsView extends CostAnomalySettings {
  *
  * - `sigmas` below 1 flags roughly a third of ordinary days; 0 flags every day
  *   that is a cent above average. Above 10 nothing short of a 10x jump fires.
- * - The floors must be positive — a floor of zero (or a negative one) removes
- *   the noise filter entirely — and are capped where a floor stops being a
+ * - The floors must be positive: a floor of zero (or a negative one) removes
+ *   the noise filter entirely, and are capped where a floor stops being a
  *   noise filter and starts being a way to switch detection off by accident.
  */
 export const COST_ANOMALY_LIMITS = {
   sigmasMin: 1,
   sigmasMax: 10,
-  /** $1 — below this the floor no longer filters penny noise. */
+  /** $1: below this the floor no longer filters penny noise. */
   minDeltaCentsMin: 100,
   /** $100,000/day. */
   minDeltaCentsMax: 10_000_000,
@@ -313,7 +313,7 @@ export const COST_ANOMALY_LIMITS = {
 } as const;
 
 /**
- * What an org that has never touched the settings gets — the values anomaly
+ * What an org that has never touched the settings gets: the values anomaly
  * detection shipped with, so leaving the form alone changes nothing.
  */
 export const DEFAULT_COST_ANOMALY_SETTINGS: CostAnomalySettings = {

@@ -3,27 +3,27 @@ import type { CloudFetch } from "./fetch";
 import type { CostDimensionId, CostFilter } from "./costs";
 
 /* ------------------------------------------------------------------ *
- * Change-based cost alerts — GET/POST/PUT/DELETE /cost-alerts.
+ * Change-based cost alerts: GET/POST/PUT/DELETE /cost-alerts.
  *
  * The third cost-alert family, deliberately distinct from the other two:
  * budgets alert on an absolute monthly total you chose; anomaly detection
  * alerts on unconfigured statistical outliers against a learned baseline;
- * change alerts alert on a *configured relative change* — "spend on this
- * scope moved more than X% (or $Y) versus the prior period" — on a scope
+ * change alerts alert on a *configured relative change*: "spend on this
+ * scope moved more than X% (or $Y) versus the prior period"; on a scope
  * and cadence the user chose.
  * ------------------------------------------------------------------ */
 
 /**
  * Which window is compared against which. The exact definitions (all
- * complete UTC days — the accruing current day never counts):
+ * complete UTC days: the accruing current day never counts):
  *
- * - `daily` — one complete day vs the **same weekday one week earlier**
+ * - `daily`: one complete day vs the **same weekday one week earlier**
  *   (yesterday vs last Tuesday, not yesterday vs the day before), so weekday
  *   seasonality never reads as a change.
- * - `weekly` — the last 7 complete days vs the 7 complete days before them.
- * - `monthly` — month-to-date (the current month's complete days) vs the
+ * - `weekly`: the last 7 complete days vs the 7 complete days before them.
+ * - `monthly`: month-to-date (the current month's complete days) vs the
  *   **same number of days** at the start of the prior month. Never MTD vs
- *   the full prior month — that comparison is always "down" until the 28th.
+ *   the full prior month: that comparison is always "down" until the 28th.
  */
 export const COST_CHANGE_CADENCES = ["daily", "weekly", "monthly"] as const;
 export type CostChangeCadence = (typeof COST_CHANGE_CADENCES)[number];
@@ -54,7 +54,7 @@ export const COST_CHANGE_DIRECTION_LABELS: Record<CostChangeDirection, string> =
 export interface CostAlert {
   id: string;
   name: string;
-  /** Which cost rows count — same vocabulary as budget and graph filters. */
+  /** Which cost rows count: same vocabulary as budget and graph filters. */
   filters: CostFilter[];
   /**
    * Per-group fan-out: null watches the scope's one total; a dimension
@@ -68,7 +68,7 @@ export interface CostAlert {
   /**
    * Percent of the prior window's spend the change must reach, or null.
    * At least one threshold is always set; when **both** are set, **both**
-   * must hold before the alert fires — a 50% jump on $2 pages nobody.
+   * must hold before the alert fires: a 50% jump on $2 pages nobody.
    */
   thresholdPercent: number | null;
   /** Cents the change must reach, or null. */
@@ -100,7 +100,7 @@ export interface CostAlertInput {
 /** Bounds the API enforces; clients enforce the same ones locally. */
 export const COST_ALERT_LIMITS = {
   maxNameLength: 120,
-  /** 1% .. 10000% — a 100x move is the largest sane percent threshold. */
+  /** 1% .. 10000%: a 100x move is the largest sane percent threshold. */
   minPercent: 1,
   maxPercent: 10_000,
   maxAlertsPerOrg: 200,
@@ -132,7 +132,7 @@ export interface CostAlertEvent {
   alertId: string;
   /** The alert's name at read time; "" when the alert was since deleted. */
   alertName: string;
-  /** Cadence period the current window belongs to — the dedup key. */
+  /** Cadence period the current window belongs to: the dedup key. */
   periodKey: string;
   /** Current window, inclusive UTC days. */
   windowFrom: string;
@@ -147,7 +147,7 @@ export interface CostAlertEvent {
   currentAmountCents: number;
   /**
    * Signed percent change, rounded. Null when the prior window had no spend
-   * at all — new spend has no percentage, only an amount. -100 when the
+   * at all: new spend has no percentage, only an amount. -100 when the
    * group vanished.
    */
   changePercent: number | null;
@@ -158,7 +158,7 @@ export interface CostAlertEvent {
 
 /**
  *"+173%", "-42%", or "new" for spend with no prior window to be up from.
- * Every surface renders the null-percent case as `new` — a made-up huge
+ * Every surface renders the null-percent case as `new`: a made-up huge
  * percentage buries the fact that matters, which is that the thing is new.
  */
 export function costAlertEventDeltaLabel(event: Pick<CostAlertEvent, "changePercent">): string {

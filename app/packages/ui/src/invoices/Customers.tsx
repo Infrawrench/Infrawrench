@@ -139,7 +139,7 @@ export function CustomerModal({
   // as two unrelated names that happen to sort together.
   const paths = useMemo(() => costCentrePaths(centres), [centres]);
 
-  // Membership only — the arrays stay authoritative because the order a
+  // Membership only: the arrays stay authoritative because the order a
   // customer's scope was picked in is what is persisted and sent back.
   const centreIdSet = useMemo(() => new Set(centreIds), [centreIds]);
   const accountIdSet = useMemo(() => new Set(accountIds), [accountIds]);

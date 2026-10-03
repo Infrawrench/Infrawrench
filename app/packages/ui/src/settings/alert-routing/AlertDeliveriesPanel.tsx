@@ -22,7 +22,7 @@ interface DeliveryRow {
 
 /**
  * What the rules actually did. Only ever shows rows a rule created follow-up
- * work for — an alert that went straight out with no quiet hours and no
+ * work for: an alert that went straight out with no quiet hours and no
  * escalation leaves no row, which keeps this list about the things somebody may
  * still need to act on.
  */

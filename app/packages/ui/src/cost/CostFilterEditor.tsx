@@ -38,8 +38,8 @@ function mergeSelected(options: CostDimensionOption[], values: string[]): CostDi
 }
 
 /**
- * Translate the three load states — in flight (`undefined`), failed (`null`),
- * loaded-but-empty — into what the picker shows in place of a list.
+ * Translate the three load states: in flight (`undefined`), failed (`null`),
+ * loaded-but-empty; into what the picker shows in place of a list.
  */
 function dimensionStatus(
   state: CostDimensionOption[] | null | undefined,
@@ -81,7 +81,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
     [api],
   );
 
-  // Load each row's options as soon as the row exists — waiting for focus
+  // Load each row's options as soon as the row exists: waiting for focus
   // leaves the values box looking dead right after "+ Add filter".
   useEffect(() => {
     for (const f of filters) {
@@ -189,7 +189,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
 }
 
 /* ------------------------------------------------------------------ *
- * Text mode — the same filter, written in the cost query language.
+ * Text mode: the same filter, written in the cost query language.
  * ------------------------------------------------------------------ */
 
 export interface CostFilterEditorProps extends FilterRowEditorProps {
@@ -197,8 +197,8 @@ export interface CostFilterEditorProps extends FilterRowEditorProps {
    * Called whenever the text box's validity changes, so the host can refuse to
    * save a half-typed query. Null means "nothing wrong right now".
    *
-   * The editor never propagates an unparseable query through `onChange` — the
-   * last *valid* filter stays in the config — which is what makes this callback
+   * The editor never propagates an unparseable query through `onChange` (the
+   * last *valid* filter stays in the config) which is what makes this callback
    * necessary: without it, Save would quietly store the previous filter while
    * the user was looking at their new one.
    */
@@ -217,7 +217,7 @@ export interface CostFilterEditorProps extends FilterRowEditorProps {
  * The saved-filter half of the editor: the chip naming the applied filter, the
  * picker to apply one, and "Save these rows as a filter…".
  *
- * The chip is a *reference*, deliberately never expanded into rows here —
+ * The chip is a *reference*, deliberately never expanded into rows here:
  * expanding would invite editing a copy, and the whole point of the object is
  * that the rows live in one place. Editing goes through the Costs panel's
  * Saved filters section, where the referents are visible.
@@ -359,17 +359,17 @@ function SavedFilterPicker({
  * Both modes are views onto the same `CostFilter[]`, so switching is lossless
  * in both directions: entering text mode renders the current rows through
  * `formatCostQuery`, and every accepted keystroke in text mode compiles back
- * through `parseCostQuery`. The rows stay the default and are never removed —
+ * through `parseCostQuery`. The rows stay the default and are never removed:
  * they are the discoverable path, with the dimension list and the value pickers
  * that tell a new user what is even filterable. Text mode is for the people who
  * already know, and for pasting a filter out of a ticket.
  *
  * Two switches are deliberately blocked rather than made lossy:
  *
- * - to text, when a row is a tag with no key — there is nowhere in the language
+ * - to text, when a row is a tag with no key: there is nowhere in the language
  *   to put the missing key, and inventing one would round-trip to a different
  *   filter;
- * - to rows, while the query does not parse — the rows can only show the last
+ * - to rows, while the query does not parse: the rows can only show the last
  *   valid filter, so switching would silently discard what was typed.
  */
 export function CostFilterEditor({
@@ -395,7 +395,7 @@ export function CostFilterEditor({
   );
 
   // A mode the host never sees an error from: leaving text mode clears it.
-  // Done in the click that changes the mode rather than in an effect — an
+  // Done in the click that changes the mode rather than in an effect: an
   // effect would tell the host about the change one render late (and would fire
   // once on mount, for an error that cannot exist yet).
   const toRows = () => {
@@ -428,7 +428,7 @@ export function CostFilterEditor({
   };
 
   // The saved-filter UI needs both a place to write the reference and a host
-  // API that can list filters — absent either, this editor is exactly the
+  // API that can list filters: absent either, this editor is exactly the
   // pre-saved-filters one.
   const savedFilterUi = Boolean(onSavedFilterChange && api.listSavedFilters);
 

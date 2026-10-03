@@ -74,7 +74,7 @@ function describeCron(
     return gt("Runs hourly at :{min}.", { min: pad2(+min) });
   return gt("Runs on a custom schedule.");
 }
-/** Default threshold for a new budget trigger — "goes over budget". */
+/** Default threshold for a new budget trigger: "goes over budget". */
 const DEFAULT_BUDGET_PERCENT = 100;
 /** Format a budget's monthly limit for the trigger summary line. */
 function formatBudgetAmount(amountCents: number, currency: string): string {
@@ -137,7 +137,7 @@ export function TriggerEditor({
       >
         <option value="manual">{gt("Manual")}</option>
         <option value="cron">{gt("Cron")}</option>
-        {/* Git triggers need an always-on host to watch the repo — web/proxy only. */}
+        {/* Git triggers need an always-on host to watch the repo: web/proxy only. */}
         {(gitTriggers || kind === "git") && <option value="git">{gt("Git")}</option>}
         {/* Budgets are a cloud feature; the crossing is evaluated server-side. */}
         {(budgetIntegration || kind === "budget") && <option value="budget">{gt("Budget")}</option>}
@@ -267,7 +267,7 @@ function CronTriggerFields({
   const formatRun = useMemo(() => {
     try {
       // Show run times in the zone the schedule is evaluated in (UTC when
-      // unset) — a "daily at 09:00" cron previews as 09:00, not the viewer's
+      // unset): a "daily at 09:00" cron previews as 09:00, not the viewer's
       // local rendering of it.
       const dtf = new Intl.DateTimeFormat(undefined, {
         month: "short",

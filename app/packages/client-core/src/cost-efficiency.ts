@@ -1,21 +1,21 @@
 import type { CloudFetch } from "./fetch";
 
 /* ------------------------------------------------------------------ *
- * Efficiency alerts — GET/PUT /costs/efficiency-alert-settings and
+ * Efficiency alerts: GET/PUT /costs/efficiency-alert-settings and
  * GET /costs/efficiency-alerts.
  *
  * The fourth, fifth and sixth cost-alert families. What separates them from
  * the first three is *what they are computed from*: budgets, anomalies and
  * change alerts all judge a spend total against another spend total, so
  * every one of them is blind to the two facts an org most reliably gets
- * surprised by — a commitment's calendar, and the volume the spend bought.
+ * surprised by; a commitment's calendar, and the volume the spend bought.
  *
  * - **Commitment expiry** is the only one with no spend input at all. It
  *   reads an end date. The spend it warns about has not happened yet, which
  *   is the entire value: an expired reservation reverts to on-demand and the
  *   change alert that eventually notices is a week late and $9,000 poorer.
  * - **Idle commitments** judge delivered usage against the commitment's own
- *   obligation — money already spent, measured against what it bought.
+ *   obligation: money already spent, measured against what it bought.
  * - **Unit-cost regressions** divide spend by a business metric. This is the
  *   only cost alert that can stay quiet while spend doubles (because volume
  *   tripled) and fire while spend is flat (because volume halved).
@@ -44,7 +44,7 @@ export const EFFICIENCY_ALERT_KIND_LABELS: Record<EfficiencyAlertKind, string> =
  * Per-org tuning for the three efficiency detectors.
  *
  * Every field has a default that works with no setup, the way
- * {@link DEFAULT_COST_ANOMALY_SETTINGS} does — a missing row is
+ * {@link DEFAULT_COST_ANOMALY_SETTINGS} does: a missing row is
  * indistinguishable from a saved-defaults row, so the feature is on for every
  * org that predates the table.
  *
@@ -102,7 +102,7 @@ export interface CostEfficiencySettings {
  * Bounds the API enforces, exported so the editor enforces the same ones.
  *
  * They exist to keep a setting from turning a detector into either a pager
- * storm or a permanent silence — the same rule {@link COST_ANOMALY_LIMITS}
+ * storm or a permanent silence: the same rule {@link COST_ANOMALY_LIMITS}
  * follows.
  */
 export const COST_EFFICIENCY_LIMITS = {
@@ -151,14 +151,14 @@ export const COST_EFFICIENCY_LIMITS = {
  * whether the feature is useful or ignored:
  *
  * - **60/30/7 days.** Three notices, each for a different decision. 60 days is
- *   procurement lead time — long enough to run a renewal through whoever signs
+ *   procurement lead time: long enough to run a renewal through whoever signs
  *   for it. 30 days is the last point at which re-sizing is a considered
  *   choice rather than a scramble. 7 days is "this is happening; either renew
  *   or budget for on-demand". Fewer horizons and the first one is either too
  *   early to act on or too late to act well.
  * - **`commitmentExpiryAlertOnExpired: true`.** A commitment that lapsed
- *   without ever warning — because it was collected for the first time after
- *   its end date, or the org connected the account late — is the single worst
+ *   without ever warning (because it was collected for the first time after
+ *   its end date, or the org connected the account late) is the single worst
  *   case this feature exists for, and it is silent by construction: every
  *   horizon is in the past, so nothing fires. One alert at horizon 0 is the
  *   only way anyone learns. It is bounded: only commitments that ended inside
@@ -167,14 +167,14 @@ export const COST_EFFICIENCY_LIMITS = {
  * - **70% over 30 days, ≥14 measured days.** 70% is roughly where a 1-year
  *   no-upfront commitment stops beating on-demand for the usage it covers, so
  *   below it the commitment is losing money rather than merely underperforming.
- *   30 days is four weekends — a weekday-only workload sits near 71% over a
+ *   30 days is four weekends: a weekday-only workload sits near 71% over a
  *   full month, which is exactly the population that should *not* fire. 14
  *   measured days means half the window has to be real data before anything is
  *   judged.
  * - **$50 of waste.** Below that the finding is true and worthless.
  * - **20% over 14 days, ≥10 reported days each side.** Two weeks each side
  *   covers two full weekly cycles, and 10 of 14 reported days on both sides is
- *   the minimum history at which the ratio means anything — a metric reported
+ *   the minimum history at which the ratio means anything: a metric reported
  *   three times a fortnight has no unit cost to regress. 20% is well outside
  *   the month-to-month drift of a healthy unit cost and well inside the size
  *   of a real pricing or efficiency change.
@@ -208,7 +208,7 @@ export const DEFAULT_COST_EFFICIENCY_SETTINGS: CostEfficiencySettings = {
  * surface that shows them shows them in one list and the three carry the same
  * five facts: what it is about, when, how much money, how far off, and whether
  * anyone was told. The detector-specific extras live in `detail`, which is
- * display-only — nothing branches on it except the renderer.
+ * display-only: nothing branches on it except the renderer.
  */
 export interface EfficiencyAlertEvent {
   id: string;
@@ -221,7 +221,7 @@ export interface EfficiencyAlertEvent {
   /** ISO 4217 of every money field below, or null when the row carries none. */
   currency: string | null;
   /**
-   * The money at stake, in **units of `currency`** (not cents — commitment
+   * The money at stake, in **units of `currency`** (not cents: commitment
    * amounts are provider-reported in currency units and rounding them to cents
    * on the way through would be a lie about the precision).
    *

@@ -3,7 +3,7 @@
  * `requirePermission` calls in route handlers. Path suffixes are matched
  * against the part of the URL after `/api/org/{orgId}/` (or the matching
  * unscoped prefix for sync/webhooks). Add new entries here when adding new
- * routes — `pnpm --filter @infrawrench/web generate:openapi` will pick them up.
+ * routes: `pnpm --filter @infrawrench/web generate:openapi` will pick them up.
  */
 export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // accounts
@@ -28,7 +28,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /deployments/plan": "deployments:plan",
   "GET /deployments/runs": "deployments:read",
   "GET /deployments/runs/{id}": "deployments:read",
-  // cost per deploy — same rule as the change feed's: deployments:read for the
+  // cost per deploy; same rule as the change feed's: deployments:read for the
   // run, costs:read for the spend it moved.
   "GET /deployments/runs/{id}/cost-impact": "costs:read",
   "POST /deployments/runs": "deployments:write",
@@ -51,12 +51,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /dashboards/pin/{pinId}": "dashboards:read",
   "POST /dashboards/probe": "dashboards:read",
 
-  // workflow approvals — listing rides on the same permission as the Workflows
+  // workflow approvals: listing rides on the same permission as the Workflows
   // tab; deciding is its own trust level (see routes/workflow-approvals.ts).
   "GET /workflow-approvals": "workflows:read",
   "POST /workflow-approvals/{id}/approve": "workflows:approve",
   "POST /workflow-approvals/{id}/deny": "workflows:approve",
-  // custom graphs — genuinely dashboard content, so they keep the dashboards
+  // custom graphs: genuinely dashboard content, so they keep the dashboards
   // permissions the workflows routes have moved off.
   "GET /custom-graphs": "dashboards:read",
   "POST /custom-graphs": "dashboards:write",
@@ -66,7 +66,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /custom-graphs/{id}": "dashboards:write",
   "DELETE /custom-graphs/{id}": "dashboards:write",
   "POST /custom-graphs/{id}/render": "dashboards:read",
-  // workflows — typings rides workflows:read (same as the editor/tool path);
+  // workflows: typings rides workflows:read (same as the editor/tool path);
   // the schedule sub-resource still shares the dashboards permissions used when
   // it was documented (CI managing when a UI-created workflow runs).
   "GET /workflows/{id}/typings": "workflows:read",
@@ -93,23 +93,23 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // change timeline
   "GET /changes": "resources:read",
   "GET /changes/resource": "resources:read",
-  // cost per change — the response is money, so it takes the cost read scope
+  // cost per change: the response is money, so it takes the cost read scope
   // on top of the resource one the feed itself needs.
   "POST /changes/cost-impacts": "costs:read",
-  // provider status correlation — reads the same resource set the incidents
+  // provider status correlation: reads the same resource set the incidents
   // are matched against, so it rides the resources read scope
   "GET /status-incidents": "resources:read",
-  // expiry radar — the feed is a read over the org's resource set; the alert
+  // expiry radar: the feed is a read over the org's resource set; the alert
   // settings decide what the org's channels hear, the same trust level as the
   // drift alert settings
   "GET /expiring": "resources:read",
-  // The moment union spans six read scopes; `resources:read` is the floor —
+  // The moment union spans six read scopes; `resources:read` is the floor:
   // feeds needing more (costs, workflows, deployments, audit, freezes) are
   // omitted per-feed rather than gating the whole endpoint.
   "GET /moment": "resources:read",
   "GET /expiring/settings": "org:settings:write",
   "PUT /expiring/settings": "org:settings:write",
-  // quota radar — the feed is a read over already-collected readings; the
+  // quota radar: the feed is a read over already-collected readings; the
   // threshold decides what the org's channels hear, the same trust level as
   // the expiry alert settings next door
   "GET /quotas": "resources:read",
@@ -118,7 +118,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /posture": "resources:read",
   "POST /posture/dismissals": "resources:write",
   "DELETE /posture/dismissals": "resources:write",
-  // cross-cloud access review — the posture stance exactly: the review and its
+  // cross-cloud access review; the posture stance exactly: the review and its
   // export are reads over the org's resource set, and accepting a finding is a
   // statement about one resource at the same trust level as changing it. There
   // is no settings route: the findings ride the posture alert window, so
@@ -128,11 +128,11 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /access-review/dismissals": "resources:write",
   "DELETE /access-review/dismissals": "resources:write",
   "GET /dns": "resources:read",
-  // Environment diff — pure read over two accounts' already-synced inventories.
+  // Environment diff: pure read over two accounts' already-synced inventories.
   "GET /environment-diff": "resources:read",
   "GET /posture/settings": "org:settings:write",
   "PUT /posture/settings": "org:settings:write",
-  // sleep/wake schedules — reads ride the resource read scope (the list is
+  // sleep/wake schedules: reads ride the resource read scope (the list is
   // derived from the org's resource set, like orphans); mutations are a
   // standing instruction to invoke the same actions `resources:write` already
   // gates on /resources/invoke-action
@@ -141,12 +141,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /schedules/preview": "resources:read",
   "PUT /schedules/{scheduleId}": "resources:write",
   "DELETE /schedules/{scheduleId}": "resources:write",
-  // resource leases — the schedules stance: reads are a view over the org's
+  // resource leases; the schedules stance: reads are a view over the org's
   // resource set; mutations are resources:write. Setting autoDelete: true
-  // additionally requires resources:delete (checked in the handler — the
+  // additionally requires resources:delete (checked in the handler; the
   // lease becomes a standing deletion), which this one-permission-per-route
   // map cannot express.
-  // ephemeral environments — the leases stance: reads are a view over the org's
+  // ephemeral environments; the leases stance: reads are a view over the org's
   // own resources, template edits are writes, teardown is a delete, and
   // instantiation needs both (every instance carries a standing auto-delete).
   // The TTL ceiling is org settings, not a resource edit.
@@ -170,22 +170,22 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /leases/{leaseId}": "resources:write",
   "POST /leases/{leaseId}/cancel": "resources:write",
   "DELETE /leases/{leaseId}": "resources:write",
-  // session recordings — their own permission family rather than `audit:read`
+  // session recordings; their own permission family rather than `audit:read`
   // or `ssh-keys:*`: watching a colleague's terminal back is a sharper
   // capability than either, and the people who should hold it (compliance,
   // security) are often not the people who administer keys. Deliberately
-  // absent from the `member` system role — recording exists to watch
+  // absent from the `member` system role: recording exists to watch
   // operators, so handing every operator the ability to watch defeats it.
-  // break-glass access — three verbs held by genuinely different people.
+  // break-glass access: three verbs held by genuinely different people.
   // `access:approve` is deliberately not implied by `team:role:write`: granting
   // a role is a considered change, approving an elevation happens mid-incident.
-  // `revoke` has no entry because its permission depends on who is calling —
-  // the holder may always end their own grant — which this one-permission-per
+  // `revoke` has no entry because its permission depends on who is calling
+  // (the holder may always end their own grant) which this one-permission-per
   // -route map cannot express; the handler owns it.
-  // credential hygiene — `audit:read`, not a family of its own. Every fact in
+  // credential hygiene: `audit:read`, not a family of its own. Every fact in
   // the report is already reachable by anyone who can read the audit log, so a
   // separate permission would only mean granting two things to get one view.
-  // credit burndown — `costs:read`. A prepaid balance is spend information,
+  // credit burndown: `costs:read`. A prepaid balance is spend information,
   // and the permission that already governs "what is this costing us" is the
   // one that should govern "how much is left".
   "GET /credits": "costs:read",
@@ -204,12 +204,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /access-requests/{requestId}/deny": "access:approve",
   "POST /access-requests/{requestId}/withdraw": "access:request",
   "GET /session-recordings": "session-recordings:read",
-  // shared consoles — deliberately no permission family of their own. A share
+  // shared consoles: deliberately no permission family of their own. A share
   // hands over no capability the guest did not already hold: joining requires
   // the same `resources:execute` a direct terminal to that resource requires,
   // so the invite link is a locator and never an authorisation. Inventing a
   // `shared-consoles:*` family would imply a share is a lesser thing than a
-  // shell, and it is not — a guest can be handed the keyboard.
+  // shell, and it is not: a guest can be handed the keyboard.
   "GET /shared-consoles": "resources:execute",
   "POST /shared-consoles": "resources:execute",
   "GET /shared-consoles/invites/{token}": "resources:execute",
@@ -217,8 +217,8 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /shared-consoles/{consoleId}/join": "resources:execute",
   "POST /shared-consoles/{consoleId}/handover": "resources:execute",
   "POST /shared-consoles/{consoleId}/request-driver": "resources:execute",
-  // The routes that *take access away* — leave, revoke, eject, withdraw an
-  // invite — carry no permission on purpose. Gating them on still holding
+  // The routes that *take access away*: leave, revoke, eject, withdraw an
+  // invite; carry no permission on purpose. Gating them on still holding
   // `resources:execute` would lock an owner whose role was narrowed
   // mid-incident out of closing the session they opened. They are gated in the
   // handler instead, on being the sharer or holding `org:settings:write`,
@@ -234,7 +234,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /session-recordings/{recordingId}": "session-recordings:read",
   "GET /session-recordings/{recordingId}/cast": "session-recordings:read",
   "DELETE /session-recordings/{recordingId}": "session-recordings:write",
-  // synthetic probes — the schedules stance: reads (list, suggestions mined
+  // synthetic probes; the schedules stance: reads (list, suggestions mined
   // from resource outputs, recorded series) ride the resource read scope;
   // mutations are resources:write
   "GET /probes": "resources:read",
@@ -243,7 +243,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /probes": "resources:write",
   "PUT /probes/{probeId}": "resources:write",
   "DELETE /probes/{probeId}": "resources:write",
-  // incident mode — the declared kind. `incidents:write` is held by members
+  // incident mode: the declared kind. `incidents:write` is held by members
   // as well as admins on purpose (see the permission catalog); what a
   // declaration may *do* keeps its own gates, so requesting a change freeze
   // still needs freezes:write.
@@ -257,7 +257,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /incidents/{incidentId}/retry-artifacts": "incidents:write",
   "POST /incidents/{incidentId}/notes": "incidents:write",
   "DELETE /incidents/{incidentId}/notes/{noteId}": "incidents:write",
-  // status pages — a page is a view over probes, so it rides the probe stance:
+  // status pages: a page is a view over probes, so it rides the probe stance:
   // whoever may create the monitoring may decide what of it is public.
   // GET /api/status/{slug} is deliberately absent: it is mounted outside the
   // org tree and takes no credentials at all.
@@ -266,7 +266,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /status-pages/{id}": "resources:write",
   "POST /status-pages/{id}/rotate-slug": "resources:write",
   "DELETE /status-pages/{id}": "resources:write",
-  // resource ownership — the leases stance. Note /ownership/members is
+  // resource ownership: the leases stance. Note /ownership/members is
   // resources:read, not team:read: the person who can create a resource must
   // be able to say it is theirs.
   "GET /ownership": "resources:read",
@@ -274,7 +274,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /ownership/resource": "resources:read",
   "PUT /ownership": "resources:write",
   "DELETE /ownership": "resources:write",
-  // log workspace saved queries — the schedules stance: reads are a view over
+  // log workspace saved queries; the schedules stance: reads are a view over
   // the org's resource logs (which resources:read already gates via
   // /resources/{pluginId}/{typeId}/logs); mutations are resources:write
   "GET /log-workspaces": "resources:read",
@@ -282,14 +282,14 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /log-workspaces": "resources:write",
   "PUT /log-workspaces/{queryId}": "resources:write",
   "DELETE /log-workspaces/{queryId}": "resources:write",
-  // tag policy & showback — policy is org settings; compliance/untagged ride
+  // tag policy & showback: policy is org settings; compliance/untagged ride
   // the resource/cost read scopes their data is computed over
   "GET /tag-policy": "resources:read",
   "PUT /tag-policy": "org:settings:write",
   "GET /tag-policy/compliance": "resources:read",
   "GET /costs/untagged": "costs:read",
   "GET /costs/showback": "costs:read",
-  // currency — reads ride costs:read because a converted total is unauditable
+  // currency: reads ride costs:read because a converted total is unauditable
   // without the rate that produced it; writes are org:settings:write because
   // stating a rate restates every total the org reports, in digests and in the
   // budget alerts that page people. Finance governance, not a user preference.
@@ -298,7 +298,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /currency/rates": "org:settings:write",
   "DELETE /currency/rates/{rateId}": "org:settings:write",
   // cost centres & allocation rules
-  // billing rules — the org's own adjustments to collected spend.
+  // billing rules: the org's own adjustments to collected spend.
   //
   // Reads ride `costs:read` like every other cost surface: a rule is part of
   // the explanation for a number, and hiding it from the people who read the
@@ -306,7 +306,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   //
   // Writes are `org:settings:write`, deliberately **not** `costs:write`.
   // `costs:write` is the "name a report, define a cost centre, save a filter"
-  // scope — acts that add a view of the org's spend. A billing rule is not a
+  // scope: acts that add a view of the org's spend. A billing rule is not a
   // view: a markup changes what every internal figure in the organisation
   // says, including an opted-in budget's thresholds and the chargeback
   // statements finance sends to other departments. Same reasoning as
@@ -319,12 +319,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /billing-rules": "org:settings:write",
   "PUT /billing-rules/{id}": "org:settings:write",
   "DELETE /billing-rules/{id}": "org:settings:write",
-  // managed accounts & invoices — the managed-service-provider surface.
+  // managed accounts & invoices: the managed-service-provider surface.
   //
   // Its own family rather than more `costs:*`. Every other cost surface is the
   // organisation looking at its own spend; a managed account holds a customer's
   // contact details and the price that customer was quoted, which is commercial
-  // information about a third party — so reads are `invoices:read`, not
+  // information about a third party, so reads are `invoices:read`, not
   // `costs:read`.
   //
   // Writes split two ways because generating and issuing are different risks.
@@ -332,7 +332,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // delete a draft) and is entirely revisable. `invoices:issue` is the
   // irreversible half: approving freezes the numbers a customer will be sent,
   // sending states that they have them, voiding withdraws a document already in
-  // their hands. The split is what makes maker-checker expressible — a billing
+  // their hands. The split is what makes maker-checker expressible: a billing
   // clerk prepares the month, a finance lead issues it.
   //
   // Deliberately not `org:settings:write` (where billing rules and exchange
@@ -362,7 +362,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /cost-centres/rules/swap": "costs:write",
   "PUT /cost-centres/rules/{id}": "costs:write",
   "DELETE /cost-centres/rules/{id}": "costs:write",
-  // jira — read covers the redacted connection, the pickers, and the
+  // jira: read covers the redacted connection, the pickers, and the
   // finding→issue links a list view needs; write covers configuring the
   // credential and filing.
   "GET /jira": "jira:read",
@@ -373,7 +373,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /jira/projects/{key}/issue-types": "jira:read",
   "POST /jira/issues": "jira:write",
   "GET /jira/links": "jira:read",
-  // linear — the same split as jira, for the same reasons: read covers the
+  // linear; the same split as jira, for the same reasons: read covers the
   // redacted connection, the team picker, and the finding→issue links; write
   // covers configuring the API key and filing.
   "GET /linear": "linear:read",
@@ -419,7 +419,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // Retuning detection changes what the org's whole cost feed alerts on, so it
   // rides the cost write scope rather than the budget one.
   "PUT /costs/anomaly-settings": "costs:write",
-  // efficiency alerts — commitment expiry, idle commitments, unit-cost
+  // efficiency alerts: commitment expiry, idle commitments, unit-cost
   // regression. Same split as anomaly settings and for the same reason:
   // reading what fired is cost data, retuning it changes what the org's whole
   // cost feed alerts on.
@@ -427,7 +427,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /costs/efficiency-alert-settings": "costs:read",
   "PUT /costs/efficiency-alert-settings": "costs:write",
   "POST /costs/rows": "costs:write",
-  // cost reports — a report is cost data under a name, so it follows the cost
+  // cost reports: a report is cost data under a name, so it follows the cost
   // permissions rather than the dashboard ones. Running one is a read.
   "GET /cost-reports": "costs:read",
   "POST /cost-reports": "costs:write",
@@ -435,7 +435,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /cost-reports/{id}": "costs:write",
   "DELETE /cost-reports/{id}": "costs:write",
   "POST /cost-reports/{id}/run": "costs:read",
-  // report delivery schedules — reads ride costs:read (mobile shows them
+  // report delivery schedules; reads ride costs:read (mobile shows them
   // read-only), but writes and "send now" are org:settings:write, the
   // cost-exports reasoning: a schedule is standing authorisation to ship org
   // spend to destinations the creator picks, and its email list is
@@ -449,7 +449,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /cost-reports/{id}/notifications/{notificationId}": "org:settings:write",
   "POST /cost-reports/{id}/notifications/{notificationId}/send": "org:settings:write",
   "GET /cost-report-notifications": "costs:read",
-  // cost annotations — dated notes drawn over a chart. Reads ride costs:read
+  // cost annotations: dated notes drawn over a chart. Reads ride costs:read
   // and writes costs:write, exactly as reports do: a note about spend is cost
   // data with words on it, not dashboard furniture.
   "GET /cost-annotations": "costs:read",
@@ -457,7 +457,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /cost-annotations/change-impact": "costs:write",
   "PUT /cost-annotations/{id}": "costs:write",
   "DELETE /cost-annotations/{id}": "costs:write",
-  // change-based cost alerts — a cost-scoped alert config, so it rides the
+  // change-based cost alerts: a cost-scoped alert config, so it rides the
   // cost scopes the way reports do.
   "GET /cost-alerts": "costs:read",
   "POST /cost-alerts": "costs:write",
@@ -465,7 +465,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /cost-alerts/{id}": "costs:read",
   "PUT /cost-alerts/{id}": "costs:write",
   "DELETE /cost-alerts/{id}": "costs:write",
-  // saved cost filters — a named filter is a statement about cost data, so it
+  // saved cost filters: a named filter is a statement about cost data, so it
   // rides the cost scopes exactly as reports do. DELETE additionally answers
   // 409 while the filter is referenced; that is policy, not permission.
   "GET /saved-cost-filters": "costs:read",
@@ -480,7 +480,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /cost-scenarios/{id}": "costs:write",
   "DELETE /cost-scenarios/{id}": "costs:write",
   "GET /cost-scenarios/{id}/referents": "costs:read",
-  // business metrics — the denominators unit costs divide by. Reads are
+  // business metrics: the denominators unit costs divide by. Reads are
   // costs:read and writes costs:write, matching saved filters and the cost
   // push endpoint: a metric is a statement about cost data, not dashboard
   // furniture. The unit-cost query is a POST but computes nothing stored,
@@ -499,7 +499,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /cost-report-folders": "costs:write",
   "PUT /cost-report-folders/{id}": "costs:write",
   "DELETE /cost-report-folders/{id}": "costs:write",
-  // cost exports — reads ride costs:read like every other cost surface, but
+  // cost exports: reads ride costs:read like every other cost surface, but
   // writes are org:settings:write rather than costs:write. Creating an export
   // is standing authorisation to ship the org's whole billing history to a
   // destination the creator chose, on a schedule, forever; costs:write is the
@@ -546,7 +546,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /search": "resources:read",
   // orphans
   "GET /orphans": "resources:read",
-  // right-sizing — the list is derived from the org's resource set like
+  // right-sizing: the list is derived from the org's resource set like
   // orphans; prices are provider catalog rates, not the org's billing data
   "GET /rightsizing": "resources:read",
   // ssh keys
@@ -605,7 +605,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /api-keys/{id}/revoke": "apikeys:write",
   "POST /api-keys/{id}/rotate": "apikeys:write",
   // config as code (each route additionally checks the per-section permission
-  // of every section involved — see api/routes/org-config.ts)
+  // of every section involved: see api/routes/org-config.ts)
   "GET /config/export": "config:read",
   "POST /config/plan": "config:read",
   "POST /config/apply": "config:write",
@@ -614,7 +614,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /v1/sync/push": "resources:write",
   "GET /v1/sync/status": "resources:read",
   // push (device routes are user-scoped; preference/test routes are
-  // membership-only self-service — no permission beyond org membership)
+  // membership-only self-service: no permission beyond org membership)
   "POST /push/devices": null,
   "GET /push/devices": null,
   "DELETE /push/devices/{id}": null,

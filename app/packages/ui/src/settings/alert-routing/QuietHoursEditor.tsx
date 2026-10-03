@@ -44,7 +44,7 @@ export function QuietHoursEditor({
           value={minutesToTime(value.endMinute)}
           onChange={(e) => onChange({ ...value, endMinute: timeToMinutes(e.target.value) })}
         />
-        {/* The placeholder is an example of the format, not the label — it
+        {/* The placeholder is an example of the format, not the label: it
             disappears the moment anything is typed. */}
         <input
           className={`${INPUT} w-52`}
