@@ -818,21 +818,23 @@ describe("usage metrics", () => {
         ? jsonResponse({
             data: [{ start_time: 1, results: [{ amount: { value: 2.5, currency: "usd" } }] }],
           })
-        : jsonResponse({
-            data: [
-              {
-                start_time: 1,
-                results: [
-                  {
-                    input_tokens: 10,
-                    input_cached_tokens: 4,
-                    output_tokens: 5,
-                    num_model_requests: 2,
-                  },
-                ],
-              },
-            ],
-          }),
+        : !url.includes("/usage/completions")
+          ? jsonResponse({ data: [{ start_time: 1, results: [] }], has_more: false })
+          : jsonResponse({
+              data: [
+                {
+                  start_time: 1,
+                  results: [
+                    {
+                      input_tokens: 10,
+                      input_cached_tokens: 4,
+                      output_tokens: 5,
+                      num_model_requests: 2,
+                    },
+                  ],
+                },
+              ],
+            }),
     );
     const series = await client().fetchMetricSeries(
       "project",
@@ -847,5 +849,192 @@ describe("usage metrics", () => {
       "Requests",
     ]);
     expect(series[2]!.points[0]!.value).toBe(4);
+  });
+});
+
+describe("usage metrics across endpoints", () => {
+  it("adds every endpoint a project can filter on, dropping the all-zero ones", async () => {
+    installFetch((url) => {
+      const path = new URL(url).pathname;
+      const bucket = (result: Record<string, number>) =>
+        jsonResponse({ data: [{ start_time: 100, results: [result] }], has_more: false });
+      switch (path) {
+        case "/v1/organization/costs":
+          return jsonResponse({ data: [], has_more: false });
+        case "/v1/organization/usage/completions":
+          return bucket({
+            input_tokens: 10,
+            output_tokens: 5,
+            num_model_requests: 1,
+            input_audio_tokens: 7,
+          });
+        case "/v1/organization/usage/images":
+          return bucket({ images: 3, num_model_requests: 2 });
+        case "/v1/organization/usage/vector_stores":
+          return bucket({ usage_bytes: 2048 });
+        case "/v1/organization/usage/code_interpreter_sessions":
+          return bucket({ num_sessions: 0 });
+        case "/v1/organization/usage/web_search_calls":
+          return jsonResponse({ error: { message: "nope" } }, 500);
+        default:
+          return jsonResponse({ data: [{ start_time: 100, results: [] }], has_more: false });
+      }
+    });
+
+    const series = await client().fetchMetricSeries(
+      "project",
+      `${ACCOUNT}:project:proj_1`,
+      ACCOUNT,
+    );
+
+    const paths = calls.map((c) => new URL(c.url).pathname).sort();
+    expect(paths).toEqual(
+      [
+        "audio_speeches",
+        "audio_transcriptions",
+        "code_interpreter_sessions",
+        "completions",
+        "embeddings",
+        "file_search_calls",
+        "images",
+        "moderations",
+        "vector_stores",
+        "web_search_calls",
+      ]
+        .map((p) => `/v1/organization/usage/${p}`)
+        .concat("/v1/organization/costs")
+        .sort(),
+    );
+    for (const call of calls) expect(call.url).toContain("project_ids=proj_1");
+    expect(series.map((s) => s.label)).toEqual([
+      "Cost",
+      "Input tokens",
+      "Cached input tokens",
+      "Output tokens",
+      "Requests",
+      "Audio input tokens",
+      "Images",
+      "Image requests",
+      "Vector store storage",
+    ]);
+    expect(series.find((s) => s.label === "Vector store storage")!.unit).toBe("bytes");
+    expect(series.find((s) => s.label === "Images")!.points).toEqual([
+      { timestamp: 100_000, value: 3 },
+    ]);
+  });
+
+  it("only calls endpoints that accept a model filter for a model", async () => {
+    installFetch(() => jsonResponse({ data: [], has_more: false }));
+    await client().fetchMetricSeries("model", `${ACCOUNT}:model:gpt-image-1`, ACCOUNT);
+    const paths = calls.map((c) => new URL(c.url).pathname.replace("/v1/organization/usage/", ""));
+    expect(paths).not.toContain("file_search_calls");
+    expect(paths).not.toContain("vector_stores");
+    expect(paths).not.toContain("code_interpreter_sessions");
+    expect(paths).toContain("images");
+    for (const call of calls) expect(call.url).toContain("models=gpt-image-1");
+  });
+
+  it("charts a vector store's file search calls", async () => {
+    installFetch(() =>
+      jsonResponse({
+        data: [{ start_time: 100, results: [{ num_requests: 4 }, { num_requests: 1 }] }],
+        has_more: false,
+      }),
+    );
+    const series = await client().fetchMetricSeries(
+      "vector-store",
+      `${ACCOUNT}:vector-store:vs_1`,
+      ACCOUNT,
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain("/organization/usage/file_search_calls?");
+    expect(calls[0]!.url).toContain("vector_store_ids=vs_1");
+    expect(authOf(calls[0]!.init)).toBe("Bearer sk-admin-test");
+    expect(series).toEqual([
+      { label: "File search calls", unit: "calls", points: [{ timestamp: 100_000, value: 5 }] },
+    ]);
+  });
+});
+
+describe("audit logs", () => {
+  it("filters a project's audit log with project_ids[] and prints oldest first", async () => {
+    installFetch(() =>
+      jsonResponse({
+        object: "list",
+        data: [
+          {
+            id: "audit_log-2",
+            type: "api_key.updated",
+            effective_at: 1720804190,
+            actor: {
+              type: "session",
+              session: {
+                user: { id: "user-1", email: "ada@example.com" },
+                ip_address: "127.0.0.1",
+              },
+            },
+            "api_key.updated": { id: "key_1", data: { scopes: [] } },
+          },
+          {
+            id: "audit_log-1",
+            type: "project.archived",
+            effective_at: 1720800000,
+            actor: {
+              type: "api_key",
+              api_key: { type: "service_account", service_account: { id: "svc_1" } },
+            },
+            project: { id: "proj_1", name: "prod" },
+            "project.archived": { id: "proj_1" },
+          },
+        ],
+        has_more: false,
+      }),
+    );
+
+    const logs = await client().getLogs("project", `${ACCOUNT}:project:proj_1`, ACCOUNT, {
+      tailLines: 500,
+    });
+
+    const params = new URL(calls[0]!.url).searchParams;
+    expect(new URL(calls[0]!.url).pathname).toBe("/v1/organization/audit_logs");
+    expect(params.getAll("project_ids[]")).toEqual(["proj_1"]);
+    expect(params.get("limit")).toBe("100");
+    expect(authOf(calls[0]!.init)).toBe("Bearer sk-admin-test");
+    expect(logs.text.split("\n")).toEqual([
+      "2024-07-12T16:00:00.000Z project.archived by svc_1 on proj_1 (project prod)",
+      "2024-07-12T17:09:50.000Z api_key.updated by ada@example.com from 127.0.0.1 on key_1",
+      "",
+    ]);
+  });
+
+  it("uses actor_ids[] for members and service accounts, resource_ids[] for keys", async () => {
+    installFetch(() => jsonResponse({ data: [], has_more: false }));
+    await client().getLogs("organization-user", `${ACCOUNT}:organization-user:user-1`, ACCOUNT, {});
+    await client().getLogs(
+      "project-service-account",
+      `${ACCOUNT}:project-service-account:proj_1:svc_1`,
+      ACCOUNT,
+      {},
+    );
+    await client().getLogs(
+      "project-api-key",
+      `${ACCOUNT}:project-api-key:proj_1:key_1`,
+      ACCOUNT,
+      {},
+    );
+    const filters = calls.map((c) =>
+      [...new URL(c.url).searchParams.entries()].filter(([k]) => k !== "limit"),
+    );
+    expect(filters).toEqual([
+      [["actor_ids[]", "user-1"]],
+      [["actor_ids[]", "svc_1"]],
+      [["resource_ids[]", "key_1"]],
+    ]);
+  });
+
+  it("explains how to turn audit logging on when the API refuses", async () => {
+    installFetch(() => jsonResponse({ error: { message: "Audit logging is not enabled" } }, 403));
+    const logs = await client().getLogs("project", `${ACCOUNT}:project:proj_1`, ACCOUNT, {});
+    expect(logs.text).toContain("Data controls");
   });
 });

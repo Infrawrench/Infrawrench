@@ -31,4 +31,6 @@ export const VectorStoreResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsDelete: true,
+  // File search calls against this store, from the admin-key usage API.
+  supportsMetrics: true,
 });

@@ -8,6 +8,8 @@ import type {
   DetailViewSchema,
   HostServices,
   KVItem,
+  LogsFetchParams,
+  LogsFetchResult,
   MetricSeries,
   MetricSeriesPoint,
   PluginClient,
@@ -280,8 +282,45 @@ interface UsageResult {
   project_id?: string | null;
   input_tokens?: number;
   input_cached_tokens?: number;
+  input_cache_write_tokens?: number;
   output_tokens?: number;
+  input_audio_tokens?: number;
+  output_audio_tokens?: number;
   num_model_requests?: number;
+  /** images */
+  images?: number;
+  /** audio_speeches */
+  characters?: number;
+  /** audio_transcriptions */
+  seconds?: number;
+  /** vector_stores */
+  usage_bytes?: number;
+  /** code_interpreter_sessions */
+  num_sessions?: number;
+  /** web_search_calls, file_search_calls */
+  num_requests?: number;
+}
+
+/** One audit log entry; the event payload sits under a key named after `type`. */
+interface AuditLogEntry {
+  id?: string;
+  type?: string;
+  effective_at?: number;
+  project?: { id?: string; name?: string } | null;
+  actor?: {
+    type?: string;
+    session?: {
+      user?: { id?: string; email?: string } | null;
+      ip_address?: string;
+    } | null;
+    api_key?: {
+      id?: string;
+      type?: string;
+      user?: { id?: string; email?: string } | null;
+      service_account?: { id?: string } | null;
+    } | null;
+  } | null;
+  [key: string]: unknown;
 }
 
 interface UsageBucket {
@@ -421,6 +460,170 @@ function dayStartUnix(isoDate: string): number {
  */
 function appendAll(params: URLSearchParams, key: string, values: string[]): void {
   for (const value of values) params.append(key, value);
+}
+
+type UsageFilter = "models" | "project_ids" | "user_ids" | "api_key_ids" | "vector_store_ids";
+
+interface UsageSeriesSpec {
+  label: string;
+  unit: string;
+  pick: (result: UsageResult) => number | undefined;
+}
+
+interface UsageEndpoint {
+  /** Path under `/v1/organization/usage/`. */
+  path: string;
+  /** The filters the endpoint accepts. */
+  filters: UsageFilter[];
+  series: UsageSeriesSpec[];
+  /** Completions: always charted, and its errors are not swallowed. */
+  core?: boolean;
+}
+
+const PER_CALLER: UsageFilter[] = ["models", "project_ids", "user_ids", "api_key_ids"];
+
+/**
+ * Every usage endpoint, its accepted filters and the counters charted from
+ * it. Field names verified 2026-10-03 against the usage result schemas.
+ */
+const USAGE_ENDPOINTS: UsageEndpoint[] = [
+  {
+    path: "completions",
+    filters: PER_CALLER,
+    core: true,
+    series: [
+      { label: "Input tokens", unit: "tokens", pick: (r) => r.input_tokens },
+      { label: "Cached input tokens", unit: "tokens", pick: (r) => r.input_cached_tokens },
+      { label: "Output tokens", unit: "tokens", pick: (r) => r.output_tokens },
+      { label: "Requests", unit: "requests", pick: (r) => r.num_model_requests },
+    ],
+  },
+  {
+    path: "embeddings",
+    filters: PER_CALLER,
+    series: [
+      { label: "Embedding input tokens", unit: "tokens", pick: (r) => r.input_tokens },
+      { label: "Embedding requests", unit: "requests", pick: (r) => r.num_model_requests },
+    ],
+  },
+  {
+    path: "moderations",
+    filters: PER_CALLER,
+    series: [
+      { label: "Moderation input tokens", unit: "tokens", pick: (r) => r.input_tokens },
+      { label: "Moderation requests", unit: "requests", pick: (r) => r.num_model_requests },
+    ],
+  },
+  {
+    path: "images",
+    filters: PER_CALLER,
+    series: [
+      { label: "Images", unit: "images", pick: (r) => r.images },
+      { label: "Image requests", unit: "requests", pick: (r) => r.num_model_requests },
+    ],
+  },
+  {
+    path: "audio_speeches",
+    filters: PER_CALLER,
+    series: [
+      { label: "Speech characters", unit: "characters", pick: (r) => r.characters },
+      { label: "Speech requests", unit: "requests", pick: (r) => r.num_model_requests },
+    ],
+  },
+  {
+    path: "audio_transcriptions",
+    filters: PER_CALLER,
+    series: [
+      { label: "Transcribed audio", unit: "s", pick: (r) => r.seconds },
+      { label: "Transcription requests", unit: "requests", pick: (r) => r.num_model_requests },
+    ],
+  },
+  {
+    path: "web_search_calls",
+    filters: PER_CALLER,
+    series: [{ label: "Web search calls", unit: "calls", pick: (r) => r.num_requests }],
+  },
+  {
+    path: "file_search_calls",
+    filters: ["project_ids", "user_ids", "api_key_ids", "vector_store_ids"],
+    series: [{ label: "File search calls", unit: "calls", pick: (r) => r.num_requests }],
+  },
+  {
+    path: "code_interpreter_sessions",
+    filters: ["project_ids"],
+    series: [{ label: "Code interpreter sessions", unit: "sessions", pick: (r) => r.num_sessions }],
+  },
+  {
+    path: "vector_stores",
+    filters: ["project_ids"],
+    series: [{ label: "Vector store storage", unit: "bytes", pick: (r) => r.usage_bytes }],
+  },
+];
+
+/** The completions counters past the core four, charted only when non-zero. */
+const COMPLETIONS_EXTRA_SERIES: UsageSeriesSpec[] = [
+  { label: "Cache write tokens", unit: "tokens", pick: (r) => r.input_cache_write_tokens },
+  { label: "Audio input tokens", unit: "tokens", pick: (r) => r.input_audio_tokens },
+  { label: "Audio output tokens", unit: "tokens", pick: (r) => r.output_audio_tokens },
+];
+
+/**
+ * Sum each spec's counter per bucket. A primary endpoint keeps its series
+ * even when empty; the others drop a series that is zero throughout, and so
+ * do the completions extras.
+ */
+function usageSeries(
+  endpoint: UsageEndpoint,
+  buckets: UsageBucket[],
+  primary: boolean,
+): MetricSeries[] {
+  const build = (specs: UsageSeriesSpec[], keepEmpty: boolean): MetricSeries[] =>
+    specs
+      .map((spec) => ({
+        label: spec.label,
+        unit: spec.unit,
+        points: buckets.map((bucket) => {
+          let value = 0;
+          for (const result of bucket.results ?? []) value += spec.pick(result) ?? 0;
+          return { timestamp: (bucket.start_time ?? 0) * 1000, value };
+        }),
+      }))
+      .filter((series) => keepEmpty || series.points.some((point) => point.value !== 0));
+  const extras = endpoint.core ? build(COMPLETIONS_EXTRA_SERIES, false) : [];
+  return [...build(endpoint.series, primary), ...extras];
+}
+
+/**
+ * One audit log entry as a log line: time, event type, who did it, and the
+ * id of what it was done to (the payload sits under a key named after the
+ * type).
+ */
+function formatAuditLog(entry: AuditLogEntry): string {
+  const at = entry.effective_at ? new Date(entry.effective_at * 1000).toISOString() : "";
+  const type = str(entry.type);
+  const actor = entry.actor;
+  const session = actor?.session;
+  const key = actor?.api_key;
+  const who =
+    str(session?.user?.email) ||
+    str(key?.user?.email) ||
+    str(key?.service_account?.id) ||
+    str(session?.user?.id) ||
+    str(key?.user?.id) ||
+    str(key?.id);
+  const payload = entry[type];
+  const target =
+    payload && typeof payload === "object" ? str((payload as { id?: unknown }).id) : "";
+  return [
+    at,
+    type,
+    who ? `by ${who}` : "",
+    session?.ip_address ? `from ${session.ip_address}` : "",
+    target ? `on ${target}` : "",
+    entry.project?.name ? `(project ${entry.project.name})` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /**
@@ -1855,6 +2058,7 @@ export class OpenAIClient implements PluginClient {
         ]),
       ],
       headerActions: refreshAction(),
+      metricsCapability: { defaultTimeRangeMs: 7 * 24 * 60 * 60 * 1000 },
     };
   }
 
@@ -1955,6 +2159,7 @@ export class OpenAIClient implements PluginClient {
       ],
       headerActions,
       metricsCapability: { defaultTimeRangeMs: 30 * 24 * 60 * 60 * 1000 },
+      logs: { defaultTailLines: 100 },
     };
   }
 
@@ -1986,6 +2191,7 @@ export class OpenAIClient implements PluginClient {
       ],
       headerActions: refreshAction(),
       metricsCapability: { defaultTimeRangeMs: 7 * 24 * 60 * 60 * 1000 },
+      logs: { defaultTailLines: 100 },
     };
   }
 
@@ -2016,6 +2222,7 @@ export class OpenAIClient implements PluginClient {
       ],
       headerActions: refreshAction(),
       metricsCapability: { defaultTimeRangeMs: 7 * 24 * 60 * 60 * 1000 },
+      logs: { defaultTailLines: 100 },
     };
   }
 
@@ -2098,6 +2305,7 @@ export class OpenAIClient implements PluginClient {
         },
       ],
       headerActions: refreshAction(),
+      logs: { defaultTailLines: 100 },
     };
   }
 
@@ -3131,12 +3339,21 @@ export class OpenAIClient implements PluginClient {
   // ---- Metrics and costs ---------------------------------------------------
 
   /**
-   * `GET /v1/organization/usage/completions` and `GET /v1/organization/costs`:
-   * verified 2026-10-03 (`usage-completions`, `usage-costs`). Models, project
-   * API keys, organization members and projects each get token and request
-   * series; projects also get their daily cost. `start_time` is
-   * required and in Unix **seconds**; `end_time` is exclusive. Both live behind
-   * the admin key.
+   * `GET /v1/organization/usage/*` and `GET /v1/organization/costs`: verified
+   * 2026-10-03 against openapi.yaml (`usage-completions`, `usage-costs` and
+   * the other usage operations) and the current API reference, which adds
+   * `web_search_calls` and `file_search_calls`. Every usage endpoint shares
+   * one bucket/page shape and differs only in which filters it accepts and
+   * which counters its results carry, so `USAGE_ENDPOINTS` drives them all.
+   *
+   * Models, project API keys, organization members and projects get the
+   * completions series plus every other endpoint that accepts their filter;
+   * projects also get their daily cost, and vector stores their file search
+   * calls. Series past the core completions four are dropped when they are
+   * zero across the whole window (a chat model never makes images), and a
+   * failure on one of them drops that chart rather than the tab.
+   * `start_time` is required and in Unix **seconds**; `end_time` is
+   * exclusive. All of it lives behind the admin key.
    */
   async fetchMetricSeries(
     resourceTypeId: string,
@@ -3153,10 +3370,10 @@ export class OpenAIClient implements PluginClient {
     const spanDays = Math.max(1, Math.ceil((endTime - startTime) / 86400));
     const externalId = externalIdOf(resourceId);
 
-    // Completions usage filters: a model on `models`, a key on `api_key_ids`
-    // (the bare key id, not the project-prefixed external id), a member on
-    // `user_ids`, a project on `project_ids` (alongside its cost series).
-    const completionFilter: Record<string, [string, string]> = {
+    // A model filters on `models`, a key on `api_key_ids` (the bare key id,
+    // not the project-prefixed external id), a member on `user_ids`, a
+    // project on `project_ids` and a vector store on `vector_store_ids`.
+    const filterFor: Record<string, [UsageFilter, string]> = {
       model: ["models", externalId],
       "project-api-key": [
         "api_key_ids",
@@ -3164,8 +3381,9 @@ export class OpenAIClient implements PluginClient {
       ],
       "organization-user": ["user_ids", externalId],
       project: ["project_ids", externalId],
+      "vector-store": ["vector_store_ids", externalId],
     };
-    const filter = completionFilter[resourceTypeId];
+    const filter = filterFor[resourceTypeId];
     if (!filter) return [];
 
     // `1h` buckets cap at 168, `1d` at 31: pick whichever fits the window.
@@ -3178,36 +3396,18 @@ export class OpenAIClient implements PluginClient {
     });
     appendAll(params, filter[0], [filter[1]]);
 
-    const buckets = await this.listUsageBuckets("/organization/usage/completions", params);
-    const input: MetricSeriesPoint[] = [];
-    const cached: MetricSeriesPoint[] = [];
-    const output: MetricSeriesPoint[] = [];
-    const requests: MetricSeriesPoint[] = [];
-
-    for (const bucket of buckets) {
-      const ts = (bucket.start_time ?? 0) * 1000;
-      let inTokens = 0;
-      let cachedTokens = 0;
-      let outTokens = 0;
-      let reqs = 0;
-      for (const result of bucket.results ?? []) {
-        inTokens += result.input_tokens ?? 0;
-        cachedTokens += result.input_cached_tokens ?? 0;
-        outTokens += result.output_tokens ?? 0;
-        reqs += result.num_model_requests ?? 0;
-      }
-      input.push({ timestamp: ts, value: inTokens });
-      cached.push({ timestamp: ts, value: cachedTokens });
-      output.push({ timestamp: ts, value: outTokens });
-      requests.push({ timestamp: ts, value: reqs });
-    }
-
-    const usageSeries: MetricSeries[] = [
-      { label: "Input tokens", unit: "tokens", points: input },
-      { label: "Cached input tokens", unit: "tokens", points: cached },
-      { label: "Output tokens", unit: "tokens", points: output },
-      { label: "Requests", unit: "requests", points: requests },
-    ];
+    const endpoints = USAGE_ENDPOINTS.filter((endpoint) => endpoint.filters.includes(filter[0]));
+    const results = await Promise.all(
+      endpoints.map(async (endpoint) => {
+        // The completions call (or, for a vector store, the only call) is
+        // the tab's baseline and surfaces its error; the rest are extras.
+        const primary = endpoint.core === true || endpoints.length === 1;
+        const load = this.listUsageBuckets(`/organization/usage/${endpoint.path}`, params);
+        const buckets = primary ? await load : await load.catch(() => null);
+        return buckets ? usageSeries(endpoint, buckets, primary) : [];
+      }),
+    );
+    const usage = results.flat();
 
     if (resourceTypeId === "project") {
       // /organization/costs only accepts 1d buckets, limit 1–180.
@@ -3225,10 +3425,78 @@ export class OpenAIClient implements PluginClient {
         for (const result of bucket.results ?? []) total += result.amount?.value ?? 0;
         return { timestamp: (bucket.start_time ?? 0) * 1000, value: total };
       });
-      return [{ label: "Cost", unit: "USD", points }, ...usageSeries];
+      return [{ label: "Cost", unit: "USD", points }, ...usage];
     }
 
-    return usageSeries;
+    return usage;
+  }
+
+  /**
+   * `GET /v1/organization/audit_logs`: verified 2026-10-03 against
+   * openapi.yaml (`list-audit-logs`) and the current API reference. Audit
+   * logging has to be turned on once by an organization owner (Settings →
+   * Organization → Data controls) and records nothing from before that.
+   *
+   * A project reads its events with `project_ids[]`, a member and a service
+   * account the events they performed with `actor_ids[]`, and a project API
+   * key the events performed on it with `resource_ids[]`. Note the bracketed
+   * array keys: unlike the usage endpoints, this one is described that way.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    const externalId = externalIdOf(resourceId);
+    const query = new URLSearchParams({
+      limit: String(Math.min(Math.max(params.tailLines ?? 100, 1), 100)),
+    });
+    switch (typeId) {
+      case "project":
+        query.append("project_ids[]", externalId);
+        break;
+      case "organization-user":
+        query.append("actor_ids[]", externalId);
+        break;
+      case "project-service-account":
+        query.append("actor_ids[]", splitApiKeyId(externalId).keyId);
+        break;
+      case "project-api-key":
+        query.append(
+          "resource_ids[]",
+          externalId.includes(":") ? splitApiKeyId(externalId).keyId : externalId,
+        );
+        break;
+      default:
+        throw new Error(`OpenAI plugin: no audit log for type "${typeId}"`);
+    }
+
+    const container = "audit log";
+    const wrap = (lines: string[]) => ({
+      text: lines.map((line) => `${line}\n`).join(""),
+      containers: [container],
+      activeContainer: container,
+    });
+
+    let page: ListEnvelope<AuditLogEntry>;
+    try {
+      page = await this.adminFetch<ListEnvelope<AuditLogEntry>>(
+        `/organization/audit_logs?${query.toString()}`,
+      );
+    } catch (error) {
+      if (error instanceof Error && / 40[03] /.test(error.message)) {
+        return wrap([
+          "OpenAI did not return the audit log. Audit logging has to be enabled once by an organization owner under Settings → Organization → Data controls → Audit logging, and only events after that are recorded.",
+          error.message,
+        ]);
+      }
+      throw error;
+    }
+
+    // Newest first from the API; reverse into reading order.
+    const lines = (page.data ?? []).reverse().map(formatAuditLog);
+    return wrap(lines.length > 0 ? lines : ["No audit log events for this resource."]);
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
