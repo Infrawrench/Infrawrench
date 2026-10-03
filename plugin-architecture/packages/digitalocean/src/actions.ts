@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { decodePromptArgs } from "@infrawrench/plugin-base";
+import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
 
 /**
  * Action handlers for DigitalOcean's action endpoints:
@@ -21,11 +21,6 @@ import { decodePromptArgs } from "@infrawrench/plugin-base";
 export interface ActionContext {
   fetch<T>(path: string, options?: RequestInit): Promise<T>;
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
-}
-
-/** Strip `{accountId}:{typeId}:` off a resource id to get the DO external id. */
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
 }
 
 /**

@@ -11,8 +11,13 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { base64ToUtf8, formatBytes, jsonRestFetch } from "@infrawrench/plugin-base";
-import { buildMultipartFileBody } from "./multipart.js";
+import {
+  base64ToUtf8,
+  formatBytes,
+  jsonRestFetch,
+  externalIdOf,
+  buildMultipartBody,
+} from "@infrawrench/plugin-base";
 
 /**
  * UploadThing plugin client.
@@ -352,11 +357,6 @@ function fileNameFromUrl(raw: string): string {
     // Not parseable as a URL — createResource validates that separately.
   }
   return "upload";
-}
-
-/** Everything after `{accountId}:{typeId}:` in a resource id. */
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
 }
 
 // ---------------------------------------------------------------------------
@@ -768,12 +768,15 @@ export class UploadThingClient implements PluginClient {
     // encode the same shape as bytes and prefer the host path — that's what
     // picks up bastion egress for ingest hosts on the allowlist.
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    const multipart = buildMultipartFileBody({
-      name: "file",
-      fileName: name,
-      contentType: contentType || "application/octet-stream",
-      data: bytes,
-    });
+    const multipart = buildMultipartBody([
+      {
+        kind: "file",
+        name: "file",
+        fileName: name,
+        contentType: contentType || "application/octet-stream",
+        data: bytes,
+      },
+    ]);
     const headers = { "Content-Type": multipart.contentType };
 
     if (this.services?.http) {

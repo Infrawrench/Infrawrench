@@ -22,6 +22,8 @@ import {
   bytesToBase64,
   joinSubtitle,
   jsonRestFetch,
+  externalIdOf,
+  formatBytes,
 } from "@infrawrench/plugin-base";
 
 const API_BASE = "https://api.together.ai/v1";
@@ -334,10 +336,6 @@ interface StashedVoice {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
-}
-
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -349,13 +347,6 @@ function unixToIso(unix: number | null | undefined): string {
 
 function formatNumber(value: number): string {
   return value.toLocaleString("en-US");
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function titleCase(value: string): string {

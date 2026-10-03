@@ -14,7 +14,12 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  jsonRestFetch,
+  externalIdOf,
+} from "@infrawrench/plugin-base";
 import { cartesiaCostSetupError, fetchCartesiaCostData } from "./cost-data.js";
 
 const BASE_URL = "https://api.cartesia.ai";
@@ -985,11 +990,6 @@ export class CartesiaClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
-}
-
-/** `{accountId}:{typeId}:{externalId}` → `{externalId}`. */
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
 }
 
 function parseVoiceOptions(raw: string | undefined): SpeechPanelOption[] {

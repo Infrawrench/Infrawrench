@@ -15,7 +15,7 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, formatBytes, CostSetupError } from "@infrawrench/plugin-base";
+import { jsonRestFetch, formatBytes, CostSetupError, externalIdOf } from "@infrawrench/plugin-base";
 
 const BASE_URL = "https://api.anthropic.com";
 
@@ -225,11 +225,6 @@ function str(value: unknown): string {
 function num(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
-}
-
-/** `{accountId}:{typeId}:{externalId}` → `{externalId}`. */
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
 }
 
 function supported(cap: CapabilitySupport | undefined): boolean {

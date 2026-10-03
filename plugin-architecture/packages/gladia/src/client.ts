@@ -10,8 +10,12 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
-import { buildMultipartBody } from "./multipart.js";
+import {
+  base64ToBytes,
+  jsonRestFetch,
+  externalIdOf,
+  buildMultipartBody,
+} from "@infrawrench/plugin-base";
 import {
   GLADIA_AUTO_LANGUAGE,
   GLADIA_DEFAULT_MODEL,
@@ -144,10 +148,6 @@ interface GladiaListResponse {
   current?: string;
   next?: string | null;
   items?: GladiaJob[];
-}
-
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
 }
 
 function num(value: unknown): number | undefined {
@@ -501,8 +501,9 @@ export class GladiaClient implements PluginClient {
   ): Promise<GladiaUploadResponse> {
     const { body, contentType } = buildMultipartBody([
       {
+        kind: "file",
         name: "audio",
-        filename,
+        fileName: sanitizeUploadFilename(filename),
         contentType: mimeType || "application/octet-stream",
         data: bytes,
       },
@@ -868,4 +869,14 @@ export class GladiaClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
+}
+
+/**
+ * Filenames arrive from a browser file picker, so they are untrusted: replace
+ * anything that would break the `Content-Disposition` header, and never send
+ * an empty name.
+ */
+function sanitizeUploadFilename(filename: string): string {
+  const cleaned = filename.replace(/[\r\n"\\]/g, "_").trim();
+  return cleaned.length > 0 ? cleaned : "audio";
 }

@@ -12,7 +12,7 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle } from "@infrawrench/plugin-base";
+import { joinSubtitle, externalIdOf } from "@infrawrench/plugin-base";
 import {
   createApiClient,
   type Api,
@@ -29,7 +29,7 @@ import {
   NeonAuthSupportedAuthProvider,
 } from "@neondatabase/api-client";
 import { fetchNeonCostData } from "./cost-data.js";
-import { parseBranchExternalId, externalIdOf, type BranchRef } from "./services/common.js";
+import { parseBranchExternalId, type BranchRef } from "./services/common.js";
 import {
   listAllSnapshots,
   createSnapshot as createSnapshotResource,

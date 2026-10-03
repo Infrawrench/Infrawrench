@@ -14,7 +14,7 @@ import type {
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, jsonRestFetch } from "@infrawrench/plugin-base";
+import { CostSetupError, jsonRestFetch, externalIdOf } from "@infrawrench/plugin-base";
 
 const HOST = "https://api.fireworks.ai";
 /** The account is encoded in the model string on this plane, not in the path. */
@@ -275,10 +275,6 @@ interface BillingUsageResponse {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
-}
 
 /** `accounts/{acct}/deployments/{id}` → `{id}`. */
 function lastSegment(name: string | undefined): string {

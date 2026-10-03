@@ -13,7 +13,13 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  jsonRestFetch,
+  externalIdOf,
+  formatBytes,
+} from "@infrawrench/plugin-base";
 import {
   GEMINI_PCM_BITS_PER_SAMPLE,
   GEMINI_PCM_CHANNELS,
@@ -1691,11 +1697,6 @@ function extensionForContainer(mimeType: string): string {
   return mimeType.split("/")[1] ?? "audio";
 }
 
-/** Resource ids are `{accountId}:{typeId}:{externalId}`. */
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
-}
-
 /** `models/gemini-2.5-flash` → `gemini-2.5-flash`. */
 function shortName(resourceName: string): string {
   const parts = resourceName.split("/");
@@ -1761,13 +1762,6 @@ function formatTokens(tokens: number): string {
     return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 ? 1 : 0)}M tokens`;
   if (tokens >= 1000) return `${Math.round(tokens / 1000)}k tokens`;
   return `${tokens} tokens`;
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 /** `BATCH_STATE_SUCCEEDED` → `Succeeded`. */

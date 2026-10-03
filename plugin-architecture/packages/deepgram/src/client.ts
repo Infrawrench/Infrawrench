@@ -20,7 +20,12 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  jsonRestFetch,
+  externalIdOf,
+} from "@infrawrench/plugin-base";
 import { fetchDeepgramCostData } from "./cost-data.js";
 
 const BASE_URL = "https://api.deepgram.com";
@@ -250,10 +255,6 @@ interface StashedModels {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
-}
 
 /** Split a `"{projectId}/{childId}"` external id. */
 function splitChildId(resourceId: string): { projectId: string; childId: string } {

@@ -10,8 +10,12 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
-import { buildMultipartBody } from "./multipart.js";
+import {
+  base64ToBytes,
+  jsonRestFetch,
+  externalIdOf,
+  buildMultipartBody,
+} from "@infrawrench/plugin-base";
 import {
   baseUrlForRegion,
   REVAI_DEFAULT_LANGUAGE,
@@ -113,10 +117,6 @@ interface RevAiTranscriptElement {
 
 interface RevAiTranscript {
   monologues?: Array<{ speaker?: number; elements?: RevAiTranscriptElement[] }>;
-}
-
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
 }
 
 function num(value: unknown): number | undefined {
@@ -666,12 +666,13 @@ export class RevAiClient implements PluginClient {
   ): Promise<RevAiJob> {
     const { body, contentType } = buildMultipartBody([
       {
+        kind: "file",
         name: "media",
-        filename,
+        fileName: sanitizeUploadFilename(filename),
         contentType: mimeType || "application/octet-stream",
         data: bytes,
       },
-      { name: "options", value: JSON.stringify(options) },
+      { kind: "field", name: "options", value: JSON.stringify(options) },
     ]);
 
     return this.fetch<RevAiJob>("/jobs", {
@@ -1086,4 +1087,14 @@ export class RevAiClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
+}
+
+/**
+ * Filenames arrive from a browser file picker, so they are untrusted: replace
+ * anything that would break the `Content-Disposition` header, and never send
+ * an empty name.
+ */
+function sanitizeUploadFilename(filename: string): string {
+  const cleaned = filename.replace(/[\r\n"\\]/g, "_").trim();
+  return cleaned.length > 0 ? cleaned : "audio";
 }

@@ -22,6 +22,7 @@ import {
   bytesToBase64,
   joinSubtitle,
   jsonRestFetch,
+  externalIdOf,
 } from "@infrawrench/plugin-base";
 import { fetchElevenLabsCostData } from "./cost-data.js";
 
@@ -198,11 +199,6 @@ interface StashedQuota {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** `{accountId}:{typeId}:{externalId}` → `{externalId}` */
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
-}
 
 function unixToIso(unix: number | null | undefined): string {
   if (!unix) return "";

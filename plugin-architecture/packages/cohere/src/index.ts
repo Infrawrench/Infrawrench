@@ -5,5 +5,5 @@ export { DatasetResourceType } from "./resources/dataset.js";
 export { FinetunedModelResourceType } from "./resources/finetuned-model.js";
 export { EmbedJobResourceType } from "./resources/embed-job.js";
 export { BatchResourceType } from "./resources/batch.js";
-export { buildMultipartBody } from "./multipart.js";
-export type { MultipartBody, MultipartPart } from "./multipart.js";
+export { buildMultipartBody } from "@infrawrench/plugin-base";
+export type { MultipartBody, MultipartPart } from "@infrawrench/plugin-base";

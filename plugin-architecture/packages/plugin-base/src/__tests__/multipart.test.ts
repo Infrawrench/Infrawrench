@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildMultipartBody } from "../multipart.js";
 
 function decode(bytes: Uint8Array): string {
-  return Buffer.from(bytes).toString("binary");
+  // One char per byte, so raw payload bytes survive the round trip.
+  return Array.from(bytes, (b) => String.fromCharCode(b)).join("");
 }
 
 describe("buildMultipartBody", () => {
@@ -11,6 +12,7 @@ describe("buildMultipartBody", () => {
       { kind: "field", name: "model", value: "cohere-transcribe-03-2026" },
     ]);
 
+    expect(contentType).toMatch(/^multipart\/form-data; boundary=----infrawrench/);
     const match = /^multipart\/form-data; boundary=(.+)$/.exec(contentType);
     expect(match).toBeTruthy();
     const boundary = match![1]!;
@@ -69,5 +71,15 @@ describe("buildMultipartBody", () => {
     const a = buildMultipartBody([{ kind: "field", name: "x", value: "1" }]);
     const b = buildMultipartBody([{ kind: "field", name: "x", value: "1" }]);
     expect(a.contentType).not.toBe(b.contentType);
+  });
+
+  it("encodes a lone file part with only the closing boundary after the payload", () => {
+    const data = new Uint8Array([1, 2, 3, 4]);
+    const { contentType, body } = buildMultipartBody([
+      { kind: "file", name: "file", fileName: "pic.png", contentType: "image/png", data },
+    ]);
+    const boundary = contentType.slice("multipart/form-data; boundary=".length);
+    const text = decode(body);
+    expect(text.endsWith(`image/png\r\n\r\n${decode(data)}\r\n--${boundary}--\r\n`)).toBe(true);
   });
 });

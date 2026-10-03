@@ -1,5 +1,14 @@
 import type { SecretFieldState } from "./secrets.js";
 
+/**
+ * The external id inside a resource id. Resource ids are
+ * `{accountId}:{resourceTypeId}:{externalId}`, and the external id may itself
+ * contain colons, so everything after the second colon is kept.
+ */
+export function externalIdOf(resourceId: string): string {
+  return resourceId.split(":").slice(2).join(":");
+}
+
 export interface ResourceInstance {
   id: string;
   pluginId: string;

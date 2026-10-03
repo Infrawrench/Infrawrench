@@ -90,11 +90,6 @@ export function resourceId(accountId: string, typeId: string, externalId: string
   return `${accountId}:${typeId}:${externalId}`;
 }
 
-/** Split a resource id back into its externalId, which may itself contain colons. */
-export function externalIdOf(resourceIdValue: string): string {
-  return resourceIdValue.split(":").slice(2).join(":");
-}
-
 /** Parse a `{projectId}/{branchId}` external id, tolerating extra trailing segments. */
 export function parseBranchExternalId(externalId: string): BranchRef {
   const [projectId = "", branchId = ""] = externalId.split("/");

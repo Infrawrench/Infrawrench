@@ -1,16 +1,13 @@
 /**
- * Minimal `multipart/form-data` encoder.
+ * Minimal `multipart/form-data` encoder, for the uploads that cannot go
+ * through a real `FormData`.
  *
- * Cohere's transcription endpoint is the one call in this plugin that isn't
- * JSON-in. We can't hand a `FormData` to `jsonRestFetch` — the host HTTP
- * bridge's body normaliser stringifies anything that isn't a string or a
- * typed array, which would send the literal text "[object FormData]".
- *
- * So we build the body ourselves as a `Uint8Array` and pass it through
- * `jsonRestFetch` with an explicit `Content-Type` override. That keeps the
- * request on the host HTTP path, which is the only path that picks up bastion
- * egress routing and a custom CA — and the response is still JSON, so the
- * helper's parsing is exactly what we want.
+ * `jsonRestFetch`'s host-HTTP path (`bodyForHostHttp`) and `services.http`
+ * only carry `string | Uint8Array` bodies; a `FormData` would be stringified
+ * and post the literal text "[object FormData]". Encoding the body here as a
+ * `Uint8Array` (with an explicit `Content-Type` carrying the boundary) keeps
+ * the upload on the host HTTP service, which is the only path that picks up
+ * bastion egress routing and a custom CA.
  */
 
 /** One part of a multipart body: either a plain text field or a file. */
@@ -29,10 +26,11 @@ export interface MultipartBody {
  * Encode `parts` into a multipart/form-data body.
  *
  * The boundary is randomised per call so it cannot collide with payload bytes
- * in practice. Field names and filenames are quoted per RFC 7578 §4.2, with
- * quotes and CR/LF stripped rather than escaped — no legitimate model id,
- * language tag, or filename we send contains them, and stripping avoids
- * emitting a header a strict parser would reject.
+ * in practice. Field names, filenames and content types are quoted per
+ * RFC 7578 section 4.2, with quotes and CR/LF stripped rather than escaped:
+ * nothing legitimate a plugin sends contains them, and stripping avoids
+ * emitting a header a strict parser would reject. A plugin with a stricter
+ * filename policy (a fallback name, say) applies it before calling this.
  */
 export function buildMultipartBody(parts: MultipartPart[]): MultipartBody {
   const boundary = `----infrawrench${randomBoundarySuffix()}`;

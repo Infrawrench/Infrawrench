@@ -9,7 +9,7 @@ import type {
   ResourceStatus,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
+import { joinSubtitle, jsonRestFetch, externalIdOf } from "@infrawrench/plugin-base";
 
 const BASE_URL = "https://api.workos.com";
 
@@ -154,10 +154,6 @@ interface WosWebhookEndpoint {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
-}
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";

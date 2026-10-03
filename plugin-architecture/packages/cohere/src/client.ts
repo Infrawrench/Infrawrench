@@ -11,8 +11,14 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
-import { buildMultipartBody, type MultipartPart } from "./multipart.js";
+import {
+  base64ToBytes,
+  jsonRestFetch,
+  externalIdOf,
+  formatBytes,
+  buildMultipartBody,
+  type MultipartPart,
+} from "@infrawrench/plugin-base";
 import type {
   CheckApiKeyResponse,
   CohereBatch,
@@ -1483,11 +1489,6 @@ export class CohereClient implements PluginClient {
 // Helpers
 // -----------------------------------------------------------------------------
 
-/** Resource ids are `{accountId}:{typeId}:{externalId}`. */
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
-}
-
 function defaultTranscribeOption(): SpeechPanelOption {
   return {
     id: TRANSCRIBE_MODEL,
@@ -1528,13 +1529,6 @@ function formatTokens(tokens: number): string {
   if (!tokens) return "—";
   if (tokens >= 1000) return `${Math.round(tokens / 1000)}k tokens`;
   return `${tokens} tokens`;
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 /** Turn `STATUS_READY` / `BASE_TYPE_CHAT` into something a human reads. */

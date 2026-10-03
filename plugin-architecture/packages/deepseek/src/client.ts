@@ -9,7 +9,7 @@ import type {
   DashboardStat,
   CreditBalance,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { jsonRestFetch, externalIdOf } from "@infrawrench/plugin-base";
 
 /**
  * DeepSeek's canonical base URL. The documented paths carry **no `/v1`
@@ -69,10 +69,6 @@ function money(value: unknown): number {
 
 function formatMoney(amount: number, currency: string): string {
   return `${amount.toFixed(2)} ${currency || ""}`.trim();
-}
-
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
 }
 
 /**

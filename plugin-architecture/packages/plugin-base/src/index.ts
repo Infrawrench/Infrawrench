@@ -128,7 +128,7 @@ export type {
   ResourceCreateResult,
   ResourceCreateReturn,
 } from "./instance.js";
-export { normalizeResourceCreateResult } from "./instance.js";
+export { externalIdOf, normalizeResourceCreateResult } from "./instance.js";
 export {
   evaluatePeerIntegrationUnreachable,
   evaluateOrphanRule,
@@ -325,6 +325,8 @@ export {
 export type { DnsContentFieldOptions } from "./dns-helpers.js";
 
 export { jsonRestFetch, formatBytes, caCertCredentialField } from "./http.js";
+export { buildMultipartBody } from "./multipart.js";
+export type { MultipartBody, MultipartPart } from "./multipart.js";
 export type { JsonRestFetchOptions } from "./http.js";
 
 export { streamOpenAiSseChat } from "./chat-stream.js";

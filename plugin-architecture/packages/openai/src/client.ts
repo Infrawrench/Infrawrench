@@ -27,6 +27,8 @@ import {
   base64ToBytes,
   bytesToBase64,
   jsonRestFetch,
+  externalIdOf,
+  formatBytes,
 } from "@infrawrench/plugin-base";
 import {
   ACCEPTED_AUDIO_TYPES,
@@ -240,9 +242,10 @@ interface TranscriptionResponse {
 
 // ---- Small helpers --------------------------------------------------------
 
-/** Resource ids are `{accountId}:{typeId}:{externalId}`. */
-function externalIdOf(resourceId: string): string {
-  return resourceId.split(":").slice(2).join(":");
+/** A byte count off the wire, or "—" when the value is not a number. */
+function formatByteValue(value: unknown): string {
+  const n = num(value);
+  return n === undefined ? "—" : formatBytes(n);
 }
 
 function str(value: unknown): string {
@@ -266,15 +269,6 @@ function isoOf(seconds: unknown): string {
 function num(value: unknown): number | undefined {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : undefined;
-}
-
-function formatBytes(value: unknown): string {
-  const n = num(value);
-  if (n === undefined) return "—";
-  if (n === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
-  return `${(n / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 function section(title: string, items: KVItem[]): SectionNode {
@@ -1046,12 +1040,12 @@ export class OpenAIClient implements PluginClient {
         return [
           { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
           { label: "Files", value: String(num(f["filesTotal"]) ?? 0) },
-          { label: "Storage", value: formatBytes(f["usageBytes"]) },
+          { label: "Storage", value: formatByteValue(f["usageBytes"]) },
         ];
       case "file":
         return [
           { label: "Purpose", value: dash(f["purpose"]) },
-          { label: "Size", value: formatBytes(f["bytes"]) },
+          { label: "Size", value: formatByteValue(f["bytes"]) },
         ];
       case "project":
         return [
@@ -1309,7 +1303,7 @@ export class OpenAIClient implements PluginClient {
           { key: "File ID", value: resource.externalId ?? resource.id, copyable: true },
           { key: "Filename", value: dash(resource.fields["filename"]) },
           { key: "Purpose", value: dash(resource.fields["purpose"]) },
-          { key: "Size", value: formatBytes(resource.fields["bytes"]) },
+          { key: "Size", value: formatByteValue(resource.fields["bytes"]) },
           { key: "Created", value: dash(resource.fields["createdAt"]) },
           { key: "Expires", value: dash(resource.fields["expiresAt"]) },
         ]),
@@ -1329,7 +1323,7 @@ export class OpenAIClient implements PluginClient {
           { key: "Vector Store ID", value: resource.externalId ?? resource.id, copyable: true },
           { key: "Name", value: dash(resource.fields["name"]) },
           { key: "Status", value: dash(status) },
-          { key: "Storage Used", value: formatBytes(resource.fields["usageBytes"]) },
+          { key: "Storage Used", value: formatByteValue(resource.fields["usageBytes"]) },
         ]),
         section("Files", [
           { key: "Total", value: String(num(resource.fields["filesTotal"]) ?? 0) },
@@ -1560,7 +1554,7 @@ export class OpenAIClient implements PluginClient {
           .sort((a, b) => a.id.localeCompare(b.id));
         const fileOptions = files.map((f) => ({
           id: f.id,
-          label: `${f.filename ?? f.id} (${formatBytes(f.bytes)})`,
+          label: `${f.filename ?? f.id} (${formatByteValue(f.bytes)})`,
         }));
         return {
           fields: [
@@ -1618,7 +1612,7 @@ export class OpenAIClient implements PluginClient {
         );
         const fileOptions = files.map((f) => ({
           id: f.id,
-          label: `${f.filename ?? f.id} (${formatBytes(f.bytes)})`,
+          label: `${f.filename ?? f.id} (${formatByteValue(f.bytes)})`,
         }));
         return {
           fields: [
