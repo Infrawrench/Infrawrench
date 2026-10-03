@@ -44,6 +44,7 @@ import { db } from "../db/client";
 import { sshHostKeys, sshKeys } from "../db/schema";
 import { decrypt, buildAad } from "../encryption";
 import { getOrgAccountClient } from "../org-accounts";
+import { resolveDialAddress, resolveSafeHost } from "../egress-guard";
 
 const DEFAULT_EXEC_TIMEOUT_MS = 60_000;
 const DEFAULT_PROBE_TIMEOUT_MS = 180_000;
@@ -150,7 +151,17 @@ async function resolveResourceSshConfig(
   };
 }
 
-/** Look up the resource type's sshEndpoint + open a plugin client for the account. */
+/**
+ * An SSH config plus the vetted address to open the socket to. Host-key
+ * identity stays `host`; only the TCP connection goes to `dialAddress`.
+ */
+type DialableSshConfig = SshConfig & { dialAddress: string };
+
+/**
+ * Look up the resource type's sshEndpoint + open a plugin client for the
+ * account, then vet the host. A workflow's resource host is tenant data (a
+ * plugin output, a native SSH config), and this runs in the shared server.
+ */
 async function resourceConnection(
   organizationId: string,
   params: {
@@ -160,11 +171,17 @@ async function resourceConnection(
     sshKeyId?: string;
     username?: string;
   },
-): Promise<SshConfig> {
+): Promise<DialableSshConfig> {
   const ctx = await getOrgAccountClient(params.accountId, organizationId);
   if (!ctx) throw new Error(`Account ${params.accountId} not found in this organization.`);
   const rt = ctx.plugin.resourceTypes.find((r) => r.id === params.typeId);
-  return resolveResourceSshConfig(organizationId, ctx.client, rt?.sshEndpoint, params);
+  const config = await resolveResourceSshConfig(
+    organizationId,
+    ctx.client,
+    rt?.sshEndpoint,
+    params,
+  );
+  return { ...config, dialAddress: await resolveSafeHost(config.host) };
 }
 
 /**
@@ -257,7 +274,7 @@ function makeTofuVerifier(
 /** Open an ssh2 client and run `onReady(stream)` once connected. */
 function connect(
   organizationId: string,
-  config: SshConfig,
+  config: DialableSshConfig,
   onReady: (client: SshClient) => void,
   onError: (err: Error) => void,
   skipHostKeyCheck = false,
@@ -269,7 +286,7 @@ function connect(
     onError(errorRef.value ?? new Error(`SSH error: ${err.message}`));
   });
   client.connect({
-    host: config.host,
+    host: config.dialAddress,
     port: config.port,
     username: config.username,
     privateKey: config.privateKey,
@@ -454,9 +471,13 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
     }
   };
 
-  const tcpAttempt = (host: string, port: number): Promise<boolean> =>
-    new Promise<boolean>((resolve) => {
-      const socket = net.connect({ host, port });
+  // A refused host throws rather than reading as "not reachable yet", so a
+  // workflow pointed at internal address space fails at once instead of
+  // polling it until the deadline.
+  const tcpAttempt = async (host: string, port: number): Promise<boolean> => {
+    const address = await resolveDialAddress(host, port, { label: "SSH host" });
+    return new Promise<boolean>((resolve) => {
+      const socket = net.connect({ host: address, port });
       const done = (ok: boolean) => {
         socket.removeAllListeners();
         socket.destroy();
@@ -467,6 +488,7 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
       socket.once("error", () => done(false));
       socket.once("timeout", () => done(false));
     });
+  };
 
   const sshProbe = async (params: SshProbeParamsLite): Promise<boolean> => {
     const deadline = Date.now() + (params.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS);
@@ -487,9 +509,10 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
   };
 
   // SFTP over the resolved SSH config; TOFU host-key verification (same as exec).
-  const sftpOptions = (config: SshConfig) => ({
+  const sftpOptions = (config: DialableSshConfig) => ({
     configureConnect: (opts: ConnectConfig): ConnectConfig => ({
       ...opts,
+      host: config.dialAddress,
       hostVerifier: makeTofuVerifier(organizationId, config.host, config.port, {
         value: null as Error | null,
       }),

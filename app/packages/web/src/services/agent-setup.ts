@@ -56,6 +56,7 @@ import { agentSessions, githubInstallations, resources, sshKeys } from "../db/sc
 import { buildAad, decrypt } from "./encryption";
 import { getClientForAccount } from "./plugin-clients";
 import { installAgentServices } from "./agent-services";
+import { resolveSafeHost } from "./host-validation";
 
 const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 const AGENT_SETUP_STARTED_LOG = "Preparing VM for coding session.";
@@ -655,12 +656,15 @@ async function markAgentLaunchReady(
  * with `skipHostKeyCheck: true`; the presented host key is accepted without
  * the org-level pinning used for user-initiated SSH connections.
  */
-function agentSshExec(
+async function agentSshExec(
   target: AgentSshTarget,
   privateKey: string,
   command: string,
   onData?: (text: string) => void,
 ): Promise<AgentSshExecResult> {
+  // The VM address comes back from a tenant's provider account; vet it like
+  // any other destination this shared server dials.
+  const dialAddress = await resolveSafeHost(target.host);
   return new Promise((resolve, reject) => {
     const client = new SshClient();
     client.once("ready", () => {
@@ -692,7 +696,7 @@ function agentSshExec(
       reject(new Error(`SSH connection failed: ${err.message}`));
     });
     client.connect({
-      host: target.host,
+      host: dialAddress,
       port: target.port,
       username: target.username,
       privateKey,

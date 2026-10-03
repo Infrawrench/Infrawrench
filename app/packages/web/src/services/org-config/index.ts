@@ -262,7 +262,7 @@ function planCollection<T extends { key: string; name: string }>(
 
 interface PlanOrgConfigOptions {
   mode: OrgConfigApplyMode;
-  /** Whose permissions a re-authored custom-graph script runs as. */
+  /** Whose permissions a re-authored custom-graph script or workflow runs as. */
   userId: string | null;
 }
 
@@ -431,10 +431,13 @@ async function buildOrgConfigPlan(
           webhookToken: derived.webhookToken,
           nextRunAt: derived.nextRunAt,
           createdByUserId: opts.userId,
+          // Automated runs act for whoever last changed what the workflow
+          // executes (see services/workflows.ts); here, whoever applied it.
+          sourceAuthorUserId: opts.userId,
         });
       };
     },
-    update: (id, entry) => {
+    update: (id, entry, current) => {
       const trigger = resolveTrigger(
         plan,
         entry.key,
@@ -443,6 +446,11 @@ async function buildOrgConfigPlan(
         githubInstallationIds,
       );
       const derived = triggerDerived(trigger, entry.enabled, existingWebhookTokens.get(id) ?? null);
+      // Same rule as the editor: a document that rewrites the source or the
+      // trigger makes the workflow's automated runs act for the applier, so
+      // `config:write` cannot borrow the previous author's authority.
+      const executableChanged =
+        current.source !== entry.source || !sameValue(current.trigger, entry.trigger);
       return async (tx) => {
         await tx
           .update(workflows)
@@ -455,6 +463,7 @@ async function buildOrgConfigPlan(
             enabled: entry.enabled,
             webhookToken: derived.webhookToken,
             nextRunAt: derived.nextRunAt,
+            ...(executableChanged ? { sourceAuthorUserId: opts.userId } : {}),
             updatedAt: now,
           })
           .where(eq(workflows.id, id));

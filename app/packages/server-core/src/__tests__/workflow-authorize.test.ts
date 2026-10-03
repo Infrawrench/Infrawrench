@@ -29,7 +29,7 @@ const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 
 /** The `workflows` row `buildWorkflowAuthorizer` falls back to for author lookup. */
-function workflowRow(rows: Array<{ createdByUserId: string | null }>) {
+function workflowRow(rows: Array<{ sourceAuthorUserId: string | null }>) {
   pg.setRows(rows);
 }
 
@@ -56,7 +56,7 @@ describe("buildWorkflowAuthorizer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     pg.reset();
-    workflowRow([{ createdByUserId: "author-1" }]);
+    workflowRow([{ sourceAuthorUserId: "author-1" }]);
   });
 
   it("refuses the operations a member's role does not grant", async () => {
@@ -110,13 +110,17 @@ describe("buildWorkflowAuthorizer", () => {
     expect(() => authorize("secrets.load")).toThrow(/secrets:read/);
   });
 
-  it("falls back to the workflow's author when no user triggered the run", async () => {
+  it("falls back to the workflow's last editor when no user triggered the run", async () => {
     grant(["*"]);
     await buildWorkflowAuthorizer("org-1", "wf-1");
     expect(resolveEffectivePermissions).toHaveBeenCalledWith("org-1", {
       kind: "user",
       userId: "author-1",
     });
+    // The escalation this pins: acting for the *creator* let a member rewrite
+    // an admin's workflow and have the next cron tick run it as the admin.
+    expect(pg.lastQuery().sql).toContain('"source_author_user_id"');
+    expect(pg.lastQuery().sql).not.toContain('"created_by_user_id"');
   });
 
   it("prefers an explicit runAs user over the author", async () => {
@@ -132,7 +136,7 @@ describe("buildWorkflowAuthorizer", () => {
     // A workflow whose author left the org must not keep running with their
     // access. Denying is loud (the run fails on the first privileged call)
     // rather than silent, which is the point.
-    workflowRow([{ createdByUserId: null }]);
+    workflowRow([{ sourceAuthorUserId: null }]);
     const authorize = await buildWorkflowAuthorizer("org-1", "wf-1");
     expect(resolveEffectivePermissions).not.toHaveBeenCalled();
     expect(() => authorize("resource.list")).toThrow(/resources:read/);

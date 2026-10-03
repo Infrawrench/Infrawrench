@@ -59,12 +59,35 @@ interface SettingsRequestResult {
   bodyText: string;
 }
 
+/**
+ * The allowlist matches the path as text, but `fetch` resolves dot segments
+ * (and some servers decode `%2F`/`%2E` before routing), so
+ * `/api/profile/../org/x/billing/...` would match the profile rule and then
+ * reach a route outside the surface. Refuse any path whose URL-normalized form
+ * differs from what was matched, or that carries an encoded dot, slash or
+ * backslash anywhere.
+ */
+export function isAllowedSettingsRequest(method: string, path: string): boolean {
+  if (typeof method !== "string" || typeof path !== "string") return false;
+  if (!path.startsWith("/") || path.startsWith("//")) return false;
+  if (/%2e|%2f|%5c|\\/i.test(path)) return false;
+  let normalized: URL;
+  try {
+    normalized = new URL(path, "https://settings.invalid");
+  } catch {
+    return false;
+  }
+  if (normalized.origin !== "https://settings.invalid") return false;
+  if (`${normalized.pathname}${normalized.search}` !== path) return false;
+  const upper = method.toUpperCase();
+  return ALLOWED.some((rule) => rule.methods.includes(upper) && rule.pattern.test(path));
+}
+
 ipcMain.handle(
   "cloud_settings_request",
   async (_e, { method, path, body }: SettingsRequestArgs): Promise<SettingsRequestResult> => {
-    const upper = method.toUpperCase();
-    const allowed = ALLOWED.some((rule) => rule.methods.includes(upper) && rule.pattern.test(path));
-    if (!allowed) {
+    const upper = String(method).toUpperCase();
+    if (!isAllowedSettingsRequest(method, path)) {
       throw new Error(`Settings proxy: ${upper} ${path} is not on the settings API surface`);
     }
 

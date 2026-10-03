@@ -60,8 +60,21 @@ vi.mock("../workflow-host", () => ({
   listOrgPlugins: vi.fn().mockResolvedValue([]),
 }));
 
-const { WorkflowError, setWorkflowSchedule, clearWorkflowSchedule, workflowScheduleView } =
-  await import("../workflows");
+const assignedSecretIds = vi.fn<() => string[]>(() => []);
+vi.mock("../workflow-secrets", () => ({
+  getWorkflowSecretAssignments: () => Promise.resolve(assignedSecretIds()),
+  setWorkflowSecretAssignments: vi.fn().mockResolvedValue([]),
+  validateWorkflowSecretIds: (_org: string, ids: string[]) => Promise.resolve([...new Set(ids)]),
+}));
+
+const {
+  WorkflowError,
+  assignWorkflowSecrets,
+  setWorkflowSchedule,
+  clearWorkflowSchedule,
+  updateWorkflow,
+  workflowScheduleView,
+} = await import("../workflows");
 
 function workflowRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -89,21 +102,21 @@ beforeEach(() => {
 describe("setWorkflowSchedule", () => {
   it("rejects an unparseable expression with a 400 WorkflowError", async () => {
     await expect(
-      setWorkflowSchedule("org1", "wf1", { expression: "not a cron" }),
+      setWorkflowSchedule("org1", "wf1", { expression: "not a cron" }, "u1"),
     ).rejects.toMatchObject({ name: "WorkflowError", status: 400 });
     expect(updateSet).not.toHaveBeenCalled();
   });
 
   it("rejects an unknown timezone", async () => {
     await expect(
-      setWorkflowSchedule("org1", "wf1", { expression: "0 9 * * *", timezone: "Not/AZone" }),
+      setWorkflowSchedule("org1", "wf1", { expression: "0 9 * * *", timezone: "Not/AZone" }, "u1"),
     ).rejects.toThrow(/timezone/i);
   });
 
   it("404s on a missing workflow", async () => {
     selectRows.mockReturnValue([]);
     await expect(
-      setWorkflowSchedule("org1", "missing", { expression: "0 9 * * *" }),
+      setWorkflowSchedule("org1", "missing", { expression: "0 9 * * *" }, "u1"),
     ).rejects.toMatchObject({ status: 404 });
   });
 
@@ -111,7 +124,7 @@ describe("setWorkflowSchedule", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-07-31T12:00:00Z")); // a Friday
-      await setWorkflowSchedule("org1", "wf1", { expression: "0 9 * * 1", timezone: "UTC" });
+      await setWorkflowSchedule("org1", "wf1", { expression: "0 9 * * 1", timezone: "UTC" }, "u1");
       expect(updateSet).toHaveBeenCalledTimes(1);
       const values = updateSet.mock.calls[0]?.[0] as {
         trigger: { kind: string; expression: string; timezone?: string };
@@ -126,10 +139,93 @@ describe("setWorkflowSchedule", () => {
   });
 
   it("leaves next_run_at empty while the workflow is disabled", async () => {
-    await setWorkflowSchedule("org1", "wf1", { expression: "0 9 * * *", enabled: false });
+    await setWorkflowSchedule("org1", "wf1", { expression: "0 9 * * *", enabled: false }, "u1");
     const values = updateSet.mock.calls[0]?.[0] as { nextRunAt: Date | null; enabled: boolean };
     expect(values.enabled).toBe(false);
     expect(values.nextRunAt).toBeNull();
+  });
+});
+
+/**
+ * Automated runs act for `sourceAuthorUserId`. The escalation this covers: a
+ * member with `workflows:write` rewrote an admin's workflow, the attributed
+ * user never changed, and the next cron tick ran the member's code with the
+ * admin's permissions.
+ */
+describe("automated-run attribution", () => {
+  const ADMIN_WORKFLOW = {
+    source: "await infra.log('admin');",
+    trigger: { kind: "cron", expression: "0 9 * * *" },
+    createdByUserId: "admin",
+    sourceAuthorUserId: "admin",
+  };
+
+  function attributed(): unknown {
+    const values = updateSet.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    return "sourceAuthorUserId" in values ? values["sourceAuthorUserId"] : "unchanged";
+  }
+
+  beforeEach(() => {
+    selectRows.mockReturnValue([workflowRow(ADMIN_WORKFLOW)]);
+    assignedSecretIds.mockReturnValue(["s1"]);
+  });
+
+  it("re-attributes to the editor when the source changes", async () => {
+    await updateWorkflow("org1", "wf1", { source: "await infra.log('member');" }, "member");
+    expect(attributed()).toBe("member");
+  });
+
+  it("re-attributes when the trigger changes", async () => {
+    await updateWorkflow(
+      "org1",
+      "wf1",
+      { trigger: { kind: "cron", expression: "*/5 * * * *" } },
+      "member",
+    );
+    expect(attributed()).toBe("member");
+  });
+
+  it("re-attributes when the assigned secrets change", async () => {
+    await updateWorkflow("org1", "wf1", { secretIds: ["s1", "s2"] }, "member");
+    expect(attributed()).toBe("member");
+  });
+
+  it("re-attributes through the schedule sub-resource", async () => {
+    await setWorkflowSchedule("org1", "wf1", { expression: "*/5 * * * *" }, "member");
+    expect(attributed()).toBe("member");
+  });
+
+  it("re-attributes through the secrets sub-resource", async () => {
+    await assignWorkflowSecrets("org1", "wf1", ["s1", "s2"], "member");
+    expect(attributed()).toBe("member");
+  });
+
+  it("denies rather than keeping the old author when no editor is recorded", async () => {
+    await updateWorkflow("org1", "wf1", { source: "await infra.log('?');" }, null);
+    expect(attributed()).toBeNull();
+  });
+
+  it("keeps the author for a rename, a re-save of identical content, or a toggle", async () => {
+    // The editor saves the whole body, so identical source/trigger/secrets
+    // must not count as a change, or renaming would move a schedule's
+    // permissions. Key order differs on purpose: jsonb does not preserve it.
+    await updateWorkflow(
+      "org1",
+      "wf1",
+      {
+        name: "renamed",
+        enabled: false,
+        source: ADMIN_WORKFLOW.source,
+        trigger: { expression: "0 9 * * *", kind: "cron" },
+        secretIds: ["s1"],
+      },
+      "member",
+    );
+    expect(attributed()).toBe("unchanged");
+
+    vi.clearAllMocks();
+    await assignWorkflowSecrets("org1", "wf1", ["s1"], "member");
+    expect(updateSet).not.toHaveBeenCalled();
   });
 });
 
@@ -138,20 +234,20 @@ describe("clearWorkflowSchedule", () => {
     selectRows.mockReturnValue([
       workflowRow({ trigger: { kind: "cron", expression: "0 9 * * *" }, nextRunAt: new Date() }),
     ]);
-    await clearWorkflowSchedule("org1", "wf1");
+    await clearWorkflowSchedule("org1", "wf1", "u1");
     const values = updateSet.mock.calls[0]?.[0] as { trigger: unknown; nextRunAt: Date | null };
     expect(values.trigger).toEqual({ kind: "manual" });
     expect(values.nextRunAt).toBeNull();
   });
 
   it("is a no-op for non-cron triggers", async () => {
-    await clearWorkflowSchedule("org1", "wf1");
+    await clearWorkflowSchedule("org1", "wf1", "u1");
     expect(updateSet).not.toHaveBeenCalled();
   });
 
   it("still 404s on a missing workflow", async () => {
     selectRows.mockReturnValue([]);
-    await expect(clearWorkflowSchedule("org1", "wf1")).rejects.toBeInstanceOf(WorkflowError);
+    await expect(clearWorkflowSchedule("org1", "wf1", "u1")).rejects.toBeInstanceOf(WorkflowError);
   });
 });
 

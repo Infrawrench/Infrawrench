@@ -6,6 +6,7 @@
 import { z } from "zod";
 import { sqlDrivers, kvDrivers, dockerDrivers } from "../services/drivers";
 import { rewriteConnectionForTunnel } from "../services/tunnel-resolver";
+import { guardDriverConnection } from "@infrawrench/server-core/egress-guard";
 import { getClientForAccount, getClientForResource } from "../services/plugin-clients";
 import { resolveSshConfig, sshExec } from "../services/ssh";
 import { resolveSafeHost } from "../services/host-validation";
@@ -156,6 +157,10 @@ export function connectionTools(): ToolDefinition[] {
               )
             : (credentials[route.credentialKey] ?? "");
         cs = await rewriteConnectionForTunnel(accountId, cs);
+        await guardDriverConnection(driver, cs, {
+          accountId,
+          organizationId: auth.organizationId,
+        });
         // Prefer the database-enforced read. A driver without one only gets
         // here after approval in chat (see `requiresApproval` above).
         const rows = driver.queryReadOnly
@@ -226,6 +231,10 @@ export function connectionTools(): ToolDefinition[] {
             cs = await rewriteConnectionForTunnel(accountId, cs);
             const driver = sqlDrivers.get(rtDriver.driver);
             if (!driver) return err(`Unknown SQL driver: ${rtDriver.driver}`);
+            await guardDriverConnection(driver, cs, {
+              accountId,
+              organizationId: auth.organizationId,
+            });
             const affected = await driver.execute(cs, sql, paramList);
             return ok({ affectedRows: affected });
           }
@@ -237,6 +246,10 @@ export function connectionTools(): ToolDefinition[] {
           cs = await rewriteConnectionForTunnel(accountId, cs);
           const driver = sqlDrivers.get(manifest.sqlDriver.driver);
           if (!driver) return err(`Unknown SQL driver: ${manifest.sqlDriver.driver}`);
+          await guardDriverConnection(driver, cs, {
+            accountId,
+            organizationId: auth.organizationId,
+          });
           const affected = await driver.execute(cs, sql, paramList);
           return ok({ affectedRows: affected });
         }
@@ -333,6 +346,7 @@ export function connectionTools(): ToolDefinition[] {
           metadata: { command, source: auth.source },
         });
 
+        await guardDriverConnection(driver, cs, { accountId, organizationId: auth.organizationId });
         const result = await driver.command(cs, command, args);
         return ok({ result });
       },
@@ -375,6 +389,10 @@ export function connectionTools(): ToolDefinition[] {
           metadata: { op, source: auth.source },
         });
 
+        await guardDriverConnection(driver, dockerHost, {
+          accountId,
+          organizationId: auth.organizationId,
+        });
         const result = await driver.command(dockerHost, op, params);
         return ok({ result });
       },

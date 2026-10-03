@@ -115,7 +115,6 @@ ipcMain.handle("cloud_auth_start", () => {
 });
 
 ipcMain.handle("cloud_auth_status", () => getAuthStatus());
-ipcMain.handle("cloud_auth_get_token", () => getAccessToken());
 ipcMain.handle("cloud_auth_orgs", () => fetchCloudOrgs());
 ipcMain.handle("cloud_get_url", () => CLOUD_URL);
 

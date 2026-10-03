@@ -136,6 +136,15 @@ describe("serverDriver", () => {
     await expect(serverDriver.command(exec, "getVersion")).rejects.toThrow(/user\.exec/);
   });
 
+  it("runs the policy before reporting dial targets to the egress guard", () => {
+    const exec = kubeconfig({ user: "      exec: { command: /bin/false }" });
+    expect(() => serverDriver.dialTargets(exec)).toThrow(/user\.exec/);
+    expect(serverDriver.dialTargets(kubeconfig())).toEqual(driver.dialTargets(kubeconfig()));
+    expect(serverDriver.dialTargets(kubeconfig())).toEqual([
+      expect.objectContaining({ host: "cluster.example", port: 443 }),
+    ]);
+  });
+
   it("shares its id with the desktop driver, which keeps full exec support", () => {
     expect(serverDriver.id).toBe(driver.id);
   });

@@ -62,6 +62,14 @@ vi.mock("@infrawrench/server-core/credential-rewriters", () => ({
   applyCredentialRewriters: vi.fn().mockResolvedValue(undefined),
 }));
 
+// The address policy is covered in server-core's egress-guard tests; here we
+// only check the routes consult it before handing a connection to a driver.
+const mockGuardDriverConnection = vi.fn(async (..._a: unknown[]) => undefined);
+vi.mock("@infrawrench/server-core/egress-guard", () => ({
+  guardDriverConnection: (...a: unknown[]) => mockGuardDriverConnection(...a),
+  withEgressScope: <T>(client: T) => client,
+}));
+
 const mockSqlQuery = vi.fn();
 const mockSqlExecute = vi.fn();
 const mockKvCommand = vi.fn();
@@ -217,6 +225,43 @@ describe("Connection feature routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.result).toBe("PONG");
+    });
+
+    it("guards the connection and never reaches the driver when it is refused", async () => {
+      setupAccountSelect();
+      mockGetPlugin.mockResolvedValue({
+        plugin: {
+          manifest: {
+            id: "redis-plugin",
+            kvDriver: { driver: "redis", credentialKey: "redisUrl" },
+          },
+          resourceTypes: [],
+          createClient: vi.fn().mockReturnValue({}),
+        },
+      });
+      mockGuardDriverConnection.mockRejectedValueOnce(new Error("blocked address range"));
+
+      const app = buildApp();
+      // The bare test app has no error handler, so the refusal surfaces as a
+      // thrown error (the real app maps it to an error response).
+      const outcome = await Promise.resolve(
+        app.request("/kv/command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId: "a1", command: "PING", args: [] }),
+        }),
+      ).then(
+        (res) => res.status,
+        (err: Error) => err.message,
+      );
+
+      expect(outcome).not.toBe(200);
+      expect(mockGuardDriverConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ command: expect.any(Function) }),
+        "redis://localhost",
+        { accountId: "a1", organizationId: expect.any(String) },
+      );
+      expect(mockKvCommand).not.toHaveBeenCalled();
     });
 
     it("returns 400 when no KV driver is available", async () => {

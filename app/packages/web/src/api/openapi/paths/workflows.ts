@@ -132,7 +132,7 @@ export function registerWorkflowPaths(ctx: BuildContext) {
     tags: ["Workflows"],
     summary: "Create or replace a workflow's cron schedule",
     description:
-      "Sets the workflow's trigger to cron with the given expression and timezone, validating both, and computes the next fire time. The workflow fires at the schedule's next occurrence — never immediately on save.",
+      "Sets the workflow's trigger to cron with the given expression and timezone, validating both, and computes the next fire time. The workflow fires at the schedule's next occurrence — never immediately on save.\n\nChanging the schedule makes scheduled runs act with the permissions of the caller from then on, the same as editing the workflow's code. When the workflow has secrets assigned, the caller also needs `secrets:read`.",
     request: {
       params: idParam(),
       body: {

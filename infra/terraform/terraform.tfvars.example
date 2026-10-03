@@ -269,4 +269,28 @@ app_env = {
   # infra/k8s/web-deployment.yaml, and a single fixed value here would point
   # every replica at the same address.
   # INTERNAL_RELAY_SECRET = "..."
+
+  # Egress guard (server-core/src/egress-guard.ts). Both OPTIONAL.
+  #
+  # Every connection the web and poller pods open to a tenant-supplied
+  # destination (plugin HTTP calls, SQL/KV/Docker/Kubernetes drivers, SSH and
+  # SFTP, workflow ssh()) is vetted first. Loopback, link-local (the GCE
+  # metadata server), unspecified, multicast and other special-purpose ranges
+  # are always refused, and an SSH tunnel's local port is reachable only by the
+  # account or organization that opened it.
+  #
+  # EGRESS_ALLOW_PRIVATE_NETWORKS: "true" lets tenants dial RFC 1918, CGNAT and
+  # IPv6 ULA addresses directly. Unset (the default) refuses them, so customers
+  # reach private hosts through a bastion agent or an SSH tunnel. Note that in
+  # this deployment the cluster itself lives in RFC 1918 space, so turning this
+  # on without EGRESS_BLOCKED_CIDRS below would expose pods and services.
+  # EGRESS_ALLOW_PRIVATE_NETWORKS = "true"
+  #
+  # EGRESS_BLOCKED_CIDRS: comma-separated CIDRs always refused on top of the
+  # built-in list: the cluster's own node, pod, service and control-plane
+  # ranges (google_compute_subnetwork.prod and master_ipv4_cidr_block in
+  # main.tf). Worth setting even while private networks are refused, so the
+  # protection does not hinge on that one switch. An invalid entry fails every
+  # guarded connection rather than being silently skipped.
+  EGRESS_BLOCKED_CIDRS = "10.0.0.0/20,10.4.0.0/14,10.8.0.0/20,172.16.0.0/28"
 }

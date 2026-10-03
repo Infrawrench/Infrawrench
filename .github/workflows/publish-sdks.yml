@@ -65,12 +65,12 @@ jobs:
       version: ${{ steps.gate.outputs.version }}
       publish: ${{ steps.gate.outputs.publish }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Tags are the publish ledger; a shallow clone can't see them.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
       - run: corepack enable
@@ -114,7 +114,7 @@ jobs:
           grep -q "^version = \"$V\"" sdk/rust/Cargo.toml
           echo "All manifests report $V."
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.gate.outputs.publish == 'true'
         with:
           name: sdks
@@ -136,14 +136,15 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: sdks, path: sdk }
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
       # Trusted publishing needs npm >= 11.5.1; the bundled CLI may be older.
-      - run: npm install -g npm@latest
+      # Pinned rather than @latest: this job holds the id-token that publishes.
+      - run: npm install -g npm@11.21.0
       - name: Publish
         working-directory: sdk/typescript
         env:
@@ -169,15 +170,15 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: sdks, path: sdk }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with: { python-version: "3.12" }
       - run: python -m pip install --upgrade build
       - name: Build wheel and sdist
         working-directory: sdk/python
         run: python -m build
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: sdk/python/dist
           # Lets a re-run finish the registries that failed the first time.
@@ -193,14 +194,14 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: sdks, path: sdk }
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
         with: { ruby-version: "3.3" }
       # `rubygems/release-gem` assumes bundler's rake release tasks, which a
       # generated gem has no reason to carry — configure credentials from OIDC
       # and drive gem build/push directly instead.
-      - uses: rubygems/configure-rubygems-credentials@v2.1.0
+      - uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
       - name: Build and push
         working-directory: sdk/ruby
         env:
@@ -224,15 +225,17 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: sdks, path: sdk }
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch
+        with:
+          toolchain: stable
       - name: Build
         working-directory: sdk/rust
         run: cargo build --locked || cargo build
       # Cargo does not speak OIDC itself (RFC 3691) — this action exchanges the
       # GitHub token for a 30-minute crates.io token and revokes it on exit.
-      - uses: rust-lang/crates-io-auth-action@v1
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
         id: auth
       - name: Publish
         working-directory: sdk/rust
@@ -257,9 +260,9 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: sdks, path: sdk }
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with: { dotnet-version: "8.0.x" }
       - name: Build and pack
         working-directory: sdk/csharp
@@ -267,7 +270,7 @@ jobs:
           dotnet build -c Release
           dotnet pack -c Release -o ../../nupkg
       # nuget.org keys live one hour, so mint immediately before the push.
-      - uses: NuGet/login@v1
+      - uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: login
         with:
           user: ${{ secrets.NUGET_USER }}
@@ -291,9 +294,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: sdks, path: sdk }
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           java-version: "17"
           distribution: temurin
@@ -348,14 +351,14 @@ jobs:
           - language: php
             repo_var: PHP_REPO
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: sdks, path: sdk }
 
       # OIDC cannot grant write access to a *different* repository, so this is
       # the one place a stored credential is unavoidable. A GitHub App is used
       # rather than a PAT: the token is installation-scoped and expires in an
       # hour.
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
         id: app-token
         with:
           app-id: ${{ secrets.SDK_PUBLISHER_APP_ID }}
@@ -422,7 +425,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       # Written only after every registry has accepted the version, so the tag
       # means "all nine are live" — which is exactly what the gate reads back.
       - name: Tag sdk-v${{ needs.generate.outputs.version }}

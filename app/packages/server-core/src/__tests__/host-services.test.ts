@@ -144,6 +144,19 @@ const undiciFetch = vi.fn(async (_url?: unknown, _init?: unknown) => ({
 }));
 vi.mock("undici", () => ({ fetch: undiciFetch }));
 
+// --- egress guard ----------------------------------------------------------
+// The policy itself is covered by egress-guard.test.ts; here we only check
+// that every path consults it before dialing, and stops when it refuses.
+const guardDriverConnection = vi.fn(async (..._a: unknown[]) => undefined);
+const resolveDialAddress = vi.fn(async (..._a: unknown[]) => "93.184.216.34");
+const runInEgressScope = vi.fn((_scope: unknown, fn: () => unknown) => fn());
+vi.mock("../egress-guard", () => ({
+  guardDriverConnection,
+  resolveDialAddress,
+  runInEgressScope,
+  pinnedLookup: (address: string) => ({ pinned: address }),
+}));
+
 let hs: typeof import("../host-services");
 
 beforeEach(async () => {
@@ -176,6 +189,20 @@ describe("buildHostServices (SQL)", () => {
   it("throws for an unknown SQL driver", () => {
     expect(() => hs.buildHostServices("nope", "x")).toThrow(/Unknown SQL driver/);
   });
+
+  it("guards the connection with the caller's scope before querying", async () => {
+    const scope = { accountId: "a1", organizationId: "o1" };
+    const svc = hs.buildHostServices("pg", "postgres://x", { scope });
+    await svc.sql!.query("SELECT 1");
+    expect(guardDriverConnection).toHaveBeenCalledWith(sqlDriver, "postgres://x", scope);
+  });
+
+  it("never reaches the driver when the guard refuses", async () => {
+    guardDriverConnection.mockRejectedValueOnce(new Error("blocked"));
+    const svc = hs.buildHostServices("pg", "postgres://127.0.0.1");
+    await expect(svc.sql!.execute("DELETE", [])).rejects.toThrow("blocked");
+    expect(sqlDriver.execute).not.toHaveBeenCalled();
+  });
 });
 
 describe("buildKvHostServices", () => {
@@ -186,6 +213,12 @@ describe("buildKvHostServices", () => {
   });
   it("throws for an unknown KV driver", () => {
     expect(() => hs.buildKvHostServices("nope", "x")).toThrow(/Unknown KV driver/);
+  });
+  it("never reaches the driver when the guard refuses", async () => {
+    guardDriverConnection.mockRejectedValueOnce(new Error("blocked"));
+    const svc = hs.buildKvHostServices("redis", "redis://127.0.0.1");
+    await expect(svc.kv!.command("GET", "k")).rejects.toThrow("blocked");
+    expect(kvDriver.command).not.toHaveBeenCalled();
   });
 });
 
@@ -198,6 +231,12 @@ describe("buildDockerHostServices", () => {
   it("throws for an unknown docker driver", () => {
     expect(() => hs.buildDockerHostServices("nope", "x")).toThrow(/Unknown Docker driver/);
   });
+  it("never reaches the driver when the guard refuses", async () => {
+    guardDriverConnection.mockRejectedValueOnce(new Error("unix socket"));
+    const svc = hs.buildDockerHostServices("docker", "unix:///var/run/docker.sock");
+    await expect(svc.docker!.command("ps", {})).rejects.toThrow("unix socket");
+    expect(dockerDriver.command).not.toHaveBeenCalled();
+  });
 });
 
 describe("buildK8sHostServices", () => {
@@ -208,6 +247,12 @@ describe("buildK8sHostServices", () => {
   });
   it("throws for an unknown k8s driver", () => {
     expect(() => hs.buildK8sHostServices("nope", "x")).toThrow(/Unknown Kubernetes driver/);
+  });
+  it("never reaches the driver when the guard refuses", async () => {
+    guardDriverConnection.mockRejectedValueOnce(new Error("blocked"));
+    const svc = hs.buildK8sHostServices("k8s", "kubeconfig");
+    await expect(svc.k8s!.command("listPods", {})).rejects.toThrow("blocked");
+    expect(k8sDriver.command).not.toHaveBeenCalled();
   });
 });
 
@@ -433,6 +478,28 @@ describe("http.request — direct fetch", () => {
     fetchSpy.mockRestore();
   });
 
+  it("runs the direct fetch inside the caller's egress scope", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      status: 200,
+      headers: new Headers(),
+      text: async () => "",
+    } as unknown as Response);
+    const out = await hs.buildPluginHostServices(
+      {} as never,
+      {},
+      {
+        accountId: "a1",
+        organizationId: "o1",
+      },
+    );
+    await out!.http!.request({ url: "https://api/x", method: "GET", headers: {} });
+    expect(runInEgressScope).toHaveBeenCalledWith(
+      { accountId: "a1", organizationId: "o1" },
+      expect.any(Function),
+    );
+    fetchSpy.mockRestore();
+  });
+
   it("forwards the body to global fetch when provided", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       status: 200,
@@ -506,6 +573,33 @@ describe("http.request — node https with caCert", () => {
     expect(resp.headers["x-single"]).toBe("v");
     expect(resp.headers["x-null"]).toBeUndefined();
     expect(resp.body).toBe("https-body");
+  });
+
+  it("vets the host and pins the socket to the cleared address, without a pooled agent", async () => {
+    const out = await hs.buildPluginHostServices({} as never, {}, { accountId: "a1" });
+    await out!.http!.request({
+      url: "https://db.example.com/x",
+      method: "GET",
+      headers: {},
+      caCert: "CA",
+    });
+    expect(resolveDialAddress).toHaveBeenCalledWith("db.example.com", 443, {
+      scope: { accountId: "a1", organizationId: undefined },
+      label: "HTTP host",
+    });
+    const opts = httpsState.last as { lookup: unknown; agent: unknown; hostname: string };
+    expect(opts.lookup).toEqual({ pinned: "93.184.216.34" });
+    expect(opts.agent).toBe(false);
+    expect(opts.hostname).toBe("db.example.com");
+  });
+
+  it("does not send the request when the host is refused", async () => {
+    resolveDialAddress.mockRejectedValueOnce(new Error("blocked address"));
+    const http = await unboundHttp();
+    await expect(
+      http.request({ url: "https://169.254.169.254/", method: "GET", headers: {}, caCert: "CA" }),
+    ).rejects.toThrow("blocked address");
+    expect(httpsRequest).not.toHaveBeenCalled();
   });
 
   it("defaults to port 443 for https without an explicit port", async () => {

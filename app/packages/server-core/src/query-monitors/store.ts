@@ -37,6 +37,7 @@ import { getOrgAccountClient } from "../org-accounts";
 import { buildPeerPluginClient, filterVisiblePeerIntegrations } from "../peer-clients";
 import { getPlugin } from "../plugin-loader";
 import { rewriteConnectionForTunnel } from "../tunnel-resolver";
+import { guardDriverConnection } from "../egress-guard";
 import { sqlDrivers } from "../drivers";
 
 export class QueryMonitorInputError extends Error {
@@ -536,6 +537,10 @@ export async function runMonitorQuery(
           monitor.accountId,
         );
         connection = await rewriteConnectionForTunnel(monitor.accountId, connection);
+        await guardDriverConnection(driver, connection, {
+          accountId: monitor.accountId,
+          organizationId,
+        });
         rows = (await driver.query(connection, monitor.sql)) as Record<string, unknown>[];
       } else if (typeDef) {
         // A database reached through a peer integration: the target the
@@ -600,6 +605,10 @@ export async function runMonitorQuery(
         let connection = built.credentials[peerSql.credentialKey] ?? "";
         connection = await rewriteConnectionForTunnel(monitor.accountId, connection);
         const caCert = peerSql.caCertKey ? (built.credentials[peerSql.caCertKey] ?? "") : "";
+        await guardDriverConnection(driver, connection, {
+          accountId: monitor.accountId,
+          organizationId,
+        });
         rows = (await driver.query(
           connection,
           monitor.sql,
@@ -622,6 +631,10 @@ export async function runMonitorQuery(
       const caCert = plugin.manifest.sqlDriver.caCertKey
         ? (credentials[plugin.manifest.sqlDriver.caCertKey] ?? "")
         : "";
+      await guardDriverConnection(driver, connection, {
+        accountId: monitor.accountId,
+        organizationId,
+      });
       rows = (await driver.query(
         connection,
         monitor.sql,

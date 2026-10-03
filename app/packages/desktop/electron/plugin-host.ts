@@ -10,6 +10,7 @@ import path from "node:path";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers, storageDrivers } from "./drivers";
 import { isDialogBlessedPath, resolveBeneathFolder } from "./main-utils";
 import { getDesktopHttpHostServices } from "./plugin-runtime";
+import { localExecGuard } from "./local-exec-consent";
 
 ipcMain.handle(
   "plugin_sql_query",
@@ -76,7 +77,7 @@ ipcMain.handle(
 
 ipcMain.handle(
   "plugin_docker_command",
-  (
+  async (
     _e,
     {
       driverId,
@@ -87,13 +88,17 @@ ipcMain.handle(
   ) => {
     const driver = dockerDrivers.get(driverId);
     if (!driver) throw new Error(`No Docker driver registered for "${driverId}"`);
+    // The host comes from the renderer, and the default is this machine's
+    // socket: only a stored account's host, an SSH tunnel main opened, or one
+    // the user approved in a native dialog gets a client.
+    await localExecGuard.assertDockerHost(typeof dockerHost === "string" ? dockerHost : "");
     return driver.command(dockerHost, op, params ?? {});
   },
 );
 
 ipcMain.handle(
   "plugin_k8s_command",
-  (
+  async (
     _e,
     {
       driverId,
@@ -104,6 +109,10 @@ ipcMain.handle(
   ) => {
     const driver = k8sDrivers.get(driverId);
     if (!driver) throw new Error(`No Kubernetes driver registered for "${driverId}"`);
+    // @kubernetes/client-node runs a kubeconfig's exec/auth-provider commands
+    // just as kubectl does.
+    if (typeof kubeconfig !== "string") throw new Error("plugin_k8s_command: missing kubeconfig");
+    await localExecGuard.assertKubeconfig(kubeconfig);
     return driver.command(kubeconfig, op, params ?? {});
   },
 );

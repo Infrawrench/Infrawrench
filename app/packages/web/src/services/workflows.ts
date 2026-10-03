@@ -34,7 +34,11 @@ import { db } from "../db/client";
 import { budgets, workflowMetrics, workflowRuns, workflows } from "../db/schema";
 import { orgGithubInstallationIds } from "./github-installations";
 import { listOrgPlugins } from "./workflow-host";
-import { setWorkflowSecretAssignments, validateWorkflowSecretIds } from "./workflow-secrets";
+import {
+  getWorkflowSecretAssignments,
+  setWorkflowSecretAssignments,
+  validateWorkflowSecretIds,
+} from "./workflow-secrets";
 
 export type WorkflowRow = typeof workflows.$inferSelect;
 
@@ -261,6 +265,7 @@ export async function createWorkflow(
     webhookSecret: nextWebhookSecret(body, null) ?? null,
     nextRunAt: derived.nextRunAt,
     createdByUserId: userId,
+    sourceAuthorUserId: userId,
     createdAt: now,
     updatedAt: now,
   });
@@ -270,16 +275,53 @@ export async function createWorkflow(
   return requireWorkflow(organizationId, id);
 }
 
+/** JSON with object keys sorted, so a jsonb round trip compares equal. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
+}
+
+/** Whether a requested secret assignment differs from the stored one. */
+async function secretAssignmentChanges(
+  organizationId: string,
+  id: string,
+  secretIds: string[],
+): Promise<boolean> {
+  const current = new Set(await getWorkflowSecretAssignments(organizationId, id));
+  const next = new Set(secretIds);
+  return current.size !== next.size || [...next].some((secretId) => !current.has(secretId));
+}
+
+/**
+ * Update a workflow. `editedByUserId` is who made the change: when it alters
+ * what the workflow executes (source, trigger, or assigned secrets), automated
+ * runs act for that user from then on, the same rule custom graphs follow. A
+ * `workflows:write` holder therefore cannot borrow an admin's authority by
+ * rewriting the admin's workflow and waiting for its cron. An executable
+ * change with no recorded user leaves no principal, which denies rather than
+ * keeping the previous author's.
+ */
 export async function updateWorkflow(
   organizationId: string,
   id: string,
   body: WorkflowBody,
+  editedByUserId: string | null,
 ): Promise<WorkflowRow> {
   const existing = await requireWorkflow(organizationId, id);
   const trigger = normalizeTrigger(body.trigger ?? (existing.trigger as WorkflowTrigger));
   await validateTrigger(organizationId, trigger);
   const enabled = body.enabled ?? existing.enabled;
   const derived = triggerDerived(trigger, enabled);
+  // Only a real change re-attributes: the editor saves the whole body, and a
+  // rename should not silently move whose permissions a schedule runs with.
+  const executableChanged =
+    (body.source !== undefined && body.source !== existing.source) ||
+    canonicalJson(trigger) !== canonicalJson(existing.trigger) ||
+    (body.secretIds !== undefined &&
+      (await secretAssignmentChanges(organizationId, id, body.secretIds)));
   await db
     .update(workflows)
     .set({
@@ -296,6 +338,7 @@ export async function updateWorkflow(
         return secret === undefined ? {} : { webhookSecret: secret };
       })(),
       nextRunAt: derived.nextRunAt,
+      ...(executableChanged ? { sourceAuthorUserId: editedByUserId } : {}),
       updatedAt: new Date(),
     })
     .where(eq(workflows.id, id));
@@ -303,6 +346,28 @@ export async function updateWorkflow(
     await setWorkflowSecretAssignments(organizationId, id, body.secretIds);
   }
   return requireWorkflow(organizationId, id);
+}
+
+/**
+ * Replace a workflow's secret assignments on their own (`PUT /:id/secrets`).
+ * Changing which secrets a workflow receives changes what its runs can do, so
+ * it re-attributes automated runs exactly like {@link updateWorkflow} does.
+ */
+export async function assignWorkflowSecrets(
+  organizationId: string,
+  id: string,
+  secretIds: string[],
+  editedByUserId: string | null,
+) {
+  const changed = await secretAssignmentChanges(organizationId, id, secretIds);
+  const secrets = await setWorkflowSecretAssignments(organizationId, id, secretIds);
+  if (changed) {
+    await db
+      .update(workflows)
+      .set({ sourceAuthorUserId: editedByUserId, updatedAt: new Date() })
+      .where(and(eq(workflows.id, id), eq(workflows.organizationId, organizationId)));
+  }
+  return secrets;
 }
 
 export async function softDeleteWorkflow(organizationId: string, id: string): Promise<void> {
@@ -372,15 +437,21 @@ export async function setWorkflowSchedule(
   organizationId: string,
   id: string,
   body: WorkflowScheduleBody,
+  editedByUserId: string | null,
 ): Promise<WorkflowRow> {
-  return updateWorkflow(organizationId, id, {
-    trigger: {
-      kind: "cron",
-      expression: body.expression,
-      ...(body.timezone ? { timezone: body.timezone } : {}),
+  return updateWorkflow(
+    organizationId,
+    id,
+    {
+      trigger: {
+        kind: "cron",
+        expression: body.expression,
+        ...(body.timezone ? { timezone: body.timezone } : {}),
+      },
+      ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
     },
-    ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
-  });
+    editedByUserId,
+  );
 }
 
 /**
@@ -390,10 +461,11 @@ export async function setWorkflowSchedule(
 export async function clearWorkflowSchedule(
   organizationId: string,
   id: string,
+  editedByUserId: string | null,
 ): Promise<WorkflowRow> {
   const existing = await requireWorkflow(organizationId, id);
   if ((existing.trigger as WorkflowTrigger).kind !== "cron") return existing;
-  return updateWorkflow(organizationId, id, { trigger: { kind: "manual" } });
+  return updateWorkflow(organizationId, id, { trigger: { kind: "manual" } }, editedByUserId);
 }
 
 export async function listWorkflowRuns(workflowId: string, limit = 50) {

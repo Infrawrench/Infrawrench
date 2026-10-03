@@ -8,6 +8,7 @@ import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { buildPluginHostServices } from "@infrawrench/server-core/host-services";
+import { withEgressScope } from "@infrawrench/server-core/egress-guard";
 import { runAccountPreflight } from "@infrawrench/server-core/preflight";
 import { syncAccountResources, syncAccountResourceType } from "../../services/sync-resources";
 import { exportStoredResourcesToTerraform } from "../../services/terraform-export";
@@ -124,9 +125,12 @@ app.post("/preflight", async (c) => {
 
   try {
     const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
+      organizationId,
       bastionId: validatedBastionId,
     });
-    const client = loaded.plugin.createClient(credentials, hostServices);
+    const client = withEgressScope(loaded.plugin.createClient(credentials, hostServices), {
+      organizationId,
+    });
     return c.json(await runAccountPreflight(loaded.plugin, client));
   } catch (e) {
     // createClient throws on malformed credentials (bad JSON key, missing

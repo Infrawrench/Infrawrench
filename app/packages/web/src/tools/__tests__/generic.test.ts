@@ -472,15 +472,80 @@ describe("genericTools", () => {
           pluginId: "aws",
           accountId: "a1",
           fields: {},
-          resolvedOutputs: {},
+          resolvedOutputs: { ipv4: "1.2.3.4", password: "hunter2", kubeconfig: "yaml" },
         }),
+      },
+      plugin: {
+        resourceTypes: [
+          {
+            id: "rt",
+            outputs: [
+              { key: "ipv4", sensitive: false },
+              { key: "password", sensitive: true },
+              { key: "kubeconfig", sensitive: false, hidden: true },
+            ],
+          },
+        ],
       },
     });
     const r = await tool("get_resource").handler(
       { pluginId: "aws", accountId: "a1", resourceTypeId: "rt", resourceId: "r1" },
       auth,
     );
-    expect(JSON.parse(r.content[0]!.text).id).toBe("r1");
+    const body = JSON.parse(r.content[0]!.text);
+    expect(body.id).toBe("r1");
+    // Sensitive and hidden outputs only ever leave through get_resource_outputs.
+    expect(body.resolvedOutputs).toEqual({ ipv4: "1.2.3.4" });
+  });
+
+  describe("get_resource_outputs approval", () => {
+    const target = { pluginId: "aws", accountId: "a1", resourceTypeId: "rt", resourceId: "r1" };
+    const needsApproval = (input: Record<string, unknown>) =>
+      tool("get_resource_outputs").requiresApproval!(input, auth);
+
+    beforeEach(() => {
+      mockGetPlugin.mockResolvedValue({
+        plugin: {
+          resourceTypes: [
+            {
+              id: "rt",
+              outputs: [
+                { key: "ipv4", sensitive: false },
+                { key: "connectionString", sensitive: true },
+                { key: "kubeconfig", sensitive: false, hidden: true },
+              ],
+            },
+          ],
+        },
+      });
+    });
+
+    it("runs unprompted for non-sensitive outputs", async () => {
+      expect(await needsApproval({ ...target, outputKeys: ["ipv4"] })).toBe(false);
+    });
+
+    it("asks for a sensitive output", async () => {
+      expect(await needsApproval({ ...target, outputKeys: ["ipv4", "connectionString"] })).toBe(
+        true,
+      );
+    });
+
+    it("asks for a hidden output", async () => {
+      expect(await needsApproval({ ...target, outputKeys: ["kubeconfig"] })).toBe(true);
+    });
+
+    it("asks when outputKeys is omitted and the type declares a sensitive output", async () => {
+      expect(await needsApproval(target)).toBe(true);
+    });
+
+    it("asks for an undeclared key", async () => {
+      expect(await needsApproval({ ...target, outputKeys: ["mystery"] })).toBe(true);
+    });
+
+    it("asks when the plugin or type is unknown", async () => {
+      mockGetPlugin.mockResolvedValue(null);
+      expect(await needsApproval({ ...target, outputKeys: ["ipv4"] })).toBe(true);
+    });
   });
 
   it("get_resource_outputs resolves each key and captures per-key errors", async () => {

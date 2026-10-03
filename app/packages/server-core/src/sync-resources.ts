@@ -13,6 +13,7 @@ import { accounts, dashboardPins, resources, secretFieldStates } from "./db/sche
 import { decrypt, encrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
 import { buildPluginHostServices } from "./host-services";
+import { withEgressScope } from "./egress-guard";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
 import {
   flattenMetricSeries,
@@ -71,9 +72,13 @@ export async function loadAccountClient(accountId: string, organizationId: strin
 
   const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
     accountId,
+    organizationId,
     bastionId: account.bastionId ?? null,
   });
-  const client = loaded.plugin.createClient(credentials, hostServices);
+  const client = withEgressScope(loaded.plugin.createClient(credentials, hostServices), {
+    accountId,
+    organizationId,
+  });
   return { account, plugin: loaded.plugin, client };
 }
 
@@ -554,7 +559,10 @@ async function fetchPeerMetricSeriesForPoller(
         peerCreds,
         { accountId },
       );
-      const peerClient = peerLoaded.plugin.createClient(peerCreds, peerHostServices);
+      const peerClient = withEgressScope(
+        peerLoaded.plugin.createClient(peerCreds, peerHostServices),
+        { accountId },
+      );
       if (!peerClient.fetchMetricSeries) return [];
       const series = await peerClient.fetchMetricSeries(resourceTypeId, resourceId, accountId);
       return series.map((s) => ({ ...s, label: `${integration.tabLabel} · ${s.label}` }));

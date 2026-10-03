@@ -1,7 +1,8 @@
 import { MongoClient, ObjectId } from "mongodb";
 import type { KvNodeDriver } from "@infrawrench/plugin-base";
-import { findServerUnsafeMongoOptions, mongoRejectionMessage } from "./uri-policy.js";
+import { hostPortDialTarget, type DialTarget, type KvNodeDriver } from "@infrawrench/plugin-base";
 
+import { findServerUnsafeMongoOptions, mongoRejectionMessage } from "./uri-policy.js";
 export { findServerUnsafeMongoOptions, serverMongoUriError } from "./uri-policy.js";
 
 /** Convert ObjectId instances to { $oid: "hex" } for JSON-safe serialization */
@@ -98,8 +99,35 @@ function releaseClient(connectionString: string) {
   }
 }
 
+/**
+ * The seed list of a `mongodb://` string, or the SRV name a `mongodb+srv://`
+ * string expands through. A percent-encoded host ending in `.sock` is a unix
+ * socket. Replica-set members the seeds then advertise are discovered at
+ * runtime and are not visible here.
+ */
+export function dialTargets(connectionString: string): DialTarget[] {
+  const m = /^(mongodb(?:\+srv)?):\/\/(?:[^@/]*@)?([^/?]*)/i.exec(connectionString);
+  if (!m) return [{ kind: "local", reason: "a connection string without mongodb://" }];
+  const hosts = m[2]!;
+  if (m[1]!.toLowerCase() === "mongodb+srv") {
+    if (!hosts || hosts.includes(",") || hosts.includes(":")) {
+      return [{ kind: "local", reason: "a mongodb+srv:// string without a single host name" }];
+    }
+    return [{ kind: "srv", name: `_mongodb._tcp.${hosts}` }];
+  }
+  if (!hosts) return [{ kind: "local", reason: "no host" }];
+  return hosts.split(",").map((h): DialTarget => {
+    const decoded = decodeURIComponent(h);
+    if (decoded.startsWith("/") || decoded.endsWith(".sock")) {
+      return { kind: "local", reason: "a unix socket path" };
+    }
+    return hostPortDialTarget(h, 27017);
+  });
+}
+
 export const driver = {
   id: "mongodb",
+  dialTargets,
 
   async command(
     connectionString: string,

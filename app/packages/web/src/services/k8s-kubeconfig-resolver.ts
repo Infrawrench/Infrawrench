@@ -9,6 +9,7 @@ import { accounts, resources } from "@/db/schema";
 import { decrypt, buildAad } from "@/services/encryption";
 import { getPlugin } from "@/plugins/loader";
 import { buildPluginHostServices } from "@/services/host-services";
+import { withEgressScope } from "@infrawrench/server-core/egress-guard";
 
 /**
  * Given a parent resource and peer plugin ID, resolve the kubeconfig
@@ -44,8 +45,12 @@ export async function resolveKubeconfig(
   const credentials = JSON.parse(plaintext) as Record<string, string>;
   const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
     accountId: account.id,
+    organizationId,
   });
-  const client = loaded.plugin.createClient(credentials, hostServices);
+  const client = withEgressScope(loaded.plugin.createClient(credentials, hostServices), {
+    accountId: account.id,
+    organizationId,
+  });
 
   // Find the resource to get its resourceTypeId
   const [resource] = await db

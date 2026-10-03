@@ -220,13 +220,10 @@ async function resolveTarget(
     ...(username ? { sshUsername: username } : {}),
   });
 
-  // SSRF: only the host the resource named is untrusted input; a plugin-native
-  // endpoint is org configuration, dialed unguarded like every SQL/Docker host.
-  // Dial the address that cleared; the name keeps the host-key identity.
-  let dialAddress = config.host;
-  if (host && config.host === host) {
-    dialAddress = await resolveSafeHost(config.host);
-  }
+  // SSRF: the resource's host and a plugin-native endpoint are both tenant
+  // input, and this server is shared, so either is vetted. Dial the address
+  // that cleared; the name keeps the host-key identity.
+  const dialAddress = await resolveSafeHost(config.host);
   return { accountId: row.accountId, config, dialAddress };
 }
 
