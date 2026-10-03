@@ -29,7 +29,7 @@ export interface StatusFeedDeclaration {
    * Wire format of the feed. Informational for the host (it fetches bytes
    * and hands them to `parseStatusFeed` either way) and documentation for
    * humans:
-   *   - "statuspage-v2": Atlassian Statuspage `/api/v2/*.json`
+   *   - "statuspage-v2" - Atlassian Statuspage `/api/v2/*.json`
    *   - "custom-json"   - provider-specific JSON (GCP, AWS Health, …)
    *   - "rss" / "atom"  - XML feeds, for providers that publish nothing else
    */

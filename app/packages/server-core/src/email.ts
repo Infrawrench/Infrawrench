@@ -24,7 +24,7 @@
  *   MAILGUN_API_KEY  - a domain sending key (preferred) or the account key
  *   MAILGUN_DOMAIN   - the verified sending domain, e.g. `mg.yourdomain.com`
  *   EMAIL_FROM       - the sender, e.g. `Infrawrench <digest@mg.yourdomain.com>`
- *   MAILGUN_API_BASE: optional; `https://api.eu.mailgun.net` for an EU account
+ *   MAILGUN_API_BASE - optional; `https://api.eu.mailgun.net` for an EU account
  *
  * Without the first three, `isEmailConfigured()` is false and every send here
  * is a logged no-op. That is the same shape as Slack: a self-hosted deployment

@@ -432,7 +432,7 @@ export interface SettingDescriptor {
    *   - "select"   - dropdown over `options`
    *   - "number"   - numeric input
    *   - "text"     - single-line text / JSON blob
-   *   - "readonly": value shown but not editable (provider-managed)
+   *   - "readonly" - value shown but not editable (provider-managed)
    */
   control: "toggle" | "select" | "number" | "text" | "readonly";
   /** `select` options. */
@@ -588,7 +588,7 @@ export interface ChildTableColumn {
    *   - "type-badge"    - colored pill keyed by DNS record type (A/AAAA/CNAME/MX/TXT…)
    *   - "proxy-status"  - orange-cloud / grey-cloud indicator for boolean values
    *   - "ttl"           - formats numeric seconds via the same rules as `formatDnsTtl`
-   *   - "boolean-yesno": renders truthy/falsy as "Yes"/"No"
+   *   - "boolean-yesno" - renders truthy/falsy as "Yes"/"No"
    * Defaults to plain text.
    */
   format?: "text" | "mono" | "type-badge" | "proxy-status" | "ttl" | "boolean-yesno";
