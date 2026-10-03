@@ -679,31 +679,59 @@ describe("CloudflareClient.fetchMetricSeries", () => {
     expect(Array.isArray(out)).toBe(true);
   });
 
-  it("spectrum metrics parse network-analytics groups", async () => {
-    const { client } = makeClient();
-    graph({
-      data: {
-        viewer: {
-          zones: [
-            {
-              spectrumNetworkAnalyticsAdaptiveGroups: [
-                {
-                  dimensions: { datetime: dt },
-                  sum: { events: 3, bytesIngress: 10, bytesEgress: 20, connections: 1 },
-                },
-              ],
+  it("spectrum metrics read the REST bytime endpoint, filtered to the app", async () => {
+    const { client, fakeApi } = makeClient();
+    const calls: Array<Record<string, unknown>> = [];
+    const intervals = [
+      ["2026-10-03T00:00:00Z", "2026-10-03T01:00:00Z"],
+      ["2026-10-03T01:00:00Z", "2026-10-03T02:00:00Z"],
+    ];
+    (fakeApi as { cf: Record<string, unknown> }).cf.spectrum = {
+      apps: { list: iter([]) },
+      analytics: {
+        events: {
+          bytimes: {
+            get: async (params: Record<string, unknown>) => {
+              calls.push(params);
+              const connectsOnly = String(params.filters).includes("event==connect");
+              return {
+                time_intervals: intervals,
+                data: [
+                  {
+                    metrics: connectsOnly
+                      ? [[1, 2]]
+                      : [
+                          [3, 4],
+                          [10, 0],
+                          [20, 5],
+                          [80, 90],
+                        ],
+                  },
+                ],
+              };
             },
-          ],
+          },
         },
       },
-    });
+    };
     const out = await client.fetchMetricSeries(
       "spectrum-application",
       "acct:spectrum-application:z1/s1",
       "acct",
       range,
     );
-    expect(out.length).toBeGreaterThan(0);
+    expect(calls[0]).toMatchObject({ zone_id: "z1", filters: "appID==s1" });
+    expect(out.map((x) => x.label)).toEqual([
+      "Events",
+      "Bytes Ingress",
+      "Bytes Egress",
+      "Connection Duration p90",
+      "Connections",
+    ]);
+    expect(out[0]!.points).toEqual([
+      { timestamp: Date.parse(intervals[0]![0]!), value: 3 },
+      { timestamp: Date.parse(intervals[1]![0]!), value: 4 },
+    ]);
   });
 
   it("d1 metrics parse analytics groups", async () => {

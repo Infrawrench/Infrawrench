@@ -221,8 +221,8 @@ The token needs the **Account Analytics:Read** permission for account-scoped dat
 
 - Cloudflare’s API returns paginated lists; very large zones (1000s of records) load in chunks.
 - Tokens can be scoped to specific zones. If you only see some zones, check the token scope.
-- GraphQL Analytics datasets retain the last 31 days of data; older ranges return no points.
-- Since 2026-10-02 every plan keeps at least 31 days of the adaptive analytics datasets (HTTP requests, security events, DNS and the other `*AdaptiveGroups` datasets), including Free and Pro zones, so metric ranges up to about 30 days return data on every plan. Aggregated datasets such as `httpRequests1hGroups`, which the zone traffic charts use, keep their existing per-plan limits ([changelog](https://developers.cloudflare.com/changelog/product-group/analytics/)).
+- GraphQL Analytics datasets retain the last 31 days of data. A wider range shows the most recent 31 days (7 days for Turnstile, whose dataset allows no more) rather than an empty chart.
+- Since 2026-10-02 every plan keeps at least 31 days of the adaptive analytics datasets (HTTP requests, security events, DNS and the other `*AdaptiveGroups` datasets), including Free and Pro zones, so metric ranges up to about 30 days return data on every plan. Aggregated datasets such as `httpRequests1hGroups`, which the zone traffic charts use, keep their existing per-plan limits ([changelog](https://developers.cloudflare.com/changelog/product-group/analytics/)): 3 days on a Free zone. A zone chart over a longer range shows the most recent window the plan allows.
 
 ## Cost graphs
 
