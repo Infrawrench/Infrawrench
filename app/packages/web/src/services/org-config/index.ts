@@ -1173,21 +1173,15 @@ function planAlertSettings(plan: PlanBuilder, args: AlertSettingsArgs): void {
   const singleton = (
     key: string,
     name: string,
-    next: unknown,
-    currentValue: unknown,
+    next: object,
+    currentValue: object,
     op: Operation,
   ) => {
     if (sameValue(currentValue, next)) {
       plan.record("alertSettings", key, name, "unchanged");
       return;
     }
-    plan.record(
-      "alertSettings",
-      key,
-      name,
-      "update",
-      changedFields(currentValue as object, next as object),
-    );
+    plan.record("alertSettings", key, name, "update", changedFields(currentValue, next));
     plan.op(op);
   };
 

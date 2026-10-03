@@ -72,7 +72,7 @@ async function claimDueMonitors(limit: number): Promise<ClaimedMonitor[]> {
       breach_streak AS "breachStreak",
       interval_minutes AS "intervalMinutes"
   `);
-  return rows as unknown as ClaimedMonitor[];
+  return rows;
 }
 
 /**
