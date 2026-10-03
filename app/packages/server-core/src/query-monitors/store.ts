@@ -48,6 +48,8 @@ export class QueryMonitorInputError extends Error {
   }
 }
 
+// Names are joined within the monitor's own org: an account or resource id
+// that points elsewhere must read back as a missing name, not a foreign one.
 function selectMonitors() {
   return db
     .select({
@@ -77,8 +79,20 @@ function selectMonitors() {
       updatedAt: queryMonitors.updatedAt,
     })
     .from(queryMonitors)
-    .leftJoin(accounts, eq(accounts.id, queryMonitors.accountId))
-    .leftJoin(resources, eq(resources.id, queryMonitors.resourceId));
+    .leftJoin(
+      accounts,
+      and(
+        eq(accounts.id, queryMonitors.accountId),
+        eq(accounts.organizationId, queryMonitors.organizationId),
+      ),
+    )
+    .leftJoin(
+      resources,
+      and(
+        eq(resources.id, queryMonitors.resourceId),
+        eq(resources.organizationId, queryMonitors.organizationId),
+      ),
+    );
 }
 
 type MonitorRow = Awaited<ReturnType<ReturnType<typeof selectMonitors>["execute"]>>[number];
@@ -280,6 +294,20 @@ async function resolveMonitorResourceType(
   return resource.resourceTypeId;
 }
 
+/**
+ * The account must be this org's: a monitor is executed with its credentials,
+ * so an id from elsewhere would be a credential-use primitive. Checked on
+ * create and on any update that moves the monitor to another account.
+ */
+async function assertOrgAccount(organizationId: string, accountId: string): Promise<void> {
+  const [account] = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.organizationId, organizationId), eq(accounts.id, accountId)))
+    .limit(1);
+  if (!account) throw new QueryMonitorInputError("No such account.", 404);
+}
+
 export async function getQueryMonitor(
   organizationId: string,
   monitorId: string,
@@ -316,14 +344,7 @@ export async function createQueryMonitor(
       `An organization may have ${QUERY_MONITOR_LIMITS.maxPerOrg} query monitors.`,
     );
   }
-  // The account must be this org's: a monitor is executed with its
-  // credentials, so an id from elsewhere would be a credential-use primitive.
-  const [account] = await db
-    .select({ id: accounts.id })
-    .from(accounts)
-    .where(and(eq(accounts.organizationId, organizationId), eq(accounts.id, input.accountId)))
-    .limit(1);
-  if (!account) throw new QueryMonitorInputError("No such account.", 404);
+  await assertOrgAccount(organizationId, input.accountId);
 
   const id = randomUUID();
   try {
@@ -361,6 +382,7 @@ export async function updateQueryMonitor(
   if (!current) throw new QueryMonitorInputError("No such monitor.", 404);
 
   const accountId = patch.accountId ?? current.accountId;
+  await assertOrgAccount(organizationId, accountId);
   const resourceId = patch.resourceId !== undefined ? patch.resourceId : current.resourceId;
   const merged: QueryMonitorInput = {
     name: patch.name ?? current.name,

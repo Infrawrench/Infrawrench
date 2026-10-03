@@ -7,7 +7,7 @@
  * could disagree with delivery would be worse than no preview at all.
  */
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import {
   ON_CALL_LIMITS,
   nextOnCall,
@@ -22,7 +22,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
-import { users } from "../db/schema";
+import { organizationMembers, users } from "../db/schema";
 import { onCallOverrides, onCallParticipants, onCallSchedules } from "../db/on-call-schema";
 
 export class OnCallInputError extends Error {
@@ -31,6 +31,28 @@ export class OnCallInputError extends Error {
     super(message);
     this.name = "OnCallInputError";
     this.status = status;
+  }
+}
+
+/**
+ * Every person put on a rotation or a cover must belong to this org: the
+ * listings join `users` by id and return each person's name and email, so an
+ * id from elsewhere would read another org's member back out.
+ */
+async function assertOrgMembers(organizationId: string, userIds: readonly string[]): Promise<void> {
+  const wanted = [...new Set(userIds)];
+  if (wanted.length === 0) return;
+  const rows = await db
+    .select({ userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        inArray(organizationMembers.userId, wanted),
+      ),
+    );
+  if (rows.length !== wanted.length) {
+    throw new OnCallInputError("Everyone on call must be a member of this organization.");
   }
 }
 
@@ -127,6 +149,7 @@ export async function createOnCallSchedule(
 ): Promise<OnCallSchedule> {
   const problem = validateOnCallSchedule(input);
   if (problem) throw new OnCallInputError(problem);
+  await assertOrgMembers(organizationId, input.participantUserIds);
 
   const existing = await db
     .select({ id: onCallSchedules.id })
@@ -184,6 +207,7 @@ export async function updateOnCallSchedule(
   };
   const problem = validateOnCallSchedule(merged);
   if (problem) throw new OnCallInputError(problem);
+  if (patch.participantUserIds) await assertOrgMembers(organizationId, patch.participantUserIds);
 
   try {
     await db.transaction(async (tx) => {
@@ -304,6 +328,7 @@ export async function createOnCallOverride(
 
   const schedule = await getOnCallSchedule(organizationId, input.scheduleId);
   if (!schedule) throw new OnCallInputError("No such rotation.", 404);
+  await assertOrgMembers(organizationId, [input.userId]);
 
   const id = randomUUID();
   await db.insert(onCallOverrides).values({

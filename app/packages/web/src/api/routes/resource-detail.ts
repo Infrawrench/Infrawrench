@@ -127,6 +127,8 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
             updatedAt: new Date(),
             deletedAt: null,
           },
+          // Ids are global; never refresh a row another org owns.
+          setWhere: eq(resources.organizationId, organizationId),
         })
         .catch((e) => console.error("[resource-detail] Failed to upsert:", e));
     }
@@ -135,7 +137,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     // and it was previously synced: it's been deleted externally.
     db.update(resources)
       .set({ deletedAt: new Date() })
-      .where(eq(resources.id, resourceId))
+      .where(and(eq(resources.id, resourceId), eq(resources.organizationId, organizationId)))
       .catch((e) => console.error("[resource-detail] Failed to soft-delete:", e));
     return c.json({ error: "Resource not found" }, 404);
   } else if (dbResource) {

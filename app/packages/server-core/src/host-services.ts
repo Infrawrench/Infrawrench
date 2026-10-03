@@ -19,6 +19,7 @@ import { db } from "./db/client";
 import { accounts, secretFieldStates } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
 import { setLiteralSecretState } from "./secret-states";
+import { resourceIdBelongsToAccount } from "./resource-ids";
 import { getDispatcherFor } from "./bastion/registry";
 import { BastionDisconnectedError } from "./bastion/errors";
 
@@ -95,6 +96,29 @@ const secretHostServices: SecretHostServices = {
   },
   setPlaintext: setLiteralSecretState,
 };
+
+/**
+ * The secret store scoped to one account: a plugin built for that account can
+ * only read or write secrets of resources carrying its prefix. Plugins pass
+ * through whatever resource id the caller sent (`resolveOutput` on a db-user
+ * returns `getPlaintext(resourceId, ...)` without a provider round trip), so
+ * without this a caller could name another org's resource and read its stored
+ * password back through their own account.
+ */
+function accountSecretHostServices(accountId: string): SecretHostServices {
+  return {
+    async getPlaintext(resourceId, fieldKey) {
+      if (!resourceIdBelongsToAccount(resourceId, accountId)) return null;
+      return secretHostServices.getPlaintext(resourceId, fieldKey);
+    },
+    async setPlaintext(resourceId, fieldKey, value) {
+      if (!resourceIdBelongsToAccount(resourceId, accountId)) {
+        throw new Error(`Resource ${resourceId} does not belong to account ${accountId}`);
+      }
+      await setLiteralSecretState(resourceId, fieldKey, value);
+    },
+  };
+}
 
 /**
  * Build the HTTP host service for a given account. When the account is bound
@@ -264,7 +288,7 @@ export async function buildPluginHostServices(
   }
   const base: HostServices = {
     http: buildHttpHostServices(bastionId ?? null),
-    secrets: secretHostServices,
+    secrets: options.accountId ? accountSecretHostServices(options.accountId) : secretHostServices,
   };
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";

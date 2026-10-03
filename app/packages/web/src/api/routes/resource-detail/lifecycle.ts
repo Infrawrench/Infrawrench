@@ -10,6 +10,7 @@ import {
   setOutputRefSecretState,
 } from "@infrawrench/server-core/secret-states";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
+import { resourceIdBelongsToAccount } from "@infrawrench/server-core/resource-ids";
 import { estimateResourceCost } from "@infrawrench/server-core/cost/estimate";
 import {
   carbonHintFor,
@@ -289,6 +290,13 @@ export function registerLifecycleRoutes(app: Hono): void {
     if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
     if (!ctx.client.updateResource)
       return c.json({ error: "Plugin does not support updates" }, 400);
+    // The plugin acts on the external id alone, against the account checked
+    // above, so the id's account prefix is what ties the provider call to the
+    // row mirrored below. A foreign prefix would edit the caller's own
+    // resource and then write the result into someone else's row.
+    if (!resourceIdBelongsToAccount(input.resourceId, input.accountId)) {
+      return c.json({ error: "Resource not found" }, 404);
+    }
 
     // Same gate as delete: a change freeze means no provider mutations, and
     // an edit (rename, resize) is one. The right-sizing "Apply resize" flow
@@ -348,7 +356,13 @@ export function registerLifecycleRoutes(app: Hono): void {
             outputsJson: updated.resolvedOutputs ?? {},
             updatedAt: new Date(),
           })
-          .where(eq(resources.id, input.resourceId));
+          .where(
+            and(
+              eq(resources.id, input.resourceId),
+              eq(resources.organizationId, organizationId),
+              eq(resources.accountId, input.accountId),
+            ),
+          );
       } catch (err) {
         console.error("[resource-detail] Failed to persist updated resource:", err);
       }
