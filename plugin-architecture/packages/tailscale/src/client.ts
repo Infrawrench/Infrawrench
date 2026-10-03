@@ -7,7 +7,7 @@ import {
   type SidebarItemSchema,
   type SshInstallContext,
 } from "@infrawrench/plugin-base";
-import { deviceType } from "./plugin.js";
+import { deviceType } from "./resource-types.js";
 import { installOnSsh } from "./install.js";
 
 // Wire shapes and endpoints verified against https://api.tailscale.com/api/v2

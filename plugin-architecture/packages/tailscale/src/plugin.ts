@@ -1,30 +1,8 @@
-import { f, o, rt, type Plugin } from "@infrawrench/plugin-base";
+import type { Plugin } from "@infrawrench/plugin-base";
 import { TailscaleClient } from "./client.js";
 import { INSTALL_MESSAGES } from "./install.js";
 import { logoSvg } from "./logo.js";
-
-export const deviceType = rt({
-  id: "device",
-  name: "Device",
-  description: "A device connected to your Tailscale network.",
-  fields: [
-    f("name", "DNS name", { editable: true }),
-    f("hostname", "Hostname", { editable: false }),
-    f("os", "Operating system", { editable: false }),
-    f("user", "Owner", { editable: false }),
-    f("addresses", "Addresses", { editable: false }),
-    f("tags", "Tags", { editable: false }),
-    f("authorized", "Approved", { editable: false }),
-    f("connected", "Connected", { editable: false }),
-    f("clientVersion", "Client version", { editable: false }),
-    f("lastSeen", "Last seen", { editable: false }),
-    f("expires", "Key expires", { editable: false }),
-    f("keyExpiryDisabled", "Key expiry disabled", { editable: false }),
-  ],
-  outputs: [o("ip", "Tailscale IP"), o("dnsName", "DNS name")],
-  supportsUpdate: true,
-  sshEndpoint: { hostOutputKey: "ip", defaultUsername: "root" },
-});
+import { deviceType } from "./resource-types.js";
 
 export const plugin: Plugin = {
   manifest: {
