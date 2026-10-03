@@ -912,6 +912,48 @@ const APP_METRICS = [
   { name: "restart_count", label: "Restarts", unit: "" },
 ];
 
+/** Longest span of days the daily-bandwidth chart asks for, one call per day. */
+const APP_BANDWIDTH_MAX_DAYS = 31;
+
+/**
+ * Egress per UTC day from `GET /v2/apps/{id}/metrics/bandwidth_daily?date=`,
+ * which answers one day at a time (`bandwidth_bytes` is a uint64 string).
+ * Days DO has no row for are skipped rather than charted as zero.
+ */
+async function appDailyBandwidth(
+  ctx: DoServiceContext,
+  appId: string,
+  startMs: number,
+  endMs: number,
+): Promise<MetricSeries[]> {
+  const DAY = 86_400_000;
+  const days: number[] = [];
+  for (let d = Math.floor(endMs / DAY) * DAY; d >= startMs - (startMs % DAY); d -= DAY) {
+    days.push(d);
+    if (days.length >= APP_BANDWIDTH_MAX_DAYS) break;
+  }
+  const points = await Promise.all(
+    days.map(async (day) => {
+      try {
+        const resp = await ctx.fetch<{
+          app_bandwidth_usage?: Array<{ app_id?: string; bandwidth_bytes?: string | number }>;
+        }>(
+          `/apps/${appId}/metrics/bandwidth_daily?date=${encodeURIComponent(new Date(day).toISOString())}`,
+        );
+        const row = (resp.app_bandwidth_usage ?? []).find((r) => !r.app_id || r.app_id === appId);
+        const value = Number(row?.bandwidth_bytes);
+        return row && Number.isFinite(value) ? { timestamp: day, value } : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const present = points
+    .filter((p): p is { timestamp: number; value: number } => p !== null)
+    .sort((a, b) => a.timestamp - b.timestamp);
+  return present.length > 0 ? [{ label: "Bandwidth (daily)", unit: "bytes", points: present }] : [];
+}
+
 /** `null` when `typeId` has no metrics in this module. */
 export async function fetchDoServiceMetrics(
   ctx: DoServiceContext,
@@ -962,6 +1004,12 @@ export async function fetchDoServiceMetrics(
       .map((c) => c.trim())
       .filter(Boolean);
     const targets = components.length > 0 ? components : [""];
+    const bandwidth = appDailyBandwidth(
+      ctx,
+      id,
+      timeRange?.startMs ?? now - 3_600_000,
+      timeRange?.endMs ?? now,
+    );
     const all = await Promise.all(
       targets.flatMap((component) =>
         APP_METRICS.map((m) =>
@@ -974,7 +1022,7 @@ export async function fetchDoServiceMetrics(
         ),
       ),
     );
-    return all.flat();
+    return [...all.flat(), ...(await bandwidth)];
   }
   return null;
 }

@@ -207,19 +207,53 @@ export async function fetchDoMetricSeries(
     };
     const engineSlug = engineMap[String(resource.fields["engine"] ?? "")] ?? "";
     if (!engineSlug) return [];
-    const qs = `db_id=${dbId}&aggregate=avg&start=${startUnix}&end=${endUnix}`;
+    const window = `start=${startUnix}&end=${endUnix}`;
+    const qs = `db_id=${dbId}&aggregate=avg&${window}`;
     const base = `/monitoring/metrics/database/${engineSlug}`;
-    // The four metrics below are the only ones DO documents across all
-    // engines. Engine-specific metrics (e.g. mysql/op_rates, redis/cache_hit_rate)
-    // exist but aren't surfaced here. fetchPromMetric swallows 404s for the
-    // engines that don't publish a given metric, so adding new engines is
-    // safe.
-    const series = await Promise.all([
+    // DO's API reference documents the database metrics for MySQL only:
+    // https://docs.digitalocean.com/reference/api/reference/monitoring/
+    // The CPU/memory/disk/load quartet is still asked of every engine and
+    // fetchPromMetric swallows the 404 from engines that don't publish it.
+    // `load` requires `metric=load1|load5|load15`.
+    const common = [
       fetchPromMetric(`${base}/cpu_usage?${qs}`, "CPU Utilization", "%"),
       fetchPromMetric(`${base}/memory_usage?${qs}`, "Memory Used", "%"),
       fetchPromMetric(`${base}/disk_usage?${qs}`, "Disk Used", "%"),
-      fetchPromMetric(`${base}/load?${qs}`, "Load", ""),
-    ]);
+      fetchPromMetric(`${base}/load?${qs}&metric=load1`, "Load (1m)", ""),
+      fetchPromMetric(`${base}/load?${qs}&metric=load5`, "Load (5m)", ""),
+      fetchPromMetric(`${base}/load?${qs}&metric=load15`, "Load (15m)", ""),
+    ];
+    // MySQL-only series. Schema-scoped table I/O (`schema_latency`,
+    // `schema_throughput`) needs a schema name, so it is not charted here.
+    const mysql =
+      engineSlug === "mysql"
+        ? [
+            fetchPromMetric(
+              `${base}/index_vs_sequential_reads?db_id=${dbId}&${window}`,
+              "Reads Using an Index",
+              "%",
+            ),
+            ...(["select", "insert", "update", "delete"] as const).map((op) =>
+              fetchPromMetric(
+                `${base}/op_rates?db_id=${dbId}&metric=${op}&${window}`,
+                `${op[0]!.toUpperCase()}${op.slice(1)}s/s`,
+                "ops/s",
+              ),
+            ),
+            fetchPromMetric(
+              `${base}/threads_connected?db_id=${dbId}&${window}`,
+              "Threads Connected",
+              "",
+            ),
+            fetchPromMetric(`${base}/threads_active?db_id=${dbId}&${window}`, "Threads Active", ""),
+            fetchPromMetric(
+              `${base}/threads_created_rate?db_id=${dbId}&${window}`,
+              "Threads Created",
+              "threads/s",
+            ),
+          ]
+        : [];
+    const series = await Promise.all([...common, ...mysql]);
     return series.filter((s): s is MetricSeries => s != null);
   }
 

@@ -86,6 +86,7 @@ import {
   streamDoChatMessage,
 } from "./nosql-console.js";
 import { type DoEnrichContext, enrichDoDetail } from "./enrich-detail.js";
+import { fetchDoksStatusMessages, fetchDropletInsightsLogs } from "./insights-logs.js";
 import { isServiceTypeId } from "./service-listers.js";
 import {
   type DoServiceContext,
@@ -1873,17 +1874,25 @@ export class DigitalOceanClient implements PluginClient {
   }
 
   /**
-   * Logs tab for managed-databases. DO doesn't expose process logs over the
-   * API, only the cluster event stream (creates, scale events, maintenance,
-   * power cycles). We surface that as the closest available signal.
+   * Logs tabs. Managed databases get the cluster event stream (creates,
+   * scale events, maintenance, power cycles), the closest DO offers to
+   * process logs; Droplets read DigitalOcean Insights and DOKS clusters
+   * their status messages (see `./insights-logs.ts`).
    */
   async getLogs(
     typeId: string,
     resourceId: string,
-    _accountId: string,
+    accountId: string,
     params: { tailLines?: number; container?: string },
   ): Promise<{ text: string; containers: string[]; activeContainer: string }> {
     if (typeId === "app") return fetchDoAppLogs(this.serviceCtx, resourceId, params);
+    if (typeId === "droplet") {
+      const droplet = await this.getResource(typeId, resourceId, accountId);
+      return fetchDropletInsightsLogs(this.metricCtx, droplet, params);
+    }
+    if (typeId === "doks-cluster") {
+      return fetchDoksStatusMessages(this.metricCtx, resourceId.split(":").pop() ?? "", params);
+    }
     if (typeId !== "managed-database") {
       return { text: "", containers: [], activeContainer: "" };
     }
@@ -2014,6 +2023,9 @@ export class DigitalOceanClient implements PluginClient {
       applyAppDetail(detail, resource);
     } else if (resource.resourceTypeId === "autoscale-pool") {
       applyAutoscalePoolDetail(detail, resource);
+    } else if (resource.resourceTypeId === "doks-cluster") {
+      // Lifecycle status messages; see `fetchDoksStatusMessages`.
+      detail.logs = { defaultTailLines: 200 };
     }
 
     if (resource.resourceTypeId === "spaces-bucket") {

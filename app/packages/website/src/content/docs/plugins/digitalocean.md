@@ -22,9 +22,9 @@ The most approachable cloud plugin — a single API token is all you need.
 - **Certificates**: Let's Encrypt certificates for domains whose DNS DigitalOcean hosts (domain picker plus subdomains, wildcards included) or uploaded custom certificates. Expiry dates feed the Expiry radar.
 - **CDN endpoints**: put the Spaces CDN in front of a bucket (bucket picker when the account has Spaces keys), set the cache TTL, attach a custom domain with a certificate, and purge cached paths.
 - **Uptime checks**: HTTP(S) and ping checks from up to four regions, with per-region status, 30-day uptime and the last outage on the detail page, plus alert management (down, latency, SSL expiry; email and Slack). Pause and resume from the header.
-- **App Platform apps**: list, redeploy, force a rebuild, restart (all or chosen components), roll back, cancel a deployment in flight, edit the app spec, delete; with build/deploy/run logs and CPU/memory/restart metrics. See [App Platform](#app-platform).
+- **App Platform apps**: list, redeploy, force a rebuild, restart (all or chosen components), roll back, cancel a deployment in flight, edit the app spec, delete; with build/deploy/run logs and CPU/memory/restart and daily bandwidth metrics. See [App Platform](#app-platform).
 - **Droplet autoscale pools**: list, edit the scaling configuration (min/max Droplets and CPU/memory targets, or a fixed count), view members and scaling history, chart pool metrics, and delete the pool with or without its Droplets. Pools are created in the DigitalOcean console.
-- **Kubernetes (DOKS)** — clusters, with kubeconfig output for the [Kubernetes plugin](./kubernetes.md).
+- **Kubernetes (DOKS)** — clusters, with kubeconfig output for the [Kubernetes plugin](./kubernetes.md), node CPU/memory/bandwidth metrics, and a **Logs** tab listing the cluster's status messages (the notices DigitalOcean posts when something affects the cluster's lifecycle, such as delayed provisioning).
 - **Managed databases** — Postgres, MySQL, Valkey (Redis-compatible caching), MongoDB, Kafka, OpenSearch, and Weaviate (private preview). Connection strings are outputs you can reference from the matching client plugins. DigitalOcean retired Managed Redis on 30 June 2025, so the create form provisions Valkey clusters; pre-migration Redis clusters still appear and connect through the same Redis plugin.
 - **Agent Platform** — list, create, and delete Gradient AI agents. The agent's deployment URL is surfaced as an output you can reference from other resources.
 - **Knowledge Bases** — list, create, edit, and delete RAG knowledge bases; manage their data sources (Spaces buckets, web crawls), trigger and cancel indexing jobs, and watch indexing history. The `kbaas.do-ai.run/v1/{uuid}/retrieve` hybrid retrieval endpoint is exposed as an output.
@@ -45,6 +45,7 @@ The droplet detail page adds:
 - A **header action bar** with state-aware Power On / Reboot / Shutdown buttons and a one-click "Take Snapshot" (auto-named with the droplet name + ISO timestamp).
 - An **Actions tab** with everything else — Power Cycle, hard Power Off, named Snapshot, Rename, Resize (with a CPU/RAM-only vs disk-included toggle), Rebuild, Enable IPv6, Reset Root Password, Enable/Disable Backups, Change Backup Policy (daily vs weekly + hour + weekday), Restore from Backup. Destructive actions show a confirmation prompt.
 - A **Metrics tab** charting every metric the DO Monitoring API exposes for droplets: CPU, load (1/5/15 min), memory (total / available / free / cached), disk read/write, filesystem size/free, and bandwidth on both public and private interfaces in both directions. Memory/disk/load/filesystem series only render when the [DO Metrics Agent](https://docs.digitalocean.com/products/monitoring/how-to/install-metrics-agent/) is installed on the droplet.
+- A **Logs** tab reading the Droplet's logs from [DigitalOcean Insights](https://docs.digitalocean.com/products/insights/) (public preview) for the last 24 hours, with an **all** / **errors** dropdown (errors means severity ERROR and above). Logs only exist for Droplets running the Insights Observability agent in a region Insights supports, and the API token needs the `insights:read` scope; the tab says which of those is missing when the search fails.
 - **Backups / Snapshots / Volumes** tabs listing IDs DO has recorded for this droplet, with quick links into the matching detail page where applicable.
 
 ![DigitalOcean droplet detail page with the Actions tab open showing Power, Snapshot & Image, Configuration, and Backups sections](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/droplet-actions-tab.png)
@@ -63,6 +64,10 @@ DigitalOcean reveals a database user's credential **exactly once**, at creation 
 - **MongoDB / Valkey / OpenSearch / Kafka** — DO doesn't hand back the built-in user's password, so the peer-pane tab needs a user you mint. Click **+ Make connection user** in the cluster's header: Infrawrench creates the user, captures the credential DO returns once (a password, or for Kafka the mTLS cert/key), and stores it encrypted in your local secret store. The cluster's `connectionString` is then built from that user and the tab starts working. No more "DO returned no password" dead-ends. **Kafka** users also carry an ACL, so the form adds **Topic** and **Permission** fields — they default to `admin` on every topic (`*`) so the user works immediately, but you can narrow them (e.g. `produceconsume` on `events-*`) before creating. Kafka connections use **SASL/SCRAM-SHA-256** over TLS (the port DigitalOcean exposes via the API); this needs the user's password, which DO only returns when your API token has the **`database:view_credentials`** scope — note it is _not_ included in "Full Access" by default, so regenerate the token with that scope ticked if Kafka reports a missing password.
 
 You can also mint users from the **DB Users** section on the detail page; the "Make connection user" button is just the one-click version wired to capture + store the credential.
+
+### Metrics tab
+
+Every engine charts CPU, memory and disk usage plus load (1, 5 and 15 minute). MySQL clusters add the MySQL-specific series DigitalOcean's Monitoring API documents: the share of reads that use an index, select/insert/update/delete rates, and connected, active and newly created threads.
 
 ### Logs tab
 
@@ -144,7 +149,7 @@ Apps list under their project with the phase of the active (or in-progress) depl
 - **Cancel deployment** shows while a deployment is in flight.
 - The **App Spec** tab edits the app spec as JSON; applying it validates and redeploys the app.
 - The **Logs** tab shows run, build, deploy and crashed-instance (`RUN_RESTARTED`) logs; pick the type from the dropdown.
-- The **Metrics** tab charts CPU, memory and restart count per component.
+- The **Metrics** tab charts CPU, memory and restart count per component, plus the app's egress bandwidth per UTC day (`/v2/apps/{id}/metrics/bandwidth_daily`, up to 31 days of the selected range).
 
 <insert [DigitalOcean App Platform app detail page showing the Deployments table and the Deploy / Restart / Roll back header actions] here>
 
