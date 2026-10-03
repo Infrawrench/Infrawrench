@@ -1,27 +1,18 @@
 import type { LogsFetchParams, LogsFetchResult } from "@infrawrench/plugin-base";
 import type {
+  LogResourceOption as WireLogResourceOption,
   LogStreamSelector,
   LogWorkspaceQuery,
   LogWorkspaceQueryCreate,
   LogWorkspaceQueryPatch,
 } from "@infrawrench/client-core";
 
-/** One pickable log stream source, as the discovery endpoint returns it. */
-export interface LogResourceOption {
-  resourceId: string;
-  accountId: string;
-  accountName: string;
-  pluginId: string;
-  resourceTypeId: string;
-  displayName: string;
-  /**
-   * Set for sidecar streams (a pod inside a managed cluster): the stored
-   * parent resource the peer client is built through. Carried onto the
-   * stream's `LogStreamSelector` so the fetch path can route via the peer.
-   */
-  parentResourceId?: string;
-  parentDisplayName?: string;
-}
+/**
+ * One pickable log stream source, as the discovery endpoint returns it. The
+ * wire type lives in client-core; aliased (not re-exported) so the dts bundler
+ * cannot drop it from this package's barrel.
+ */
+export type LogResourceOption = WireLogResourceOption;
 
 /**
  * Saved-query storage. Cloud-only: hosts without it (desktop local mode)

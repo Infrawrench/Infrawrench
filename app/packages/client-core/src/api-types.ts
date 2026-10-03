@@ -15,7 +15,7 @@
  * the OpenAPI doc honest).
  */
 
-import type { AttachTarget } from "@infrawrench/plugin-base";
+import type { AttachTarget, PeerPaneSchema } from "@infrawrench/plugin-base";
 
 /**
  * Full account row as returned by `GET /api/org/:orgId/accounts`.
@@ -46,6 +46,68 @@ export interface Dashboard {
   name: string;
   isDefault: boolean;
 }
+
+/** A resource pinned onto a dashboard, with its grid placement (`DashboardPin`). */
+export interface DashboardPin {
+  pinId: string;
+  resourceId: string;
+  gridX: number;
+  gridY: number;
+  gridW: number;
+  gridH: number;
+}
+
+/**
+ * A workflow pinned onto a dashboard (`DashboardWorkflowPin`). Unlike resource
+ * pins, which need a live provider probe, the card's whole contents are
+ * DB-only server-side, so they arrive inline with the dashboard.
+ */
+export interface DashboardWorkflowPin {
+  pinId: string;
+  workflowId: string;
+  gridX: number;
+  name: string;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  metrics: Array<{ key: string; label: string; unit: string | null; value: unknown }>;
+}
+
+/**
+ * One `GET /api/org/:orgId/search` hit: a resource (or workflow) with the
+ * labels a picker renders next to it.
+ */
+export interface ResourceSearchResult {
+  id: string;
+  pluginId: string;
+  pluginDisplayName: string;
+  pluginLogoSvg: string;
+  resourceTypeId: string;
+  resourceTypeLabel: string;
+  accountId: string;
+  accountName: string;
+  displayName: string;
+  subtitle?: string | undefined;
+  fields?: Record<string, unknown> | undefined;
+  externalId?: string | undefined;
+}
+
+/**
+ * A peer integration pane resolved for a resource's detail view: another
+ * plugin's schema rendered as a tab (e.g. a Kubernetes pane on a managed
+ * cluster). Returned by the resource-detail and peer-pane endpoints.
+ */
+export interface ResolvedPeerPane {
+  tabLabel: string;
+  pluginLogoSvg: string;
+  schema: PeerPaneSchema;
+  peerPluginId: string;
+}
+
+/**
+ * A peer integration whose pane is fetched lazily: the tab is known up front,
+ * the schema arrives through a second call.
+ */
+export type PeerIntegrationStub = Omit<ResolvedPeerPane, "schema">;
 
 /**
  * An SSH key entry as returned by `GET /api/org/:orgId/ssh-keys`.
@@ -153,6 +215,56 @@ export interface Recipient {
   phoneNumber: string;
   sms: boolean;
   voice: boolean;
+}
+
+/**
+ * The org's SMS/voice paging settings, as returned by
+ * `GET /api/org/:orgId/twilio`. The Twilio credentials themselves are never
+ * echoed; `credentialsConfigured` says whether both are stored.
+ */
+export interface TwilioPagingSettings {
+  enabled: boolean;
+  fromNumber: string | null;
+  failureThreshold: number;
+  windowMinutes: number;
+  cooldownMinutes: number;
+  /** True iff Account SID + Auth Token are both stored. */
+  credentialsConfigured: boolean;
+}
+
+/**
+ * A change freeze as returned by `GET /api/org/:orgId/change-freezes`
+ * (`ChangeFreeze`). Timestamps are ISO-8601; a null `endsAt` is open-ended.
+ */
+export interface ChangeFreeze {
+  id: string;
+  name: string;
+  reason: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  active: boolean;
+  createdByUserId: string | null;
+  endedByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * An agent credential registration as returned by
+ * `GET /api/org/:orgId/agent-registrations` (`AgentRegistration`).
+ */
+export interface AgentRegistration {
+  id: string;
+  label: string | null;
+  kind: string;
+  /** First 8 characters of the credential. */
+  prefix: string | null;
+  claimedAt: string | null;
+  claimedByUserId: string | null;
+  claimedByEmail: string | null;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
 }
 
 /**

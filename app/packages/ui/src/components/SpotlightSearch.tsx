@@ -3,24 +3,16 @@ import { useGT } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
 import { groupBy, formatErrorMessage } from "../utils.js";
 import { toast } from "./Toast/useToast.js";
+import type { ResourceSearchResult } from "@infrawrench/client-core";
 
-export interface SpotlightResult {
-  id: string;
-  pluginId: string;
-  pluginDisplayName: string;
-  pluginLogoSvg: string;
-  resourceTypeId: string;
-  resourceTypeLabel: string;
-  accountId: string;
-  accountName: string;
-  displayName: string;
-  subtitle?: string | undefined;
-  fields?: Record<string, unknown> | undefined;
-  externalId?: string | undefined;
-}
+/** One search hit, as `GET /api/org/:orgId/search` returns it. */
+export type SpotlightResult = ResourceSearchResult;
+
+/** What picking a result does: pin it, open it, or drop it onto a target. */
+export type SpotlightMode = "pin" | "navigate" | "drop";
 
 export interface SpotlightSearchProps {
-  mode: "pin" | "navigate" | "drop";
+  mode: SpotlightMode;
   onClose: () => void;
   onSelect: (result: SpotlightResult) => void | Promise<void>;
   /**

@@ -1,5 +1,7 @@
 /** Shared UI-side shapes for workflows. Kept decoupled from server types. */
 
+import type { WorkflowApprovalStatus as WireWorkflowApprovalStatus } from "@infrawrench/client-core";
+
 /**
  * A value a prompt can resolve to. Mirrors the runtime's `MetricValue`; `null`
  * means the user dismissed the prompt.
@@ -158,7 +160,7 @@ export interface WorkflowApprovalRow {
   runId: string;
   title: string;
   message: string;
-  status: "pending" | "approved" | "denied" | "expired";
+  status: WorkflowApprovalStatus;
   /** When a still-pending request is treated as denied (ISO). */
   expiresAt: string;
   decidedAt?: string | null;
@@ -166,7 +168,8 @@ export interface WorkflowApprovalRow {
   createdAt: string;
 }
 
-export type WorkflowApprovalStatus = WorkflowApprovalRow["status"];
+/** The approval lifecycle, from client-core's `/workflow-approvals` contract. */
+export type WorkflowApprovalStatus = WireWorkflowApprovalStatus;
 
 /**
  * Transport for the org-wide approvals inbox, injected by the host the same way

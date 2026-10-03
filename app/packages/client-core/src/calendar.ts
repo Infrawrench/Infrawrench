@@ -55,7 +55,10 @@ export type CalendarEventSeverity = "critical" | "warning" | "info";
  */
 export type CalendarEventLink =
   | { target: "resource"; accountId: string; resourceId: string }
-  | { target: "tab"; tab: "expiring" | "incidents" | "workflows" | "costs" | "settings" };
+  | { target: "tab"; tab: CalendarTabTarget };
+
+/** The workspace tab kinds a calendar event can point at. */
+export type CalendarTabTarget = "expiring" | "incidents" | "workflows" | "costs" | "settings";
 
 export interface CalendarEvent {
   /**

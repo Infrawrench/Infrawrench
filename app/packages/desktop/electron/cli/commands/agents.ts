@@ -1,17 +1,9 @@
+import type { AgentRegistration } from "@infrawrench/client-core" with {
+  "resolution-mode": "import",
+};
+
 import { orgFetch, resolveOrg, type CliContext } from "../context";
 import { c, printJson, println, printTable, type Column } from "../output";
-
-interface AgentRegistration {
-  id: string;
-  label: string | null;
-  kind: string;
-  prefix: string | null;
-  claimedAt: string | null;
-  claimedByEmail: string | null;
-  lastSeenAt: string | null;
-  revokedAt: string | null;
-  createdAt: string;
-}
 
 function relative(iso: string | null): string {
   if (!iso) return "never";

@@ -20,11 +20,18 @@
  * - Planner savings honour `savingBasis`: "up to $X" for `upper_bound`,
  *   "$X–$Y" for `range`. The published discounts are marketing ceilings.
  */
+import type {
+  CommitmentKind,
+  CommitmentPaymentOption,
+  CommitmentState,
+} from "@infrawrench/plugin-base";
+
 import type { CloudFetch } from "./fetch";
 
-export type CommitmentKind = "reservation" | "savings_plan" | "committed_use";
-export type CommitmentState = "active" | "expired" | "queued";
-export type CommitmentPaymentOption = "all_upfront" | "partial_upfront" | "no_upfront" | "monthly";
+// The vocabularies are the plugin contract's: a holding's kind, state and
+// payment option are exactly what the plugin reported, passed through the
+// feed untranslated. Type-only, so mobile pulls no plugin-base runtime.
+export type { CommitmentKind, CommitmentPaymentOption, CommitmentState };
 
 export type CommitmentUtilizationReason =
   "unit_denominated" | "no_active_days" | "no_data_days" | "unattributed_rows";

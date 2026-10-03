@@ -2,16 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
+import type { OrgRole as Role } from "@infrawrench/client-core";
 import { useSettingsHost, type SettingsApi } from "./host.js";
-
-interface Role {
-  id: string;
-  name: string;
-  description: string | null;
-  isSystem: boolean;
-  systemKey: string | null;
-  permissions: string[];
-}
 
 interface PermissionGroup {
   category: string;

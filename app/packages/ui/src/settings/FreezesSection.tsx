@@ -1,16 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { T, useGT } from "gt-react";
+import type { ChangeFreeze } from "@infrawrench/client-core";
 import { useSettingsHost, type SettingsApi } from "./host.js";
-
-interface ChangeFreeze {
-  id: string;
-  name: string;
-  reason: string | null;
-  startsAt: string;
-  endsAt: string | null;
-  active: boolean;
-  createdAt: string;
-}
 
 function isInEffect(freeze: ChangeFreeze, now: number): boolean {
   if (!freeze.active) return false;

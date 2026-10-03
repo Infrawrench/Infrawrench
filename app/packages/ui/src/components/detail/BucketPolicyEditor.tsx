@@ -1017,7 +1017,7 @@ function TemplatePickerModal({
   onClose,
   onApply,
 }: {
-  vendor: "aws-s3" | "do-spaces" | "scaleway-os";
+  vendor: BucketPolicyEditorCapability["vendor"];
   pending: { template: PolicyTemplate; inputs: Record<string, string> } | null;
   onPendingChange: (
     next: { template: PolicyTemplate; inputs: Record<string, string> } | null,

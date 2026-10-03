@@ -1,29 +1,8 @@
 import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
+import type { AgentRegistration } from "@infrawrench/client-core";
 import { useSettingsHost } from "./host.js";
 import { CARD, SECONDARY_BUTTON } from "./styles.js";
-
-/**
- * The agent registrations acting in this organization.
- *
- * Distinct from the **Agents** workspace tab, which is coding-agent VM
- * sessions and has nothing to do with authentication. This page answers "what
- * non-human things can reach our cloud accounts, who vouched for them, and how
- * do I stop one" — the same question the API Keys page answers for tokens a
- * person minted, which is why it sits directly beside it.
- */
-interface AgentRegistration {
-  id: string;
-  label: string | null;
-  kind: string;
-  prefix: string | null;
-  claimedAt: string | null;
-  claimedByUserId: string | null;
-  claimedByEmail: string | null;
-  lastSeenAt: string | null;
-  revokedAt: string | null;
-  createdAt: string;
-}
 
 function relative(gt: ReturnType<typeof useGT>, iso: string | null): string {
   if (!iso) return gt("never");
@@ -36,6 +15,15 @@ function relative(gt: ReturnType<typeof useGT>, iso: string | null): string {
   return gt("{n}d ago", { n: Math.floor(hours / 24) });
 }
 
+/**
+ * The agent registrations acting in this organization.
+ *
+ * Distinct from the **Agents** workspace tab, which is coding-agent VM
+ * sessions and has nothing to do with authentication. This page answers "what
+ * non-human things can reach our cloud accounts, who vouched for them, and how
+ * do I stop one" — the same question the API Keys page answers for tokens a
+ * person minted, which is why it sits directly beside it.
+ */
 export function AgentsSection() {
   const { orgId, api, has } = useSettingsHost();
   const gt = useGT();

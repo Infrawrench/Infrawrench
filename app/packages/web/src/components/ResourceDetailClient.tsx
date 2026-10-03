@@ -50,7 +50,6 @@ import type {
   MetricSeries,
   PeerPaneResource,
   PeerPaneResourceGroup,
-  PeerPaneSchema,
   QueryCostEstimate,
   SecretVersion,
   SecretVersionMutation,
@@ -58,6 +57,7 @@ import type {
   TerraformExportOutcome,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
+import type { PeerIntegrationStub, ResolvedPeerPane } from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { createWebAgentClient } from "@/lib/agent-client";
@@ -119,18 +119,7 @@ interface ChildTypeData {
   fields?: FieldDefinition[];
 }
 
-interface PeerPaneServerData {
-  tabLabel: string;
-  pluginLogoSvg: string;
-  schema: PeerPaneSchema;
-  peerPluginId: string;
-}
-
-interface PeerIntegrationStub {
-  tabLabel: string;
-  pluginLogoSvg: string;
-  peerPluginId: string;
-}
+type PeerPaneServerData = ResolvedPeerPane;
 
 interface Props {
   detailSchema: DetailViewSchema;

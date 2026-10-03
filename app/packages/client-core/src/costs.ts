@@ -15,7 +15,7 @@
  * every surface.
  */
 
-import type { CostCapabilityDeclaration } from "@infrawrench/plugin-base";
+import type { CostCapabilityDeclaration, CostChargeType } from "@infrawrench/plugin-base";
 
 import type { CostReportWidgetConfig } from "./cost-reports";
 import type { CloudFetch } from "./fetch";
@@ -138,8 +138,10 @@ export const COST_DIMENSIONS = [
 export type CostDimensionId = (typeof COST_DIMENSIONS)[number];
 
 /**
- * What a cost row is, as opposed to what it costs — the client-side mirror of
- * the plugin contract's `CostChargeType`.
+ * What a cost row is, as opposed to what it costs: the plugin contract's
+ * `CostChargeType`, re-exported so clients name it from here. The ordered list
+ * below is the client's own; `satisfies` rejects a name the contract lacks, and
+ * the label map (keyed by the contract type) rejects one the list forgets.
  *
  * Rows collected before charge types existed, and every plugin that cannot tell
  * one kind of charge from another, read as `usage`. That is the honest default:
@@ -162,8 +164,8 @@ export const COST_CHARGE_TYPES = [
   "adjustment",
   "support",
   "other",
-] as const;
-export type CostChargeType = (typeof COST_CHARGE_TYPES)[number];
+] as const satisfies readonly CostChargeType[];
+export type { CostChargeType };
 
 export const COST_CHARGE_TYPE_LABELS: Record<CostChargeType, string> = {
   usage: "Usage",

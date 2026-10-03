@@ -18,6 +18,7 @@ export {
   fetchOrgPermissions,
   hasPermission,
   type OrgMembership,
+  type OrgRole,
   type OrgRoleSummary,
 } from "./permissions";
 export {
@@ -344,6 +345,7 @@ export {
   type CustomGraphRenderSpec,
   type CustomGraphRenderRequest,
   type CustomGraphRenderResult,
+  type CustomGraphRunTrigger,
   type CustomGraphSummary,
   type CustomGraphDetail,
   type CustomGraphWidgetConfig,

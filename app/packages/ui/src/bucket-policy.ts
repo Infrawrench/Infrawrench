@@ -6,7 +6,10 @@
  * where called out.
  */
 
-export type BucketPolicyVendor = "aws-s3" | "do-spaces" | "scaleway-os";
+import type { BucketPolicyEditorCapability } from "@infrawrench/plugin-base";
+
+/** The vendor flavours the plugin contract's bucket-policy capability declares. */
+export type BucketPolicyVendor = BucketPolicyEditorCapability["vendor"];
 
 export interface BucketPolicyDoc {
   Version?: string;

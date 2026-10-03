@@ -158,6 +158,13 @@ export interface CustomGraphRenderSpec {
   notice?: string | undefined;
 }
 
+/**
+ * What started a custom graph run, surfaced to the script as
+ * `graph.event.kind`: a refreshSeconds tick ("refresh"), a control change or
+ * button press ("interaction"), else "manual".
+ */
+export type CustomGraphRunTrigger = "manual" | "refresh" | "interaction";
+
 export interface CustomGraphRenderRequest {
   /** Current control values; omitted ids fall back to script defaults. */
   controls?: CustomGraphControlState | undefined;
@@ -168,7 +175,7 @@ export interface CustomGraphRenderRequest {
    * tick ("refresh"), a control change ("interaction"), else "manual". A
    * button press always reports "interaction".
    */
-  trigger?: "manual" | "refresh" | "interaction" | undefined;
+  trigger?: CustomGraphRunTrigger | undefined;
 }
 
 export interface CustomGraphRenderResult {

@@ -1,17 +1,11 @@
 import { useState } from "react";
 import { useGT } from "gt-react";
+import type { TwilioPagingSettings } from "@infrawrench/client-core";
 import type { Recipient } from "../../api-types.js";
 import { useSettingsHost } from "../host.js";
 import { Field, inputClass, parsePositiveInt } from "./shared.js";
 
-export interface PagingSettings {
-  enabled: boolean;
-  fromNumber: string | null;
-  failureThreshold: number;
-  windowMinutes: number;
-  cooldownMinutes: number;
-  credentialsConfigured: boolean;
-}
+export type PagingSettings = TwilioPagingSettings;
 
 /**
  * Everything SMS/voice in one place: the Twilio credentials, the recipients they

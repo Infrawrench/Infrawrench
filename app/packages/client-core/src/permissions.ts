@@ -29,6 +29,11 @@ export interface OrgRoleSummary {
   systemKey: string | null;
 }
 
+/** A role with its permission set, as listed by `GET /api/org/:orgId/team/roles`. */
+export interface OrgRole extends OrgRoleSummary {
+  permissions: string[];
+}
+
 /** Shape of `GET /api/org/:orgId/team/me`. */
 export interface OrgMembership {
   userId: string;

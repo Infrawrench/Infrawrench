@@ -166,7 +166,11 @@ export { MetricChart } from "./components/charts/MetricChart.js";
 export { SparklineChart } from "./components/charts/SparklineChart.js";
 
 export { SpotlightSearch } from "./components/SpotlightSearch.js";
-export type { SpotlightSearchProps, SpotlightResult } from "./components/SpotlightSearch.js";
+export type {
+  SpotlightMode,
+  SpotlightSearchProps,
+  SpotlightResult,
+} from "./components/SpotlightSearch.js";
 export { MultiSelect } from "./components/MultiSelect.js";
 export type {
   MultiSelectProps,

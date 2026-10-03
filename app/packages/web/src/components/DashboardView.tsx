@@ -56,29 +56,18 @@ import {
   type CustomGraphsClient,
   useStableGT,
 } from "@infrawrench/ui";
+import type { DashboardPin, DashboardWorkflowPin } from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete, apiPatch, apiPut } from "@/lib/api";
 import { createWebCostApi } from "@/lib/cost-client";
 import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
 
-export interface WorkflowPin {
-  pinId: string;
-  workflowId: string;
-  gridX: number;
-  name: string;
-  lastRunAt: string | null;
+/** A pinned workflow, with the run status narrowed to what the card renders. */
+export interface WorkflowPin extends Omit<DashboardWorkflowPin, "lastStatus"> {
   lastStatus: "success" | "failure" | "running" | "pending" | null;
-  metrics: Array<{ key: string; label: string; unit: string | null; value: unknown }>;
 }
 
-interface PinnedResource {
-  pinId: string;
-  resourceId: string;
-  gridX: number;
-  gridY: number;
-  gridW: number;
-  gridH: number;
-}
+type PinnedResource = DashboardPin;
 
 interface PinDetail {
   pinId: string;

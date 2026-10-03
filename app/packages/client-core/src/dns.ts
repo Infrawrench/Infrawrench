@@ -55,6 +55,7 @@ import type {
   DnsRecordRole,
   DnsRoleDeclaration,
   DnsServiceHostRule,
+  PostureSeverity,
 } from "@infrawrench/plugin-base";
 
 import { IDENTITY_FIELD_KEYS } from "./dependency-inference";
@@ -106,7 +107,8 @@ export interface DnsTargetService {
   ruleId: string;
   /** Human namespace name, e.g. "S3 bucket endpoint". */
   label: string;
-  severity: "critical" | "high" | "medium" | "low";
+  /** The rule's `severity`, defaulted (`"high"`) when the plugin left it unset. */
+  severity: PostureSeverity;
   /** Plugin-authored explanation of what claiming the name gets an attacker. */
   reason: string;
   /** The capture-group-1 label the pattern pulled out, e.g. the bucket name. */

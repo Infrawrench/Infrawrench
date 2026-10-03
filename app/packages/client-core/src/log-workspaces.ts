@@ -19,6 +19,23 @@ import type { CloudFetch } from "./fetch";
 // Wire contract
 // ---------------------------------------------------------------------------
 
+/** One pickable log stream source, as the discovery endpoint returns it. */
+export interface LogResourceOption {
+  resourceId: string;
+  accountId: string;
+  accountName: string;
+  pluginId: string;
+  resourceTypeId: string;
+  displayName: string;
+  /**
+   * Set for sidecar streams (a pod inside a managed cluster): the stored
+   * parent resource the peer client is built through. Carried onto the
+   * stream's `LogStreamSelector` so the fetch path can route via the peer.
+   */
+  parentResourceId?: string;
+  parentDisplayName?: string;
+}
+
 /** One resource a saved query tails — enough to call the per-resource logs endpoint. */
 export interface LogStreamSelector {
   /**

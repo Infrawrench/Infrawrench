@@ -1,11 +1,9 @@
 import { useState, useRef, useEffect, useId } from "react";
 import { useGT } from "gt-react";
+import type { CloudOrg } from "@infrawrench/client-core";
 
-export interface OrgEntry {
-  id: string;
-  displayName: string;
-  role: string;
-}
+/** One organization the user belongs to (`GET /api/auth/orgs`). */
+export type OrgEntry = CloudOrg;
 
 export interface OrgSwitcherProps {
   orgs: OrgEntry[];

@@ -4,18 +4,13 @@
  * guidance CTAs. Pure: visibility rules and initial values, no widgets.
  */
 
-interface ShowWhenConditionLike {
-  fieldKey: string;
-  fieldValue?: string;
-  fieldValues?: string[];
-  fieldValuesNot?: string[];
-}
+import type { ShowWhenCondition, ShowWhenRule } from "@infrawrench/plugin-base";
 
-export type ShowWhenRuleLike =
-  ShowWhenConditionLike | { allOf: ShowWhenConditionLike[] } | { anyOf: ShowWhenConditionLike[] };
+/** The plugin contract's `ShowWhenRule`, under the name this module has always exported. */
+export type ShowWhenRuleLike = ShowWhenRule;
 
 function evaluateShowWhenCondition(
-  cond: ShowWhenConditionLike,
+  cond: ShowWhenCondition,
   fields: Record<string, string>,
 ): boolean {
   const current = fields[cond.fieldKey] ?? "";
