@@ -72,6 +72,22 @@ const IP_TYPES: Array<{ id: string; label: string; description: string }> = [
   },
 ];
 
+/** `GET https://api.fly.io/api/v1/apps/{app}/logs`: a JSON:API document. */
+interface FlyLogsResponse {
+  data?: Array<{
+    id?: string;
+    attributes?: {
+      timestamp?: string;
+      message?: string;
+      level?: string;
+      instance?: string;
+      region?: string;
+      meta?: { instance?: string; region?: string };
+    };
+  }>;
+  meta?: { next_token?: string };
+}
+
 /**
  * Fly.io plugin client.
  * Created per account (per API token + org slug) by the host.
@@ -872,9 +888,12 @@ export class FlyClient implements PluginClient {
   }
 
   /**
-   * The Machines API has no log endpoint, but it records every lifecycle
-   * event (launch, start, stop, exit with code, restart) per machine; the
-   * Logs tab shows those, newest last.
+   * Two sources: application output (stdout/stderr) from
+   * `GET https://api.fly.io/api/v1/apps/{app}/logs`, the endpoint `fly logs`
+   * uses (described in Fly's "Logs API options" guide; it returns the latest
+   * 100 lines of the last 24 hours and takes `instance=<machine id>`), and,
+   * for machines, the Machines API's lifecycle events (launch, start, stop,
+   * exit with code), newest last.
    */
   async getLogs(
     typeId: string,
@@ -882,8 +901,18 @@ export class FlyClient implements PluginClient {
     _accountId: string,
     params: LogsFetchParams,
   ): Promise<LogsFetchResult> {
+    if (typeId === "app") {
+      const appName = resourceId.split(":").pop() ?? "";
+      const text = await this.fetchAppLogs(appName, undefined, params.tailLines ?? 100);
+      return { text, containers: ["logs"], activeContainer: "logs" };
+    }
     if (typeId !== "machine") return { text: "", containers: [], activeContainer: "" };
     const parts = parseMachineId(resourceId);
+    const containers = ["logs", "events"];
+    if (params.container !== "events") {
+      const text = await this.fetchAppLogs(parts.appName, parts.machineId, params.tailLines ?? 100);
+      return { text, containers, activeContainer: "logs" };
+    }
     const limit = Math.min(Math.max(params.tailLines ?? 50, 1), 50);
     const events = await this.fetch<FlyMachineEvent[]>(
       `/v1/apps/${parts.appName}/machines/${parts.machineId}/events?limit=${limit}`,
@@ -898,7 +927,40 @@ export class FlyClient implements PluginClient {
       });
     const text =
       lines.length > 0 ? lines.join("\n") + "\n" : "No events recorded for this machine yet.\n";
-    return { text, containers: ["events"], activeContainer: "events" };
+    return { text, containers, activeContainer: "events" };
+  }
+
+  /** Latest app log lines, formatted like `fly logs`, oldest first. */
+  private async fetchAppLogs(
+    appName: string,
+    machineId: string | undefined,
+    tailLines: number,
+  ): Promise<string> {
+    const u = new URL(`https://api.fly.io/api/v1/apps/${encodeURIComponent(appName)}/logs`);
+    if (machineId) u.searchParams.set("instance", machineId);
+    const data = await jsonRestFetch<FlyLogsResponse>({
+      vendor: "Fly",
+      url: u.toString(),
+      errorPath: `/api/v1/apps/${appName}/logs`,
+      headers: { Authorization: `Bearer ${this.token}` },
+      ...(this.services?.http
+        ? {
+            http: this.services.http,
+            ...(this.caCert ? { caCert: this.caCert } : {}),
+          }
+        : {}),
+    });
+    const lines = (data.data ?? [])
+      .map((d) => d.attributes ?? {})
+      .sort((a, b) => String(a.timestamp ?? "").localeCompare(String(b.timestamp ?? "")))
+      .map((e) => {
+        const instance = e.instance ?? e.meta?.instance ?? "";
+        const region = e.region ?? e.meta?.region ?? "";
+        const level = e.level ? ` ${e.level}` : "";
+        return `${e.timestamp ?? ""} ${instance}[${region}]${level}: ${e.message ?? ""}`.trimEnd();
+      })
+      .slice(-Math.max(1, tailLines));
+    return lines.length > 0 ? lines.join("\n") + "\n" : "No log output in the last 24 hours.\n";
   }
 
   async attachResource(
@@ -1179,10 +1241,10 @@ export class FlyClient implements PluginClient {
       return series.filter((s): s is MetricSeries => s != null);
     }
 
+    // The `instance` label carries the Machine ID (not the Machines API's
+    // per-version `instance_id`), the same id the logs API filters on.
     const machineFilter =
-      resourceTypeId === "machine"
-        ? `,instance="${String(resource.fields["instanceId"] ?? resource.externalId ?? "")}"`
-        : "";
+      resourceTypeId === "machine" ? `,instance="${parseMachineId(resource.id).machineId}"` : "";
     const labels = `app="${appName}"${machineFilter}`;
     // `fly_instance_cpu` counts centiseconds, so its per-second rate / 100 is cores.
     const queries: Array<[string, string, string]> = [
@@ -1220,6 +1282,79 @@ export class FlyClient implements PluginClient {
         "s",
       ],
       [`sum(fly_app_concurrency{${labels}})`, "Concurrency", "requests"],
+      [
+        `histogram_quantile(0.95, sum(rate(fly_app_connect_time_seconds_bucket{${labels}}[1m])) by (le))`,
+        "Connect Time p95",
+        "s",
+      ],
+      [`sum(rate(fly_app_tcp_connects_count{${labels}}[1m]))`, "TCP Connects", "conn/s"],
+      // CPU performance: time throttled after the burst quota ran out, the
+      // remaining burst balance and the baseline quota, all per Fly's docs
+      // in centiseconds (balance, throttle) or CPUs (baseline).
+      [
+        `sum(rate(fly_instance_cpu_throttle{${labels}}[1m])) by (instance) / 100`,
+        "CPU Throttled",
+        "cores",
+      ],
+      [`min(fly_instance_cpu_balance{${labels}}) / 100`, "CPU Burst Balance", "s"],
+      [`sum(fly_instance_cpu_baseline{${labels}}) by (instance)`, "CPU Baseline", "cores"],
+      // Disk counters come from /proc/diskstats: sectors are 512 bytes, and
+      // the root disk (vdb) and any mounted volume (vdc) are summed.
+      [
+        `sum(rate(fly_instance_disk_sectors_read{${labels}}[1m])) by (instance) * 512`,
+        "Disk Read",
+        "bytes/s",
+      ],
+      [
+        `sum(rate(fly_instance_disk_sectors_written{${labels}}[1m])) by (instance) * 512`,
+        "Disk Write",
+        "bytes/s",
+      ],
+      [
+        `sum(rate(fly_instance_disk_reads_completed{${labels}}[1m])) by (instance)`,
+        "Disk Read IOPS",
+        "ops/s",
+      ],
+      [
+        `sum(rate(fly_instance_disk_writes_completed{${labels}}[1m])) by (instance)`,
+        "Disk Write IOPS",
+        "ops/s",
+      ],
+      [
+        `max(100 * (1 - fly_instance_filesystem_blocks_avail{${labels},mount="/"} / fly_instance_filesystem_blocks{${labels},mount="/"}))`,
+        "Root Disk Used",
+        "%",
+      ],
+      [
+        `sum(fly_instance_memory_swap_total{${labels}} - fly_instance_memory_swap_free{${labels}}) by (instance)`,
+        "Swap Used",
+        "bytes",
+      ],
+      [`sum(fly_instance_filefd_allocated{${labels}}) by (instance)`, "Open File Descriptors", ""],
+      // Edge (Fly Proxy) series carry no `instance` label, so they only
+      // exist at app scope.
+      ...(resourceTypeId === "app"
+        ? ([
+            [`sum(rate(fly_edge_http_responses_count{${labels}}[1m]))`, "Edge Requests", "req/s"],
+            [
+              `sum(rate(fly_edge_http_responses_count{${labels},status=~"5.."}[1m]))`,
+              "Edge 5xx",
+              "req/s",
+            ],
+            [
+              `histogram_quantile(0.95, sum(rate(fly_edge_http_response_time_seconds_bucket{${labels}}[1m])) by (le))`,
+              "Edge Response Time p95",
+              "s",
+            ],
+            [`sum(rate(fly_edge_data_out{${labels}}[1m]))`, "Edge Data Out", "bytes/s"],
+            [`sum(rate(fly_edge_data_in{${labels}}[1m]))`, "Edge Data In", "bytes/s"],
+            [
+              `sum(rate(fly_edge_tls_handshake_errors{${labels}}[1m]))`,
+              "TLS Handshake Errors",
+              "errors/s",
+            ],
+          ] as Array<[string, string, string]>)
+        : []),
     ];
     const series = await Promise.all(queries.map(([q, l, u]) => fetchPromql(q, l, u)));
     return series.filter((s): s is MetricSeries => s != null);
@@ -1276,6 +1411,7 @@ export class FlyClient implements PluginClient {
           },
         ],
         headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+        logs: { defaultTailLines: 100 },
       };
     }
 
@@ -1388,7 +1524,7 @@ export class FlyClient implements PluginClient {
           ...lifecycleActions,
           { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
         ],
-        logs: { defaultTailLines: 50 },
+        logs: { defaultTailLines: 100 },
       };
     }
 

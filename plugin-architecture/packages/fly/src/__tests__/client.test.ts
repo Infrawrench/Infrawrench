@@ -765,9 +765,18 @@ describe("fetchMetricSeries", () => {
     // CPU is converted from centiseconds to cores
     const cpuCall = calls.find((c) => decodeURIComponent(c.url).includes("fly_instance_cpu"));
     expect(decodeURIComponent(cpuCall!.url.replace(/\+/g, " "))).toContain("/ 100");
-    // prometheus query included machine instance filter
+    // prometheus query filters on the Machine ID, not the per-version instance_id
     const promCall = calls.find((c) => c.url.includes("/prometheus/"));
-    expect(decodeURIComponent(promCall!.url)).toContain('instance="inst1"');
+    expect(decodeURIComponent(promCall!.url)).toContain('instance="m1"');
+    expect(series.map((s) => s.label)).toEqual(
+      expect.arrayContaining(["CPU Throttled", "Disk Read", "Disk Write IOPS", "Root Disk Used"]),
+    );
+    // Edge series have no instance label, so a machine never asks for them
+    expect(calls.some((c) => decodeURIComponent(c.url).includes("fly_edge_"))).toBe(false);
+    const diskCall = calls.find((c) =>
+      decodeURIComponent(c.url).includes("fly_instance_disk_sectors_read"),
+    );
+    expect(decodeURIComponent(diskCall!.url.replace(/\+/g, " "))).toContain("* 512");
   });
 
   it("returns empty when appName cannot be resolved", async () => {
@@ -832,6 +841,99 @@ describe("fetchMetricSeries", () => {
     expect(series).toEqual([]);
     const promCall = calls.find((c) => c.url.includes("/prometheus/"));
     expect(decodeURIComponent(promCall!.url)).not.toContain("instance=");
+  });
+
+  it("adds Fly Proxy edge series at app scope", async () => {
+    router([
+      [(u) => u.includes("/v1/apps/app-one"), { id: "a", name: "app-one", status: "deployed" }],
+      [
+        (u) => u.includes("/prometheus/"),
+        { data: { result: [{ metric: {}, values: [[1, "5"]] }] } },
+      ],
+    ]);
+    const series = await client().fetchMetricSeries("app", "acct-1:app:app-one", ACCOUNT);
+    expect(series.map((s) => s.label)).toEqual(
+      expect.arrayContaining([
+        "Edge Requests",
+        "Edge 5xx",
+        "Edge Response Time p95",
+        "Edge Data Out",
+        "Edge Data In",
+        "TLS Handshake Errors",
+      ]),
+    );
+    expect(series.find((s) => s.label === "Edge Data Out")!.unit).toBe("bytes/s");
+  });
+});
+
+describe("app logs", () => {
+  const LOGS = {
+    data: [
+      {
+        id: "2",
+        attributes: {
+          timestamp: "2026-10-01T00:00:02Z",
+          message: "GET / 200",
+          level: "info",
+          instance: "m1",
+          region: "iad",
+        },
+      },
+      {
+        id: "1",
+        attributes: {
+          timestamp: "2026-10-01T00:00:01Z",
+          message: "listening on 8080",
+          level: "info",
+          instance: "m1",
+          region: "iad",
+        },
+      },
+    ],
+    meta: { next_token: "1" },
+  };
+
+  it("fetches a machine's application logs by default, oldest first", async () => {
+    router([[(u) => u.includes("/api/v1/apps/app-one/logs"), LOGS]]);
+    const logs = await client().getLogs("machine", "acct-1:machine:app-one/m1", ACCOUNT, {
+      tailLines: 100,
+    });
+    expect(calls[0]!.url).toBe("https://api.fly.io/api/v1/apps/app-one/logs?instance=m1");
+    const headers = calls[0]!.init?.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer tok");
+    expect(logs.text.trim().split("\n")).toEqual([
+      "2026-10-01T00:00:01Z m1[iad] info: listening on 8080",
+      "2026-10-01T00:00:02Z m1[iad] info: GET / 200",
+    ]);
+    expect(logs.containers).toEqual(["logs", "events"]);
+    expect(logs.activeContainer).toBe("logs");
+  });
+
+  it("tails app-wide logs for an app and honours tailLines", async () => {
+    router([[(u) => u.includes("/api/v1/apps/app-one/logs"), LOGS]]);
+    const logs = await client().getLogs("app", "acct-1:app:app-one", ACCOUNT, { tailLines: 1 });
+    expect(calls[0]!.url).not.toContain("instance=");
+    expect(logs.text).toBe("2026-10-01T00:00:02Z m1[iad] info: GET / 200\n");
+    expect(logs.containers).toEqual(["logs"]);
+  });
+
+  it("says so when there is no recent output", async () => {
+    router([[(u) => u.includes("/logs"), { data: [] }]]);
+    const logs = await client().getLogs("app", "acct-1:app:app-one", ACCOUNT, {});
+    expect(logs.text).toContain("No log output");
+  });
+
+  it("gives the app detail a Logs tab", () => {
+    const detail = client().renderDetail({
+      id: "acct-1:app:app-one",
+      pluginId: "fly",
+      resourceTypeId: "app",
+      accountId: ACCOUNT,
+      displayName: "app-one",
+      fields: { name: "app-one", status: "deployed" },
+      resolvedOutputs: {},
+    } as never);
+    expect(detail.logs).toEqual({ defaultTailLines: 100 });
   });
 });
 
@@ -1212,12 +1314,14 @@ describe("machines: sizes, actions, events", () => {
     ]);
     const logs = await client().getLogs("machine", "acct-1:machine:app-one/m1", ACCOUNT, {
       tailLines: 500,
+      container: "events",
     });
     expect(calls[0]!.url).toContain("limit=50");
     const lines = logs.text.trim().split("\n");
     expect(lines[0]).toContain("start");
     expect(lines[1]).toContain("exit_code=137");
-    expect(logs.containers).toEqual(["events"]);
+    expect(logs.containers).toEqual(["logs", "events"]);
+    expect(logs.activeContainer).toBe("events");
   });
 });
 
