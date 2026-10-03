@@ -23,7 +23,7 @@
  * go out but `/infrawrench` commands and Approve/Deny buttons are refused.
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SlackAvailableChannel } from "@infrawrench/client-core";
 
 import { db } from "./db/client";
@@ -189,19 +189,52 @@ function stateKey(): Buffer {
   return createHash("sha256").update(slackClientSecret()).digest();
 }
 
+/**
+ * How long an install `state` stays usable. It has to cover a desktop or mobile
+ * user signing in to the web app in their browser before the Slack approval
+ * screen, so it matches the sign-in round trip's own budget.
+ */
+export const SLACK_STATE_TTL_MS = 30 * 60_000;
+
 export interface SlackInstallState {
   organizationId: string;
-  /** The user who started the install, recorded on the installation row. */
-  userId: string | null;
+  /** The user who started the install; only their browser may finish it. */
+  userId: string;
+  /**
+   * Per-install random value. The browser that starts the install holds it in
+   * an HttpOnly cookie and the callback requires the two to match, so a link
+   * forwarded to someone else's browser cannot complete.
+   */
+  nonce: string;
 }
 
-export function signSlackState(organizationId: string, userId?: string): string {
-  const payload = JSON.stringify({ o: organizationId, ...(userId ? { u: userId } : {}) });
+/** A fresh nonce for {@link signSlackState}. */
+export function newSlackStateNonce(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+export function signSlackState(
+  organizationId: string,
+  userId: string,
+  nonce: string,
+  nowMs = Date.now(),
+): string {
+  const payload = JSON.stringify({
+    o: organizationId,
+    u: userId,
+    n: nonce,
+    e: nowMs + SLACK_STATE_TTL_MS,
+  });
   const mac = createHmac("sha256", stateKey()).update(payload).digest("base64url");
   return `${Buffer.from(payload).toString("base64url")}.${mac}`;
 }
 
-export function verifySlackState(state: string): SlackInstallState | null {
+/**
+ * Check the signature and expiry. A valid state names the org and user an
+ * install belongs to; it does not by itself prove the browser presenting it is
+ * that user's, which is what the nonce cookie is for (see the web routes).
+ */
+export function verifySlackState(state: string, nowMs = Date.now()): SlackInstallState | null {
   const [payloadB64, mac] = state.split(".");
   if (!payloadB64 || !mac) return null;
   const payload = Buffer.from(payloadB64, "base64url").toString("utf8");
@@ -210,12 +243,24 @@ export function verifySlackState(state: string): SlackInstallState | null {
   const want = Buffer.from(expected);
   if (given.length !== want.length || !timingSafeEqual(given, want)) return null;
   try {
-    const parsed = JSON.parse(payload) as { o?: string; u?: string };
-    if (!parsed.o) return null;
-    return { organizationId: parsed.o, userId: parsed.u ?? null };
+    const parsed = JSON.parse(payload) as { o?: string; u?: string; n?: string; e?: number };
+    if (!parsed.o || !parsed.u || !parsed.n || typeof parsed.e !== "number") return null;
+    if (parsed.e <= nowMs) return null;
+    return { organizationId: parsed.o, userId: parsed.u, nonce: parsed.n };
   } catch {
     return null;
   }
+}
+
+/** Constant-time check of a browser's nonce cookie against the state's nonce. */
+export function slackStateNonceMatches(
+  state: SlackInstallState,
+  cookie: string | undefined,
+): boolean {
+  if (!cookie) return false;
+  const given = Buffer.from(cookie);
+  const want = Buffer.from(state.nonce);
+  return given.length === want.length && timingSafeEqual(given, want);
 }
 
 /** The URL the "Add to Slack" button points at. */

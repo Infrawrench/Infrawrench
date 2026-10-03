@@ -150,4 +150,8 @@
 // `currentMonthlyKgCo2e`/`monthlyKgCo2eSaving` on OversizedResource,
 // `monthlyKgCo2e`/`uncarbonedCount` on EnvironmentCostEstimate, and an
 // optional `carbon` hint on the create-config response. All additive.
-export const API_VERSION = "1.42.0";
+// 1.42.2: the Slack `install-url` now returns this server's
+// `/api/slack/oauth/start` hop instead of a slack.com URL, and the state it
+// carries expires after 30 minutes and only completes in the requesting
+// user's own signed-in browser. Same response shape; open it the same way.
+export const API_VERSION = "1.42.2";

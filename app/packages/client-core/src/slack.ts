@@ -54,8 +54,10 @@ export async function getSlackStatus(api: CloudFetch, orgId: string): Promise<Sl
 }
 
 /**
- * The "Add to Slack" URL. Open it in a browser: Slack redirects back to the
- * server's OAuth callback, which records the install against this org.
+ * The "Add to Slack" URL. Open it in a browser within 30 minutes: the server
+ * has that browser sign in as the requesting user (if it is not already), sends
+ * it on to Slack, and the OAuth callback records the install against this org.
+ * It only completes in the browser that opened it, as that user.
  */
 export async function getSlackInstallUrl(api: CloudFetch, orgId: string): Promise<string | null> {
   const res = await api.org<{ url: string }>(orgId, "/slack/install-url");

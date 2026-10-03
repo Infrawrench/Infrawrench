@@ -68,7 +68,7 @@ export function registerSlackPaths(ctx: BuildContext) {
     tags: ["Slack"],
     summary: "Get the Add to Slack URL",
     description:
-      "Returns a slack.com/oauth/v2/authorize URL carrying a signed `state` that binds the resulting install to this organization. Send the user's browser there; Slack redirects back to /api/slack/oauth/callback.",
+      "Returns a URL on this server (/api/slack/oauth/start) carrying a signed `state` that binds the resulting install to this organization and to the calling user. Open it in that user's browser within 30 minutes: it asks them to sign in if needed, then redirects to Slack's approval screen, and Slack redirects back to /api/slack/oauth/callback. The install only completes in the browser that opened the link as that user.",
     request: { params: OrgIdParam },
     responses: {
       200: {

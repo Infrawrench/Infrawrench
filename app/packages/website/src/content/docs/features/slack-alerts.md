@@ -14,6 +14,8 @@ Slack is also the one two-way transport: approval requests arrive with working *
 
 Go to **Settings → Notifications** and press **Add to Slack**. That opens Slack's own approval screen, where you choose the workspace and confirm the permissions. When you approve, Slack sends you back to Infrawrench and the workspace shows as connected.
 
+The install link is tied to you and to the browser that opens it, and it expires after 30 minutes. If you start from the desktop or mobile app, the link opens in your browser, which asks you to sign in to Infrawrench first if it is not already signed in as you. Forwarding the link to someone else does not work: whoever installs Slack has to start from their own **Add to Slack** button.
+
 ![Settings → Notifications page showing the Slack section before connecting, with the Add to Slack button visible](https://agent-assets.infrawrench.com/docs-screenshots/features/slack-alerts/slack-before-connect.png)
 
 Infrawrench asks for five scopes and nothing else:
