@@ -12,11 +12,11 @@ The **Commitments** section on the Costs panel makes the holdings first-class: e
 
 ## What's collected
 
-| Provider  | What appears                                                  | Source                                                                             |
-| --------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **AWS**   | EC2 Reserved Instances, RDS Reserved Instances, Savings Plans | `DescribeReservedInstances`, `DescribeReservedDBInstances`, `DescribeSavingsPlans` |
-| **GCP**   | Committed-use discounts                                       | `compute.regionCommitments`                                                        |
-| **Azure** | Reservations                                                  | the tenant-level `Microsoft.Capacity/reservations` list                            |
+| Provider  | What appears                                                  | Source                                                                                               |
+| --------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **AWS**   | EC2 Reserved Instances, RDS Reserved Instances, Savings Plans | `DescribeReservedInstances`, `DescribeReservedDBInstances`, `DescribeSavingsPlans`                   |
+| **GCP**   | Committed-use discounts                                       | `compute.regionCommitments`                                                                          |
+| **Azure** | Reservations, Savings Plans                                   | the tenant-level `Microsoft.Capacity/reservations` list and `Microsoft.BillingBenefits/savingsPlans` |
 
 Expired and queued commitments are collected too — expired records are what close out the history, and a queued purchase is a fact worth seeing before it starts billing.
 
@@ -84,6 +84,6 @@ Two of these facts raise alerts of their own — see
 
 - **AWS** — `ec2:DescribeReservedInstances`, `rds:DescribeReservedDBInstances`, `savingsplans:DescribeSavingsPlans`.
 - **GCP** — `compute.commitments.list` (included in `roles/compute.viewer`).
-- **Azure** — the service principal needs **Reader** on the reservations (or the **Reservations Reader** role at tenant scope).
+- **Azure** — the service principal needs **Reader** on the reservations (or the **Reservations Reader** role at tenant scope). Savings plans need the **Savings plan Reader** role; without it, reservations are still collected and savings plans are skipped.
 
 A collection failure shows up on the section itself with the provider's error, and collection backs off exponentially — a missing permission won't hammer the API.

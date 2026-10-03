@@ -12,7 +12,7 @@ Eligibility is discovered from each provider plugin, never hard-coded: a resourc
 
 - **AWS** — EC2 instances, RDS instances
 - **Google Cloud** — Compute Engine VM instances
-- **Azure** — Virtual machines (stop = deallocate, the one that stops billing)
+- **Azure** — Virtual machines (stop = deallocate, the one that stops billing), AKS clusters, App Service and Function Apps, container instances, PostgreSQL and MySQL flexible servers, application gateways, Container Apps
 - **DigitalOcean** — Droplets
 - **Hetzner Cloud** — Servers
 - **Scaleway** — Instances
@@ -20,6 +20,8 @@ Eligibility is discovered from each provider plugin, never hard-coded: a resourc
 - **Neon** — Compute endpoints (stop = suspend; note any incoming connection also wakes a suspended endpoint)
 - **Together AI** — Dedicated inference endpoints
 - **ClickHouse Cloud** — Services
+- **Databricks** — Clusters, SQL warehouses, apps
+- **OVHcloud** — Public Cloud instances
 
 The same start/stop actions appear as buttons on each resource's detail page, so you can always override a schedule by hand.
 
