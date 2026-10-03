@@ -45,6 +45,12 @@ Each agent has a **Metrics** tab built from its conversation history: conversati
 
 <insert [ElevenLabs agent detail page showing the voice and model section, the system prompt and the recent conversations table] here>
 
+## Voice and model usage
+
+Voices and models each have a **Metrics** tab charting the daily usage attributed to them over the last 30 days, from the same workspace analytics query as cost graphs, grouped by voice or by model. That endpoint returns a generic table without a fixed list of measure columns, so every numeric column it reports (credits and spend among them) becomes a chart, labelled from the column name. It needs the same **Workspace / usage** read access as cost graphs; an empty tab on a voice you have used usually means the key lacks it.
+
+An agent's dashboard card also shows how many of its conversations are live right now, from `GET /v1/convai/analytics/live-count`.
+
 ## Cost graphs
 
 ElevenLabs accounts feed [cost graphs & budgets](../features/cloud-costs.md) with real money — not an estimate off the credit meter. Spend is collected daily from the workspace analytics API in daily buckets, broken down by **product type** (which becomes the service dimension — text to speech, speech to text, and so on) and by **region**. A year of history is available, and the trailing three days are re-fetched on each sync because usage-based charges settle a day or two late.

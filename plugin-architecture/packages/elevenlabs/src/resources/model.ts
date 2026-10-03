@@ -26,6 +26,8 @@ export const ModelResourceType = rt({
     o("modelId", "Model ID", { description: "The model_id passed to text-to-speech requests" }),
     o("maxCharacters", "Max Characters Per Request"),
   ],
+  // Daily usage from the workspace analytics query, grouped by model.
+  supportsMetrics: true,
   iconKey: "model",
   supportsDelete: false,
 });
