@@ -33,7 +33,11 @@ function onEvent(channel: string, handler: (payload: unknown) => void): () => vo
   return () => window.electronAPI.offAll(channel);
 }
 
-export interface AppsConnectConfig {
+/**
+ * A type alias rather than an interface so it carries the implicit index
+ * signature `invoke`'s `Record<string, unknown>` argument needs.
+ */
+export type AppsConnectConfig = {
   host: string;
   port: number;
   username: string;
@@ -47,7 +51,7 @@ export interface AppsConnectConfig {
   cloudKey?: { orgId: string; sshKeyId: string };
   agentForward?: boolean;
   jumpHops?: Array<{ host: string; port: number; username: string; privateKey: string }>;
-}
+};
 
 /** Everything a tab needs to talk to one host. */
 export interface HostAppsSession {
@@ -117,19 +121,17 @@ export async function acquireHostSession(
   }
 
   const clientCaps = await caps();
-  const { sessionId } = await invoke<{ sessionId: string }>(
-    "apps_session_open",
-    config as unknown as Record<string, unknown>,
-  );
+  const { sessionId } = await invoke<{ sessionId: string }>("apps_session_open", config);
 
   const listeners = new Set<(status: HostStatus) => void>();
-  const entry: Entry = {
+  // `session` is attached below, once the transport it needs exists; the
+  // status closures only ever run after that.
+  const entry: Omit<Entry, "session"> = {
     key,
     holders: 1,
     status: { stage: "connecting" },
     listeners,
     sessionId,
-    session: undefined as unknown as AppSession,
     dispose: () => {},
   };
 
@@ -168,7 +170,7 @@ export async function acquireHostSession(
     close: () => void invoke<void>("apps_session_close", { sessionId }),
   };
 
-  entry.session = new AppSession(transport, {
+  const session = new AppSession(transport, {
     caps: clientCaps,
     devicePixelRatio: window.devicePixelRatio || 1,
     events: {
@@ -186,8 +188,10 @@ export async function acquireHostSession(
     void invoke<void>("apps_session_close", { sessionId });
   };
 
-  entries.set(key, entry);
-  return view(entry);
+  // Same object, now complete: the closures above keep writing to it.
+  const ready: Entry = Object.assign(entry, { session });
+  entries.set(key, ready);
+  return view(ready);
 }
 
 function view(entry: Entry): HostAppsSession {

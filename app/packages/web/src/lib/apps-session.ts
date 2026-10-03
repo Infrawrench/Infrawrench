@@ -119,13 +119,14 @@ export async function acquireHostSession(
   /** Frames the session sends before the socket finishes opening. */
   const pending: Uint8Array[] = [];
 
-  const entry: Entry = {
+  // `session` is attached below, once the transport it needs exists; the
+  // status closures only ever run after that.
+  const entry: Omit<Entry, "session"> = {
     key,
     holders: 1,
     status: { stage: "connecting" },
     listeners,
     socket,
-    session: undefined as unknown as AppSession,
   };
 
   const setStatus = (status: HostStatus) => {
@@ -167,7 +168,7 @@ export async function acquireHostSession(
     close: () => socket.close(),
   };
 
-  entry.session = new AppSession(transport, {
+  const session = new AppSession(transport, {
     caps: clientCaps,
     devicePixelRatio: window.devicePixelRatio || 1,
     events: {
@@ -177,8 +178,10 @@ export async function acquireHostSession(
     },
   });
 
-  entries.set(key, entry);
-  return view(entry);
+  // Same object, now complete: the closures above keep writing to it.
+  const ready: Entry = Object.assign(entry, { session });
+  entries.set(key, ready);
+  return view(ready);
 }
 
 /** A copy the DOM will accept, without assuming where the view is backed. */
