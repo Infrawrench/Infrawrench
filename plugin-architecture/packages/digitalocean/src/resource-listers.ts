@@ -10,6 +10,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { signedS3Fetch } from "@infrawrench/plugin-base";
 import { SPACES_REGIONS } from "./constants.js";
+import { listDoServiceResources } from "./service-listers.js";
 
 /** The slice of `DigitalOceanClient` the listers need. */
 export interface DoListerContext {
@@ -78,8 +79,11 @@ export async function listDoResources(
       return listModelApiKeys(ctx, accountId);
     case "agent-api-key":
       return listAgentApiKeys(ctx, accountId);
-    default:
+    default: {
+      const services = await listDoServiceResources(ctx, typeId, accountId);
+      if (services) return services;
       throw new Error(`DigitalOcean plugin: unknown resource type "${typeId}"`);
+    }
   }
 }
 

@@ -16,6 +16,12 @@ import type {
 export interface DoCreateContext {
   fetch<T>(path: string, options?: RequestInit): Promise<T>;
   credentials: Record<string, string>;
+  /**
+   * Origin hostnames (`{bucket}.{region}.digitaloceanspaces.com`) of the
+   * account's Spaces buckets, for the CDN endpoint origin picker. Empty when
+   * the account has no Spaces keys. Optional so tests can omit it.
+   */
+  listSpacesOrigins?(): Promise<string[]>;
 }
 
 /**

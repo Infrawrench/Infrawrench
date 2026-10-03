@@ -24,6 +24,15 @@ import { DedicatedInferenceResourceType } from "./resources/dedicated-inference.
 import { InferenceBatchResourceType } from "./resources/inference-batch.js";
 import { ModelApiKeyResourceType } from "./resources/model-api-key.js";
 import { AgentApiKeyResourceType } from "./resources/agent-api-key.js";
+import { LoadBalancerResourceType } from "./resources/load-balancer.js";
+import { FirewallResourceType } from "./resources/firewall.js";
+import { CertificateResourceType } from "./resources/certificate.js";
+import { CdnEndpointResourceType } from "./resources/cdn-endpoint.js";
+import { UptimeCheckResourceType } from "./resources/uptime-check.js";
+import { VpcNatGatewayResourceType } from "./resources/vpc-nat-gateway.js";
+import { VpcPeeringResourceType } from "./resources/vpc-peering.js";
+import { AppResourceType } from "./resources/app.js";
+import { AutoscalePoolResourceType } from "./resources/autoscale-pool.js";
 
 const manifest: PluginManifest = {
   id: "digitalocean",
@@ -97,6 +106,15 @@ const resourceTypes: ResourceTypeDefinition[] = [
   VolumeResourceType,
   VpcResourceType,
   ReservedIpResourceType,
+  VpcNatGatewayResourceType,
+  VpcPeeringResourceType,
+  LoadBalancerResourceType,
+  FirewallResourceType,
+  CertificateResourceType,
+  CdnEndpointResourceType,
+  AppResourceType,
+  AutoscalePoolResourceType,
+  UptimeCheckResourceType,
   SnapshotResourceType,
   ImageResourceType,
   NfsShareResourceType,

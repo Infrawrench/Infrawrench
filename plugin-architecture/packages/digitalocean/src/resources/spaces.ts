@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { SPACES_REGIONS } from "../constants.js";
 
 export const SpacesResourceType = rt({
   name: "Spaces Bucket",
@@ -8,7 +9,7 @@ export const SpacesResourceType = rt({
     f("name", "Bucket Name"),
     f("region", "Region", {
       kind: "enum",
-      enumValues: ["nyc3", "sfo3", "ams3", "fra1", "sgp1", "syd1"],
+      enumValues: SPACES_REGIONS,
     }),
     f("accessControl", "Access Control", { kind: "enum", enumValues: ["private", "public-read"] }),
   ],

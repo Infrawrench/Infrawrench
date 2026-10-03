@@ -86,6 +86,28 @@ import {
   streamDoChatMessage,
 } from "./nosql-console.js";
 import { type DoEnrichContext, enrichDoDetail } from "./enrich-detail.js";
+import { isServiceTypeId } from "./service-listers.js";
+import {
+  type DoServiceContext,
+  applyDoAppSpec,
+  deleteDoServiceResource,
+  enrichDoServiceDetail,
+  executeDoServiceCommand,
+  fetchDoAppLogs,
+  fetchDoServiceMetrics,
+  getDoAppSpec,
+  invokeDoServiceAction,
+  updateDoServiceResource,
+} from "./service-ops.js";
+import {
+  applyAppDetail,
+  applyAutoscalePoolDetail,
+  applyCdnEndpointDetail,
+  applyFirewallDetail,
+  applyLoadBalancerDetail,
+  applyUptimeCheckDetail,
+  applyVpcNatGatewayDetail,
+} from "./detail-renderers/services.js";
 
 /**
  * DO's managed-database `connection.uri` doesn't always carry the credentials
@@ -638,6 +660,13 @@ export class DigitalOceanClient implements PluginClient {
       }
     }
 
+    if (isServiceTypeId(typeId)) {
+      // Every output these types declare is captured by the lister.
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+    }
+
     if (typeId === "vpc" && outputKey === "vpcId") {
       // The VPC uuid is the externalId: no API call needed.
       return externalId;
@@ -740,6 +769,15 @@ export class DigitalOceanClient implements PluginClient {
     return {
       fetch: this.fetch.bind(this),
       credentials: this.credentials,
+      listSpacesOrigins: async () => {
+        const buckets = await listSpacesBuckets(this.listerCtx, "");
+        return buckets
+          .map(
+            (b) =>
+              `${String(b.externalId ?? "")}.${String(b.fields["region"] ?? "")}.digitaloceanspaces.com`,
+          )
+          .filter((h) => !h.startsWith("."));
+      },
     };
   }
 
@@ -866,7 +904,13 @@ export class DigitalOceanClient implements PluginClient {
     );
   }
 
+  /** The slice of this client the networking/platform service ops need. */
+  private get serviceCtx(): DoServiceContext {
+    return { fetch: this.fetch.bind(this) };
+  }
+
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+    if (await deleteDoServiceResource(this.serviceCtx, typeId, resourceId)) return;
     const externalId = resourceId.split(":").pop();
     if (!externalId) throw new Error("Cannot parse resource ID");
 
@@ -1053,6 +1097,17 @@ export class DigitalOceanClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
     const externalId = resourceId.split(":").pop() ?? "";
+
+    if (isServiceTypeId(typeId)) {
+      const updated = await updateDoServiceResource(
+        this.serviceCtx,
+        typeId,
+        resourceId,
+        accountId,
+        fields,
+      );
+      if (updated) return updated;
+    }
 
     if (typeId === "gen-ai-agent") {
       // DO's PUT /v2/gen-ai/agents/{uuid} accepts only the fields supplied:
@@ -1563,6 +1618,7 @@ export class DigitalOceanClient implements PluginClient {
     if (typeId === "reserved-ip") {
       return invokeReservedIpAction(this.actionCtx, resourceId, accountId, actionId);
     }
+    if (await invokeDoServiceAction(this.serviceCtx, typeId, resourceId, actionId)) return;
     if (typeId === "gen-ai-agent") {
       const agentUuid = resourceId.split(":").slice(2).join(":");
       if (actionId === "make-public" || actionId === "make-private") {
@@ -1623,6 +1679,16 @@ export class DigitalOceanClient implements PluginClient {
     command: string,
     args: (string | number)[],
   ): Promise<unknown> {
+    if (isServiceTypeId(typeId)) {
+      const result = await executeDoServiceCommand(
+        this.serviceCtx,
+        typeId,
+        resourceId,
+        command,
+        args,
+      );
+      if (result !== undefined) return result;
+    }
     return executeDoNoSqlCommand(this.nosqlCtx, typeId, resourceId, accountId, command, args);
   }
 
@@ -1732,6 +1798,69 @@ export class DigitalOceanClient implements PluginClient {
         if (f["purpose"]) stats.push({ label: "Purpose", value: String(f["purpose"]) });
         return stats;
       }
+      case "load-balancer":
+        return [
+          { label: "IP", value: resource.resolvedOutputs["ip"] || "Pending" },
+          { label: "Region", value: String(f["region"] ?? "") || "Global" },
+          { label: "Nodes", value: String(f["sizeUnit"] ?? "") },
+          { label: "Rules", value: String(f["forwardingRules"] ?? "") },
+        ];
+      case "firewall":
+        return [
+          { label: "Inbound", value: String(f["inboundRuleCount"] ?? 0) },
+          { label: "Outbound", value: String(f["outboundRuleCount"] ?? 0) },
+          {
+            label: "Droplets",
+            value: String(
+              String(f["dropletIds"] ?? "")
+                .split(",")
+                .filter(Boolean).length,
+            ),
+          },
+        ];
+      case "certificate":
+        return [
+          { label: "Type", value: f["type"] === "lets_encrypt" ? "Let's Encrypt" : "Custom" },
+          { label: "State", value: String(f["state"] ?? "") },
+          { label: "Expires", value: String(f["notAfter"] ?? "").slice(0, 10) },
+        ];
+      case "cdn-endpoint":
+        return [
+          { label: "Hostname", value: String(f["customDomain"] || f["endpoint"] || "") },
+          { label: "TTL", value: `${String(f["ttl"] ?? "")} s` },
+        ];
+      case "uptime-check":
+        return [
+          { label: "Type", value: String(f["type"] ?? "") },
+          { label: "Target", value: String(f["target"] ?? "") },
+          { label: "Enabled", value: f["enabled"] === false ? "No" : "Yes" },
+        ];
+      case "vpc-nat-gateway":
+        return [
+          { label: "Region", value: String(f["region"] ?? "") },
+          { label: "Size", value: String(f["size"] ?? "") },
+          { label: "Egress IP", value: String(f["egressIp"] ?? "") },
+        ];
+      case "vpc-peering":
+        return [{ label: "Status", value: String(f["status"] ?? "") }];
+      case "app":
+        return [
+          { label: "Phase", value: String(f["phase"] ?? "") },
+          { label: "Region", value: String(f["region"] ?? "") },
+          ...(f["liveUrl"] ? [{ label: "URL", value: String(f["liveUrl"]) }] : []),
+        ];
+      case "autoscale-pool":
+        return [
+          { label: "Droplets", value: String(f["activeResourcesCount"] ?? 0) },
+          {
+            label: "Range",
+            value:
+              f["mode"] === "static"
+                ? `fixed ${String(f["targetNumberInstances"] ?? "")}`
+                : `${String(f["minInstances"] ?? "")}-${String(f["maxInstances"] ?? "")}`,
+          },
+          { label: "Size", value: String(f["size"] ?? "") },
+        ];
       case "spaces-bucket":
         return [
           { label: "Name", value: String(f["name"] ?? "") },
@@ -1752,8 +1881,9 @@ export class DigitalOceanClient implements PluginClient {
     typeId: string,
     resourceId: string,
     _accountId: string,
-    params: { tailLines?: number },
+    params: { tailLines?: number; container?: string },
   ): Promise<{ text: string; containers: string[]; activeContainer: string }> {
+    if (typeId === "app") return fetchDoAppLogs(this.serviceCtx, resourceId, params);
     if (typeId !== "managed-database") {
       return { text: "", containers: [], activeContainer: "" };
     }
@@ -1794,6 +1924,20 @@ export class DigitalOceanClient implements PluginClient {
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
+    if (isServiceTypeId(resourceTypeId)) {
+      const resource =
+        resourceTypeId === "app"
+          ? await this.getResource(resourceTypeId, resourceId, accountId).catch(() => null)
+          : null;
+      const series = await fetchDoServiceMetrics(
+        this.serviceCtx,
+        resourceTypeId,
+        resourceId,
+        resource,
+        timeRange,
+      );
+      if (series) return series;
+    }
     return fetchDoMetricSeries(this.metricCtx, resourceTypeId, resourceId, accountId, timeRange);
   }
   private get enrichCtx(): DoEnrichContext {
@@ -1809,6 +1953,9 @@ export class DigitalOceanClient implements PluginClient {
    * pickers instead of raw text inputs: see `./enrich-detail.ts`.
    */
   async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    if (isServiceTypeId(resource.resourceTypeId)) {
+      return enrichDoServiceDetail(this.serviceCtx, resource);
+    }
     return enrichDoDetail(this.enrichCtx, resource);
   }
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -1853,6 +2000,20 @@ export class DigitalOceanClient implements PluginClient {
       applyNfsShareDetail(detail, resource);
     } else if (resource.resourceTypeId === "reserved-ip") {
       applyReservedIpDetail(detail, resource);
+    } else if (resource.resourceTypeId === "load-balancer") {
+      applyLoadBalancerDetail(detail, resource);
+    } else if (resource.resourceTypeId === "firewall") {
+      applyFirewallDetail(detail, resource);
+    } else if (resource.resourceTypeId === "cdn-endpoint") {
+      applyCdnEndpointDetail(detail, resource);
+    } else if (resource.resourceTypeId === "uptime-check") {
+      applyUptimeCheckDetail(detail, resource);
+    } else if (resource.resourceTypeId === "vpc-nat-gateway") {
+      applyVpcNatGatewayDetail(detail, resource);
+    } else if (resource.resourceTypeId === "app") {
+      applyAppDetail(detail, resource);
+    } else if (resource.resourceTypeId === "autoscale-pool") {
+      applyAutoscalePoolDetail(detail, resource);
     }
 
     if (resource.resourceTypeId === "spaces-bucket") {
@@ -1955,6 +2116,7 @@ export class DigitalOceanClient implements PluginClient {
   async getManifest(resourceId: string, _accountId: string): Promise<string> {
     const parts = resourceId.split(":");
     const typeId = parts[1] ?? "";
+    if (typeId === "app") return getDoAppSpec(this.serviceCtx, resourceId);
     if (typeId !== "spaces-bucket") {
       throw new Error(`DigitalOcean plugin: getManifest not supported for type "${typeId}"`);
     }
@@ -1972,6 +2134,7 @@ export class DigitalOceanClient implements PluginClient {
   async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
     const parts = resourceId.split(":");
     const typeId = parts[1] ?? "";
+    if (typeId === "app") return applyDoAppSpec(this.serviceCtx, resourceId, manifest);
     if (typeId !== "spaces-bucket") {
       throw new Error(`DigitalOcean plugin: applyManifest not supported for type "${typeId}"`);
     }
