@@ -41,8 +41,9 @@ Nothing DigitalOcean-side remains.
   (The DOKS stack needed a `docr-pull` dockerconfigjson secret; this one
   doesn't, which is why the Deployments have no `imagePullSecrets`.)
 - **Keyless CI.** GitHub's OIDC token is exchanged for short-lived credentials
-  on a CI service account via Workload Identity Federation, restricted to this
-  repository. No GCP JSON key exists in repo secrets.
+  on a CI service account via Workload Identity Federation, restricted to
+  `main` of this repository and to jobs running under the `production` GitHub
+  environment. No GCP JSON key exists in repo secrets.
 - **Static ingress IP**, reserved separately from the ingress-nginx release, so
   reinstalling the chart never changes the address DNS points at.
 
@@ -70,8 +71,13 @@ Nothing DigitalOcean-side remains.
                       # workload_identity_provider, ingress_ip, egress_ip
    ```
 
-   - Secrets: `PROD_DATABASE_URL`
-   - Variables: `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`,
+   - Environment: create `production` (Settings, Environments) with a
+     deployment branch rule allowing only `main`; add required reviewers if
+     deploys should wait for approval. Every `web-deploy` job runs under it,
+     and the Workload Identity condition rejects any job that does not.
+   - Environment secret (on `production`, not the repository):
+     `PROD_DATABASE_URL`
+   - Repository variables: `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`,
      `AR_REGISTRY`, plus `GKE_CLUSTER` / `GKE_REGION` if you changed the
      terraform defaults
 

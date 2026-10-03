@@ -28,6 +28,8 @@ env:
 
 jobs:
   build:
+    # workflow_dispatch can target any ref; only main may publish.
+    if: github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
@@ -73,6 +75,7 @@ jobs:
           retention-days: 1
 
   push-manifest:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     needs: build
     steps:
