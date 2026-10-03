@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { overlaySecretTypings, WorkflowsPanel } from "../workflows/WorkflowsPanel.js";
+import { WorkflowsPanel } from "../workflows/WorkflowsPanel.js";
+import { overlaySecretTypings } from "../workflows/workflow-typings.js";
 import type { WorkflowClient, WorkflowSecretSummary, WorkflowSummary } from "../workflows/types.js";
 
 vi.mock("@dnd-kit/core", () => ({
