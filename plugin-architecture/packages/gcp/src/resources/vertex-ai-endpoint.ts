@@ -13,4 +13,5 @@ export const VertexAiEndpointResourceType = rt({
     f("trafficSplit", "Traffic Split", { required: false }),
   ],
   outputs: [],
+  supportsMetrics: true,
 });

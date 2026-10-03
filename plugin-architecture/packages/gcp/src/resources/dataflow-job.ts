@@ -13,4 +13,5 @@ export const DataflowJobResourceType = rt({
     f("sdkVersion", "SDK Version", { required: false }),
   ],
   outputs: [],
+  supportsMetrics: true,
 });

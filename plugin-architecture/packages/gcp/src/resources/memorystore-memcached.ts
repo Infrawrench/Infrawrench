@@ -31,4 +31,5 @@ export const MemorystoreMemcachedResourceType = rt({
     },
   ],
   supportsCreate: true,
+  supportsMetrics: true,
 });

@@ -30,7 +30,7 @@ You can optionally set a **Project ID** to override the project embedded in the 
 The add-account form (and **Check credentials** on the account page) tests the service account's permissions with a single `projects.testIamPermissions` call — see [Credential preflight](../core-concepts/credential-preflight.md):
 
 - **Resource inventory** — a representative sample of the list permissions the plugin uses: `compute.instances.list`, `storage.buckets.list`, `container.clusters.list`, `cloudsql.instances.list`, `run.services.list`, `pubsub.topics.list`, `bigquery.datasets.get`, `secretmanager.secrets.list`.
-- **Metrics & dashboards** — `monitoring.timeSeries.list`.
+- **Metrics & dashboards** — `monitoring.timeSeries.list` for the Metrics tabs and `logging.logEntries.list` for the Logs tabs.
 - **Cost reporting** — `bigquery.jobs.create` and `bigquery.tables.getData`, plus the **Billing export table** field must be set; the checklist points at the [billing export setup](https://cloud.google.com/billing/docs/how-to/export-data-bigquery) when it isn't.
 
 The generator emits a custom role definition in YAML — create it with `gcloud iam roles create infrawrench --project=YOUR_PROJECT --file=role.yaml` and grant it to the service account instead of the broad Viewer role. Cost reporting additionally needs the role (or **BigQuery Data Viewer**) on the billing export dataset itself.
@@ -62,7 +62,7 @@ Cloud Run jobs run containers to completion instead of serving requests. Each jo
 
 - **Execute** on the detail page starts a new execution with the job's configuration. While the latest execution is pending or running, **Cancel execution** stops it.
 - The **Executions** tab lists the 20 most recent executions with their status, tasks succeeded, and start and finish times.
-- **Logs** reads the job's `cloud_run_job` entries from Cloud Logging, and **Metrics** charts completed and running executions and task attempts.
+- **Logs** reads the job's `cloud_run_job` entries from Cloud Logging, and **Metrics** charts completed and running executions and task attempts, p95 CPU and memory utilization, and billable instance time.
 - **Create** takes a name, region (from Cloud Run's own region list), container image, tasks, parallelism, retries, timeout, CPU, memory and an optional service account from a picker.
 - **Edit** changes the image, task count, parallelism, retries and timeout. Infrawrench reads the live job and changes only those values, so environment variables, secrets and volumes set elsewhere are kept.
 
@@ -76,9 +76,44 @@ Valkey instances, in cluster mode or with cluster mode disabled, are listed with
 
 - **Create** asks for the instance ID, region, VPC network (from a picker), mode, shard count (cluster mode only), replicas, node type (every type from shared-core-nano to highmem-2xlarge, with its vCPU and memory), Valkey version (9.1 is in Preview), authentication, in-transit encryption and deletion protection. The network needs a [service connection policy](https://cloud.google.com/memorystore/docs/valkey/networking) for Memorystore in that region before the instance can be created.
 - **Edit** scales the node type, shard count and replicas per shard, upgrades the Valkey version, and toggles deletion protection. Only the fields you change are sent. Cluster-mode-disabled instances always keep exactly one shard.
-- **Metrics** charts CPU and memory utilization, used memory, connected clients, commands, keys, and keyspace hits and misses.
+- **Metrics** charts CPU and memory utilization, used memory, connected clients, commands, keys, keyspace hits and misses, evicted keys, and network in and out.
 
 Listing needs `memorystore.instances.list` (in `roles/memorystore.viewer`); creating and editing need `roles/memorystore.admin`.
+
+## Metrics and logs
+
+The **Metrics** tab reads Cloud Monitoring and the **Logs** tab reads Cloud Logging, both scoped to the resource. Each chart combines every series the metric is split into (response codes, storage classes, replication roles, databases) into one line, so it shows the whole resource rather than one slice of it. Counters are charted as per-second rates, latency charts are the 95th percentile, and utilization is a 0 to 100 percent scale. Windows longer than about five hours are averaged into wider buckets so a 30-day range stays readable.
+
+| Resource                             | Metrics                                                                                                                                                                        | Logs                                                |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| Compute Engine VM                    | CPU, network sent and received, disk read and write bytes and operations, memory used (e2 machine types only)                                                                  | Serial console, guest and Ops Agent logs            |
+| GKE cluster                          | Node count, node CPU (allocatable), CPU cores in use, memory used, node network, container restarts                                                                            | Container, pod, node and cluster audit logs         |
+| Cloud SQL                            | CPU, memory and disk utilization, disk used, connections (MySQL and SQL Server, or PostgreSQL backends), disk IO, network, MySQL queries, PostgreSQL transactions, replica lag | Database and audit logs                             |
+| AlloyDB instance                     | CPU, available memory, connections, new connections, transactions                                                                                                              |                                                     |
+| Cloud Run service and Cloud Function | Request rate, 5xx responses, p95 latency, instances, p95 CPU and memory, network, p95 startup latency, billable instance time                                                  | Revision logs                                       |
+| Cloud Run job                        | See [Cloud Run jobs](#cloud-run-jobs)                                                                                                                                          | Job logs                                            |
+| App Engine service                   | Responses, p95 latency, instances, estimated billed instances, memory, network                                                                                                 | `gae_app` logs for the service                      |
+| Cloud Storage bucket                 | Total bytes and object count (including noncurrent and soft-deleted objects; measured once a day), API requests, bytes sent and received                                       |                                                     |
+| BigQuery dataset                     | Stored bytes, table count, uploaded bytes                                                                                                                                      |                                                     |
+| Spanner instance                     | CPU, storage used, nodes, processing units, sessions, API requests, p95 request latency                                                                                        |                                                     |
+| Bigtable instance                    | CPU load and storage utilization of the busiest cluster, nodes, data stored, requests, errors, p95 server latency, bytes in and out                                            |                                                     |
+| Filestore instance                   | Used space, free space, read and write operations and bytes, read and write latency (not on Basic tier)                                                                        |                                                     |
+| Memorystore for Redis                | CPU in use, memory usage, connected clients, commands, cache hit ratio, keys, evicted keys, network traffic                                                                    |                                                     |
+| Memorystore for Memcached            | CPU, hit ratio, items, active connections, operations, evictions, bytes in and out                                                                                             |                                                     |
+| Memorystore for Valkey               | See [Memorystore for Valkey](#memorystore-for-valkey)                                                                                                                          |                                                     |
+| Pub/Sub topic                        | Publish requests, p95 publish latency, byte cost, retained messages and bytes, oldest retained message age                                                                     |                                                     |
+| Pub/Sub subscription                 | Undelivered messages, backlog size, oldest unacked age, sent and acked messages, p95 ack latency, pull and push requests, dead-lettered messages                               |                                                     |
+| Cloud Tasks queue                    | Queue depth, task attempts, p95 attempt delay, API requests                                                                                                                    | Queue logs                                          |
+| Cloud Scheduler job                  |                                                                                                                                                                                | Attempt logs                                        |
+| Workflow                             | Started and finished executions, p95 execution time, execution backlog, internal errors, I/O steps                                                                             | Execution logs                                      |
+| Dataflow job                         | vCPUs in use, system lag, data watermark lag, backlog, elements produced, total vCPU and memory time                                                                           | Job and worker logs                                 |
+| Composer environment                 | Celery workers, unfinished and finished tasks, DAG bag size, DAG parse time, scheduler heartbeats, database CPU                                                                | Airflow logs                                        |
+| Vertex AI endpoint                   | Predictions, errors, p95 prediction latency, replicas, CPU                                                                                                                     |                                                     |
+| Backend service                      | Requests, 5xx responses, p95 backend and total latency, request and response bytes (external HTTP(S) load balancers)                                                           |                                                     |
+| Cloud NAT                            | Port usage, open and new connections, bytes and packets sent and received, dropped packets                                                                                     |                                                     |
+| Cloud Armor policy                   |                                                                                                                                                                                | Requests the policy evaluated on its load balancers |
+
+Charts only appear for series Cloud Monitoring has data for; a service with no traffic in the window shows fewer charts. The service account needs **Monitoring Viewer** (`roles/monitoring.viewer`) for metrics and **Logs Viewer** (`roles/logging.viewer`) for logs.
 
 ## Terraform export
 

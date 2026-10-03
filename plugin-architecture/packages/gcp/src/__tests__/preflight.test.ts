@@ -30,6 +30,7 @@ describe("buildGcpPolicyTemplate", () => {
     expect(lines).toContain('stage: "GA"');
     expect(lines).toContain("includedPermissions:");
     expect(lines).toContain("- monitoring.timeSeries.list");
+    expect(lines).toContain("- logging.logEntries.list");
     expect(lines).toContain("- bigquery.jobs.create");
     expect(lines).toContain("- bigquery.tables.getData");
     // resources permissions must not leak into a metrics+costs template

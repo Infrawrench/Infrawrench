@@ -36,6 +36,8 @@ const RESOURCES_PERMISSIONS: PreflightPermission[] = [
 
 const METRICS_PERMISSIONS: PreflightPermission[] = [
   { id: "monitoring.timeSeries.list", label: "Read Cloud Monitoring time series" },
+  // `entries.list` behind every Logs tab.
+  { id: "logging.logEntries.list", label: "Read Cloud Logging entries" },
 ];
 
 const COSTS_PERMISSIONS: PreflightPermission[] = [
@@ -56,7 +58,8 @@ export const gcpPreflight: PreflightDeclaration = {
     {
       id: "metrics",
       label: "Metrics & dashboards",
-      description: "Cloud Monitoring time series for resource dashboards.",
+      description:
+        "Cloud Monitoring time series and Cloud Logging entries for resource Metrics and Logs tabs.",
       requiredPermissions: METRICS_PERMISSIONS,
     },
     {

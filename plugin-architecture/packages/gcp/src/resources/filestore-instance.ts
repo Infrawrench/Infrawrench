@@ -19,4 +19,5 @@ export const FilestoreInstanceResourceType = rt({
     { fieldKey: "network", targetTypeId: "vpc-network", targetKey: "name", label: "in network" },
   ],
   supportsCreate: true,
+  supportsMetrics: true,
 });
