@@ -3,6 +3,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DeepSeekClient } from "./client.js";
 import { ModelResourceType } from "./resources/model.js";
 import { BalanceResourceType } from "./resources/balance.js";
+import { FileResourceType } from "./resources/file.js";
 
 // DeepSeek's blue whale mark, taken verbatim from the official logo (native
 // viewBox "0 0 24 24", path unmodified) and rescaled onto the 100×100
@@ -13,7 +14,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "DeepSeek",
   description:
-    "DeepSeek's complete REST surface: the model list and the prepaid credit balance. Read-only — DeepSeek publishes no key-management, usage, or billing API.",
+    "DeepSeek's complete REST surface: the model list with context window, modalities and thinking-effort levels, the prepaid credit balance, and Files API uploads. DeepSeek publishes no key-management, usage, or billing API.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#4D6BFE"/>
     <g transform="translate(14,13.8) scale(3)" fill="#FFFFFF">
@@ -51,7 +52,11 @@ const manifest: PluginManifest = {
   },
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [ModelResourceType, BalanceResourceType];
+const resourceTypes: ResourceTypeDefinition[] = [
+  ModelResourceType,
+  BalanceResourceType,
+  FileResourceType,
+];
 
 export const plugin: Plugin = {
   manifest,

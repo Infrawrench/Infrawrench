@@ -9,7 +9,7 @@ import type {
   DashboardStat,
   CreditBalance,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, externalIdOf } from "@infrawrench/plugin-base";
+import { jsonRestFetch, externalIdOf, formatBytes } from "@infrawrench/plugin-base";
 
 /**
  * DeepSeek's canonical base URL. The documented paths carry **no `/v1`
@@ -28,14 +28,85 @@ const BASE_URL = "https://api.deepseek.com";
  * https://api-docs.deepseek.com/quick_start/rate_limit
  */
 const CONCURRENCY_LIMITS: Record<string, number> = {
-  "deepseek-v4-flash": 2500,
+  "deepseek-flash": 2500,
   "deepseek-v4-pro": 500,
+  // Retired names that DeepSeek still accepts and serves on V4.1-Flash, so
+  // they share its cap if an account's listing still carries them.
+  "deepseek-v4-flash": 2500,
+  "deepseek-v4-flash-vision-exp": 2500,
 };
+
+/**
+ * Model names DeepSeek retired but still accepts, routing them to a current
+ * model and billing at its price. `GET /models` lists only the current ids,
+ * so the aliases are filled in from the changelog: anyone grepping their
+ * code for the old name needs to know where it went.
+ * https://api-docs.deepseek.com/updates
+ */
+const LEGACY_ALIASES: Record<string, string[]> = {
+  "deepseek-flash": ["deepseek-v4-flash", "deepseek-v4-flash-vision-exp"],
+};
+
+/**
+ * Peak-hour list prices in USD per million tokens, from DeepSeek's pricing
+ * page (verified 2026-10-03). Off-peak is exactly half of each figure, which
+ * is how the page states it, so only the peak rate is stored. Like the
+ * concurrency caps these are published rather than returned by any endpoint.
+ * https://api-docs.deepseek.com/quick_start/pricing
+ */
+interface ModelPrice {
+  inputCacheHit: number;
+  inputCacheMiss: number;
+  output: number;
+}
+
+const PEAK_PRICES_USD: Record<string, ModelPrice> = {
+  "deepseek-flash": { inputCacheHit: 0.006, inputCacheMiss: 0.3, output: 1.2 },
+  "deepseek-v4-pro": { inputCacheHit: 0.044, inputCacheMiss: 1.32, output: 3.96 },
+};
+
+const PEAK_HOURS =
+  "Peak hours are 01:00-04:00 and 06:00-10:00 UTC, Monday to Friday, excluding Chinese public holidays. Every other hour bills at half the peak rate.";
+
+/**
+ * Published Files API limits. Prose in the guide, not returned by any
+ * endpoint, so they are shown as context and never as a quota reading.
+ * https://api-docs.deepseek.com/guides/files_api
+ */
+const FILES_STORAGE_QUOTA_BYTES = 25 * 1024 * 1024 * 1024;
+const FILES_COUNT_QUOTA = 10_000;
 
 interface DeepSeekModel {
   id: string;
   object?: string;
   owned_by?: string;
+  name?: string;
+  context_window?: number;
+  max_output_tokens?: number;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  effort?: { supported_levels?: string[]; default_level?: string };
+  api_capabilities?: {
+    anthropic_messages?: { system_prompt_update?: string };
+  };
+}
+
+interface DeepSeekFile {
+  id?: string;
+  object?: string;
+  bytes?: number;
+  created_at?: number;
+  filename?: string;
+  purpose?: string;
+  expires_at?: number | null;
+}
+
+interface DeepSeekFileList {
+  object?: string;
+  data?: DeepSeekFile[];
+  first_id?: string | null;
+  last_id?: string | null;
+  has_more?: boolean;
 }
 
 interface DeepSeekModelList {
@@ -67,6 +138,18 @@ function money(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function epochToIso(seconds: number | null | undefined): string {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) return "";
+  return new Date(seconds * 1000).toISOString();
+}
+
+function formatTokens(value: number): string {
+  if (!value) return "";
+  if (value >= 1024 * 1024 && value % (1024 * 1024) === 0) return `${value / (1024 * 1024)}M`;
+  if (value >= 1024 && value % 1024 === 0) return `${value / 1024}K`;
+  return value.toLocaleString("en-US");
+}
+
 function formatMoney(amount: number, currency: string): string {
   return `${amount.toFixed(2)} ${currency || ""}`.trim();
 }
@@ -75,10 +158,10 @@ function formatMoney(amount: number, currency: string): string {
  * DeepSeek plugin client.
  *
  * This is deliberately small because DeepSeek's REST surface is deliberately
- * small: two GET endpoints, one API key, no admin plane. There is no key
- * management API, no usage or cost API, and no speech API, so this plugin
- * does not pretend otherwise. Everything it shows comes from `GET /models` and
- * `GET /user/balance`.
+ * small: one API key, no admin plane, and three management-shaped endpoint
+ * groups. There is no key management API, no usage or cost API, and no
+ * speech API, so this plugin does not pretend otherwise. Everything it shows
+ * comes from `GET /models`, `GET /user/balance` and the Files API.
  */
 export class DeepSeekClient implements PluginClient {
   private readonly apiKey: string;
@@ -114,17 +197,20 @@ export class DeepSeekClient implements PluginClient {
         return this.listModels(accountId);
       case "balance":
         return this.listBalances(accountId);
+      case "file":
+        return this.listFiles(accountId);
       default:
         throw new Error(`DeepSeek plugin: unknown resource type "${typeId}"`);
     }
   }
 
   /**
-   * GET /models: verified 2026-07-28 against
+   * GET /models: verified 2026-10-03 against
    * https://api-docs.deepseek.com/api/list-models
    *
    * Note the canonical path has no `/v1`. There is no pagination: the response
-   * is a flat `{object:"list", data:[…]}`.
+   * is a flat `{object:"list", data:[…]}`. Every metadata field is optional
+   * here so an older response shape (bare `{id, owned_by}`) still maps.
    */
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
     const body = await this.fetch<DeepSeekModelList>("/models");
@@ -132,6 +218,9 @@ export class DeepSeekClient implements PluginClient {
 
     return (body.data ?? []).map((model) => {
       const limit = CONCURRENCY_LIMITS[model.id];
+      const aliases = LEGACY_ALIASES[model.id] ?? [];
+      const contextWindow = Number(model.context_window) || 0;
+      const maxOutput = Number(model.max_output_tokens) || 0;
       return {
         id: `${accountId}:model:${model.id}`,
         pluginId: "deepseek",
@@ -141,10 +230,24 @@ export class DeepSeekClient implements PluginClient {
         externalId: model.id,
         fields: {
           modelId: model.id,
+          name: str(model.name),
           ownedBy: str(model.owned_by),
+          ...(contextWindow ? { contextWindow } : {}),
+          ...(maxOutput ? { maxOutputTokens: maxOutput } : {}),
+          inputModalities: (model.input_modalities ?? []).join(", "),
+          outputModalities: (model.output_modalities ?? []).join(", "),
+          effortLevels: (model.effort?.supported_levels ?? []).join(", "),
+          defaultEffort: str(model.effort?.default_level),
+          anthropicSystemPromptUpdate: str(
+            model.api_capabilities?.anthropic_messages?.system_prompt_update,
+          ),
           ...(limit !== undefined ? { concurrencyLimit: limit } : {}),
+          legacyAliases: aliases.join(", "),
         },
-        resolvedOutputs: { modelId: model.id },
+        resolvedOutputs: {
+          modelId: model.id,
+          ...(contextWindow ? { contextWindow: String(contextWindow) } : {}),
+        },
         secretStates: [],
         createdAt: now,
         updatedAt: now,
@@ -195,6 +298,80 @@ export class DeepSeekClient implements PluginClient {
   }
 
   /**
+   * GET /files: verified 2026-10-03 against
+   * https://api-docs.deepseek.com/api/list-files
+   *
+   * Cursor pagination: `after` takes the last file id of the previous page and
+   * `has_more` says whether to keep going. `limit` maxes out at 1000, which is
+   * also the default, and an account holds at most 10,000 files, so the guard
+   * below is never the thing that stops the loop on a real account.
+   */
+  private async listFiles(accountId: string): Promise<ResourceInstance[]> {
+    const files: DeepSeekFile[] = [];
+    let after = "";
+    for (let page = 0; page < 20; page += 1) {
+      const params = new URLSearchParams({ limit: "1000", order: "desc" });
+      if (after) params.set("after", after);
+      const body = await this.fetch<DeepSeekFileList>(`/files?${params.toString()}`);
+      const items = body.data ?? [];
+      files.push(...items);
+      const next = str(body.last_id) || str(items[items.length - 1]?.id);
+      if (!body.has_more || !next || next === after) break;
+      after = next;
+    }
+    const now = new Date().toISOString();
+    return files
+      .filter((file) => Boolean(file.id))
+      .map((file) => this.mapFile(accountId, file, now));
+  }
+
+  private mapFile(accountId: string, file: DeepSeekFile, now: string): ResourceInstance {
+    const id = str(file.id);
+    const created = epochToIso(file.created_at);
+    return {
+      id: `${accountId}:file:${id}`,
+      pluginId: "deepseek",
+      resourceTypeId: "file",
+      accountId,
+      displayName: str(file.filename) || id,
+      externalId: id,
+      fields: {
+        fileId: id,
+        filename: str(file.filename),
+        bytes: Number(file.bytes) || 0,
+        purpose: str(file.purpose),
+        createdAt: created,
+        expiresAt: epochToIso(file.expires_at),
+      },
+      resolvedOutputs: { fileId: id, filename: str(file.filename) },
+      secretStates: [],
+      createdAt: created || now,
+      updatedAt: now,
+    } satisfies ResourceInstance;
+  }
+
+  /**
+   * DELETE /files/{file_id}: https://api-docs.deepseek.com/api/delete-file
+   *
+   * Files are the only thing in DeepSeek's API that can be removed. The
+   * response is `{id, object, deleted}`; a `deleted: false` is surfaced
+   * rather than swallowed.
+   */
+  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+    if (typeId !== "file") {
+      throw new Error(`DeepSeek plugin: ${typeId} cannot be deleted`);
+    }
+    const fileId = externalIdOf(resourceId);
+    if (!fileId) throw new Error(`DeepSeek plugin: cannot parse resource id "${resourceId}"`);
+    const result = await this.fetch<{ deleted?: boolean }>(`/files/${encodeURIComponent(fileId)}`, {
+      method: "DELETE",
+    });
+    if (result.deleted === false) {
+      throw new Error(`DeepSeek plugin: file ${fileId} was not deleted`);
+    }
+  }
+
+  /**
    * The prepaid balance, one entry per currency.
    *
    * The same `GET /user/balance` the Balance resource type lists, but shaped
@@ -237,8 +414,11 @@ export class DeepSeekClient implements PluginClient {
     outputKey: string,
     accountId: string,
   ): Promise<string> {
-    if (typeId === "model" && outputKey === "modelId") {
-      // Cheap path: the model id *is* the external id.
+    if (
+      (typeId === "model" && outputKey === "modelId") ||
+      (typeId === "file" && outputKey === "fileId")
+    ) {
+      // Cheap path: the model id and the file id *are* the external id.
       return externalIdOf(resourceId);
     }
     const resource = await this.getResource(typeId, resourceId, accountId);
@@ -282,9 +462,22 @@ export class DeepSeekClient implements PluginClient {
 
     if (resourceTypeId === "model") {
       const limit = Number(fields["concurrencyLimit"]) || 0;
+      const contextWindow = Number(fields["contextWindow"]) || 0;
+      const maxOutput = Number(fields["maxOutputTokens"]) || 0;
       return [
         { label: "Model", value: str(fields["modelId"]) },
+        ...(contextWindow ? [{ label: "Context", value: formatTokens(contextWindow) }] : []),
+        ...(maxOutput ? [{ label: "Max output", value: formatTokens(maxOutput) }] : []),
         { label: "Concurrency", value: limit ? String(limit) : "see docs" },
+      ];
+    }
+
+    if (resourceTypeId === "file") {
+      const bytes = Number(fields["bytes"]) || 0;
+      const expires = str(fields["expiresAt"]);
+      return [
+        { label: "Size", value: bytes ? formatBytes(bytes) : "unknown" },
+        { label: "Expires", value: expires || "never" },
       ];
     }
 
@@ -292,9 +485,14 @@ export class DeepSeekClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
-    return resource.resourceTypeId === "balance"
-      ? this.renderBalanceDetail(resource)
-      : this.renderModelDetail(resource);
+    switch (resource.resourceTypeId) {
+      case "balance":
+        return this.renderBalanceDetail(resource);
+      case "file":
+        return this.renderFileDetail(resource);
+      default:
+        return this.renderModelDetail(resource);
+    }
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
@@ -313,16 +511,40 @@ export class DeepSeekClient implements PluginClient {
       };
     }
 
+    if (resource.resourceTypeId === "file") {
+      const bytes = Number(fields["bytes"]) || 0;
+      return {
+        id: resource.id,
+        label: resource.displayName,
+        status: {
+          kind: "status-dot",
+          status: "healthy",
+          label: bytes ? formatBytes(bytes) : "file",
+        },
+      };
+    }
+
     return {
       id: resource.id,
       label: resource.displayName,
-      status: { kind: "status-dot", status: "healthy", label: str(fields["ownedBy"]) || "model" },
+      status: {
+        kind: "status-dot",
+        status: "healthy",
+        label: str(fields["name"]) || str(fields["ownedBy"]) || "model",
+      },
     };
   }
 
   private renderModelDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
+    const modelId = str(fields["modelId"]);
     const limit = Number(fields["concurrencyLimit"]) || 0;
+    const contextWindow = Number(fields["contextWindow"]) || 0;
+    const maxOutput = Number(fields["maxOutputTokens"]) || 0;
+    const effortLevels = str(fields["effortLevels"]);
+    const defaultEffort = str(fields["defaultEffort"]);
+    const aliases = str(fields["legacyAliases"]);
+    const price = PEAK_PRICES_USD[modelId];
 
     const sections: SectionNode[] = [
       {
@@ -332,25 +554,140 @@ export class DeepSeekClient implements PluginClient {
           {
             kind: "key-value-list",
             items: [
-              { key: "Model ID", value: str(fields["modelId"]), copyable: true },
+              { key: "Model ID", value: modelId, copyable: true },
+              ...(str(fields["name"]) ? [{ key: "Name", value: str(fields["name"]) }] : []),
               { key: "Owned By", value: str(fields["ownedBy"]) || "deepseek" },
+              {
+                key: "Context Window",
+                value: contextWindow
+                  ? `${contextWindow.toLocaleString("en-US")} tokens (${formatTokens(contextWindow)})`
+                  : "not reported",
+              },
+              {
+                key: "Max Output",
+                value: maxOutput
+                  ? `${maxOutput.toLocaleString("en-US")} tokens (${formatTokens(maxOutput)})`
+                  : "not reported",
+              },
+              { key: "Input Modalities", value: str(fields["inputModalities"]) || "text" },
+              { key: "Output Modalities", value: str(fields["outputModalities"]) || "text" },
               {
                 key: "Concurrency Limit",
                 value: limit ? `${limit} concurrent requests` : "not published for this model",
               },
+              ...(aliases ? [{ key: "Legacy Aliases", value: aliases }] : []),
             ],
           },
           {
             kind: "text",
             variant: "muted",
             content:
-              "DeepSeek does not publish an RPM or TPM rate limit. A request occupies one concurrent slot from the moment it is sent until the response completes; exceeding the cap returns HTTP 429. Capacity increases are free to request.",
+              "DeepSeek does not publish an RPM or TPM rate limit. A request occupies one concurrent slot from the moment it is sent until the response completes; exceeding the cap returns HTTP 429. The cap is per account, whichever key sends the request, and capacity increases are free to request.",
           },
           {
             kind: "text",
             variant: "muted",
             content:
-              "Call this model at https://api.deepseek.com/chat/completions — the canonical paths have no /v1 segment. A /v1 prefix exists only so the OpenAI SDK works unchanged, and there is an Anthropic-compatible alias at https://api.deepseek.com/anthropic.",
+              "Call this model at https://api.deepseek.com/chat/completions or, in the OpenAI Responses format, /responses. The canonical paths have no /v1 segment; a /v1 prefix exists only so the OpenAI SDK works unchanged, and there is an Anthropic-compatible alias at https://api.deepseek.com/anthropic.",
+          },
+        ],
+      },
+    ];
+
+    if (effortLevels || str(fields["anthropicSystemPromptUpdate"])) {
+      sections.push({
+        kind: "section",
+        title: "Thinking",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              ...(effortLevels ? [{ key: "Effort Levels", value: effortLevels }] : []),
+              ...(defaultEffort ? [{ key: "Default Effort", value: defaultEffort }] : []),
+              ...(str(fields["anthropicSystemPromptUpdate"])
+                ? [
+                    {
+                      key: "Anthropic System Prompt Updates",
+                      value: str(fields["anthropicSystemPromptUpdate"]),
+                    },
+                  ]
+                : []),
+            ],
+          },
+        ],
+      });
+    }
+
+    if (price) {
+      const usd = (value: number) => `$${value.toFixed(3).replace(/0$/, "")}`;
+      sections.push({
+        kind: "section",
+        title: "Pricing",
+        children: [
+          {
+            kind: "table",
+            emphasizeFirstColumn: true,
+            columns: [
+              { key: "category", label: "Per 1M tokens" },
+              { key: "peak", label: "Peak" },
+              { key: "offPeak", label: "Off-peak" },
+            ],
+            rows: [
+              ["Input (cache hit)", price.inputCacheHit],
+              ["Input (cache miss)", price.inputCacheMiss],
+              ["Output", price.output],
+            ].map(([category, peak]) => ({
+              cells: {
+                category: String(category),
+                peak: usd(Number(peak)),
+                offPeak: usd(Number(peak) / 2),
+              },
+            })),
+          },
+          { kind: "text", variant: "muted", content: PEAK_HOURS },
+          {
+            kind: "link",
+            label: "DeepSeek pricing",
+            url: "https://api-docs.deepseek.com/quick_start/pricing",
+          },
+        ],
+      });
+    }
+
+    return {
+      title: resource.displayName,
+      subtitle: str(fields["name"]) || "DeepSeek model",
+      status: { kind: "status-dot", status: "healthy", label: "Available" },
+      sections,
+      headerActions: [refreshAction()],
+    };
+  }
+
+  private renderFileDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const bytes = Number(fields["bytes"]) || 0;
+    const expires = str(fields["expiresAt"]);
+
+    const sections: SectionNode[] = [
+      {
+        kind: "section",
+        title: "File",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "File ID", value: str(fields["fileId"]), copyable: true },
+              { key: "Filename", value: str(fields["filename"]) || "unnamed" },
+              { key: "Size", value: bytes ? formatBytes(bytes) : "unknown" },
+              { key: "Purpose", value: str(fields["purpose"]) || "user_data" },
+              { key: "Created", value: str(fields["createdAt"]) || "unknown" },
+              { key: "Expires", value: expires || "Never (kept until deleted)" },
+            ],
+          },
+          {
+            kind: "text",
+            variant: "muted",
+            content: `Reference this image by file_id in a "file" content block on POST /chat/completions instead of re-sending it base64-encoded. An account can store up to ${FILES_COUNT_QUOTA.toLocaleString("en-US")} files and ${formatBytes(FILES_STORAGE_QUOTA_BYTES)} in total; uploads are capped at 64 MiB each.`,
           },
         ],
       },
@@ -358,8 +695,8 @@ export class DeepSeekClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: "DeepSeek model",
-      status: { kind: "status-dot", status: "healthy", label: "Available" },
+      subtitle: joinParts(["DeepSeek file", bytes ? formatBytes(bytes) : ""]),
+      status: { kind: "status-dot", status: "healthy", label: expires ? "Expiring" : "Stored" },
       sections,
       headerActions: [refreshAction()],
     };
@@ -430,6 +767,10 @@ export class DeepSeekClient implements PluginClient {
       headerActions: [refreshAction()],
     };
   }
+}
+
+function joinParts(parts: string[]): string {
+  return parts.filter(Boolean).join(" · ");
 }
 
 function refreshAction(): ActionNode {
