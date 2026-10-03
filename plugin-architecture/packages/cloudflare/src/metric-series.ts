@@ -101,6 +101,9 @@ export async function fetchMetricSeries(
   if (resourceTypeId === "ai-gateway") {
     return fetchAiGatewayMetricSeries(api, resourceId, timeRange);
   }
+  if (resourceTypeId === "workflow") {
+    return fetchWorkflowMetricSeries(api, resourceId, timeRange);
+  }
   if (resourceTypeId !== "zone") return [];
 
   const zoneId = resourceId.split(":").pop();
@@ -1713,4 +1716,98 @@ async function fetchWaitingRoomMetricSeries(
     },
   ];
   return series.filter((s) => s.points.some((p) => p.value > 0));
+}
+
+/**
+ * Workflow event counts from GraphQL `workflowsAdaptiveGroups` (account-scoped,
+ * filtered by `workflowName`, grouped by `eventType`). Each instance and step
+ * emits typed events (WORKFLOW_START, WORKFLOW_SUCCESS, STEP_FAILURE, …), so
+ * counting them per bucket gives starts, outcomes and step failures. See
+ * https://developers.cloudflare.com/workflows/observability/metrics-analytics/
+ * Resource id: `${infrawrenchAccountId}:workflow:${workflowName}`.
+ */
+const WORKFLOW_EVENT_SERIES: ReadonlyArray<{ event: string; label: string; unit: string }> = [
+  { event: "WORKFLOW_START", label: "Instances Started", unit: "instances" },
+  { event: "WORKFLOW_SUCCESS", label: "Instances Succeeded", unit: "instances" },
+  { event: "WORKFLOW_FAILURE", label: "Instances Failed", unit: "instances" },
+  { event: "WORKFLOW_TERMINATED", label: "Instances Terminated", unit: "instances" },
+  { event: "STEP_SUCCESS", label: "Steps Succeeded", unit: "steps" },
+  { event: "STEP_FAILURE", label: "Steps Failed", unit: "steps" },
+  { event: "ATTEMPT_FAILURE", label: "Step Attempts Failed", unit: "attempts" },
+];
+
+async function fetchWorkflowMetricSeries(
+  api: CloudflareApi,
+  resourceId: string,
+  timeRange?: { startMs: number; endMs: number },
+): Promise<MetricSeries[]> {
+  const workflowName = resourceId.split(":").slice(2).join(":");
+  if (!workflowName) return [];
+
+  let cfAccountId: string;
+  try {
+    cfAccountId = await api.getAccountId();
+  } catch {
+    return [];
+  }
+
+  const { from, to, useHourly } = analyticsWindow(timeRange);
+  const dim = useHourly ? "datetimeHour" : "datetimeFifteenMinutes";
+
+  const query = `query WF($account: String!, $workflow: String!, $from: Time!, $to: Time!) {
+      viewer {
+        accounts(filter: { accountTag: $account }) {
+          workflowsAdaptiveGroups(
+            limit: 10000
+            filter: { workflowName: $workflow, ${dim}_geq: $from, ${dim}_lt: $to }
+            orderBy: [${dim}_ASC]
+          ) {
+            count
+            dimensions { ts: ${dim} eventType }
+          }
+        }
+      }
+    }`;
+
+  interface Group {
+    count?: number;
+    dimensions: { ts: string; eventType: string };
+  }
+  interface Resp {
+    data?: { viewer?: { accounts?: Array<{ workflowsAdaptiveGroups?: Group[] }> } };
+  }
+
+  let groups: Group[] = [];
+  try {
+    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${api.apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        variables: { account: cfAccountId, workflow: workflowName, from, to },
+      }),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as Resp;
+    groups = json.data?.viewer?.accounts?.[0]?.workflowsAdaptiveGroups ?? [];
+  } catch {
+    return [];
+  }
+  if (groups.length === 0) return [];
+
+  const byEvent = new Map<string, Map<number, number>>();
+  for (const g of groups) {
+    const ts = new Date(g.dimensions.ts).getTime();
+    if (!Number.isFinite(ts)) continue;
+    const bucket = byEvent.get(g.dimensions.eventType) ?? new Map<number, number>();
+    bucket.set(ts, (bucket.get(ts) ?? 0) + Number(g.count ?? 0));
+    byEvent.set(g.dimensions.eventType, bucket);
+  }
+
+  return WORKFLOW_EVENT_SERIES.map(({ event, label, unit }) =>
+    toSeries(byEvent.get(event) ?? new Map(), label, unit),
+  ).filter((s) => s.points.some((p) => p.value > 0));
 }

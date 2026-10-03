@@ -4,22 +4,22 @@ description: Manage zones, DNS, Workers, R2, KV, D1, Tunnels, Access, and more.
 sidebar_order: 20
 ---
 
-The Cloudflare plugin is broad — 31 resource types across DNS, edge compute, storage, AI, security, and zero-trust.
+The Cloudflare plugin is broad: 35 resource types across DNS, edge compute, storage, AI, security, and zero-trust.
 
 ## What you can manage
 
 - **DNS & zones** — zones, DNS records (with proxy status toggle), email routing, custom hostnames, health checks.
-- **Edge compute** — Workers (script editor **plus** an editable Settings tab), Workers KV, D1 (SQLite), Hyperdrive, Durable Object namespaces.
+- **Edge compute** — Workers (script editor **plus** an editable Settings tab), Workflows, Workers KV, D1 (SQLite), Hyperdrive, Durable Object namespaces.
 - **AI** — the Workers AI text-generation model catalog (each with a chat Playground), Vectorize vector-database indexes, AI Gateway gateways, and AI Search (AutoRAG) instances.
-- **Storage** — R2 buckets (with the [file browser](../features/file-browsers.md)).
+- **Storage** — R2 buckets (with the [file browser](../features/file-browsers.md), default storage class, and r2.dev public access).
 - **Zero Trust** — Access applications and policies, Tunnels.
 - **Security & traffic** — WAF custom rules, rate limiting rules, redirect rules, cache rules, IP access rules, load balancers, waiting rooms, Spectrum applications, and Turnstile widgets.
-- **Account** — notification (alerting) policies, Logpush jobs.
+- **Account** — notification (alerting) policies, Logpush jobs, Secrets Store secrets.
 - **Zone settings** — cache, security, SSL, and performance options edited via a settings form (toggles, dropdowns, numbers) on the zone's **Zone Settings** tab. DNSSEC can be enabled or disabled from the zone header.
 
 ## Editing resources
 
-Most Cloudflare resources show an **Edit** button on their detail page that opens a settings form over the resource's own fields — no raw JSON. Infrawrench diffs your changes against the current values and sends only what changed, merging in the rest of the resource state so a partial edit never clobbers untouched settings. Identity and provider-managed fields (a rule's matched expression target, a custom hostname's name, a health check's protocol, etc.) are shown read-only. Editable resources include DNS records, all five rule types (WAF custom, rate limiting, redirect, cache, IP access), page rules, email routing rules, waiting rooms, load balancers, Hyperdrive configs, custom hostnames, Spectrum applications, Logpush jobs, Access applications and policies, Turnstile widgets, health checks, notification policies, and AI Gateways. Editing uses the same token permission that grants write access to that resource.
+Most Cloudflare resources show an **Edit** button on their detail page that opens a settings form over the resource's own fields — no raw JSON. Infrawrench diffs your changes against the current values and sends only what changed, merging in the rest of the resource state so a partial edit never clobbers untouched settings. Identity and provider-managed fields (a rule's matched expression target, a custom hostname's name, a health check's protocol, etc.) are shown read-only. Editable resources include DNS records, all five rule types (WAF custom, rate limiting, redirect, cache, IP access), page rules, email routing rules, waiting rooms, load balancers, Hyperdrive configs, custom hostnames, Spectrum applications, Logpush jobs, Access applications and policies, Turnstile widgets, health checks, notification policies, AI Gateways, R2 buckets (default storage class), and Secrets Store secrets. Editing uses the same token permission that grants write access to that resource.
 
 ## Turnstile, Health Checks, and Notifications
 
@@ -38,6 +38,30 @@ Most Cloudflare resources show an **Edit** button on their detail page that open
 - **Durable Object namespaces** — a read-only listing of the Durable Object namespaces your deployed Workers declare (name, exported class, owning script, SQLite-storage flag). You create or remove them by redeploying the Worker, so there's no create/edit/delete here. The detail page also includes an **Instances** browser — the live objects in the namespace and whether each holds stored data — and a Metrics tab. Cloudflare exposes **no public API to read or edit a Durable Object's storage from outside a Worker**, so storage contents aren't editable here; use the Cloudflare dashboard's Data Studio (for SQLite-backed objects) to inspect them. Uses the **Workers Scripts:Read** permission.
 
 ![Infrawrench Durable Object namespace detail page showing the Instances table (Object ID + Stored Data columns) and the read-only storage note](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cloudflare/durable-object-namespace-detail.png)
+
+## Workflows
+
+**Workflows** lists every Cloudflare Workflow in the account: the durable, multi-step executions a Worker declares. A workflow is created by deploying the Worker that exports it, so there's no create form; you can inspect, drive, and delete workflows here.
+
+- **Details** show the exported class, the owning Worker script, instance counts per state (running, queued, waiting, paused, errored, complete, terminated), any cron schedules with the next scheduled run, and when it was last triggered.
+- **Recent Instances** lists the 25 newest instances with their status, trigger source (API, binding, event, or cron), and start/end times. Each row carries the lifecycle controls that make sense for its state: **Pause**, **Resume**, **Terminate**, and **Restart**.
+- **Trigger Instance** in the header starts a new instance with no params. To pass params, trigger from your Worker binding or with `wrangler workflows trigger`.
+- The **Metrics** tab charts instance starts, successes, failures, and terminations alongside step successes, step failures, and failed step attempts (`workflowsAdaptiveGroups`).
+- The workflow name is exposed as an output reference and a `WORKFLOW_NAME` credentials export.
+
+Workflow settings (class, script, step limits, schedules) are deploy-time configuration, so change them by redeploying the Worker; Cloudflare's update endpoint is the deploy path and would reset settings the API doesn't report back. Uses the existing **Workers Scripts** permission.
+
+<insert [Cloudflare Workflow detail page showing the Workflow Details list and the Recent Instances table with Pause/Terminate/Restart row buttons] here>
+
+## Secrets Store
+
+**Secrets Store Secrets** are account-level secrets that Workers, AI Gateway, and other Cloudflare services can share, instead of copying the same value into each Worker.
+
+- **Create** a secret by picking the store (if the account has none yet, Infrawrench creates the `default_secrets_store` one the dashboard would), a name, the value, the services allowed to use it (Workers, AI Gateway, Access, Containers, Digital Experience Monitoring, Web Search), and an optional comment.
+- **Edit** to rotate the value, change the comment, or toggle which services can use it. Cloudflare never returns a stored value, so the **Value** field stays blank; leave it empty to keep the current secret.
+- The detail page shows the store, scopes, status, and how many of the account's secrets are in use, plus a copyable `[[secrets_store_secrets]]` binding snippet for `wrangler.toml`. The store id and secret name are output references and a `SECRETS_STORE_ID` / `SECRET_NAME` credentials export.
+
+Needs the **Secrets Store** permission (Read to list, Edit to create, change, or delete). The "Create a token with these scopes" link doesn't include it yet, so add **Account · Secrets Store:Edit** to the token by hand.
 
 ## Credentials
 
@@ -63,6 +87,7 @@ An expired or disabled token is flagged across every row. The generator produces
 - **DNS record editor** with type-aware fields (A, AAAA, CNAME, MX, TXT, SRV, CAA). A/AAAA/CNAME values can be [pointed at another resource](../features/dns-records.md) (e.g. an AWS Elastic IP) and tracked live.
 - **Worker script editing** in Monaco with deploy, plus an editable **Settings** tab — see [Worker settings](#worker-settings) below.
 - **R2 file browser** and **secret export to K8s** for bucket credentials.
+- **R2 storage class and public access**: new buckets take a default storage class (Standard or Infrequent Access) alongside the location hint, and **Edit** changes it later; only new uploads pick up the new class. The bucket page's **Public Development URL** section shows whether the bucket's `r2.dev` URL is serving and has **Enable r2.dev Access** / **Disable r2.dev Access** buttons. The URL is also a **Public r2.dev URL** output reference. The `r2.dev` URL is rate limited and meant for development; use a custom domain for production.
 - **KV namespace browser** — open any Workers KV namespace and use the **Keys** tab to list keys (cursor-paginated, with optional prefix filter), view stored values, add or overwrite a key, and delete keys. Backed by Cloudflare's `/storage/kv/namespaces/{id}/keys` and `/values/{key}` REST endpoints. Values are treated as UTF-8 text.
 - **D1 SQL editor** — open any D1 database and use the **SQL Editor** tab to run queries. The default query lists tables via `sqlite_master`.
 - **Hyperdrive connection editing** — a Hyperdrive config's **Edit** form lets you change the origin connection (host, port, protocol, database, user) as well as the name and caching toggle. Because Cloudflare never returns the origin password, the **Password** field stays blank — leave it empty to keep the current password, or type a new one to rotate it. Infrawrench only sends an `origin` patch when a connection field actually changed, so renaming or toggling caching won't touch your credentials. Needs the **Hyperdrive:Edit** permission. The detail page also shows query/cache/latency metrics (see below), and the config exposes its **Hyperdrive ID** as an output reference and a `HYPERDRIVE_ID` credentials export for a Worker `[[hyperdrive]]` binding. There's no SQL/PostgreSQL tab: a Hyperdrive endpoint is only reachable from inside a Worker, so there's no connection string an external client could use.
@@ -133,6 +158,7 @@ The detail page surfaces a **Metrics** tab whenever Cloudflare's GraphQL Analyti
 - **Load balancer** — total request count and per-pool breakdown (`loadBalancingRequestsAdaptiveGroups`).
 - **Waiting room** — active users, queued users, new users/minute, time-on-origin p50, time-waited p90 (`waitingRoomAnalyticsAdaptiveGroups`).
 - **Turnstile widget** — challenge volume in fifteen-minute buckets (`turnstileAdaptiveGroups`, filtered by site key).
+- **Workflow**: instances started, succeeded, failed, and terminated, plus steps succeeded, steps failed, and failed step attempts (`workflowsAdaptiveGroups`, grouped by event type).
 - **Durable Object namespace** — invocation requests and response body size (`durableObjectsInvocationsAdaptiveGroups`), CPU time (`durableObjectsPeriodicGroups`), and stored bytes (`durableObjectsStorageGroups`) — all filtered by namespace.
 
 The token needs the **Account Analytics:Read** permission for account-scoped datasets and **Zone Analytics:Read** for zone-scoped ones — the "Create a token with these scopes" link includes both. Resources with no traffic in the selected window show an empty Metrics tab, which is expected.

@@ -14,6 +14,7 @@ export {
   renderWorkerRouteDetail,
   renderDurableObjectNamespaceDetail,
   renderAiGatewayDetail,
+  renderWorkflowDetail,
 } from "./detail-renderers/compute.js";
 export {
   renderR2BucketDetail,
@@ -32,6 +33,7 @@ export {
   renderSpectrumApplicationDetail,
   renderLogpushJobDetail,
   renderTurnstileWidgetDetail,
+  renderSecretsStoreSecretDetail,
 } from "./detail-renderers/security.js";
 export {
   renderRateLimitRuleDetail,

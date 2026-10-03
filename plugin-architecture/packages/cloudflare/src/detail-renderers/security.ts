@@ -455,3 +455,80 @@ export function renderTurnstileWidgetDetail(
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 }
+
+/**
+ * Secrets Store secret: the value is write-only, so the page shows metadata,
+ * the services the secret is scoped to, account quota (when enrichDetail could
+ * read it), and the wrangler binding snippet a Worker needs to read it.
+ */
+export function renderSecretsStoreSecretDetail(resource: ResourceInstance): DetailViewSchema {
+  const fields = resource.fields;
+  const name = String(fields["name"] ?? "");
+  const storeId = String(fields["storeId"] ?? "");
+  const status = String(fields["status"] ?? "");
+  const quotaRaw = resource.resolvedOutputs["__quota__"];
+  let quota: { quota: number; usage: number } | null = null;
+  if (typeof quotaRaw === "string" && quotaRaw) {
+    try {
+      quota = JSON.parse(quotaRaw) as { quota: number; usage: number };
+    } catch {
+      quota = null;
+    }
+  }
+  const binding = name.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+  const bindingSnippet = [
+    `[[secrets_store_secrets]]`,
+    `binding = "${binding}"`,
+    `store_id = "${storeId}"`,
+    `secret_name = "${name}"`,
+    ``,
+    `# In the Worker: const value = await env.${binding}.get();`,
+  ].join("\n");
+
+  return {
+    title: resource.displayName,
+    subtitle: joinSubtitle("Secrets Store Secret", String(fields["storeName"] ?? "")),
+    status: {
+      kind: "status-dot",
+      status: status === "active" ? "healthy" : status === "pending" ? "provisioning" : "info",
+      label: status || "unknown",
+    },
+    sections: [
+      {
+        kind: "section",
+        title: "Details",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Name", value: name, copyable: true },
+              { key: "Store", value: String(fields["storeName"] ?? "") },
+              { key: "Store ID", value: storeId, copyable: true },
+              { key: "Scopes", value: String(fields["scopes"] ?? "") || "None" },
+              ...(fields["comment"] ? [{ key: "Comment", value: String(fields["comment"]) }] : []),
+              ...(fields["created"] ? [{ key: "Created", value: String(fields["created"]) }] : []),
+              ...(fields["modified"]
+                ? [{ key: "Modified", value: String(fields["modified"]) }]
+                : []),
+              ...(quota
+                ? [{ key: "Account Secrets Used", value: `${quota.usage} of ${quota.quota}` }]
+                : []),
+            ],
+          },
+          {
+            kind: "text",
+            content:
+              "Cloudflare never returns a stored secret's value. Use Edit to rotate it; leave Value blank to keep the current one.",
+            variant: "muted",
+          },
+        ],
+      },
+      {
+        kind: "section",
+        title: "Bind it to a Worker",
+        children: [{ kind: "text", content: bindingSnippet, variant: "mono", copyable: true }],
+      },
+    ],
+    headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+  };
+}

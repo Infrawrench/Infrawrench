@@ -4,8 +4,15 @@ import type {
   SectionNode,
   TableRow,
   ResourceTypeDefinition,
+  ActionNode,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems } from "@infrawrench/plugin-base";
+import {
+  actionsForStatus,
+  type WorkflowInstanceAction,
+  type WorkflowInstanceSummary,
+} from "../clients/workflow-client.js";
 
 /**
  * Cloudflare's GraphQL analytics look back 24h when the host asks without a
@@ -364,5 +371,158 @@ export function renderAiGatewayDetail(
         : {}),
     },
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+  };
+}
+
+const INSTANCE_ACTION_LABELS: Record<WorkflowInstanceAction, string> = {
+  pause: "Pause",
+  resume: "Resume",
+  terminate: "Terminate",
+  restart: "Restart",
+};
+
+const INSTANCE_STATUS_LABELS: Record<string, string> = {
+  queued: "Queued",
+  running: "Running",
+  paused: "Paused",
+  errored: "Errored",
+  terminated: "Terminated",
+  complete: "Complete",
+  waitingForPause: "Pausing",
+  waiting: "Waiting",
+  rollingBack: "Rolling back",
+};
+
+function instanceActionNode(instanceId: string, action: WorkflowInstanceAction): ActionNode {
+  const label = INSTANCE_ACTION_LABELS[action];
+  const confirm: Partial<Record<WorkflowInstanceAction, string>> = {
+    terminate: `Terminate instance "${instanceId}"? It stops at its current step and cannot be resumed.`,
+    restart: `Restart instance "${instanceId}" from the beginning with its original params?`,
+  };
+  return {
+    kind: "action",
+    label,
+    ...(action === "terminate" ? { variant: "danger" as const } : {}),
+    action: {
+      type: "plugin-action",
+      // The instance id is everything after the first colon; ids the
+      // user supplies at creation can't be assumed colon-free.
+      actionId: `instance-${action}:${instanceId}`,
+      ...(confirm[action] ? { confirmMessage: confirm[action] } : {}),
+      successMessage: `${label} requested for instance "${instanceId}".`,
+    },
+  };
+}
+
+/**
+ * Workflow detail: instance counts by state, cron schedules, and the most
+ * recent instances (enrichDetail stashes them in `__instances__`) with
+ * per-row lifecycle controls. "Trigger Instance" starts a run with no params.
+ */
+export function renderWorkflowDetail(
+  resource: ResourceInstance,
+  resourceTypes: ResourceTypeDefinition[],
+): DetailViewSchema {
+  const fields = resource.fields;
+  const n = (k: string): number => Number(fields[k] ?? 0) || 0;
+
+  let instances: WorkflowInstanceSummary[] = [];
+  const raw = resource.resolvedOutputs["__instances__"];
+  const loaded = typeof raw === "string" && raw.length > 0;
+  if (loaded) {
+    try {
+      instances = JSON.parse(raw) as WorkflowInstanceSummary[];
+    } catch {
+      instances = [];
+    }
+  }
+  const truncated = resource.resolvedOutputs["__instancesTruncated__"] === "true";
+
+  const status: { status: ResourceStatus; label: string } =
+    n("errored") > 0
+      ? { status: "degraded", label: `${n("errored")} errored` }
+      : n("running") + n("queued") + n("waiting") > 0
+        ? { status: "healthy", label: "Running" }
+        : { status: "info", label: "Idle" };
+
+  const rows: TableRow[] = instances.map((inst) => {
+    const actions = actionsForStatus(inst.status);
+    const cells: TableRow["cells"] = {
+      id: inst.id,
+      status: INSTANCE_STATUS_LABELS[inst.status] ?? inst.status,
+      trigger: inst.triggerSource || "",
+      started: inst.startedOn || inst.createdOn,
+      ended: inst.endedOn,
+    };
+    for (const a of ["pause", "resume", "terminate", "restart"] as const) {
+      cells[a] = actions.includes(a) ? instanceActionNode(inst.id, a) : "";
+    }
+    return { cells };
+  });
+
+  const instanceSection: SectionNode = {
+    kind: "section",
+    title: `Recent Instances${rows.length ? ` (${rows.length}${truncated ? "+" : ""})` : ""}`,
+    children:
+      rows.length > 0
+        ? [
+            {
+              kind: "table",
+              columns: [
+                { key: "id", label: "Instance ID", mono: true, width: "wide" },
+                { key: "status", label: "Status", width: "narrow" },
+                { key: "trigger", label: "Trigger", width: "narrow" },
+                { key: "started", label: "Started" },
+                { key: "ended", label: "Ended" },
+                { key: "pause", label: "", width: "narrow" },
+                { key: "resume", label: "", width: "narrow" },
+                { key: "terminate", label: "", width: "narrow" },
+                { key: "restart", label: "", width: "narrow" },
+              ],
+              rows,
+              emphasizeFirstColumn: true,
+            },
+          ]
+        : [
+            {
+              kind: "text",
+              content: loaded
+                ? "No instances yet. Trigger one from the header, from a Worker binding, or on a cron schedule."
+                : "Couldn't load this workflow's instances.",
+              variant: "muted",
+            },
+          ],
+  };
+
+  return {
+    title: resource.displayName,
+    subtitle: "Workflow",
+    status: { kind: "status-dot", ...status },
+    sections: [
+      {
+        kind: "section",
+        title: "Workflow Details",
+        children: [
+          {
+            kind: "key-value-list",
+            items: labeledFieldItems(fields, resourceTypes, resource.resourceTypeId),
+          },
+        ],
+      },
+      instanceSection,
+    ],
+    headerActions: [
+      {
+        kind: "action",
+        label: "Trigger Instance",
+        action: {
+          type: "plugin-action",
+          actionId: "trigger-instance",
+          confirmMessage: `Start a new instance of "${resource.displayName}" with no params?`,
+          successMessage: "Instance queued.",
+        },
+      },
+      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+    ],
   };
 }

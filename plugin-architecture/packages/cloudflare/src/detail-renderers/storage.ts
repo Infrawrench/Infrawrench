@@ -7,30 +7,104 @@ import type {
 
 export function renderR2BucketDetail(resource: ResourceInstance): DetailViewSchema {
   const fields = resource.fields;
+  const storageClass = String(fields["storageClass"] ?? "");
+  const jurisdiction = String(fields["jurisdiction"] ?? "");
+
+  // enrichDetail stashes the r2.dev managed-domain state; absent when the
+  // lookup failed (or the token lacks R2 edit scope), in which case the
+  // public-access section is omitted rather than guessed at.
+  let r2dev: { domain: string; enabled: boolean } | null = null;
+  const raw = resource.resolvedOutputs["__r2dev__"];
+  if (typeof raw === "string" && raw) {
+    try {
+      r2dev = JSON.parse(raw) as { domain: string; enabled: boolean };
+    } catch {
+      r2dev = null;
+    }
+  }
+
+  const sections: SectionNode[] = [
+    {
+      kind: "section",
+      title: "Bucket Details",
+      children: [
+        {
+          kind: "key-value-list",
+          items: [
+            { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
+            ...(fields["location"]
+              ? [{ key: "Location Hint", value: String(fields["location"]) }]
+              : []),
+            ...(storageClass
+              ? [
+                  {
+                    key: "Default Storage Class",
+                    value: storageClass === "InfrequentAccess" ? "Infrequent Access" : storageClass,
+                  },
+                ]
+              : []),
+            ...(jurisdiction && jurisdiction !== "default"
+              ? [{ key: "Jurisdiction", value: jurisdiction.toUpperCase() }]
+              : []),
+            ...(fields["createdOn"]
+              ? [{ key: "Created", value: String(fields["createdOn"]) }]
+              : []),
+          ],
+        },
+      ],
+    },
+  ];
+
+  if (r2dev) {
+    const url = r2dev.domain ? `https://${r2dev.domain}` : "";
+    sections.push({
+      kind: "section",
+      title: "Public Development URL",
+      children: [
+        {
+          kind: "key-value-list",
+          items: [
+            { key: "Public Access", value: r2dev.enabled ? "Enabled" : "Disabled" },
+            ...(r2dev.enabled && url ? [{ key: "URL", value: url, copyable: true }] : []),
+          ],
+        },
+        {
+          kind: "text",
+          content:
+            "The r2.dev URL serves every object in the bucket publicly. It is rate limited and meant for development; connect a custom domain for production traffic.",
+          variant: "muted",
+        },
+        r2dev.enabled
+          ? {
+              kind: "action",
+              label: "Disable r2.dev Access",
+              variant: "danger",
+              action: {
+                type: "plugin-action",
+                actionId: "r2dev-disable",
+                confirmMessage: `Disable public r2.dev access to "${resource.displayName}"? Links to the r2.dev URL stop working.`,
+                successMessage: "Public r2.dev access disabled.",
+              },
+            }
+          : {
+              kind: "action",
+              label: "Enable r2.dev Access",
+              action: {
+                type: "plugin-action",
+                actionId: "r2dev-enable",
+                confirmMessage: `Make every object in "${resource.displayName}" publicly readable at its r2.dev URL?`,
+                successMessage: "Public r2.dev access enabled.",
+              },
+            },
+      ],
+    });
+  }
+
   return {
     title: resource.displayName,
     subtitle: "R2 Object Storage",
     status: { kind: "status-dot", status: "healthy", label: "Active" },
-    sections: [
-      {
-        kind: "section",
-        title: "Bucket Details",
-        children: [
-          {
-            kind: "key-value-list",
-            items: [
-              { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
-              ...(fields["location"]
-                ? [{ key: "Location Hint", value: String(fields["location"]) }]
-                : []),
-              ...(fields["createdOn"]
-                ? [{ key: "Created", value: String(fields["createdOn"]) }]
-                : []),
-            ],
-          },
-        ],
-      },
-    ],
+    sections,
     storageBrowser: { bucketName: String(fields["name"] ?? "") },
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };

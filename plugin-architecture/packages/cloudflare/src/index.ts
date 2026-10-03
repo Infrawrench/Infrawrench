@@ -28,4 +28,6 @@ export { VectorizeIndexResourceType } from "./resources/vectorize-index.js";
 export { AiGatewayResourceType } from "./resources/ai-gateway.js";
 export { AiSearchResourceType } from "./resources/ai-search.js";
 export { DurableObjectNamespaceResourceType } from "./resources/durable-object-namespace.js";
+export { WorkflowResourceType } from "./resources/workflow.js";
+export { SecretsStoreSecretResourceType } from "./resources/secrets-store-secret.js";
 export { CloudflareClient } from "./client.js";

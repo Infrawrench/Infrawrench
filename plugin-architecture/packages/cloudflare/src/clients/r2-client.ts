@@ -25,6 +25,21 @@ const R2_LOCATION_HINTS = [
 ] as const satisfies readonly NonNullable<BucketCreateParams["locationHint"]>[];
 type R2LocationHint = (typeof R2_LOCATION_HINTS)[number];
 
+/**
+ * Default storage classes for new objects (`BucketCreateParams.storageClass`,
+ * and the `cf-r2-storage-class` header the PATCH endpoint reads). Infrequent
+ * Access trades a lower storage price for per-GB retrieval fees and a 30-day
+ * minimum storage duration.
+ */
+const R2_STORAGE_CLASSES = ["Standard", "InfrequentAccess"] as const satisfies readonly NonNullable<
+  BucketCreateParams["storageClass"]
+>[];
+type R2StorageClass = (typeof R2_STORAGE_CLASSES)[number];
+
+function isR2StorageClass(value: string): value is R2StorageClass {
+  return (R2_STORAGE_CLASSES as readonly string[]).includes(value);
+}
+
 function isR2LocationHint(value: string): value is R2LocationHint {
   return (R2_LOCATION_HINTS as readonly string[]).includes(value);
 }
@@ -44,6 +59,8 @@ function mapR2Bucket(
     fields: {
       name,
       location: String(b["location"] ?? ""),
+      storageClass: String(b["storage_class"] ?? "Standard"),
+      jurisdiction: String(b["jurisdiction"] ?? "default"),
       createdOn: String(b["creation_date"] ?? b["created"] ?? ""),
     },
     resolvedOutputs: {
@@ -83,13 +100,81 @@ export async function createR2Bucket(
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
   const locationHint = fields["locationHint"] ?? "";
+  const storageClass = fields["storageClass"] ?? "";
   const params: BucketCreateParams = {
     account_id,
     name: fields["name"] ?? "",
     ...(isR2LocationHint(locationHint) ? { locationHint } : {}),
+    ...(isR2StorageClass(storageClass) ? { storageClass } : {}),
   };
   const bucket = await api.cf.r2.buckets.create(params);
   return mapR2Bucket(asRecord(bucket), accountId, account_id);
+}
+
+/**
+ * Change a bucket's default storage class (`PATCH /r2/buckets/{name}` with the
+ * `cf-r2-storage-class` header, which the SDK sets from `storage_class`). Only
+ * new uploads pick up the class; existing objects keep theirs.
+ */
+export async function editR2Bucket(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const account_id = await api.getAccountId();
+  const storageClass = fields["storageClass"] ?? "";
+  if (!isR2StorageClass(storageClass)) {
+    throw new Error(`Unknown R2 storage class "${storageClass}".`);
+  }
+  const bucket = await api.cf.r2.buckets.edit(externalId, {
+    account_id,
+    storage_class: storageClass,
+  });
+  return mapR2Bucket(asRecord(bucket), accountId, account_id);
+}
+
+/**
+ * The bucket's public r2.dev development URL
+ * (`GET /r2/buckets/{name}/domains/managed`). `domain` is filled in whether or
+ * not public access is on; `enabled` says whether it actually serves.
+ */
+export async function getR2DevDomain(
+  api: CloudflareApi,
+  bucketName: string,
+  jurisdiction = "",
+): Promise<{ domain: string; enabled: boolean }> {
+  const account_id = await api.getAccountId();
+  const res = asRecord(
+    await api.cf.r2.buckets.domains.managed.list(bucketName, {
+      account_id,
+      ...jurisdictionParam(jurisdiction),
+    }),
+  );
+  return { domain: String(res["domain"] ?? ""), enabled: Boolean(res["enabled"]) };
+}
+
+/** Turn public r2.dev access on or off (`PUT /r2/buckets/{name}/domains/managed`). */
+export async function setR2DevDomain(
+  api: CloudflareApi,
+  bucketName: string,
+  enabled: boolean,
+  jurisdiction = "",
+): Promise<void> {
+  const account_id = await api.getAccountId();
+  await api.cf.r2.buckets.domains.managed.update(bucketName, {
+    account_id,
+    enabled,
+    ...jurisdictionParam(jurisdiction),
+  });
+}
+
+/**
+ * Buckets created in a data-location jurisdiction are only addressable with
+ * the matching `cf-r2-jurisdiction` header; the default jurisdiction needs none.
+ */
+function jurisdictionParam(jurisdiction: string): { jurisdiction?: "eu" | "fedramp" } {
+  return jurisdiction === "eu" || jurisdiction === "fedramp" ? { jurisdiction } : {};
 }
 
 export async function deleteR2Bucket(api: CloudflareApi, externalId: string): Promise<void> {

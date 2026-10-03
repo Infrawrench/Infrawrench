@@ -58,6 +58,8 @@ import {
   renderDurableObjectNamespaceDetail,
   renderTurnstileWidgetDetail,
   renderAiGatewayDetail,
+  renderWorkflowDetail,
+  renderSecretsStoreSecretDetail,
 } from "./detail-renderers.js";
 import { CloudflareApi, withCloudflareErrors } from "./clients/shared.js";
 import { runCloudflarePreflight } from "./preflight.js";
@@ -104,6 +106,8 @@ import * as vectorizeApi from "./clients/vectorize-client.js";
 import * as durableObjectApi from "./clients/durable-object-namespace-client.js";
 import * as aiGatewayApi from "./clients/ai-gateway-client.js";
 import * as aiSearchApi from "./clients/ai-search-client.js";
+import * as workflowApi from "./clients/workflow-client.js";
+import * as secretsStoreApi from "./clients/secrets-store-client.js";
 
 /** Map each rules-engine resource type id to its phase spec. */
 const RULE_SPECS: Record<string, RulePhaseSpec> = {
@@ -197,6 +201,10 @@ export class CloudflareClient implements PluginClient {
         return aiSearchApi.listAiSearchInstances(this.api, accountId);
       case "durable-object-namespace":
         return durableObjectApi.listDurableObjectNamespaces(this.api, accountId);
+      case "workflow":
+        return workflowApi.listWorkflows(this.api, accountId);
+      case "secrets-store-secret":
+        return secretsStoreApi.listStoreSecrets(this.api, accountId);
       default:
         throw new Error(`Cloudflare plugin: unknown resource type "${typeId}"`);
     }
@@ -242,6 +250,9 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "ai-gateway") {
       return aiGatewayApi.getAiGateway(this.api, externalId, accountId);
     }
+    if (typeId === "workflow") {
+      return workflowApi.getWorkflow(this.api, externalId, accountId);
+    }
 
     // Fallback: list all and find
     const all = await this.listResources(typeId, accountId);
@@ -267,6 +278,14 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "r2-bucket") {
       if (outputKey === "bucketName") return String(resource.fields["name"] ?? "");
+      if (outputKey === "publicDevUrl") {
+        const r2dev = await r2Api.getR2DevDomain(
+          this.api,
+          String(resource.fields["name"] ?? ""),
+          String(resource.fields["jurisdiction"] ?? ""),
+        );
+        return r2dev.enabled && r2dev.domain ? `https://${r2dev.domain}` : "";
+      }
       if (outputKey === "s3Endpoint") {
         const cfAccountId = await this.api.getAccountId();
         return `https://${cfAccountId}.r2.cloudflarestorage.com`;
@@ -312,6 +331,13 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "durable-object-namespace") {
       if (outputKey === "namespaceId") return resource.externalId ?? "";
     }
+    if (typeId === "workflow") {
+      if (outputKey === "workflowName") return resource.externalId ?? "";
+    }
+    if (typeId === "secrets-store-secret") {
+      if (outputKey === "secretName") return String(resource.fields["name"] ?? "");
+      if (outputKey === "storeId") return String(resource.fields["storeId"] ?? "");
+    }
     throw new Error(`Cloudflare plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
@@ -341,6 +367,54 @@ export class CloudflareClient implements PluginClient {
         /* no catalog: renderer falls back to a default model */
       }
       return { ...resource, resolvedOutputs: enriched };
+    }
+    if (resource.resourceTypeId === "r2-bucket") {
+      try {
+        const r2dev = await r2Api.getR2DevDomain(
+          this.api,
+          String(resource.fields["name"] ?? resource.externalId ?? ""),
+          String(resource.fields["jurisdiction"] ?? ""),
+        );
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            __r2dev__: JSON.stringify(r2dev),
+            ...(r2dev.enabled && r2dev.domain ? { publicDevUrl: `https://${r2dev.domain}` } : {}),
+          },
+        };
+      } catch {
+        return resource;
+      }
+    }
+    if (resource.resourceTypeId === "workflow") {
+      const name = resource.externalId ?? "";
+      if (!name) return resource;
+      try {
+        const { instances, truncated } = await workflowApi.listRecentInstances(this.api, name);
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            __instances__: JSON.stringify(instances),
+            __instancesTruncated__: truncated ? "true" : "false",
+          },
+        };
+      } catch {
+        return resource;
+      }
+    }
+    if (resource.resourceTypeId === "secrets-store-secret") {
+      try {
+        const quota = await secretsStoreApi.getSecretsQuota(this.api);
+        if (!quota) return resource;
+        return {
+          ...resource,
+          resolvedOutputs: { ...resource.resolvedOutputs, __quota__: JSON.stringify(quota) },
+        };
+      } catch {
+        return resource;
+      }
     }
     if (resource.resourceTypeId === "durable-object-namespace") {
       const namespaceId = resource.externalId ?? "";
@@ -457,6 +531,10 @@ export class CloudflareClient implements PluginClient {
         return renderTurnstileWidgetDetail(resource, this.resourceTypes);
       case "ai-gateway":
         return renderAiGatewayDetail(resource, this.resourceTypes);
+      case "workflow":
+        return renderWorkflowDetail(resource, this.resourceTypes);
+      case "secrets-store-secret":
+        return renderSecretsStoreSecretDetail(resource);
       default:
         return renderGenericDetail(resource, this.resourceTypes);
     }
@@ -560,6 +638,22 @@ export class CloudflareClient implements PluginClient {
           kind: "status-dot",
           status: !enabled ? "info" : lastError ? "error" : "healthy",
           label: !enabled ? "Disabled" : lastError ? "Error" : "Active",
+        },
+      };
+    }
+    if (resource.resourceTypeId === "workflow") {
+      const errored = Number(resource.fields["errored"] ?? 0);
+      const active =
+        Number(resource.fields["running"] ?? 0) +
+        Number(resource.fields["queued"] ?? 0) +
+        Number(resource.fields["waiting"] ?? 0);
+      return {
+        id: resource.id,
+        label: resource.displayName,
+        status: {
+          kind: "status-dot",
+          status: errored > 0 ? "degraded" : active > 0 ? "healthy" : "info",
+          label: errored > 0 ? `${errored} errored` : active > 0 ? `${active} active` : "Idle",
         },
       };
     }
@@ -672,6 +766,8 @@ export class CloudflareClient implements PluginClient {
         return vectorizeApi.createVectorizeIndex(this.api, accountId, fields);
       case "ai-gateway":
         return aiGatewayApi.createAiGateway(this.api, accountId, fields);
+      case "secrets-store-secret":
+        return secretsStoreApi.createStoreSecret(this.api, accountId, fields);
       default:
         throw new Error(`Cloudflare plugin: createResource not supported for type "${typeId}"`);
     }
@@ -776,6 +872,20 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "ai-gateway") {
       return aiGatewayApi.editAiGateway(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "r2-bucket") {
+      return r2Api.editR2Bucket(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "secrets-store-secret") {
+      // `fields` is the changed-only set: a blank Value the user never
+      // touched must not be read as "clear the secret".
+      return secretsStoreApi.editStoreSecret(
+        this.api,
+        accountId,
+        externalId,
+        merged,
+        Object.keys(fields),
+      );
     }
     throw new Error(`Cloudflare plugin: updateResource not supported for type "${typeId}"`);
   }
@@ -884,6 +994,10 @@ export class CloudflareClient implements PluginClient {
         return aiGatewayApi.deleteAiGateway(this.api, externalId);
       case "ai-search":
         return aiSearchApi.deleteAiSearchInstance(this.api, externalId);
+      case "workflow":
+        return workflowApi.deleteWorkflow(this.api, externalId);
+      case "secrets-store-secret":
+        return secretsStoreApi.deleteStoreSecret(this.api, externalId);
       default:
         throw new Error(`Cloudflare plugin: deleteResource not supported for type "${typeId}"`);
     }
@@ -946,8 +1060,9 @@ export class CloudflareClient implements PluginClient {
 
   /**
    * Invoke a plugin-defined action against a resource (host calls this for an
-   * `ActionNode` whose action is `{ type: "plugin-action" }`). Currently powers
-   * zone-level cache purge and DNSSEC toggles.
+   * `ActionNode` whose action is `{ type: "plugin-action" }`). Powers zone-level
+   * cache purge and DNSSEC toggles, R2 r2.dev public access, and Workflow
+   * instance triggers and lifecycle changes.
    */
   async invokeAction(
     typeId: string,
@@ -964,6 +1079,33 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "zone" && actionId === "dnssec-disable") {
       return withCloudflareErrors(() => zoneApi.setDnssec(this.api, externalId, false));
+    }
+    if (typeId === "r2-bucket" && (actionId === "r2dev-enable" || actionId === "r2dev-disable")) {
+      return withCloudflareErrors(async () => {
+        const bucket = await this.getResource(typeId, resourceId, _accountId);
+        await r2Api.setR2DevDomain(
+          this.api,
+          externalId,
+          actionId === "r2dev-enable",
+          String(bucket.fields["jurisdiction"] ?? ""),
+        );
+      });
+    }
+    if (typeId === "workflow" && actionId === "trigger-instance") {
+      return withCloudflareErrors(async () => {
+        await workflowApi.triggerInstance(this.api, externalId);
+      });
+    }
+    if (typeId === "workflow" && actionId.startsWith("instance-")) {
+      const colon = actionId.indexOf(":");
+      const verb = actionId.slice("instance-".length, colon < 0 ? undefined : colon);
+      const instanceId = colon < 0 ? "" : actionId.slice(colon + 1);
+      const action = workflowApi.WORKFLOW_INSTANCE_ACTIONS.find((a) => a === verb);
+      if (action && instanceId) {
+        return withCloudflareErrors(() =>
+          workflowApi.changeInstanceStatus(this.api, externalId, instanceId, action),
+        );
+      }
     }
     throw new Error(`Cloudflare plugin: unknown action "${actionId}" for type "${typeId}"`);
   }
@@ -1142,6 +1284,22 @@ export class CloudflareClient implements PluginClient {
       if (f["sessionDuration"])
         stats.push({ label: "Session", value: String(f["sessionDuration"]) });
       return stats;
+    }
+
+    if (resourceTypeId === "workflow") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const f = resource.fields;
+      const errored = Number(f["errored"] ?? 0);
+      return [
+        { label: "Running", value: String(f["running"] ?? 0) },
+        { label: "Queued", value: String(f["queued"] ?? 0) },
+        {
+          label: "Errored",
+          value: String(errored),
+          variant: errored > 0 ? "status-error" : "default",
+        },
+        { label: "Complete", value: String(f["complete"] ?? 0) },
+      ];
     }
 
     // Generic fallback for any other resource type

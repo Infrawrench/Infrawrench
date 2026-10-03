@@ -1,6 +1,7 @@
 import type { CreateResourceConfig } from "@infrawrench/plugin-base";
 import { dnsContentField } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./clients/shared.js";
+import { getStoreOptions, SECRET_SCOPES } from "./clients/secrets-store-client.js";
 
 /**
  * Resolve the zone's domain name (e.g. "example.com") from a parent zone
@@ -151,6 +152,20 @@ export async function getCreateConfig(
             { id: "weur", label: "Western Europe" },
             { id: "eeur", label: "Eastern Europe" },
             { id: "apac", label: "Asia-Pacific" },
+            { id: "oc", label: "Oceania" },
+          ],
+        },
+        {
+          key: "storageClass",
+          label: "Default Storage Class",
+          kind: "select",
+          required: false,
+          defaultValue: "Standard",
+          description:
+            "Infrequent Access costs less to store but bills per-GB retrieval and has a 30-day minimum storage duration. You can change this later.",
+          options: [
+            { id: "Standard", label: "Standard" },
+            { id: "InfrequentAccess", label: "Infrequent Access" },
           ],
         },
       ],
@@ -1131,6 +1146,50 @@ export async function getCreateConfig(
         {
           key: "description",
           label: "Description",
+          kind: "text",
+          required: false,
+        },
+      ],
+    };
+  }
+  if (typeId === "secrets-store-secret") {
+    return {
+      fields: [
+        {
+          key: "storeId",
+          label: "Store",
+          kind: "select",
+          required: true,
+          options: await getStoreOptions(api),
+          description:
+            "The account's Secrets Store. If the account has none yet, Infrawrench creates one.",
+        },
+        {
+          key: "name",
+          label: "Name",
+          kind: "text",
+          required: true,
+          placeholder: "OPENAI_API_KEY",
+          description: "Secret name, referenced from Worker bindings",
+        },
+        {
+          key: "value",
+          label: "Value",
+          kind: "password",
+          required: true,
+          description: "Up to 64 KiB. Cloudflare never shows it again after it is saved.",
+        },
+        {
+          key: "scopes",
+          label: "Usable By",
+          kind: "policy-picker",
+          required: true,
+          description: "Services allowed to read this secret",
+          policies: SECRET_SCOPES.map((scope) => ({ id: scope.id, label: scope.label })),
+        },
+        {
+          key: "comment",
+          label: "Comment",
           kind: "text",
           required: false,
         },
