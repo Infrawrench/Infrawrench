@@ -4,6 +4,12 @@ import { RevAiClient } from "./client.js";
 import { AccountResourceType } from "./resources/account.js";
 import { JobResourceType } from "./resources/job.js";
 import { VocabularyResourceType } from "./resources/vocabulary.js";
+import {
+  AlignmentJobResourceType,
+  LanguageIdJobResourceType,
+  SentimentJobResourceType,
+  TopicJobResourceType,
+} from "./resources/insight-jobs.js";
 import { REVAI_REGION_FIELDS } from "./options.js";
 
 // Mark extracted from Rev AI's own logotype SVG, the one their site loads as
@@ -28,7 +34,7 @@ const manifest: PluginManifest = {
       key: "accessToken",
       label: "Access Token",
       description:
-        "Your Rev AI access token, sent as `Authorization: Bearer <token>`. Generate it in the Rev AI dashboard at rev.ai under Access Token — it is shown once, and regenerating it invalidates the old one. One token covers jobs, transcripts, custom vocabularies and the account balance; there is no separate admin key.",
+        "Your Rev AI access token, sent as `Authorization: Bearer <token>`. Generate it in the Rev AI dashboard at rev.ai under Access Token — it is shown once, and regenerating it invalidates the old one. One token covers jobs, transcripts, custom vocabularies, the language identification, sentiment, topic and alignment jobs, and the account balance; there is no separate admin key.",
       sensitive: true,
       placeholder: "02abcDEFghIJklMNopQRstUVwxYZ0123456789abcdefghij",
       helpLink: { label: "Open the Rev AI dashboard", url: "https://www.rev.ai/access-token" },
@@ -37,7 +43,7 @@ const manifest: PluginManifest = {
       key: "region",
       label: "Deployment",
       description:
-        "Which Rev AI deployment this token belongs to. Jobs are not portable between deployments — a job submitted to the US host is invisible from the EU host and vice versa. The EU deployment (Frankfurt) does not offer human transcription or the saved custom-vocabulary collection.",
+        "Which Rev AI deployment this token belongs to. Jobs are not portable between deployments — a job submitted to the US host is invisible from the EU host and vice versa. The EU deployment (Frankfurt) does not offer human transcription, the saved custom-vocabulary collection, or sentiment, topic and alignment jobs.",
       sensitive: false,
       regions: REVAI_REGION_FIELDS,
       defaultValue: "us",
@@ -50,6 +56,10 @@ const resourceTypes: ResourceTypeDefinition[] = [
   AccountResourceType,
   JobResourceType,
   VocabularyResourceType,
+  LanguageIdJobResourceType,
+  SentimentJobResourceType,
+  TopicJobResourceType,
+  AlignmentJobResourceType,
 ];
 
 export const plugin: Plugin = {

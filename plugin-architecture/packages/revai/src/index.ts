@@ -4,6 +4,12 @@ export { AccountResourceType } from "./resources/account.js";
 export { JobResourceType } from "./resources/job.js";
 export { VocabularyResourceType } from "./resources/vocabulary.js";
 export {
+  AlignmentJobResourceType,
+  LanguageIdJobResourceType,
+  SentimentJobResourceType,
+  TopicJobResourceType,
+} from "./resources/insight-jobs.js";
+export {
   baseUrlForRegion,
   REVAI_DEFAULT_LANGUAGE,
   REVAI_DEFAULT_TRANSCRIBER,

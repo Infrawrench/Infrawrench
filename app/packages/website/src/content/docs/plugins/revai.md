@@ -1,6 +1,6 @@
 ---
 title: Rev AI
-description: Rev AI transcription jobs, custom vocabularies and account balances on either deployment, with a Speech tab that submits and polls a clip in one step.
+description: Rev AI transcription jobs, custom vocabularies, language identification, sentiment, topic and forced-alignment jobs, and account balances on either deployment, with a Speech tab that submits and polls a clip in one step.
 sidebar_order: 47
 ---
 
@@ -9,6 +9,10 @@ sidebar_order: 47
 - **Account** — the developer account behind the token: email, deployment, HIPAA status and the USD balances (free, purchased, invoiced, total). Read-only, and the home of the Speech tab.
 - **Transcription jobs** — asynchronous speech-to-text jobs with status, transcriber, language, media name, duration and auto-delete window. Each job's transcript is fetched inline (delete).
 - **Custom vocabularies** — saved phrase lists a job can reference by `custom_vocabulary_id` (create, delete).
+- **Language identification jobs** — detect the most probable language in a piece of media. Create one from a public media URL (optionally flagged as multilingual); the detail page shows the top language and every candidate's confidence (delete).
+- **Sentiment analysis jobs** — score each statement of a transcript as positive, negative or neutral. Create one by picking a transcribed job from the list; the plugin submits that job's transcript, so every statement keeps its timestamp. The detail page counts each sentiment and tabulates the statements (delete).
+- **Topic extraction jobs** — the main topics of a transcript with a score and the statements behind each. Created the same way, by picking a transcribed job (delete).
+- **Forced alignment jobs** — precise word timings for a transcript you already have. Create one from a public media URL, the spoken words and the language (English, Spanish or French); the detail page lists every word with its start and end time (delete).
 
 ## Credentials
 
@@ -25,8 +29,10 @@ Open the account for a **Speech** tab. It is transcription only. See [Speech tes
 The clip is posted to `/jobs` as multipart, then polled for up to two minutes and the transcript fetched — all in one press. The **Transcriber** picker offers the three automatic tiers:
 
 - **Machine** — the default automatic tier
-- **Low cost** — cheaper, lower accuracy
-- **Fusion** — higher accuracy, better on rare words
+- **Low cost** — cheaper, lower accuracy. **Deprecated**: Rev AI is sunsetting it (July 2026) and recommends Machine.
+- **Fusion** — higher accuracy, better on rare words. **Deprecated**: Rev AI is sunsetting it too (August 2026).
+
+Both deprecated tiers stay in the picker, labelled as such, until Rev AI stops accepting them.
 
 Rev AI's fourth transcriber, **Human**, is deliberately left out of this panel. A human job takes hours to come back and bills at human rates the moment it is accepted, so inside a panel that gives up polling after two minutes the only possible outcome would be "timed out, and you were charged". Order human transcription through Rev AI directly.
 
@@ -39,6 +45,9 @@ Rev AI's fourth transcriber, **Human**, is deliberately left out of this panel. 
 - **Jobs are kept for 30 days.** `GET /jobs` only covers the last 30 days, so the Transcription Jobs list is a rolling month rather than a full history.
 - **Deployments do not share data.** A job submitted to the US host is invisible from the EU host and vice versa, so the deployment you pick when adding the account decides what you can see.
 - **The EU deployment has no saved custom vocabularies and no human transcription.** Frankfurt accepts phrases inline at submit time, but there is no `/vocabularies` collection there, so that section is US-only.
+- **Only language identification runs on the EU deployment.** Sentiment, topic and alignment jobs are US-only, so those lists stay empty on an EU account.
+- **Sentiment and topic jobs are English-only**, and only transcribed jobs from the last 30 days can be picked as their source.
+- **Every job list is a rolling 30 days.** The companion APIs keep the same window as transcription jobs.
 - **Human transcription cannot be ordered from the Speech tab** — see above. Jobs you submit through Rev AI's own API still show up in the Transcription Jobs list, so that is where you read the result.
 - **The Speech tab caps clips at 25 MB**, well below what Rev AI itself accepts (2 GB and 17 hours). The panel sends audio base64-encoded inside a JSON request, and base64 inflates by a third — 25 MB is what survives that round trip. Send anything larger through Rev AI's own API directly.
 - **`balance_seconds` is deprecated and always returns 0**, so it is deliberately not shown — displaying it would read as "out of credit" on a funded account. The USD balances are the live numbers.
