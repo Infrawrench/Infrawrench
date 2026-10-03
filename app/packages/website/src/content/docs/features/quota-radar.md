@@ -75,12 +75,16 @@ The weekly digest carries a **Quotas** line with the same count.
 
 ## Which providers report quotas
 
-| Provider         | What is read                                                                                                                                                              | Complete?                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| **AWS**          | Service Quotas for the ceiling; CloudWatch `AWS/Usage` and two describe calls for the usage. On-demand standard and GPU vCPUs, Elastic IPs, VPCs per region — per region. | Subset                     |
-| **GCP**          | Compute Engine's own project and per-region quota arrays — CPUs, disks, addresses, networks, firewalls and the rest, each already carrying both usage and limit.          | Every Compute Engine quota |
-| **DigitalOcean** | The droplet and reserved-IP limits on your account, counted against your current droplets and reserved IPs.                                                               | Subset                     |
-| **Kubernetes**   | Every `ResourceQuota` object in the cluster, across all namespaces — CPU, memory, storage, pod and object counts per namespace.                                           | Every ResourceQuota        |
+| Provider             | What is read                                                                                                                                                                                                    | Complete?                  |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| **AWS**              | Service Quotas for the ceiling; CloudWatch `AWS/Usage` and two describe calls for the usage. On-demand standard and GPU vCPUs, Elastic IPs, VPCs per region — per region.                                       | Subset                     |
+| **GCP**              | Compute Engine's own project and per-region quota arrays — CPUs, disks, addresses, networks, firewalls and the rest, each already carrying both usage and limit.                                                | Every Compute Engine quota |
+| **DigitalOcean**     | The droplet and reserved-IP limits on your account, counted against your current droplets and reserved IPs.                                                                                                     | Subset                     |
+| **Kubernetes**       | Every `ResourceQuota` object in the cluster, across all namespaces — CPU, memory, storage, pod and object counts per namespace.                                                                                 | Every ResourceQuota        |
+| **ClickHouse Cloud** | The organization's quotas (services, Postgres services, replicas, API keys) with Cloud's own usage figure. Quotas Cloud reports no usage for are skipped.                                                       | Every quota with usage     |
+| **Cloudinary**       | The `/usage` response: monthly credits, transformations, storage, bandwidth, every add-on allowance the environment has, and the Admin API's hourly request budget.                                             | Every reported allowance   |
+| **UploadThing**      | The app's storage used against its plan's storage limit.                                                                                                                                                        | Storage only               |
+| **Turso**            | The organization's plan allowances against its current usage: rows read and written and replica sync this billing cycle, storage, databases, groups and locations. Dimensions the plan doesn't cap are skipped. | Every capped allowance     |
 
 The "subset" rows are marked on the page too, under the table: AWS publishes thousands of
 quotas and Infrawrench asks about the handful that actually stop deploys, while DigitalOcean's
