@@ -3,8 +3,13 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * An xAI batch inference job.
  *
+ * Creating one opens an empty named batch (the API takes only `name`); requests
+ * are then added from code. The detail view lists per-request state from
+ * `GET /v1/batches/{batch_id}/requests`.
+ *
  * Docs: https://docs.x.ai/developers/rest-api-reference/inference/batches
- * (GET /v1/batches, GET /v1/batches/{batch_id}, POST /v1/batches/{batch_id}:cancel)
+ * (POST/GET /v1/batches, GET /v1/batches/{batch_id}, GET .../requests,
+ *  POST /v1/batches/{batch_id}:cancel)
  */
 export const BatchResourceType = rt({
   name: "Batch",
@@ -28,5 +33,8 @@ export const BatchResourceType = rt({
   // `create_api_key_id` is the id of the team API key that submitted the job:
   // the same id the management API lists keys under.
   dependsOn: [{ fieldKey: "createApiKeyId", targetTypeId: "api-key", label: "created by" }],
+  supportsCreate: true,
+  // xAI has no batch delete; a batch is cancelled and then expires.
+  supportsDelete: false,
   iconKey: "layers",
 });

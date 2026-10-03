@@ -2,6 +2,7 @@ import type {
   CostFetchRange,
   CostRow,
   CreateResourceConfig,
+  CreditBalance,
   DashboardStat,
   DetailViewSchema,
   HostServices,
@@ -19,7 +20,34 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  CreditAccessError,
+  base64ToBytes,
+  jsonRestFetch,
+} from "@infrawrench/plugin-base";
+import {
+  type XaiInvoice,
+  type XaiInvoicePreview,
+  type XaiSpendingLimits,
+  formatUsd,
+  invoiceStatusDot,
+  mapInvoice,
+  mapSpendingLimit,
+  prepaidBalances,
+  renderInvoiceDetail,
+  renderSpendingLimitDetail,
+} from "./billing.js";
+import {
+  type XaiCollection,
+  type XaiCollectionDocument,
+  documentStatusDot,
+  mapCollection,
+  mapCollectionDocument,
+  renderCollectionDetail,
+  renderCollectionDocumentDetail,
+  splitDocumentId,
+} from "./collections.js";
 
 const INFERENCE_BASE = "https://api.x.ai";
 const MANAGEMENT_BASE = "https://management-api.x.ai";
@@ -41,6 +69,17 @@ const STT_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const AUDIT_PAGE_SIZE = 200;
 const AUDIT_MAX_PAGES = 20;
 const AUDIT_TRUNCATED_ID = "__truncated__";
+
+/** Invoices are listed from this many months back. */
+const INVOICE_HISTORY_MONTHS = 24;
+
+/** First page of per-request state shown on a batch's detail view. */
+const BATCH_REQUESTS_PREVIEW = 100;
+
+const MANAGEMENT_KEY_HELP = {
+  label: "Create a management key",
+  url: "https://console.x.ai/team/default/settings",
+};
 
 /**
  * Every price the models endpoints report is an integer of USD cents per 100
@@ -117,6 +156,11 @@ interface XaiLanguageModel {
   cached_prompt_text_token_price_long_context?: number;
   prompt_image_token_price?: number;
   search_price?: number;
+  /** Optional request parameters the model accepts. */
+  capabilities?: {
+    reasoning_effort?: string[];
+    default_reasoning_effort?: string | null;
+  } | null;
 }
 
 interface XaiImageModel {
@@ -130,6 +174,37 @@ interface XaiImageModel {
   output_modalities?: string[];
   image_price?: number;
   max_prompt_length?: number;
+  /** Per-image price by quality and resolution, on the same 1e8 scale. */
+  pricing?: Array<{ quality?: string; resolution?: string; price_per_image?: number }>;
+}
+
+interface XaiVideoModel {
+  id: string;
+  owned_by?: string;
+  version?: string;
+  fingerprint?: string;
+  created?: number;
+  aliases?: string[];
+  input_modalities?: string[];
+  output_modalities?: string[];
+}
+
+interface XaiSkill {
+  id: string;
+  name?: string;
+  description?: string;
+  default_version?: string;
+  latest_version?: string;
+  created_at?: number;
+}
+
+interface XaiBatchRequestMeta {
+  batch_request_id?: string;
+  create_time?: string;
+  endpoint?: string;
+  finish_time?: string | null;
+  model?: string;
+  state?: string;
 }
 
 interface XaiEmbeddingModel {
@@ -153,6 +228,7 @@ interface XaiFile {
   expires_at?: number | null;
   purpose?: string;
   public_url?: string | null;
+  public_url_expires_at?: number | null;
 }
 
 interface XaiBatch {
@@ -422,16 +498,29 @@ export class XaiClient implements PluginClient {
         return this.managementKey ? this.listApiKeys(accountId) : [];
       case "audit-event":
         return this.managementKey ? this.listAuditEvents(accountId) : [];
+      case "skill":
+        return this.listSkills(accountId);
+      case "collection":
+        return this.managementKey ? this.listCollections(accountId) : [];
+      case "collection-document":
+        return this.managementKey ? this.listCollectionDocuments(accountId) : [];
+      case "invoice":
+        return this.managementKey ? this.listInvoices(accountId) : [];
+      case "spending-limit":
+        return this.managementKey ? this.listSpendingLimit(accountId) : [];
       default:
         throw new Error(`xAI plugin: unknown resource type "${typeId}"`);
     }
   }
 
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
-    const [language, image, embedding] = await Promise.all([
+    const [language, image, video, embedding] = await Promise.all([
       this.fetch<{ models?: XaiLanguageModel[] }>("/v1/language-models"),
       this.fetch<{ models?: XaiImageModel[] }>("/v1/image-generation-models").catch(() => ({
         models: [] as XaiImageModel[],
+      })),
+      this.fetch<{ models?: XaiVideoModel[] }>("/v1/video-generation-models").catch(() => ({
+        models: [] as XaiVideoModel[],
       })),
       this.fetch<{ models?: XaiEmbeddingModel[] }>("/v1/embedding-models").catch(() => ({
         models: [] as XaiEmbeddingModel[],
@@ -460,6 +549,8 @@ export class XaiClient implements PluginClient {
           cachedPromptTextTokenPriceLongContext: m.cached_prompt_text_token_price_long_context ?? 0,
           promptImageTokenPrice: m.prompt_image_token_price ?? 0,
           searchPrice: m.search_price ?? 0,
+          reasoningEfforts: (m.capabilities?.reasoning_effort ?? []).join(", "),
+          defaultReasoningEffort: m.capabilities?.default_reasoning_effort ?? "",
         }),
       );
     }
@@ -476,6 +567,21 @@ export class XaiClient implements PluginClient {
           created: formatEpochSeconds(m.created),
           imagePrice: m.image_price ?? 0,
           maxPromptLength: m.max_prompt_length ?? 0,
+          imagePricingTiers: m.pricing?.length ? JSON.stringify(m.pricing) : "",
+        }),
+      );
+    }
+
+    for (const m of video.models ?? []) {
+      rows.push(
+        this.makeModel(accountId, now, m.id, "video-generation", {
+          ownedBy: m.owned_by ?? "",
+          version: m.version ?? "",
+          fingerprint: m.fingerprint ?? "",
+          aliases: (m.aliases ?? []).join(", "),
+          inputModalities: (m.input_modalities ?? []).join(", "),
+          outputModalities: (m.output_modalities ?? []).join(", "),
+          created: formatEpochSeconds(m.created),
         }),
       );
     }
@@ -551,6 +657,7 @@ export class XaiClient implements PluginClient {
             createdAt: formatEpochSeconds(file.created_at),
             expiresAt: formatEpochSeconds(file.expires_at ?? undefined),
             publicUrl: file.public_url ?? "",
+            publicUrlExpiresAt: formatEpochSeconds(file.public_url_expires_at ?? undefined),
           },
           resolvedOutputs: {},
           secretStates: [],
@@ -877,6 +984,193 @@ export class XaiClient implements PluginClient {
     };
   }
 
+  /**
+   * GET /v1/skills: OpenAI-style cursor paging (`after` = previous page's
+   * `last_id`, stop on `has_more: false`).
+   * Docs: https://docs.x.ai/openapi.json
+   */
+  private async listSkills(accountId: string): Promise<ResourceInstance[]> {
+    const now = new Date().toISOString();
+    const out: ResourceInstance[] = [];
+    let after: string | undefined;
+
+    for (let page = 0; page < 20; page++) {
+      const qs = new URLSearchParams({ limit: "100", order: "desc" });
+      if (after) qs.set("after", after);
+      const data = await this.fetch<{
+        data?: XaiSkill[];
+        has_more?: boolean;
+        last_id?: string;
+      }>(`/v1/skills?${qs.toString()}`);
+      for (const skill of data.data ?? []) {
+        out.push({
+          id: `${accountId}:skill:${skill.id}`,
+          pluginId: "xai",
+          resourceTypeId: "skill",
+          accountId,
+          displayName: skill.name || skill.id,
+          externalId: skill.id,
+          fields: {
+            skillId: skill.id,
+            name: skill.name ?? "",
+            description: skill.description ?? "",
+            defaultVersion: skill.default_version ?? "",
+            latestVersion: skill.latest_version ?? "",
+            createdAt: formatEpochSeconds(skill.created_at),
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          createdAt: formatEpochSeconds(skill.created_at) || now,
+          updatedAt: now,
+        });
+      }
+      const next = data.last_id;
+      if (!data.has_more || !next || next === after) break;
+      after = next;
+    }
+    return dedupeBy(out, (r) => r.id);
+  }
+
+  /**
+   * GET /v1/collections on the management host: `limit` maxes out at 100,
+   * page with `pagination_token`. The team is derived from the management key.
+   * Docs: https://docs.x.ai/developers/rest-api-reference/collections/collection
+   */
+  private async fetchCollections(): Promise<XaiCollection[]> {
+    const out: XaiCollection[] = [];
+    let token: string | undefined;
+    let seenToken: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const qs = new URLSearchParams({ limit: "100" });
+      if (token) qs.set("pagination_token", token);
+      const data = await this.mgmtFetch<{
+        collections?: XaiCollection[];
+        pagination_token?: string | null;
+      }>(`/v1/collections?${qs.toString()}`);
+      out.push(...(data.collections ?? []).filter((c) => Boolean(c.collection_id)));
+      token = data.pagination_token || undefined;
+      if (!token || token === seenToken) break;
+      seenToken = token;
+    }
+    return dedupeBy(out, (c) => c.collection_id);
+  }
+
+  private async listCollections(accountId: string): Promise<ResourceInstance[]> {
+    const now = new Date().toISOString();
+    return (await this.fetchCollections()).map((c) => mapCollection(accountId, now, c));
+  }
+
+  /** GET /v1/collections/{collection_id}/documents, paged like the collection list. */
+  private async fetchCollectionDocuments(collectionId: string): Promise<XaiCollectionDocument[]> {
+    const out: XaiCollectionDocument[] = [];
+    let token: string | undefined;
+    let seenToken: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const qs = new URLSearchParams({ limit: "100" });
+      if (token) qs.set("pagination_token", token);
+      const data = await this.mgmtFetch<{
+        documents?: XaiCollectionDocument[];
+        pagination_token?: string | null;
+      }>(`/v1/collections/${encodeURIComponent(collectionId)}/documents?${qs.toString()}`);
+      out.push(...(data.documents ?? []));
+      token = data.pagination_token || undefined;
+      if (!token || token === seenToken) break;
+      seenToken = token;
+    }
+    return out;
+  }
+
+  /**
+   * Every document in every collection. There is no cross-collection listing,
+   * so this walks the collections, skipping any whose `documents_count` says
+   * it is empty.
+   */
+  private async listCollectionDocuments(accountId: string): Promise<ResourceInstance[]> {
+    const now = new Date().toISOString();
+    const out: ResourceInstance[] = [];
+    for (const c of await this.fetchCollections()) {
+      if (c.documents_count === 0) continue;
+      const collection = { id: c.collection_id, name: c.collection_name ?? "" };
+      for (const doc of await this.fetchCollectionDocuments(c.collection_id)) {
+        const mapped = mapCollectionDocument(accountId, now, collection, doc);
+        if (mapped) out.push(mapped);
+      }
+    }
+    return dedupeBy(out, (r) => r.id);
+  }
+
+  /**
+   * GET /v1/billing/teams/{team_id}/invoices, from {@link INVOICE_HISTORY_MONTHS}
+   * back. The `since.*` filter is the documented way to bound the list; the
+   * endpoint has no pagination.
+   * Docs: https://docs.x.ai/developers/rest-api-reference/management/billing
+   */
+  private async listInvoices(accountId: string): Promise<ResourceInstance[]> {
+    const teamId = await this.getTeamId();
+    const since = new Date();
+    since.setUTCDate(1);
+    since.setUTCMonth(since.getUTCMonth() - INVOICE_HISTORY_MONTHS);
+    const qs = new URLSearchParams({
+      "since.year": String(since.getUTCFullYear()),
+      "since.month": String(since.getUTCMonth() + 1),
+    });
+    const data = await this.mgmtFetch<{ invoices?: XaiInvoice[] }>(
+      `/v1/billing/teams/${encodeURIComponent(teamId)}/invoices?${qs.toString()}`,
+    );
+    const now = new Date().toISOString();
+    return (data.invoices ?? [])
+      .filter((inv) => Boolean(inv.invoiceId))
+      .map((inv) => mapInvoice(accountId, now, inv))
+      .sort((a, b) => String(b.fields["createTime"]).localeCompare(String(a.fields["createTime"])));
+  }
+
+  /**
+   * The spending limit plus this period's invoice preview, as one row.
+   * GET .../postpaid/spending-limits and GET .../postpaid/invoice/preview.
+   * The preview is context, so a failure there still yields the limit.
+   */
+  private async listSpendingLimit(accountId: string): Promise<ResourceInstance[]> {
+    const teamId = encodeURIComponent(await this.getTeamId());
+    const [limits, preview] = await Promise.all([
+      this.mgmtFetch<{ spendingLimits?: XaiSpendingLimits }>(
+        `/v1/billing/teams/${teamId}/postpaid/spending-limits`,
+      ),
+      this.mgmtFetch<XaiInvoicePreview>(
+        `/v1/billing/teams/${teamId}/postpaid/invoice/preview`,
+      ).catch(() => undefined),
+    ]);
+    return [
+      mapSpendingLimit(accountId, new Date().toISOString(), limits.spendingLimits ?? {}, preview),
+    ];
+  }
+
+  /**
+   * Remaining prepaid credit, for the host's credit tracking. Read from the
+   * current period's invoice preview; see `prepaidBalances` for why not the
+   * prepaid ledger.
+   */
+  async fetchCreditBalance(): Promise<CreditBalance[]> {
+    if (!this.managementKey) {
+      throw new CreditAccessError(
+        "xAI reports prepaid credit only through its Management API. Add a management key to this account to track the balance.",
+        MANAGEMENT_KEY_HELP,
+      );
+    }
+    const teamId = encodeURIComponent(await this.getTeamId());
+    const preview = await this.mgmtFetch<XaiInvoicePreview>(
+      `/v1/billing/teams/${teamId}/postpaid/invoice/preview`,
+    );
+    return prepaidBalances(preview);
+  }
+
+  /** GET /v1/batches/{batch_id}/requests: first page only, for the detail view. */
+  private async fetchBatchRequests(batchId: string): Promise<XaiBatchRequestMeta[]> {
+    const data = await this.fetch<{ batch_request_metadata?: XaiBatchRequestMeta[] }>(
+      `/v1/batches/${encodeURIComponent(batchId)}/requests?limit=${BATCH_REQUESTS_PREVIEW}`,
+    );
+    return data.batch_request_metadata ?? [];
+  }
+
   // ------------------------------------------------------------------- get
 
   async getResource(
@@ -897,6 +1191,17 @@ export class XaiClient implements PluginClient {
         found.resolvedOutputs = { ...found.resolvedOutputs, __voices__: JSON.stringify(voices) };
       } catch {
         // Leave the panel to fall back to the documented built-in voices.
+      }
+    }
+    if (typeId === "batch") {
+      try {
+        const requests = await this.fetchBatchRequests(found.externalId ?? "");
+        found.resolvedOutputs = {
+          ...found.resolvedOutputs,
+          __requests__: JSON.stringify(requests),
+        };
+      } catch {
+        // The counters on the row still tell the story without the per-request list.
       }
     }
     return found;
@@ -969,6 +1274,65 @@ export class XaiClient implements PluginClient {
         { label: "Voice ID", value: String(f["voiceId"] ?? "") },
         { label: "Source", value: f["builtIn"] === true ? "Built-in" : "Custom" },
       ];
+    }
+    if (resourceTypeId === "collection") {
+      return [
+        { label: "Documents", value: Number(f["documentsCount"] ?? 0).toLocaleString("en-US") },
+        { label: "Embedding", value: String(f["embeddingModel"] || "default") },
+      ];
+    }
+    if (resourceTypeId === "collection-document") {
+      const status = String(f["status"] ?? "");
+      const dot = documentStatusDot(status);
+      return [
+        {
+          label: "Status",
+          value: status.replace(/^DOCUMENT_STATUS_/, "").toLowerCase() || "unknown",
+          variant:
+            dot === "healthy" ? "status-healthy" : dot === "error" ? "status-error" : "default",
+        },
+        { label: "Collection", value: String(f["collectionName"] || f["collectionId"] || "") },
+      ];
+    }
+    if (resourceTypeId === "invoice") {
+      const status = String(f["status"] ?? "");
+      const dot = invoiceStatusDot(status);
+      return [
+        { label: "Total", value: formatUsd(Number(f["total"] ?? 0)) },
+        {
+          label: "Status",
+          value: status || "unknown",
+          variant:
+            dot === "healthy"
+              ? "status-healthy"
+              : dot === "error"
+                ? "status-error"
+                : dot === "degraded"
+                  ? "status-degraded"
+                  : "default",
+        },
+      ];
+    }
+    if (resourceTypeId === "spending-limit") {
+      const spend = Number(f["currentSpend"] ?? 0);
+      const limit = Number(f["effectiveLimit"] ?? 0) || Number(f["softLimit"] ?? 0);
+      return [
+        { label: "This period", value: formatUsd(spend) },
+        {
+          label: "Limit",
+          value: formatUsd(limit),
+          variant: limit > 0 && spend >= limit * 0.9 ? "status-degraded" : "default",
+        },
+        {
+          label: "Prepaid left",
+          value: formatUsd(
+            Math.max(0, Number(f["prepaidCredits"] ?? 0) - Number(f["prepaidCreditsUsed"] ?? 0)),
+          ),
+        },
+      ];
+    }
+    if (resourceTypeId === "skill") {
+      return [{ label: "Version", value: String(f["latestVersion"] || "1") }];
     }
     if (resourceTypeId === "api-key") {
       const disabled = f["disabled"] === true;
@@ -1132,7 +1496,97 @@ export class XaiClient implements PluginClient {
         ],
       };
     }
+    if (typeId === "batch") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Name",
+            kind: "text",
+            required: true,
+            description:
+              "Creates an empty batch. Add requests to it from your code with POST /v1/batches/{batch_id}/requests.",
+          },
+        ],
+      };
+    }
+    if (typeId === "collection") {
+      const models = await this.listEmbeddingModelOptions();
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          { key: "description", label: "Description", kind: "text", required: false },
+          {
+            key: "embeddingModel",
+            label: "Embedding model",
+            kind: "select",
+            required: false,
+            options: [{ id: "", label: "xAI default" }, ...models],
+            defaultValue: "",
+            description: "Fixed once the collection exists.",
+          },
+          {
+            key: "maxChunkTokens",
+            label: "Max chunk size (tokens)",
+            kind: "number",
+            required: false,
+            minValue: 1,
+            description: "Leave blank for xAI's default chunking.",
+          },
+          {
+            key: "chunkOverlapTokens",
+            label: "Chunk overlap (tokens)",
+            kind: "number",
+            required: false,
+            minValue: 0,
+            description: "Only used when a max chunk size is set.",
+          },
+        ],
+      };
+    }
+    if (typeId === "collection-document") {
+      const [collections, files] = await Promise.all([
+        this.fetchCollections().catch(() => [] as XaiCollection[]),
+        this.listFiles("picker").catch(() => [] as ResourceInstance[]),
+      ]);
+      return {
+        fields: [
+          {
+            key: "collectionId",
+            label: "Collection",
+            kind: "select",
+            required: true,
+            options: collections.map((c) => ({
+              id: c.collection_id,
+              label: c.collection_name || c.collection_id,
+              description: `${(c.documents_count ?? 0).toLocaleString("en-US")} documents`,
+            })),
+          },
+          {
+            key: "fileId",
+            label: "File",
+            kind: "select",
+            required: true,
+            options: files.map((f) => ({
+              id: String(f.fields["fileId"]),
+              label: f.displayName,
+              description: String(f.fields["createdAt"] || ""),
+            })),
+            description: "An uploaded xAI file. It is indexed into the collection, not copied.",
+          },
+        ],
+      };
+    }
     throw new Error(`xAI plugin: no create config for type "${typeId}"`);
+  }
+
+  private async listEmbeddingModelOptions(): Promise<Array<{ id: string; label: string }>> {
+    try {
+      const data = await this.fetch<{ models?: XaiEmbeddingModel[] }>("/v1/embedding-models");
+      return (data.models ?? []).map((m) => ({ id: m.id, label: m.id }));
+    } catch {
+      return [];
+    }
   }
 
   private async listModelAclOptions(): Promise<Array<{ id: string; label: string }>> {
@@ -1144,13 +1598,102 @@ export class XaiClient implements PluginClient {
     }
   }
 
-  /** POST /auth/teams/{teamId}/api-keys */
   async createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    if (typeId !== "api-key") throw new Error(`xAI plugin: cannot create type "${typeId}"`);
+    switch (typeId) {
+      case "api-key":
+        return this.createApiKey(accountId, fields);
+      case "batch":
+        return this.createBatch(accountId, fields);
+      case "collection":
+        return this.createCollection(accountId, fields);
+      case "collection-document":
+        return this.createCollectionDocument(accountId, fields);
+      default:
+        throw new Error(`xAI plugin: cannot create type "${typeId}"`);
+    }
+  }
+
+  /** POST /v1/batches: the API takes only a name. */
+  private async createBatch(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const name = fields["name"]?.trim();
+    if (!name) throw new Error("xAI plugin: missing batch name");
+    const created = await this.fetch<XaiBatch>("/v1/batches", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    return this.mapBatch(accountId, new Date().toISOString(), created);
+  }
+
+  /** POST /v1/collections on the management host. */
+  private async createCollection(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const name = fields["name"]?.trim();
+    if (!name) throw new Error("xAI plugin: missing collection name");
+    const body: Record<string, unknown> = { collection_name: name };
+    if (fields["description"]) body["collection_description"] = fields["description"];
+    if (fields["embeddingModel"]) {
+      body["index_configuration"] = { model_name: fields["embeddingModel"] };
+    }
+    const maxTokens = Number(fields["maxChunkTokens"]);
+    if (Number.isFinite(maxTokens) && maxTokens > 0) {
+      const overlap = Number(fields["chunkOverlapTokens"]);
+      body["chunk_configuration"] = {
+        tokens_configuration: {
+          max_chunk_size_tokens: maxTokens,
+          ...(Number.isFinite(overlap) && overlap > 0 ? { chunk_overlap_tokens: overlap } : {}),
+        },
+      };
+    }
+    const created = await this.mgmtFetch<XaiCollection>("/v1/collections", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return mapCollection(accountId, new Date().toISOString(), created);
+  }
+
+  /** POST /v1/collections/{collection_id}/documents/{file_id}: returns `{}`. */
+  private async createCollectionDocument(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const collectionId = fields["collectionId"];
+    const fileId = fields["fileId"];
+    if (!collectionId || !fileId) {
+      throw new Error("xAI plugin: pick both a collection and a file");
+    }
+    const path = `/v1/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(fileId)}`;
+    await this.mgmtFetch<unknown>(path, { method: "POST", body: JSON.stringify({}) });
+    const doc = await this.mgmtFetch<XaiCollectionDocument>(path);
+    const collection = await this.mgmtFetch<XaiCollection>(
+      `/v1/collections/${encodeURIComponent(collectionId)}`,
+    ).catch(() => undefined);
+    const mapped = mapCollectionDocument(
+      accountId,
+      new Date().toISOString(),
+      { id: collectionId, name: collection?.collection_name ?? "" },
+      {
+        ...doc,
+        file_metadata: { ...doc.file_metadata, file_id: doc.file_metadata?.file_id || fileId },
+      },
+    );
+    if (!mapped) throw new Error("xAI plugin: the attached document could not be read back");
+    return mapped;
+  }
+
+  /** POST /auth/teams/{teamId}/api-keys */
+  private async createApiKey(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const teamId = await this.getTeamId();
     const name = fields["name"];
     if (!name) throw new Error("xAI plugin: missing API key name");
@@ -1239,6 +1782,41 @@ export class XaiClient implements PluginClient {
       return this.getResource(typeId, resourceId, accountId);
     }
 
+    if (typeId === "collection") {
+      // PUT /v1/collections/{collection_id}: only name and description are
+      // changed here; chunking is fixed once documents are embedded.
+      const body: Record<string, unknown> = {};
+      if (fields["name"] !== undefined && fields["name"].trim()) {
+        body["collection_name"] = fields["name"].trim();
+      }
+      if (fields["description"] !== undefined)
+        body["collection_description"] = fields["description"];
+      if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
+      const updated = await this.mgmtFetch<XaiCollection>(
+        `/v1/collections/${encodeURIComponent(externalId)}`,
+        { method: "PUT", body: JSON.stringify(body) },
+      );
+      return mapCollection(accountId, new Date().toISOString(), updated);
+    }
+
+    if (typeId === "spending-limit") {
+      // POST .../postpaid/spending-limits takes the soft limit in USD cents.
+      const raw = fields["softLimit"];
+      if (raw === undefined) return this.getResource(typeId, resourceId, accountId);
+      const dollars = Number(raw);
+      if (!Number.isFinite(dollars) || dollars < 0) {
+        throw new Error("xAI plugin: the spending limit must be a non-negative dollar amount");
+      }
+      const teamId = encodeURIComponent(await this.getTeamId());
+      await this.mgmtFetch<unknown>(`/v1/billing/teams/${teamId}/postpaid/spending-limits`, {
+        method: "POST",
+        body: JSON.stringify({
+          desiredSoftSpendingLimit: { val: String(Math.round(dollars * 100)) },
+        }),
+      });
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
     throw new Error(`xAI plugin: cannot update type "${typeId}"`);
   }
 
@@ -1260,13 +1838,42 @@ export class XaiClient implements PluginClient {
       });
       return;
     }
+    if (typeId === "skill") {
+      const result = await this.fetch<{ deleted?: boolean }>(
+        `/v1/skills/${encodeURIComponent(externalId)}`,
+        { method: "DELETE" },
+      );
+      if (result.deleted === false)
+        throw new Error(`xAI plugin: skill ${externalId} was not deleted`);
+      return;
+    }
+    if (typeId === "collection") {
+      await this.mgmtFetch(`/v1/collections/${encodeURIComponent(externalId)}`, {
+        method: "DELETE",
+      });
+      return;
+    }
+    if (typeId === "collection-document") {
+      // Removes the document from the collection; the underlying file stays.
+      const { collectionId, fileId } = splitDocumentId(externalId);
+      await this.mgmtFetch(
+        `/v1/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(fileId)}`,
+        { method: "DELETE" },
+      );
+      return;
+    }
     throw new Error(`xAI plugin: cannot delete type "${typeId}"`);
   }
 
   /**
-   * POST /auth/api-keys/{apiKeyId}/rotate: mints a new secret and starts the
-   * clock on the old one (24 h by default). Wired to the API key's Rotate
-   * action.
+   * Plugin actions:
+   *   - api-key `rotate`: POST /auth/api-keys/{apiKeyId}/rotate mints a new
+   *     secret and starts the clock on the old one (24 h by default).
+   *   - batch `cancel`: POST /v1/batches/{batch_id}:cancel (colon verb).
+   *   - file `create-public-url` / `revoke-public-url`: POST
+   *     /v1/files/{file_id}/public-url[/revoke]. Creation inherits the file's
+   *     own expiry, or none; revoke is idempotent.
+   *   - collection-document `reindex`: PATCH .../documents/{file_id}.
    */
   async invokeAction(
     typeId: string,
@@ -1274,12 +1881,41 @@ export class XaiClient implements PluginClient {
     actionId: string,
     _accountId: string,
   ): Promise<void> {
+    const externalId = resourceId.split(":").slice(2).join(":");
     if (typeId === "api-key" && actionId === "rotate") {
-      const externalId = resourceId.split(":").slice(2).join(":");
       await this.mgmtFetch(`/auth/api-keys/${encodeURIComponent(externalId)}/rotate`, {
         method: "POST",
         body: JSON.stringify({}),
       });
+      return;
+    }
+    if (typeId === "batch" && actionId === "cancel") {
+      await this.fetch(`/v1/batches/${encodeURIComponent(externalId)}:cancel`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      return;
+    }
+    if (typeId === "file" && actionId === "create-public-url") {
+      await this.fetch(`/v1/files/${encodeURIComponent(externalId)}/public-url`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      return;
+    }
+    if (typeId === "file" && actionId === "revoke-public-url") {
+      await this.fetch(`/v1/files/${encodeURIComponent(externalId)}/public-url/revoke`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      return;
+    }
+    if (typeId === "collection-document" && actionId === "reindex") {
+      const { collectionId, fileId } = splitDocumentId(externalId);
+      await this.mgmtFetch(
+        `/v1/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(fileId)}`,
+        { method: "PATCH", body: JSON.stringify({}) },
+      );
       return;
     }
     throw new Error(`xAI plugin: unknown action "${actionId}" for type "${typeId}"`);
@@ -1430,6 +2066,16 @@ export class XaiClient implements PluginClient {
         return this.renderApiKeyDetail(resource);
       case "audit-event":
         return this.renderAuditEventDetail(resource);
+      case "skill":
+        return this.renderSkillDetail(resource);
+      case "collection":
+        return renderCollectionDetail(resource);
+      case "collection-document":
+        return renderCollectionDocumentDetail(resource);
+      case "invoice":
+        return renderInvoiceDetail(resource);
+      case "spending-limit":
+        return renderSpendingLimitDetail(resource);
       default:
         return {
           title: resource.displayName,
@@ -1471,6 +2117,20 @@ export class XaiClient implements PluginClient {
     // Images and search sources are bought one at a time, not by the million.
     addPrice("Image", "imagePrice", "per image", PRICE_PER_UNIT);
     addPrice("Live search", "searchPrice", "per source", PRICE_PER_UNIT);
+    for (const tier of parseJsonArray<{
+      quality?: string;
+      resolution?: string;
+      price_per_image?: number;
+    }>(f["imagePricingTiers"])) {
+      if (!tier.price_per_image) continue;
+      priceRows.push({
+        cells: {
+          meter: `Image (${tier.quality ?? "?"}, ${tier.resolution ?? "?"})`,
+          price: `$${(tier.price_per_image / PRICE_PER_UNIT).toFixed(4)}`,
+          unit: "per image",
+        },
+      });
+    }
 
     const identity: KVItem[] = [
       { key: "Model ID", value: String(f["modelId"] ?? resource.displayName), copyable: true },
@@ -1491,6 +2151,15 @@ export class XaiClient implements PluginClient {
         key: "Long-Context Threshold",
         value: `${Number(f["longContextThreshold"]).toLocaleString()} tokens`,
       });
+    }
+    if (f["reasoningEfforts"]) {
+      capability.push({ key: "Reasoning Efforts", value: String(f["reasoningEfforts"]) });
+      if (f["defaultReasoningEffort"]) {
+        capability.push({
+          key: "Default Reasoning Effort",
+          value: String(f["defaultReasoningEffort"]),
+        });
+      }
     }
     if (Number(f["maxPromptLength"] ?? 0) > 0) {
       capability.push({
@@ -1660,13 +2329,51 @@ export class XaiClient implements PluginClient {
                 { key: "Purpose", value: String(f["purpose"] || DASH) },
                 { key: "Created", value: String(f["createdAt"] || DASH) },
                 { key: "Expires", value: String(f["expiresAt"] || "never") },
-                { key: "Public URL", value: String(f["publicUrl"] || DASH) },
+                {
+                  key: "Public URL",
+                  value: String(f["publicUrl"] || "none"),
+                  ...(f["publicUrl"] ? { copyable: true } : {}),
+                },
+                ...(f["publicUrl"]
+                  ? [
+                      {
+                        key: "Public URL Expires",
+                        value: String(f["publicUrlExpiresAt"] || "never"),
+                      },
+                    ]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        f["publicUrl"]
+          ? {
+              kind: "action",
+              label: "Revoke public URL",
+              variant: "danger",
+              action: {
+                type: "plugin-action",
+                actionId: "revoke-public-url",
+                confirmMessage:
+                  "Revoke this file's public URL? Anyone using the link loses access; the file itself is kept.",
+                successMessage: "Public URL revoked.",
+              },
+            }
+          : {
+              kind: "action",
+              label: "Create public URL",
+              action: {
+                type: "plugin-action",
+                actionId: "create-public-url",
+                confirmMessage:
+                  "Create a permanent, unauthenticated URL for this file? Anyone with the link can download it until it is revoked or the file expires.",
+                successMessage: "Public URL created. Refresh to copy it.",
+              },
+            },
+      ],
     };
   }
 
@@ -1675,6 +2382,7 @@ export class XaiClient implements PluginClient {
     const pending = Number(f["numPending"] ?? 0);
     const errored = Number(f["numError"] ?? 0);
     const cancelled = String(f["cancelTime"] ?? "") !== "";
+    const requests = parseJsonArray<XaiBatchRequestMeta>(resource.resolvedOutputs["__requests__"]);
     const status = cancelled
       ? "degraded"
       : errored > 0
@@ -1724,6 +2432,93 @@ export class XaiClient implements PluginClient {
                 { cells: { state: "Errored", count: String(errored) } },
                 { cells: { state: "Cancelled", count: String(f["numCancelled"] ?? 0) } },
               ],
+            },
+            ...(requests.length > 0
+              ? [
+                  {
+                    kind: "table" as const,
+                    columns: [
+                      { key: "id", label: "Request ID", mono: true },
+                      { key: "state", label: "State" },
+                      { key: "model", label: "Model" },
+                      { key: "endpoint", label: "Endpoint" },
+                      { key: "created", label: "Created" },
+                      { key: "finished", label: "Finished" },
+                    ],
+                    rows: requests.map((r) => ({
+                      cells: {
+                        id: r.batch_request_id || DASH,
+                        state: r.state || DASH,
+                        model: r.model || DASH,
+                        endpoint: r.endpoint || DASH,
+                        created: r.create_time || DASH,
+                        finished: r.finish_time || DASH,
+                      },
+                    })),
+                  },
+                ]
+              : []),
+            ...(requests.length >= BATCH_REQUESTS_PREVIEW
+              ? [
+                  {
+                    kind: "text" as const,
+                    variant: "muted" as const,
+                    content: `Showing the first ${BATCH_REQUESTS_PREVIEW} requests.`,
+                  },
+                ]
+              : []),
+          ],
+        },
+      ],
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        ...(pending > 0 && !cancelled
+          ? [
+              {
+                kind: "action" as const,
+                label: "Cancel batch",
+                variant: "danger" as const,
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "cancel",
+                  confirmMessage:
+                    "Cancel every pending request in this batch? Requests already processed are still billed.",
+                  successMessage: "Batch cancellation requested.",
+                },
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
+  private renderSkillDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    return {
+      title: resource.displayName,
+      subtitle: "xAI Skill",
+      status: { kind: "status-dot", status: "healthy" },
+      sections: [
+        {
+          kind: "section",
+          title: "Skill",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Skill ID", value: String(f["skillId"] || DASH), copyable: true },
+                { key: "Name", value: String(f["name"] || DASH) },
+                { key: "Description", value: String(f["description"] || DASH) },
+                { key: "Default Version", value: String(f["defaultVersion"] || DASH) },
+                { key: "Latest Version", value: String(f["latestVersion"] || DASH) },
+                { key: "Created", value: String(f["createdAt"] || DASH) },
+              ],
+            },
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                "Name and description come from the bundle's SKILL.md frontmatter. To change them, upload a new bundle with POST /v1/skills.",
             },
           ],
         },
@@ -1864,6 +2659,27 @@ export class XaiClient implements PluginClient {
         },
       };
     }
+    if (resource.resourceTypeId === "collection-document") {
+      return {
+        id: resource.id,
+        label: resource.displayName,
+        status: {
+          kind: "status-dot",
+          status: documentStatusDot(String(resource.fields["status"] ?? "")),
+        },
+      };
+    }
+    if (resource.resourceTypeId === "invoice") {
+      return {
+        id: resource.id,
+        label: resource.displayName,
+        status: {
+          kind: "status-dot",
+          status: invoiceStatusDot(String(resource.fields["status"] ?? "")),
+          label: formatUsd(Number(resource.fields["total"] ?? 0)),
+        },
+      };
+    }
     return {
       id: resource.id,
       label: resource.displayName,
@@ -1878,6 +2694,16 @@ export class XaiClient implements PluginClient {
 function isAudioModel(resource: ResourceInstance): boolean {
   const modalities = `${resource.fields["inputModalities"] ?? ""},${resource.fields["outputModalities"] ?? ""}`;
   return /audio|speech/i.test(modalities);
+}
+
+function parseJsonArray<T>(raw: string | number | boolean | undefined): T[] {
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 function limitLabel(value: string | number | boolean | undefined): string {
