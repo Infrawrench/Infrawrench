@@ -25,7 +25,7 @@ After enrollment, use the device's Tailscale IP from a machine on the tailnet. C
 
 ## Agent VMs
 
-[Agents](./agents.md) can enroll every VM they create: tick your Tailscale account under **Services** in the Agents configuration menu. Setup installs Tailscale once the VM is ready, and deleting the session removes the device from the tailnet. A [T3 Code](./t3-code.md#reaching-the-server-over-tailscale-instead) server can then be reached over the tailnet with Tailscale Serve instead of T3 Connect.
+[Agents](./agents.md) can enroll every VM they create: select your Tailscale account under **Services** in the Agents configuration menu. Setup installs Tailscale once the VM is ready, and deleting the session removes the device from the tailnet. A [T3 Code](./t3-code.md#reaching-the-server-over-tailscale-instead) server can then be reached over the tailnet with Tailscale Serve instead of T3 Connect.
 
 ## Troubleshooting
 

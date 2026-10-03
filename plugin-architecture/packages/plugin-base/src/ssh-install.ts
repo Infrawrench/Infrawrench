@@ -22,6 +22,8 @@ export interface SshInstallAccount {
   pluginId: string;
   serviceName: string;
   description: string;
+  /** The plugin's manifest logo, for pickers. */
+  logoSvg?: string;
 }
 
 export interface SshInstallInput {

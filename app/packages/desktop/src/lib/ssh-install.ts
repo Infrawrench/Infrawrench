@@ -29,6 +29,7 @@ export async function listLocalSshInstallAccounts(): Promise<SshInstallAccount[]
             pluginId: row.plugin_id,
             serviceName: manifest.displayName,
             description: manifest.sshInstall.description,
+            logoSvg: manifest.logoSvg,
           },
         ]
       : [];

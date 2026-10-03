@@ -10000,5 +10000,9 @@
     "t": "p",
     "i": 1,
     "c": "服务器通过 Tailscale Serve（而非 T3 Connect）发布到你的 tailnet，因此无需 T3 账户。授权服务器会输出一个配对链接，用于 T3 Code 的 Add environment。你的 tailnet 需要启用 MagicDNS 和 HTTPS 证书。"
-  }
+  },
+  "1dd93a9589a51dfb": "搜索服务…",
+  "70c1e334936b66f1": "搜索服务",
+  "40f4eba7d463391c": "未附加",
+  "017b05ddd6e35764": "已附加 {count} 项"
 }

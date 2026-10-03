@@ -10000,5 +10000,9 @@
     "t": "p",
     "i": 1,
     "c": "サーバーは T3 Connect ではなく Tailscale Serve で tailnet 上に公開されるため、T3 アカウントは不要です。「サーバーを認可」を実行すると、T3 Code の Add environment 用のペアリングリンクが表示されます。tailnet で MagicDNS と HTTPS 証明書を有効にしておく必要があります。"
-  }
+  },
+  "1dd93a9589a51dfb": "サービスを検索…",
+  "70c1e334936b66f1": "サービスを検索",
+  "40f4eba7d463391c": "添付なし",
+  "017b05ddd6e35764": "{count} 件を添付済み"
 }

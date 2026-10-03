@@ -445,6 +445,7 @@ export function registerResourcePaths(ctx: BuildContext) {
     pluginId: z.string(),
     serviceName: z.string(),
     description: z.string(),
+    logoSvg: z.string().optional(),
   }).openapi("SshInstallAccount");
   const SshInstallRequest = strict({
     installerAccountId: Uuid,
@@ -457,6 +458,10 @@ export function registerResourcePaths(ctx: BuildContext) {
     message: z.string(),
     address: z.string().optional(),
     warnings: z.array(z.string()).optional(),
+    ref: z
+      .string()
+      .optional()
+      .describe("Opaque, plugin-owned handle to what was installed (e.g. a tailnet device id)."),
   }).openapi("SshInstallResult");
   registry.registerPath({
     method: "get",

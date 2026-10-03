@@ -28,6 +28,7 @@ export async function listSshInstallAccounts(organizationId: string): Promise<Ss
             pluginId: row.pluginId,
             serviceName: manifest.displayName,
             description: manifest.sshInstall.description,
+            logoSvg: manifest.logoSvg,
           },
         ]
       : [];

@@ -5,6 +5,7 @@ import { FieldRenderer } from "../components/create-resource/FieldRenderer.js";
 import { useDataString } from "../i18n/data-strings.js";
 import { AGENT_SETUP_FAILED_LOG_PREFIX } from "./launch-command.js";
 import { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./open-ssh-tab.js";
+import { ServiceAccountPicker } from "./ServiceAccountPicker.js";
 import {
   agentSurfaceOrDefault,
   agentSurfaceRequiresRepo,
@@ -507,35 +508,19 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                       </T>
                     )}
                     {serviceAccounts.length > 0 && (
-                      <fieldset className="space-y-1.5">
-                        <legend className="text-xs font-medium text-on-surface-secondary">
+                      <div>
+                        <p className="block text-xs font-medium text-on-surface-tertiary mb-2">
                           {gt("Services")}
-                        </legend>
-                        <p className="text-xs text-on-surface-muted">
+                        </p>
+                        <p className="text-xs text-on-surface-faint mb-2">
                           {gt("Installed on the VM over SSH once it is set up.")}
                         </p>
-                        {serviceAccounts.map((service) => (
-                          <label
-                            key={service.accountId}
-                            className="flex items-start gap-2 text-sm text-on-surface"
-                            title={gtData(service.description)}
-                          >
-                            <input
-                              type="checkbox"
-                              className="mt-0.5"
-                              checked={(settings?.serviceAccountIds ?? []).includes(
-                                service.accountId,
-                              )}
-                              onChange={(e) =>
-                                toggleServiceAccount(service.accountId, e.target.checked)
-                              }
-                            />
-                            <span>
-                              {service.serviceName}: {service.displayName}
-                            </span>
-                          </label>
-                        ))}
-                      </fieldset>
+                        <ServiceAccountPicker
+                          accounts={serviceAccounts}
+                          value={settings?.serviceAccountIds ?? []}
+                          onToggle={toggleServiceAccount}
+                        />
+                      </div>
                     )}
                     {isT3CodeSurface(selectedSurface) &&
                       attachedServices.some((a) => a.pluginId === T3_CODE_TAILSCALE_PLUGIN_ID) && (

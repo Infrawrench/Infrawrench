@@ -12544,6 +12544,9 @@
           },
           "description": {
             "type": "string"
+          },
+          "logoSvg": {
+            "type": "string"
           }
         },
         "required": [
@@ -12569,6 +12572,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "ref": {
+            "type": "string",
+            "description": "Opaque, plugin-owned handle to what was installed (e.g. a tailnet device id)."
           }
         },
         "required": [

@@ -65,7 +65,7 @@ Each step can be skipped with `Ctrl-C` and rerun later; the terminal drops you a
 
 ## Reaching the server over Tailscale instead
 
-T3 Connect needs a T3 account and routes the connection through T3's relay. If your team already runs a [Tailscale](./tailscale.md) tailnet, you can skip both. In the Agents configuration menu, tick your Tailscale account under **Services**, then set **T3 Code access** to **Tailscale**. The option only appears while a Tailscale account is attached, because the VM has to be on the tailnet first.
+T3 Connect needs a T3 account and routes the connection through T3's relay. If your team already runs a [Tailscale](./tailscale.md) tailnet, you can skip both. In the Agents configuration menu, select your Tailscale account under **Services**, then set **T3 Code access** to **Tailscale**. The option only appears while a Tailscale account is attached, because the VM has to be on the tailnet first.
 
 With Tailscale access:
 
@@ -75,7 +75,7 @@ With Tailscale access:
 - Your tailnet needs [MagicDNS and HTTPS certificates](https://tailscale.com/kb/1153/enabling-https) enabled. On a VM whose agent user isn't root, setup makes that user the Tailscale operator so it can configure Serve.
 - **Delete** removes the device from your tailnet after destroying the VM. There is no T3 Connect environment to revoke.
 
-![Agents configuration menu with the Tailscale account ticked under Services and T3 Code access set to Tailscale, showing the explanatory note](https://agent-assets.infrawrench.com/docs-screenshots/features/t3-code/config-menu-tailscale.png)
+![Agents configuration menu with the Tailscale account selected under Services and T3 Code access set to Tailscale, showing the explanatory note](https://agent-assets.infrawrench.com/docs-screenshots/features/t3-code/config-menu-tailscale-v2.png)
 
 ## Using the server
 

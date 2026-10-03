@@ -10000,5 +10000,9 @@
     "t": "p",
     "i": 1,
     "c": "Le serveur est publié sur votre tailnet avec Tailscale Serve au lieu de T3 Connect, aucun compte T3 n’est donc nécessaire. Autoriser le serveur affiche un lien d’appairage pour Add environment dans T3 Code. Votre tailnet doit avoir MagicDNS et les certificats HTTPS activés."
-  }
+  },
+  "1dd93a9589a51dfb": "Rechercher des services…",
+  "70c1e334936b66f1": "Rechercher des services",
+  "40f4eba7d463391c": "Aucun associé",
+  "017b05ddd6e35764": "{count} associés"
 }
