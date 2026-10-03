@@ -495,3 +495,122 @@ describe("logs and metrics", () => {
     expect(detail.sections.some((section) => section.title === "Metrics")).toBe(true);
   });
 });
+
+describe("fetchMetricSeries", () => {
+  const start = Date.parse("2026-10-01T00:00:00Z");
+  const end = start + 24 * 60 * 60 * 1000;
+
+  it("aggregates predictions for one deployment from the time-filtered list", async () => {
+    installFetch(() =>
+      jsonResponse({
+        next: null,
+        results: [
+          {
+            id: "a",
+            model: "acme/sdxl",
+            deployment: "acme/prod",
+            status: "succeeded",
+            created_at: "2026-10-01T01:00:00Z",
+            started_at: "2026-10-01T01:00:04Z",
+            metrics: { predict_time: 2 },
+          },
+          {
+            id: "b",
+            model: "acme/sdxl",
+            deployment: "prod",
+            status: "failed",
+            created_at: "2026-10-01T01:10:00Z",
+            started_at: "2026-10-01T01:10:02Z",
+            metrics: { predict_time: 4 },
+          },
+          {
+            id: "c",
+            model: "acme/sdxl",
+            status: "succeeded",
+            created_at: "2026-10-01T01:20:00Z",
+          },
+        ],
+      }),
+    );
+    const series = await client().fetchMetricSeries(
+      "deployment",
+      `${ACCOUNT}:deployment:acme/prod`,
+      ACCOUNT,
+      { startMs: start, endMs: end },
+    );
+    const url = new URL(calls[0]!.url);
+    expect(url.pathname).toBe("/v1/predictions");
+    expect(url.searchParams.get("created_after")).toBe("2026-10-01T00:00:00.000Z");
+    expect(url.searchParams.get("created_before")).toBe("2026-10-02T00:00:00.000Z");
+
+    const byLabel = Object.fromEntries(series.map((s) => [s.label, s]));
+    const sum = (label: string) =>
+      byLabel[label]!.points.reduce((total, point) => total + point.value, 0);
+    expect(sum("Predictions")).toBe(2);
+    expect(sum("Failed predictions")).toBe(1);
+    expect(byLabel["Avg predict time"]!.points).toEqual([
+      { timestamp: Date.parse("2026-10-01T01:00:00Z"), value: 3 },
+    ]);
+    expect(byLabel["Avg queue time"]!.points[0]!.value).toBe(3);
+  });
+
+  it("matches models by owner/name and ignores other types", async () => {
+    installFetch(() =>
+      jsonResponse({
+        next: null,
+        results: [
+          { id: "a", model: "acme/sdxl", status: "succeeded", created_at: "2026-10-01T03:00:00Z" },
+          { id: "b", model: "other/llm", status: "succeeded", created_at: "2026-10-01T03:00:00Z" },
+        ],
+      }),
+    );
+    const series = await client().fetchMetricSeries(
+      "model",
+      `${ACCOUNT}:model:acme/sdxl`,
+      ACCOUNT,
+      { startMs: start, endMs: end },
+    );
+    const predictions = series.find((s) => s.label === "Predictions")!;
+    expect(predictions.points.reduce((t, p) => t + p.value, 0)).toBe(1);
+    expect(await client().fetchMetricSeries("file", `${ACCOUNT}:file:f1`, ACCOUNT)).toEqual([]);
+  });
+
+  it("starts the chart at the oldest prediction read when the page cap cuts the walk", async () => {
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      const created = new Date(end - page * 60 * 1000).toISOString();
+      return jsonResponse({
+        next: `https://api.replicate.com/v1/predictions?cursor=${page}`,
+        results: [{ id: `p${page}`, model: "acme/sdxl", status: "succeeded", created_at: created }],
+      });
+    });
+    const series = await client().fetchMetricSeries(
+      "model",
+      `${ACCOUNT}:model:acme/sdxl`,
+      ACCOUNT,
+      { startMs: start, endMs: end },
+    );
+    expect(calls).toHaveLength(20);
+    const first = series.find((s) => s.label === "Predictions")!.points[0]!;
+    expect(first.timestamp).toBeGreaterThan(end - 60 * 60 * 1000);
+  });
+
+  it("declares the Metrics tab on deployments and models", () => {
+    const resource = {
+      id: `${ACCOUNT}:deployment:acme/prod`,
+      pluginId: "replicate",
+      resourceTypeId: "deployment",
+      accountId: ACCOUNT,
+      displayName: "acme/prod",
+      fields: { owner: "acme", name: "prod" },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    };
+    expect(client().renderDetail(resource).metricsCapability).toEqual({
+      defaultTimeRangeMs: 24 * 60 * 60 * 1000,
+    });
+  });
+});
