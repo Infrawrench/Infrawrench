@@ -14,6 +14,8 @@ import type {
   CreateResourceConfig,
   CostFetchRange,
   CostRow,
+  LogsFetchParams,
+  LogsFetchResult,
 } from "@infrawrench/plugin-base";
 import { jsonRestFetch, formatBytes, CostSetupError, externalIdOf } from "@infrawrench/plugin-base";
 
@@ -276,6 +278,22 @@ interface ClaudeCodeReport {
   next_page?: string | null;
 }
 
+/**
+ * One Activity Feed entry. Type-specific fields (`api_key_id`,
+ * `workspace_id`, `claude_chat_id`…) sit beside these at the top level.
+ */
+interface ComplianceActivity {
+  id?: string;
+  created_at?: string;
+  type?: string;
+  actor?: {
+    type?: string;
+    email_address?: string | null;
+    ip_address?: string | null;
+  } | null;
+  [key: string]: unknown;
+}
+
 interface UsageResult {
   uncached_input_tokens?: number;
   output_tokens?: number;
@@ -327,6 +345,21 @@ interface CostReport {
 function str(value: unknown): string {
   if (value == null) return "";
   return typeof value === "string" ? value : String(value);
+}
+
+/**
+ * One Activity Feed entry as a log line: time, type, the source IP, then the
+ * type-specific `*_id` fields that say what was acted on.
+ */
+function formatActivity(activity: ComplianceActivity): string {
+  const skip = new Set(["id", "organization_id", "organization_uuid"]);
+  const targets = Object.entries(activity)
+    .filter(([key, value]) => key.endsWith("_id") && !skip.has(key) && typeof value === "string")
+    .map(([key, value]) => `${key}=${String(value)}`);
+  const ip = str(activity.actor?.ip_address);
+  return [str(activity.created_at), str(activity.type), ip ? `from ${ip}` : "", ...targets]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function num(value: unknown): number {
@@ -1154,8 +1187,9 @@ export class AnthropicClient implements PluginClient {
    *
    * Scoped per resource: a model row filters on `models[]`, a workspace row on
    * `workspace_ids[]`, an API key on `api_key_ids[]` and an organization
-   * member on `account_ids[]`. Members additionally get their Claude Code
-   * activity (see `fetchClaudeCodeSeries`). Admin-key only, so this returns an
+   * member on `account_ids[]`. Members and API keys additionally get their
+   * Claude Code activity (see `fetchClaudeCodeSeries`), and workspaces their
+   * daily cost (see `fetchWorkspaceCostSeries`). Admin-key only, so this returns an
    * empty chart rather than an error when the account has no Admin key.
    */
   async fetchMetricSeries(
@@ -1178,6 +1212,31 @@ export class AnthropicClient implements PluginClient {
     const startMs = timeRange?.startMs ?? endMs - 7 * 24 * 60 * 60 * 1000;
 
     const tokenSeries = await this.fetchTokenSeries(filter, startMs, endMs);
+
+    if (resourceTypeId === "workspace") {
+      return [await this.fetchWorkspaceCostSeries(externalId, startMs, endMs), ...tokenSeries];
+    }
+
+    if (resourceTypeId === "api-key") {
+      // Claude Code run on an API key reports as an `api_actor` carrying the
+      // key's *name*, not its id, so the key is read back for its name.
+      const key = await this.fetch<AnthropicApiKey>(
+        `/v1/organizations/api_keys/${encodeURIComponent(externalId)}`,
+        undefined,
+        { admin: true },
+      );
+      const name = str(key?.name);
+      if (!name) return tokenSeries;
+      return [
+        ...tokenSeries,
+        ...(await this.fetchClaudeCodeSeries(
+          (actor) => actor?.type === "api_actor" && str(actor.api_key_name) === name,
+          startMs,
+          endMs,
+        )),
+      ];
+    }
+
     if (resourceTypeId !== "organization-user") return tokenSeries;
 
     const user = await this.fetch<AnthropicUser>(
@@ -1187,7 +1246,73 @@ export class AnthropicClient implements PluginClient {
     );
     const email = str(user.email).toLowerCase();
     if (!email) return tokenSeries;
-    return [...tokenSeries, ...(await this.fetchClaudeCodeSeries(email, startMs, endMs))];
+    return [
+      ...tokenSeries,
+      ...(await this.fetchClaudeCodeSeries(
+        (actor) => str(actor?.email_address).toLowerCase() === email,
+        startMs,
+        endMs,
+      )),
+    ];
+  }
+
+  /**
+   * Daily spend for one workspace, from GET /v1/organizations/cost_report
+   * grouped by `workspace_id`: verified 2026-10-03 against
+   * https://platform.claude.com/docs/en/api/admin-api/usage-cost/get-cost-report
+   *
+   * The report has no workspace filter, so every workspace's rows come back
+   * and this one's are picked out. Daily buckets only (limit 31 per page),
+   * amounts in cents, and the current day is never complete.
+   */
+  private async fetchWorkspaceCostSeries(
+    workspaceId: string,
+    startMs: number,
+    endMs: number,
+  ): Promise<MetricSeries> {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const firstDay = Math.floor(startMs / dayMs) * dayMs;
+    // `ending_at` must not be in the future (see fetchCostData), so stop at
+    // the start of today.
+    const lastDay = Math.min(
+      Math.ceil(endMs / dayMs) * dayMs,
+      Math.floor(Date.now() / dayMs) * dayMs,
+    );
+    if (firstDay >= lastDay) return { label: "Cost", unit: "USD", points: [] };
+
+    const base = new URLSearchParams({
+      starting_at: new Date(firstDay).toISOString(),
+      ending_at: new Date(lastDay).toISOString(),
+      bucket_width: "1d",
+      limit: "31",
+    });
+    base.append("group_by[]", "workspace_id");
+
+    const points: MetricSeriesPoint[] = [];
+    let page: string | undefined;
+    for (let i = 0; i < 5; i++) {
+      const query = new URLSearchParams(base);
+      if (page) query.set("page", page);
+      const body = await this.fetch<CostReport>(
+        `/v1/organizations/cost_report?${query.toString()}`,
+        undefined,
+        { admin: true },
+      );
+      for (const bucket of body.data ?? []) {
+        const timestamp = Date.parse(str(bucket.starting_at));
+        if (!Number.isFinite(timestamp)) continue;
+        let cents = 0;
+        for (const result of bucket.results ?? []) {
+          if (str(result.workspace_id) !== workspaceId) continue;
+          const amount = Number(result.amount);
+          if (Number.isFinite(amount)) cents += amount;
+        }
+        points.push({ timestamp, value: Math.round(cents) / 100 });
+      }
+      if (!body.has_more || !body.next_page) break;
+      page = body.next_page;
+    }
+    return { label: "Cost", unit: "USD", points };
   }
 
   private async fetchTokenSeries(
@@ -1263,12 +1388,14 @@ export class AnthropicClient implements PluginClient {
    * against https://platform.claude.com/docs/en/manage-claude/claude-code-analytics-api
    *
    * The report is one UTC day per request (`starting_at=YYYY-MM-DD`), one
-   * record per actor, so the member's rows are picked out by email address.
+   * record per actor, so the actor's rows are picked out client-side: a
+   * member's by email address (`user_actor`), a key's by its name
+   * (`api_actor.api_key_name`).
    * Usage through Bedrock, Vertex or Foundry is not included, and the
    * newest hour is withheld for consistency.
    */
   private async fetchClaudeCodeSeries(
-    email: string,
+    matches: (actor: ClaudeCodeRecord["actor"]) => boolean,
     startMs: number,
     endMs: number,
   ): Promise<MetricSeries[]> {
@@ -1304,7 +1431,7 @@ export class AnthropicClient implements PluginClient {
             { admin: true },
           );
           for (const record of body.data ?? []) {
-            if (str(record.actor?.email_address).toLowerCase() !== email) continue;
+            if (!matches(record.actor)) continue;
             const core = record.core_metrics ?? {};
             totals.sessions += num(core.num_sessions);
             totals.added += num(core.lines_of_code?.added);
@@ -1345,6 +1472,59 @@ export class AnthropicClient implements PluginClient {
       ),
       series("Claude Code estimated cost", "USD", (d) => Math.round(d.cost * 100) / 100),
     ];
+  }
+
+  /**
+   * A member's Logs tab: their entries in the Compliance API Activity Feed,
+   * GET /v1/compliance/activities, verified 2026-10-03 against
+   * https://platform.claude.com/docs/en/manage-claude/compliance-activity-feed
+   *
+   * An Admin API key reaches the feed only when the Compliance API was
+   * enabled (Console → Settings → Security) before the key was created, and
+   * recording is not retroactive. `actor_ids[]` accepts `user_…` ids only,
+   * which is why members are the one type with a Logs tab. Newest first, so
+   * the page is reversed into reading order.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    if (typeId !== "organization-user") {
+      throw new Error(`Anthropic plugin: no logs for type "${typeId}"`);
+    }
+    const container = "activity";
+    const wrap = (lines: string[]) => ({
+      text: lines.map((line) => `${line}\n`).join(""),
+      containers: [container],
+      activeContainer: container,
+    });
+    if (!this.hasAdminKey) return wrap([ADMIN_KEY_HINT]);
+
+    const query = new URLSearchParams({
+      limit: String(Math.min(Math.max(params.tailLines ?? 100, 1), 1000)),
+    });
+    query.append("actor_ids[]", externalIdOf(resourceId));
+
+    let body: AnthropicPage<ComplianceActivity>;
+    try {
+      body = await this.fetch<AnthropicPage<ComplianceActivity>>(
+        `/v1/compliance/activities?${query.toString()}`,
+        undefined,
+        { admin: true },
+      );
+    } catch (error) {
+      if (error instanceof Error && / 403 /.test(error.message)) {
+        return wrap([
+          "The Activity Feed is not available to this Admin API key. Turn on the Compliance API in Claude Console → Settings → Security, then create a new Admin API key: keys made before the Compliance API was enabled never gain access to the feed.",
+        ]);
+      }
+      throw error;
+    }
+
+    const lines = (body.data ?? []).reverse().map(formatActivity);
+    return wrap(lines.length > 0 ? lines : ["No activity recorded for this member."]);
   }
 
   /**
@@ -2381,6 +2561,7 @@ export class AnthropicClient implements PluginClient {
       ],
       headerActions: [refreshAction()],
       metricsCapability: { defaultTimeRangeMs: 7 * 24 * 60 * 60 * 1000 },
+      logs: { defaultTailLines: 100 },
     };
   }
 
