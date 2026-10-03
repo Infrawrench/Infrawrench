@@ -1,6 +1,6 @@
 ---
 title: DigitalOcean
-description: Manage Droplets, Kubernetes, managed databases, Spaces, and DNS.
+description: Manage Droplets, Kubernetes, App Platform, load balancers, firewalls, managed databases, Spaces, and DNS.
 sidebar_order: 4
 ---
 
@@ -15,6 +15,15 @@ The most approachable cloud plugin — a single API token is all you need.
 - **Network File Storage (NFS)** — create POSIX-compliant NFSv4.1 shares (standard or high-performance tier), pinned to a VPC, mountable across multiple Droplets and DOKS nodes. The share detail page surfaces the mount target and a ready-to-paste `mount -t nfs` command.
 - **Reserved IPs** — list, create, assign / reassign / unassign, and delete the static addresses you can move between Droplets (DigitalOcean's old "floating IPs"). Each address shows its region, the Droplet holding it, its project, and whether DigitalOcean has a pending action on it. Unassigned addresses are flagged by the [orphan finder](../features/orphan-finder.md) — see below.
 - **VPCs** — list, create (name + region, with an optional CIDR range and description) and delete the private networks your Droplets, DOKS nodes, NFS shares and Dedicated Inference endpoints sit in. Each VPC shows its region, IP range, description and whether it's the region's default. A region's default VPC — and any VPC that still has members — can't be deleted; DigitalOcean rejects those with a 403.
+- **NAT gateways**: list, create (region + VPC pickers, size 1-5, TCP/UDP/ICMP timeouts), edit size, name and timeouts, and delete the VPC NAT gateways that give private Droplets outbound internet access through one egress IP. See [Networking services](#networking-services).
+- **VPC peerings**: connect two VPCs (two VPC pickers), rename, delete.
+- **Load balancers**: create regional HTTP and regional network (TCP/UDP) load balancers, edit them, manage forwarding rules, health check and target Droplets, and chart every load balancer metric DigitalOcean exposes. Global load balancers list and edit but are created in the DigitalOcean console. See [Load balancers](#load-balancers).
+- **Cloud Firewalls**: create with inbound rules, sources and target Droplets/tags; add and remove allow or deny rules, Droplets and tags from the detail page. See [Cloud Firewalls](#cloud-firewalls).
+- **Certificates**: Let's Encrypt certificates for domains whose DNS DigitalOcean hosts (domain picker plus subdomains, wildcards included) or uploaded custom certificates. Expiry dates feed the Expiry radar.
+- **CDN endpoints**: put the Spaces CDN in front of a bucket (bucket picker when the account has Spaces keys), set the cache TTL, attach a custom domain with a certificate, and purge cached paths.
+- **Uptime checks**: HTTP(S) and ping checks from up to four regions, with per-region status, 30-day uptime and the last outage on the detail page, plus alert management (down, latency, SSL expiry; email and Slack). Pause and resume from the header.
+- **App Platform apps**: list, redeploy, force a rebuild, restart (all or chosen components), roll back, cancel a deployment in flight, edit the app spec, delete; with build/deploy/run logs and CPU/memory/restart metrics. See [App Platform](#app-platform).
+- **Droplet autoscale pools**: list, edit the scaling configuration (min/max Droplets and CPU/memory targets, or a fixed count), view members and scaling history, chart pool metrics, and delete the pool with or without its Droplets. Pools are created in the DigitalOcean console.
 - **Kubernetes (DOKS)** — clusters, with kubeconfig output for the [Kubernetes plugin](./kubernetes.md).
 - **Managed databases** — Postgres, MySQL, Valkey (Redis-compatible caching), MongoDB, Kafka, OpenSearch, and Weaviate (private preview). Connection strings are outputs you can reference from the matching client plugins. DigitalOcean retired Managed Redis on 30 June 2025, so the create form provisions Valkey clusters; pre-migration Redis clusters still appear and connect through the same Redis plugin.
 - **Agent Platform** — list, create, and delete Gradient AI agents. The agent's deployment URL is surfaced as an output you can reference from other resources.
@@ -23,7 +32,7 @@ The most approachable cloud plugin — a single API token is all you need.
 - **Dedicated Inference** — list, create, and delete dedicated GPU-backed model deployments. Public and private VPC endpoints are exposed as outputs.
 - **Batch Inference jobs** — list and cancel async batch jobs running against OpenAI or Anthropic provider APIs.
 - **Model API Keys** — list and delete the keys used to authenticate against `inference.do-ai.run` (serverless inference + OpenAI-compatible SDK access). Creating new keys is done in DigitalOcean's Model Studio (DO retired the create API), so Infrawrench surfaces the existing keys for review/cleanup rather than creating them.
-- **Spaces** — S3-compatible object storage, with the [file browser](../features/file-browsers.md).
+- **Spaces**: S3-compatible object storage, with the [file browser](../features/file-browsers.md). Buckets are found in every Spaces region, including LON1, TOR1, BLR1, ATL1 and MKC1.
 - **DNS** — domains and records.
 - **Projects** — list, create, edit (name / description / purpose / environment) and delete. Use the **Edit Project…** button at the bottom of the project detail page to rename or repurpose without leaving Infrawrench.
 
@@ -104,6 +113,40 @@ Because of that, the [dependency graph](../features/dependency-graph.md) draws a
 Creating one takes a name and a region; leave **IP Range** blank and DigitalOcean assigns a free `/20` that won't collide with your other networks, or set your own between `/28` and `/16` from the RFC1918 space. Deleting is only possible once the VPC is empty and is not the region's default.
 
 ![DigitalOcean VPC detail page showing region, IP range and the default flag](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/vpc-detail.png)
+
+## Load balancers
+
+The create form takes a name, region, type (regional HTTP or regional network), whether the load balancer is external or internal to its VPC, the node count, and what it sends traffic to: either specific Droplets (a multi-select of your Droplets) or every Droplet carrying a tag (a tag picker). The first forwarding rule and the health check are part of the form; an HTTPS, HTTP/2 or HTTP/3 entry rule asks for a certificate from your account.
+
+**Edit** changes the name, node count (DigitalOcean allows one resize per hour), HTTP idle timeout, HTTP-to-HTTPS redirect, PROXY protocol, backend keepalive and TLS cipher policy. DigitalOcean's update endpoint replaces the whole load balancer, so Infrawrench reads the current configuration and sends it back with only your changes.
+
+The detail page lists the forwarding rules (each with **Remove**) and the health check, with header actions to **+ Add rule** (including TLS passthrough), edit the **Health check**, and **+ Add Droplets** / **Remove Droplets** (limited to the load balancer's region). The **Metrics** tab charts requests per second, responses by status class, connections and connection limit, load balancer CPU, HTTP/TCP/UDP throughput, TLS connections, firewall drops, backend response time (average, p50, p95, p99), session duration, queue size, backend connections and health checks per Droplet, and Droplet downtime.
+
+A regional load balancer with no target Droplets and no tag is flagged by the [orphan finder](../features/orphan-finder.md): DigitalOcean bills every node whether or not anything sits behind it.
+
+<insert [DigitalOcean load balancer detail page showing the Forwarding Rules table, Health Check section and the Add rule / Add Droplets header actions] here>
+
+## Cloud Firewalls
+
+Creating a firewall takes a name, inbound rules as rows of ports plus protocol (blank ports means all ports), the addresses those rules accept traffic from (defaults to anywhere), whether outbound traffic is allowed, and the Droplets and tags to protect. From the detail page you can add a rule in either direction with an **Allow** or **Deny** action, remove any rule, and apply the firewall to (or remove it from) Droplets and tags. **Edit** renames it. A firewall applied to nothing is flagged by the orphan finder.
+
+## Networking services
+
+- **NAT gateways** route a VPC's outbound traffic through a single public egress IP, so Droplets without public interfaces can still reach the internet. Each size unit adds 2 Gbps of bandwidth and includes 100 GiB of outbound transfer a month. The egress IP is an output you can reference from other resources.
+- **VPC peerings** connect two VPCs whose IP ranges don't overlap. Only the name can change after creation.
+
+## App Platform
+
+Apps list under their project with the phase of the active (or in-progress) deployment, live URL and components. Creating an app means writing an app spec against a Git or container source, so that stays in the DigitalOcean console; everything after that is here:
+
+- **Deploy** and **Force rebuild** start a new deployment (the latter ignores cached builds). **Restart…** restarts running instances without a build, for every component or the ones you pick.
+- **Roll back…** redeploys an earlier successful deployment. When the app is pinned to a rollback, **Commit rollback** and **Revert rollback** appear.
+- **Cancel deployment** shows while a deployment is in flight.
+- The **App Spec** tab edits the app spec as JSON; applying it validates and redeploys the app.
+- The **Logs** tab shows run, build, deploy and crashed-instance (`RUN_RESTARTED`) logs; pick the type from the dropdown.
+- The **Metrics** tab charts CPU, memory and restart count per component.
+
+<insert [DigitalOcean App Platform app detail page showing the Deployments table and the Deploy / Restart / Roll back header actions] here>
 
 ## Gradient AI Platform & Inference Engine
 

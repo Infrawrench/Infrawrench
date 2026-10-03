@@ -1,9 +1,29 @@
-export const SPACES_REGIONS: string[] = ["nyc3", "sfo3", "ams3", "fra1", "sgp1", "syd1"];
+/**
+ * Regions that host Spaces. The bucket lister fans out across every one of
+ * these, so a missing region means that region's buckets silently never
+ * list. Additions per DigitalOcean's release notes: blr1 (Jul 2023), lon1
+ * (Aug 2024), tor1 (Oct 2024), atl1 (2025), mkc1 (Aug 2026).
+ */
+export const SPACES_REGIONS: string[] = [
+  "nyc3",
+  "sfo3",
+  "ams3",
+  "fra1",
+  "sgp1",
+  "syd1",
+  "sfo2",
+  "lon1",
+  "tor1",
+  "blr1",
+  "atl1",
+  "mkc1",
+];
 
 /**
- * Static lookup for known DO datacenter slugs. Covers DO's 14 currently-listable
- * regions plus the two legacy datacenters (ams2, sfo1) that can still show up
- * for older accounts. Source: https://docs.digitalocean.com/platform/regional-availability/
+ * Static lookup for known DO datacenter slugs. Covers DO's currently-listable
+ * regions (including the 2026 ric1, mkc1 and mem1 launches) plus the two
+ * legacy datacenters (ams2, sfo1) that can still show up for older accounts.
+ * Source: https://docs.digitalocean.com/platform/regional-availability/
  * Use `regionDisplay()` rather than indexing this map directly; it falls back
  * on slug-prefix heuristics so brand-new regions DO adds (always slug-prefixed
  * by city: e.g. a future `mad1`) still get a flag without a code change.
@@ -17,6 +37,8 @@ const REGION_INFO: Record<string, { location: string; flag: string }> = {
   sfo3: { location: "San Francisco, USA", flag: "🇺🇸" },
   atl1: { location: "Atlanta, USA", flag: "🇺🇸" },
   ric1: { location: "Richmond, USA", flag: "🇺🇸" },
+  mkc1: { location: "Kansas City, USA", flag: "🇺🇸" },
+  mem1: { location: "Memphis, USA", flag: "🇺🇸" },
   ams2: { location: "Amsterdam, Netherlands", flag: "🇳🇱" },
   ams3: { location: "Amsterdam, Netherlands", flag: "🇳🇱" },
   fra1: { location: "Frankfurt, Germany", flag: "🇩🇪" },
@@ -38,6 +60,8 @@ const REGION_PREFIX_FALLBACK: Record<string, { location: string; flag: string }>
   sfo: { location: "San Francisco, USA", flag: "🇺🇸" },
   atl: { location: "Atlanta, USA", flag: "🇺🇸" },
   ric: { location: "Richmond, USA", flag: "🇺🇸" },
+  mkc: { location: "Kansas City, USA", flag: "🇺🇸" },
+  mem: { location: "Memphis, USA", flag: "🇺🇸" },
   ams: { location: "Amsterdam, Netherlands", flag: "🇳🇱" },
   fra: { location: "Frankfurt, Germany", flag: "🇩🇪" },
   lon: { location: "London, UK", flag: "🇬🇧" },

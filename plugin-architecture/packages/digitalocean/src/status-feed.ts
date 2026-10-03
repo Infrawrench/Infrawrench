@@ -39,16 +39,33 @@ const CITY_REGIONS: Record<string, string[]> = {
   Toronto: ["tor1"],
 };
 
+const GEN_AI_TYPES = [
+  "gen-ai-agent",
+  "gen-ai-knowledge-base",
+  "gen-ai-model-router",
+  "dedicated-inference",
+  "inference-batch",
+];
+
+/** Keyed by DO's Statuspage component names (status.digitalocean.com). */
 const PRODUCT_TYPES: Record<string, string[]> = {
-  Droplets: ["droplet"],
+  Droplets: ["droplet", "autoscale-pool"],
+  "GPU Droplets": ["droplet"],
   Kubernetes: ["doks-cluster"],
   "Managed Databases": ["managed-database"],
   "Container Registry": ["container-registry"],
-  Spaces: ["spaces"],
+  Spaces: ["spaces-bucket"],
+  "Spaces CDN": ["cdn-endpoint"],
   Volumes: ["volume"],
-  Networking: ["vpc", "reserved-ip", "domain", "dns-record"],
+  "Network File Storage": ["nfs-share"],
+  "Load Balancers": ["load-balancer"],
+  "App Platform": ["app"],
+  Monitoring: ["uptime-check"],
+  VPC: ["vpc", "vpc-nat-gateway", "vpc-peering"],
+  Networking: ["vpc", "reserved-ip", "domain", "dns-record", "firewall", "certificate"],
   DNS: ["domain", "dns-record"],
-  "GenAI Platform": ["gen-ai-agent", "gen-ai-knowledge-base", "gen-ai-model-router"],
+  "GenAI Platform": GEN_AI_TYPES,
+  "Agentic Inference Cloud": GEN_AI_TYPES,
 };
 
 function mapComponent(name: string): StatusComponentMapping | null {

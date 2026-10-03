@@ -21,6 +21,10 @@ export const DropletResourceType = rt({
         "tor1",
         "blr1",
         "syd1",
+        "atl1",
+        "ric1",
+        "mkc1",
+        "mem1",
       ],
     }),
     f("size", "Size", {

@@ -236,7 +236,62 @@ export function doStatusDot(resource: ResourceInstance): StatusDotNode {
     }
     case "model-api-key":
       return { kind: "status-dot", status: "healthy", label: "Active" };
+    case "load-balancer":
+    case "firewall":
+    case "certificate":
+    case "vpc-nat-gateway":
+    case "vpc-peering":
+    case "app":
+    case "autoscale-pool":
+      return serviceStatusDot(String(fields["status"] ?? fields["state"] ?? fields["phase"] ?? ""));
+    case "uptime-check":
+      return fields["enabled"] === false || String(fields["enabled"]) === "false"
+        ? { kind: "status-dot", status: "unknown", label: "Paused" }
+        : { kind: "status-dot", status: "healthy", label: "Enabled" };
+    case "cdn-endpoint":
+      return { kind: "status-dot", status: "healthy", label: "Active" };
     default:
       return { kind: "status-dot", status: "info" };
+  }
+}
+
+/**
+ * One vocabulary for the networking and platform services, whose status
+ * enums overlap heavily: load balancers (`new`/`active`/`errored`), firewalls
+ * (`waiting`/`succeeded`/`failed`), certificates (`pending`/`verified`/
+ * `error`), NAT gateways and peerings (upper-case `PROVISIONING`/`ACTIVE`/
+ * `DELETING`/`ERROR`), app deployment phases (`BUILDING`/`DEPLOYING`/
+ * `ACTIVE`/`ERROR`/`CANCELED`) and autoscale pools (`active`/`deleting`/
+ * `error`). Matching is case-insensitive.
+ */
+function serviceStatusDot(raw: string): StatusDotNode {
+  const status = raw.toLowerCase();
+  const label = raw
+    ? raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase().replace(/_/g, " ")
+    : "";
+  switch (status) {
+    case "active":
+    case "succeeded":
+    case "verified":
+      return { kind: "status-dot", status: "healthy", label };
+    case "new":
+    case "waiting":
+    case "pending":
+    case "provisioning":
+    case "deleting":
+    case "pending_build":
+    case "building":
+    case "pending_deploy":
+    case "deploying":
+      return { kind: "status-dot", status: "provisioning", label };
+    case "errored":
+    case "error":
+    case "failed":
+    case "invalid":
+      return { kind: "status-dot", status: "error", label };
+    case "canceled":
+      return { kind: "status-dot", status: "degraded", label };
+    default:
+      return { kind: "status-dot", status: "info", ...(label ? { label } : {}) };
   }
 }

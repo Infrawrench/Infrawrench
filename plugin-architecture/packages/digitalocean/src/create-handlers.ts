@@ -32,6 +32,7 @@ import {
 } from "./create-handlers/networking.js";
 import { projectGetCreateConfig, projectCreateResource } from "./create-handlers/project.js";
 import { genaiGetCreateConfig, genaiCreateResource } from "./create-handlers/genai.js";
+import { servicesGetCreateConfig, servicesCreateResource } from "./create-handlers/services.js";
 import {
   containerRegistryGetCreateConfig,
   containerRegistryCreateResource,
@@ -48,6 +49,7 @@ const getConfigHandlers: GetConfigHandler[] = [
   projectGetCreateConfig,
   genaiGetCreateConfig,
   containerRegistryGetCreateConfig,
+  servicesGetCreateConfig,
 ];
 
 const createHandlers: CreateHandler[] = [
@@ -58,6 +60,7 @@ const createHandlers: CreateHandler[] = [
   projectCreateResource,
   genaiCreateResource,
   containerRegistryCreateResource,
+  servicesCreateResource,
 ];
 
 export async function doGetCreateConfig(
