@@ -20,6 +20,8 @@ export const ProjectResourceType = rt({
     f("status", "Status", { kind: "enum", enumValues: ["active", "archived"], required: false }),
     f("createdAt", "Created", { required: false }),
     f("archivedAt", "Archived", { required: false }),
+    f("residency", "Data Residency", { required: false, editable: false }),
+    f("externalKeyId", "Encryption Key", { required: false, editable: false }),
   ],
   outputs: [
     o("projectId", "Project ID", { description: "`proj_…` id used by the usage and cost APIs" }),

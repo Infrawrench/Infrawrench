@@ -162,6 +162,70 @@ interface Project {
   status?: string | null;
   created_at?: number;
   archived_at?: number | null;
+  residency?: string | null;
+  external_key_id?: string | null;
+}
+
+interface ProjectUser {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  role?: string;
+  added_at?: number;
+}
+
+interface ProjectServiceAccount {
+  id: string;
+  name?: string;
+  role?: string;
+  created_at?: number;
+}
+
+interface ProjectRateLimit {
+  id: string;
+  model?: string;
+  max_requests_per_1_minute?: number;
+  max_tokens_per_1_minute?: number;
+  max_images_per_1_minute?: number;
+  max_audio_megabytes_per_1_minute?: number;
+  max_requests_per_1_day?: number;
+  batch_1_day_max_input_tokens?: number;
+}
+
+interface SpendLimit {
+  threshold_amount?: number;
+  currency?: string;
+  interval?: string;
+  enforcement?: { status?: string } | null;
+}
+
+interface SpendAlert {
+  id: string;
+  threshold_amount?: number;
+  currency?: string;
+  interval?: string;
+  notification_channel?: {
+    type?: string;
+    recipients?: string[];
+    subject_prefix?: string | null;
+  } | null;
+}
+
+interface AdminApiKey {
+  id: string;
+  name?: string | null;
+  redacted_value?: string;
+  created_at?: number;
+  expires_at?: number | null;
+  last_used_at?: number | null;
+  owner?: { id?: string; name?: string } | null;
+}
+
+interface ServiceAccountApiKeyCreated {
+  id: string;
+  name?: string;
+  value?: string;
+  expires_at?: number | null;
 }
 
 interface ProjectApiKey {
@@ -169,6 +233,7 @@ interface ProjectApiKey {
   name?: string;
   redacted_value?: string;
   created_at?: number;
+  expires_at?: number | null;
   last_used_at?: number | null;
   owner_project_access?: string;
   owner?: {
@@ -214,6 +279,7 @@ interface UsageResult {
   line_item?: string | null;
   project_id?: string | null;
   input_tokens?: number;
+  input_cached_tokens?: number;
   output_tokens?: number;
   num_model_requests?: number;
 }
@@ -296,6 +362,52 @@ async function safeText(res: Response): Promise<string> {
 function headerValue(res: Response, name: string): string | undefined {
   const value = res.headers?.get?.(name);
   return value ?? undefined;
+}
+
+/** Project residency enum values, with the label the create form shows. */
+const PROJECT_RESIDENCIES: Array<{ id: string; label: string }> = [
+  { id: "GLOBAL", label: "Global (default)" },
+  { id: "US_STORAGE_PROCESSING", label: "United States: storage and processing" },
+  { id: "EU_STORAGE_PROCESSING", label: "Europe: storage and processing" },
+  { id: "JP_STORAGE", label: "Japan: storage" },
+  { id: "KR_STORAGE", label: "South Korea: storage" },
+  { id: "CA_STORAGE", label: "Canada: storage" },
+  { id: "SG_STORAGE", label: "Singapore: storage" },
+  { id: "IN_STORAGE", label: "India: storage" },
+  { id: "AU_STORAGE", label: "Australia: storage" },
+  { id: "GB_STORAGE", label: "United Kingdom: storage" },
+  { id: "AE_STORAGE", label: "UAE: storage" },
+  { id: "AE_STORAGE_PROCESSING", label: "UAE: storage and processing" },
+];
+
+/** Scope key used for organization-wide spend limits and alerts. */
+const ORG_SCOPE = "organization";
+
+/** Dollars as typed into a form → whole cents for the spend APIs. */
+function dollarsToCents(value: unknown, label: string): number {
+  const n = num(value);
+  if (n === undefined || n < 0) throw new Error(`OpenAI plugin: ${label} must be a dollar amount`);
+  return Math.round(n * 100);
+}
+
+function centsToDollars(value: unknown): number {
+  return (num(value) ?? 0) / 100;
+}
+
+function isNotFound(err: unknown): boolean {
+  return err instanceof Error && / 404 /.test(err.message);
+}
+
+/** Comma/newline separated emails → a de-duplicated array. */
+function parseRecipients(raw: unknown): string[] {
+  return [
+    ...new Set(
+      str(raw)
+        .split(/[,\n]/)
+        .map((e) => e.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function dayStartUnix(isoDate: string): number {
@@ -484,6 +596,27 @@ export class OpenAIClient implements PluginClient {
         return this.listOrganizationUsers(accountId);
       case "invite":
         return this.listInvites(accountId);
+      case "project-user":
+        return this.listPerProject(accountId, "users", (project, u: ProjectUser, now) =>
+          this.mapProjectUser(accountId, project.id, str(project.name), u, now),
+        );
+      case "project-service-account":
+        return this.listPerProject(
+          accountId,
+          "service_accounts",
+          (project, sa: ProjectServiceAccount, now) =>
+            this.mapProjectServiceAccount(accountId, project.id, str(project.name), sa, now),
+        );
+      case "project-rate-limit":
+        return this.listPerProject(accountId, "rate_limits", (project, rl: ProjectRateLimit, now) =>
+          this.mapProjectRateLimit(accountId, project.id, str(project.name), rl, now),
+        );
+      case "spend-limit":
+        return this.listSpendLimits(accountId);
+      case "spend-alert":
+        return this.listSpendAlerts(accountId);
+      case "admin-api-key":
+        return this.listAdminApiKeys(accountId);
       default:
         throw new Error(`OpenAI plugin: unknown resource type "${typeId}"`);
     }
@@ -773,6 +906,8 @@ export class OpenAIClient implements PluginClient {
         status: str(project.status),
         createdAt: created,
         archivedAt: isoOf(project.archived_at),
+        residency: str(project.residency),
+        externalKeyId: str(project.external_key_id),
       },
       resolvedOutputs: {},
       secretStates: [],
@@ -837,6 +972,7 @@ export class OpenAIClient implements PluginClient {
         ownerProjectAccess: str(key.owner_project_access),
         createdAt: created,
         lastUsedAt: isoOf(key.last_used_at),
+        expiresAt: isoOf(key.expires_at),
       },
       resolvedOutputs: {},
       secretStates: [],
@@ -913,6 +1049,275 @@ export class OpenAIClient implements PluginClient {
     };
   }
 
+  /**
+   * Fan a per-project admin list (`users`, `service_accounts`,
+   * `rate_limits`) out over every non-archived project.
+   */
+  private async listPerProject<T extends { id: string }>(
+    accountId: string,
+    collection: "users" | "service_accounts" | "rate_limits",
+    map: (project: Project, item: T, now: string) => ResourceInstance,
+  ): Promise<ResourceInstance[]> {
+    const projects = (await this.fetchProjects()).filter((p) => p.status !== "archived");
+    const now = new Date().toISOString();
+    const pages = await Promise.all(
+      projects.map(async (project) => {
+        const items = await this.listAll<T>(
+          `/organization/projects/${encodeURIComponent(project.id)}/${collection}`,
+          {},
+          { admin: true },
+        );
+        return items.map((item) => map(project, item, now));
+      }),
+    );
+    return pages.flat();
+  }
+
+  private mapProjectUser(
+    accountId: string,
+    projectId: string,
+    projectName: string,
+    user: ProjectUser,
+    now: string,
+  ): ResourceInstance {
+    const added = isoOf(user.added_at);
+    return {
+      id: `${accountId}:project-user:${projectId}:${user.id}`,
+      pluginId: PLUGIN_ID,
+      resourceTypeId: "project-user",
+      accountId,
+      parentResourceId: `${accountId}:project:${projectId}`,
+      displayName: user.name || user.email || user.id,
+      externalId: `${projectId}:${user.id}`,
+      fields: {
+        name: str(user.name),
+        email: str(user.email),
+        userId: user.id,
+        projectId,
+        projectName,
+        role: str(user.role),
+        addedAt: added,
+      },
+      resolvedOutputs: { userId: user.id, projectId, email: str(user.email) },
+      secretStates: [],
+      createdAt: added || now,
+      updatedAt: now,
+    };
+  }
+
+  private mapProjectServiceAccount(
+    accountId: string,
+    projectId: string,
+    projectName: string,
+    sa: ProjectServiceAccount,
+    now: string,
+  ): ResourceInstance {
+    const created = isoOf(sa.created_at);
+    return {
+      id: `${accountId}:project-service-account:${projectId}:${sa.id}`,
+      pluginId: PLUGIN_ID,
+      resourceTypeId: "project-service-account",
+      accountId,
+      parentResourceId: `${accountId}:project:${projectId}`,
+      displayName: sa.name || sa.id,
+      externalId: `${projectId}:${sa.id}`,
+      fields: {
+        name: str(sa.name),
+        role: str(sa.role),
+        projectId,
+        projectName,
+        createdAt: created,
+      },
+      resolvedOutputs: { serviceAccountId: sa.id, projectId },
+      secretStates: [],
+      createdAt: created || now,
+      updatedAt: now,
+    };
+  }
+
+  private mapProjectRateLimit(
+    accountId: string,
+    projectId: string,
+    projectName: string,
+    rl: ProjectRateLimit,
+    now: string,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:project-rate-limit:${projectId}:${rl.id}`,
+      pluginId: PLUGIN_ID,
+      resourceTypeId: "project-rate-limit",
+      accountId,
+      parentResourceId: `${accountId}:project:${projectId}`,
+      displayName: rl.model || rl.id,
+      externalId: `${projectId}:${rl.id}`,
+      fields: {
+        model: str(rl.model),
+        projectId,
+        projectName,
+        maxRequestsPerMinute: num(rl.max_requests_per_1_minute) ?? 0,
+        maxTokensPerMinute: num(rl.max_tokens_per_1_minute) ?? 0,
+        // Absent for models the limiter does not apply to; "" keeps the edit
+        // form from offering a zero that would then be written back.
+        maxImagesPerMinute: num(rl.max_images_per_1_minute) ?? "",
+        maxAudioMegabytesPerMinute: num(rl.max_audio_megabytes_per_1_minute) ?? "",
+        maxRequestsPerDay: num(rl.max_requests_per_1_day) ?? "",
+        batchMaxInputTokensPerDay: num(rl.batch_1_day_max_input_tokens) ?? "",
+      },
+      resolvedOutputs: { rateLimitId: rl.id, model: str(rl.model) },
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /**
+   * `GET /v1/organization/spend_limit` and
+   * `GET /v1/organization/projects/{id}/spend_limit`: verified 2026-10-03
+   * against openapi.yaml. Both answer 404 when no limit is set, which is the
+   * common case and simply means "no row".
+   */
+  private async listSpendLimits(accountId: string): Promise<ResourceInstance[]> {
+    const projects = (await this.fetchProjects()).filter((p) => p.status !== "archived");
+    const now = new Date().toISOString();
+    const scopes: Array<{ scope: string; name: string }> = [
+      { scope: ORG_SCOPE, name: "Organization" },
+      ...projects.map((p) => ({ scope: p.id, name: str(p.name) || p.id })),
+    ];
+    const rows = await Promise.all(
+      scopes.map(async ({ scope, name }) => {
+        try {
+          const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope));
+          return [this.mapSpendLimit(accountId, scope, name, limit, now)];
+        } catch (err) {
+          if (isNotFound(err)) return [];
+          throw err;
+        }
+      }),
+    );
+    return rows.flat();
+  }
+
+  private mapSpendLimit(
+    accountId: string,
+    scope: string,
+    scopeName: string,
+    limit: SpendLimit,
+    now: string,
+  ): ResourceInstance {
+    const amountUsd = centsToDollars(limit.threshold_amount);
+    const isOrg = scope === ORG_SCOPE;
+    return {
+      id: `${accountId}:spend-limit:${scope}`,
+      pluginId: PLUGIN_ID,
+      resourceTypeId: "spend-limit",
+      accountId,
+      ...(isOrg ? {} : { parentResourceId: `${accountId}:project:${scope}` }),
+      displayName: `${scopeName} spend limit`,
+      externalId: scope,
+      fields: {
+        scope: isOrg ? "Organization" : scopeName,
+        projectId: isOrg ? "" : scope,
+        amountUsd,
+        interval: str(limit.interval) || "month",
+        enforcement: str(limit.enforcement?.status),
+      },
+      resolvedOutputs: { amountUsd: String(amountUsd) },
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /**
+   * `GET /v1/organization/spend_alerts` and
+   * `GET /v1/organization/projects/{id}/spend_alerts`: verified 2026-10-03
+   * against openapi.yaml (`list-organization-spend-alerts`,
+   * `list-project-spend-alerts`).
+   */
+  private async listSpendAlerts(accountId: string): Promise<ResourceInstance[]> {
+    const projects = (await this.fetchProjects()).filter((p) => p.status !== "archived");
+    const now = new Date().toISOString();
+    const scopes: Array<{ scope: string; name: string }> = [
+      { scope: ORG_SCOPE, name: "Organization" },
+      ...projects.map((p) => ({ scope: p.id, name: str(p.name) || p.id })),
+    ];
+    const rows = await Promise.all(
+      scopes.map(async ({ scope, name }) => {
+        const alerts = await this.listAll<SpendAlert>(spendAlertsPath(scope), {}, { admin: true });
+        return alerts.map((alert) => this.mapSpendAlert(accountId, scope, name, alert, now));
+      }),
+    );
+    return rows.flat();
+  }
+
+  private mapSpendAlert(
+    accountId: string,
+    scope: string,
+    scopeName: string,
+    alert: SpendAlert,
+    now: string,
+  ): ResourceInstance {
+    const thresholdUsd = centsToDollars(alert.threshold_amount);
+    const isOrg = scope === ORG_SCOPE;
+    return {
+      id: `${accountId}:spend-alert:${scope}:${alert.id}`,
+      pluginId: PLUGIN_ID,
+      resourceTypeId: "spend-alert",
+      accountId,
+      ...(isOrg ? {} : { parentResourceId: `${accountId}:project:${scope}` }),
+      displayName: `${scopeName}: $${thresholdUsd.toLocaleString("en-US")} / ${str(alert.interval) || "month"}`,
+      externalId: `${scope}:${alert.id}`,
+      fields: {
+        scope: isOrg ? "Organization" : scopeName,
+        projectId: isOrg ? "" : scope,
+        thresholdUsd,
+        recipients: (alert.notification_channel?.recipients ?? []).join(", "),
+        subjectPrefix: str(alert.notification_channel?.subject_prefix),
+        interval: str(alert.interval) || "month",
+      },
+      resolvedOutputs: { alertId: alert.id },
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /** `GET /v1/organization/admin_api_keys`: verified 2026-10-03 (`admin-api-keys-list`). */
+  private async listAdminApiKeys(accountId: string): Promise<ResourceInstance[]> {
+    const keys = await this.listAll<AdminApiKey>(
+      "/organization/admin_api_keys",
+      { order: "desc" },
+      { admin: true },
+    );
+    const now = new Date().toISOString();
+    return keys.map((key) => this.mapAdminApiKey(accountId, key, now));
+  }
+
+  private mapAdminApiKey(accountId: string, key: AdminApiKey, now: string): ResourceInstance {
+    const created = isoOf(key.created_at);
+    return {
+      id: `${accountId}:admin-api-key:${key.id}`,
+      pluginId: PLUGIN_ID,
+      resourceTypeId: "admin-api-key",
+      accountId,
+      displayName: key.name || key.redacted_value || key.id,
+      externalId: key.id,
+      fields: {
+        name: str(key.name),
+        redactedValue: str(key.redacted_value),
+        ownerName: str(key.owner?.name),
+        ownerId: str(key.owner?.id),
+        createdAt: created,
+        expiresAt: isoOf(key.expires_at),
+        lastUsedAt: isoOf(key.last_used_at),
+      },
+      resolvedOutputs: { adminKeyId: key.id, redactedValue: str(key.redacted_value) },
+      secretStates: [],
+      createdAt: created || now,
+      updatedAt: now,
+    };
+  }
+
   // ---- Single-resource reads -----------------------------------------------
 
   async getResource(
@@ -975,9 +1380,78 @@ export class OpenAIClient implements PluginClient {
           await this.adminFetch<Invite>(`/organization/invites/${id}`),
           now,
         );
+      case "project-user": {
+        // GET …/projects/{p}/users/{u}: verified 2026-10-03 (`retrieve-project-user`).
+        const { projectId, keyId: userId } = splitApiKeyId(externalId);
+        const [user, project] = await Promise.all([
+          this.adminFetch<ProjectUser>(
+            `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
+          ),
+          this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+        ]);
+        return this.mapProjectUser(accountId, projectId, str(project.name), user, now);
+      }
+      case "project-service-account": {
+        // GET …/service_accounts/{id}: verified 2026-10-03
+        // (`retrieve-project-service-account`).
+        const { projectId, keyId: saId } = splitApiKeyId(externalId);
+        const [sa, project] = await Promise.all([
+          this.adminFetch<ProjectServiceAccount>(
+            `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
+          ),
+          this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+        ]);
+        return this.mapProjectServiceAccount(accountId, projectId, str(project.name), sa, now);
+      }
+      case "project-rate-limit": {
+        // No single-limit GET exists; read the project's list and pick the row.
+        const { projectId, keyId: rlId } = splitApiKeyId(externalId);
+        const [limits, project] = await Promise.all([
+          this.listAll<ProjectRateLimit>(
+            `/organization/projects/${encodeURIComponent(projectId)}/rate_limits`,
+            {},
+            { admin: true },
+          ),
+          this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+        ]);
+        const limit = limits.find((l) => l.id === rlId);
+        if (!limit) throw new Error(`OpenAI plugin: rate limit ${rlId} not found in ${projectId}`);
+        return this.mapProjectRateLimit(accountId, projectId, str(project.name), limit, now);
+      }
+      case "spend-limit": {
+        const scope = externalId;
+        const [limit, name] = await Promise.all([
+          this.adminFetch<SpendLimit>(spendLimitPath(scope)),
+          this.scopeName(scope),
+        ]);
+        return this.mapSpendLimit(accountId, scope, name, limit, now);
+      }
+      case "spend-alert": {
+        const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
+        const [alert, name] = await Promise.all([
+          this.adminFetch<SpendAlert>(`${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`),
+          this.scopeName(scope),
+        ]);
+        return this.mapSpendAlert(accountId, scope, name, alert, now);
+      }
+      case "admin-api-key":
+        return this.mapAdminApiKey(
+          accountId,
+          await this.adminFetch<AdminApiKey>(`/organization/admin_api_keys/${id}`),
+          now,
+        );
       default:
         throw new Error(`OpenAI plugin: unknown resource type "${typeId}"`);
     }
+  }
+
+  /** Display name for a spend scope: "Organization" or the project's name. */
+  private async scopeName(scope: string): Promise<string> {
+    if (scope === ORG_SCOPE) return "Organization";
+    const project = await this.adminFetch<Project>(
+      `/organization/projects/${encodeURIComponent(scope)}`,
+    );
+    return str(project.name) || scope;
   }
 
   async resolveOutput(
@@ -1004,6 +1478,15 @@ export class OpenAIClient implements PluginClient {
       if (outputKey === "apiKeyId") return keyId;
       if (outputKey === "projectId") return projectId;
     }
+    if (typeId === "project-user" || typeId === "project-service-account") {
+      const { projectId, keyId } = splitApiKeyId(externalId);
+      if (outputKey === "projectId") return projectId;
+      if (outputKey === "userId" || outputKey === "serviceAccountId") return keyId;
+    }
+    if (typeId === "spend-alert" && outputKey === "alertId") {
+      return splitApiKeyId(externalId).keyId;
+    }
+    if (typeId === "admin-api-key" && outputKey === "adminKeyId") return externalId;
 
     const resource = await this.getResource(typeId, resourceId, accountId);
     const fieldKey = OUTPUT_FIELD_MAP[`${typeId}:${outputKey}`];
@@ -1052,6 +1535,28 @@ export class OpenAIClient implements PluginClient {
           { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
           { label: "Created", value: dash(f["createdAt"]).slice(0, 10) },
         ];
+      case "project-rate-limit":
+        return [
+          {
+            label: "Requests / min",
+            value: (num(f["maxRequestsPerMinute"]) ?? 0).toLocaleString(),
+          },
+          { label: "Tokens / min", value: (num(f["maxTokensPerMinute"]) ?? 0).toLocaleString() },
+        ];
+      case "spend-limit":
+        return [
+          { label: "Monthly Limit", value: `$${(num(f["amountUsd"]) ?? 0).toLocaleString()}` },
+          {
+            label: "Enforcement",
+            value: dash(f["enforcement"]),
+            variant: f["enforcement"] === "enforcing" ? "status-error" : "status-healthy",
+          },
+        ];
+      case "spend-alert":
+        return [
+          { label: "Threshold", value: `$${(num(f["thresholdUsd"]) ?? 0).toLocaleString()}` },
+          { label: "Recipients", value: String(parseRecipients(f["recipients"]).length) },
+        ];
       default:
         return [];
     }
@@ -1083,6 +1588,18 @@ export class OpenAIClient implements PluginClient {
         return this.renderOrganizationUserDetail(resource);
       case "invite":
         return this.renderInviteDetail(resource);
+      case "project-user":
+        return this.renderProjectUserDetail(resource);
+      case "project-service-account":
+        return this.renderProjectServiceAccountDetail(resource);
+      case "project-rate-limit":
+        return this.renderProjectRateLimitDetail(resource);
+      case "spend-limit":
+        return this.renderSpendLimitDetail(resource);
+      case "spend-alert":
+        return this.renderSpendAlertDetail(resource);
+      case "admin-api-key":
+        return this.renderAdminApiKeyDetail(resource);
       default:
         return {
           title: resource.displayName,
@@ -1418,6 +1935,10 @@ export class OpenAIClient implements PluginClient {
           { key: "Status", value: dash(status) },
           { key: "Created", value: dash(resource.fields["createdAt"]) },
           { key: "Archived", value: dash(resource.fields["archivedAt"]) },
+          { key: "Data Residency", value: str(resource.fields["residency"]) || "GLOBAL" },
+          ...(str(resource.fields["externalKeyId"])
+            ? [{ key: "Encryption Key", value: str(resource.fields["externalKeyId"]) }]
+            : []),
         ]),
         {
           kind: "section",
@@ -1459,10 +1980,12 @@ export class OpenAIClient implements PluginClient {
         ]),
         section("Usage", [
           { key: "Created", value: dash(resource.fields["createdAt"]) },
+          { key: "Expires", value: str(resource.fields["expiresAt"]) || "never" },
           { key: "Last Used", value: dash(resource.fields["lastUsedAt"]) },
         ]),
       ],
       headerActions: refreshAction(),
+      metricsCapability: { defaultTimeRangeMs: 7 * 24 * 60 * 60 * 1000 },
     };
   }
 
@@ -1492,6 +2015,7 @@ export class OpenAIClient implements PluginClient {
         ]),
       ],
       headerActions: refreshAction(),
+      metricsCapability: { defaultTimeRangeMs: 7 * 24 * 60 * 60 * 1000 },
     };
   }
 
@@ -1519,11 +2043,204 @@ export class OpenAIClient implements PluginClient {
     };
   }
 
+  private renderProjectUserDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    return {
+      title: resource.displayName,
+      subtitle: `OpenAI project member · ${dash(f["projectName"])}`,
+      status: { kind: "status-dot", status: "healthy", label: str(f["role"]) },
+      sections: [
+        section("Member", [
+          { key: "Name", value: dash(f["name"]) },
+          { key: "Email", value: dash(f["email"]), copyable: true },
+          { key: "User ID", value: dash(f["userId"]), copyable: true },
+          { key: "Project Role", value: dash(f["role"]) },
+          { key: "Added", value: dash(f["addedAt"]) },
+        ]),
+        section("Project", [
+          { key: "Project", value: dash(f["projectName"]) },
+          { key: "Project ID", value: dash(f["projectId"]), copyable: true },
+        ]),
+      ],
+      headerActions: refreshAction(),
+    };
+  }
+
+  private renderProjectServiceAccountDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    return {
+      title: resource.displayName,
+      subtitle: `OpenAI service account · ${dash(f["projectName"])}`,
+      status: { kind: "status-dot", status: "healthy", label: str(f["role"]) },
+      sections: [
+        section("Service account", [
+          {
+            key: "Service Account ID",
+            value: str(resource.resolvedOutputs["serviceAccountId"]) || dash(resource.externalId),
+            copyable: true,
+          },
+          { key: "Name", value: dash(f["name"]) },
+          { key: "Project Role", value: dash(f["role"]) },
+          { key: "Project", value: dash(f["projectName"]) },
+          { key: "Created", value: dash(f["createdAt"]) },
+        ]),
+        {
+          kind: "section",
+          title: "Keys",
+          children: [
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                "Use Get credentials to mint another API key for this account; the secret is shown once. Its existing keys are listed under the project's API keys. Deleting the service account revokes all of them.",
+            },
+          ],
+        },
+      ],
+      headerActions: refreshAction(),
+    };
+  }
+
+  private renderProjectRateLimitDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    const optional = (label: string, key: string): KVItem[] =>
+      str(f[key]) === "" ? [] : [{ key: label, value: (num(f[key]) ?? 0).toLocaleString() }];
+    return {
+      title: resource.displayName,
+      subtitle: `OpenAI project rate limit · ${dash(f["projectName"])}`,
+      status: { kind: "status-dot", status: "info" },
+      sections: [
+        section("Limits", [
+          {
+            key: "Requests / min",
+            value: (num(f["maxRequestsPerMinute"]) ?? 0).toLocaleString(),
+          },
+          { key: "Tokens / min", value: (num(f["maxTokensPerMinute"]) ?? 0).toLocaleString() },
+          ...optional("Images / min", "maxImagesPerMinute"),
+          ...optional("Audio MB / min", "maxAudioMegabytesPerMinute"),
+          ...optional("Requests / day", "maxRequestsPerDay"),
+          ...optional("Batch input tokens / day", "batchMaxInputTokensPerDay"),
+        ]),
+        {
+          kind: "section",
+          title: "About",
+          children: [
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                "Edit to lower this project's limits for the model. A project can never exceed the organization's own limit for that model, which comes from your usage tier.",
+            },
+          ],
+        },
+      ],
+      headerActions: refreshAction(),
+    };
+  }
+
+  private renderSpendLimitDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    const enforcing = f["enforcement"] === "enforcing";
+    return {
+      title: resource.displayName,
+      subtitle: `OpenAI hard spend limit · ${dash(f["scope"])}`,
+      status: {
+        kind: "status-dot",
+        status: enforcing ? "error" : "healthy",
+        label: enforcing ? "Enforcing" : "Within limit",
+      },
+      sections: [
+        section("Limit", [
+          { key: "Applies To", value: dash(f["scope"]) },
+          { key: "Monthly Limit", value: `$${(num(f["amountUsd"]) ?? 0).toLocaleString()}` },
+          { key: "Interval", value: dash(f["interval"]) },
+          { key: "Enforcement", value: dash(f["enforcement"]) },
+        ]),
+        {
+          kind: "section",
+          title: "About",
+          children: [
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                "Once spend reaches this amount in a calendar month, API requests are refused until the month rolls over or the limit is raised. Deleting it removes the cap.",
+            },
+          ],
+        },
+      ],
+      headerActions: refreshAction(),
+    };
+  }
+
+  private renderSpendAlertDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    return {
+      title: resource.displayName,
+      subtitle: `OpenAI spend alert · ${dash(f["scope"])}`,
+      status: { kind: "status-dot", status: "healthy" },
+      sections: [
+        section("Alert", [
+          { key: "Applies To", value: dash(f["scope"]) },
+          { key: "Threshold", value: `$${(num(f["thresholdUsd"]) ?? 0).toLocaleString()}` },
+          { key: "Interval", value: dash(f["interval"]) },
+          { key: "Recipients", value: dash(f["recipients"]) },
+          { key: "Subject Prefix", value: dash(f["subjectPrefix"]) },
+        ]),
+      ],
+      headerActions: refreshAction(),
+    };
+  }
+
+  private renderAdminApiKeyDetail(resource: ResourceInstance): DetailViewSchema {
+    const f = resource.fields;
+    return {
+      title: resource.displayName,
+      subtitle: "OpenAI admin API key",
+      status: { kind: "status-dot", status: "healthy" },
+      sections: [
+        section("Key", [
+          { key: "Key ID", value: resource.externalId ?? resource.id, copyable: true },
+          { key: "Name", value: dash(f["name"]) },
+          { key: "Redacted Value", value: dash(f["redactedValue"]) },
+          { key: "Owner", value: dash(f["ownerName"]) },
+        ]),
+        section("Lifecycle", [
+          { key: "Created", value: dash(f["createdAt"]) },
+          { key: "Expires", value: str(f["expiresAt"]) || "never" },
+          { key: "Last Used", value: dash(f["lastUsedAt"]) },
+        ]),
+        {
+          kind: "section",
+          title: "About",
+          children: [
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                "Admin keys can reach every organization setting. Deleting the key this account uses locks Infrawrench out of the admin sections until you paste a new one.",
+            },
+          ],
+        },
+      ],
+      headerActions: refreshAction(),
+    };
+  }
+
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     const status =
-      resource.resourceTypeId === "model" || resource.resourceTypeId === "file"
+      resource.resourceTypeId === "model" ||
+      resource.resourceTypeId === "file" ||
+      resource.resourceTypeId === "project-user" ||
+      resource.resourceTypeId === "project-service-account" ||
+      resource.resourceTypeId === "spend-alert" ||
+      resource.resourceTypeId === "admin-api-key"
         ? "healthy"
-        : statusOf(resource.fields["status"]);
+        : resource.resourceTypeId === "spend-limit"
+          ? resource.fields["enforcement"] === "enforcing"
+            ? "error"
+            : "healthy"
+          : statusOf(resource.fields["status"]);
     return {
       id: resource.id,
       label: resource.displayName,
@@ -1732,8 +2449,143 @@ export class OpenAIClient implements PluginClient {
                 "Appears in usage and cost reports. Projects can be archived, never deleted.",
               placeholder: "production",
             },
+            {
+              key: "residency",
+              label: "Data Residency",
+              kind: "select",
+              required: false,
+              defaultValue: "",
+              options: [{ id: "", label: "Organization default" }, ...PROJECT_RESIDENCIES],
+              description:
+                "Where the project's data is stored and processed. Your organization must have access to the region, and it cannot be changed after creation.",
+            },
           ],
         };
+
+      case "project-user": {
+        const [projects, users] = await Promise.all([
+          this.fetchProjects(),
+          this.listAll<OrganizationUser>("/organization/users", {}, { admin: true }),
+        ]);
+        const parent = parentProjectId(parentResourceId);
+        return {
+          fields: [
+            parent
+              ? {
+                  key: "project_id",
+                  label: "Project",
+                  kind: "text",
+                  required: true,
+                  hidden: true,
+                  defaultValue: parent,
+                }
+              : {
+                  key: "project_id",
+                  label: "Project",
+                  kind: "select",
+                  required: true,
+                  options: projects
+                    .filter((p) => p.status !== "archived")
+                    .map((p) => ({ id: p.id, label: p.name || p.id, description: p.id })),
+                },
+            {
+              key: "user_id",
+              label: "Member",
+              kind: "select",
+              required: true,
+              options: users
+                .filter((u) => u.is_service_account !== true)
+                .map((u) => ({
+                  id: u.id,
+                  label: u.name || u.email || u.id,
+                  ...(u.email ? { description: u.email } : {}),
+                })),
+              description:
+                "Only existing organization members can be added. Invite new people from Invites first.",
+            },
+            {
+              key: "role",
+              label: "Project Role",
+              kind: "select",
+              required: true,
+              defaultValue: "member",
+              options: [
+                { id: "member", label: "Member" },
+                { id: "owner", label: "Owner" },
+              ],
+            },
+          ],
+        };
+      }
+
+      case "spend-limit":
+      case "spend-alert": {
+        const projects = (await this.fetchProjects()).filter((p) => p.status !== "archived");
+        const scopeOptions = [
+          { id: ORG_SCOPE, label: "Whole organization" },
+          ...projects.map((p) => ({ id: p.id, label: p.name || p.id, description: p.id })),
+        ];
+        const scopeField = {
+          key: "scope",
+          label: "Applies To",
+          kind: "select" as const,
+          required: true,
+          defaultValue: parentProjectId(parentResourceId) ?? ORG_SCOPE,
+          options: scopeOptions,
+        };
+        if (typeId === "spend-limit") {
+          return {
+            fields: [
+              {
+                ...scopeField,
+                description:
+                  "One hard limit per organization and per project. Creating one where a limit already exists replaces it.",
+              },
+              {
+                key: "amount_usd",
+                label: "Monthly Limit (USD)",
+                kind: "number",
+                required: true,
+                minValue: 0.01,
+                stepValue: 1,
+                placeholder: "500",
+                description:
+                  "Requests are refused once spend reaches this amount in a calendar month.",
+              },
+            ],
+          };
+        }
+        return {
+          fields: [
+            scopeField,
+            {
+              key: "threshold_usd",
+              label: "Threshold (USD)",
+              kind: "number",
+              required: true,
+              minValue: 0,
+              stepValue: 1,
+              placeholder: "250",
+              description: "Email when spend for the calendar month crosses this amount.",
+            },
+            {
+              key: "recipients",
+              label: "Recipients",
+              kind: "string-list",
+              required: true,
+              placeholder: "finance@example.com",
+              addLabel: "+ Add recipient",
+            },
+            {
+              key: "subject_prefix",
+              label: "Subject Prefix",
+              kind: "text",
+              required: false,
+              placeholder: "[OpenAI]",
+            },
+          ],
+        };
+      }
 
       case "invite": {
         const projects = this.hasAdminKey
@@ -1865,12 +2717,66 @@ export class OpenAIClient implements PluginClient {
       }
 
       case "project": {
-        // POST /v1/organization/projects: verified 2026-07-29 (`create-project`).
+        // POST /v1/organization/projects: verified 2026-10-03 (`create-project`).
+        // `residency` replaces the deprecated `geography`.
         const project = await this.adminFetch<Project>("/organization/projects", {
           method: "POST",
-          body: JSON.stringify({ name: fields["name"] }),
+          body: JSON.stringify({
+            name: fields["name"],
+            ...(fields["residency"] ? { residency: fields["residency"] } : {}),
+          }),
         });
         return this.mapProject(accountId, project, now);
+      }
+
+      case "project-user": {
+        // POST /v1/organization/projects/{p}/users: verified 2026-10-03
+        // (`create-project-user`).
+        const projectId = str(fields["project_id"]);
+        if (!projectId || !fields["user_id"]) throw new Error("Pick a project and a member");
+        const [user, project] = await Promise.all([
+          this.adminFetch<ProjectUser>(
+            `/organization/projects/${encodeURIComponent(projectId)}/users`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                user_id: fields["user_id"],
+                role: fields["role"] || "member",
+              }),
+            },
+          ),
+          this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+        ]);
+        return this.mapProjectUser(accountId, projectId, str(project.name), user, now);
+      }
+
+      case "spend-limit": {
+        // POST /v1/organization/spend_limit or …/projects/{p}/spend_limit:
+        // verified 2026-10-03. Create-or-replace; only USD and month exist.
+        const scope = str(fields["scope"]) || ORG_SCOPE;
+        const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope), {
+          method: "POST",
+          body: JSON.stringify({
+            threshold_amount: dollarsToCents(fields["amount_usd"], "Monthly limit"),
+            currency: "USD",
+            interval: "month",
+          }),
+        });
+        return this.mapSpendLimit(accountId, scope, await this.scopeName(scope), limit, now);
+      }
+
+      case "spend-alert": {
+        // POST /v1/organization/spend_alerts or …/projects/{p}/spend_alerts:
+        // verified 2026-10-03 (`create-organization-spend-alert`,
+        // `create-project-spend-alert`).
+        const scope = str(fields["scope"]) || ORG_SCOPE;
+        const alert = await this.adminFetch<SpendAlert>(spendAlertsPath(scope), {
+          method: "POST",
+          body: JSON.stringify(
+            spendAlertBody(fields["threshold_usd"], fields["recipients"], fields["subject_prefix"]),
+          ),
+        });
+        return this.mapSpendAlert(accountId, scope, await this.scopeName(scope), alert, now);
       }
 
       case "invite": {
@@ -1937,6 +2843,79 @@ export class OpenAIClient implements PluginClient {
         });
         return this.mapOrganizationUser(accountId, user, now);
       }
+      case "project-user": {
+        // POST …/projects/{p}/users/{u}: verified 2026-10-03 (`modify-project-user`).
+        const { projectId, keyId: userId } = splitApiKeyId(externalId);
+        await this.adminFetch<ProjectUser>(
+          `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
+          { method: "POST", body: JSON.stringify({ role: fields["role"] }) },
+        );
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "project-service-account": {
+        // POST …/service_accounts/{id}: verified 2026-10-03
+        // (`update-project-service-account`). Only member/owner are settable.
+        const { projectId, keyId: saId } = splitApiKeyId(externalId);
+        const body: Record<string, unknown> = {};
+        if (fields["name"]) body["name"] = fields["name"];
+        if (fields["role"] === "member" || fields["role"] === "owner")
+          body["role"] = fields["role"];
+        await this.adminFetch<ProjectServiceAccount>(
+          `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
+          { method: "POST", body: JSON.stringify(body) },
+        );
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "project-rate-limit": {
+        // POST …/projects/{p}/rate_limits/{id}: verified 2026-10-03
+        // (`update-project-rate-limits`). Blank fields are left alone.
+        const { projectId, keyId: rlId } = splitApiKeyId(externalId);
+        const body: Record<string, number> = {};
+        for (const [field, apiKey] of RATE_LIMIT_FIELDS) {
+          const value = fields[field];
+          if (value === undefined || str(value).trim() === "") continue;
+          const n = num(value);
+          if (n === undefined || n < 0 || !Number.isInteger(n)) {
+            throw new Error(`OpenAI plugin: ${field} must be a whole number`);
+          }
+          body[apiKey] = n;
+        }
+        const updated = await this.adminFetch<ProjectRateLimit>(
+          `/organization/projects/${encodeURIComponent(projectId)}/rate_limits/${encodeURIComponent(rlId)}`,
+          { method: "POST", body: JSON.stringify(body) },
+        );
+        const project = await this.adminFetch<Project>(
+          `/organization/projects/${encodeURIComponent(projectId)}`,
+        );
+        return this.mapProjectRateLimit(accountId, projectId, str(project.name), updated, now);
+      }
+      case "spend-limit": {
+        const scope = externalId;
+        const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope), {
+          method: "POST",
+          body: JSON.stringify({
+            threshold_amount: dollarsToCents(fields["amountUsd"], "Monthly limit"),
+            currency: "USD",
+            interval: "month",
+          }),
+        });
+        return this.mapSpendLimit(accountId, scope, await this.scopeName(scope), limit, now);
+      }
+      case "spend-alert": {
+        // POST …/spend_alerts/{alert_id}: verified 2026-10-03. The update body
+        // is the full create body, so every field is sent.
+        const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
+        const alert = await this.adminFetch<SpendAlert>(
+          `${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`,
+          {
+            method: "POST",
+            body: JSON.stringify(
+              spendAlertBody(fields["thresholdUsd"], fields["recipients"], fields["subjectPrefix"]),
+            ),
+          },
+        );
+        return this.mapSpendAlert(accountId, scope, await this.scopeName(scope), alert, now);
+      }
       default:
         throw new Error(`OpenAI plugin: cannot update type "${typeId}"`);
     }
@@ -1983,6 +2962,41 @@ export class OpenAIClient implements PluginClient {
         );
         return;
       }
+      case "project-user": {
+        // DELETE …/projects/{p}/users/{u}: verified 2026-10-03 (`delete-project-user`).
+        const { projectId, keyId: userId } = splitApiKeyId(externalId);
+        await this.adminFetch(
+          `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
+          { method: "DELETE" },
+        );
+        return;
+      }
+      case "project-service-account": {
+        // DELETE …/service_accounts/{id}: verified 2026-10-03
+        // (`delete-project-service-account`). Revokes the account's keys.
+        const { projectId, keyId: saId } = splitApiKeyId(externalId);
+        await this.adminFetch(
+          `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
+          { method: "DELETE" },
+        );
+        return;
+      }
+      case "spend-limit":
+        // DELETE /v1/organization/spend_limit or …/projects/{p}/spend_limit.
+        await this.adminFetch(spendLimitPath(externalId), { method: "DELETE" });
+        return;
+      case "spend-alert": {
+        const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
+        await this.adminFetch(`${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      case "admin-api-key":
+        // DELETE /v1/organization/admin_api_keys/{id}: verified 2026-10-03
+        // (`admin-api-keys-delete`).
+        await this.adminFetch(`/organization/admin_api_keys/${id}`, { method: "DELETE" });
+        return;
       default:
         throw new Error(`OpenAI plugin: cannot delete type "${typeId}"`);
     }
@@ -2056,6 +3070,31 @@ export class OpenAIClient implements PluginClient {
     _accountId: string,
     formatId: string,
   ): Promise<CredentialExport> {
+    if (typeId === "project-service-account" && formatId === "service-account-api-key") {
+      // POST …/service_accounts/{id}/api_keys: verified 2026-10-03
+      // (`CreateanAPIkeyforaserviceaccount`). The value is returned once.
+      const { projectId, keyId: saId } = splitApiKeyId(externalIdOf(resourceId));
+      const name = `infrawrench-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}`;
+      const created = await this.adminFetch<ServiceAccountApiKeyCreated>(
+        `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}/api_keys`,
+        { method: "POST", body: JSON.stringify({ name }) },
+      );
+      const value = str(created.value);
+      if (!value) throw new Error("OpenAI plugin: the API key was created but no value came back.");
+      return {
+        content: value,
+        filename: `openai-${saId}-api-key.txt`,
+        mimeType: "text/plain",
+        fields: [
+          { label: "API Key ID", value: created.id },
+          { label: "Name", value: str(created.name) || name },
+          { label: "Expires", value: isoOf(created.expires_at) || "never" },
+          { label: "API Key", value, sensitive: true, hint: "Only shown once" },
+        ],
+        warning:
+          "Save this key now. OpenAI never returns it again; the key list only ever shows a redacted value.",
+      };
+    }
     if (typeId !== "project" || formatId !== "service-account-key") {
       throw new Error(`OpenAI plugin: no credential format "${formatId}" for type "${typeId}"`);
     }
@@ -2093,7 +3132,9 @@ export class OpenAIClient implements PluginClient {
 
   /**
    * `GET /v1/organization/usage/completions` and `GET /v1/organization/costs`:
-   * verified 2026-07-29 (`usage-completions`, `usage-costs`). `start_time` is
+   * verified 2026-10-03 (`usage-completions`, `usage-costs`). Models, project
+   * API keys, organization members and projects each get token and request
+   * series; projects also get their daily cost. `start_time` is
    * required and in Unix **seconds**; `end_time` is exclusive. Both live behind
    * the admin key.
    */
@@ -2112,43 +3153,61 @@ export class OpenAIClient implements PluginClient {
     const spanDays = Math.max(1, Math.ceil((endTime - startTime) / 86400));
     const externalId = externalIdOf(resourceId);
 
-    if (resourceTypeId === "model") {
-      // `1h` buckets cap at 168, `1d` at 31: pick whichever fits the window.
-      const hourly = spanDays <= 7;
-      const params = new URLSearchParams({
-        start_time: String(startTime),
-        end_time: String(endTime),
-        bucket_width: hourly ? "1h" : "1d",
-        limit: String(hourly ? Math.min(168, spanDays * 24) : Math.min(31, spanDays)),
-      });
-      appendAll(params, "models", [externalId]);
+    // Completions usage filters: a model on `models`, a key on `api_key_ids`
+    // (the bare key id, not the project-prefixed external id), a member on
+    // `user_ids`, a project on `project_ids` (alongside its cost series).
+    const completionFilter: Record<string, [string, string]> = {
+      model: ["models", externalId],
+      "project-api-key": [
+        "api_key_ids",
+        externalId.includes(":") ? splitApiKeyId(externalId).keyId : externalId,
+      ],
+      "organization-user": ["user_ids", externalId],
+      project: ["project_ids", externalId],
+    };
+    const filter = completionFilter[resourceTypeId];
+    if (!filter) return [];
 
-      const buckets = await this.listUsageBuckets("/organization/usage/completions", params);
-      const input: MetricSeriesPoint[] = [];
-      const output: MetricSeriesPoint[] = [];
-      const requests: MetricSeriesPoint[] = [];
+    // `1h` buckets cap at 168, `1d` at 31: pick whichever fits the window.
+    const hourly = spanDays <= 7;
+    const params = new URLSearchParams({
+      start_time: String(startTime),
+      end_time: String(endTime),
+      bucket_width: hourly ? "1h" : "1d",
+      limit: String(hourly ? Math.min(168, spanDays * 24) : Math.min(31, spanDays)),
+    });
+    appendAll(params, filter[0], [filter[1]]);
 
-      for (const bucket of buckets) {
-        const ts = (bucket.start_time ?? 0) * 1000;
-        let inTokens = 0;
-        let outTokens = 0;
-        let reqs = 0;
-        for (const result of bucket.results ?? []) {
-          inTokens += result.input_tokens ?? 0;
-          outTokens += result.output_tokens ?? 0;
-          reqs += result.num_model_requests ?? 0;
-        }
-        input.push({ timestamp: ts, value: inTokens });
-        output.push({ timestamp: ts, value: outTokens });
-        requests.push({ timestamp: ts, value: reqs });
+    const buckets = await this.listUsageBuckets("/organization/usage/completions", params);
+    const input: MetricSeriesPoint[] = [];
+    const cached: MetricSeriesPoint[] = [];
+    const output: MetricSeriesPoint[] = [];
+    const requests: MetricSeriesPoint[] = [];
+
+    for (const bucket of buckets) {
+      const ts = (bucket.start_time ?? 0) * 1000;
+      let inTokens = 0;
+      let cachedTokens = 0;
+      let outTokens = 0;
+      let reqs = 0;
+      for (const result of bucket.results ?? []) {
+        inTokens += result.input_tokens ?? 0;
+        cachedTokens += result.input_cached_tokens ?? 0;
+        outTokens += result.output_tokens ?? 0;
+        reqs += result.num_model_requests ?? 0;
       }
-
-      return [
-        { label: "Input tokens", unit: "tokens", points: input },
-        { label: "Output tokens", unit: "tokens", points: output },
-        { label: "Requests", unit: "requests", points: requests },
-      ];
+      input.push({ timestamp: ts, value: inTokens });
+      cached.push({ timestamp: ts, value: cachedTokens });
+      output.push({ timestamp: ts, value: outTokens });
+      requests.push({ timestamp: ts, value: reqs });
     }
+
+    const usageSeries: MetricSeries[] = [
+      { label: "Input tokens", unit: "tokens", points: input },
+      { label: "Cached input tokens", unit: "tokens", points: cached },
+      { label: "Output tokens", unit: "tokens", points: output },
+      { label: "Requests", unit: "requests", points: requests },
+    ];
 
     if (resourceTypeId === "project") {
       // /organization/costs only accepts 1d buckets, limit 1–180.
@@ -2160,16 +3219,16 @@ export class OpenAIClient implements PluginClient {
       });
       appendAll(params, "project_ids", [externalId]);
 
-      const buckets = await this.listUsageBuckets("/organization/costs", params);
-      const points: MetricSeriesPoint[] = buckets.map((bucket) => {
+      const costBuckets = await this.listUsageBuckets("/organization/costs", params);
+      const points: MetricSeriesPoint[] = costBuckets.map((bucket) => {
         let total = 0;
         for (const result of bucket.results ?? []) total += result.amount?.value ?? 0;
         return { timestamp: (bucket.start_time ?? 0) * 1000, value: total };
       });
-      return [{ label: "Cost", unit: "USD", points }];
+      return [{ label: "Cost", unit: "USD", points }, ...usageSeries];
     }
 
-    return [];
+    return usageSeries;
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
@@ -2451,6 +3510,52 @@ function splitApiKeyId(externalId: string): { projectId: string; keyId: string }
   return { projectId: externalId.slice(0, idx), keyId: externalId.slice(idx + 1) };
 }
 
+/** Spend limit route for a scope: the organization or one project. */
+function spendLimitPath(scope: string): string {
+  return scope === ORG_SCOPE
+    ? "/organization/spend_limit"
+    : `/organization/projects/${encodeURIComponent(scope)}/spend_limit`;
+}
+
+/** Spend alerts collection route for a scope. */
+function spendAlertsPath(scope: string): string {
+  return scope === ORG_SCOPE
+    ? "/organization/spend_alerts"
+    : `/organization/projects/${encodeURIComponent(scope)}/spend_alerts`;
+}
+
+/** `CreateSpendAlertBody`: also the full update body. Only USD/month/email exist. */
+function spendAlertBody(
+  thresholdUsd: unknown,
+  recipients: unknown,
+  subjectPrefix: unknown,
+): Record<string, unknown> {
+  const emails = parseRecipients(recipients);
+  if (emails.length === 0)
+    throw new Error("OpenAI plugin: a spend alert needs at least one recipient");
+  const prefix = str(subjectPrefix).trim();
+  return {
+    threshold_amount: dollarsToCents(thresholdUsd, "Threshold"),
+    currency: "USD",
+    interval: "month",
+    notification_channel: {
+      type: "email",
+      recipients: emails,
+      ...(prefix ? { subject_prefix: prefix } : {}),
+    },
+  };
+}
+
+/** Rate-limit form fields and the request keys they write. */
+const RATE_LIMIT_FIELDS: Array<[string, string]> = [
+  ["maxRequestsPerMinute", "max_requests_per_1_minute"],
+  ["maxTokensPerMinute", "max_tokens_per_1_minute"],
+  ["maxImagesPerMinute", "max_images_per_1_minute"],
+  ["maxAudioMegabytesPerMinute", "max_audio_megabytes_per_1_minute"],
+  ["maxRequestsPerDay", "max_requests_per_1_day"],
+  ["batchMaxInputTokensPerDay", "batch_1_day_max_input_tokens"],
+];
+
 /** Pull the project id out of a `{account}:project:{projectId}` parent id. */
 function parentProjectId(parentResourceId?: string): string | undefined {
   if (!parentResourceId) return undefined;
@@ -2480,5 +3585,10 @@ const OUTPUT_FIELD_MAP: Record<string, string> = {
   "project:projectName": "name",
   "project-api-key:redactedValue": "redactedValue",
   "organization-user:email": "email",
+  "project-user:email": "email",
+  "project-rate-limit:model": "model",
+  "project-rate-limit:rateLimitId": "rateLimitId",
+  "spend-limit:amountUsd": "amountUsd",
+  "admin-api-key:redactedValue": "redactedValue",
   "invite:email": "email",
 };

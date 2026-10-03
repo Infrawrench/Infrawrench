@@ -35,6 +35,7 @@ export const ProjectApiKeyResourceType = rt({
     }),
     f("createdAt", "Created", { required: false }),
     f("lastUsedAt", "Last Used", { required: false }),
+    f("expiresAt", "Expires", { required: false }),
   ],
   outputs: [
     o("apiKeyId", "API Key ID"),
@@ -43,9 +44,11 @@ export const ProjectApiKeyResourceType = rt({
     }),
     o("projectId", "Project ID"),
   ],
-  // Project keys never expire on OpenAI's side; the radar tracks their age
-  // instead so long-lived keys surface as due for rotation.
+  // Keys can now carry an expiry set at creation; most still never expire,
+  // so the radar also tracks their age to surface long-lived keys as due for
+  // rotation.
   expiryFields: [
+    { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Key expires" },
     {
       fieldKey: "createdAt",
       from: "created",
@@ -68,4 +71,5 @@ export const ProjectApiKeyResourceType = rt({
   iconKey: "key",
   supportsCreate: false,
   supportsDelete: true,
+  supportsMetrics: true,
 });

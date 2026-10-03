@@ -546,3 +546,306 @@ describe("transcribeAudio", () => {
     expect(entries["language"]).toBeUndefined();
   });
 });
+
+describe("project members, service accounts and rate limits", () => {
+  const projects = {
+    data: [
+      { id: "proj_1", name: "prod", status: "active" },
+      { id: "proj_old", name: "old", status: "archived" },
+    ],
+    has_more: false,
+  };
+
+  it("fans project members out over live projects with project-scoped ids", async () => {
+    installFetch((url) => {
+      if (url.includes("/organization/projects?")) return jsonResponse(projects);
+      if (url.includes("/organization/projects/proj_1/users?")) {
+        return jsonResponse({
+          data: [{ id: "user_1", name: "Ada", email: "ada@x.com", role: "owner", added_at: 1 }],
+          has_more: false,
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const [member, ...rest] = await client().listResources("project-user", ACCOUNT);
+    expect(rest).toHaveLength(0);
+    expect(member!.id).toBe(`${ACCOUNT}:project-user:proj_1:user_1`);
+    expect(member!.parentResourceId).toBe(`${ACCOUNT}:project:proj_1`);
+    expect(member!.fields["role"]).toBe("owner");
+    expect(calls.some((c) => c.url.includes("proj_old/users"))).toBe(false);
+  });
+
+  it("adds a member from the picker and changes their role", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/organization/projects/proj_1"))
+        return jsonResponse({ id: "proj_1", name: "prod" });
+      if (init?.method === "POST") {
+        return jsonResponse({ id: "user_1", email: "ada@x.com", role: "member", added_at: 1 });
+      }
+      return jsonResponse({ id: "user_1", email: "ada@x.com", role: "owner", added_at: 1 });
+    });
+
+    const created = await client().createResource("project-user", ACCOUNT, {
+      project_id: "proj_1",
+      user_id: "user_1",
+      role: "member",
+    });
+    const post = calls.find((c) => c.init?.method === "POST")!;
+    expect(post.url).toBe("https://api.openai.com/v1/organization/projects/proj_1/users");
+    expect(JSON.parse(post.init?.body as string)).toEqual({ user_id: "user_1", role: "member" });
+    expect(created.externalId).toBe("proj_1:user_1");
+
+    calls = [];
+    await client().updateResource("project-user", created.id, ACCOUNT, { role: "owner" });
+    const update = calls.find((c) => c.init?.method === "POST")!;
+    expect(update.url).toBe("https://api.openai.com/v1/organization/projects/proj_1/users/user_1");
+    expect(JSON.parse(update.init?.body as string)).toEqual({ role: "owner" });
+  });
+
+  it("hides the project picker when adding from a project page", async () => {
+    installFetch((url) =>
+      url.includes("/organization/projects?")
+        ? jsonResponse(projects)
+        : jsonResponse({ data: [{ id: "user_1", email: "a@x.com" }], has_more: false }),
+    );
+    const config = await client().getCreateConfig("project-user", `${ACCOUNT}:project:proj_1`);
+    const project = config.fields.find((f) => f.key === "project_id")!;
+    expect(project.hidden).toBe(true);
+    expect(project.defaultValue).toBe("proj_1");
+    expect(config.fields.find((f) => f.key === "user_id")!.options).toEqual([
+      { id: "user_1", label: "a@x.com", description: "a@x.com" },
+    ]);
+  });
+
+  it("writes only the rate-limit fields that were filled in", async () => {
+    installFetch((url) =>
+      url.includes("/rate_limits/")
+        ? jsonResponse({
+            id: "rl_1",
+            model: "gpt-5",
+            max_requests_per_1_minute: 100,
+            max_tokens_per_1_minute: 20000,
+          })
+        : jsonResponse({ id: "proj_1", name: "prod" }),
+    );
+
+    const updated = await client().updateResource(
+      "project-rate-limit",
+      `${ACCOUNT}:project-rate-limit:proj_1:rl_1`,
+      ACCOUNT,
+      {
+        maxRequestsPerMinute: "100",
+        maxTokensPerMinute: "20000",
+        maxImagesPerMinute: "",
+      },
+    );
+    expect(calls[0]!.url).toBe(
+      "https://api.openai.com/v1/organization/projects/proj_1/rate_limits/rl_1",
+    );
+    expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({
+      max_requests_per_1_minute: 100,
+      max_tokens_per_1_minute: 20000,
+    });
+    expect(updated.fields["maxImagesPerMinute"]).toBe("");
+  });
+
+  it("mints another key for a service account through credential export", async () => {
+    installFetch(() =>
+      jsonResponse({
+        id: "key_9",
+        name: "infrawrench-x",
+        value: "sk-svcacct-secret",
+        expires_at: null,
+      }),
+    );
+    const exported = await client().exportCredential!(
+      "project-service-account",
+      `${ACCOUNT}:project-service-account:proj_1:svc_1`,
+      ACCOUNT,
+      "service-account-api-key",
+    );
+    expect(calls[0]!.url).toBe(
+      "https://api.openai.com/v1/organization/projects/proj_1/service_accounts/svc_1/api_keys",
+    );
+    expect(exported.content).toBe("sk-svcacct-secret");
+  });
+});
+
+describe("spend limits and alerts", () => {
+  it("lists the org limit and skips projects that answer 404", async () => {
+    installFetch((url) => {
+      if (url.includes("/organization/projects?")) {
+        return jsonResponse({ data: [{ id: "proj_1", name: "prod", status: "active" }] });
+      }
+      if (url.endsWith("/organization/spend_limit")) {
+        return jsonResponse({
+          threshold_amount: 50000,
+          currency: "USD",
+          interval: "month",
+          enforcement: { status: "inactive" },
+        });
+      }
+      if (url.endsWith("/organization/projects/proj_1/spend_limit")) {
+        return jsonResponse({ error: { message: "not found" } }, 404);
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const limits = await client().listResources("spend-limit", ACCOUNT);
+    expect(limits).toHaveLength(1);
+    expect(limits[0]!.id).toBe(`${ACCOUNT}:spend-limit:organization`);
+    expect(limits[0]!.fields["amountUsd"]).toBe(500);
+  });
+
+  it("creates a project spend limit in cents", async () => {
+    installFetch((url) =>
+      url.endsWith("/spend_limit")
+        ? jsonResponse({
+            threshold_amount: 12345,
+            interval: "month",
+            enforcement: { status: "inactive" },
+          })
+        : jsonResponse({ id: "proj_1", name: "prod" }),
+    );
+    const created = await client().createResource("spend-limit", ACCOUNT, {
+      scope: "proj_1",
+      amount_usd: "123.45",
+    });
+    expect(calls[0]!.url).toBe(
+      "https://api.openai.com/v1/organization/projects/proj_1/spend_limit",
+    );
+    expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({
+      threshold_amount: 12345,
+      currency: "USD",
+      interval: "month",
+    });
+    expect(created.parentResourceId).toBe(`${ACCOUNT}:project:proj_1`);
+  });
+
+  it("creates and edits an organization spend alert with email recipients", async () => {
+    installFetch(() =>
+      jsonResponse({
+        id: "alert_1",
+        threshold_amount: 25000,
+        currency: "USD",
+        interval: "month",
+        notification_channel: { type: "email", recipients: ["a@x.com", "b@x.com"] },
+      }),
+    );
+    const created = await client().createResource("spend-alert", ACCOUNT, {
+      scope: "organization",
+      threshold_usd: "250",
+      recipients: "a@x.com, b@x.com",
+    });
+    expect(calls[0]!.url).toBe("https://api.openai.com/v1/organization/spend_alerts");
+    expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({
+      threshold_amount: 25000,
+      currency: "USD",
+      interval: "month",
+      notification_channel: { type: "email", recipients: ["a@x.com", "b@x.com"] },
+    });
+    expect(created.externalId).toBe("organization:alert_1");
+
+    await client().updateResource("spend-alert", created.id, ACCOUNT, {
+      thresholdUsd: "300",
+      recipients: "a@x.com",
+      subjectPrefix: "[AI]",
+    });
+    expect(calls[1]!.url).toBe("https://api.openai.com/v1/organization/spend_alerts/alert_1");
+    expect(JSON.parse(calls[1]!.init?.body as string).notification_channel).toEqual({
+      type: "email",
+      recipients: ["a@x.com"],
+      subject_prefix: "[AI]",
+    });
+  });
+
+  it("refuses an alert with no recipients", async () => {
+    await expect(
+      client().createResource("spend-alert", ACCOUNT, {
+        scope: "organization",
+        threshold_usd: "1",
+      }),
+    ).rejects.toThrow(/at least one recipient/);
+  });
+});
+
+describe("admin API keys", () => {
+  it("lists and revokes admin keys", async () => {
+    installFetch((_url, init) =>
+      init?.method === "DELETE"
+        ? jsonResponse({ id: "key_1", deleted: true })
+        : jsonResponse({
+            data: [
+              {
+                id: "key_1",
+                name: "ops",
+                redacted_value: "sk-admin...abcd",
+                created_at: 1,
+                expires_at: 1900000000,
+                last_used_at: null,
+                owner: { id: "user_1", name: "Ada" },
+              },
+            ],
+            has_more: false,
+          }),
+    );
+    const [key] = await client().listResources("admin-api-key", ACCOUNT);
+    expect(key!.fields["ownerName"]).toBe("Ada");
+    expect(key!.fields["expiresAt"]).toBe(new Date(1900000000 * 1000).toISOString());
+
+    await client().deleteResource("admin-api-key", key!.id, ACCOUNT);
+    expect(calls[1]!.url).toBe("https://api.openai.com/v1/organization/admin_api_keys/key_1");
+    expect(calls[1]!.init?.method).toBe("DELETE");
+  });
+});
+
+describe("usage metrics", () => {
+  it("filters completions usage by the bare key id for a project API key", async () => {
+    installFetch(() => jsonResponse({ data: [], has_more: false }));
+    await client().fetchMetricSeries(
+      "project-api-key",
+      `${ACCOUNT}:project-api-key:proj_1:key_1`,
+      ACCOUNT,
+    );
+    expect(calls[0]!.url).toContain("/organization/usage/completions?");
+    expect(calls[0]!.url).toContain("api_key_ids=key_1");
+  });
+
+  it("charts a project's cost alongside its token usage", async () => {
+    installFetch((url) =>
+      url.includes("/organization/costs")
+        ? jsonResponse({
+            data: [{ start_time: 1, results: [{ amount: { value: 2.5, currency: "usd" } }] }],
+          })
+        : jsonResponse({
+            data: [
+              {
+                start_time: 1,
+                results: [
+                  {
+                    input_tokens: 10,
+                    input_cached_tokens: 4,
+                    output_tokens: 5,
+                    num_model_requests: 2,
+                  },
+                ],
+              },
+            ],
+          }),
+    );
+    const series = await client().fetchMetricSeries(
+      "project",
+      `${ACCOUNT}:project:proj_1`,
+      ACCOUNT,
+    );
+    expect(series.map((s) => s.label)).toEqual([
+      "Cost",
+      "Input tokens",
+      "Cached input tokens",
+      "Output tokens",
+      "Requests",
+    ]);
+    expect(series[2]!.points[0]!.value).toBe(4);
+  });
+});

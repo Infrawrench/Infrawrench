@@ -1,6 +1,6 @@
 ---
 title: OpenAI
-description: Models, fine-tuning, batches, files, vector stores, containers and evals, plus organization projects, members, keys and real spend — with a Speech tab for text-to-speech and transcription.
+description: Models, fine-tuning, batches, files, vector stores, containers and evals, plus organization projects, members, service accounts, rate limits, spend limits and alerts, keys and real spend, with a Speech tab for text-to-speech and transcription.
 sidebar_order: 30
 ---
 
@@ -8,17 +8,23 @@ OpenAI's API is really two APIs behind one brand: the project plane your `sk-pro
 
 ## What you can manage
 
-- **Models** — every model this key can call, base and fine-tuned, each with a **Speech support** panel saying whether it can synthesize, transcribe, or neither. Fine-tuned snapshots can be deleted; base models cannot.
-- **Fine-tuning jobs** — create a run from a training file and a base model, then pause, resume or cancel it while it is going.
-- **Batches** — create a batch from an uploaded JSONL file, watch the request counters, cancel it. Batches are never deletable.
-- **Files** — fine-tuning datasets, batch inputs and outputs, and file-search sources (delete).
-- **Vector stores** — the chunked-and-embedded collections behind the `file_search` tool (create, rename, delete).
-- **Containers** — the sandboxes Code Interpreter runs inside (create, delete). They expire on their own idle timer and bill per session.
-- **Evals** — evaluation definitions with their data source and graders (rename, delete).
-- **Projects** — the billing and rate-limit boundary (create, rename, archive). Admin key only.
-- **Project API keys** — listed and revoked, never created. Admin key only.
-- **Organization members** — role changes between `owner` and `reader`, and removal. Admin key only.
-- **Invites** — send and revoke. Admin key only.
+- **Models**: every model this key can call, base and fine-tuned, each with a **Speech support** panel saying whether it can synthesize, transcribe, or neither. Fine-tuned snapshots can be deleted; base models cannot.
+- **Fine-tuning jobs**: create a run from a training file and a base model, then pause, resume or cancel it while it is going.
+- **Batches**: create a batch from an uploaded JSONL file, watch the request counters, cancel it. Batches are never deletable.
+- **Files**: fine-tuning datasets, batch inputs and outputs, and file-search sources (delete).
+- **Vector stores**: the chunked-and-embedded collections behind the `file_search` tool (create, rename, delete).
+- **Containers**: the sandboxes Code Interpreter runs inside (create, delete). They expire on their own idle timer and bill per session.
+- **Evals**: evaluation definitions with their data source and graders (rename, delete).
+- **Projects**: the billing and rate-limit boundary (create with an optional data residency region, rename, archive), with a cost and token usage chart. Admin key only.
+- **Project members**: who can use each project and as `owner` or `member`. Add an existing organization member from a picker, change their role, or remove them. Admin key only.
+- **Project service accounts**: the non-human identities that own project keys. Rename, switch between `member` and `owner`, mint another API key with **Get credentials** (shown once), or delete, which revokes its keys. Admin key only.
+- **Project rate limits**: each project's per-model limits: requests and tokens per minute, plus images, audio, daily requests and batch input tokens where the model has them. Edit to lower a project below the organization's limit. Listed under each project. Admin key only.
+- **Project API keys**: listed and revoked, never created, with expiry, last use and a per-key token usage chart. Admin key only.
+- **Spend limits**: hard monthly caps in US dollars for the whole organization or a single project. Once spend reaches the cap, requests are refused. Create, change the amount, or delete. Admin key only.
+- **Spend alerts**: emails sent when monthly spend for the organization or a project crosses a threshold. Pick the scope, set the amount, recipients and an optional subject prefix, and edit any of them later. Admin key only.
+- **Organization members**: role changes between `owner` and `reader`, and removal, with a token usage chart per member. Admin key only.
+- **Invites**: send and revoke. Admin key only.
+- **Admin API keys**: every `sk-admin-` key with its owner, expiry and last use (revoke). New admin keys are created in the dashboard. Admin key only.
 
 ## Credentials
 
@@ -28,8 +34,8 @@ OpenAI needs **two keys** to cover its whole surface, and they are not interchan
 
 **Admin API Key** (optional) — [Settings → Organization → Admin keys](https://platform.openai.com/settings/organization/admin-keys). Starts `sk-admin-`, and only an organization owner can mint one. It unlocks:
 
-- **Projects**, **project API keys**, **organization members** and **invites** — without it these four lists are unavailable rather than broken,
-- the **usage charts** on models and projects,
+- **Projects** and everything inside them (members, service accounts, rate limits, API keys), **spend limits**, **spend alerts**, **organization members**, **invites** and **admin API keys**; without it these lists are unavailable rather than broken,
+- the **usage charts** on models, projects, project API keys and organization members,
 - **cost collection**, which is otherwise disabled with a message saying why.
 
 ![OpenAI Add-account form showing the required API Key field and the optional Admin API Key field, with the description explaining what the admin key unlocks](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openai/add-account.png)
@@ -49,7 +55,7 @@ If you open a model that cannot do audio at all and hit Synthesize, the plugin f
 
 With an admin key attached, spend comes from `GET /v1/organization/costs`, bucketed by day and grouped by line item, with the project id carried alongside as a tag. Up to a year of history is available, and the most recent three days are re-fetched on each sync because OpenAI restates them.
 
-Models and projects each get a **Metrics** tab charting token usage from `GET /v1/organization/usage/completions`.
+Models, projects, project API keys and organization members each get a **Metrics** tab charting input, cached input and output tokens and request counts from `GET /v1/organization/usage/completions`. Projects add their daily cost on top.
 
 ## Tips & limits
 
@@ -59,5 +65,8 @@ Models and projects each get a **Metrics** tab charting token usage from `GET /v
 - **The legacy `tts-1` and `tts-1-hd` models reject the tone-instructions box.** Sending `instructions` to them is a 400 rather than being ignored, so the plugin drops it for those two.
 - **The default TTS model is snapshot-pinned** (`gpt-4o-mini-tts-2025-12-15`) so the same text does not quietly start sounding different between two runs.
 - **Project API keys cannot be created through the API.** Only service-account keys can — use the project's **Get credentials** action, which creates a service account in the project and hands you its key. A user-owned project key has to be made in the OpenAI dashboard.
+- **Project rate limits can only go down.** OpenAI caps each project at the organization's own limit for the model, which comes from your usage tier. Blank fields in the edit form are left as they are.
+- **Spend limits are hard caps; spend alerts are emails.** A limit refuses requests once reached, an alert never blocks anything. Amounts are entered in dollars; OpenAI stores them in cents and only supports USD per calendar month.
+- **Deleting the admin key this account uses** locks Infrawrench out of every admin section until you paste a new one.
 - **Projects are archived, never deleted.** Archived projects still appear in usage and cost reports, which is exactly why they stay visible here.
 - **The cost and usage endpoints page differently from everything else.** They ignore the `after` cursor the rest of the API uses and accept 1-day buckets only, 180 at a time.
