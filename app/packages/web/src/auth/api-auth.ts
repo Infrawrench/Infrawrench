@@ -16,7 +16,7 @@ import { resolveAgentCredential } from "@infrawrench/server-core/trials/ceremony
  * match the value used in `api/routes/api-keys.ts`. */
 const API_KEY_HASH_DOMAIN = "api-key";
 
-interface ApiAuthResult {
+export interface ApiAuthResult {
   userId: string;
   organizationId: string;
   email?: string;
@@ -62,6 +62,20 @@ function migrateScopes(scopes: string[] | null | undefined): string[] {
   // duplicates is not rewritten for cosmetics.
   const seen = new Set<string>();
   return out.filter((s) => (seen.has(s) ? false : (seen.add(s), true)));
+}
+
+async function isMember(userId: string, organizationId: string): Promise<boolean> {
+  const [membership] = await db
+    .select({ id: organizationMembers.id })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+  return Boolean(membership);
 }
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -198,17 +212,7 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
     // from an org deletes their membership row but cannot reach into the keys
     // they minted, and once removed they can no longer see those keys in the
     // UI to revoke them. Check here so access ends with the membership.
-    const [membership] = await db
-      .select({ id: organizationMembers.id })
-      .from(organizationMembers)
-      .where(
-        and(
-          eq(organizationMembers.userId, key.userId),
-          eq(organizationMembers.organizationId, key.organizationId),
-        ),
-      )
-      .limit(1);
-    if (!membership) return null;
+    if (!(await isMember(key.userId, key.organizationId))) return null;
 
     // Only a genuine rename ever lands back on the row: `migrateScopes` is a
     // one-for-one substitution, so persisting it cannot widen the key beyond
@@ -251,6 +255,11 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
   if (agentResult) return agentResult;
 
   if (!claims.org_id) return null;
+  // `org_id` is whichever organization WorkOS selected for the session, not a
+  // fact about our tables. Every caller of this function (the WebSocket
+  // gateway, desktop sync) takes `organizationId` as the tenant to act in, so
+  // hold the claim to the same membership row the org tree checks.
+  if (!(await isMember(claims.sub, claims.org_id))) return null;
 
   const result: ApiAuthResult = {
     userId: claims.sub,

@@ -54,6 +54,38 @@ describe("ws-tokens", () => {
     });
   });
 
+  it("stores and returns a machine principal's ceiling", async () => {
+    await createWsToken("user1", "org1", { scopes: ["resources:execute"] });
+    const row = values.mock.calls[0]![0] as { scopes?: string[]; agentRegistrationId?: string };
+    expect(row.scopes).toEqual(["resources:execute"]);
+    expect(row.agentRegistrationId).toBeUndefined();
+
+    returning.mockResolvedValue([
+      { organizationId: "org1", userId: "user1", scopes: [], agentRegistrationId: null },
+    ]);
+    // `[]` survives as `[]`: a key with no scopes, not a person with a full role.
+    await expect(validateWsToken("raw")).resolves.toEqual({
+      organizationId: "org1",
+      userId: "user1",
+      scopes: [],
+    });
+
+    returning.mockResolvedValue([
+      {
+        organizationId: "org1",
+        userId: "agent-user",
+        scopes: ["resources:execute"],
+        agentRegistrationId: "reg-1",
+      },
+    ]);
+    await expect(validateWsToken("raw")).resolves.toEqual({
+      organizationId: "org1",
+      userId: "agent-user",
+      scopes: ["resources:execute"],
+      agentRegistrationId: "reg-1",
+    });
+  });
+
   it("returns null when no live row matches (unknown, expired, or already used)", async () => {
     returning.mockResolvedValue([]);
     await expect(validateWsToken("nonexistent")).resolves.toBeNull();

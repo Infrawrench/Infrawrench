@@ -862,6 +862,13 @@
       "when": 1790979003519,
       "tag": "0122_agent_service_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1791056008249,
+      "tag": "0123_ws_token_principal",
+      "breakpoints": true
     }
   ]
 }

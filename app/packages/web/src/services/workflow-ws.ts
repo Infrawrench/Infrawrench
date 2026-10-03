@@ -14,10 +14,8 @@
 import type { WebSocket } from "ws";
 import type { MetricValue, PromptSpec } from "@infrawrench/workflow-runtime";
 
-import { hasPermission } from "@infrawrench/server-core/permissions";
-
-import { effectivePermissions } from "../auth/effective-permissions";
 import { runWorkflowById } from "./workflow-runner";
+import { wsPrincipalCan, type WsPrincipal } from "./ws-auth";
 
 interface WorkflowRunMessage {
   type: string;
@@ -34,22 +32,22 @@ function send(ws: WebSocket, msg: unknown): void {
  * on `/api/ws` shares. A debug run executes the workflow for real, so without a
  * per-frame check the websocket would be a way around `POST /workflows/:id/run`:
  * the same reasoning `deployment-ws.ts` spells out for `deploy:run`.
+ *
+ * Checked against the whole principal, key scopes and agent ceiling included,
+ * so a key gets here exactly what the HTTP route would give it.
  */
-async function requireRunPermission(organizationId: string, userId?: string): Promise<void> {
-  const denied = new Error("You do not have permission to run workflows in this organization.");
-  // No identified user means nothing to resolve a role against: deny rather
-  // than fall through to an unchecked run.
-  if (!userId) throw denied;
-  const granted = await effectivePermissions({ organizationId, userId });
-  if (!hasPermission(granted, "workflows:write")) throw denied;
+async function requireRunPermission(principal: WsPrincipal): Promise<void> {
+  if (!(await wsPrincipalCan(principal, "workflows:write"))) {
+    throw new Error("You do not have permission to run workflows in this organization.");
+  }
 }
 
 export function handleWorkflowSession(
   ws: WebSocket,
-  organizationId: string,
+  principal: WsPrincipal,
   workflowId: string,
-  userId?: string,
 ): void {
+  const { organizationId, userId } = principal;
   const abort = new AbortController();
   let stopRequested = false;
   // Exactly one of these is pending at a time (lines/prompts are sequential).
@@ -89,17 +87,15 @@ export function handleWorkflowSession(
   };
   ws.on("message", onMessage);
 
-  void requireRunPermission(organizationId, userId)
+  void requireRunPermission(principal)
     .then(() =>
       runWorkflowById({
         organizationId,
         workflowId,
         triggerSource: "manual",
-        // `requireRunPermission` above rejects an absent `userId` outright, so
-        // this is always set by the time the run starts. Asserted rather than
-        // spread conditionally: omitting it would silently fall back to the
-        // workflow's author, which is the failure mode the gate exists to stop.
-        runAsUserId: userId!,
+        // Always set: omitting it would silently fall back to the workflow's
+        // author, which is the failure mode the gate exists to stop.
+        runAsUserId: userId,
         interactive: true,
         debug: true,
         signal: abort.signal,

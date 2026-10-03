@@ -19,6 +19,7 @@ import {
 } from "@infrawrench/server-core/shared-console/store";
 import { resolveEffectivePermissions } from "@infrawrench/server-core/permissions";
 
+import { isMachinePrincipal, type WsPrincipal } from "../ws-auth";
 import { sharedConsoleHub } from "./hub";
 
 function send(ws: WebSocket, frame: Record<string, unknown>): void {
@@ -36,9 +37,22 @@ function send(ws: WebSocket, frame: Record<string, unknown>): void {
  */
 export async function handleConsoleAttach(
   ws: WebSocket,
-  auth: { organizationId: string; userId: string },
+  auth: WsPrincipal,
   sharedConsoleId: string,
 ): Promise<void> {
+  // Joining is closed to keys and agents on HTTP (`/shared-consoles` in
+  // `API_KEY_DENY_RULES`), and attaching is the half of joining that actually
+  // fans the terminal out. Without this, a key could ride its owner's
+  // participant row onto a live shell nobody invited it to.
+  if (isMachinePrincipal(auth)) {
+    send(ws, {
+      type: "console:error",
+      code: "forbidden",
+      error: "API keys and agents cannot join a shared console.",
+    });
+    return;
+  }
+
   const share = await getSharedConsole(sharedConsoleId);
   if (!share || share.organizationId !== auth.organizationId) {
     send(ws, { type: "console:error", code: "not_found", error: "Shared console not found." });

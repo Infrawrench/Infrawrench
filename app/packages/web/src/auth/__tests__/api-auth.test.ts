@@ -292,8 +292,16 @@ describe("authenticateApiRequest", () => {
     mockJwtVerify.mockResolvedValue({
       payload: { sub: "wu1", org_id: "wo1", email: "w@e.com" },
     });
+    mockSelect.mockReturnValueOnce(membershipReturning(MEMBER));
     const result = await authenticateApiRequest(req({ authorization: "Bearer jwt.token.here" }));
     expect(result).toEqual({ userId: "wu1", organizationId: "wo1", email: "w@e.com" });
+  });
+
+  it("rejects a WorkOS token whose org_id the user is not a member of", async () => {
+    mockJwtVerify.mockResolvedValue({ payload: { sub: "wu1", org_id: "someone-elses-org" } });
+    mockSelect.mockReturnValueOnce(membershipReturning([]));
+    const result = await authenticateApiRequest(req({ authorization: "Bearer jwt.token.here" }));
+    expect(result).toBeNull();
   });
 
   it("returns null when WorkOS token lacks org_id", async () => {

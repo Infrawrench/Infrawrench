@@ -16,6 +16,7 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -195,6 +196,14 @@ export const wsTokens = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     userId: text("user_id").notNull(),
+    /**
+     * The minting principal's scope ceiling when it was an API key or an
+     * agent, null for a person. Carried so a token minted by a narrowly scoped
+     * key opens a socket with that key's authority, not its owner's role.
+     */
+    scopes: jsonb("scopes").$type<string[]>(),
+    /** Set when an agent credential minted the token; its `scopes` are final. */
+    agentRegistrationId: text("agent_registration_id"),
     expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
