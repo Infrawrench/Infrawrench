@@ -121,5 +121,29 @@ describe("SFTP routes", () => {
       );
       expect(res.status).toBe(409);
     });
+
+    it("leaves remote names that would escape the extraction folder out of the zip", async () => {
+      mockGetClientForAccount.mockResolvedValue({ client: {} });
+      mockSftpDownloadToBuffer.mockResolvedValue(Buffer.from("x"));
+      const paths = ["/srv/../../etc/cron.d/x", "/srv/..\\evil.bat", "/srv/ok.txt", "/srv/d/b.txt"];
+      const res = await buildApp().request(
+        `/download?accountId=a1&basePath=/srv&paths=${encodeURIComponent(JSON.stringify(paths))}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("application/zip");
+      await res.arrayBuffer();
+      const fetched = mockSftpDownloadToBuffer.mock.calls.map((call) => call[2]);
+      expect(fetched).toEqual(["/srv/ok.txt", "/srv/d/b.txt"]);
+    });
+
+    it("400s when every name in a multi-file selection is unsafe", async () => {
+      mockGetClientForAccount.mockResolvedValue({ client: {} });
+      const paths = ["/srv/../x", "/srv/C:y"];
+      const res = await buildApp().request(
+        `/download?accountId=a1&basePath=/srv&paths=${encodeURIComponent(JSON.stringify(paths))}`,
+      );
+      expect(res.status).toBe(400);
+      expect(mockSftpDownloadToBuffer).not.toHaveBeenCalled();
+    });
   });
 });

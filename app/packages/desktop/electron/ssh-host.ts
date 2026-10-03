@@ -37,13 +37,13 @@ import type { SftpConfig, SshTunnelConfig } from "@infrawrench/plugin-base" with
   "resolution-mode": "import",
 };
 import { OpenSSHAgent, type ParsedKey } from "ssh2";
+import { resolveBlessedDownloadPath } from "./main-utils";
 import { isPageantRunning } from "./pageant";
 import { get1PasswordAgentPath, is1PasswordAgentRunning } from "./onepassword-agent";
 import {
   planAgentSetup,
   syncAgentFiles,
   reconcileAgentBranch,
-  ensureLocalPathAllowed,
   type WorkflowSshConfig,
   type SftpCfg,
   type AgentTool,
@@ -260,10 +260,11 @@ ipcMain.handle(
     {
       config,
       remotePath,
-      localPath,
-    }: { config: SftpConfig; remotePath: string; localPath: string },
+      destFolder,
+      relativePath,
+    }: { config: SftpConfig; remotePath: string; destFolder: string; relativePath: string },
   ) => {
-    await ensureLocalPathAllowed(localPath, `write the downloaded file to`);
+    const localPath = await resolveBlessedDownloadPath(destFolder, relativePath);
     return sftpDownload(config, remotePath, localPath);
   },
 );

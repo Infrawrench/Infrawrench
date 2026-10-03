@@ -1,7 +1,9 @@
 import { useCallback } from "react";
-import { FileBrowser, formatErrorMessage } from "@infrawrench/ui";
+import { useGT } from "gt-react";
+import { FileBrowser, formatErrorMessage, toast } from "@infrawrench/ui";
 import type { StorageObject, SftpConfig } from "@infrawrench/plugin-base";
 import { invoke } from "../lib/invoke";
+import { planSftpDownloads } from "../lib/sftp-download-plan";
 import {
   cloudSftpList,
   cloudSftpMkdir,
@@ -30,6 +32,7 @@ export function SftpBrowserPanel({
   cloudContext,
   initialPath = "/",
 }: SftpBrowserPanelProps) {
+  const gt = useGT();
   const onList = useCallback(
     async (path: string) => {
       if (cloudContext) {
@@ -117,21 +120,25 @@ export function SftpBrowserPanel({
       );
       if (result.canceled || !result.filePaths?.[0]) return;
       const destFolder = result.filePaths[0];
-      const normalizedBase = basePath.endsWith("/") ? basePath : basePath ? `${basePath}/` : "";
+      const { downloads, skipped } = planSftpDownloads(keys, basePath);
+      if (skipped.length > 0) {
+        toast.warning(
+          gt("Skipped {count} file(s) with names that are unsafe to save locally", {
+            count: skipped.length,
+          }),
+          { description: skipped.join("\n") },
+        );
+      }
 
       await Promise.allSettled(
-        keys.map(async (remotePath) => {
-          const rel =
-            normalizedBase && remotePath.startsWith(normalizedBase)
-              ? remotePath.slice(normalizedBase.length)
-              : (remotePath.split("/").pop() ?? remotePath);
-          const localPath = `${destFolder}/${rel}`;
+        downloads.map(async ({ remotePath, relativePath }) => {
           if (cloudContext) {
             await cloudSftpDownload({
               orgId: cloudContext.orgId,
               accountId: cloudContext.accountId,
               remotePath,
-              localPath,
+              destFolder,
+              relativePath,
               ...(cloudContext.sshKeyId ? { sshKeyId: cloudContext.sshKeyId } : {}),
               ...(cloudContext.sshHost ? { sshHost: cloudContext.sshHost } : {}),
               ...(cloudContext.sshUsername ? { sshUsername: cloudContext.sshUsername } : {}),
@@ -139,11 +146,16 @@ export function SftpBrowserPanel({
             return;
           }
           if (!sftpConfig) throw new Error("SFTP not configured");
-          await invoke("sftp_download", { config: sftpConfig, remotePath, localPath });
+          await invoke("sftp_download", {
+            config: sftpConfig,
+            remotePath,
+            destFolder,
+            relativePath,
+          });
         }),
       );
     },
-    [sftpConfig, cloudContext],
+    [sftpConfig, cloudContext, gt],
   );
 
   return (

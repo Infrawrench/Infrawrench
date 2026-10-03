@@ -45,7 +45,13 @@ describe("cloud-sftp wrappers", () => {
   });
 
   it("cloudSftpDownload passes params flat", async () => {
-    const params = { orgId: "org1", accountId: "a", remotePath: "/r", localPath: "/l" };
+    const params = {
+      orgId: "org1",
+      accountId: "a",
+      remotePath: "/r",
+      destFolder: "/l",
+      relativePath: "r",
+    };
     await cloudSftpDownload(params);
     expect(invoke).toHaveBeenCalledWith("cloud_sftp_download", params);
   });

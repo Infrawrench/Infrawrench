@@ -255,3 +255,32 @@ export function isDialogBlessedPath(p: string): boolean {
   }
   return false;
 }
+
+// Joins `segments` beneath `folder`; null when the result would not stay
+// strictly inside it (a parent hop, or on Windows a drive or `\`).
+export function resolveBeneathFolder(folder: string, segments: string[]): string | null {
+  const root = path.resolve(folder);
+  const dest = path.resolve(root, ...segments);
+  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+  return dest.startsWith(prefix) ? dest : null;
+}
+
+// Where a renderer-initiated download of a remote file may be written: under a
+// folder the user picked in a system dialog, at a relative path built from
+// remote names. The remote side is untrusted, so the relative path is
+// validated segment by segment and the resolved result prefix-checked.
+export async function resolveBlessedDownloadPath(
+  destFolder: string,
+  relativePath: string,
+): Promise<string> {
+  if (!isDialogBlessedPath(destFolder)) {
+    throw new Error("Download destination was not chosen via a system dialog");
+  }
+  const { safeRelativePathSegments } = await import("@infrawrench/client-core");
+  const segments = safeRelativePathSegments(relativePath);
+  const dest = segments ? resolveBeneathFolder(destFolder, segments) : null;
+  if (!dest) {
+    throw new Error(`Refusing to write unsafe download path ${JSON.stringify(relativePath)}`);
+  }
+  return dest;
+}

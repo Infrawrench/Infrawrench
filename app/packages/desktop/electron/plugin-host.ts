@@ -8,7 +8,7 @@
 import { ipcMain } from "electron";
 import path from "node:path";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers, storageDrivers } from "./drivers";
-import { isDialogBlessedPath } from "./main-utils";
+import { isDialogBlessedPath, resolveBeneathFolder } from "./main-utils";
 import { getDesktopHttpHostServices } from "./plugin-runtime";
 
 ipcMain.handle(
@@ -148,10 +148,9 @@ ipcMain.handle(
         event.sender.send("storage_download_progress", { done, total: keys.length });
         continue;
       }
-      const destPath = path.resolve(resolvedDest, ...segments);
       // Defense in depth: resolved destination must stay beneath destFolder.
-      const destPrefix = resolvedDest.endsWith(path.sep) ? resolvedDest : resolvedDest + path.sep;
-      if (destPath !== resolvedDest && !destPath.startsWith(destPrefix)) {
+      const destPath = resolveBeneathFolder(resolvedDest, segments);
+      if (!destPath) {
         errors.push(`${key}: rejected path escape`);
         done++;
         event.sender.send("storage_download_progress", { done, total: keys.length });
