@@ -3,6 +3,8 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
   PluginClient,
   ResourceInstance,
   ResourceStatus,
@@ -201,6 +203,29 @@ function mapRunStatus(status: string | undefined): { status: ResourceStatus; lab
   }
 }
 
+/**
+ * `metrics` is an open bag: only `total_time` is declared, but Replicate adds
+ * model-specific counters (`predict_time` everywhere, token counts and
+ * throughput on language models, image counts on image models). Everything
+ * numeric past the two timings the type already models is kept as a compact
+ * `key=value` line rather than guessed into named fields.
+ */
+function extraMetrics(metrics: Record<string, unknown> | null | undefined): string {
+  if (!metrics) return "";
+  return Object.entries(metrics)
+    .filter(
+      ([key, value]) =>
+        key !== "predict_time" &&
+        key !== "total_time" &&
+        typeof value === "number" &&
+        Number.isFinite(value),
+    )
+    .map(
+      ([key, value]) => `${key}=${Number.isInteger(value) ? value : (value as number).toFixed(3)}`,
+    )
+    .join(" · ");
+}
+
 /** Pull the first URL-shaped value out of a prediction's free-form `output`. */
 function firstOutputUrl(output: unknown): string {
   if (typeof output === "string") return output.startsWith("http") ? output : "";
@@ -290,6 +315,32 @@ export class ReplicateClient implements PluginClient {
     return items;
   }
 
+  /**
+   * Raw request for the endpoints that do not answer JSON: the model README
+   * is `text/plain` markdown, and a version delete is an empty `202`.
+   */
+  private async requestText(path: string, method = "GET"): Promise<string> {
+    const url = `${API_BASE}${path}`;
+    const headers = { Authorization: `Bearer ${this.apiToken}`, Accept: "text/plain, */*" };
+    if (this.services?.http) {
+      const result = await this.services.http.request({
+        url,
+        method,
+        headers,
+        ...(this.caCert ? { caCert: this.caCert } : {}),
+      });
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(`Replicate API error ${result.status} for ${path}: ${result.body}`);
+      }
+      return result.body ?? "";
+    }
+    const res = await fetch(url, { method, headers });
+    if (!res.ok) {
+      throw new Error(`Replicate API error ${res.status} for ${path}: ${await res.text()}`);
+    }
+    return res.status === 204 ? "" : await res.text();
+  }
+
   /** `GET /v1/account`: identity only. No billing fields exist on it. */
   private async fetchAccount(): Promise<ReplicateAccount> {
     if (this.accountCache) return this.accountCache;
@@ -344,6 +395,8 @@ export class ReplicateClient implements PluginClient {
       }
       case "model":
         return this.listAccountModels(accountId);
+      case "model-version":
+        return this.listOwnedModelVersions(accountId);
       default:
         throw new Error(`Replicate plugin: unknown resource type "${typeId}"`);
     }
@@ -412,9 +465,70 @@ export class ReplicateClient implements PluginClient {
       });
   }
 
+  /**
+   * Versions of the models this account owns. Only owned models are walked:
+   * `GET /v1/models/{owner}/{name}/versions` works on any public model, but
+   * the only versions a user can act on (delete, deploy from their own
+   * pushes) are their own. A failing model is skipped rather than failing the
+   * whole list, since one deleted model should not hide every other version.
+   * https://replicate.com/docs/reference/http#models.versions.list
+   */
+  private async listOwnedModelVersions(accountId: string): Promise<ResourceInstance[]> {
+    const account = await this.fetchAccount().catch((): ReplicateAccount => ({}));
+    const username = account.username ?? "";
+    if (!username) return [];
+    const models = await this.listAccountModels(accountId);
+    const owned = models.filter((model) => model.fields["owner"] === username);
+    const perModel = await Promise.all(
+      owned.map(async (model) => {
+        const ref = model.externalId ?? "";
+        const versions = await this.paginate<ReplicateVersion>(
+          `/models/${encodePath(ref)}/versions`,
+          MAX_PAGES_HOT,
+        ).catch((): ReplicateVersion[] => []);
+        // The list is newest first, so the first entry is the latest version.
+        return versions.map((version, index) =>
+          this.mapVersion(ref, version, accountId, index === 0),
+        );
+      }),
+    );
+    return perModel.flat();
+  }
+
   // -------------------------------------------------------------------------
   // Mapping
   // -------------------------------------------------------------------------
+
+  private mapVersion(
+    modelRef: string,
+    version: ReplicateVersion,
+    accountId: string,
+    isLatest?: boolean,
+  ): ResourceInstance {
+    const id = version.id ?? "";
+    const createdAt = version.created_at ?? nowIso();
+    const externalId = `${modelRef}/${id}`;
+    return {
+      id: `${accountId}:model-version:${externalId}`,
+      pluginId: "replicate",
+      resourceTypeId: "model-version",
+      accountId,
+      displayName: `${modelRef}:${shortId(id)}`,
+      fields: {
+        versionId: id,
+        model: modelRef,
+        ...(version.cog_version ? { cogVersion: version.cog_version } : {}),
+        createdAt,
+        ...(isLatest !== undefined ? { isLatest } : {}),
+      },
+      resolvedOutputs: { versionId: id, versionRef: `${modelRef}:${id}` },
+      secretStates: [],
+      externalId,
+      parentResourceId: `${accountId}:model:${modelRef}`,
+      createdAt,
+      updatedAt: createdAt,
+    };
+  }
 
   private mapPrediction(prediction: ReplicatePrediction, accountId: string): ResourceInstance {
     const createdAt = prediction.created_at ?? nowIso();
@@ -442,6 +556,7 @@ export class ReplicateClient implements PluginClient {
           ? { predictTime: metrics["predict_time"] }
           : {}),
         ...(typeof metrics["total_time"] === "number" ? { totalTime: metrics["total_time"] } : {}),
+        ...(extraMetrics(metrics) ? { metrics: extraMetrics(metrics) } : {}),
         createdAt,
         ...(prediction.started_at ? { startedAt: prediction.started_at } : {}),
         ...(prediction.completed_at ? { completedAt: prediction.completed_at } : {}),
@@ -710,6 +825,14 @@ export class ReplicateClient implements PluginClient {
         const file = await this.fetch<ReplicateFile>(`/files/${encodeURIComponent(externalId)}`);
         return this.mapFile(file, accountId);
       }
+      case "model-version": {
+        // https://replicate.com/docs/reference/http#models.versions.get
+        const { modelRef, versionId } = splitVersionRef(externalId);
+        const version = await this.fetch<ReplicateVersion>(
+          `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(versionId)}`,
+        );
+        return this.mapVersion(modelRef, version, accountId);
+      }
       default: {
         const all = await this.listResources(typeId, accountId);
         const found = all.find((resource) => resource.id === resourceId);
@@ -735,20 +858,36 @@ export class ReplicateClient implements PluginClient {
   // Mutations
   // -------------------------------------------------------------------------
 
-  /**
-   * `GET /v1/hardware` feeds the deployment create form's hardware picker so
-   * the user never has to know a SKU string like `gpu-a40-large`.
-   */
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "deployment") {
-      throw new Error(`Replicate plugin: createResource not supported for type "${typeId}"`);
-    }
+  /** `GET /v1/hardware` as select options, so no form asks for a raw SKU. */
+  private async hardwareOptions(): Promise<{ id: string; label: string }[]> {
     const hardware = await this.fetch<ReplicateHardware[]>("/hardware").catch(
       (): ReplicateHardware[] => [],
     );
-    const options = (Array.isArray(hardware) ? hardware : [])
+    return (Array.isArray(hardware) ? hardware : [])
       .filter((entry) => Boolean(entry.sku))
       .map((entry) => ({ id: entry.sku ?? "", label: entry.name ?? entry.sku ?? "" }));
+  }
+
+  /**
+   * Create forms for deployments, models and trainings. Every reference the
+   * API wants (hardware SKU, `owner/name` models) comes from a picker so the
+   * user never has to know a SKU string like `gpu-a40-large`.
+   */
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    switch (typeId) {
+      case "deployment":
+        return this.deploymentCreateConfig();
+      case "model":
+        return this.modelCreateConfig();
+      case "training":
+        return this.trainingCreateConfig();
+      default:
+        throw new Error(`Replicate plugin: createResource not supported for type "${typeId}"`);
+    }
+  }
+
+  private async deploymentCreateConfig(): Promise<CreateResourceConfig> {
+    const options = await this.hardwareOptions();
 
     return {
       fields: [
@@ -817,34 +956,214 @@ export class ReplicateClient implements PluginClient {
   }
 
   /**
+   * `POST /v1/models` requires owner, name, visibility and hardware. The owner
+   * must be the token's own account, so it is filled in rather than asked for.
+   * https://replicate.com/docs/reference/http#models.create
+   */
+  private async modelCreateConfig(): Promise<CreateResourceConfig> {
+    const [options, account] = await Promise.all([
+      this.hardwareOptions(),
+      this.fetchAccount().catch((): ReplicateAccount => ({})),
+    ]);
+    const cpu = options.find((option) => option.id === "cpu");
+    return {
+      fields: [
+        {
+          key: "owner",
+          label: "Owner",
+          kind: "text",
+          required: true,
+          hidden: true,
+          description: "The account that owns the model. Replicate only accepts the token's own.",
+          ...(account.username ? { defaultValue: account.username } : {}),
+        },
+        {
+          key: "name",
+          label: "Model Name",
+          kind: "text",
+          required: true,
+          description:
+            "Lowercase name, unique among this account's models. It becomes the second half of the `owner/name` reference.",
+          placeholder: "hot-dog-detector",
+        },
+        {
+          key: "visibility",
+          label: "Visibility",
+          kind: "select",
+          required: true,
+          description:
+            "Public models can be viewed and run by anyone. Private models are visible only to this account, and only private models can be deleted later.",
+          options: [
+            { id: "private", label: "Private" },
+            { id: "public", label: "Public" },
+          ],
+          defaultValue: "private",
+        },
+        {
+          key: "hardware",
+          label: "Hardware",
+          kind: "select",
+          required: true,
+          description: "Hardware the model runs on when it is called directly.",
+          options,
+          ...(cpu ? { defaultValue: cpu.id } : options[0] ? { defaultValue: options[0].id } : {}),
+        },
+        {
+          key: "description",
+          label: "Description",
+          kind: "text",
+          required: false,
+          placeholder: "Detect hot dogs in images",
+        },
+        {
+          key: "github_url",
+          label: "GitHub URL",
+          kind: "text",
+          required: false,
+          placeholder: "https://github.com/acme/hot-dog-detector",
+        },
+        {
+          key: "paper_url",
+          label: "Paper URL",
+          kind: "text",
+          required: false,
+          placeholder: "https://arxiv.org/abs/2504.17639",
+        },
+        { key: "license_url", label: "License URL", kind: "text", required: false },
+        {
+          key: "cover_image_url",
+          label: "Cover Image URL",
+          kind: "text",
+          required: false,
+          description: "An image file shown on the model page.",
+        },
+      ],
+    };
+  }
+
+  /**
+   * `POST /v1/models/{owner}/{name}/versions/{version}/trainings`. The trainer
+   * and destination are both `owner/name` pickers; a blank version resolves
+   * the trainer's latest, the same way deployment create does.
+   * https://replicate.com/docs/reference/http#trainings.create
+   */
+  private trainingCreateConfig(): CreateResourceConfig {
+    const modelSource = [{ pluginId: "replicate", resourceTypeId: "model", outputKey: "modelRef" }];
+    return {
+      fields: [
+        {
+          key: "model",
+          label: "Trainer Model",
+          kind: "resource-picker",
+          required: true,
+          description: "The trainable model whose `train()` function runs.",
+          associationSources: modelSource,
+        },
+        {
+          key: "version",
+          label: "Trainer Version",
+          kind: "text",
+          required: false,
+          description:
+            "Version of the trainer to run. Leave blank to use the trainer's latest version.",
+          placeholder: "latest",
+        },
+        {
+          key: "destination",
+          label: "Destination Model",
+          kind: "resource-picker",
+          required: true,
+          description:
+            "Model the trained weights are pushed to as a new version. It must already exist and belong to this account; create one from the Models list first.",
+          associationSources: modelSource,
+        },
+        {
+          key: "input",
+          label: "Training Input",
+          kind: "code",
+          codeLanguage: "json",
+          required: true,
+          description:
+            "JSON object passed to the trainer's `train()` function. The accepted keys are listed on the trainer's model page.",
+          defaultValue: "{\n  \n}",
+        },
+        {
+          key: "webhook",
+          label: "Webhook URL",
+          kind: "text",
+          required: false,
+          description: "HTTPS URL Replicate POSTs the training object to as it progresses.",
+          placeholder: "https://example.com/replicate-webhook",
+        },
+        {
+          key: "webhook_events_filter",
+          label: "Webhook Events",
+          kind: "policy-picker",
+          required: false,
+          description:
+            "Which events trigger the webhook. Leave empty for Replicate's default (output and completed).",
+          showWhen: { fieldKey: "webhook", fieldValuesNot: [""] },
+          policies: [
+            { id: "start", label: "Start", description: "Immediately when the training starts" },
+            { id: "output", label: "Output", description: "Each time the training emits output" },
+            { id: "logs", label: "Logs", description: "Each time the training writes logs" },
+            {
+              id: "completed",
+              label: "Completed",
+              description: "When the training succeeds, fails or is canceled",
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  /** Resolve a model's latest version id for forms that leave it blank. */
+  private async latestVersionOf(modelRef: string): Promise<string> {
+    const model = await this.fetch<ReplicateModel>(`/models/${encodePath(modelRef)}`);
+    const version = model.latest_version?.id ?? "";
+    if (!version) {
+      throw new Error(
+        `Replicate plugin: ${modelRef} has no published version; pick a version explicitly`,
+      );
+    }
+    return version;
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    switch (typeId) {
+      case "deployment":
+        return this.createDeployment(accountId, fields);
+      case "model":
+        return this.createModel(accountId, fields);
+      case "training":
+        return this.createTraining(accountId, fields);
+      default:
+        throw new Error(`Replicate plugin: createResource not supported for type "${typeId}"`);
+    }
+  }
+
+  /**
    * `POST /v1/deployments`: all six of name/model/version/hardware/
    * min_instances/max_instances are required by the API. When the user leaves
    * the version blank we resolve the model's `latest_version.id` for them
    * rather than making them paste a 64-character hash.
    * https://replicate.com/docs/reference/http#deployments.create
    */
-  async createResource(
-    typeId: string,
+  private async createDeployment(
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    if (typeId !== "deployment") {
-      throw new Error(`Replicate plugin: createResource not supported for type "${typeId}"`);
-    }
     const modelRef = (fields["model"] ?? "").trim();
     if (!modelRef.includes("/")) {
       throw new Error("Replicate plugin: model must be an `owner/name` reference");
     }
     let version = (fields["version"] ?? "").trim();
-    if (!version || version === "latest") {
-      const model = await this.fetch<ReplicateModel>(`/models/${encodePath(modelRef)}`);
-      version = model.latest_version?.id ?? "";
-      if (!version) {
-        throw new Error(
-          `Replicate plugin: ${modelRef} has no published version to deploy — pick a version explicitly`,
-        );
-      }
-    }
+    if (!version || version === "latest") version = await this.latestVersionOf(modelRef);
 
     const body = {
       name: fields["name"] ?? "",
@@ -861,10 +1180,83 @@ export class ReplicateClient implements PluginClient {
     return this.mapDeployment(created, accountId);
   }
 
+  private async createModel(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    let owner = (fields["owner"] ?? "").trim();
+    if (!owner) owner = (await this.fetchAccount()).username ?? "";
+    const name = (fields["name"] ?? "").trim();
+    if (!owner || !name) throw new Error("Replicate plugin: a model needs an owner and a name");
+    const body: Record<string, string> = {
+      owner,
+      name,
+      visibility: fields["visibility"] === "public" ? "public" : "private",
+      hardware: fields["hardware"] || "cpu",
+    };
+    for (const key of [
+      "description",
+      "github_url",
+      "paper_url",
+      "license_url",
+      "cover_image_url",
+    ] as const) {
+      const value = (fields[key] ?? "").trim();
+      if (value) body[key] = value;
+    }
+    const created = await this.fetch<ReplicateModel>("/models", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return this.mapModel(created, accountId);
+  }
+
+  private async createTraining(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const modelRef = (fields["model"] ?? "").trim();
+    const destination = (fields["destination"] ?? "").trim();
+    if (!modelRef.includes("/") || !destination.includes("/")) {
+      throw new Error("Replicate plugin: trainer and destination must be `owner/name` references");
+    }
+    let input: unknown;
+    try {
+      input = JSON.parse(fields["input"]?.trim() || "{}");
+    } catch {
+      throw new Error("Replicate plugin: training input must be a JSON object");
+    }
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new Error("Replicate plugin: training input must be a JSON object");
+    }
+    let version = (fields["version"] ?? "").trim();
+    if (!version || version === "latest") version = await this.latestVersionOf(modelRef);
+
+    const body: Record<string, unknown> = { destination, input };
+    const webhook = (fields["webhook"] ?? "").trim();
+    if (webhook) {
+      body["webhook"] = webhook;
+      const events = parseJsonStringArray(fields["webhook_events_filter"]);
+      if (events.length) body["webhook_events_filter"] = events;
+    }
+    const created = await this.fetch<ReplicateTraining>(
+      `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(version)}/trainings`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+    return this.mapTraining(created, accountId);
+  }
+
   /**
-   * `PATCH /v1/deployments/{owner}/{name}` is the scale affordance: it takes
-   * any subset of hardware/version/min_instances/max_instances and bumps the
-   * release number. https://replicate.com/docs/reference/http#deployments.update
+   * Deployments: `PATCH /v1/deployments/{owner}/{name}` is the scale
+   * affordance; it takes any subset of hardware/version/min_instances/
+   * max_instances and bumps the release number.
+   * https://replicate.com/docs/reference/http#deployments.update
+   *
+   * Models: `PATCH /v1/models/{owner}/{name}` takes description and the
+   * GitHub / paper / license / weights URLs. It also takes the README, which
+   * is not offered here: a single-line edit field is the wrong editor for a
+   * markdown document.
+   * https://replicate.com/docs/reference/http#models.update
    */
   async updateResource(
     typeId: string,
@@ -872,10 +1264,28 @@ export class ReplicateClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    const ref = externalIdOf(resourceId);
+    if (typeId === "model") {
+      const body: Record<string, string> = {};
+      for (const [fieldKey, apiKey] of [
+        ["description", "description"],
+        ["githubUrl", "github_url"],
+        ["paperUrl", "paper_url"],
+        ["licenseUrl", "license_url"],
+        ["weightsUrl", "weights_url"],
+      ] as const) {
+        if (fields[fieldKey] !== undefined) body[apiKey] = fields[fieldKey].trim();
+      }
+      if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
+      const updated = await this.fetch<ReplicateModel>(`/models/${encodePath(ref)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      return this.mapModel(updated, accountId);
+    }
     if (typeId !== "deployment") {
       throw new Error(`Replicate plugin: updateResource not supported for type "${typeId}"`);
     }
-    const ref = externalIdOf(resourceId);
     const body: Record<string, string | number> = {};
     if (fields["version"]) body["version"] = fields["version"];
     if (fields["hardware"]) body["hardware"] = fields["hardware"];
@@ -896,23 +1306,86 @@ export class ReplicateClient implements PluginClient {
   }
 
   /**
-   * `DELETE /v1/deployments/{owner}/{name}` (204) and
-   * `DELETE /v1/files/{file_id}` (204) are the only destructive endpoints this
-   * plugin exposes. Replicate refuses to delete a deployment that has not been
-   * offline and unused for at least 15 minutes.
+   * The destructive endpoints this plugin exposes:
+   * - `DELETE /v1/deployments/{owner}/{name}` (204). Replicate refuses to
+   *   delete a deployment that has not been offline and unused for at least
+   *   15 minutes.
+   * - `DELETE /v1/files/{file_id}` (204).
+   * - `DELETE /v1/models/{owner}/{name}` (204): private models you own with
+   *   no versions left.
+   * - `DELETE /v1/models/{owner}/{name}/versions/{id}` (202, processed
+   *   asynchronously): also removes every prediction and output file made
+   *   with that version.
    */
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     const externalId = externalIdOf(resourceId);
     if (!externalId) throw new Error(`Replicate plugin: cannot parse resource id "${resourceId}"`);
-    if (typeId === "deployment") {
-      await this.fetch<unknown>(`/deployments/${encodePath(externalId)}`, { method: "DELETE" });
-      return;
+    switch (typeId) {
+      case "deployment":
+        await this.fetch<unknown>(`/deployments/${encodePath(externalId)}`, { method: "DELETE" });
+        return;
+      case "file":
+        await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      case "model":
+        await this.fetch<unknown>(`/models/${encodePath(externalId)}`, { method: "DELETE" });
+        return;
+      case "model-version": {
+        const { modelRef, versionId } = splitVersionRef(externalId);
+        await this.requestText(
+          `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(versionId)}`,
+          "DELETE",
+        );
+        return;
+      }
+      default:
+        throw new Error(`Replicate plugin: deleteResource not supported for type "${typeId}"`);
     }
-    if (typeId === "file") {
-      await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, { method: "DELETE" });
-      return;
+  }
+
+  /**
+   * Predictions and trainings carry their full log text on the object itself;
+   * there is no separate log endpoint. Logs are removed with the rest of the
+   * data an hour after an API-created prediction finishes.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    const externalId = encodeURIComponent(externalIdOf(resourceId));
+    let logs: string | null | undefined;
+    if (typeId === "prediction") {
+      logs = (await this.fetch<ReplicatePrediction>(`/predictions/${externalId}`)).logs;
+    } else if (typeId === "training") {
+      logs = (await this.fetch<ReplicateTraining>(`/trainings/${externalId}`)).logs;
+    } else {
+      throw new Error(`Replicate plugin: logs not supported for type "${typeId}"`);
     }
-    throw new Error(`Replicate plugin: deleteResource not supported for type "${typeId}"`);
+    let lines = (logs ?? "").split("\n");
+    if (lines.length && lines[lines.length - 1] === "") lines.pop();
+    if (params.tailLines && params.tailLines > 0) lines = lines.slice(-params.tailLines);
+    return {
+      text: lines.map((line) => `${line}\n`).join(""),
+      containers: [],
+      activeContainer: "",
+    };
+  }
+
+  /**
+   * The model's README, `GET /v1/models/{owner}/{name}/readme`, which answers
+   * plain-text markdown rather than JSON.
+   */
+  async describeResource(typeId: string, resourceId: string, _accountId: string): Promise<string> {
+    if (typeId !== "model") {
+      throw new Error(`Replicate plugin: describe not supported for type "${typeId}"`);
+    }
+    const ref = externalIdOf(resourceId);
+    const readme = await this.requestText(`/models/${encodePath(ref)}/readme`);
+    return readme.trim() || "This model has no README.";
   }
 
   /**
@@ -1021,6 +1494,12 @@ export class ReplicateClient implements PluginClient {
         }
         break;
       }
+      case "model-version": {
+        if (fields["cogVersion"]) stats.push({ label: "Cog", value: String(fields["cogVersion"]) });
+        if (fields["createdAt"])
+          stats.push({ label: "Created", value: String(fields["createdAt"]) });
+        break;
+      }
       case "collection": {
         if (fields["modelCount"] != null) {
           stats.push({ label: "Models", value: String(fields["modelCount"]) });
@@ -1053,6 +1532,8 @@ export class ReplicateClient implements PluginClient {
         return this.renderFileDetail(resource);
       case "hardware":
         return this.renderHardwareDetail(resource);
+      case "model-version":
+        return this.renderModelVersionDetail(resource);
       default:
         return this.renderGenericDetail(resource);
     }
@@ -1094,6 +1575,16 @@ export class ReplicateClient implements PluginClient {
           },
         };
       }
+      case "model-version":
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: resource.fields["isLatest"] === true ? "healthy" : "info",
+            ...(resource.fields["isLatest"] === true ? { label: "Latest" } : {}),
+          },
+        };
       case "file": {
         const size = Number(resource.fields["size"] ?? 0);
         return {
@@ -1180,6 +1671,24 @@ export class ReplicateClient implements PluginClient {
       },
     ];
 
+    if (fields["metrics"]) {
+      sections.push({
+        kind: "section",
+        title: "Metrics",
+        children: [
+          {
+            kind: "key-value-list",
+            items: String(fields["metrics"])
+              .split(" · ")
+              .map((pair) => {
+                const eq = pair.indexOf("=");
+                return { key: pair.slice(0, eq), value: pair.slice(eq + 1) };
+              }),
+          },
+        ],
+      });
+    }
+
     if (fields["error"]) {
       sections.push({
         kind: "section",
@@ -1207,6 +1716,7 @@ export class ReplicateClient implements PluginClient {
       subtitle: joinSubtitle("Prediction", fields["model"]),
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },
       sections,
+      logs: { defaultTailLines: 500 },
       headerActions: [
         ...(cancellable
           ? [
@@ -1304,6 +1814,7 @@ export class ReplicateClient implements PluginClient {
       subtitle: "Training",
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },
       sections,
+      logs: { defaultTailLines: 500 },
       headerActions: [
         ...(mapped.status === "provisioning"
           ? [
@@ -1470,13 +1981,41 @@ export class ReplicateClient implements PluginClient {
       },
     ];
     if (links.length) sections.push({ kind: "section", title: "Links", children: links });
+    if (fields["visibility"] === "private") {
+      sections.push({
+        kind: "section",
+        title: "Deleting",
+        children: [
+          {
+            kind: "text",
+            // Spelled out because the API's refusal does not say which rule bit.
+            content:
+              "Replicate only deletes a private model once every version is gone. Delete its versions first; a version still used by a deployment, a training or someone else's prediction cannot be deleted.",
+            variant: "muted",
+          },
+        ],
+      });
+    }
 
     return {
       title: resource.displayName,
       subtitle: "Model",
       status: { kind: "status-dot", status: "info", label: "Available" },
       sections,
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // The README, fetched on demand from `/readme`.
+      describe: { language: "text" },
+      headerActions: [
+        ...(fields["modelUrl"]
+          ? [
+              {
+                kind: "action" as const,
+                label: "Open on Replicate",
+                action: { type: "open-url" as const, url: String(fields["modelUrl"]) },
+              },
+            ]
+          : []),
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      ],
     };
   }
 
@@ -1602,6 +2141,59 @@ export class ReplicateClient implements PluginClient {
     };
   }
 
+  private renderModelVersionDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const model = String(fields["model"] ?? "");
+    const versionId = String(fields["versionId"] ?? "");
+    return {
+      title: resource.displayName,
+      subtitle: joinSubtitle("Model version", model),
+      status: {
+        kind: "status-dot",
+        status: fields["isLatest"] === true ? "healthy" : "info",
+        ...(fields["isLatest"] === true ? { label: "Latest" } : {}),
+      },
+      sections: [
+        {
+          kind: "section",
+          title: "Version",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Version ID", value: versionId, copyable: true },
+                { key: "Model", value: model },
+                ...(fields["cogVersion"]
+                  ? [{ key: "Cog Version", value: String(fields["cogVersion"]) }]
+                  : []),
+                ...(fields["createdAt"]
+                  ? [{ key: "Created", value: String(fields["createdAt"]) }]
+                  : []),
+              ],
+            },
+            {
+              kind: "text",
+              content:
+                "Deleting a version also deletes every prediction made with it, output files included. Replicate processes the deletion in the background, and refuses it outright while a deployment, a training or another account's prediction uses the version.",
+              variant: "muted",
+            },
+          ],
+        },
+      ],
+      headerActions: [
+        {
+          kind: "action",
+          label: "Open on Replicate",
+          action: {
+            type: "open-url",
+            url: `https://replicate.com/${model}/versions/${versionId}`,
+          },
+        },
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      ],
+    };
+  }
+
   private renderGenericDetail(resource: ResourceInstance): DetailViewSchema {
     return {
       title: resource.displayName,
@@ -1633,6 +2225,28 @@ function encodePath(ref: string): string {
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
+}
+
+/** Split a model-version external id, `owner/name/versionId`. */
+function splitVersionRef(externalId: string): { modelRef: string; versionId: string } {
+  const slash = externalId.lastIndexOf("/");
+  if (slash <= 0 || !externalId.slice(0, slash).includes("/")) {
+    throw new Error(`Replicate plugin: cannot parse model version id "${externalId}"`);
+  }
+  return { modelRef: externalId.slice(0, slash), versionId: externalId.slice(slash + 1) };
+}
+
+/** A `policy-picker` submits a JSON array of ids. */
+function parseJsonStringArray(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function clampInt(raw: string | undefined, min: number, max: number, fallback: number): number {

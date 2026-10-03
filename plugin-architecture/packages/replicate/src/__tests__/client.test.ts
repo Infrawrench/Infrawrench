@@ -274,3 +274,224 @@ describe("files", () => {
     expect(calls[0]?.init?.method).toBe("DELETE");
   });
 });
+
+describe("model management", () => {
+  it("creates a model owned by the token's account with picked hardware", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/account")) return jsonResponse({ username: "acme" });
+      if (url.endsWith("/models") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return jsonResponse({ ...body, url: "https://replicate.com/acme/detector" }, 201);
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const created = await client().createResource("model", ACCOUNT, {
+      name: "detector",
+      visibility: "private",
+      hardware: "gpu-t4",
+      description: "Finds hot dogs",
+      github_url: "",
+    });
+    const post = calls.find((c) => c.init?.method === "POST");
+    expect(JSON.parse(String(post?.init?.body))).toEqual({
+      owner: "acme",
+      name: "detector",
+      visibility: "private",
+      hardware: "gpu-t4",
+      description: "Finds hot dogs",
+    });
+    expect(created.externalId).toBe("acme/detector");
+  });
+
+  it("offers a hardware picker and pre-fills the owner on the create form", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/hardware")) {
+        return jsonResponse([
+          { sku: "gpu-t4", name: "Nvidia T4 GPU" },
+          { sku: "cpu", name: "CPU" },
+        ]);
+      }
+      if (url.endsWith("/account")) return jsonResponse({ username: "acme" });
+      throw new Error(`unrouted: ${url}`);
+    });
+    const config = await client().getCreateConfig("model");
+    const hardware = config.fields.find((field) => field.key === "hardware");
+    expect(hardware?.kind).toBe("select");
+    expect(hardware?.defaultValue).toBe("cpu");
+    expect(config.fields.find((field) => field.key === "owner")?.defaultValue).toBe("acme");
+  });
+
+  it("PATCHes only the editable metadata, translated to the API's keys", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "PATCH") {
+        return jsonResponse({ owner: "acme", name: "detector", description: "new" });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    await client().updateResource("model", `${ACCOUNT}:model:acme/detector`, ACCOUNT, {
+      description: "new",
+      weightsUrl: "https://huggingface.co/acme/detector",
+    });
+    expect(calls[0]?.url).toBe("https://api.replicate.com/v1/models/acme/detector");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      description: "new",
+      weights_url: "https://huggingface.co/acme/detector",
+    });
+  });
+
+  it("DELETEs models and versions, tolerating the version delete's empty 202", async () => {
+    installFetch(
+      (url) =>
+        ({
+          ok: true,
+          status: url.includes("/versions/") ? 202 : 204,
+          text: async () => "",
+        }) as unknown as Response,
+    );
+    await client().deleteResource("model", `${ACCOUNT}:model:acme/detector`, ACCOUNT);
+    await client().deleteResource(
+      "model-version",
+      `${ACCOUNT}:model-version:acme/detector/abc123`,
+      ACCOUNT,
+    );
+    expect(calls.map((c) => [c.init?.method, c.url])).toEqual([
+      ["DELETE", "https://api.replicate.com/v1/models/acme/detector"],
+      ["DELETE", "https://api.replicate.com/v1/models/acme/detector/versions/abc123"],
+    ]);
+  });
+
+  it("lists versions only for models the account owns, newest marked latest", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/account")) return jsonResponse({ username: "acme" });
+      if (url.endsWith("/deployments")) return jsonResponse({ results: [] });
+      if (url.endsWith("/trainings")) {
+        return jsonResponse({
+          results: [
+            {
+              id: "t1",
+              model: "ostris/flux-dev-lora-trainer",
+              version: "trainerv",
+              input: { destination: "acme/detector" },
+            },
+          ],
+        });
+      }
+      if (url.endsWith("/predictions")) return jsonResponse({ results: [] });
+      if (url.endsWith("/models/acme/detector/versions")) {
+        return jsonResponse({
+          results: [
+            { id: "v2", created_at: "2026-09-02T00:00:00Z", cog_version: "0.14.0" },
+            { id: "v1", created_at: "2026-08-01T00:00:00Z" },
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const versions = await client().listResources("model-version", ACCOUNT);
+    expect(versions.map((v) => [v.externalId, v.fields["isLatest"]])).toEqual([
+      ["acme/detector/v2", true],
+      ["acme/detector/v1", false],
+    ]);
+    expect(versions[0]?.parentResourceId).toBe(`${ACCOUNT}:model:acme/detector`);
+    expect(calls.some((c) => c.url.includes("ostris"))).toBe(false);
+  });
+
+  it("serves the README as the model's describe output", async () => {
+    installFetch(
+      () =>
+        ({
+          ok: true,
+          status: 200,
+          text: async () => "# Detector\n\nFinds hot dogs.",
+        }) as unknown as Response,
+    );
+    const readme = await client().describeResource(
+      "model",
+      `${ACCOUNT}:model:acme/detector`,
+      ACCOUNT,
+    );
+    expect(calls[0]?.url).toBe("https://api.replicate.com/v1/models/acme/detector/readme");
+    expect(readme).toBe("# Detector\n\nFinds hot dogs.");
+  });
+});
+
+describe("trainings", () => {
+  it("starts a training on the trainer's latest version with parsed JSON input", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/models/ostris/trainer")) {
+        return jsonResponse({ owner: "ostris", name: "trainer", latest_version: { id: "tv1" } });
+      }
+      if (init?.method === "POST") {
+        return jsonResponse(
+          { id: "tr1", status: "starting", model: "ostris/trainer", input: { steps: 1000 } },
+          201,
+        );
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const created = await client().createResource("training", ACCOUNT, {
+      model: "ostris/trainer",
+      destination: "acme/detector",
+      input: '{"steps": 1000}',
+      webhook: "https://example.com/hook",
+      webhook_events_filter: '["completed"]',
+    });
+    const post = calls.find((c) => c.init?.method === "POST");
+    expect(post?.url).toBe(
+      "https://api.replicate.com/v1/models/ostris/trainer/versions/tv1/trainings",
+    );
+    expect(JSON.parse(String(post?.init?.body))).toEqual({
+      destination: "acme/detector",
+      input: { steps: 1000 },
+      webhook: "https://example.com/hook",
+      webhook_events_filter: ["completed"],
+    });
+    expect(created.externalId).toBe("tr1");
+  });
+
+  it("rejects training input that is not a JSON object", async () => {
+    installFetch(() => jsonResponse({}));
+    await expect(
+      client().createResource("training", ACCOUNT, {
+        model: "ostris/trainer",
+        destination: "acme/detector",
+        input: "[1, 2]",
+      }),
+    ).rejects.toThrow(/JSON object/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("logs and metrics", () => {
+  it("tails the log text carried on the prediction", async () => {
+    installFetch(() => jsonResponse({ id: "p1", logs: "one\ntwo\nthree\n" }));
+    const result = await client().getLogs("prediction", `${ACCOUNT}:prediction:p1`, ACCOUNT, {
+      tailLines: 2,
+    });
+    expect(result.text).toBe("two\nthree\n");
+  });
+
+  it("keeps model-specific metrics beyond the two timings", async () => {
+    installFetch(() =>
+      jsonResponse({
+        id: "p1",
+        status: "succeeded",
+        metrics: {
+          predict_time: 1.5,
+          total_time: 2,
+          input_token_count: 12,
+          tokens_per_second: 41.2346,
+        },
+      }),
+    );
+    const prediction = await client().getResource(
+      "prediction",
+      `${ACCOUNT}:prediction:p1`,
+      ACCOUNT,
+    );
+    expect(prediction.fields["metrics"]).toBe("input_token_count=12 · tokens_per_second=41.235");
+    const detail = client().renderDetail(prediction);
+    expect(detail.logs).toBeDefined();
+    expect(detail.sections.some((section) => section.title === "Metrics")).toBe(true);
+  });
+});

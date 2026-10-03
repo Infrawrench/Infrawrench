@@ -27,6 +27,7 @@ export const TrainingResourceType = rt({
     { fieldKey: "model", targetTypeId: "model", label: "trains with" },
     { fieldKey: "destination", targetTypeId: "model", label: "writes to" },
   ],
+  supportsCreate: true,
   supportsDelete: false,
   iconKey: "pipeline",
 });

@@ -14,6 +14,11 @@ export const PredictionResourceType = rt({
     f("error", "Error", { required: false }),
     f("predictTime", "Predict Time (s)", { kind: "number", required: false }),
     f("totalTime", "Total Time (s)", { kind: "number", required: false }),
+    f("metrics", "Metrics", {
+      required: false,
+      description:
+        "Model-specific counters Replicate reports beyond the two timings, such as token counts or image counts",
+    }),
     f("createdAt", "Created", { required: false }),
     f("startedAt", "Started", { required: false }),
     f("completedAt", "Completed", { required: false }),
