@@ -431,7 +431,7 @@ export class SpeechmaticsClient implements PluginClient {
     audio: Uint8Array,
     fileName: string,
     mimeType: string,
-  ): Uint8Array {
+  ): Uint8Array<ArrayBuffer> {
     const encoder = new TextEncoder();
     const head = encoder.encode(
       `--${boundary}\r\n` +
@@ -489,7 +489,7 @@ export class SpeechmaticsClient implements PluginClient {
     const res = await fetch(url, {
       method: "POST",
       headers,
-      body: body as unknown as BodyInit,
+      body,
     });
     if (!res.ok) {
       throw new Error(`${VENDOR} API error ${res.status} for ${path}: ${await res.text()}`);

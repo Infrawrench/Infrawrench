@@ -677,11 +677,11 @@ export class RevAiClient implements PluginClient {
     return this.fetch<RevAiJob>("/jobs", {
       method: "POST",
       headers: { "Content-Type": contentType },
-      // `BodyInit` in the DOM lib doesn't admit a plain `Uint8Array<ArrayBufferLike>`,
-      // but both `fetch` and `bodyForHostHttp` handle one at runtime — the latter
-      // has an explicit `instanceof Uint8Array` branch, which is the path that
-      // keeps this upload on the host's bastion-routed HTTP service.
-      body: body as unknown as BodyInit,
+      // `buildMultipartBody` returns an `ArrayBuffer`-backed view, which `BodyInit`
+      // admits; `bodyForHostHttp` has an explicit `instanceof Uint8Array` branch,
+      // which is the path that keeps this upload on the host's bastion-routed
+      // HTTP service.
+      body,
     });
   }
 

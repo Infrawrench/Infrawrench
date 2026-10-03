@@ -1926,7 +1926,7 @@ function fileNameForMime(mimeType: string): string {
  * Assemble a `multipart/form-data` body as raw bytes so it can be handed to the
  * host's HTTP service (which accepts `Uint8Array`) as well as global `fetch`.
  */
-function buildMultipartBody(boundary: string, parts: MultipartPart[]): Uint8Array {
+function buildMultipartBody(boundary: string, parts: MultipartPart[]): Uint8Array<ArrayBuffer> {
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [];
 

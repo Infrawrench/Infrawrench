@@ -36,7 +36,8 @@ function sanitizeFilename(filename: string): string {
 }
 
 export function buildMultipartBody(parts: MultipartPart[]): {
-  body: Uint8Array;
+  /** A fresh `ArrayBuffer`-backed view, which `fetch`'s `BodyInit` accepts as is. */
+  body: Uint8Array<ArrayBuffer>;
   contentType: string;
 } {
   const boundary = `----infrawrench${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;

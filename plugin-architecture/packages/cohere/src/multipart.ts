@@ -21,8 +21,8 @@ export type MultipartPart =
 export interface MultipartBody {
   /** Value for the request's `Content-Type` header, boundary included. */
   contentType: string;
-  /** The encoded body. */
-  body: Uint8Array;
+  /** The encoded body: a fresh `ArrayBuffer`-backed view `fetch` accepts as is. */
+  body: Uint8Array<ArrayBuffer>;
 }
 
 /**

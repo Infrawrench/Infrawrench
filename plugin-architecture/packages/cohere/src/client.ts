@@ -1462,12 +1462,10 @@ export class CohereClient implements PluginClient {
     const response = await this.fetch<TranscriptionResponse>("/v2/audio/transcriptions", {
       method: "POST",
       headers: { "Content-Type": contentType },
-      // A raw byte array is a valid body for both paths at runtime — global
-      // `fetch` takes it as a BufferSource, and the host HTTP bridge passes
-      // `Uint8Array` straight through. The cast is only needed because the
-      // DOM and Node `BodyInit` unions disagree about the generic parameter
-      // on `Uint8Array`.
-      body: body as unknown as BodyInit,
+      // An `ArrayBuffer`-backed byte array: global `fetch` takes it as a
+      // BufferSource, and the host HTTP bridge passes `Uint8Array` straight
+      // through.
+      body,
     });
 
     return {

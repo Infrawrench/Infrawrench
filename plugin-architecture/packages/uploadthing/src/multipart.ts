@@ -17,7 +17,8 @@ export interface MultipartFilePart {
 export interface MultipartBody {
   /** Value for the request's `Content-Type` header, boundary included. */
   contentType: string;
-  body: Uint8Array;
+  /** A fresh `ArrayBuffer`-backed view, which `fetch`'s `BodyInit` accepts as is. */
+  body: Uint8Array<ArrayBuffer>;
 }
 
 /** Encode a single file part the way UploadThing's documented FormData upload does. */
