@@ -19,7 +19,14 @@ export const UserResourceType = rt({
     f("lastName", "Last Name", { required: false }),
     f("emailVerified", "Email Verified", { kind: "boolean", required: false }),
     f("userId", "User ID", { required: false, editable: false }),
-    f("externalId", "External ID", { required: false, editable: false }),
+    f("externalId", "External ID", {
+      required: false,
+      description: "Your own identifier for this user. Leave blank to clear it.",
+    }),
+    f("locale", "Locale", {
+      required: false,
+      description: "Preferred locale for emails and hosted pages, e.g. en-GB.",
+    }),
     f("lastSignInAt", "Last Sign-In", { required: false, editable: false }),
     f("createdAt", "Created", { required: false, editable: false }),
   ],

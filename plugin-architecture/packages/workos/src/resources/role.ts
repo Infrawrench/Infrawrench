@@ -26,6 +26,7 @@ export const RoleResourceType = rt({
       editable: false,
       description: "Permission slugs assigned to the role, comma-separated.",
     }),
+    f("resourceTypeSlug", "Resource type", { required: false, editable: false }),
     f("createdAt", "Created", { required: false, editable: false }),
   ],
   outputs: [o("roleSlug", "Role Slug")],

@@ -18,6 +18,11 @@ export const OrganizationMembershipResourceType = rt({
       required: false,
       description: "Role slug, e.g. `member` or `admin`. Edit to reassign the role.",
     }),
+    f("roles", "All Roles", {
+      required: false,
+      editable: false,
+      description: "Every role slug the membership holds, comma-separated.",
+    }),
     f("status", "Status", {
       kind: "enum",
       required: false,

@@ -11,6 +11,12 @@ import { DirectoryUserResourceType } from "./resources/directory-user.js";
 import { DirectoryGroupResourceType } from "./resources/directory-group.js";
 import { RoleResourceType } from "./resources/role.js";
 import { WebhookEndpointResourceType } from "./resources/webhook-endpoint.js";
+import { OrganizationDomainResourceType } from "./resources/organization-domain.js";
+import { OrganizationRoleResourceType } from "./resources/organization-role.js";
+import { PermissionResourceType } from "./resources/permission.js";
+import { OrganizationApiKeyResourceType } from "./resources/organization-api-key.js";
+import { FeatureFlagResourceType } from "./resources/feature-flag.js";
+import { GroupResourceType } from "./resources/group.js";
 
 /**
  * WorkOS's official icon mark: the double-chevron "W" from the svg-logos
@@ -35,7 +41,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "WorkOS",
   description:
-    "Enterprise auth infrastructure. Manage organizations, users, memberships and invitations, watch SSO connections and Directory Sync directories, define roles, and wire up webhook endpoints.",
+    "Enterprise auth infrastructure. Manage organizations, domains, users, memberships, groups and invitations, watch SSO connections and Directory Sync directories, define roles and permissions, issue organization API keys, toggle feature flags, and wire up webhook endpoints.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -68,6 +74,12 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DirectoryGroupResourceType,
   RoleResourceType,
   WebhookEndpointResourceType,
+  OrganizationDomainResourceType,
+  OrganizationRoleResourceType,
+  PermissionResourceType,
+  OrganizationApiKeyResourceType,
+  FeatureFlagResourceType,
+  GroupResourceType,
 ];
 
 export const plugin: Plugin = {
