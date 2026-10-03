@@ -507,3 +507,105 @@ describe("usage", () => {
     });
   });
 });
+
+describe("fetchMetricSeries", () => {
+  it("charts one dated usage report per day, skipping days the API refuses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
+    try {
+      installFetch((url) => {
+        const date = new URL(url).searchParams.get("date");
+        if (date === "2026-10-02") return jsonResponse({ error: { message: "nope" } }, 400);
+        return jsonResponse({
+          storage: { usage: date === "2026-10-03" ? 2048 : 1024 },
+          bandwidth: { usage: 10 },
+          transformations: { usage: 5 },
+          resources: 3,
+          derived_resources: 7,
+        });
+      });
+      const end = Date.parse("2026-10-03T12:00:00Z");
+      const series = await client().fetchMetricSeries(
+        "product-environment",
+        `${ACCOUNT}:product-environment:demo`,
+        ACCOUNT,
+        { startMs: end - 2 * 24 * 60 * 60 * 1000, endMs: end },
+      );
+      const dates = calls.map((c) => new URL(c.url).searchParams.get("date")).sort();
+      expect(dates).toEqual(["2026-10-01", "2026-10-02", "2026-10-03"]);
+      expect(new URL(calls[0]!.url).pathname).toBe("/v1_1/demo/usage");
+      const storage = series.find((s) => s.label === "Storage")!;
+      expect(storage.unit).toBe("bytes");
+      expect(storage.points).toEqual([
+        { timestamp: Date.parse("2026-10-01T00:00:00Z"), value: 1024 },
+        { timestamp: Date.parse("2026-10-03T00:00:00Z"), value: 2048 },
+      ]);
+      expect(series.map((s) => s.label)).not.toContain("Credits used");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("samples long ranges down to at most 30 days", async () => {
+    installFetch(() => jsonResponse({ storage: { usage: 1 } }));
+    const end = Date.now();
+    await client().fetchMetricSeries(
+      "product-environment",
+      `${ACCOUNT}:product-environment:demo`,
+      ACCOUNT,
+      { startMs: end - 90 * 24 * 60 * 60 * 1000, endMs: end },
+    );
+    expect(calls.length).toBeLessThanOrEqual(30);
+    expect(calls.length).toBeGreaterThan(20);
+  });
+
+  it("queries video views by public id and time window and buckets them", async () => {
+    const start = Date.parse("2026-10-01T00:00:00Z");
+    const end = Date.parse("2026-10-02T00:00:00Z");
+    installFetch(() =>
+      jsonResponse({
+        data: [
+          {
+            video_public_id: "clips/skate",
+            view_watch_time: 20,
+            view_ended_at: "2026-10-01T05:10:00Z",
+          },
+          {
+            video_public_id: "clips/skate",
+            view_watch_time: 5,
+            view_ended_at: "2026-10-01T05:40:00Z",
+          },
+        ],
+      }),
+    );
+    const series = await client().fetchMetricSeries(
+      "media-asset",
+      `${ACCOUNT}:media-asset:video/upload/clips/skate`,
+      ACCOUNT,
+      { startMs: start, endMs: end },
+    );
+    const url = new URL(calls[0]!.url);
+    expect(url.pathname).toBe("/v1_1/demo/video/analytics/views");
+    expect(url.searchParams.get("expression")).toBe(
+      `video_public_id=clips/skate AND view_ended_at>${start / 1000} AND view_ended_at<${end / 1000}`,
+    );
+    expect(url.searchParams.get("max_results")).toBe("500");
+    const views = series.find((s) => s.label === "Views")!;
+    const watch = series.find((s) => s.label === "Watch time")!;
+    expect(
+      views.points.find((p) => p.timestamp === Date.parse("2026-10-01T05:00:00Z"))?.value,
+    ).toBe(2);
+    expect(watch.points.reduce((t, p) => t + p.value, 0)).toBe(25);
+  });
+
+  it("returns nothing for images without calling the API", async () => {
+    installFetch(() => jsonResponse({}));
+    const series = await client().fetchMetricSeries(
+      "media-asset",
+      `${ACCOUNT}:media-asset:image/upload/logo`,
+      ACCOUNT,
+    );
+    expect(series).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+});

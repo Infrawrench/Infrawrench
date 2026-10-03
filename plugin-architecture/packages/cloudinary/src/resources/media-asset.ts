@@ -34,5 +34,7 @@ export const MediaAssetResourceType = rt({
   dependsOn: [{ fieldKey: "folder", targetTypeId: "folder", label: "in folder" }],
   parentTypeId: "folder",
   supportsUpdate: true,
+  // Video Analytics API views and watch time; images and raw files chart nothing.
+  supportsMetrics: true,
   iconKey: "media",
 });
