@@ -22,6 +22,10 @@ export const AppResourceType = rt({
       description: "Number of volumes in this app",
     }),
     f("network", "Network", { required: false, description: "Private network name" }),
+    f("networkCidr", "Network CIDR", {
+      required: false,
+      description: "IPv6 range of the app's private (6PN) network",
+    }),
   ],
   outputs: [
     o("hostname", "Hostname", { description: "Public hostname (<app>.fly.dev)" }),
@@ -44,4 +48,16 @@ export const AppResourceType = rt({
   ],
   supportsCreate: true,
   supportsMetrics: true,
+  // `POST /v1/apps/{app}/deploy_token` mints a token scoped to this one app,
+  // the credential CI needs for `fly deploy` without an org-wide token.
+  credentialFormats: [
+    {
+      id: "deploy-token",
+      label: "Deploy Token",
+      description:
+        "An app-scoped token for CI (`FLY_API_TOKEN`). It can deploy and manage this app only.",
+      mediaType: "text",
+      filenameTemplate: "{resource}-deploy-token.txt",
+    },
+  ],
 });

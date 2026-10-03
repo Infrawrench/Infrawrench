@@ -132,7 +132,7 @@ describe("constructor", () => {
 });
 
 describe("listResources", () => {
-  it("lists apps via mapAppListEntry", async () => {
+  it("lists apps, defaulting a missing status to deployed", async () => {
     router([[(u) => u.includes("/v1/apps?"), APP_LIST]]);
     const res = await client().listResources("app", ACCOUNT);
     expect(res).toHaveLength(2);
@@ -323,6 +323,7 @@ describe("getCreateConfig", () => {
   });
 
   it("machine config without parent has app picker + regions", async () => {
+    router([[(u) => u.includes("/v1/platform/regions"), "boom", 500]]);
     const cfg = await client().getCreateConfig("machine");
     expect(cfg.fields[0]!.key).toBe("appName");
     const region = cfg.fields.find((f) => f.key === "region");
@@ -331,34 +332,52 @@ describe("getCreateConfig", () => {
   });
 
   it("machine config with parent omits app picker", async () => {
+    router([[(u) => u.includes("/v1/platform/regions"), "boom", 500]]);
     const cfg = await client().getCreateConfig("machine", "acct-1:app:app-one");
     expect(cfg.fields.find((f) => f.key === "appName")).toBeUndefined();
     expect(cfg.fields[0]!.key).toBe("name");
   });
 
-  it("volume config without parent fetches apps for select", async () => {
-    router([[(u) => u.includes("/v1/apps?org_slug="), [{ id: "a1", name: "app-one" }]]]);
+  it("volume config without parent uses an app resource picker", async () => {
+    router([[(u) => u.includes("/v1/platform/regions"), { regions: [] }]]);
     const cfg = await client().getCreateConfig("volume");
     const app = cfg.fields.find((f) => f.key === "appName");
-    expect(app?.kind).toBe("select");
-    expect(app?.options?.[0]).toEqual({ id: "app-one", label: "app-one" });
-    expect(app?.defaultValue).toBe("app-one");
+    expect(app?.kind).toBe("resource-picker");
+    expect(app?.associationSources).toEqual([
+      { pluginId: "fly", resourceTypeId: "app", outputKey: "appName" },
+    ]);
+    expect(cfg.fields.map((f) => f.key)).toContain("snapshotRetention");
   });
 
-  it("volume config falls back to text input when no apps / fetch fails", async () => {
-    router([[(u) => u.includes("/v1/apps"), "boom", 500]]);
+  it("region pickers use the live platform list and drop deprecated regions", async () => {
+    router([
+      [
+        (u) => u.includes("/v1/platform/regions"),
+        {
+          regions: [
+            { code: "iad", name: "Ashburn, Virginia (US)" },
+            { code: "old", name: "Gone", deprecated: true },
+            { code: "zzz", name: "Paid Place", requires_paid_plan: true },
+          ],
+        },
+      ],
+    ]);
     const cfg = await client().getCreateConfig("volume");
-    const app = cfg.fields.find((f) => f.key === "appName");
-    expect(app?.kind).toBe("text");
+    const region = cfg.fields.find((f) => f.key === "region");
+    expect(region?.regions?.map((r) => r.id)).toEqual(["iad", "zzz"]);
+    expect(region?.regions?.[0]?.flag).toBeTruthy();
+    expect(region?.regions?.[1]?.location).toBe("Paid Place (paid plans)");
   });
 
-  it("volume config text input when apps empty", async () => {
-    router([[(u) => u.includes("/v1/apps"), []]]);
-    const cfg = await client().getCreateConfig("volume");
-    expect(cfg.fields.find((f) => f.key === "appName")?.kind).toBe("text");
+  it("region pickers fall back to the static table when the call fails", async () => {
+    router([[(u) => u.includes("/v1/platform/regions"), "boom", 500]]);
+    const cfg = await client().getCreateConfig("machine", "acct-1:app:app-one");
+    const region = cfg.fields.find((f) => f.key === "region");
+    expect(region?.regions?.some((r) => r.id === "iad")).toBe(true);
   });
 
   it("volume config with parent omits app field", async () => {
+    router([[(u) => u.includes("/v1/platform/regions"), { regions: [] }]]);
     const cfg = await client().getCreateConfig("volume", "acct-1:app:app-one");
     expect(cfg.fields[0]!.key).toBe("name");
   });
@@ -700,7 +719,9 @@ describe("fetchDashboardStats", () => {
 
 describe("fetchMetricSeries", () => {
   it("returns empty for unsupported type", async () => {
-    expect(await client().fetchMetricSeries("volume", "acct-1:volume:a/v", ACCOUNT)).toEqual([]);
+    expect(
+      await client().fetchMetricSeries("certificate", "acct-1:certificate:a/h", ACCOUNT),
+    ).toEqual([]);
   });
 
   it("queries prometheus and aggregates series for a machine", async () => {
@@ -734,10 +755,16 @@ describe("fetchMetricSeries", () => {
       },
     );
     expect(series.length).toBeGreaterThan(0);
-    const cpu = series.find((s) => s.label === "CPU (user)");
+    const cpu = series.find((s) => s.label === "CPU");
     expect(cpu).toBeTruthy();
     // ts=1000s → 1_000_000ms, summed 1+3=4
     expect(cpu!.points[0]).toEqual({ timestamp: 1_000_000, value: 4 });
+    expect(series.map((s) => s.label)).toEqual(
+      expect.arrayContaining(["HTTP Requests", "Response Time p95", "Memory Used"]),
+    );
+    // CPU is converted from centiseconds to cores
+    const cpuCall = calls.find((c) => decodeURIComponent(c.url).includes("fly_instance_cpu"));
+    expect(decodeURIComponent(cpuCall!.url.replace(/\+/g, " "))).toContain("/ 100");
     // prometheus query included machine instance filter
     const promCall = calls.find((c) => c.url.includes("/prometheus/"));
     expect(decodeURIComponent(promCall!.url)).toContain('instance="inst1"');
@@ -949,5 +976,470 @@ describe("error handling", () => {
   it("throws vendor error on non-ok", async () => {
     router([[(u) => u.includes("/v1/apps"), "boom", 503]]);
     await expect(client().listResources("app", ACCOUNT)).rejects.toThrow(/Fly API error 503/);
+  });
+});
+
+describe("IP assignments", () => {
+  it("lists via /ip_assignments and derives the address type", async () => {
+    router([
+      [(u) => u.includes("/v1/apps?"), { apps: [{ id: "a1", name: "app-one" }], total_apps: 1 }],
+      [
+        (u) => u.endsWith("/v1/apps/app-one/ip_assignments"),
+        {
+          ips: [
+            { ip: "1.2.3.4", region: "global", shared: true },
+            { ip: "2a09::1", region: "global", service_name: "web" },
+            { ip: "fdaa::3", network: { name: "", org_slug: "personal" } },
+            { ip: "5.6.7.8", region: "iad", egress: true },
+          ],
+        },
+      ],
+    ]);
+    const res = await client().listResources("ip-allocation", ACCOUNT);
+    expect(res.map((r) => r.fields["type"])).toEqual([
+      "shared_v4",
+      "v6",
+      "private_v6",
+      "egress_v4",
+    ]);
+    expect(res[1]!.fields["serviceName"]).toBe("web");
+    expect(res[2]!.fields["private"]).toBe(true);
+    expect(res[0]!.id).toBe("acct-1:ip-allocation:app-one/1.2.3.4");
+  });
+
+  it("assigns an address with type, region for egress, and service", async () => {
+    router([
+      [
+        (u, i) => method(i) === "POST" && u.endsWith("/v1/apps/app-one/ip_assignments"),
+        { ip: null, ip_pair: { v4: "9.9.9.9", v6: "2a09::9" }, region: "fra", egress: true },
+      ],
+    ]);
+    const res = await client().createResource(
+      "ip-allocation",
+      ACCOUNT,
+      { type: "egress_pair", region: "fra", serviceName: "" },
+      "acct-1:app:app-one",
+    );
+    const body = JSON.parse(String(calls[0]!.init?.body));
+    expect(body).toEqual({ type: "egress_pair", org_slug: "personal", region: "fra" });
+    expect(res.fields["address"]).toBe("9.9.9.9");
+  });
+
+  it("releases an address", async () => {
+    router([[(u, i) => method(i) === "DELETE", {}]]);
+    await client().deleteResource("ip-allocation", "acct-1:ip-allocation:app-one/1.2.3.4", ACCOUNT);
+    expect(calls[0]!.url).toContain("/v1/apps/app-one/ip_assignments/1.2.3.4");
+  });
+});
+
+describe("certificates (Machines API shapes)", () => {
+  it("maps the detail shape: issuer, earliest expiry, validation errors", async () => {
+    router([
+      [
+        (u) => u.includes("/certificates/www.example.com"),
+        {
+          hostname: "www.example.com",
+          status: "active",
+          configured: true,
+          validation: { dns_configured: true, alpn_configured: false },
+          validation_errors: [{ code: "x", message: "CNAME missing" }],
+          certificates: [
+            {
+              source: "fly",
+              status: "active",
+              expires_at: "2026-12-01T00:00:00Z",
+              issued: [
+                { certificate_authority: "lets_encrypt", expires_at: "2026-11-01T00:00:00Z" },
+              ],
+            },
+          ],
+        },
+      ],
+    ]);
+    const res = await client().getResource(
+      "certificate",
+      "acct-1:certificate:app-one/www.example.com",
+      ACCOUNT,
+    );
+    expect(res.fields["certificateAuthority"]).toBe("lets_encrypt");
+    expect(res.fields["expires"]).toBe("2026-11-01T00:00:00Z");
+    expect(res.fields["source"]).toBe("fly");
+    expect(res.fields["acmeDnsConfigured"]).toBe(true);
+    expect(res.fields["acmeAlpnConfigured"]).toBe(false);
+    expect(res.fields["validationErrors"]).toBe("CNAME missing");
+  });
+
+  it("follows next_cursor when listing", async () => {
+    let page = 0;
+    installFetch((url) => {
+      if (url.includes("/v1/apps?")) {
+        return jsonResponse({ apps: [{ id: "a1", name: "app-one" }], total_apps: 1 });
+      }
+      page += 1;
+      return jsonResponse(
+        page === 1
+          ? { certificates: [{ hostname: "a.example.com" }], next_cursor: "c2" }
+          : { certificates: [{ hostname: "b.example.com" }] },
+      );
+    });
+    const res = await client().listResources("certificate", ACCOUNT);
+    expect(res.map((r) => r.displayName)).toEqual(["a.example.com", "b.example.com"]);
+    expect(calls.some((c) => c.url.includes("cursor=c2"))).toBe(true);
+  });
+
+  it("check action re-validates DNS", async () => {
+    router([[(u, i) => method(i) === "POST" && u.endsWith("/check"), {}]]);
+    await client().invokeAction(
+      "certificate",
+      "acct-1:certificate:app-one/www.example.com",
+      "check",
+      ACCOUNT,
+    );
+    expect(calls[0]!.url).toContain("/v1/apps/app-one/certificates/www.example.com/check");
+  });
+});
+
+describe("app secrets", () => {
+  it("lists names and digests without requesting values", async () => {
+    router([
+      [(u) => u.includes("/v1/apps?"), { apps: [{ id: "a1", name: "app-one" }], total_apps: 1 }],
+      [
+        (u) => u.endsWith("/v1/apps/app-one/secrets"),
+        { secrets: [{ name: "DATABASE_URL", digest: "abc", created_at: "2026-01-01" }] },
+      ],
+    ]);
+    const res = await client().listResources("app-secret", ACCOUNT);
+    expect(res).toHaveLength(1);
+    expect(res[0]!.id).toBe("acct-1:app-secret:app-one/DATABASE_URL");
+    expect(res[0]!.fields["digest"]).toBe("abc");
+    expect(res[0]!.fields["value"]).toBeUndefined();
+    expect(calls.every((c) => !c.url.includes("show_secrets"))).toBe(true);
+  });
+
+  it("creates, updates, and deletes a secret", async () => {
+    router([
+      [
+        (u, i) => method(i) === "POST" && u.includes("/secrets/API_KEY"),
+        { name: "API_KEY", digest: "d1" },
+      ],
+      [(u, i) => method(i) === "GET" && u.includes("/secrets/API_KEY"), { name: "API_KEY" }],
+      [(u, i) => method(i) === "DELETE", { version: 3 }],
+    ]);
+    const created = await client().createResource("app-secret", ACCOUNT, {
+      appName: "app-one",
+      name: "API_KEY",
+      value: "s3cret",
+    });
+    expect(created.displayName).toBe("API_KEY");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({ value: "s3cret" });
+
+    calls = [];
+    await client().updateResource("app-secret", created.id, ACCOUNT, { value: "rotated" });
+    expect(calls[0]!.init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({ value: "rotated" });
+
+    calls = [];
+    await client().updateResource("app-secret", created.id, ACCOUNT, {});
+    expect(calls.every((c) => method(c.init) === "GET")).toBe(true);
+
+    calls = [];
+    await client().deleteResource("app-secret", created.id, ACCOUNT);
+    expect(calls[0]!.url).toContain("/v1/apps/app-one/secrets/API_KEY");
+  });
+});
+
+describe("machines: sizes, actions, events", () => {
+  it("creates a machine with a guest size and memory override", async () => {
+    router([[(u, i) => method(i) === "POST" && u.endsWith("/machines"), MACHINE]]);
+    await client().createResource("machine", ACCOUNT, {
+      appName: "app-one",
+      region: "iad",
+      image: "nginx",
+      size: "performance-2x",
+      memoryMb: "8192",
+    });
+    const body = JSON.parse(String(calls[0]!.init?.body));
+    expect(body.config.guest).toEqual({ cpu_kind: "performance", cpus: 2, memory_mb: 8192 });
+  });
+
+  it("maps guest, cordon, and host status", async () => {
+    router([
+      [
+        (u) => u.includes("/machines/m1"),
+        {
+          ...MACHINE,
+          cordoned: true,
+          host_status: "unreachable",
+          config: { image: "x", guest: { cpu_kind: "shared", cpus: 1, memory_mb: 256 } },
+        },
+      ],
+    ]);
+    const res = await client().getResource("machine", "acct-1:machine:app-one/m1", ACCOUNT);
+    expect(res.fields).toMatchObject({
+      cpuKind: "shared",
+      cpus: 1,
+      memoryMb: 256,
+      cordoned: true,
+      hostStatus: "unreachable",
+    });
+    const detail = client().renderDetail(res);
+    const labels = (detail.headerActions ?? []).map((a) => a.label);
+    expect(labels).toEqual(expect.arrayContaining(["Restart", "Suspend", "Uncordon", "Stop"]));
+    expect(detail.logs).toBeTruthy();
+  });
+
+  it.each(["restart", "suspend", "cordon", "uncordon"])("invokes %s", async (action) => {
+    router([[(u, i) => method(i) === "POST", {}]]);
+    await client().invokeAction("machine", "acct-1:machine:app-one/m1", action, ACCOUNT);
+    expect(calls[0]!.url).toContain(`/v1/apps/app-one/machines/m1/${action}`);
+  });
+
+  it("renders machine events as logs, oldest first", async () => {
+    router([
+      [
+        (u) => u.includes("/machines/m1/events"),
+        [
+          {
+            type: "exit",
+            status: "stopped",
+            source: "flyd",
+            timestamp: 2000,
+            request: { exit_event: { exit_code: 137 } },
+          },
+          { type: "start", status: "started", source: "user", timestamp: 1000 },
+        ],
+      ],
+    ]);
+    const logs = await client().getLogs("machine", "acct-1:machine:app-one/m1", ACCOUNT, {
+      tailLines: 500,
+    });
+    expect(calls[0]!.url).toContain("limit=50");
+    const lines = logs.text.trim().split("\n");
+    expect(lines[0]).toContain("start");
+    expect(lines[1]).toContain("exit_code=137");
+    expect(logs.containers).toEqual(["events"]);
+  });
+});
+
+describe("volumes: extend, settings, snapshots", () => {
+  it("extends a volume and updates snapshot settings", async () => {
+    router([
+      [(u, i) => method(i) === "GET" && u.endsWith("/volumes/v1"), VOLUME],
+      [(u, i) => method(i) === "PUT", {}],
+    ]);
+    await client().updateResource("volume", "acct-1:volume:app-one/v1", ACCOUNT, {
+      sizeGb: "20",
+      snapshotRetention: "14",
+      autoBackupEnabled: "false",
+    });
+    const extend = calls.find((c) => c.url.endsWith("/extend"));
+    expect(JSON.parse(String(extend!.init?.body))).toEqual({ size_gb: 20 });
+    const settings = calls.find((c) => method(c.init) === "PUT" && c.url.endsWith("/volumes/v1"));
+    expect(JSON.parse(String(settings!.init?.body))).toEqual({
+      auto_backup_enabled: false,
+      snapshot_retention: 14,
+    });
+  });
+
+  it("refuses to shrink a volume", async () => {
+    router([[(u) => u.endsWith("/volumes/v1"), VOLUME]]);
+    await expect(
+      client().updateResource("volume", "acct-1:volume:app-one/v1", ACCOUNT, { sizeGb: "5" }),
+    ).rejects.toThrow(/only grow/);
+  });
+
+  it("snapshots on demand and lists snapshots in the detail view", async () => {
+    router([
+      [(u, i) => method(i) === "POST" && u.endsWith("/snapshots"), {}],
+      [
+        (u) => u.endsWith("/snapshots"),
+        [{ id: "vs_1", status: "created", size: 123, created_at: "2026-01-01" }],
+      ],
+    ]);
+    await client().invokeAction("volume", "acct-1:volume:app-one/v1", "snapshot", ACCOUNT);
+    expect(calls[0]!.init?.method).toBe("POST");
+    const base = {
+      id: "acct-1:volume:app-one/v1",
+      resourceTypeId: "volume",
+      displayName: "data",
+      fields: { state: "created", region: "iad" },
+      resolvedOutputs: {},
+    } as never;
+    const enriched = await client().enrichDetail(base);
+    const detail = client().renderDetail(enriched);
+    const snap = detail.sections.find((sec) => sec.title === "Snapshots");
+    expect(snap).toBeTruthy();
+  });
+
+  it("queries volume usage metrics by volume id", async () => {
+    router([
+      [(u) => u.includes("/volumes/v1"), VOLUME],
+      [
+        (u) => u.includes("/prometheus/"),
+        { data: { result: [{ metric: {}, values: [[1, "42"]] }] } },
+      ],
+    ]);
+    const series = await client().fetchMetricSeries("volume", "acct-1:volume:app-one/v1", ACCOUNT);
+    expect(series.map((s) => s.label)).toEqual(["Disk Used", "Volume Size"]);
+    expect(decodeURIComponent(calls.find((c) => c.url.includes("prometheus"))!.url)).toContain(
+      'id="v1"',
+    );
+  });
+});
+
+describe("managed postgres", () => {
+  const CLUSTER = {
+    id: "pg_1",
+    name: "main-db",
+    status: "ready",
+    plan: "basic",
+    region: "iad",
+    pg_major_version: "17",
+    cpus: 2,
+    cpu_kind: "shared",
+    memory_mb: 1024,
+    disk_size_gb: 10,
+    replicas: 1,
+    attached_apps: [{ name: "app-one" }],
+    endpoints: {
+      primary: {
+        direct: { host: "direct.flympg.net", port: 5432 },
+        pooler: { host: "pooler.flympg.net", port: 6432 },
+      },
+    },
+  };
+
+  it("lists clusters for the org", async () => {
+    router([
+      [
+        (u) => u.includes("/v1/postgres?org_slug=personal"),
+        { data: [{ id: "pg_1", name: "main-db", status: "creating", plan: "basic" }] },
+      ],
+    ]);
+    const res = await client().listResources("postgres-cluster", ACCOUNT);
+    expect(res[0]!.id).toBe("acct-1:postgres-cluster:pg_1");
+    expect(res[0]!.fields["status"]).toBe("creating");
+  });
+
+  it("maps endpoints to outputs and resolves them", async () => {
+    router([[(u) => u.endsWith("/v1/postgres/pg_1"), { data: CLUSTER }]]);
+    const res = await client().getResource(
+      "postgres-cluster",
+      "acct-1:postgres-cluster:pg_1",
+      ACCOUNT,
+    );
+    expect(res.resolvedOutputs).toMatchObject({
+      host: "direct.flympg.net",
+      port: "5432",
+      poolerHost: "pooler.flympg.net",
+    });
+    expect(res.fields["attachedApps"]).toBe("app-one");
+    expect(
+      await client().resolveOutput(
+        "postgres-cluster",
+        "acct-1:postgres-cluster:pg_1",
+        "poolerPort",
+        ACCOUNT,
+      ),
+    ).toBe("6432");
+  });
+
+  it("creates a cluster with the documented body", async () => {
+    router([[(u, i) => method(i) === "POST" && u.endsWith("/v1/postgres"), { data: CLUSTER }]]);
+    await client().createResource("postgres-cluster", ACCOUNT, {
+      name: "main-db",
+      region: "iad",
+      plan: "launch",
+      pgMajorVersion: "16",
+      diskSizeGb: "40",
+      poolMode: "session",
+      postgisEnabled: "true",
+    });
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+      org_slug: "personal",
+      region: "iad",
+      plan: "launch",
+      name: "main-db",
+      pg_major_version: "16",
+      disk_size_gb: 40,
+      pool_mode: "session",
+      postgis_enabled: true,
+    });
+  });
+
+  it("offers only MPG-capable regions", async () => {
+    router([
+      [
+        (u) => u.includes("/v1/platform/regions"),
+        {
+          regions: [
+            { code: "iad", mpg_available: true },
+            { code: "jnb", mpg_available: false },
+          ],
+        },
+      ],
+    ]);
+    const cfg = await client().getCreateConfig("postgres-cluster");
+    expect(cfg.fields.find((f) => f.key === "region")?.regions?.map((r) => r.id)).toEqual(["iad"]);
+  });
+
+  it("backs up, attaches an app, and deletes", async () => {
+    router([[() => true, {}]]);
+    await client().invokeAction(
+      "postgres-cluster",
+      "acct-1:postgres-cluster:pg_1",
+      "backup",
+      ACCOUNT,
+    );
+    expect(calls[0]!.url).toContain("/v1/postgres/pg_1/backups");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({ type: "full" });
+    await client().attachResource(
+      "postgres-cluster",
+      "acct-1:postgres-cluster:pg_1",
+      "app",
+      "acct-1:app:app-one",
+      ACCOUNT,
+    );
+    expect(calls[1]!.url).toContain("/v1/postgres/pg_1/attachments");
+    expect(JSON.parse(String(calls[1]!.init?.body))).toEqual({ app_name: "app-one" });
+    await client().deleteResource("postgres-cluster", "acct-1:postgres-cluster:pg_1", ACCOUNT);
+    expect(calls[2]!.init?.method).toBe("DELETE");
+  });
+
+  it("enriches a ready cluster with databases, users, and backups", async () => {
+    router([
+      [(u) => u.endsWith("/v1/postgres/pg_1"), { data: CLUSTER }],
+      [(u) => u.endsWith("/databases"), { data: [{ name: "fly-db" }] }],
+      [(u) => u.endsWith("/users"), { data: [{ username: "app", role: "writer" }] }],
+      [(u) => u.endsWith("/backups"), "unavailable", 503],
+    ]);
+    const base = await client().getResource(
+      "postgres-cluster",
+      "acct-1:postgres-cluster:pg_1",
+      ACCOUNT,
+    );
+    const enriched = await client().enrichDetail(base);
+    const titles = client()
+      .renderDetail(enriched)
+      .sections.map((sec) => sec.title);
+    expect(titles).toEqual(expect.arrayContaining(["Databases", "Users"]));
+    expect(titles).not.toContain("Backups");
+  });
+});
+
+describe("app deploy token", () => {
+  it("mints an app-scoped token", async () => {
+    router([
+      [(u, i) => method(i) === "POST" && u.endsWith("/deploy_token"), { token: "FlyV1 abc" }],
+    ]);
+    const cred = await client().exportCredential(
+      "app",
+      "acct-1:app:app-one",
+      ACCOUNT,
+      "deploy-token",
+    );
+    expect(calls[0]!.url).toContain("/v1/apps/app-one/deploy_token");
+    expect(cred.content).toBe("FlyV1 abc");
+    expect(cred.fields?.[0]?.sensitive).toBe(true);
   });
 });
