@@ -11,7 +11,9 @@ import {
   shell,
 } from "electron";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import crypto from "node:crypto";
+import dns from "node:dns";
 import { generateEd25519OpenSshKeyPair } from "@infrawrench/ssh-tunnel-core";
 import { z } from "zod";
 import { type SqlValue } from "sql.js";
@@ -22,6 +24,12 @@ import { killAllK8sExecs } from "./k8s-exec";
 import { killAllK9sSessions } from "./k9s";
 import { validateSql, validateParams, classifyMutation } from "./db-guard";
 import { registerKubeconfigClusterEndpoints } from "./k8s-endpoints";
+import { approveAccountCredentials } from "./local-exec-consent";
+import { getAccountCredentials } from "./plugin-runtime";
+import { createHostResolver, registerCredentialEndpoints, shouldRelaxCors } from "./cors-policy";
+import { isInternalRendererUrl } from "./renderer-navigation";
+import { getActiveTunnels } from "./ssh-tunnel";
+import { CLOUD_URL } from "../env";
 import { getShellCommandStatus, installShellCommand, uninstallShellCommand } from "./shell-command";
 import { readLocalDeploys } from "./deploy-history";
 import { listLocalOrphans } from "./local-orphans";
@@ -210,29 +218,47 @@ function createWindow() {
       preload: path.join(app.getAppPath(), "out/preload/index.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Dropping a file onto the window must not navigate to it.
+      navigateOnDragDrop: false,
     },
   });
 
   // The renderer only ever shows our own bundle. Anything trying to navigate
   // it elsewhere (an injected link, a redirect from an embedded response, a
-  // window.open) is either a bug or an attempt to load untrusted content into
-  // a window that holds the user's cloud session and preload bridge. Send
-  // external URLs to the system browser and refuse in-window navigation.
-  const isInternalUrl = (url: string): boolean => {
-    const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
-    if (rendererUrl && url.startsWith(rendererUrl)) return true;
-    return url.startsWith("file://");
+  // window.open, a dropped file) is either a bug or an attempt to load
+  // untrusted content into a window that holds the user's cloud session and
+  // preload bridge. Send external URLs to the system browser and refuse
+  // in-window navigation. See renderer-navigation.ts for why this is an exact
+  // match rather than a `file://` prefix.
+  const rendererLocation = {
+    devServerUrl: process.env["ELECTRON_RENDERER_URL"],
+    indexFileUrl: pathToFileURL(path.join(app.getAppPath(), "out/renderer/index.html")).href,
+    caseInsensitivePaths: process.platform === "win32",
+  };
+  const isInternalUrl = (url: string): boolean => isInternalRendererUrl(url, rendererLocation);
+  const openIfWeb = (url: string) => {
+    try {
+      if (/^https?:$/.test(new URL(url).protocol)) void shell.openExternal(url);
+    } catch {
+      // Not a URL: nothing to open.
+    }
   };
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:$/.test(new URL(url).protocol)) void shell.openExternal(url);
+    openIfWeb(url);
     return { action: "deny" };
   });
 
   win.webContents.on("will-navigate", (event, url) => {
     if (isInternalUrl(url)) return;
     event.preventDefault();
-    if (/^https?:$/.test(new URL(url).protocol)) void shell.openExternal(url);
+    openIfWeb(url);
+  });
+
+  // A server redirect is a navigation will-navigate never sees.
+  win.webContents.on("will-redirect", (event, url) => {
+    if (isInternalUrl(url)) return;
+    event.preventDefault();
   });
 
   // A renderer compromise shouldn't be able to attach a WebView with its own
@@ -257,45 +283,85 @@ function createWindow() {
   }
 }
 
+/** Add permissive CORS headers to a response `shouldRelaxCors` admitted. */
+function relaxCorsHeaders(
+  details: Electron.OnHeadersReceivedListenerDetails,
+  callback: (response: Electron.HeadersReceivedResponse) => void,
+) {
+  const headers = { ...details.responseHeaders };
+  const hasACAO = Object.keys(headers).some(
+    (k) => k.toLowerCase() === "access-control-allow-origin",
+  );
+
+  // Always relax the allowed request-header list. Some providers (e.g.
+  // Cloudflare) DO return their own CORS headers, but with an allow-list that
+  // omits the headers their SDK injects (Cloudflare's `api-version` and the
+  // Stainless `x-stainless-*` telemetry headers) so the browser blocks the
+  // preflight even though ACAO is present. Replace any upstream value (delete
+  // case-insensitively first to avoid emitting a duplicate header).
+  //
+  // AWS SigV4 requests carry x-amz-* headers (content-sha256, date, target,
+  // security-token, user-agent) and Authorization; AWS returns no CORS
+  // headers at all, so these double as the synthesized set for that case.
+  for (const k of Object.keys(headers)) {
+    if (k.toLowerCase() === "access-control-allow-headers") delete headers[k];
+  }
+  headers["Access-Control-Allow-Headers"] = [
+    "Authorization, Content-Type, Accept, Api-Version, cf-aig-gateway-id, cf-aig-authorization, X-Amz-Content-Sha256, X-Amz-Date, X-Amz-Target, X-Amz-Security-Token, X-Amz-User-Agent, X-Amz-Algorithm, X-Amz-Credential, X-Amz-Signature, X-Amz-SignedHeaders, X-Auth-Token, X-Ovh-Application, X-Ovh-Timestamp, X-Ovh-Consumer, X-Ovh-Signature, X-ClickHouse-User, X-ClickHouse-Key, X-ClickHouse-Database, X-ClickHouse-Format, X-Stainless-Arch, X-Stainless-Lang, X-Stainless-Os, X-Stainless-Package-Version, X-Stainless-Retry-Count, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Timeout",
+  ];
+
+  if (!hasACAO) {
+    headers["Access-Control-Allow-Origin"] = ["*"];
+    headers["Access-Control-Allow-Methods"] = ["DELETE, GET, HEAD, OPTIONS, POST, PUT, PATCH"];
+    // OPTIONS preflight must return 200 OK: GCP compute and similar reject
+    // cross-origin requests with 403, which the browser refuses even when
+    // CORS headers are present.
+    if (details.method === "OPTIONS") {
+      callback({ responseHeaders: headers, statusLine: "HTTP/1.1 200 OK" });
+      return;
+    }
+  }
+  callback({ responseHeaders: headers });
+}
+
 app.whenReady().then(() => {
   // Allow cross-origin DELETE/PUT/PATCH from the renderer to external APIs
   // (GCP, DO, etc.). Only inject headers when the server hasn't already sent
   // them: adding a second Access-Control-Allow-Origin breaks CORS entirely.
+  // Never for this machine or the private network unless the user configured
+  // that endpoint (cors-policy.ts): otherwise any renderer script could read
+  // localhost and intranet services.
+  const cloudOrigin = new URL(CLOUD_URL).origin;
+  const resolveHost = createHostResolver(async (hostname) =>
+    (await dns.promises.lookup(hostname, { all: true })).map((a) => a.address),
+  );
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const headers = { ...details.responseHeaders };
-    const hasACAO = Object.keys(headers).some(
-      (k) => k.toLowerCase() === "access-control-allow-origin",
-    );
-
-    // Always relax the allowed request-header list. Some providers (e.g.
-    // Cloudflare) DO return their own CORS headers, but with an allow-list that
-    // omits the headers their SDK injects (Cloudflare's `api-version` and the
-    // Stainless `x-stainless-*` telemetry headers) so the browser blocks the
-    // preflight even though ACAO is present. Replace any upstream value (delete
-    // case-insensitively first to avoid emitting a duplicate header).
-    //
-    // AWS SigV4 requests carry x-amz-* headers (content-sha256, date, target,
-    // security-token, user-agent) and Authorization; AWS returns no CORS
-    // headers at all, so these double as the synthesized set for that case.
-    for (const k of Object.keys(headers)) {
-      if (k.toLowerCase() === "access-control-allow-headers") delete headers[k];
-    }
-    headers["Access-Control-Allow-Headers"] = [
-      "Authorization, Content-Type, Accept, Api-Version, cf-aig-gateway-id, cf-aig-authorization, X-Amz-Content-Sha256, X-Amz-Date, X-Amz-Target, X-Amz-Security-Token, X-Amz-User-Agent, X-Amz-Algorithm, X-Amz-Credential, X-Amz-Signature, X-Amz-SignedHeaders, X-Auth-Token, X-Ovh-Application, X-Ovh-Timestamp, X-Ovh-Consumer, X-Ovh-Signature, X-ClickHouse-User, X-ClickHouse-Key, X-ClickHouse-Database, X-ClickHouse-Format, X-Stainless-Arch, X-Stainless-Lang, X-Stainless-Os, X-Stainless-Package-Version, X-Stainless-Retry-Count, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Timeout",
-    ];
-
-    if (!hasACAO) {
-      headers["Access-Control-Allow-Origin"] = ["*"];
-      headers["Access-Control-Allow-Methods"] = ["DELETE, GET, HEAD, OPTIONS, POST, PUT, PATCH"];
-      // OPTIONS preflight must return 200 OK: GCP compute and similar reject
-      // cross-origin requests with 403, which the browser refuses even when
-      // CORS headers are present.
-      if (details.method === "OPTIONS") {
-        callback({ responseHeaders: headers, statusLine: "HTTP/1.1 200 OK" });
+    let hostname: string;
+    try {
+      const url = new URL(details.url);
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        callback({});
         return;
       }
+      hostname = url.hostname;
+    } catch {
+      callback({});
+      return;
     }
-    callback({ responseHeaders: headers });
+    void resolveHost(hostname).then(
+      (addresses) => {
+        const relax = shouldRelaxCors(
+          { url: details.url, addresses },
+          {
+            cloudOrigin,
+            tunnelPorts: Object.values(getActiveTunnels()).map((t) => t.localPort),
+          },
+        );
+        if (relax) relaxCorsHeaders(details, callback);
+        else callback({});
+      },
+      () => callback({}),
+    );
   });
 
   // Note on microphone access for the Speech tab: no Electron permission
@@ -457,6 +523,7 @@ ipcMain.handle("account_get_credentials", async (_e, raw: unknown) => {
   // talking to its cluster, so decrypt-time registration keeps the SSRF
   // allowlist populated across app restarts.
   await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
+  registerCredentialEndpoints(credentials);
   return credentials;
 });
 
@@ -466,6 +533,11 @@ ipcMain.handle("account_save_credentials", async (_e, raw: unknown) => {
   if (plaintext.length > MAX_PLAINTEXT_BYTES) {
     throw new Error("account_save_credentials: credentials too large");
   }
+  // A kubeconfig that runs a program, or a Docker host, is local code
+  // execution: a new or changed one needs consent in a native dialog before
+  // it becomes a stored value the connect-time gate trusts (local-exec-guard.ts).
+  const previous = await getAccountCredentials(accountId).catch(() => undefined);
+  await approveAccountCredentials(credentials, previous);
   const aad = buildAad("account", accountId, "credentials");
   const { ciphertext, iv } = encryptValue(plaintext, getEncryptionKey(), aad);
   const db = await getSqlite();
@@ -479,6 +551,7 @@ ipcMain.handle("account_save_credentials", async (_e, raw: unknown) => {
   }
   persist();
   await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
+  registerCredentialEndpoints(credentials);
 });
 
 ipcMain.handle("account_create", async (_e, raw: unknown) => {
@@ -487,6 +560,7 @@ ipcMain.handle("account_create", async (_e, raw: unknown) => {
   if (plaintext.length > MAX_PLAINTEXT_BYTES) {
     throw new Error("account_create: credentials too large");
   }
+  await approveAccountCredentials(credentials, undefined);
   const aad = buildAad("account", accountId, "credentials");
   const { ciphertext, iv } = encryptValue(plaintext, getEncryptionKey(), aad);
   const db = await getSqlite();
@@ -497,6 +571,7 @@ ipcMain.handle("account_create", async (_e, raw: unknown) => {
   );
   persist();
   await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
+  registerCredentialEndpoints(credentials);
 });
 
 ipcMain.handle("ssh_key_get_private_key", async (_e, raw: unknown) => {

@@ -52,6 +52,12 @@ For a cluster you already have in Infrawrench — EKS, AKS, GKE, DOKS, OVH Manag
 
 ![Kubernetes Add-account form with the Kubeconfig textarea and the optional Cluster hourly rates field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/kubernetes/add-account.png)
 
+### Kubeconfigs that run a command (desktop)
+
+Some kubeconfigs authenticate by running a program on your computer: an `exec` entry such as `aws eks get-token`, `gke-gcloud-auth-plugin` or `kubelogin`, or a legacy `auth-provider`. The desktop app asks before it saves one, in a system dialog that shows the command. After that, connecting with the saved kubeconfig doesn't ask again.
+
+A kubeconfig that isn't saved in an account, such as the one an AKS cluster with Microsoft Entra sign-in hands to its **Kubernetes** tab, gets the same dialog the first time you open a terminal, k9s, a port forward or the resource list in a session. If the dialog appears when you didn't just add or open a cluster, choose **Cancel**.
+
 ## Cost allocation
 
 A cluster has no billing API — the money is charged to the cloud account that owns the nodes. So per-namespace and per-workload cost is **derived**: node capacity times each pod's share of it, plus the volumes and load balancers each workload owns.

@@ -14,7 +14,7 @@ interface K8sPortForwardConfig {
   /** Remote port to forward */
   remotePort: number;
   /** Local port (0 = pick a random available port) */
-  localPort?: number;
+  localPort?: number | undefined;
 }
 
 interface K8sPortForwardSession {

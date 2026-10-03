@@ -309,7 +309,17 @@ Currently used by: Cloudflare (full), DigitalOcean (detail + sidebar), GCP (badg
 - IPC handlers: `db_select`, `db_execute`, `encrypt_value`, `decrypt_value`, `get_or_create_encryption_key`, `show_open_dialog`
 - Driver IPC: `plugin_sql_query`, `plugin_sql_execute`, `plugin_kv_command`, `plugin_docker_command`, `plugin_storage_download`
 - SSH IPC: `ssh_open_tunnel`, `ssh_close_tunnel`, `ssh_get_active_tunnels`, `ssh_shell_spawn`, `ssh_shell_write`, `ssh_shell_resize`, `ssh_shell_kill`, `ssh_list_system_keys`, `ssh_read_system_key`
-- CORS interceptor: `session.defaultSession.webRequest.onHeadersReceived` — injects CORS headers only when the server hasn't sent `Access-Control-Allow-Origin`; for OPTIONS preflights that return non-200, forces `statusLine: "HTTP/1.1 200 OK"` to allow cross-origin DELETE/PUT/PATCH from `file://`
+- CORS interceptor: `session.defaultSession.webRequest.onHeadersReceived` — injects CORS headers only when the server hasn't sent `Access-Control-Allow-Origin`; for OPTIONS preflights that return non-200, forces `statusLine: "HTTP/1.1 200 OK"` to allow cross-origin DELETE/PUT/PATCH from `file://`. Gated by `electron/cors-policy.ts`; see "CORS in Electron".
+
+### Renderer hardening
+
+The renderer holds the preload bridge, so any script in it reaches every IPC channel. What keeps one out, and what limits it if it gets in:
+
+- **CSP** (`electron/renderer-csp.ts`): injected into the built `index.html` as a `<meta>` by the `rendererCsp()` Vite plugin, build-only (the Vite dev server needs inline script and eval). `script-src` is `'self'` plus the one Monaco build on jsDelivr that `@monaco-editor/loader` fetches (`MONACO_CDN_BASE`, path-pinned; `renderer-csp.test.ts` fails when a loader upgrade moves the version). `connect-src`/`img-src` allow any http(s) because plugins call provider APIs from the renderer. The build fails if `index.html` gains an inline `<script>`.
+- **Navigation** (`electron/renderer-navigation.ts`): `will-navigate` and `will-redirect` accept only the exact packaged `index.html` (any hash/query) or the dev server origin. Never a `file://` prefix: on Windows `file://host/share/x.html` is a remote UNC path.
+- **Local-execution consent** (`electron/local-exec-guard.ts`, wired in `local-exec-consent.ts`): a kubeconfig with `exec`/`auth-provider` runs a program, and a Docker host is root on its machine. `k8s_exec_spawn`, `k9s_spawn`, `k8s_pf_start`, `plugin_k8s_command` and `plugin_docker_command` accept such a value only if a stored account holds it byte-equal (matched by the manifest-declared key name, not `plugin_id`, which the renderer can rewrite via `db_execute`), it is the local end of an SSH tunnel main opened, or the user approved it in a native `dialog` this session. `account_create`/`account_save_credentials` ask before storing a new or changed one, so storing first is not a bypass. The CLI never goes through this (no renderer).
+- **Fuses**: `build.electronFuses` in `package.json` turns off RunAsNode, `NODE_OPTIONS` and `--inspect`, and turns on asar integrity and asar-only loading. Nothing may rely on `ELECTRON_RUN_AS_NODE` or `child_process.fork` in main; the CLI is `--cli` on the normal binary.
+- The renderer never gets the raw cloud access token (`cloud_auth_get_token` is gone; use `cloud_auth_status`). It still gets account credentials and SSH private keys, because plugins and the SSH client run in the renderer.
 
 ### Driver registration (`electron/drivers.ts`)
 
@@ -1084,6 +1094,8 @@ Electron's renderer runs from `file://` (or `http://localhost:5173` in dev). Ext
 2. For OPTIONS preflights specifically: also force `statusLine: "HTTP/1.1 200 OK"` because GCP/DO return 403 to OPTIONS, which the browser rejects regardless of CORS headers
 
 **Critical:** Never add a second `Access-Control-Allow-Origin` — duplicate values cause browser rejection. Always check case-insensitively before injecting.
+
+**Not for this machine or the private network.** `shouldRelaxCors` (`electron/cors-policy.ts`) skips responses whose host is loopback, private or link-local, by literal or by a cached DNS lookup (the hook gets no server IP), unless the host:port appears in a stored account's credentials (`registerCredentialEndpoints`, called where main decrypts or writes them), is the local end of an SSH tunnel, or is the cloud API. A provider host list would not work as a `urls` filter: the set is open-ended (regional endpoints, self-hosted services). A bare `localhost` credential does not open every local port; it needs a port. `k8s_api_request` uses the same credential registry as `trusted` and pins its connection to the address it vetted.
 
 ---
 
