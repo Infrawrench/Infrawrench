@@ -47,6 +47,8 @@ export const ManagedDatabaseResourceType = rt({
   // Edit = rename (`PATCH`) and the in-place upgrades (`POST /upgrade`, one
   // change per call): node type and volume size.
   supportsUpdate: true,
+  // CPU, memory, disk and connections from the RDB metrics route.
+  supportsMetrics: true,
   backupPolicy: {
     protectedBy: [],
     automatedBackupFieldKey: "backupsEnabled",

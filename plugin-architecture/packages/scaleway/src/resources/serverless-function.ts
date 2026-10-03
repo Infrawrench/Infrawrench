@@ -21,5 +21,7 @@ export const ServerlessFunctionResourceType = rt({
   outputs: [o("endpoint", "Endpoint URL")],
   // Edit = `PATCH /functions/{id}`: handler, scaling bounds and memory.
   supportsUpdate: true,
+  // CPU, memory and instance count from Cockpit (needs the Cockpit token).
+  supportsMetrics: true,
   iconKey: "function",
 });

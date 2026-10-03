@@ -56,7 +56,7 @@ const manifest: PluginManifest = {
       key: "cockpitQueryToken",
       label: "Cockpit Query Token (optional)",
       description:
-        "Optional Scaleway Cockpit token with the `query_metrics` scope. When set, the resource Metrics tab populates from Cockpit. Create one at console.scaleway.com under Observability → Tokens.",
+        "Optional Scaleway Cockpit token with the `query_metrics` scope (add `query_logs` for Logs tabs). When set, instance, Kapsule and serverless Metrics tabs and the serverless and database Logs tabs populate from Cockpit. Create one at console.scaleway.com under Observability → Tokens.",
       sensitive: true,
       optional: true,
     },

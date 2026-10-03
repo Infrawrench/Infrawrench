@@ -58,6 +58,7 @@ const { sdkMocks, instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks
       listNodeTypes: vi.fn(),
       upgradeInstance: vi.fn(),
       updateInstance: vi.fn(),
+      getInstanceMetrics: vi.fn(),
     },
     blockMethods: {
       listVolumes: vi.fn(),
@@ -1285,8 +1286,159 @@ describe("fetchMetricSeries", () => {
   it("returns [] for unhandled resource type", async () => {
     const c = makeClient({ ...CREDS, cockpitQueryToken: "tok" });
     expect(
+      await c.fetchMetricSeries("dns-zone", `${ACCOUNT}:dns-zone:example.com`, ACCOUNT),
+    ).toEqual([]);
+  });
+
+  it("maps RDB instance metrics without a cockpit token", async () => {
+    const c = makeClient();
+    rdbMethods.getInstanceMetrics.mockResolvedValue({
+      timeseries: [
+        {
+          name: "cpu_usage_percent",
+          metadata: { node: "node-0" },
+          points: [{ timestamp: new Date(1_700_000_000_000), value: 12 }],
+        },
+        {
+          name: "cpu_usage_percent",
+          metadata: { node: "node-1" },
+          points: [{ timestamp: new Date(1_700_000_000_000), value: 3 }],
+        },
+        {
+          name: "total_connections",
+          metadata: { node: "node-0" },
+          points: [{ timestamp: new Date(1_700_000_000_000), value: 7 }],
+        },
+        { name: "mem_usage_percent", metadata: { node: "node-0" }, points: [] },
+      ],
+    });
+    const series = await c.fetchMetricSeries(
+      "rdb-instance",
+      `${ACCOUNT}:rdb-instance:fr-par/db1`,
+      ACCOUNT,
+      { startMs: 1000, endMs: 2000 },
+    );
+    expect(rdbMethods.getInstanceMetrics).toHaveBeenCalledWith({
+      region: "fr-par",
+      instanceId: "db1",
+      startDate: new Date(1000),
+      endDate: new Date(2000),
+    });
+    expect(series).toEqual([
+      {
+        label: "CPU Usage (node-0)",
+        unit: "%",
+        points: [{ timestamp: 1_700_000_000_000, value: 12 }],
+      },
+      {
+        label: "CPU Usage (node-1)",
+        unit: "%",
+        points: [{ timestamp: 1_700_000_000_000, value: 3 }],
+      },
+      {
+        label: "Connections (node-0)",
+        unit: "count",
+        points: [{ timestamp: 1_700_000_000_000, value: 7 }],
+      },
+    ]);
+  });
+
+  it("returns [] when the RDB metrics route fails", async () => {
+    const c = makeClient();
+    rdbMethods.getInstanceMetrics.mockRejectedValue(new Error("gone"));
+    expect(
       await c.fetchMetricSeries("rdb-instance", `${ACCOUNT}:rdb-instance:fr-par/db1`, ACCOUNT),
     ).toEqual([]);
+  });
+
+  it.each([
+    ["serverless-function", "serverless_function"],
+    ["serverless-container", "serverless_container"],
+  ])("queries cockpit for %s by resource_id", async (typeId, prefix) => {
+    const c = makeClient({ ...CREDS, cockpitQueryToken: "tok" });
+    const queries: string[] = [];
+    fetchMock.mockImplementation(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("/data-sources")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data_sources: [{ url: "https://cockpit" }] }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      queries.push(new URLSearchParams(String(init?.body)).get("query") ?? "");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { result: [{ values: [[1700000000, "40"]] }] } }),
+        text: async () => "",
+      } as unknown as Response;
+    });
+    const series = await c.fetchMetricSeries(typeId, `${ACCOUNT}:${typeId}:nl-ams/fn1`, ACCOUNT);
+    expect(series.map((s) => s.label)).toEqual([
+      "CPU Usage",
+      "Memory Usage",
+      "Memory Utilization",
+      "Instances",
+    ]);
+    expect(series[1]!.unit).toBe("bytes");
+    expect(queries[0]).toBe(`avg(${prefix}_cpu_usage_ratio{resource_id="fn1"})`);
+    expect(fetchMock.mock.calls[0]![0]).toContain("/cockpit/v1/regions/nl-ams/data-sources");
+  });
+});
+
+describe("getLogs", () => {
+  const FN = `${ACCOUNT}:serverless-function:fr-par/fn1`;
+
+  it("explains the missing cockpit token", async () => {
+    const c = makeClient();
+    const res = await c.getLogs("serverless-function", FN, ACCOUNT, {});
+    expect(res.text).toContain("Cockpit token");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns nothing for types without logs", async () => {
+    const c = makeClient({ ...CREDS, cockpitQueryToken: "tok" });
+    const res = await c.getLogs("instance", `${ACCOUNT}:instance:fr-par-1/s1`, ACCOUNT, {});
+    expect(res.text).toBe("");
+  });
+
+  it("tails the Loki logs data source by resource_id, oldest first", async () => {
+    const c = makeClient({ ...CREDS, cockpitQueryToken: "tok" });
+    const urls: string[] = [];
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      urls.push(u);
+      if (u.includes("/data-sources")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data_sources: [{ url: "https://logs" }] }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            result: [
+              { values: [["1700000002000000000", "second"]] },
+              { values: [["1700000001000000000", "first"]] },
+            ],
+          },
+        }),
+        text: async () => "",
+      } as unknown as Response;
+    });
+    const res = await c.getLogs("serverless-function", FN, ACCOUNT, { tailLines: 50 });
+    expect(urls[0]).toContain("types=logs");
+    const loki = new URL(urls[1]!);
+    expect(loki.pathname).toBe("/loki/api/v1/query_range");
+    expect(loki.searchParams.get("query")).toBe('{resource_id="fn1"}');
+    expect(loki.searchParams.get("limit")).toBe("50");
+    expect(res.text).toBe("2023-11-14T22:13:21.000Z  first\n2023-11-14T22:13:22.000Z  second\n");
   });
 });
 
@@ -1324,6 +1476,16 @@ describe("renderDetail / renderSidebarItem", () => {
     expect(d.status).toBeUndefined();
     expect(d.storageBrowser).toEqual({ bucketName: "mybucket" });
     expect(d.bucketPolicyEditor?.vendor).toBe("scaleway-os");
+  });
+
+  it("renderDetail adds Logs and Metrics tabs to serverless and database types", () => {
+    const c = makeClient();
+    for (const typeId of ["serverless-function", "serverless-container", "rdb-instance"]) {
+      const d = c.renderDetail(res(typeId, { status: "ready" }));
+      expect(d.logs).toEqual({ defaultTailLines: 200 });
+      expect(d.metricsCapability).toBeDefined();
+    }
+    expect(c.renderDetail(res("instance", { state: "running" })).logs).toBeUndefined();
   });
 
   it("renderDetail object storage without name keeps no browser", () => {

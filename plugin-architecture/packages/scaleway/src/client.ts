@@ -13,6 +13,8 @@ import type {
   DashboardStat,
   MetricSeries,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
 } from "@infrawrench/plugin-base";
 import {
   deleteS3Object,
@@ -1030,20 +1032,25 @@ export class ScalewayClient implements PluginClient {
   }
 
   /**
-   * Discover the Cockpit "Scaleway metrics" data-source URL for a given region.
-   * Uses the IAM secret key (NOT the Cockpit query token) to call the Cockpit
-   * control-plane API. Result is cached on the client instance.
+   * Discover a Cockpit Scaleway-origin data-source URL ("Scaleway metrics" or
+   * "Scaleway logs") for a given region. Uses the IAM secret key (NOT the
+   * Cockpit query token) to call the Cockpit control-plane API. Result is
+   * cached on the client instance per region and type.
    *
    * Returns null when the data source cannot be found or the request fails.
    */
-  private async getCockpitDataSource(region: string): Promise<string | null> {
-    if (this.cockpitDataSourceCache.has(region)) {
-      return this.cockpitDataSourceCache.get(region)!;
+  private async getCockpitDataSource(
+    region: string,
+    type: "metrics" | "logs" = "metrics",
+  ): Promise<string | null> {
+    const cacheKey = type === "metrics" ? region : `${type}:${region}`;
+    if (this.cockpitDataSourceCache.has(cacheKey)) {
+      return this.cockpitDataSourceCache.get(cacheKey)!;
     }
     try {
       const qs = this.defaultProjectId
-        ? `project_id=${this.defaultProjectId}&types=metrics&origin=scaleway`
-        : `types=metrics&origin=scaleway`;
+        ? `project_id=${this.defaultProjectId}&types=${type}&origin=scaleway`
+        : `types=${type}&origin=scaleway`;
       const body = await jsonRestFetch<{
         data_sources?: Array<{ url?: string }>;
       }>({
@@ -1055,7 +1062,7 @@ export class ScalewayClient implements PluginClient {
       });
       const url = body.data_sources?.[0]?.url ?? null;
       if (url) {
-        this.cockpitDataSourceCache.set(region, url);
+        this.cockpitDataSourceCache.set(cacheKey, url);
         return url;
       }
       return null;
@@ -1119,6 +1126,12 @@ export class ScalewayClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
+    // Managed Databases carry their own metrics route on the RDB API, read
+    // with the IAM secret key, so they chart without a Cockpit token.
+    if (resourceTypeId === "rdb-instance") {
+      return this.fetchRdbMetrics(resourceId, timeRange);
+    }
+
     // No-op when the Cockpit query token is absent: this is the common case
     // and must remain side-effect-free so existing tests continue to pass.
     if (!this.cockpitQueryToken) return [];
@@ -1244,12 +1257,181 @@ export class ScalewayClient implements PluginClient {
       return series.filter((s): s is MetricSeries => s != null);
     }
 
+    if (resourceTypeId === "serverless-function" || resourceTypeId === "serverless-container") {
+      // externalId format: {region}/{id}
+      const externalId = resourceId.split(":").pop() ?? "";
+      const [region, id] = externalId.split("/");
+      if (!region || !id) return [];
+
+      const dsUrl = await this.getCockpitDataSource(region);
+      if (!dsUrl) return [];
+
+      // Metric and label names from Scaleway's documented alert queries
+      // (serverless-functions/how-to/configure-alerts-functions and the
+      // containers twin): one series per running instance, keyed by
+      // `resource_id`. `*_cpu_usage_ratio` is alerted on `> 90`, so it is
+      // already a percentage. Averaged across instances like the Cockpit
+      // overview dashboard; the instance count is the number of series.
+      const prefix =
+        resourceTypeId === "serverless-function" ? "serverless_function" : "serverless_container";
+      const sel = `{resource_id="${id}"}`;
+      const queries: Array<{ promql: string; label: string; unit: string }> = [
+        {
+          promql: `avg(${prefix}_cpu_usage_ratio${sel})`,
+          label: "CPU Usage",
+          unit: "%",
+        },
+        {
+          promql: `avg(${prefix}_memory_usage_bytes${sel})`,
+          label: "Memory Usage",
+          unit: "bytes",
+        },
+        {
+          promql:
+            `100 * sum(${prefix}_memory_usage_bytes${sel})` +
+            ` / sum(${prefix}_memory_limit_bytes${sel})`,
+          label: "Memory Utilization",
+          unit: "%",
+        },
+        {
+          promql: `count(${prefix}_memory_usage_bytes${sel})`,
+          label: "Instances",
+          unit: "count",
+        },
+      ];
+
+      const series = await Promise.all(
+        queries.map((q) =>
+          this.queryCockpitRange(dsUrl, q.promql, startUnix, endUnix, q.label, q.unit),
+        ),
+      );
+      return series.filter((s): s is MetricSeries => s != null);
+    }
+
     return [];
   }
 
+  /**
+   * Managed Database (PostgreSQL / MySQL) metrics from
+   * `GET /rdb/v1/regions/{region}/instances/{id}/metrics`. The response names
+   * each series itself (`cpu_usage_percent`, `mem_usage_percent`,
+   * `disk_usage_percent`, `total_connections`, ...), with a `node` entry in
+   * the metadata on HA and replica setups, so nothing here hard-codes a
+   * metric name. Scaleway marks the route deprecated in favour of Cockpit;
+   * it still answers, and a removal surfaces as an empty Metrics tab.
+   */
+  private async fetchRdbMetrics(
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const externalId = resourceId.split(":").pop() ?? "";
+    const [region, instanceId] = externalId.split("/");
+    if (!region || !instanceId) return [];
+    const now = Date.now();
+    let metrics: Rdbv1.InstanceMetrics;
+    try {
+      metrics = await this.rdbApi().getInstanceMetrics({
+        region: region as Region,
+        instanceId,
+        startDate: new Date(timeRange?.startMs ?? now - 3_600_000),
+        endDate: new Date(timeRange?.endMs ?? now),
+      });
+    } catch {
+      return [];
+    }
+    const timeseries = metrics.timeseries ?? [];
+    const nodes = new Set(timeseries.map((t) => t.metadata?.["node"] ?? ""));
+    return timeseries.flatMap((t): MetricSeries[] => {
+      const points = (t.points ?? [])
+        .filter((p) => p.timestamp != null)
+        .map((p) => ({ timestamp: p.timestamp!.getTime(), value: Number(p.value) }))
+        .filter((p) => Number.isFinite(p.value));
+      if (points.length === 0) return [];
+      const node = t.metadata?.["node"];
+      const base = rdbMetricLabel(t.name);
+      return [
+        {
+          label: nodes.size > 1 && node ? `${base} (${node})` : base,
+          unit: rdbMetricUnit(t.name),
+          points,
+        },
+      ];
+    });
+  }
+
+  /**
+   * Logs tab for serverless functions/containers and Managed Databases, read
+   * from the Cockpit "Scaleway logs" Loki data source. Every Scaleway-origin
+   * stream carries a `resource_id` label (cockpit/api-cli/querying-logs-with-logcli),
+   * so the selector needs no per-product label. The Cockpit token needs the
+   * logs query permission on top of metrics.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    const empty = (text: string): LogsFetchResult => ({
+      text,
+      containers: [],
+      activeContainer: "",
+    });
+    if (!SCW_LOG_TYPES.has(typeId)) return empty("");
+    if (!this.cockpitQueryToken) {
+      return empty(
+        "Logs are read from Scaleway Cockpit. Add a Cockpit token with logs query access to this account's credentials to see them here.\n",
+      );
+    }
+    const externalId = resourceId.split(":").pop() ?? "";
+    const [region, id] = externalId.split("/");
+    if (!region || !id) return empty("");
+    const dsUrl = await this.getCockpitDataSource(region, "logs");
+    if (!dsUrl) return empty("No Scaleway logs data source found in Cockpit for this region.\n");
+
+    const limit = Math.min(Math.max(params.tailLines ?? 200, 1), 5000);
+    const endNs = BigInt(Date.now()) * 1_000_000n;
+    // Default Cockpit log retention is 7 days; look back one day for the tail.
+    const startNs = endNs - 86_400_000_000_000n;
+    const qs = new URLSearchParams({
+      query: `{resource_id="${id}"}`,
+      limit: String(limit),
+      start: startNs.toString(),
+      end: endNs.toString(),
+      direction: "backward",
+    });
+    let body: {
+      data?: { result?: Array<{ values?: Array<[string, string]> }> };
+    };
+    try {
+      body = await jsonRestFetch({
+        vendor: "Scaleway",
+        url: `${dsUrl}/loki/api/v1/query_range?${qs.toString()}`,
+        errorPath: "/loki/api/v1/query_range",
+        headers: { Authorization: `Bearer ${this.cockpitQueryToken}` },
+        ...(this.services?.http ? { http: this.services.http } : {}),
+      });
+    } catch (err) {
+      return empty(
+        `Could not read logs from Cockpit: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+    }
+    const lines = (body.data?.result ?? [])
+      .flatMap((stream) => stream.values ?? [])
+      .map(([ns, line]) => ({ ns: BigInt(ns), line }))
+      .sort((a, b) => (a.ns < b.ns ? -1 : a.ns > b.ns ? 1 : 0))
+      .slice(-limit)
+      .map(({ ns, line }) => `${new Date(Number(ns / 1_000_000n)).toISOString()}  ${line}`);
+    return empty(
+      lines.length > 0
+        ? lines.join("\n") + "\n"
+        : "No log lines in Cockpit for the last 24 hours.\n",
+    );
+  }
+
   renderDetail(resource: ResourceInstance): DetailViewSchema {
-    // Instances and Kapsule clusters declare `supportsMetrics`; the Cockpit
-    // range query defaults to the last hour. Kapsule additionally merges the
+    // Instances, Kapsule clusters, serverless functions/containers and RDB
+    // instances declare `supportsMetrics`; every range defaults to the last hour. Kapsule additionally merges the
     // Kubernetes peer's cost series.
     return withMetricsCapability(
       this.renderDetailInner(resource),
@@ -1409,6 +1591,10 @@ export class ScalewayClient implements PluginClient {
         };
       }
       delete detail.status;
+    }
+
+    if (SCW_LOG_TYPES.has(resource.resourceTypeId)) {
+      detail.logs = { defaultTailLines: 200 };
     }
 
     return detail;
@@ -2523,4 +2709,32 @@ function splitTags(value: string): string[] {
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
+}
+
+/** Types with a Cockpit-backed Logs tab (see `getLogs`). */
+const SCW_LOG_TYPES = new Set(["serverless-function", "serverless-container", "rdb-instance"]);
+
+/**
+ * Display label for an RDB metric name. Names outside the known set fall back
+ * to sentence case without the unit suffix.
+ */
+function rdbMetricLabel(name: string): string {
+  const known: Record<string, string> = {
+    cpu_usage_percent: "CPU Usage",
+    mem_usage_percent: "Memory Usage",
+    disk_usage_percent: "Disk Usage",
+    total_connections: "Connections",
+    total_connections_percent: "Connection Usage",
+  };
+  const label = known[name];
+  if (label) return label;
+  const words = name.replace(/_(percent|bytes)$/, "").split("_");
+  const text = words.join(" ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function rdbMetricUnit(name: string): string {
+  if (name.endsWith("_percent")) return "%";
+  if (name.endsWith("_bytes")) return "bytes";
+  return "count";
 }
