@@ -55,6 +55,16 @@ export const workflows = pgTable(
     nextRunAt: timestamp("next_run_at"),
     lastRunAt: timestamp("last_run_at"),
     createdByUserId: text("created_by_user_id"),
+    /**
+     * Who automated runs (cron, git, budget) act for: the user who last
+     * changed what the workflow executes (its source, trigger, or assigned
+     * secrets). Distinct from `createdByUserId` so that editing someone
+     * else's workflow makes it run as you rather than as them; otherwise a
+     * `workflows:write` holder could borrow an admin's authority by rewriting
+     * the admin's workflow. Null means no authority (see
+     * `buildWorkflowAuthorizer`).
+     */
+    sourceAuthorUserId: text("source_author_user_id"),
     syncVersion: integer("sync_version").notNull().default(0),
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),

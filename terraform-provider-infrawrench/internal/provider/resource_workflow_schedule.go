@@ -47,7 +47,13 @@ func (r *workflowScheduleResource) Schema(_ context.Context, _ resource.SchemaRe
 			"in a git-backed repository, and neither is written through this API surface — so this " +
 			"resource attaches a timetable to a workflow that already exists, addressed by id. Terraform " +
 			"owning the schedule but not the code is a deliberate split rather than an oversight: the " +
-			"schedule is operational configuration, and the code is code.",
+			"schedule is operational configuration, and the code is code.\n\n" +
+			"**Changing the schedule changes who the workflow runs as.** Scheduled and other " +
+			"automated runs act with the permissions of whoever last changed the workflow's code, " +
+			"trigger or assigned secrets, and the schedule is its trigger: once this resource creates " +
+			"or changes the cron, those runs act for the owner of the provider's API key. Re-applying " +
+			"an unchanged schedule does not. A workflow with secrets assigned also needs " +
+			"`secrets:read` on the key.",
 		Attributes: map[string]schema.Attribute{
 			"id": computedIDAttribute("The workflow id. A workflow has at most one schedule, so the two are the " +
 				"same identifier — `terraform import` takes the workflow id."),

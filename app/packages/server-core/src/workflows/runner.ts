@@ -97,7 +97,8 @@ export interface RunOrgWorkflowOptions extends OrgWorkflowHostExtras {
   /**
    * The user this run acts on behalf of, bounding what the sandbox may do (see
    * ./authorize.ts). Manual triggers pass whoever asked for the run; automated
-   * triggers omit it and the workflow's author is used instead.
+   * triggers omit it and the workflow's last editor (`sourceAuthorUserId`) is
+   * used instead.
    */
   runAsUserId?: string;
   /** Enables `infra.prompt()` / storage reads for websocket-driven manual runs. */

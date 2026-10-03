@@ -687,14 +687,18 @@ Logging, `infra.output`, metrics, `infra.fetch`, `infra.ai`, paging and approval
 
 Who a run acts for depends on how it started:
 
-| Trigger                             | Acts for              |
-| ----------------------------------- | --------------------- |
-| Run button, debugger, HTTP, AI chat | Whoever started it    |
-| Cron schedule                       | The workflow's author |
-| Git push                            | The workflow's author |
-| Budget threshold crossing           | The workflow's author |
+| Trigger                             | Acts for                                |
+| ----------------------------------- | --------------------------------------- |
+| Run button, debugger, HTTP, AI chat | Whoever started it                      |
+| Cron schedule                       | Whoever last edited the workflow's code |
+| Git push                            | Whoever last edited the workflow's code |
+| Budget threshold crossing           | Whoever last edited the workflow's code |
 
-Scheduling a workflow therefore cannot give it authority its author lacks, and a workflow whose author has left the organization stops being able to do anything privileged — its next run fails on the first such call rather than continuing to act with a departed colleague's access. If you inherit a workflow like that, re-save it under your own account or ask an owner to.
+"Last edited the code" means the last person to change what the workflow executes: its source, its trigger (including the schedule), or which secrets are assigned to it. That holds however the change was made, whether in the editor, through AI chat or MCP, over the HTTP API, with the Terraform provider's `infrawrench_workflow_schedule`, or by applying a [config-as-code](./config-as-code.md) document. Renaming a workflow, editing its description, or turning it on and off does not change who it runs as.
+
+So if you edit a colleague's scheduled workflow, its scheduled runs act with **your** permissions from then on, not theirs. A member cannot borrow an admin's access by rewriting the admin's workflow and waiting for the next cron tick: the rewritten code runs as the member. Editing a workflow that has secrets assigned also needs `secrets:read`, because its runs will load those secrets on your behalf.
+
+Scheduling a workflow therefore cannot give it authority its last editor lacks, and a workflow whose last editor has left the organization stops being able to do anything privileged; its next run fails on the first such call rather than continuing to act with a departed colleague's access. If you inherit a workflow like that, change its code or trigger under your own account, or ask an owner to.
 
 A refused operation throws inside the workflow and names the permission it needed, so you can catch it like any other error — or read it off the failed run and ask an admin for the right role.
 

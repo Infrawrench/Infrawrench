@@ -166,8 +166,9 @@ export class WorkflowPermissionError extends Error {
   ) {
     super(
       `Not permitted: ${method} requires the "${permission}" permission. This run acts with ` +
-        `the permissions of the user it runs on behalf of — whoever triggered it, or the ` +
-        `workflow's author for scheduled and event-driven runs — and they do not hold it.`,
+        `the permissions of the user it runs on behalf of (whoever triggered it, or whoever ` +
+        `last edited the workflow's code, trigger or secrets for scheduled and event-driven ` +
+        `runs), and they do not hold it.`,
     );
     this.name = "WorkflowPermissionError";
   }
@@ -185,12 +186,12 @@ export class WorkflowUnmappedOperationError extends Error {
   }
 }
 
-/** Who a run acts as: an explicit user, or the workflow's author by default. */
+/** Who a run acts as: an explicit user, or the workflow's last editor by default. */
 export interface WorkflowPrincipal {
   /**
    * The user whose permissions bound the run. Manual runs pass the person who
-   * triggered it; automated triggers leave it unset and the workflow's author
-   * is used instead.
+   * triggered it; automated triggers leave it unset and the user who last
+   * changed what the workflow executes (`sourceAuthorUserId`) is used instead.
    */
   userId?: string | undefined;
 }
@@ -214,17 +215,22 @@ export async function buildWorkflowAuthorizer(
   let userId = principal.userId;
   if (!userId) {
     const [wf] = await db
-      .select({ createdByUserId: workflows.createdByUserId })
+      .select({ sourceAuthorUserId: workflows.sourceAuthorUserId })
       .from(workflows)
       .where(eq(workflows.id, workflowId))
       .limit(1);
-    userId = wf?.createdByUserId ?? undefined;
+    // Deliberately not `createdByUserId`: once someone else edits a workflow,
+    // its creator is no longer who wrote the code about to run, and acting for
+    // the creator would let any `workflows:write` holder borrow an admin's
+    // authority by rewriting the admin's workflow.
+    userId = wf?.sourceAuthorUserId ?? undefined;
   }
 
   // No resolvable principal means no authority. This is reachable; a workflow
-  // whose author's row predates `created_by_user_id`, or whose author has been
-  // removed from the org, and denying is the only safe reading: the
-  // alternative is an automation running unbounded on behalf of nobody.
+  // whose author's row predates `created_by_user_id`, one last edited with no
+  // recorded user, or one whose last editor has been removed from the org, and
+  // denying is the only safe reading: the alternative is an automation running
+  // unbounded on behalf of nobody.
   const granted = userId
     ? (await resolveEffectivePermissions(organizationId, { kind: "user", userId })).permissions
     : [];

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.42.2",
+    "version": "1.42.3",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -45001,7 +45001,7 @@
           "Workflows"
         ],
         "summary": "Get a workflow's cron schedule",
-        "description": "The schedule view of the workflow's trigger, with the next few computed fire times. `schedule` is null when the workflow is triggered some other way (manual, git, budget).\n\n_Requires permission: `dashboards:read`._",
+        "description": "The schedule view of the workflow's trigger, with the next few computed fire times. `schedule` is null when the workflow is triggered some other way (manual, git, budget).\n\n_Requires permission: `workflows:read`._",
         "parameters": [
           {
             "schema": {
@@ -45049,14 +45049,14 @@
           }
         },
         "operationId": "getOrgOrgIdWorkflowsIdSchedule",
-        "x-required-permission": "dashboards:read"
+        "x-required-permission": "workflows:read"
       },
       "put": {
         "tags": [
           "Workflows"
         ],
         "summary": "Create or replace a workflow's cron schedule",
-        "description": "Sets the workflow's trigger to cron with the given expression and timezone, validating both, and computes the next fire time. The workflow fires at the schedule's next occurrence — never immediately on save.\n\n_Requires permission: `dashboards:write`._",
+        "description": "Sets the workflow's trigger to cron with the given expression and timezone, validating both, and computes the next fire time. The workflow fires at the schedule's next occurrence — never immediately on save.\n\nChanging the schedule makes scheduled runs act with the permissions of the caller from then on, the same as editing the workflow's code. When the workflow has secrets assigned, the caller also needs `secrets:read`.\n\n_Requires permission: `workflows:write`._",
         "parameters": [
           {
             "schema": {
@@ -45124,14 +45124,14 @@
           }
         },
         "operationId": "putOrgOrgIdWorkflowsIdSchedule",
-        "x-required-permission": "dashboards:write"
+        "x-required-permission": "workflows:write"
       },
       "delete": {
         "tags": [
           "Workflows"
         ],
         "summary": "Remove a workflow's cron schedule",
-        "description": "Reverts the workflow's trigger to manual and clears the pending fire time. A no-op when the trigger is not cron.\n\n_Requires permission: `dashboards:write`._",
+        "description": "Reverts the workflow's trigger to manual and clears the pending fire time. A no-op when the trigger is not cron.\n\n_Requires permission: `workflows:write`._",
         "parameters": [
           {
             "schema": {
@@ -45179,7 +45179,7 @@
           }
         },
         "operationId": "deleteOrgOrgIdWorkflowsIdSchedule",
-        "x-required-permission": "dashboards:write"
+        "x-required-permission": "workflows:write"
       }
     },
     "/api/org/{orgId}/workflow-secrets": {

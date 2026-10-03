@@ -67,14 +67,14 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /custom-graphs/{id}": "dashboards:write",
   "POST /custom-graphs/{id}/render": "dashboards:read",
   // workflows: typings rides workflows:read (same as the editor/tool path);
-  // the schedule sub-resource still shares the dashboards permissions used when
-  // it was documented (CI managing when a UI-created workflow runs).
+  // the schedule sub-resource is a workflow edit (a schedule is what makes a
+  // workflow run unattended), so it takes the workflow permissions.
   "GET /workflows/{id}/typings": "workflows:read",
   "GET /workflows/{id}/secrets": "secrets:read",
   "PUT /workflows/{id}/secrets": "workflows:write",
-  "GET /workflows/{id}/schedule": "dashboards:read",
-  "PUT /workflows/{id}/schedule": "dashboards:write",
-  "DELETE /workflows/{id}/schedule": "dashboards:write",
+  "GET /workflows/{id}/schedule": "workflows:read",
+  "PUT /workflows/{id}/schedule": "workflows:write",
+  "DELETE /workflows/{id}/schedule": "workflows:write",
   "GET /workflow-secrets": "secrets:read",
   "POST /workflow-secrets": "secrets:write",
   "PATCH /workflow-secrets/{id}": "secrets:write",

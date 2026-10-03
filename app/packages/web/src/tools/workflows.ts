@@ -672,7 +672,7 @@ export function workflowTools(): ToolDefinition[] {
           };
 
           const saved = existing
-            ? await updateWorkflow(auth.organizationId, existing.id, body)
+            ? await updateWorkflow(auth.organizationId, existing.id, body, auth.userId)
             : await createWorkflow(auth.organizationId, body, auth.userId);
 
           void logAudit({
