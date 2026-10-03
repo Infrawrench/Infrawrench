@@ -33,6 +33,7 @@ import {
 import { fetchNeonCostData } from "./cost-data.js";
 import { fetchBranchLogs } from "./logs.js";
 import { fetchBranchUsageSeries, fetchProjectUsageSeries } from "./metrics.js";
+import { flatMapPooled } from "./pool.js";
 import { COMPUTE_UNITS } from "./resources/endpoint.js";
 import { parseBranchExternalId, type BranchRef } from "./services/common.js";
 import {
@@ -1665,19 +1666,11 @@ export class NeonClient implements PluginClient {
   }
 
   private async listAllBranches(accountId: string): Promise<ResourceInstance[]> {
-    const projects = await this.fetchAllProjects();
-    const results: ResourceInstance[] = [];
-    for (const p of projects) {
-      try {
-        const resp = await this.api.listProjectBranches({ projectId: p.id });
-        for (const b of resp.data.branches) {
-          results.push(this.buildBranchResource(accountId, p.id, b));
-        }
-      } catch {
-        /* skip projects we can't read branches for */
-      }
-    }
-    return results;
+    // Projects we can't read branches for contribute nothing.
+    return flatMapPooled(await this.fetchAllProjects(), async (p) => {
+      const resp = await this.api.listProjectBranches({ projectId: p.id });
+      return resp.data.branches.map((b) => this.buildBranchResource(accountId, p.id, b));
+    });
   }
 
   private buildBranchResource(accountId: string, projectId: string, b: Branch): ResourceInstance {
@@ -1710,19 +1703,10 @@ export class NeonClient implements PluginClient {
   }
 
   private async listAllEndpoints(accountId: string): Promise<ResourceInstance[]> {
-    const projects = await this.fetchAllProjects();
-    const results: ResourceInstance[] = [];
-    for (const p of projects) {
-      try {
-        const resp = await this.api.listProjectEndpoints(p.id);
-        for (const ep of resp.data.endpoints) {
-          results.push(this.buildEndpointResource(accountId, p.id, ep));
-        }
-      } catch {
-        /* skip */
-      }
-    }
-    return results;
+    return flatMapPooled(await this.fetchAllProjects(), async (p) => {
+      const resp = await this.api.listProjectEndpoints(p.id);
+      return resp.data.endpoints.map((ep) => this.buildEndpointResource(accountId, p.id, ep));
+    });
   }
 
   private buildEndpointResource(
@@ -1759,26 +1743,21 @@ export class NeonClient implements PluginClient {
   }
 
   private async listAllDatabases(accountId: string): Promise<ResourceInstance[]> {
-    const projects = await this.fetchAllProjects();
-    const results: ResourceInstance[] = [];
-    for (const p of projects) {
-      try {
-        const branchResp = await this.api.listProjectBranches({ projectId: p.id });
-        for (const b of branchResp.data.branches) {
-          try {
-            const dbResp = await this.api.listProjectBranchDatabases(p.id, b.id);
-            for (const db of dbResp.data.databases) {
-              results.push(this.buildDatabaseResource(accountId, p.id, b.id, db));
-            }
-          } catch {
-            /* skip */
-          }
-        }
-      } catch {
-        /* skip */
-      }
-    }
-    return results;
+    const branches = await this.listProjectBranchPairs();
+    return flatMapPooled(branches, async ({ projectId, branchId }) => {
+      const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
+      return dbResp.data.databases.map((db) =>
+        this.buildDatabaseResource(accountId, projectId, branchId, db),
+      );
+    });
+  }
+
+  /** Every readable (project, branch) pair, for the per-branch listers. */
+  private async listProjectBranchPairs(): Promise<Array<{ projectId: string; branchId: string }>> {
+    return flatMapPooled(await this.fetchAllProjects(), async (p) => {
+      const resp = await this.api.listProjectBranches({ projectId: p.id });
+      return resp.data.branches.map((b) => ({ projectId: p.id, branchId: b.id }));
+    });
   }
 
   private buildDatabaseResource(
@@ -1809,46 +1788,26 @@ export class NeonClient implements PluginClient {
   }
 
   private async listAllRoles(accountId: string): Promise<ResourceInstance[]> {
-    const projects = await this.fetchAllProjects();
-    const results: ResourceInstance[] = [];
-    for (const p of projects) {
-      try {
-        const branchResp = await this.api.listProjectBranches({ projectId: p.id });
-        for (const b of branchResp.data.branches) {
-          try {
-            const roleResp = await this.api.listProjectBranchRoles(p.id, b.id);
-            for (const r of roleResp.data.roles) {
-              results.push(this.buildRoleResource(accountId, p.id, b.id, r));
-            }
-          } catch {
-            /* skip */
-          }
-        }
-      } catch {
-        /* skip */
-      }
-    }
-    return results;
+    const branches = await this.listProjectBranchPairs();
+    return flatMapPooled(branches, async ({ projectId, branchId }) => {
+      const roleResp = await this.api.listProjectBranchRoles(projectId, branchId);
+      return roleResp.data.roles.map((r) =>
+        this.buildRoleResource(accountId, projectId, branchId, r),
+      );
+    });
   }
 
   private async listAllDataApis(accountId: string): Promise<ResourceInstance[]> {
     const databases = await this.listAllDatabases(accountId);
-    const results: ResourceInstance[] = [];
-    for (const db of databases) {
+    // A database without the Data API enabled answers 404 and contributes nothing.
+    return flatMapPooled(databases, async (db) => {
       const projectId = String(db.fields["projectId"] ?? "");
       const branchId = String(db.fields["branchId"] ?? "");
       const databaseName = String(db.fields["name"] ?? "");
-      if (!projectId || !branchId || !databaseName) continue;
-      try {
-        const resp = await this.api.getProjectBranchDataApi(projectId, branchId, databaseName);
-        results.push(
-          this.buildDataApiResource(accountId, projectId, branchId, databaseName, resp.data),
-        );
-      } catch {
-        /* Data API is disabled or unavailable for this database. */
-      }
-    }
-    return results;
+      if (!projectId || !branchId || !databaseName) return [];
+      const resp = await this.api.getProjectBranchDataApi(projectId, branchId, databaseName);
+      return [this.buildDataApiResource(accountId, projectId, branchId, databaseName, resp.data)];
+    });
   }
 
   private buildDataApiResource(
