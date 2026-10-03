@@ -17,6 +17,7 @@ import { renderBigQueryDataset, renderBigQueryTable } from "./bigquery-detail-re
 import { renderCloudArmorPolicy } from "./cloud-armor-detail-renderers.js";
 import { renderCloudFunction, renderCloudRunService } from "./cloud-run-detail-renderers.js";
 import { renderCloudTasksQueue } from "./cloud-tasks-detail-renderers.js";
+import { renderCloudRunJob, renderMemorystoreValkey } from "./cloud-run-job-detail-renderers.js";
 import { renderCloudDnsRecordSet, renderCloudDnsZone } from "./dns-detail-renderers.js";
 import { renderFirestoreDatabase } from "./firestore-detail-renderers.js";
 import {
@@ -100,6 +101,14 @@ export function gcpRenderDetail(
       status: "info",
       ...(statusVal ? { label: statusVal } : {}),
     };
+  }
+
+  if (resource.resourceTypeId === "memorystore-valkey") {
+    renderMemorystoreValkey(resource, base);
+  }
+
+  if (resource.resourceTypeId === "cloud-run-job") {
+    renderCloudRunJob(resource, base);
   }
 
   if (resource.resourceTypeId === "secret-manager-secret") {

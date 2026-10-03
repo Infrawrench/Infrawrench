@@ -548,6 +548,52 @@ export async function fetchMetricSeries(
       }
       break;
     }
+    case "memorystore-valkey": {
+      // Monitored resource `memorystore.googleapis.com/Instance`; its
+      // `instance_id` label is the short instance id. The instance-level
+      // series aggregate across every node and shard.
+      const instName = String(resource.fields["name"] ?? "");
+      if (!instName) break;
+      const metric = (type: string, label: string, unit: string) =>
+        fetchSeries(
+          `memorystore.googleapis.com/instance/${type}`,
+          "instance_id",
+          instName,
+          label,
+          unit,
+        );
+      const series = await Promise.all([
+        metric("cpu/average_utilization", "CPU Utilization", "%"),
+        metric("memory/average_utilization", "Memory Utilization", "%"),
+        metric("memory/total_used_memory", "Used Memory", "bytes"),
+        metric("clients/total_connected_clients", "Connected Clients", "clients"),
+        metric("commandstats/total_calls_count", "Commands", "ops"),
+        metric("keyspace/total_keys", "Keys", "keys"),
+        metric("stats/total_keyspace_hits_count", "Keyspace Hits", "hits"),
+        metric("stats/total_keyspace_misses_count", "Keyspace Misses", "misses"),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
+    case "cloud-run-job": {
+      // Monitored resource `cloud_run_job`, labelled by `job_name`.
+      const jobName = String(resource.fields["name"] ?? "");
+      if (!jobName) break;
+      const metric = (type: string, label: string, unit: string) =>
+        fetchSeries(`run.googleapis.com/job/${type}`, "job_name", jobName, label, unit);
+      const series = await Promise.all([
+        metric("completed_execution_count", "Completed Executions", "executions"),
+        metric("running_executions", "Running Executions", "executions"),
+        metric("completed_task_attempt_count", "Completed Task Attempts", "attempts"),
+        metric("running_task_attempts", "Running Task Attempts", "attempts"),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
     case "gke-cluster": {
       // GKE uses monitored resource `k8s_cluster` with label `cluster_name`.
       const clusterName = String(resource.fields["name"] ?? "");
@@ -580,8 +626,8 @@ export async function fetchMetricSeries(
 
 /**
  * Fetch recent log entries for resources that declare a `logs` capability.
- * Currently supports Cloud Tasks queues, Cloud Run services, Cloud Functions,
- * and Cloud Armor policies: queries Cloud Logging with a filter scoped to
+ * Currently supports Cloud Tasks queues, Cloud Run services and jobs, Cloud
+ * Functions, and Cloud Armor policies: queries Cloud Logging with a filter scoped to
  * the relevant resource type. Logs are returned newest-last (so append-style
  * follow rendering puts new lines at the bottom).
  */
@@ -596,6 +642,7 @@ export async function getLogs(
     typeId !== "cloud-tasks-queue" &&
     typeId !== "cloud-run-service" &&
     typeId !== "cloud-function" &&
+    typeId !== "cloud-run-job" &&
     typeId !== "cloud-armor-policy"
   ) {
     throw new Error(`GCP plugin: getLogs is not supported for ${typeId}`);
@@ -610,24 +657,30 @@ export async function getLogs(
   // Cloud Armor logs land on the load balancer that the policy is attached
   // to: request logs whose enforcedSecurityPolicy.name matches.
   const filter =
-    typeId === "cloud-run-service" || typeId === "cloud-function"
+    typeId === "cloud-run-job"
       ? [
-          `resource.type="cloud_run_revision"`,
-          `resource.labels.service_name="${name}"`,
+          `resource.type="cloud_run_job"`,
+          `resource.labels.job_name="${name}"`,
           ...(region ? [`resource.labels.location="${region}"`] : []),
         ].join(" AND ")
-      : typeId === "cloud-armor-policy"
+      : typeId === "cloud-run-service" || typeId === "cloud-function"
         ? [
-            `(resource.type="http_load_balancer" OR resource.type="tcp_ssl_proxy_rule" OR resource.type="l4_proxy_rule")`,
-            `jsonPayload.enforcedSecurityPolicy.name="${name}"`,
+            `resource.type="cloud_run_revision"`,
+            `resource.labels.service_name="${name}"`,
+            ...(region ? [`resource.labels.location="${region}"`] : []),
           ].join(" AND ")
-        : [
-            `resource.type="cloud_tasks_queue"`,
-            `resource.labels.queue_id="${name}"`,
-            ...(region
-              ? [`resource.labels.target_type=*`, `resource.labels.location="${region}"`]
-              : []),
-          ].join(" AND ");
+        : typeId === "cloud-armor-policy"
+          ? [
+              `(resource.type="http_load_balancer" OR resource.type="tcp_ssl_proxy_rule" OR resource.type="l4_proxy_rule")`,
+              `jsonPayload.enforcedSecurityPolicy.name="${name}"`,
+            ].join(" AND ")
+          : [
+              `resource.type="cloud_tasks_queue"`,
+              `resource.labels.queue_id="${name}"`,
+              ...(region
+                ? [`resource.labels.target_type=*`, `resource.labels.location="${region}"`]
+                : []),
+            ].join(" AND ");
 
   const tok = await ctx.token();
   const tail = Math.max(1, Math.min(params.tailLines ?? 200, 1000));
@@ -667,11 +720,13 @@ export async function getLogs(
     })
     .join("\n");
   const containerLabel =
-    typeId === "cloud-run-service" || typeId === "cloud-function"
-      ? "service"
-      : typeId === "cloud-armor-policy"
-        ? "policy"
-        : "queue";
+    typeId === "cloud-run-job"
+      ? "job"
+      : typeId === "cloud-run-service" || typeId === "cloud-function"
+        ? "service"
+        : typeId === "cloud-armor-policy"
+          ? "policy"
+          : "queue";
   return {
     text: lines || "No log entries in the selected window.",
     containers: [containerLabel],

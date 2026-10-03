@@ -314,6 +314,30 @@ export async function deleteResource(
     return;
   }
 
+  if (typeId === "memorystore-valkey") {
+    const resource = await ctx.getResource(typeId, resourceId, accountId);
+    const fullName = resource.externalId ?? "";
+    if (!fullName) throw new Error("Cannot determine Valkey instance name for deletion");
+    const res = await fetch(`https://memorystore.googleapis.com/v1/${fullName}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${tok}` },
+    });
+    if (!res.ok) throw new Error(`Memorystore for Valkey API ${res.status}: ${await res.text()}`);
+    return;
+  }
+
+  if (typeId === "cloud-run-job") {
+    const resource = await ctx.getResource(typeId, resourceId, accountId);
+    const fullName = resource.externalId ?? "";
+    if (!fullName) throw new Error("Cannot determine Cloud Run job name for deletion");
+    const res = await fetch(`https://run.googleapis.com/v2/${fullName}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${tok}` },
+    });
+    if (!res.ok) throw new Error(`Cloud Run API ${res.status}: ${await res.text()}`);
+    return;
+  }
+
   if (typeId === "alloydb-cluster") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";

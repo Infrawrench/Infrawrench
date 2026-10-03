@@ -321,6 +321,93 @@ export async function listMemorystoreRedis(
   });
 }
 
+/**
+ * Pick the address clients connect to from a Valkey instance. New instances
+ * report it under `endpoints[].connections[].pscAutoConnection` (cluster mode:
+ * the DISCOVERY connection; cluster-mode-disabled: PRIMARY, plus a READER);
+ * `discoveryEndpoints` is deprecated and only populated for instances that
+ * were created with the older `pscAutoConnections` field.
+ */
+export function valkeyEndpoints(inst: Record<string, unknown>): {
+  host: string;
+  port: string;
+  readerHost: string;
+  network: string;
+} {
+  const conns: Array<Record<string, unknown>> = [];
+  for (const ep of (inst["endpoints"] as Array<Record<string, unknown>> | undefined) ?? []) {
+    for (const c of (ep["connections"] as Array<Record<string, unknown>> | undefined) ?? []) {
+      const auto = (c["pscAutoConnection"] ?? c["pscConnection"]) as
+        Record<string, unknown> | undefined;
+      if (auto) conns.push(auto);
+    }
+  }
+  for (const auto of (inst["pscAutoConnections"] as Array<Record<string, unknown>> | undefined) ??
+    []) {
+    conns.push(auto);
+  }
+  const byType = (t: string) => conns.find((c) => c["connectionType"] === t);
+  const primary = byType("CONNECTION_TYPE_DISCOVERY") ?? byType("CONNECTION_TYPE_PRIMARY");
+  const reader = byType("CONNECTION_TYPE_READER");
+  const legacy = (inst["discoveryEndpoints"] as Array<Record<string, unknown>> | undefined)?.[0];
+  const host = String(primary?.["ipAddress"] ?? legacy?.["address"] ?? "");
+  const port = String(primary?.["port"] ?? legacy?.["port"] ?? (host ? "6379" : ""));
+  const network = lastSegment(primary?.["network"] ?? conns[0]?.["network"] ?? legacy?.["network"]);
+  return { host, port, readerHost: String(reader?.["ipAddress"] ?? ""), network };
+}
+
+export async function listMemorystoreValkey(
+  ctx: ListerContext,
+  accountId: string,
+  p: string,
+): Promise<ResourceInstance[]> {
+  const items = await ctx.paginate<Record<string, unknown>>(
+    `https://memorystore.googleapis.com/v1/projects/${p}/locations/-/instances`,
+    "instances",
+  );
+  return items.map((inst) => {
+    const fullName = String(inst["name"]);
+    const name = fullName.split("/").pop() ?? "";
+    const region = fullName.split("/")[3] ?? "";
+    const { host, port, readerHost, network } = valkeyEndpoints(inst);
+    const persistence = inst["persistenceConfig"] as Record<string, unknown> | undefined;
+    // In-transit encryption means TLS on the same port: the URL scheme says so.
+    const scheme = inst["transitEncryptionMode"] === "SERVER_AUTHENTICATION" ? "rediss" : "redis";
+    return {
+      id: ctx.id(accountId, "memorystore-valkey", fullName),
+      pluginId: "gcp",
+      resourceTypeId: "memorystore-valkey",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        region,
+        mode: String(inst["mode"] ?? ""),
+        nodeType: String(inst["nodeType"] ?? ""),
+        engineVersion: String(inst["engineVersion"] ?? ""),
+        shardCount: Number(inst["shardCount"] ?? 0),
+        replicaCount: Number(inst["replicaCount"] ?? 0),
+        deletionProtectionEnabled: inst["deletionProtectionEnabled"] === true,
+        state: String(inst["state"] ?? ""),
+        authorizationMode: String(inst["authorizationMode"] ?? ""),
+        transitEncryptionMode: String(inst["transitEncryptionMode"] ?? ""),
+        persistenceMode: String(persistence?.["mode"] ?? ""),
+        network,
+      },
+      resolvedOutputs: {
+        host,
+        port,
+        readerHost,
+        valkeyUrl: host ? `${scheme}://${host}:${port}` : "",
+      },
+      secretStates: [],
+      externalId: fullName,
+      createdAt: String(inst["createTime"] ?? ctx.now()),
+      updatedAt: String(inst["updateTime"] ?? ctx.now()),
+    };
+  });
+}
+
 export async function listAlloyDbClusters(
   ctx: ListerContext,
   accountId: string,

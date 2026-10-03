@@ -47,6 +47,7 @@ import {
   fetchCloudNatRouterStatus,
 } from "./compute-extras-client.js";
 import type { GcpClientContext } from "./shared.js";
+import { listCloudRunJobExecutions } from "./cloud-run-job-handlers.js";
 
 /**
  * Resource detail enrichment: augments a `ResourceInstance` with the
@@ -69,6 +70,16 @@ export async function enrichDetail(
         ...resource.resolvedOutputs,
         managedInstances: JSON.stringify(managed),
       },
+    };
+  }
+  if (resource.resourceTypeId === "cloud-run-job") {
+    const executions = await listCloudRunJobExecutions(ctx, resource).then(
+      (items) => ({ items }),
+      (e: unknown) => ({ items: [], error: e instanceof Error ? e.message : String(e) }),
+    );
+    return {
+      ...resource,
+      resolvedOutputs: { ...resource.resolvedOutputs, executions: JSON.stringify(executions) },
     };
   }
   if (resource.resourceTypeId === "cloud-run-service") {

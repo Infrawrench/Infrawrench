@@ -34,6 +34,17 @@ export const alloydbCreateConfigHandlers: Record<
           ],
         },
         {
+          key: "databaseVersion",
+          label: "PostgreSQL Version",
+          kind: "select",
+          required: true,
+          options: ["18", "17", "16", "15", "14"].map((v) => ({
+            id: `POSTGRES_${v}`,
+            label: `PostgreSQL ${v}`,
+          })),
+          defaultValue: "POSTGRES_17",
+        },
+        {
           key: "rootPassword",
           label: "Postgres Password",
           kind: "password",
@@ -101,6 +112,7 @@ export const alloydbCreateResourceHandlers: Record<
     const location = fields["location"] ?? "";
     const network = fields["network"] ?? "";
     const rootPassword = fields["rootPassword"] ?? "";
+    const databaseVersion = fields["databaseVersion"] || "POSTGRES_17";
     const projectsIdx = network.indexOf("projects/");
     const networkPath =
       projectsIdx >= 0 ? network.slice(projectsIdx) : `projects/${p}/global/networks/${network}`;
@@ -112,6 +124,7 @@ export const alloydbCreateResourceHandlers: Record<
         headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           network: networkPath,
+          databaseVersion,
           initialUser: { user: "postgres", password: rootPassword },
         }),
       },
@@ -128,7 +141,7 @@ export const alloydbCreateResourceHandlers: Record<
       fields: {
         name: clusterId,
         location,
-        databaseVersion: "POSTGRES_14",
+        databaseVersion,
         state: "CREATING",
         clusterType: "",
       },

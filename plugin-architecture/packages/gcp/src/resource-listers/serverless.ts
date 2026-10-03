@@ -74,6 +74,85 @@ export async function listCloudRunServices(
   });
 }
 
+/** Seconds in a protobuf Duration string ("600s", "3.5s"); 0 when absent. */
+export function durationSeconds(value: unknown): number {
+  const n = Number.parseFloat(String(value ?? "").replace(/s$/, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Overall readiness of a Cloud Run v2 resource (service or job) from its
+ * `terminalCondition` and `reconciling` flag, mapped to a short UI label.
+ */
+function cloudRunState(item: Record<string, unknown>): string {
+  const terminal = item["terminalCondition"] as Record<string, unknown> | undefined;
+  const condState = String(terminal?.["state"] ?? "");
+  if (item["reconciling"] === true) return "PROVISIONING";
+  if (condState === "CONDITION_SUCCEEDED") return "READY";
+  if (condState === "CONDITION_FAILED") return "FAILED";
+  if (condState === "CONDITION_PENDING" || condState === "CONDITION_RECONCILING")
+    return "PROVISIONING";
+  return "UNKNOWN";
+}
+
+export function cloudRunJobToResource(
+  ctx: Pick<ListerContext, "id" | "now">,
+  accountId: string,
+  job: Record<string, unknown>,
+): ResourceInstance {
+  const fullName = String(job["name"]);
+  const name = fullName.split("/").pop() ?? "";
+  const region = fullName.split("/")[3] ?? "";
+  const execTemplate = (job["template"] as Record<string, unknown> | undefined) ?? {};
+  const taskTemplate = (execTemplate["template"] as Record<string, unknown> | undefined) ?? {};
+  const containers =
+    (taskTemplate["containers"] as Array<Record<string, unknown>> | undefined) ?? [];
+  const latest = job["latestCreatedExecution"] as Record<string, unknown> | undefined;
+  return {
+    id: ctx.id(accountId, "cloud-run-job", fullName),
+    pluginId: "gcp",
+    resourceTypeId: "cloud-run-job",
+    accountId,
+    displayName: name,
+    fields: {
+      name,
+      region,
+      image: String(containers[0]?.["image"] ?? ""),
+      taskCount: Number(execTemplate["taskCount"] ?? 1),
+      parallelism: Number(execTemplate["parallelism"] ?? 0),
+      // The API omits maxRetries when it is the default of 3.
+      maxRetries: Number(taskTemplate["maxRetries"] ?? 3),
+      timeoutSeconds: durationSeconds(taskTemplate["timeout"]),
+      serviceAccount: String(taskTemplate["serviceAccount"] ?? ""),
+      state: cloudRunState(job),
+      executionCount: Number(job["executionCount"] ?? 0),
+      lastExecution:
+        String(latest?.["name"] ?? "")
+          .split("/")
+          .pop() ?? "",
+      lastExecutionStatus: String(latest?.["completionStatus"] ?? ""),
+      lastExecutionTime: String(latest?.["completionTime"] ?? latest?.["createTime"] ?? ""),
+    },
+    resolvedOutputs: { jobName: fullName },
+    secretStates: [],
+    externalId: fullName,
+    createdAt: String(job["createTime"] ?? ctx.now()),
+    updatedAt: String(job["updateTime"] ?? ctx.now()),
+  };
+}
+
+export async function listCloudRunJobs(
+  ctx: ListerContext,
+  accountId: string,
+  p: string,
+): Promise<ResourceInstance[]> {
+  const items = await ctx.paginate<Record<string, unknown>>(
+    `https://run.googleapis.com/v2/projects/${p}/locations/-/jobs`,
+    "jobs",
+  );
+  return items.map((job) => cloudRunJobToResource(ctx, accountId, job));
+}
+
 export async function listCloudFunctions(
   ctx: ListerContext,
   accountId: string,

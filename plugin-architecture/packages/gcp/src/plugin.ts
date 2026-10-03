@@ -14,12 +14,14 @@ import { SpannerBackupResourceType } from "./resources/spanner-backup.js";
 import { BigtableInstanceResourceType } from "./resources/bigtable-instance.js";
 import { FirestoreDatabaseResourceType } from "./resources/firestore-database.js";
 import { MemorystoreRedisResourceType } from "./resources/memorystore-redis.js";
+import { MemorystoreValkeyResourceType } from "./resources/memorystore-valkey.js";
 import { AlloyDbClusterResourceType } from "./resources/alloydb-cluster.js";
 import { AlloyDbInstanceResourceType } from "./resources/alloydb-instance.js";
 import { GcsBucketResourceType } from "./resources/gcs-bucket.js";
 import { PubSubTopicResourceType } from "./resources/pubsub-topic.js";
 import { PubSubSubscriptionResourceType } from "./resources/pubsub-subscription.js";
 import { CloudRunServiceResourceType } from "./resources/cloud-run-service.js";
+import { CloudRunJobResourceType } from "./resources/cloud-run-job.js";
 import { CloudFunctionResourceType } from "./resources/cloud-function.js";
 import { VpcNetworkResourceType } from "./resources/vpc-network.js";
 import { BigQueryDatasetResourceType } from "./resources/bigquery-dataset.js";
@@ -152,6 +154,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   FirestoreDatabaseResourceType,
   MemorystoreRedisResourceType,
   MemorystoreMemcachedResourceType,
+  MemorystoreValkeyResourceType,
   AlloyDbClusterResourceType,
   AlloyDbInstanceResourceType,
   // Storage & Messaging
@@ -160,6 +163,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   PubSubSubscriptionResourceType,
   // Serverless
   CloudRunServiceResourceType,
+  CloudRunJobResourceType,
   CloudFunctionResourceType,
   AppEngineServiceResourceType,
   // Networking & Security
