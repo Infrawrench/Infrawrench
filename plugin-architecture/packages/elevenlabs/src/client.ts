@@ -1,13 +1,16 @@
 import type {
   CostFetchRange,
   CostRow,
+  CreateResourceConfig,
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  MetricSeries,
   PluginClient,
   ResourceInstance,
   SchemaNode,
   SectionNode,
+  SelectOption,
   SidebarItemSchema,
   SpeechPanelCapability,
   SpeechPanelOption,
@@ -19,12 +22,36 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   base64ToBytes,
+  buildMultipartBody,
   bytesToBase64,
   joinSubtitle,
   jsonRestFetch,
   externalIdOf,
 } from "@infrawrench/plugin-base";
 import { fetchElevenLabsCostData } from "./cost-data.js";
+import {
+  AGENT_LANGUAGES,
+  conversationSeries,
+  conversationStats,
+  mapAgent,
+  mapKnowledgeBaseDocument,
+  mapPhoneNumber,
+  parseTags,
+  renderAgentDetail,
+  renderKnowledgeBaseDocumentDetail,
+  renderPhoneNumberDetail,
+} from "./agents.js";
+import type {
+  AgentDetailWire,
+  AgentSummaryWire,
+  AgentsPage,
+  ConversationWire,
+  ConversationsPage,
+  KnowledgeBaseDocumentWire,
+  KnowledgeBasePage,
+  LlmListWire,
+  PhoneNumberWire,
+} from "./agents.js";
 
 const API_BASE = "https://api.elevenlabs.io";
 
@@ -38,14 +65,20 @@ const MP3_OUTPUT_FORMAT = "mp3_44100_128";
 const DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
 
 /**
- * Scribe speech-to-text models. `model_id` is required on
- * `POST /v1/speech-to-text` and the documented enum is exactly these two:
- * `scribe_v1` is flagged deprecated ("outclassed by v2 models").
+ * Batch Scribe speech-to-text models. `model_id` is required on
+ * `POST /v1/speech-to-text`. `scribe_v2_medical` is fine-tuned for clinical
+ * audio; `scribe_v1` is flagged deprecated ("outclassed by v2 models").
+ * `scribe_v2_realtime` is streaming-only and has no place in a batch upload.
  * https://elevenlabs.io/docs/api-reference/speech-to-text/convert
  * https://elevenlabs.io/docs/overview/models
  */
 const SCRIBE_MODELS: SpeechPanelOption[] = [
   { id: "scribe_v2", label: "Scribe v2", description: "Speech-to-text · current" },
+  {
+    id: "scribe_v2_medical",
+    label: "Scribe v2 Medical",
+    description: "Speech-to-text · tuned for clinical audio",
+  },
   { id: "scribe_v1", label: "Scribe v1", description: "Speech-to-text · deprecated" },
 ];
 
@@ -125,6 +158,7 @@ interface ElevenLabsPronunciationDictionary {
   latest_version_id?: string | null;
   latest_version_rules_num?: number | null;
   name?: string | null;
+  permission_on_resource?: string | null;
   created_by?: string | null;
   creation_time_unix?: number | null;
   description?: string | null;
@@ -307,6 +341,30 @@ export class ElevenLabsClient implements PluginClient {
         const items = await this.fetchHistory();
         return items.map((item) => this.mapHistoryItem(item, accountId));
       }
+      case "agent": {
+        const summaries = await this.fetchAgents();
+        // The summary has no conversation config, so hydrate each agent from
+        // its detail route. Bounded so a workspace with hundreds of agents
+        // still lists quickly; the overflow keeps its summary-only fields
+        // until opened.
+        const details = await mapWithConcurrency(
+          summaries.slice(0, MAX_HYDRATED_AGENTS),
+          5,
+          (summary) =>
+            this.fetchAgent(summary.agent_id).catch((): AgentDetailWire | undefined => undefined),
+        );
+        return summaries.map((summary, index) => mapAgent(summary, details[index], accountId));
+      }
+      case "phone-number": {
+        const phones = await this.fetch<PhoneNumberWire[]>("/v1/convai/phone-numbers");
+        return (Array.isArray(phones) ? phones : []).map((phone) =>
+          mapPhoneNumber(phone, accountId),
+        );
+      }
+      case "knowledge-base-document": {
+        const documents = await this.fetchKnowledgeBase();
+        return documents.map((doc) => mapKnowledgeBaseDocument(doc, accountId));
+      }
       default:
         throw new Error(`ElevenLabs plugin: unknown resource type "${typeId}"`);
     }
@@ -343,6 +401,8 @@ export class ElevenLabsClient implements PluginClient {
   /**
    * `GET /v1/pronunciation-dictionaries`: cursor param is `cursor`, the
    * response cursor is `next_cursor`; `page_size` caps at 100.
+   * `include_archived` defaults to true, and archiving is how this plugin
+   * deletes a dictionary, so it is turned off explicitly.
    * https://elevenlabs.io/docs/api-reference/pronunciation-dictionaries/list
    */
   private async fetchPronunciationDictionaries(): Promise<ElevenLabsPronunciationDictionary[]> {
@@ -351,7 +411,7 @@ export class ElevenLabsClient implements PluginClient {
     for (let page = 0; page < 50; page += 1) {
       const suffix = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
       const data = await this.fetch<PronunciationDictionaryPage>(
-        `/v1/pronunciation-dictionaries?page_size=100${suffix}`,
+        `/v1/pronunciation-dictionaries?page_size=100&include_archived=false${suffix}`,
       );
       dictionaries.push(...(data.pronunciation_dictionaries ?? []));
       if (!data.has_more || !data.next_cursor) break;
@@ -379,6 +439,96 @@ export class ElevenLabsClient implements PluginClient {
       after = data.last_history_item_id;
     }
     return items;
+  }
+
+  /**
+   * `GET /v1/convai/agents`: cursor in, `next_cursor` out; `page_size` caps
+   * at 100. Archived agents are excluded by the API's own default.
+   * https://elevenlabs.io/docs/api-reference/agents/list
+   */
+  private async fetchAgents(): Promise<AgentSummaryWire[]> {
+    const agents: AgentSummaryWire[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page += 1) {
+      const suffix = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+      const data = await this.fetch<AgentsPage>(`/v1/convai/agents?page_size=100${suffix}`);
+      agents.push(...(data.agents ?? []));
+      if (!data.has_more || !data.next_cursor) break;
+      cursor = data.next_cursor;
+    }
+    return agents;
+  }
+
+  /** `GET /v1/convai/agents/{agent_id}`: https://elevenlabs.io/docs/api-reference/agents/get */
+  private async fetchAgent(agentId: string): Promise<AgentDetailWire> {
+    return this.fetch<AgentDetailWire>(`/v1/convai/agents/${encodeURIComponent(agentId)}`);
+  }
+
+  /**
+   * `GET /v1/convai/conversations` for one agent, newest first, from
+   * `afterUnix` onward. Bounded by `maxPages` of 100 so a busy agent's
+   * metrics cost at most that many requests.
+   * https://elevenlabs.io/docs/api-reference/conversations/list
+   */
+  private async fetchConversations(
+    agentId: string,
+    afterUnix: number | undefined,
+    maxPages: number,
+    pageSize = 100,
+  ): Promise<ConversationWire[]> {
+    const conversations: ConversationWire[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < maxPages; page += 1) {
+      const query = new URLSearchParams();
+      query.set("agent_id", agentId);
+      query.set("page_size", String(pageSize));
+      if (afterUnix !== undefined) query.set("call_start_after_unix", String(afterUnix));
+      if (cursor) query.set("cursor", cursor);
+      const data = await this.fetch<ConversationsPage>(
+        `/v1/convai/conversations?${query.toString()}`,
+      );
+      conversations.push(...(data.conversations ?? []));
+      if (!data.has_more || !data.next_cursor) break;
+      cursor = data.next_cursor;
+    }
+    return conversations;
+  }
+
+  /**
+   * `GET /v1/convai/knowledge-base`: cursor pagination, `page_size` caps at
+   * 100. https://elevenlabs.io/docs/api-reference/knowledge-base/list
+   */
+  private async fetchKnowledgeBase(): Promise<KnowledgeBaseDocumentWire[]> {
+    const documents: KnowledgeBaseDocumentWire[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page += 1) {
+      const suffix = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+      const data = await this.fetch<KnowledgeBasePage>(
+        `/v1/convai/knowledge-base?page_size=100${suffix}`,
+      );
+      documents.push(...(data.documents ?? []));
+      if (!data.has_more || !data.next_cursor) break;
+      cursor = data.next_cursor;
+    }
+    return documents;
+  }
+
+  /**
+   * `GET /v1/convai/llm/list`: the LLMs this workspace's agents may use,
+   * already filtered for its data residency and compliance settings.
+   * https://elevenlabs.io/docs/eleven-agents/api-reference/llm/list
+   */
+  private async fetchAgentLlms(): Promise<SelectOption[]> {
+    const data = await this.fetch<LlmListWire>("/v1/convai/llm/list");
+    return (data.llms ?? [])
+      .filter((entry) => entry.llm && entry.deprecation_info?.is_deprecated !== true)
+      .map((entry) => ({
+        id: String(entry.llm),
+        label: String(entry.llm),
+        ...(entry.max_context_limit
+          ? { description: `${formatNumber(entry.max_context_limit)} token context` }
+          : {}),
+      }));
   }
 
   /**
@@ -507,6 +657,9 @@ export class ElevenLabsClient implements PluginClient {
         dictionaryId: dictionary.id,
         ...(dictionary.latest_version_id ? { latestVersionId: dictionary.latest_version_id } : {}),
         ...(dictionary.description ? { description: dictionary.description } : {}),
+        ...(dictionary.permission_on_resource
+          ? { permission: dictionary.permission_on_resource }
+          : {}),
         ...(dictionary.created_by ? { createdBy: dictionary.created_by } : {}),
         ...(createdAt ? { createdAt } : {}),
         ...(dictionary.latest_version_rules_num != null
@@ -613,6 +766,18 @@ export class ElevenLabsClient implements PluginClient {
       return instance;
     }
 
+    if (typeId === "agent") {
+      // The recent-conversations table rides along as JSON because
+      // `renderDetail` cannot call the API.
+      const [detail, conversations] = await Promise.all([
+        this.fetchAgent(externalId),
+        this.fetchConversations(externalId, undefined, 1, 20).catch((): ConversationWire[] => []),
+      ]);
+      const instance = mapAgent(undefined, detail, accountId);
+      instance.resolvedOutputs["__conversations__"] = JSON.stringify(conversations);
+      return instance;
+    }
+
     const all = await this.listResources(typeId, accountId);
     const found = all.find((resource) => resource.id === resourceId);
     if (!found) throw new Error(`ElevenLabs plugin: resource ${typeId}/${externalId} not found`);
@@ -632,12 +797,18 @@ export class ElevenLabsClient implements PluginClient {
   }
 
   /**
-   * `DELETE /v1/voices/{voice_id}` and `DELETE /v1/history/{history_item_id}`
-   * are the only two destructive endpoints ElevenLabs exposes for these types;
-   * models and pronunciation dictionaries have no delete route (dictionaries
-   * are archived from the dashboard instead).
+   * Hard deletes for voices, history items, agents, phone numbers and
+   * knowledge base documents. Pronunciation dictionaries have no delete
+   * route, so they are archived (`PATCH … { archived: true }`), which drops
+   * them from the listing. Knowledge base deletes are not forced: the API
+   * refuses while an agent still depends on the document, and that error is
+   * the right thing to show.
    * https://elevenlabs.io/docs/api-reference/voices/delete
    * https://elevenlabs.io/docs/api-reference/history/delete
+   * https://elevenlabs.io/docs/api-reference/agents/delete
+   * https://elevenlabs.io/docs/api-reference/phone-numbers/delete
+   * https://elevenlabs.io/docs/api-reference/knowledge-base/delete
+   * https://elevenlabs.io/docs/api-reference/pronunciation-dictionaries/update
    */
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     const externalId = externalIdOf(resourceId);
@@ -648,10 +819,27 @@ export class ElevenLabsClient implements PluginClient {
       });
       return;
     }
-    if (typeId === "history-item") {
-      await this.fetch<unknown>(`/v1/history/${encodeURIComponent(externalId)}`, {
+    const deletePaths: Record<string, string> = {
+      "history-item": "/v1/history/",
+      agent: "/v1/convai/agents/",
+      "phone-number": "/v1/convai/phone-numbers/",
+      "knowledge-base-document": "/v1/convai/knowledge-base/",
+    };
+    const prefix = deletePaths[typeId];
+    if (prefix) {
+      await this.fetch<unknown>(`${prefix}${encodeURIComponent(externalId)}`, {
         method: "DELETE",
       });
+      return;
+    }
+    if (typeId === "pronunciation-dictionary") {
+      await this.fetch<unknown>(
+        `/v1/pronunciation-dictionaries/${encodeURIComponent(externalId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ archived: true }),
+        },
+      );
       return;
     }
     throw new Error(`ElevenLabs plugin: deleteResource not supported for type "${typeId}"`);
@@ -733,6 +921,26 @@ export class ElevenLabsClient implements PluginClient {
           stats.push({ label: "Rules", value: String(fields["ruleCount"]) });
         }
         break;
+      case "agent": {
+        const weekAgo = Math.floor((Date.now() - 7 * DAY_MS) / 1000);
+        const recent = await this.fetchConversations(externalIdOf(resourceId), weekAgo, 5).catch(
+          (): ConversationWire[] | null => null,
+        );
+        if (recent) stats.push(...conversationStats(recent));
+        break;
+      }
+      case "phone-number":
+        stats.push({
+          label: "Agent",
+          value: String(fields["agentName"] || fields["agentId"] || "Unassigned"),
+        });
+        if (fields["provider"])
+          stats.push({ label: "Provider", value: String(fields["provider"]) });
+        break;
+      case "knowledge-base-document":
+        stats.push({ label: "Dependent Agents", value: String(fields["dependentAgents"] ?? 0) });
+        if (fields["type"]) stats.push({ label: "Type", value: String(fields["type"]) });
+        break;
       case "history-item":
         if (fields["characterCount"] != null) {
           stats.push({
@@ -747,6 +955,331 @@ export class ElevenLabsClient implements PluginClient {
     }
 
     return stats;
+  }
+
+  // -------------------------------------------------------------------------
+  // Metrics
+  // -------------------------------------------------------------------------
+
+  /**
+   * Agent conversation analytics, bucketed by UTC day from
+   * `GET /v1/convai/conversations`. Capped at 20 pages (2,000 conversations)
+   * per range so a busy agent cannot turn a chart refresh into hundreds of
+   * requests; the newest conversations come first, so a capped range loses
+   * its oldest days rather than its most recent.
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "agent") return [];
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = timeRange?.startMs ?? endMs - 7 * DAY_MS;
+    const conversations = await this.fetchConversations(
+      externalIdOf(resourceId),
+      Math.floor(startMs / 1000),
+      20,
+    );
+    return conversationSeries(conversations, startMs, endMs);
+  }
+
+  // -------------------------------------------------------------------------
+  // Create and edit
+  // -------------------------------------------------------------------------
+
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId === "pronunciation-dictionary") {
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          { key: "description", label: "Description", kind: "text", required: false },
+          {
+            key: "ruleType",
+            label: "Rule Type",
+            kind: "select",
+            required: true,
+            defaultValue: "alias",
+            options: [
+              {
+                id: "alias",
+                label: "Alias",
+                description: "Replace the text with another spelling before synthesis",
+              },
+              {
+                id: "phoneme",
+                label: "Phoneme",
+                description: "Give an exact pronunciation in IPA or CMU Arpabet",
+              },
+            ],
+          },
+          {
+            key: "alphabet",
+            label: "Phonetic Alphabet",
+            kind: "select",
+            required: true,
+            defaultValue: "ipa",
+            options: [
+              { id: "ipa", label: "IPA" },
+              { id: "cmu-arpabet", label: "CMU Arpabet" },
+            ],
+            showWhen: { fieldKey: "ruleType", fieldValue: "phoneme" },
+          },
+          {
+            key: "rules",
+            label: "Rules",
+            kind: "text",
+            multiline: true,
+            required: true,
+            description:
+              "One rule per line, written as text = replacement. The replacement is an alias or a phoneme string, depending on the rule type.",
+            placeholder: "ElevenLabs = Eleven Labs\nSQL = sequel",
+          },
+          {
+            key: "caseSensitive",
+            label: "Case Sensitive",
+            kind: "select",
+            required: false,
+            defaultValue: "true",
+            options: [
+              { id: "true", label: "Yes" },
+              { id: "false", label: "No" },
+            ],
+          },
+          {
+            key: "workspaceAccess",
+            label: "Workspace Access",
+            kind: "select",
+            required: false,
+            description: "What everyone else in the workspace can do with this dictionary",
+            options: [
+              { id: "viewer", label: "Viewer" },
+              { id: "commenter", label: "Commenter" },
+              { id: "editor", label: "Editor" },
+              { id: "admin", label: "Admin" },
+            ],
+          },
+        ],
+      };
+    }
+
+    if (typeId === "agent") {
+      const [voices, models, llms] = await Promise.all([
+        this.fetchVoices().catch((): ElevenLabsVoice[] => []),
+        this.fetchModels().catch((): ElevenLabsModel[] => []),
+        this.fetchAgentLlms().catch((): SelectOption[] => []),
+      ]);
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "voiceId",
+            label: "Voice",
+            kind: "select",
+            required: false,
+            description: "Leave unset for the ElevenAgents default voice",
+            options: voices.map((voice) => ({
+              id: voice.voice_id,
+              label: voice.name ?? voice.voice_id,
+              ...(formatLabels(voice.labels) || voice.category
+                ? { description: formatLabels(voice.labels) || String(voice.category) }
+                : {}),
+            })),
+          },
+          {
+            key: "ttsModelId",
+            label: "Voice Model",
+            kind: "select",
+            required: false,
+            description: "Leave unset for the agent default",
+            options: models
+              .filter((model) => model.can_do_text_to_speech !== false)
+              .map((model) => ({
+                id: model.model_id,
+                label: model.name ?? model.model_id,
+                ...(model.description ? { description: model.description } : {}),
+              })),
+          },
+          {
+            key: "llm",
+            label: "LLM",
+            kind: "select",
+            required: false,
+            description: "Leave unset for the agent default",
+            options: llms,
+          },
+          {
+            key: "language",
+            label: "Language",
+            kind: "select",
+            required: true,
+            defaultValue: "en",
+            options: AGENT_LANGUAGES,
+          },
+          {
+            key: "firstMessage",
+            label: "First Message",
+            kind: "text",
+            required: false,
+            placeholder: "Hi, how can I help you today?",
+          },
+          {
+            key: "systemPrompt",
+            label: "System Prompt",
+            kind: "text",
+            multiline: true,
+            required: false,
+            placeholder: "You are a friendly support agent for…",
+          },
+          { key: "tags", label: "Tags", kind: "string-list", required: false },
+        ],
+      };
+    }
+
+    throw new Error(`ElevenLabs plugin: cannot create resources of type "${typeId}"`);
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId === "pronunciation-dictionary") {
+      const rules = parseDictionaryRules(fields);
+      const created = await this.fetch<{ id: string }>(
+        "/v1/pronunciation-dictionaries/add-from-rules",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: fields["name"],
+            rules,
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+            ...(fields["workspaceAccess"] ? { workspace_access: fields["workspaceAccess"] } : {}),
+          }),
+        },
+      );
+      return this.getResource(
+        "pronunciation-dictionary",
+        `${accountId}:pronunciation-dictionary:${created.id}`,
+        accountId,
+      );
+    }
+
+    if (typeId === "agent") {
+      const name = (fields["name"] ?? "").trim();
+      if (!name) throw new Error("ElevenLabs plugin: an agent needs a name");
+      const prompt: Record<string, unknown> = {};
+      if (fields["systemPrompt"]) prompt["prompt"] = fields["systemPrompt"];
+      if (fields["llm"]) prompt["llm"] = fields["llm"];
+      const agent: Record<string, unknown> = { language: fields["language"] || "en" };
+      if (fields["firstMessage"]) agent["first_message"] = fields["firstMessage"];
+      if (Object.keys(prompt).length) agent["prompt"] = prompt;
+      const tts: Record<string, unknown> = {};
+      if (fields["voiceId"]) tts["voice_id"] = fields["voiceId"];
+      if (fields["ttsModelId"]) tts["model_id"] = fields["ttsModelId"];
+      const tags = parseTags(fields["tags"] ?? "");
+
+      const created = await this.fetch<{ agent_id: string }>("/v1/convai/agents/create", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          conversation_config: { agent, ...(Object.keys(tts).length ? { tts } : {}) },
+          ...(tags.length ? { tags } : {}),
+        }),
+      });
+      return mapAgent(undefined, await this.fetchAgent(created.agent_id), accountId);
+    }
+
+    throw new Error(`ElevenLabs plugin: cannot create resources of type "${typeId}"`);
+  }
+
+  /**
+   * Edits, per type:
+   * - voice: `POST /v1/voices/{id}/edit` (multipart; `name` is required on
+   *   every call, so the current name is resent when only the description
+   *   changed).
+   * - agent: `PATCH /v1/convai/agents/{id}` with only the changed keys of
+   *   `conversation_config.agent`.
+   * - phone-number: `PATCH /v1/convai/phone-numbers/{id}` label.
+   * - pronunciation-dictionary: `PATCH /v1/pronunciation-dictionaries/{id}`
+   *   name (the only mutable metadata besides `archived`).
+   */
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const externalId = externalIdOf(resourceId);
+    const encoded = encodeURIComponent(externalId);
+
+    if (typeId === "voice") {
+      const current = await this.getResource("voice", resourceId, accountId);
+      const name = (fields["name"] ?? String(current.fields["name"] ?? "")).trim();
+      if (!name) throw new Error("ElevenLabs plugin: a voice needs a name");
+      const description = fields["description"] ?? String(current.fields["description"] ?? "");
+      const multipart = buildMultipartBody([
+        { kind: "field", name: "name", value: name },
+        ...(description
+          ? [{ kind: "field" as const, name: "description", value: description }]
+          : []),
+      ]);
+      await this.fetch<unknown>(`/v1/voices/${encoded}/edit`, {
+        method: "POST",
+        headers: { "Content-Type": multipart.contentType },
+        body: multipart.body,
+      });
+      return this.getResource("voice", resourceId, accountId);
+    }
+
+    if (typeId === "agent") {
+      const body: Record<string, unknown> = {};
+      if (fields["name"] !== undefined) {
+        if (!fields["name"].trim()) throw new Error("ElevenLabs plugin: an agent needs a name");
+        body["name"] = fields["name"].trim();
+      }
+      if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
+      const agent: Record<string, unknown> = {};
+      if (fields["language"] !== undefined) agent["language"] = fields["language"];
+      if (fields["firstMessage"] !== undefined) agent["first_message"] = fields["firstMessage"];
+      if (fields["systemPrompt"] !== undefined) {
+        agent["prompt"] = { prompt: fields["systemPrompt"] };
+      }
+      if (Object.keys(agent).length) body["conversation_config"] = { agent };
+      if (Object.keys(body).length) {
+        await this.fetch<unknown>(`/v1/convai/agents/${encoded}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
+      }
+      return this.getResource("agent", resourceId, accountId);
+    }
+
+    if (typeId === "phone-number") {
+      if (fields["label"] !== undefined) {
+        await this.fetch<unknown>(`/v1/convai/phone-numbers/${encoded}`, {
+          method: "PATCH",
+          body: JSON.stringify({ label: fields["label"] || null }),
+        });
+      }
+      return this.getResource("phone-number", resourceId, accountId);
+    }
+
+    if (typeId === "pronunciation-dictionary") {
+      if (fields["name"] !== undefined) {
+        if (!fields["name"].trim()) {
+          throw new Error("ElevenLabs plugin: a pronunciation dictionary needs a name");
+        }
+        await this.fetch<unknown>(`/v1/pronunciation-dictionaries/${encoded}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: fields["name"].trim() }),
+        });
+      }
+      return this.getResource("pronunciation-dictionary", resourceId, accountId);
+    }
+
+    throw new Error(`ElevenLabs plugin: updateResource not supported for type "${typeId}"`);
   }
 
   // -------------------------------------------------------------------------
@@ -956,6 +1489,12 @@ export class ElevenLabsClient implements PluginClient {
         return this.renderDictionaryDetail(resource);
       case "history-item":
         return this.renderHistoryItemDetail(resource);
+      case "agent":
+        return renderAgentDetail(resource);
+      case "phone-number":
+        return renderPhoneNumberDetail(resource);
+      case "knowledge-base-document":
+        return renderKnowledgeBaseDocumentDetail(resource);
       default:
         return this.renderGenericDetail(resource);
     }
@@ -1011,6 +1550,40 @@ export class ElevenLabsClient implements PluginClient {
           },
         };
       }
+      case "agent": {
+        const archived = resource.fields["archived"] === true;
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: archived ? "info" : "healthy",
+            label: archived ? "Archived" : String(resource.fields["language"] ?? "Active"),
+          },
+        };
+      }
+      case "phone-number": {
+        const assigned = Boolean(resource.fields["agentId"]);
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: assigned ? "healthy" : "info",
+            label: assigned ? String(resource.fields["agentName"] ?? "Assigned") : "Unassigned",
+          },
+        };
+      }
+      case "knowledge-base-document":
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: Number(resource.fields["dependentAgents"] ?? 0) > 0 ? "healthy" : "info",
+            ...(resource.fields["type"] ? { label: String(resource.fields["type"]) } : {}),
+          },
+        };
       default:
         return {
           id: resource.id,
@@ -1476,4 +2049,72 @@ function extensionForMime(mimeType: string): string {
     default:
       return "bin";
   }
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** How many listed agents get their full config fetched during a sync. */
+const MAX_HYDRATED_AGENTS = 100;
+
+/** `Promise.all` over `items` with at most `limit` calls in flight. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await fn(items[index] as T);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Parse the create form's `text = replacement` lines into the rule objects
+ * `add-from-rules` takes. Phoneme rules carry the chosen alphabet; both kinds
+ * carry the case-sensitivity choice. Lines without `=` are rejected rather
+ * than skipped, so a typo cannot silently drop a rule.
+ * https://elevenlabs.io/docs/api-reference/pronunciation-dictionaries/create-from-rules
+ */
+export function parseDictionaryRules(fields: Record<string, string>): Record<string, unknown>[] {
+  const ruleType = fields["ruleType"] === "phoneme" ? "phoneme" : "alias";
+  const caseSensitive = fields["caseSensitive"] !== "false";
+  const rules: Record<string, unknown>[] = [];
+  const lines = (fields["rules"] ?? "").split(/\r?\n/);
+  for (const [index, raw] of lines.entries()) {
+    const line = raw.trim();
+    if (!line) continue;
+    const separator = line.indexOf("=");
+    const text = separator > 0 ? line.slice(0, separator).trim() : "";
+    const replacement = separator > 0 ? line.slice(separator + 1).trim() : "";
+    if (!text || !replacement) {
+      throw new Error(
+        `ElevenLabs plugin: rule on line ${index + 1} must look like "text = replacement"`,
+      );
+    }
+    rules.push(
+      ruleType === "phoneme"
+        ? {
+            type: "phoneme",
+            string_to_replace: text,
+            phoneme: replacement,
+            alphabet: fields["alphabet"] || "ipa",
+            case_sensitive: caseSensitive,
+          }
+        : {
+            type: "alias",
+            string_to_replace: text,
+            alias: replacement,
+            case_sensitive: caseSensitive,
+          },
+    );
+  }
+  if (!rules.length) throw new Error("ElevenLabs plugin: add at least one rule");
+  return rules;
 }

@@ -79,6 +79,7 @@ describe("voice speech panel", () => {
       "eleven_multilingual_v2",
       "eleven_flash_v2_5",
       "scribe_v2",
+      "scribe_v2_medical",
       "scribe_v1",
     ]);
     expect(panel?.defaultModel).toBe("eleven_multilingual_v2");
@@ -118,7 +119,11 @@ describe("voice speech panel", () => {
     const resource = voiceResource();
     const panel = client().renderDetail(resource).speechPanel;
     expect(panel?.voices).toBeUndefined();
-    expect(panel?.models?.map((m) => m.id)).toEqual(["scribe_v2", "scribe_v1"]);
+    expect(panel?.models?.map((m) => m.id)).toEqual([
+      "scribe_v2",
+      "scribe_v2_medical",
+      "scribe_v1",
+    ]);
     expect(panel?.maxCharacters).toBe(10000);
   });
 });

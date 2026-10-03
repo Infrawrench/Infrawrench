@@ -3,4 +3,7 @@ export { VoiceResourceType } from "./resources/voice.js";
 export { ModelResourceType } from "./resources/model.js";
 export { PronunciationDictionaryResourceType } from "./resources/pronunciation-dictionary.js";
 export { HistoryItemResourceType } from "./resources/history-item.js";
+export { AgentResourceType } from "./resources/agent.js";
+export { PhoneNumberResourceType } from "./resources/phone-number.js";
+export { KnowledgeBaseDocumentResourceType } from "./resources/knowledge-base-document.js";
 export { ElevenLabsClient } from "./client.js";
