@@ -6,4 +6,7 @@ export { NetlifyDnsZoneResourceType } from "./resources/dns-zone.js";
 export { NetlifyDnsRecordResourceType } from "./resources/dns-record.js";
 export { NetlifyBuildHookResourceType } from "./resources/build-hook.js";
 export { NetlifyEnvVarResourceType } from "./resources/env-var.js";
+export { NetlifyNotificationHookResourceType } from "./resources/notification-hook.js";
+export { NetlifySnippetResourceType } from "./resources/snippet.js";
+export { NetlifyDatabaseResourceType } from "./resources/database.js";
 export { NetlifyClient } from "./client.js";
