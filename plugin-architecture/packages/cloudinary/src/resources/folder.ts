@@ -5,11 +5,15 @@ export const FolderResourceType = rt({
   id: "folder",
   description: "An organizational folder in the Cloudinary media library",
   fields: [
-    f("name", "Name"),
-    f("path", "Path"),
-    f("externalId", "External ID", { required: false }),
+    f("name", "Name", { editable: false }),
+    f("path", "Path", {
+      description:
+        "Full folder path. Changing it renames or moves the folder (dynamic folder mode only).",
+    }),
+    f("externalId", "External ID", { required: false, editable: false }),
   ],
   outputs: [o("path", "Folder Path"), o("name", "Folder Name")],
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "folder",
 });

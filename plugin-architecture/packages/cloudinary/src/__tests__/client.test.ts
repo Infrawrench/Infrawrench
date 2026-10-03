@@ -171,7 +171,7 @@ describe("createResource", () => {
 describe("listResources", () => {
   it("paginates media asset lists per resource type", async () => {
     installFetch((url) => {
-      if (url.endsWith("/resources/image?max_results=500")) {
+      if (url.endsWith("/resources/image?max_results=500&tags=true")) {
         return jsonResponse({
           resources: [
             {
@@ -190,7 +190,7 @@ describe("listResources", () => {
           next_cursor: "page-2",
         });
       }
-      if (url.endsWith("/resources/image?max_results=500&next_cursor=page-2")) {
+      if (url.endsWith("/resources/image?max_results=500&tags=true&next_cursor=page-2")) {
         return jsonResponse({
           resources: [
             {
@@ -209,8 +209,8 @@ describe("listResources", () => {
         });
       }
       if (
-        url.endsWith("/resources/video?max_results=500") ||
-        url.endsWith("/resources/raw?max_results=500")
+        url.endsWith("/resources/video?max_results=500&tags=true") ||
+        url.endsWith("/resources/raw?max_results=500&tags=true")
       ) {
         return jsonResponse({ resources: [] });
       }
@@ -221,10 +221,10 @@ describe("listResources", () => {
 
     expect(resources.map((resource) => resource.displayName)).toEqual(["hero", "second"]);
     expect(calls.map((call) => call.url)).toEqual([
-      "https://api.cloudinary.com/v1_1/demo/resources/image?max_results=500",
-      "https://api.cloudinary.com/v1_1/demo/resources/image?max_results=500&next_cursor=page-2",
-      "https://api.cloudinary.com/v1_1/demo/resources/video?max_results=500",
-      "https://api.cloudinary.com/v1_1/demo/resources/raw?max_results=500",
+      "https://api.cloudinary.com/v1_1/demo/resources/image?max_results=500&tags=true",
+      "https://api.cloudinary.com/v1_1/demo/resources/image?max_results=500&tags=true&next_cursor=page-2",
+      "https://api.cloudinary.com/v1_1/demo/resources/video?max_results=500&tags=true",
+      "https://api.cloudinary.com/v1_1/demo/resources/raw?max_results=500&tags=true",
     ]);
   });
 
@@ -275,5 +275,235 @@ describe("listResources", () => {
       "thumb",
       "banner",
     ]);
+  });
+});
+
+describe("webhook notifications (triggers)", () => {
+  it("creates a trigger with a parsed JSONLogic filter", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/triggers") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return jsonResponse({ id: "trg1", uri_type: "webhook", ...body });
+      }
+      throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
+    });
+    const created = await client().createResource("trigger", ACCOUNT, {
+      uri: "https://example.com/hook",
+      event_type: "upload",
+      additive: "true",
+      auth_scheme: "eddsa_v2",
+      filter: '{"==": [{"var": "resource_type"}, "image"]}',
+      payload_template: "",
+    });
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      uri: "https://example.com/hook",
+      event_type: "upload",
+      additive: true,
+      auth_scheme: "eddsa_v2",
+      filter: { "==": [{ var: "resource_type" }, "image"] },
+    });
+    expect(created.id).toBe(`${ACCOUNT}:trigger:trg1`);
+    expect(created.fields["filter"]).toBe('{"==":[{"var":"resource_type"},"image"]}');
+  });
+
+  it("rejects a filter that is not a JSON object before calling the API", async () => {
+    installFetch(() => jsonResponse({}));
+    await expect(
+      client().createResource("trigger", ACCOUNT, {
+        uri: "https://example.com/hook",
+        event_type: "upload",
+        filter: "not json",
+      }),
+    ).rejects.toThrow(/valid JSON/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("updates the URL through `new_uri` and clears a removed filter", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "PUT") return jsonResponse({ id: "trg1" });
+      if (url.endsWith("/triggers")) {
+        return jsonResponse({
+          triggers: [{ id: "trg1", uri: "https://example.com/new", event_type: "delete" }],
+        });
+      }
+      throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
+    });
+    await client().updateResource("trigger", `${ACCOUNT}:trigger:trg1`, ACCOUNT, {
+      uri: "https://example.com/new",
+      filter: "",
+    });
+    const put = calls.find((c) => c.init?.method === "PUT");
+    expect(put?.url).toBe("https://api.cloudinary.com/v1_1/demo/triggers/trg1");
+    expect(JSON.parse(String(put?.init?.body))).toEqual({
+      new_uri: "https://example.com/new",
+      filter: {},
+    });
+  });
+
+  it("DELETEs a trigger by id", async () => {
+    installFetch(() => jsonResponse({ message: "ok" }));
+    await client().deleteResource("trigger", `${ACCOUNT}:trigger:trg1`, ACCOUNT);
+    expect(calls[0]?.init?.method).toBe("DELETE");
+    expect(calls[0]?.url).toBe("https://api.cloudinary.com/v1_1/demo/triggers/trg1");
+  });
+});
+
+describe("upload mappings", () => {
+  it("paginates mappings and deletes by folder query parameter", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "DELETE") return jsonResponse({ message: "deleted" });
+      if (url.endsWith("/upload_mappings?max_results=500")) {
+        return jsonResponse({
+          mappings: [{ folder: "wiki", template: "https://wiki.example.com/" }],
+          next_cursor: "c2",
+        });
+      }
+      if (url.endsWith("/upload_mappings?max_results=500&next_cursor=c2")) {
+        return jsonResponse({
+          mappings: [{ folder: "cdn", template: "https://cdn.example.com/" }],
+        });
+      }
+      throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
+    });
+    const mappings = await client().listResources("upload-mapping", ACCOUNT);
+    expect(mappings.map((m) => m.resolvedOutputs["template"])).toEqual([
+      "https://wiki.example.com/",
+      "https://cdn.example.com/",
+    ]);
+    await client().deleteResource("upload-mapping", `${ACCOUNT}:upload-mapping:wiki`, ACCOUNT);
+    expect(calls.at(-1)?.url).toBe(
+      "https://api.cloudinary.com/v1_1/demo/upload_mappings?folder=wiki",
+    );
+  });
+});
+
+describe("edits", () => {
+  it("moves and retags an asset through its immutable asset id", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/resources/image/upload/hero")) {
+        return jsonResponse({
+          asset_id: "a1",
+          public_id: "hero",
+          format: "jpg",
+          version: 1,
+          resource_type: "image",
+          type: "upload",
+          created_at: "2026-06-01T00:00:00Z",
+          bytes: 10,
+          url: "",
+          secure_url: "",
+        });
+      }
+      if (url.endsWith("/resources/a1") && init?.method === "PUT") {
+        return jsonResponse({
+          asset_id: "a1",
+          public_id: "hero",
+          resource_type: "image",
+          type: "upload",
+          asset_folder: "campaigns",
+          tags: ["summer", "hero"],
+        });
+      }
+      throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
+    });
+    const updated = await client().updateResource(
+      "media-asset",
+      `${ACCOUNT}:media-asset:image/upload/hero`,
+      ACCOUNT,
+      { folder: "campaigns", tags: "summer, hero ," },
+    );
+    const put = calls.find((c) => c.init?.method === "PUT");
+    expect(JSON.parse(String(put?.init?.body))).toEqual({
+      asset_folder: "campaigns",
+      tags: "summer,hero",
+    });
+    expect(updated.fields["tags"]).toBe("summer, hero");
+  });
+
+  it("renames a folder with to_folder", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "PUT") {
+        return jsonResponse({
+          from: { name: "old", path: "a/old" },
+          to: { name: "new", path: "a/new" },
+        });
+      }
+      throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
+    });
+    const renamed = await client().updateResource("folder", `${ACCOUNT}:folder:a/old`, ACCOUNT, {
+      path: "a/new",
+    });
+    expect(calls[0]?.url).toBe(
+      "https://api.cloudinary.com/v1_1/demo/folders/a%2Fold?to_folder=a%2Fnew",
+    );
+    expect(renamed.id).toBe(`${ACCOUNT}:folder:a/new`);
+  });
+
+  it("sends a new transformation definition as unsafe_update", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "PUT") return jsonResponse({ message: "updated" });
+      if (url.includes("/transformations?named=true")) {
+        return jsonResponse({ transformations: [{ name: "thumb", named: true, used: true }] });
+      }
+      throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
+    });
+    await client().updateResource("transformation", `${ACCOUNT}:transformation:thumb`, ACCOUNT, {
+      definition: "w_300,c_fill",
+      allowedForStrict: "true",
+    });
+    const put = calls.find((c) => c.init?.method === "PUT");
+    expect(put?.url).toBe("https://api.cloudinary.com/v1_1/demo/transformations/thumb");
+    expect(JSON.parse(String(put?.init?.body))).toEqual({
+      allowed_for_strict: true,
+      unsafe_update: "w_300,c_fill",
+    });
+  });
+});
+
+describe("usage", () => {
+  const usage = {
+    plan: "Free",
+    last_updated: "2026-04-01",
+    transformations: { usage: 26, credits_usage: 0.03 },
+    bandwidth: { usage: 9227721, credits_usage: 0.01 },
+    storage: { usage: 295753639, credits_usage: 0.28 },
+    credits: { usage: 0.32, limit: 25, used_percent: 1.28 },
+    resources: 130,
+    derived_resources: 411,
+    requests: 43,
+    cloudinary_ai: { usage: 20, limit: 15 },
+    media_limits: { image_max_size_bytes: 10485760 },
+    rate_limit_allowed: 500,
+    rate_limit_remaining: 499,
+  };
+
+  it("reports credits, add-on allowances and the Admin API budget as quotas", async () => {
+    installFetch(() => jsonResponse(usage));
+    const quotas = await client().fetchQuotas(ACCOUNT);
+    expect(quotas.map((q) => [q.id, q.used, q.limit])).toEqual([
+      ["credits", 0.32, 25],
+      ["addon/cloudinary_ai", 20, 15],
+      ["admin-api-rate-limit", 1, 500],
+    ]);
+  });
+
+  it("summarises the product environment with its folder mode", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/usage")) return jsonResponse(usage);
+      if (url.endsWith("/config?settings=true")) {
+        return jsonResponse({ cloud_name: "demo", settings: { folder_mode: "dynamic" } });
+      }
+      throw new Error(`unrouted: GET ${url}`);
+    });
+    const [env] = await client().listResources("product-environment", ACCOUNT);
+    expect(env?.fields).toMatchObject({
+      plan: "Free",
+      folderMode: "dynamic",
+      creditsUsed: 0.32,
+      creditsLimit: 25,
+      storageBytes: 295753639,
+      assets: 130,
+      imageMaxBytes: 10485760,
+    });
   });
 });
