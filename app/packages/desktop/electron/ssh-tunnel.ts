@@ -241,6 +241,33 @@ export async function workflowSshExec(
   });
 }
 
+/**
+ * Run a script fed on stdin (`sh -s`) and resolve its stdout; rejects on a
+ * non-zero exit. For scripts carrying short-lived secrets (enrollment keys),
+ * which must never appear in the remote process list the way an exec
+ * argument would.
+ */
+export async function workflowSshExecScript(
+  config: WorkflowSshConfig,
+  script: string,
+  skipHostKeyCheck = false,
+): Promise<string> {
+  await ensureHostKeyCacheLoaded();
+  const { execSshScript } = await import("@infrawrench/ssh-tunnel-core");
+  return new Promise((resolve, reject) => {
+    connectWorkflowSsh(
+      config,
+      (client) => {
+        execSshScript(client, script)
+          .then(resolve, reject)
+          .finally(() => client.end());
+      },
+      reject,
+      skipHostKeyCheck,
+    );
+  });
+}
+
 type WorkflowStreamChunk = {
   stdoutBase64?: string;
   stderrBase64?: string;

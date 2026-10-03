@@ -140,5 +140,6 @@
 // now also validate a monitor's resource against the synced rows and fill
 // `resourceTypeId` from the resource, so callers may omit it. All additive.
 // 1.40.0: Tailscale plugin, cross-provider SSH service enrollment, and
-// `supportsSshInstall` on resource detail. Additive.
+// `supportsSshInstall` on resource detail, and agent service accounts plus
+// T3 Code access over Tailscale. Additive.
 export const API_VERSION = "1.40.0";

@@ -41,7 +41,7 @@ import {
   agentToolLoginCommand,
   agentToolPackage,
 } from "./launch-command.js";
-import type { AgentSetupPlan, AgentSurface, AgentTool } from "./types.js";
+import type { AgentSetupPlan, AgentSurface, AgentTool, T3CodeAccess } from "./types.js";
 
 /** The hosted T3 Code app that a `t3 connect`-linked environment shows up in. */
 export const T3_CODE_HOSTED_APP_URL = "https://app.t3.codes";
@@ -71,6 +71,33 @@ export const T3_CODE_NODE_ENGINE_RANGE = "^22.16 || ^23.11 || >=24.10";
  */
 export const T3_CODE_SYSTEMD_UNIT = "t3code.service";
 
+/**
+ * Plugin whose attached account lets a T3 Code server be reached over the
+ * tailnet instead of T3 Connect. T3 Code's own Tailscale support (Tailscale
+ * Serve, `t3 pair --tailscale`) is what makes this an option, so the coupling
+ * lives here, with the rest of the T3 Code integration.
+ */
+export const T3_CODE_TAILSCALE_PLUGIN_ID = "tailscale";
+
+/** Normalizes rows and clients predating the access choice: T3 Connect. */
+export function t3CodeAccessOrDefault(access: string | null | undefined): T3CodeAccess {
+  return access === "tailscale" ? "tailscale" : "t3-connect";
+}
+
+/**
+ * Tailscale access needs the VM on the tailnet, i.e. an attached service
+ * account from the Tailscale plugin. Anything else falls back to T3 Connect.
+ */
+export function resolveT3CodeAccess(
+  access: string | null | undefined,
+  serviceAccountPluginIds: readonly string[],
+): T3CodeAccess {
+  return t3CodeAccessOrDefault(access) === "tailscale" &&
+    serviceAccountPluginIds.includes(T3_CODE_TAILSCALE_PLUGIN_ID)
+    ? "tailscale"
+    : "t3-connect";
+}
+
 export function isT3CodeSurface(surface: AgentSurface | string | null | undefined): boolean {
   return surface === "t3-code";
 }
@@ -91,7 +118,10 @@ export function agentSurfaceRequiresRepo(
 }
 
 /** Setup plan for a T3 Code session — Node only, no clone, no branch. */
-export function createT3CodeSetupPlan(tool: AgentTool): AgentSetupPlan {
+export function createT3CodeSetupPlan(
+  tool: AgentTool,
+  access: T3CodeAccess = "t3-connect",
+): AgentSetupPlan {
   return {
     source: "git-url",
     workspaceName: T3_CODE_PROJECTS_DIR,
@@ -111,7 +141,9 @@ export function createT3CodeSetupPlan(tool: AgentTool): AgentSetupPlan {
     configSources: [],
     warnings: [
       "T3 Code manages its own projects, so this VM is provisioned without a repository checkout — add projects from inside T3 Code.",
-      `T3 Connect authorization and the ${agentToolLabel(tool)} sign-in are interactive browser flows; finish them from the session's Authorize terminal.`,
+      access === "tailscale"
+        ? `T3 Code is reached over your tailnet (Tailscale Serve), not T3 Connect. Pairing and the ${agentToolLabel(tool)} sign-in are interactive; finish them from the session's Authorize terminal.`
+        : `T3 Connect authorization and the ${agentToolLabel(tool)} sign-in are interactive browser flows; finish them from the session's Authorize terminal.`,
     ],
   };
 }
@@ -512,12 +544,85 @@ align_git_protocol_with_gh() {
 }
 `;
 
+/**
+ * After the restart, wait for the T3 Connect environment link: provisioning
+ * it and bringing up the managed tunnel takes a few seconds, so confirm it
+ * here rather than sending the user to go and look.
+ */
+const T3_CONNECT_LINK_WAIT_SNIPPET = `
+# Provisioning the link and bringing up the managed tunnel takes a few
+# seconds, so confirm it here rather than sending the user to go and look.
+printf '\\nWaiting for the environment link to provision'
+link_deadline=$((SECONDS + 150))
+link_ready=0
+while [ "$SECONDS" -lt "$link_deadline" ]; do
+  if t3 connect status --json 2>/dev/null | grep -q '"linked"[[:space:]]*:[[:space:]]*true'; then
+    link_ready=1
+    break
+  fi
+  printf '.'
+  sleep 5
+done
+printf '\\n\\n'
+t3 connect status || true
+if [ "$link_ready" = "1" ]; then
+  printf '\\n\\033[1mReady.\\033[0m Switch back to the T3 Code tab.\\n\\n'
+else
+  printf '\\nThe environment link is still pending. If it stays that way, read the\\n'
+  printf 'server log — the unit redirects stdout/stderr to a file, so journalctl\\n'
+  printf 'only shows systemd start/stop lines, not the server error:\\n'
+  printf '  t3 service status                                 # shows the log path\\n'
+  printf '  tail -n 200 ~/.t3/userdata/logs/boot-service.log\\n\\n'
+fi
+`;
+
 export interface T3CodeConnectCommandInput {
   /** Provider CLI to offer a sign-in step for. */
   tool: AgentTool;
   /** Also offer to sign the GitHub CLI in (device flow — works headless). */
   includeGithubLogin?: boolean;
+  /**
+   * How clients reach the server. `tailscale` skips T3 Connect entirely and
+   * publishes the server on the tailnet with Tailscale Serve, then prints a
+   * pairing link. The VM must already be on the tailnet (the session's
+   * attached Tailscale account enrolls it during setup).
+   */
+  access?: T3CodeAccess;
 }
+
+/**
+ * Publish the server on the tailnet and print a pairing link.
+ *
+ * \`t3 pair --tailscale\` is upstream's documented route for a server that is
+ * already running as a service (docs/user/remote-access.md): it maps
+ * \`https://<machine>.<tailnet>.ts.net/\` to the local server with Tailscale
+ * Serve, a mapping that persists across restarts, and prints a one-time
+ * pairing URL (token in the fragment, five-minute lifetime). Configuring Serve
+ * needs root or the tailscale operator, so a non-root agent user is made the
+ * operator first with passwordless sudo, which the enrollment already needed.
+ */
+const T3_TAILSCALE_PAIR_SNIPPET = `
+pair_t3_over_tailscale() {
+  if ! command -v tailscale >/dev/null 2>&1; then
+    printf 'Tailscale is not installed on this VM. Retry setup from Infrawrench to enroll it.\\n' >&2
+    return 0
+  fi
+  if [ "$(id -u)" != 0 ]; then
+    sudo -n tailscale set --operator="$(id -un)" >/dev/null 2>&1 || true
+  fi
+  # Serve needs a moment after a restart before the local server answers.
+  sleep 3
+  if t3 pair --tailscale; then
+    printf '\\n\\033[1mReady.\\033[0m In T3 Code, open Settings > Connections > Add environment and\\n'
+    printf 'paste the pairing link above, or scan its QR code. The link works once and\\n'
+    printf 'expires after five minutes; for another device run: t3 pair --tailscale\\n\\n'
+  else
+    printf '\\nPairing over Tailscale did not complete. Check the VM is on your tailnet\\n'
+    printf '(tailscale status) with MagicDNS and HTTPS enabled for the tailnet, then\\n'
+    printf 'rerun: t3 pair --tailscale\\n\\n'
+  fi
+}
+`;
 
 /**
  * The interactive half of setup, run in the session's SSH terminal tab.
@@ -533,8 +638,9 @@ export interface T3CodeConnectCommandInput {
  */
 export function buildT3CodeConnectCommand(input: T3CodeConnectCommandInput): string {
   const includeGithubLogin = input.includeGithubLogin ?? true;
+  const viaTailscale = input.access === "tailscale";
   const toolLabel = agentToolLabel(input.tool);
-  const steps = includeGithubLogin ? 4 : 3;
+  const steps = (includeGithubLogin ? 4 : 3) - (viaTailscale ? 1 : 0);
   let step = 0;
   const heading = (title: string) => {
     step += 1;
@@ -555,11 +661,15 @@ fi
 printf '\\033[1mT3 Code setup\\033[0m\\n'
 printf 'Each step opens a browser or device flow. Skip any step with Ctrl-C and rerun it later.\\n'
 
-${heading("Authorize T3 Connect")}
+${
+  viaTailscale
+    ? ""
+    : `${heading("Authorize T3 Connect")}
 # Over SSH the CLI prints a hosted authorization URL and waits for a pasted
 # code, so this works without forwarding port 34338.
 t3 connect link || echo "t3 connect link did not complete — rerun it with 't3 connect link'." >&2
-
+`
+}
 ${heading(`Sign in to ${toolLabel}`)}
 # T3 Code drives this CLI; without a signed-in provider it can install
 # projects but not start a session.
@@ -584,7 +694,7 @@ align_git_protocol_with_gh
 `
     : ""
 }
-${heading("Start T3 Code")}
+${heading(viaTailscale ? "Start T3 Code and pair over Tailscale" : "Start T3 Code")}
 # \`t3 connect link\` only records intent; the relay link is provisioned by the
 # next server START. The bootstrap already installed the service, so the
 # server is running from BEFORE the link existed and has nothing to reconcile
@@ -623,31 +733,13 @@ restart_t3_service() {
   return 0
 }
 restart_t3_service
-
-# Provisioning the link and bringing up the managed tunnel takes a few
-# seconds, so confirm it here rather than sending the user to go and look.
-printf '\\nWaiting for the environment link to provision'
-link_deadline=$((SECONDS + 150))
-link_ready=0
-while [ "$SECONDS" -lt "$link_deadline" ]; do
-  if t3 connect status --json 2>/dev/null | grep -q '"linked"[[:space:]]*:[[:space:]]*true'; then
-    link_ready=1
-    break
-  fi
-  printf '.'
-  sleep 5
-done
-printf '\\n\\n'
-t3 connect status || true
-if [ "$link_ready" = "1" ]; then
-  printf '\\n\\033[1mReady.\\033[0m Switch back to the T3 Code tab.\\n\\n'
-else
-  printf '\\nThe environment link is still pending. If it stays that way, read the\\n'
-  printf 'server log — the unit redirects stdout/stderr to a file, so journalctl\\n'
-  printf 'only shows systemd start/stop lines, not the server error:\\n'
-  printf '  t3 service status                                 # shows the log path\\n'
-  printf '  tail -n 200 ~/.t3/userdata/logs/boot-service.log\\n\\n'
-fi
+${
+  viaTailscale
+    ? `${T3_TAILSCALE_PAIR_SNIPPET}
+pair_t3_over_tailscale
+`
+    : T3_CONNECT_LINK_WAIT_SNIPPET
+}
 exec "\${SHELL:-/bin/bash}" -l
 `;
   return `bash -lc ${shellQuote(script)}`;

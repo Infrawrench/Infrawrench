@@ -3,6 +3,12 @@ export interface SshInstallResult {
   message: string;
   address?: string;
   warnings?: string[];
+  /**
+   * Opaque, plugin-owned handle to what was installed (e.g. a tailnet device
+   * id). A host that later destroys the server passes it back to
+   * `PluginClient.releaseSshInstall` so the plugin can clean up after it.
+   */
+  ref?: string;
 }
 
 export interface SshInstallContext {

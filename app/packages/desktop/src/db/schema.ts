@@ -378,3 +378,18 @@ CREATE TABLE IF NOT EXISTS posture_dismissals (
 `;
 
 MIGRATIONS.push(POSTURE_DISMISSALS_MIGRATION);
+
+// Services installed on the agent VM over SSH after setup (accounts of
+// `sshInstall` plugins, e.g. Tailscale), what each install reported (with
+// its plugin-owned `ref`, so Delete can undo it), and how a T3 Code server is
+// reached: "t3-connect" (T3's relay) or "tailscale" (Tailscale Serve).
+// Mirrors the cloud's 0122_agent_service_accounts.
+const AGENT_SERVICE_ACCOUNTS_MIGRATION = `
+ALTER TABLE agent_sessions ADD COLUMN service_account_ids_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE agent_sessions ADD COLUMN t3_access TEXT NOT NULL DEFAULT 't3-connect';
+ALTER TABLE agent_sessions ADD COLUMN service_installs_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE agent_settings ADD COLUMN service_account_ids_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE agent_settings ADD COLUMN t3_access TEXT NOT NULL DEFAULT 't3-connect';
+`;
+
+MIGRATIONS.push(AGENT_SERVICE_ACCOUNTS_MIGRATION);

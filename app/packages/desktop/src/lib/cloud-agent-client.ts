@@ -1,3 +1,4 @@
+import type { SshInstallAccount } from "@infrawrench/plugin-base";
 import type {
   AgentClient,
   AgentCreateBody,
@@ -40,6 +41,9 @@ export function createCloudAgentClient(): AgentClient {
   return {
     listAccounts: async () =>
       invoke<AgentVmAccount[]>("cloud_agents_accounts", { orgId: requireOrg() }),
+    // The same list the resource page's "Install service…" offers.
+    listServiceAccounts: async () =>
+      invoke<SshInstallAccount[]>("cloud_ssh_install_accounts", { orgId: requireOrg() }),
     getSettings: async () =>
       invoke<AgentSettings | null>("cloud_agents_get_settings", { orgId: requireOrg() }),
     saveSettings: async (settings: AgentSettings) =>

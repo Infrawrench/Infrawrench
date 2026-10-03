@@ -984,4 +984,58 @@ describe("AgentsPanel", () => {
       expect(title).toBe("T3 Code setup · team-box");
     });
   });
+  it("attaches a Tailscale service and offers T3 Code over Tailscale only while it is attached", async () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const client = makeClient(
+      account,
+      {
+        accountId: "acct-1",
+        pluginId: "digitalocean",
+        resourceTypeId: "droplet",
+        tool: "codex",
+        surface: "t3-code",
+        fields: {},
+        serviceAccountIds: ["ts"],
+        t3Access: "tailscale",
+      },
+      {
+        listServiceAccounts: vi.fn(async () => [
+          {
+            accountId: "ts",
+            displayName: "acme tailnet",
+            pluginId: "tailscale",
+            serviceName: "Tailscale",
+            description: "Install Tailscale.",
+          },
+        ]),
+      },
+    );
+    render(<AgentsPanel client={client} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Workspace \(DigitalOcean\)/ }));
+
+    const checkbox = await screen.findByRole("checkbox", { name: "Tailscale: acme tailnet" });
+    expect(checkbox).toBeChecked();
+    expect(screen.getByText("T3 Code access")).toBeInTheDocument();
+    expect(screen.getByText(/published on your tailnet with Tailscale Serve/)).toBeInTheDocument();
+
+    // Detaching the only Tailscale account falls back to T3 Connect.
+    fireEvent.click(checkbox);
+    expect(screen.queryByText("T3 Code access")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save defaults" }));
+    await waitFor(() =>
+      expect(client.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceAccountIds: [], t3Access: "t3-connect" }),
+      ),
+    );
+  });
 });

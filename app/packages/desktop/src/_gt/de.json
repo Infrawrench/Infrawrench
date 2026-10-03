@@ -9992,5 +9992,13 @@
   "195afba5a217d0d5": "Tailscale ist installiert und das Gerät ist genehmigt. Es wird innerhalb weniger Sekunden als verbunden angezeigt.",
   "2cdb7e3723325d02": "Tailscale ist installiert, aber dieses Konto konnte das Gerät nicht genehmigen. Genehmigen Sie es in Ihrem Tailnet, um die Verbindung abzuschließen.",
   "8ff3e759dfa3c994": "Der temporäre Registrierungsschlüssel konnte nicht widerrufen werden. Er läuft nach fünf Minuten automatisch ab.",
-  "455f5b9fa2db94e4": "Dieser Server ist bereits mit diesem Tailnet verbunden."
+  "455f5b9fa2db94e4": "Dieser Server ist bereits mit diesem Tailnet verbunden.",
+  "aa2d44925f74e678": "T3-Code-Zugriff",
+  "6c1b87438bb6d76f": "Wird nach der Einrichtung per SSH auf der VM installiert.",
+  "1192f2220170bb39": "Über Tailscale erreichbar",
+  "950ceeffe207b2c2": {
+    "t": "p",
+    "i": 1,
+    "c": "Der Server wird mit Tailscale Serve statt T3 Connect in Ihrem Tailnet veröffentlicht, daher ist kein T3-Konto erforderlich. Server autorisieren gibt einen Kopplungslink für Add environment in T3 Code aus. In Ihrem Tailnet müssen MagicDNS und HTTPS-Zertifikate aktiviert sein."
+  }
 }

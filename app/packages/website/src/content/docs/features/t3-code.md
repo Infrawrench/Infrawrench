@@ -63,9 +63,23 @@ Each step can be skipped with `Ctrl-C` and rerun later; the terminal drops you a
 
 <insert [Authorization terminal on the T3 Code tab showing the numbered steps with the t3 connect out-of-band URL prompt] here>
 
+## Reaching the server over Tailscale instead
+
+T3 Connect needs a T3 account and routes the connection through T3's relay. If your team already runs a [Tailscale](./tailscale.md) tailnet, you can skip both. In the Agents configuration menu, tick your Tailscale account under **Services**, then set **T3 Code access** to **Tailscale**. The option only appears while a Tailscale account is attached, because the VM has to be on the tailnet first.
+
+With Tailscale access:
+
+- Setup enrolls the VM into your tailnet after the bootstrap, using the same pre-approved, single-use key as [Install service…](./tailscale.md).
+- **Authorize server** skips the T3 Connect step. After the sign-ins and the service restart it runs [`t3 pair --tailscale`](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md). That publishes the server at `https://<machine>.<tailnet>.ts.net/` with Tailscale Serve and prints a one-time pairing link. In T3 Code, open **Settings → Connections → Add environment** and paste the link or scan its QR code. The link expires after five minutes; for another device, run `t3 pair --tailscale` again from the same terminal.
+- The Serve mapping persists across restarts, so the server stays reachable at that address. Only devices on your tailnet can reach it.
+- Your tailnet needs [MagicDNS and HTTPS certificates](https://tailscale.com/kb/1153/enabling-https) enabled. On a VM whose agent user isn't root, setup makes that user the Tailscale operator so it can configure Serve.
+- **Delete** removes the device from your tailnet after destroying the VM. There is no T3 Connect environment to revoke.
+
+![Agents configuration menu with the Tailscale account ticked under Services and T3 Code access set to Tailscale, showing the explanatory note](https://agent-assets.infrawrench.com/docs-screenshots/features/t3-code/config-menu-tailscale.png)
+
 ## Using the server
 
-Once the link reports `provisioned`, the machine shows up in T3 Code under your account. Open it from [T3 Code's own app](https://app.t3.codes) or its desktop build and add projects there with the Command Palette (`Cmd/Ctrl + K`) → **Add Project**.
+Once the link reports `provisioned` (or, with Tailscale access, once you have added the pairing link), the machine shows up in T3 Code. Open it from [T3 Code's own app](https://app.t3.codes) or its desktop build and add projects there with the Command Palette (`Cmd/Ctrl + K`) → **Add Project**.
 
 **Authorize server** stays available afterwards and is safe to re-run: every step detects work already done and skips it, so it doubles as the way to re-link a server, sign a provider back in, or just get a shell on the box.
 

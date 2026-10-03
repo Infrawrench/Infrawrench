@@ -138,4 +138,22 @@ describe("Tailscale plugin", () => {
     expect(JSON.parse(request.mock.calls[2]![0].body)).toEqual({ authorized: true });
     expect(result.message).toContain("approved");
   });
+  it("releases an enrolled server by removing its device, tolerating one already gone", async () => {
+    const { request, client: c } = client();
+    const list = {
+      status: 200,
+      body: JSON.stringify({
+        devices: [{ id: "123", nodeId: "nNode1", name: "a", hostname: "a", addresses: [] }],
+      }),
+    };
+    request.mockResolvedValueOnce(list).mockResolvedValueOnce({ status: 200, body: "" });
+    await c.releaseSshInstall!("nNode1");
+    expect(request.mock.calls[1]![0]).toMatchObject({
+      method: "DELETE",
+      url: "https://api.tailscale.com/api/v2/device/nNode1",
+    });
+    request.mockReset().mockResolvedValueOnce(list);
+    await c.releaseSshInstall!("nGone");
+    expect(request).toHaveBeenCalledTimes(1);
+  });
 });

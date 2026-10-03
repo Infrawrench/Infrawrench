@@ -23,6 +23,10 @@ The flow does not enable Tailscale's separate SSH server, change your SSH daemon
 
 After enrollment, use the device's Tailscale IP from a machine on the tailnet. Connecting the Tailscale API account alone does not give Infrawrench Cloud a route into your private network. Public SSH access remains available as before.
 
+## Agent VMs
+
+[Agents](./agents.md) can enroll every VM they create: tick your Tailscale account under **Services** in the Agents configuration menu. Setup installs Tailscale once the VM is ready, and deleting the session removes the device from the tailnet. A [T3 Code](./t3-code.md#reaching-the-server-over-tailscale-instead) server can then be reached over the tailnet with Tailscale Serve instead of T3 Connect.
+
 ## Troubleshooting
 
 - **"Check that the tailscaled service is running"**: the client is installed but its daemon is not running. This is common in containers and on hosts without systemd. Start `tailscaled` on the server, then try again.

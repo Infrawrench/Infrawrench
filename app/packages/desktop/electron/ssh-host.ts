@@ -10,6 +10,7 @@ import {
   getActiveTunnels,
   sshExecCommand,
   workflowSshExec,
+  workflowSshExecScript,
   workflowSshStreamStart,
   workflowSshStreamRead,
   workflowSshStreamClose,
@@ -85,6 +86,18 @@ ipcMain.handle(
       skipHostKeyCheck,
     }: { config: WorkflowSshConfig; command: string; skipHostKeyCheck?: boolean },
   ) => workflowSshExec(config, command, skipHostKeyCheck),
+);
+
+ipcMain.handle(
+  "workflow_ssh_exec_script",
+  (
+    _e,
+    {
+      config,
+      script,
+      skipHostKeyCheck,
+    }: { config: WorkflowSshConfig; script: string; skipHostKeyCheck?: boolean },
+  ) => workflowSshExecScript(config, script, skipHostKeyCheck),
 );
 
 ipcMain.handle(

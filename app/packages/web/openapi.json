@@ -29054,6 +29054,20 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "serviceAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Accounts whose plugin installs a service on the VM over SSH after setup (e.g. Tailscale). See GET /resources/ssh-install/accounts."
+          },
+          "t3Access": {
+            "type": "string",
+            "enum": [
+              "t3-connect",
+              "tailscale"
+            ]
           }
         },
         "required": [
@@ -29062,6 +29076,29 @@
           "resourceTypeId",
           "tool",
           "fields"
+        ],
+        "additionalProperties": false
+      },
+      "AgentServiceInstall": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "pluginId",
+          "message"
         ],
         "additionalProperties": false
       },
@@ -29102,6 +29139,26 @@
               "terminal",
               "t3-code"
             ]
+          },
+          "serviceAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Accounts whose plugin installs a service on the VM over SSH after setup (e.g. Tailscale). See GET /resources/ssh-install/accounts."
+          },
+          "t3Access": {
+            "type": "string",
+            "enum": [
+              "t3-connect",
+              "tailscale"
+            ]
+          },
+          "serviceInstalls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentServiceInstall"
+            }
           },
           "branchName": {
             "type": "string"

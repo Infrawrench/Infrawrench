@@ -30,7 +30,16 @@ import { requirePermission } from "../../auth/permissions";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { buildAad, decrypt, encrypt } from "../../services/encryption";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
-import { createT3CodeSetupPlan } from "@infrawrench/ui/agents/t3-code";
+import {
+  createT3CodeSetupPlan,
+  resolveT3CodeAccess,
+  t3CodeAccessOrDefault,
+} from "@infrawrench/ui/agents/t3-code";
+import {
+  publicServiceInstalls,
+  releaseAgentServices,
+  resolveAgentServiceAccounts,
+} from "../../services/agent-services";
 import {
   createAgentSetupPlanForRepo,
   ensureAgentVmSetupForSession,
@@ -138,6 +147,8 @@ app.get("/settings", async (c) => {
     tool: row.tool,
     surface: agentSurfaceOrDefault(row.surface),
     fields: row.fieldsJson,
+    serviceAccountIds: row.serviceAccountIds ?? [],
+    t3Access: t3CodeAccessOrDefault(row.t3Access),
   });
 });
 
@@ -151,9 +162,13 @@ app.put("/settings", async (c) => {
     tool: string;
     surface?: string;
     fields: Record<string, string>;
+    serviceAccountIds?: string[];
+    t3Access?: string;
   }>();
   const id = `${organizationId}:default`;
   const surface = agentSurfaceOrDefault(body.surface);
+  const services = await resolveAgentServiceAccounts(organizationId, body.serviceAccountIds);
+  const t3Access = resolveT3CodeAccess(body.t3Access, services.pluginIds);
   const values = {
     accountId: body.accountId,
     pluginId: body.pluginId,
@@ -161,13 +176,15 @@ app.put("/settings", async (c) => {
     tool: body.tool,
     surface,
     fieldsJson: body.fields ?? {},
+    serviceAccountIds: services.accountIds,
+    t3Access,
     updatedAt: new Date(),
   };
   await db
     .insert(agentSettings)
     .values({ id, organizationId, ...values })
     .onConflictDoUpdate({ target: agentSettings.id, set: values });
-  return c.json({ ...body, surface });
+  return c.json({ ...body, surface, serviceAccountIds: services.accountIds, t3Access });
 });
 
 app.get("/sessions", async (c) => {
@@ -206,6 +223,8 @@ app.post("/sessions", async (c) => {
       tool: string;
       surface?: string;
       fields: Record<string, string>;
+      serviceAccountIds?: string[];
+      t3Access?: string;
     };
   }>();
   const tool: AgentTool = body.settings.tool === "claude-code" ? "claude-code" : "codex";
@@ -224,6 +243,22 @@ app.post("/sessions", async (c) => {
       );
     }
   }
+  const services = await resolveAgentServiceAccounts(
+    organizationId,
+    body.settings.serviceAccountIds,
+  );
+  if (services.accountIds.length !== (body.settings.serviceAccountIds?.length ?? 0)) {
+    return c.json(
+      { error: "An attached service account was not found or cannot install over SSH" },
+      400,
+    );
+  }
+  const t3Access = isT3CodeSurface(surface)
+    ? resolveT3CodeAccess(body.settings.t3Access, services.pluginIds)
+    : "t3-connect";
+  if (isT3CodeSurface(surface) && t3CodeAccessOrDefault(body.settings.t3Access) !== t3Access) {
+    return c.json({ error: "T3 Code over Tailscale needs a Tailscale account attached" }, 400);
+  }
   const id = randomUUID();
   const isT3Code = isT3CodeSurface(surface);
   const projectName =
@@ -232,7 +267,7 @@ app.post("/sessions", async (c) => {
     ? T3_CODE_PROJECTS_DIR
     : body.workspaceName?.trim() || projectNameFromRepo(repo) || projectName;
   const setupPlan = isT3Code
-    ? createT3CodeSetupPlan(tool)
+    ? createT3CodeSetupPlan(tool, t3Access)
     : createAgentSetupPlanForRepo(repo, tool, workspaceName);
   const logs = [
     isT3Code ? "T3 Code server session created." : "Agent session created.",
@@ -302,6 +337,8 @@ app.post("/sessions", async (c) => {
     resourceTypeId: body.settings.resourceTypeId,
     tool,
     surface,
+    serviceAccountIds: services.accountIds,
+    t3Access,
     // Kept non-empty for T3 Code servers too: nothing checks it out, but a
     // blank branch reads as data loss in the session row.
     branchName: branchName(id),
@@ -347,7 +384,7 @@ app.post("/sessions/:id/open", async (c) => {
   // because nothing is being attached.
   if (isT3CodeSurface(row.surface)) {
     return c.json({
-      command: buildT3CodeConnectCommand({ tool }),
+      command: buildT3CodeConnectCommand({ tool, access: t3CodeAccessOrDefault(row.t3Access) }),
       cwd: `~/${row.workspaceName}`,
       sshKeyId: agentKey.id,
       sshKeyName: agentKey.name,
@@ -409,6 +446,9 @@ app.delete("/sessions/:id", async (c) => {
       await db.delete(resources).where(eq(resources.id, row.vmResourceId));
     }
   }
+  // The VM is gone; let attached services forget it too (e.g. remove the
+  // tailnet device, which would otherwise linger offline).
+  await releaseAgentServices(row, organizationId);
   await db.delete(agentSessions).where(eq(agentSessions.id, row.id));
   agentVmVerifyBackoff.delete(row.id);
   agentSessionNotFoundStreak.delete(row.id);
@@ -459,6 +499,9 @@ function rowToSession(row: typeof agentSessions.$inferSelect) {
     resourceTypeId: row.resourceTypeId,
     tool: row.tool,
     surface: agentSurfaceOrDefault(row.surface),
+    serviceAccountIds: row.serviceAccountIds ?? [],
+    t3Access: t3CodeAccessOrDefault(row.t3Access),
+    serviceInstalls: publicServiceInstalls(row.serviceInstallsJson),
     branchName: row.branchName,
     status: row.status,
     vmResourceId: row.vmResourceId,

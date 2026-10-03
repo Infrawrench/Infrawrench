@@ -6,6 +6,7 @@ import type {
   AgentSettings,
   AgentVmAccount,
 } from "@infrawrench/ui/agents";
+import type { SshInstallAccount } from "@infrawrench/plugin-base";
 import { jsonInit, jsonOrThrow } from "./cookie-json";
 
 export function createWebAgentClient(orgId: string): AgentClient {
@@ -13,6 +14,11 @@ export function createWebAgentClient(orgId: string): AgentClient {
   return {
     listAccounts: () =>
       fetch(`${base}/accounts`, jsonInit("GET")).then((r) => jsonOrThrow<AgentVmAccount[]>(r)),
+    // The same list the resource page's "Install service…" offers.
+    listServiceAccounts: () =>
+      fetch(`/api/org/${orgId}/resources/ssh-install/accounts`, jsonInit("GET")).then((r) =>
+        jsonOrThrow<SshInstallAccount[]>(r),
+      ),
     getSettings: () =>
       fetch(`${base}/settings`, jsonInit("GET")).then((r) => jsonOrThrow<AgentSettings | null>(r)),
     saveSettings: (settings) =>

@@ -213,7 +213,11 @@ export async function installOnSsh(
   return result;
 }
 
-function addressOf(status: Status): { address?: string } {
+/** The tailnet address, plus the node id as the result's `ref` for cleanup. */
+function addressOf(status: Status): { address?: string; ref?: string } {
   const address = status.Self?.TailscaleIPs?.[0];
-  return address ? { address } : {};
+  return {
+    ...(address ? { address } : {}),
+    ...(status.Self?.ID ? { ref: status.Self.ID } : {}),
+  };
 }

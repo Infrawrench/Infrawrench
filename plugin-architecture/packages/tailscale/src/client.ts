@@ -208,6 +208,13 @@ export class TailscaleClient implements PluginClient {
     });
   }
 
+  /** Remove the device an enrollment created; `ref` is its node id. */
+  async releaseSshInstall(ref: string): Promise<void> {
+    const device = (await this.devices()).find((d) => d.nodeId === ref || d.id === ref);
+    if (!device) return;
+    await this.request(`/device/${encodeURIComponent(device.nodeId || device.id)}`, "DELETE");
+  }
+
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     return {
       title: resource.displayName,

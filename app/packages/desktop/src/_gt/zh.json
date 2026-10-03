@@ -9992,5 +9992,13 @@
   "195afba5a217d0d5": "Tailscale 已安装，设备已获批准。几秒钟内将显示为已连接。",
   "2cdb7e3723325d02": "Tailscale 已安装，但此账户无法批准该设备。请在你的 tailnet 中批准它以完成连接。",
   "8ff3e759dfa3c994": "无法撤销临时注册密钥。它将在五分钟后自动过期。",
-  "455f5b9fa2db94e4": "此服务器已连接到此 tailnet。"
+  "455f5b9fa2db94e4": "此服务器已连接到此 tailnet。",
+  "aa2d44925f74e678": "T3 Code 访问方式",
+  "6c1b87438bb6d76f": "设置完成后，通过 SSH 安装到 VM 上。",
+  "1192f2220170bb39": "通过 Tailscale 访问",
+  "950ceeffe207b2c2": {
+    "t": "p",
+    "i": 1,
+    "c": "服务器通过 Tailscale Serve（而非 T3 Connect）发布到你的 tailnet，因此无需 T3 账户。授权服务器会输出一个配对链接，用于 T3 Code 的 Add environment。你的 tailnet 需要启用 MagicDNS 和 HTTPS 证书。"
+  }
 }

@@ -58,8 +58,11 @@ export {
   createT3CodeSetupPlan,
   isT3CodeSurface,
   parseT3CodeConnectStatus,
+  resolveT3CodeAccess,
+  t3CodeAccessOrDefault,
   t3CodeConnectNextStep,
   T3_CODE_HOSTED_APP_URL,
+  T3_CODE_TAILSCALE_PLUGIN_ID,
   T3_CODE_NODE_ENGINE_RANGE,
   T3_CODE_NODE_VERSION,
   T3_CODE_PROJECTS_DIR,
@@ -79,6 +82,7 @@ export type {
   AgentRuntimeLanguage,
   AgentRuntimePlan,
   AgentRuntimeVersionSource,
+  AgentServiceInstall,
   AgentSession,
   AgentSettings,
   AgentSetupPlan,
@@ -87,6 +91,7 @@ export type {
   AgentSurface,
   AgentTool,
   AgentVmAccount,
+  T3CodeAccess,
 } from "./agents/types.js";
 export { NO_AGENT_LAUNCH_DEFAULTS } from "./agents/types.js";
 export { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./agents/open-ssh-tab.js";

@@ -10209,5 +10209,13 @@
   "195afba5a217d0d5": "Tailscale está instalado y el dispositivo está aprobado. Aparecerá como conectado en unos segundos.",
   "2cdb7e3723325d02": "Tailscale está instalado, pero esta cuenta no pudo aprobar el dispositivo. Apruébalo en tu tailnet para completar la conexión.",
   "8ff3e759dfa3c994": "No se pudo revocar la clave de registro temporal. Caduca automáticamente a los cinco minutos.",
-  "455f5b9fa2db94e4": "Este servidor ya está conectado a este tailnet."
+  "455f5b9fa2db94e4": "Este servidor ya está conectado a este tailnet.",
+  "aa2d44925f74e678": "Acceso a T3 Code",
+  "6c1b87438bb6d76f": "Se instala en la VM por SSH una vez configurada.",
+  "1192f2220170bb39": "Accesible mediante Tailscale",
+  "950ceeffe207b2c2": {
+    "t": "p",
+    "i": 1,
+    "c": "El servidor se publica en tu tailnet con Tailscale Serve en lugar de T3 Connect, por lo que no se necesita una cuenta de T3. Autorizar servidor imprime un enlace de emparejamiento para Add environment de T3 Code. Tu tailnet debe tener MagicDNS y los certificados HTTPS habilitados."
+  }
 }

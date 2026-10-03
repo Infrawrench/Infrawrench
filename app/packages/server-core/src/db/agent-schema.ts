@@ -19,6 +19,13 @@ export const agentSettings = pgTable("agent_settings", {
   // surface, not an agent, so a t3-code session still installs codex/claude.
   surface: text("surface").notNull().default("terminal"),
   fieldsJson: jsonb("fields_json").$type<Record<string, string>>().notNull().default({}),
+  // Accounts whose plugin installs a service on the VM over SSH after setup
+  // (`sshInstall` plugins, e.g. Tailscale). Not FKs: a deleted account just
+  // stops being offered, it doesn't take the defaults row with it.
+  serviceAccountIds: jsonb("service_account_ids").$type<string[]>().notNull().default([]),
+  // T3 Code only: "t3-connect" (hosted relay) or "tailscale" (Tailscale
+  // Serve on the tailnet; needs a Tailscale service account attached).
+  t3Access: text("t3_access").notNull().default("t3-connect"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -40,6 +47,25 @@ export const agentSessions = pgTable(
     tool: text("tool").notNull().default("codex"),
     /** See `agentSettings.surface`. */
     surface: text("surface").notNull().default("terminal"),
+    /** See `agentSettings.serviceAccountIds`. */
+    serviceAccountIds: jsonb("service_account_ids").$type<string[]>().notNull().default([]),
+    /** See `agentSettings.t3Access`. */
+    t3Access: text("t3_access").notNull().default("t3-connect"),
+    // What each attached service's plugin reported after installing on the
+    // VM, including its opaque `ref` (e.g. a tailnet device id) so deleting
+    // the session can undo it. `ref` never leaves the server.
+    serviceInstallsJson: jsonb("service_installs_json")
+      .$type<
+        Array<{
+          accountId: string;
+          pluginId: string;
+          message: string;
+          address?: string;
+          ref?: string;
+        }>
+      >()
+      .notNull()
+      .default([]),
     branchName: text("branch_name").notNull(),
     status: text("status").notNull().default("pending"),
     vmResourceId: text("vm_resource_id"),
