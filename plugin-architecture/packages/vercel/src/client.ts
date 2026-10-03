@@ -12,6 +12,7 @@ import type {
   CostRow,
   LogsFetchParams,
   LogsFetchResult,
+  MetricSeries,
   SectionNode,
 } from "@infrawrench/plugin-base";
 import {
@@ -202,6 +203,17 @@ function fields(
     if (v != null) result[k] = v;
   }
   return result;
+}
+
+/** Default Metrics window: Web Analytics reports by hour or day, so a week reads well. */
+const WEB_ANALYTICS_DEFAULT_RANGE_MS = 7 * 86_400_000;
+
+/** One time bucket of a Web Analytics aggregate grouped by hour/day. */
+interface WebAnalyticsRow {
+  timestamp?: string;
+  pageviews?: number;
+  visitors?: number;
+  count?: number;
 }
 
 export class VercelClient implements PluginClient {
@@ -454,6 +466,62 @@ export class VercelClient implements PluginClient {
       default:
         return [];
     }
+  }
+
+  /**
+   * Project traffic from the Web Analytics API
+   * (`GET /v1/query/web-analytics/{visits,events}/aggregate`), bucketed by
+   * hour for ranges up to three days and by day beyond that. The API filters
+   * to production by default and only answers for projects with Web
+   * Analytics enabled; a disabled project yields no series rather than an
+   * error.
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "vercel-project") return [];
+    const projectId = resourceId.split(":").slice(2).join(":");
+    if (!projectId) return [];
+
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = timeRange?.startMs ?? endMs - WEB_ANALYTICS_DEFAULT_RANGE_MS;
+    const bucket = endMs - startMs <= 3 * 86_400_000 ? "hour" : "day";
+    const query = (dataset: "visits" | "events") =>
+      `/v1/query/web-analytics/${dataset}/aggregate?projectId=${encodeURIComponent(projectId)}` +
+      `&by=${bucket}&since=${startMs}&until=${endMs}`;
+
+    const read = async (dataset: "visits" | "events"): Promise<WebAnalyticsRow[]> => {
+      try {
+        const res = await this.fetch<{ data?: unknown }>(query(dataset));
+        return Array.isArray(res.data) ? (res.data as WebAnalyticsRow[]) : [];
+      } catch {
+        return [];
+      }
+    };
+    const [visits, events] = await Promise.all([read("visits"), read("events")]);
+
+    const toSeries = (
+      rows: WebAnalyticsRow[],
+      key: "pageviews" | "visitors" | "count",
+      label: string,
+      unit: string,
+    ): MetricSeries | null => {
+      const points = rows
+        .map((r) => ({ timestamp: Date.parse(String(r.timestamp ?? "")), value: Number(r[key]) }))
+        .filter((pt) => Number.isFinite(pt.timestamp) && Number.isFinite(pt.value))
+        .sort((a, b) => a.timestamp - b.timestamp);
+      return points.length > 0 ? { label, unit, points } : null;
+    };
+
+    return [
+      toSeries(visits, "pageviews", "Page Views", "views"),
+      toSeries(visits, "visitors", "Visitors", "visitors"),
+      toSeries(events, "count", "Custom Events", "events"),
+      toSeries(events, "visitors", "Event Visitors", "visitors"),
+    ].filter((s): s is MetricSeries => s != null);
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
@@ -1491,6 +1559,7 @@ export class VercelClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: `Vercel Project${framework !== "—" ? ` · ${framework}` : ""}`,
+      metricsCapability: { defaultTimeRangeMs: WEB_ANALYTICS_DEFAULT_RANGE_MS },
       status: {
         kind: "status-dot",
         status: paused
