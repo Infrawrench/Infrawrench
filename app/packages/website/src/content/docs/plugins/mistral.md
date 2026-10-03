@@ -48,6 +48,15 @@ Each month's spend is recorded **on the first day of that month** — the whole 
 
 If you collected Mistral costs before August 2026, an earlier version dated the running monthly total to a date that moved with each collection, which made a month sum to several times its real value. The next collection after upgrading rewrites the month on its first day and clears the stale dates automatically — no manual step, and nothing to delete.
 
+## Metrics and logs
+
+Models and agents have **Metrics** and **Logs** tabs fed by [Mistral Studio Observability](https://docs.mistral.ai/studio/observability), the OpenTelemetry trace store behind the Studio Trace Explorer. Observability is in Private Preview for Enterprise organizations, and reading traces needs the Org Admin, Workspace Admin or Observability Viewer role; without it both tabs stay empty and the Logs tab says why. Traces only exist for calls made through instrumented code (Mistral SDK telemetry, Workflows, Vibe, or your own OpenTelemetry exporter), and they are kept for 30 days.
+
+- **Models** chart their own LLM calls, read from spans whose requested or responding model is this one: calls, errored calls, p50 and p95 latency, and input, output and cached input tokens. The Logs tab lists recent calls, one line each with status, duration, token counts, finish reason and trace id.
+- **Agents** chart their runs, read from traces carrying the agent's id: runs, errored runs, p50 and p95 run duration, input and output tokens, and LLM and tool calls per run. The Logs tab lists recent runs with the same per-run figures and the models each one used.
+
+The figures come from `POST /v1/observability/spans/aggregate` and `POST /v1/observability/traces/aggregate` on the workspace key; no Admin API key is involved.
+
 ## Tips & limits
 
 - **Pagination is genuinely inconsistent** across Mistral's API and the plugin handles each case separately: `/models` takes no pagination parameters at all, files, batch jobs, and fine-tuning jobs use `page`/`page_size`, and voices and admin API keys use `limit`/`offset`.
