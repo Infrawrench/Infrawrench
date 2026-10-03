@@ -23,5 +23,8 @@ export const WorkspaceResourceType = rt({
   outputs: [o("endpoint", "API Endpoint")],
   supportsDelete: false,
   pinnable: true,
+  // Daily jobs, failures, billed minutes and processing time, bucketed from
+  // the pre-recorded and live job history (Gladia has no usage endpoint).
+  supportsMetrics: true,
   iconKey: "workspace",
 });

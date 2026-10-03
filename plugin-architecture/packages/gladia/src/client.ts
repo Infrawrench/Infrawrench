@@ -2,6 +2,7 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  MetricSeries,
   PluginClient,
   ResourceInstance,
   SidebarItemSchema,
@@ -33,6 +34,11 @@ const PAGE_SIZE = 50;
 
 /** Hard cap on `next`-following so a huge history can't hang a sidebar load. */
 const MAX_LIST_PAGES = 4;
+
+/** Page size and page cap for the Metrics walk: at most 2,000 jobs per endpoint. */
+const METRICS_PAGE_SIZE = 100;
+const MAX_METRICS_PAGES = 20;
+const DAY_MS = 86_400_000;
 
 /** Poll cadence for a pre-recorded job. The docs' own sample polls at 1 s. */
 const POLL_INTERVAL_MS = 3000;
@@ -619,6 +625,142 @@ export class GladiaClient implements PluginClient {
     return out.slice(0, max);
   }
 
+  /**
+   * Every job of one kind created inside a window, using the list endpoints'
+   * own `after_date`/`before_date` filters so the walk never pages past it.
+   */
+  private async fetchJobsBetween(
+    typeId: JobTypeId,
+    startMs: number,
+    endMs: number,
+  ): Promise<GladiaJob[]> {
+    const out: GladiaJob[] = [];
+    let offset = 0;
+    for (let page = 0; page < MAX_METRICS_PAGES; page++) {
+      const query = new URLSearchParams({
+        offset: String(offset),
+        limit: String(METRICS_PAGE_SIZE),
+        after_date: new Date(startMs).toISOString(),
+        before_date: new Date(endMs).toISOString(),
+      });
+      const body = await this.fetch<GladiaListResponse>(`${JOB_PATHS[typeId]}?${query.toString()}`);
+      const items = body.items ?? [];
+      out.push(...items);
+      if (!body.next || items.length === 0) break;
+      offset += items.length;
+    }
+    return out;
+  }
+
+  /**
+   * The workspace's Metrics tab. Gladia has no usage endpoint, so this is the
+   * job history bucketed by day: pre-recorded jobs, failures, billed minutes
+   * (`result.metadata.billing_time`, which is audio duration times distinct
+   * channels) split by model when more than one is in use, processing time
+   * (`transcription_time`), and the same counts for live sessions.
+   * https://docs.gladia.io/api-reference/v2/pre-recorded/list
+   * https://docs.gladia.io/api-reference/v2/live/list
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "workspace") return [];
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = timeRange?.startMs ?? endMs - 30 * DAY_MS;
+    const [jobs, live] = await Promise.all([
+      this.fetchJobsBetween("transcription", startMs, endMs),
+      // Live history is a separate list; a failure there keeps the batch charts.
+      this.fetchJobsBetween("live-session", startMs, endMs).catch(() => [] as GladiaJob[]),
+    ]);
+
+    const stamps: number[] = [];
+    for (let t = Math.floor(startMs / DAY_MS) * DAY_MS; t <= endMs; t += DAY_MS) stamps.push(t);
+    const dayOf = (job: GladiaJob): number | undefined => {
+      const at = Date.parse(str(job.created_at));
+      if (!Number.isFinite(at) || at < startMs || at > endMs) return undefined;
+      return Math.floor(at / DAY_MS) * DAY_MS;
+    };
+    const tally = (items: GladiaJob[], read: (job: GladiaJob) => number): Map<number, number> => {
+      const out = new Map<number, number>();
+      for (const job of items) {
+        const day = dayOf(job);
+        if (day !== undefined) out.set(day, (out.get(day) ?? 0) + read(job));
+      }
+      return out;
+    };
+    const line = (label: string, unit: string, values: Map<number, number>): MetricSeries => ({
+      label,
+      unit,
+      points: stamps.map((t) => ({ timestamp: t, value: Number((values.get(t) ?? 0).toFixed(2)) })),
+    });
+    const billedMinutes = (job: GladiaJob): number =>
+      (num(job.result?.metadata?.billing_time) ?? 0) / 60;
+
+    const series: MetricSeries[] = [
+      line(
+        "Transcriptions",
+        "count",
+        tally(jobs, () => 1),
+      ),
+      line(
+        "Failed transcriptions",
+        "count",
+        tally(jobs, (j) => (str(j.status) === "error" ? 1 : 0)),
+      ),
+      line("Billed minutes", "minutes", tally(jobs, billedMinutes)),
+    ];
+    const models = [...new Set(jobs.map((j) => str(j.request_params?.model)).filter(Boolean))];
+    if (models.length > 1) {
+      for (const model of models.sort()) {
+        series.push(
+          line(
+            `Billed minutes: ${model}`,
+            "minutes",
+            tally(jobs, (j) => (str(j.request_params?.model) === model ? billedMinutes(j) : 0)),
+          ),
+        );
+      }
+    }
+    // Average processing time per finished job; days without one are omitted
+    // rather than plotted as zero.
+    const processing = new Map<number, { sum: number; count: number }>();
+    for (const job of jobs) {
+      const day = dayOf(job);
+      const seconds = num(job.result?.metadata?.transcription_time);
+      if (day === undefined || seconds === undefined || str(job.status) !== "done") continue;
+      const acc = processing.get(day) ?? { sum: 0, count: 0 };
+      acc.sum += seconds;
+      acc.count += 1;
+      processing.set(day, acc);
+    }
+    if (processing.size > 0) {
+      series.push({
+        label: "Avg processing time",
+        unit: "seconds",
+        points: [...processing.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([timestamp, acc]) => ({
+            timestamp,
+            value: Number((acc.sum / acc.count).toFixed(1)),
+          })),
+      });
+    }
+    if (live.some((j) => dayOf(j) !== undefined)) {
+      series.push(
+        line(
+          "Live sessions",
+          "count",
+          tally(live, () => 1),
+        ),
+        line("Live billed minutes", "minutes", tally(live, billedMinutes)),
+      );
+    }
+    return series;
+  }
+
   private mapJob(
     accountId: string,
     job: GladiaJob,
@@ -813,6 +955,9 @@ export class GladiaClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // Daily jobs, failures, billed minutes and processing time, bucketed
+      // from the pre-recorded and live job history.
+      metricsCapability: { defaultTimeRangeMs: 30 * DAY_MS },
       speechPanel: {
         modes: ["stt"],
         tabLabel: "Speech",

@@ -340,3 +340,90 @@ describe("live sessions", () => {
     expect(workspace?.fields["sampledLiveBillingTime"]).toBe(8.4);
   });
 });
+
+describe("workspace metrics", () => {
+  const day = Date.UTC(2026, 8, 1);
+  const range = { startMs: day, endMs: day + 2 * 86_400_000 - 1 };
+  const job = (id: string, created: string, model: string, billed: number, status = "done") => ({
+    id,
+    status,
+    created_at: created,
+    request_params: { model },
+    result:
+      status === "done"
+        ? { metadata: { audio_duration: billed, billing_time: billed, transcription_time: 6 } }
+        : null,
+  });
+
+  it("buckets pre-recorded and live history by day inside the window", async () => {
+    const urls: string[] = [];
+    installFetch((url) => {
+      urls.push(url);
+      if (url.includes("/v2/live")) {
+        return jsonResponse({
+          next: null,
+          items: [
+            {
+              id: "l1",
+              status: "done",
+              created_at: "2026-09-02T08:00:00.000Z",
+              result: { metadata: { billing_time: 600 } },
+            },
+          ],
+        });
+      }
+      return jsonResponse({
+        next: null,
+        items: [
+          job("a", "2026-09-01T10:00:00.000Z", "solaria-1", 120),
+          job("b", "2026-09-01T11:00:00.000Z", "solaria-3", 60),
+          job("c", "2026-09-02T10:00:00.000Z", "solaria-1", 0, "error"),
+        ],
+      });
+    });
+    const series = await client().fetchMetricSeries(
+      "workspace",
+      `${ACCOUNT}:workspace:default`,
+      ACCOUNT,
+      range,
+    );
+    const prerecorded = new URL(urls.find((u) => u.includes("/v2/pre-recorded"))!);
+    expect(prerecorded.searchParams.get("after_date")).toBe(new Date(range.startMs).toISOString());
+    expect(prerecorded.searchParams.get("before_date")).toBe(new Date(range.endMs).toISOString());
+    expect(series.map((s) => s.label)).toEqual([
+      "Transcriptions",
+      "Failed transcriptions",
+      "Billed minutes",
+      "Billed minutes: solaria-1",
+      "Billed minutes: solaria-3",
+      "Avg processing time",
+      "Live sessions",
+      "Live billed minutes",
+    ]);
+    expect(series[0]!.points.map((p) => p.value)).toEqual([2, 1]);
+    expect(series[1]!.points.map((p) => p.value)).toEqual([0, 1]);
+    expect(series[2]!.points.map((p) => p.value)).toEqual([3, 0]);
+    expect(series[5]!.points).toEqual([{ timestamp: day, value: 6 }]);
+    expect(series[7]!.points.map((p) => p.value)).toEqual([0, 10]);
+  });
+
+  it("keeps the batch charts when the live list fails", async () => {
+    installFetch((url) =>
+      url.includes("/v2/live")
+        ? jsonResponse({ message: "boom" }, 500)
+        : jsonResponse({ next: null, items: [job("a", "2026-09-01T10:00:00Z", "solaria-1", 60)] }),
+    );
+    const series = await client().fetchMetricSeries(
+      "workspace",
+      `${ACCOUNT}:workspace:default`,
+      ACCOUNT,
+      range,
+    );
+    expect(series.map((s) => s.label)).toEqual([
+      "Transcriptions",
+      "Failed transcriptions",
+      "Billed minutes",
+      "Avg processing time",
+    ]);
+  });
+});
