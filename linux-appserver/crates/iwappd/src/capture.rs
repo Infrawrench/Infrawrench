@@ -2,7 +2,7 @@
 //! times, exit.
 //!
 //! This is how the compositor is smoke-tested without a client at the other
-//! end of the protocol — and how a human sees, in one command, whether a real
+//! end of the protocol, and how a human sees, in one command, whether a real
 //! application actually renders through it. It talks to the backend directly:
 //! no session, no encoder, no flow control, so a failure here is unambiguously
 //! the compositor's.

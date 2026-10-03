@@ -4,7 +4,7 @@
 //! alternative is a dependency tree running on someone else's machine: a
 //! full D-Bus crate brings an async runtime along, and everything here fits
 //! in the subset of the wire format the accessibility interfaces actually
-//! use — fixed integers, strings, object paths, signatures, arrays, structs
+//! use: fixed integers, strings, object paths, signatures, arrays, structs
 //! and variants. No file-descriptor passing, no dict entries.
 //!
 //! Only little-endian peers are decoded. Every toolkit we can reach runs on
@@ -20,7 +20,7 @@ pub const TYPE_METHOD_RETURN: u8 = 2;
 pub const TYPE_ERROR: u8 = 3;
 pub const TYPE_SIGNAL: u8 = 4;
 
-/// `NO_REPLY_EXPECTED` — a caller that set it must not be sent a return.
+/// `NO_REPLY_EXPECTED`: a caller that set it must not be sent a return.
 pub const FLAG_NO_REPLY: u8 = 0x1;
 
 const FIELD_PATH: u8 = 1;
@@ -120,7 +120,7 @@ impl Writer {
         self.buf.push(0);
     }
 
-    /// `(so)` — the object reference AT-SPI passes everywhere.
+    /// `(so)`: the object reference AT-SPI passes everywhere.
     pub fn name_and_path(&mut self, name: &str, path: &str) {
         self.align(8);
         self.string(name);
@@ -224,7 +224,7 @@ impl<'a> Reader<'a> {
         self.align(8)
     }
 
-    /// Reads `(so)` — the object reference AT-SPI passes everywhere.
+    /// Reads `(so)`: the object reference AT-SPI passes everywhere.
     pub fn name_and_path(&mut self) -> Result<(String, String), DbusError> {
         self.enter_struct()?;
         Ok((self.string()?, self.string()?))
@@ -515,7 +515,7 @@ impl Connection {
     }
 
     /// Send a call and wait for its reply, handing every *other* inbound
-    /// message to `sideline` — incoming method calls (an application embedding
+    /// message to `sideline`: incoming method calls (an application embedding
     /// itself mid-walk) must keep being answered or its toolkit stalls.
     pub fn call(
         &mut self,

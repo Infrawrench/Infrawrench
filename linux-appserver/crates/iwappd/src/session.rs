@@ -2,8 +2,8 @@
 //!
 //! Deliberately synchronous and side-effect-free at the edges: frames and
 //! backend events go in, wire frames come out of an outbox. No sockets, no
-//! threads, no clock. That is what makes flow control — the part most likely
-//! to be subtly wrong — testable without a compositor.
+//! threads, no clock. That is what makes flow control: the part most likely
+//! to be subtly wrong: testable without a compositor.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ pub struct SessionConfig {
     ///
     /// `dbus-run-session --`, on a host with no session bus of its own. It is
     /// a prefix rather than an environment variable because that is the only
-    /// way to give an application a bus that did not exist before it started —
+    /// way to give an application a bus that did not exist before it started,
     /// and GTK4 does not start without one.
     pub launch_prefix: Vec<String>,
     /// Frames a window may have in flight before we stop encoding for it.
@@ -46,7 +46,7 @@ impl Default for SessionConfig {
             session_id: "session".into(),
             version: env!("CARGO_PKG_VERSION").into(),
             caps: ServerCaps {
-                // Compiled in, so it holds for every build — the two call
+                // Compiled in, so it holds for every build: the two call
                 // sites that resolve the rest of the caps from the host say
                 // the same thing.
                 jpeg: true,
@@ -112,7 +112,7 @@ pub struct Session<B: Backend, C: Catalog> {
     windows: HashMap<u32, Window>,
     outbox: Vec<Vec<u8>>,
     /// Accessibility requests waiting for the serve loop to hand to the AT-SPI
-    /// thread — the session is synchronous and a tree walk is not.
+    /// thread: the session is synchronous and a tree walk is not.
     pending_a11y: Vec<(u32, u32)>,
 }
 
@@ -137,8 +137,8 @@ impl<B: Backend, C: Catalog> Session<B, C> {
     }
 
     /// Forward one mixed chunk to the client. Gated on the client having
-    /// declared the capability — an unknown frame kind is a protocol error on
-    /// the other end, not a skipped frame — and on the viewer's mute.
+    /// declared the capability (an unknown frame kind is a protocol error on
+    /// the other end, not a skipped frame) and on the viewer's mute.
     pub fn on_audio_chunk(&mut self, chunk: &AudioChunk) {
         if !self.wants_audio() {
             return;
@@ -218,7 +218,7 @@ impl<B: Backend, C: Catalog> Session<B, C> {
 
     fn on_input(&mut self, frame: Frame) {
         if !self.windows.contains_key(&frame.window_id) {
-            // Input racing a window close is normal — the user was still
+            // Input racing a window close is normal: the user was still
             // typing when the app exited. Drop it quietly rather than
             // reporting an error the client can do nothing about.
             return;
@@ -653,7 +653,7 @@ impl<B: Backend, C: Catalog> Session<B, C> {
                 // Nothing actually changed: the client's canvas is already
                 // right, so there is no frame and no in-flight slot spent. It
                 // still counts as a still frame, or a paused video would stay
-                // on the lossy tier — blurred, and with nothing coming that
+                // on the lossy tier: blurred, and with nothing coming that
                 // would ever sharpen it.
                 Ok(None) => self.observe_quiet(window_id),
                 Err(err) => {
@@ -667,7 +667,7 @@ impl<B: Backend, C: Catalog> Session<B, C> {
     /// Tell a window's tier selector that nothing changed this turn.
     ///
     /// Motion is measured per frame, so without this a window that simply stops
-    /// producing frames keeps whatever motion it last had — and a video that
+    /// producing frames keeps whatever motion it last had, and a video that
     /// was paused would sit on the lossy tier indefinitely, showing the user a
     /// JPEG of a still picture they are now reading.
     fn observe_quiet(&mut self, window_id: u32) {
@@ -1063,7 +1063,7 @@ mod tests {
             decode_ms: 1,
         }));
 
-        // Same pixels, damage reported anyway — the toolkit's usual behaviour.
+        // Same pixels, damage reported anyway: the toolkit's usual behaviour.
         for _ in 0..5 {
             s.on_backend_event(BackendEvent::WindowDamaged {
                 window_id: 1,
@@ -1269,7 +1269,7 @@ mod tests {
     #[test]
     fn a_window_in_motion_moves_to_the_lossy_tier_and_back() {
         // The user-visible arc: play a video, everything redraws, the window
-        // goes to JPEG; stop, and it comes back exact — with a keyframe,
+        // goes to JPEG; stop, and it comes back exact; with a keyframe,
         // because every pixel on screen is currently an approximation.
         let mut s = session();
         s.on_client_frame(hello(ClientCaps::default()));

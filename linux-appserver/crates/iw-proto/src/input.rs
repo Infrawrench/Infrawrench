@@ -61,7 +61,7 @@ pub enum InputEvent {
         keycode: u32,
         state: ButtonState,
     },
-    /// A keysym the current layout cannot reach with a plain keycode — dead
+    /// A keysym the current layout cannot reach with a plain keycode: dead
     /// keys, IME output, anything composed. The compositor binds a spare
     /// keycode to it, presses it, and restores the keymap.
     KeySym {

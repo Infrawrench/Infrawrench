@@ -28,8 +28,8 @@ use crate::session::{Session, SessionConfig};
 const TURN: Duration = Duration::from_millis(8);
 
 /// How often the loop reports what it has been doing, when it has been doing
-/// anything. One line per interval of *activity* — a quiet session says
-/// nothing — written to stderr, which both apps already forward into their
+/// anything. One line per interval of *activity*: a quiet session says
+/// nothing; written to stderr, which both apps already forward into their
 /// logs. Latency questions are otherwise unanswerable from the outside: the
 /// user sees "laggy" and everything below is a guess.
 const STATS_EVERY: Duration = Duration::from_secs(5);
@@ -47,7 +47,7 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
     let mut app_env = launch_env::launch_env(&env, &runtime_dir, backend.socket_name());
     // A GTK4 application with no session bus waits for one forever rather than
     // failing, so this is resolved once, here, where looking at the host is
-    // allowed — and reported, because "which bus" is the first question when an
+    // allowed, and reported, because "which bus" is the first question when an
     // application starts and never appears.
     let bus = launch_env::resolve_session_bus(
         &env,
@@ -74,7 +74,7 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
     };
 
     // The audio server. A failure to bind (exotic mount options, path length)
-    // costs audio, not the session — apps simply find no PulseAudio, exactly
+    // costs audio, not the session: apps simply find no PulseAudio, exactly
     // as they would on the bare host.
     let audio = {
         let waker = backend.waker();
@@ -227,7 +227,7 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
 
         // Compositing happens inside `dispatch`, in the commit handler, so the
         // two numbers separate "the host is slow at drawing" from "the host is
-        // slow at encoding" — which want completely different fixes.
+        // slow at encoding", which want completely different fixes.
         stats.record(
             dispatched.saturating_duration_since(turn_started),
             pump_started.elapsed(),

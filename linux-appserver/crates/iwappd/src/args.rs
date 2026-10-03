@@ -7,7 +7,7 @@
 pub enum Command {
     /// Speak the protocol over stdin/stdout. The normal mode.
     Serve,
-    /// Print the installed applications and exit — the mode `infrawrench apps
+    /// Print the installed applications and exit: the mode `infrawrench apps
     /// list` uses over a plain SSH exec, with no session at all.
     ListApps {
         json: bool,

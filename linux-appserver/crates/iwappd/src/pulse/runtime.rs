@@ -37,7 +37,7 @@ struct Shared {
     writers: HashMap<u64, Arc<Mutex<UnixStream>>>,
 }
 
-/// A running audio server. Dropping it does not stop the threads — call
+/// A running audio server. Dropping it does not stop the threads: call
 /// [`PulseRuntime::shutdown`], or let process exit take them (they hold no
 /// state worth flushing).
 pub struct PulseRuntime {
@@ -63,7 +63,7 @@ impl PulseRuntime {
         let _ = std::fs::remove_file(&self.socket_path);
         // And the directory `start` made for it. Removing the socket but not
         // its directory left an empty `iw-pulse-*` behind in the host's
-        // runtime dir after every session — small, but this whole binary is
+        // runtime dir after every session: small, but this whole binary is
         // built on leaving nothing on someone else's machine. `remove_dir`
         // rather than a recursive delete: anything else in there is not ours
         // and staying out of it is the correct failure.
@@ -80,7 +80,7 @@ fn wall_now() -> (u32, u32) {
     }
 }
 
-/// Bind the socket and start the threads. `dir` is created 0700 — Wayland's
+/// Bind the socket and start the threads. `dir` is created 0700: Wayland's
 /// rule about group-writable runtime directories is a good rule here too.
 /// `waker` is called after each chunk lands so the serve loop picks it up
 /// mid-turn instead of on its next timeout.

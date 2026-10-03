@@ -1,14 +1,14 @@
 //! Reaching keysyms the layout has no key for.
 //!
 //! The host's keymap is `us`, and a client on any other layout will eventually
-//! ask for a character it cannot produce — `£` on a UK keyboard, every accent
+//! ask for a character it cannot produce: `£` on a UK keyboard, every accent
 //! on a French one, anything an input method composed. There is no keycode to
 //! send for those, so the compositor makes one: a spare keycode is bound to the
 //! keysym, the keymap is handed to the application again, and the key is
 //! pressed.
 //!
 //! Two things make that affordable. The bindings accumulate rather than being
-//! swapped per keystroke — a language's worth of accents is a handful of keys,
+//! swapped per keystroke: a language's worth of accents is a handful of keys,
 //! and after the first few nothing changes. And the new keymap is built by
 //! *appending* to the one xkbcommon already compiled, rather than by asking it
 //! to resolve `include` directives again: the text this produces is
@@ -47,7 +47,7 @@ impl SpareKeys {
 
     /// The keycode for `keysym`, and whether the keymap has to be rebuilt.
     ///
-    /// Rebuilding is the expensive half — every client recompiles — so a
+    /// Rebuilding is the expensive half (every client recompiles) so a
     /// keysym that is already bound returns `false` and costs nothing.
     pub fn bind(&mut self, keysym: u32) -> (u32, bool) {
         if let Some(index) = self.bound.iter().position(|&s| s == keysym) {

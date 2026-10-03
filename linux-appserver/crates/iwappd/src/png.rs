@@ -3,7 +3,7 @@
 //! Dependency-free on purpose: this binary is uploaded to other people's
 //! machines, and a screenshot tool does not justify an image crate. The zlib
 //! stream uses stored (uncompressed) deflate blocks, which is a legal stream
-//! every decoder accepts — the files are large, but they exist to be looked at
+//! every decoder accepts: the files are large, but they exist to be looked at
 //! once, not shipped.
 
 /// Encode BGRA pixels (the compositor's native order) as an RGBA PNG.

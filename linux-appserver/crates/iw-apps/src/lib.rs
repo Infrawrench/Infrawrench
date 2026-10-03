@@ -2,7 +2,7 @@
 //! it is called, and what it looks like.
 //!
 //! Everything here is pure filesystem work with the environment passed in, so
-//! it builds and tests anywhere — which matters, because the compositor half of
+//! it builds and tests anywhere, which matters, because the compositor half of
 //! `iwappd` only builds on Linux and this is where most of the fiddly rules
 //! live.
 
@@ -33,8 +33,8 @@ use iw_proto::AppEntry;
 /// Raster and vector get separate caps because they fail differently. A 48px
 /// PNG is 1–3 KB and a bigger one can always be traded for a smaller size. A
 /// scalable SVG has no smaller size to fall back to, and on a stock Debian 13
-/// with GNOME apps installed the SVGs run 7–10 KB — Evince 7.5 KB, Nautilus
-/// 9.4 KB, Eye of GNOME 8.5 KB — while shipping no PNG at all. One shared 6 KB
+/// with GNOME apps installed the SVGs run 7–10 KB (Evince 7.5 KB, Nautilus
+/// 9.4 KB, Eye of GNOME 8.5 KB) while shipping no PNG at all. One shared 6 KB
 /// cap therefore left four of ten apps with no icon on a real host, which is
 /// how this pair of numbers was arrived at.
 #[derive(Debug, Clone, Copy)]
@@ -70,7 +70,7 @@ impl IconBudget {
 /// Resolve an icon name to a `data:` URL, stepping down through smaller sizes
 /// until one fits the budget.
 ///
-/// XPM is skipped outright — no browser renders it, so sending it would put a
+/// XPM is skipped outright: no browser renders it, so sending it would put a
 /// broken image in the tab bar. SVG is kept: it is text, it usually compresses
 /// to less than the PNG, and an `<img>` renders it natively.
 pub fn icon_data_url(resolver: &IconResolver, name: &str, budget: IconBudget) -> Option<String> {

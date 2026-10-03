@@ -4,7 +4,7 @@
 
 use super::tagstruct::TsWriter;
 
-/// Descriptor size: length, channel, offset (hi+lo), flags — five `u32`s.
+/// Descriptor size: length, channel, offset (hi+lo), flags; five `u32`s.
 pub const DESCRIPTOR_LEN: usize = 20;
 
 /// Control packets carry this channel.
@@ -122,7 +122,7 @@ pub fn reply_packet(seq: u32, payload: TsWriter) -> Vec<u8> {
     control_packet(cmd::REPLY, seq, &payload.into_bytes())
 }
 
-/// An empty reply — PulseAudio's ack.
+/// An empty reply: PulseAudio's ack.
 pub fn ack_packet(seq: u32) -> Vec<u8> {
     control_packet(cmd::REPLY, seq, &[])
 }

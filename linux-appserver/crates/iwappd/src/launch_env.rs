@@ -2,7 +2,7 @@
 //!
 //! This is where "works on a bare cloud VM" is won or lost. A stock server
 //! image has no GPU, frequently no mesa, and often no `XDG_RUNTIME_DIR` at
-//! all — the directory `/run/user/$UID` is created by pam_systemd at login,
+//! all: the directory `/run/user/$UID` is created by pam_systemd at login,
 //! and an SSH session on a minimal image may never have had one. Toolkits
 //! respond to that by trying GL and dying, so every one of them is pushed onto
 //! a software path explicitly.
@@ -128,13 +128,13 @@ pub fn apply_session_bus(env: &mut BTreeMap<String, String>, bus: &SessionBus) -
 }
 
 /// Turn the toolkits' AT-SPI bridges on and point them at the session bus,
-/// where our accessibility registry lives. Returns whether it did — which is
+/// where our accessibility registry lives. Returns whether it did, which is
 /// what [`iw_proto::ServerCaps::a11y`] reports to the client.
 ///
 /// Separate from [`launch_env`] for the same reason as the session bus: only
 /// the caller knows what was resolved. A per-application bus
-/// (`dbus-run-session`) is deliberately left alone — the tree would live on a
-/// private bus nobody else can dial — and so is a host with no bus at all.
+/// (`dbus-run-session`) is deliberately left alone (the tree would live on a
+/// private bus nobody else can dial) and so is a host with no bus at all.
 pub fn apply_a11y(env: &mut BTreeMap<String, String>, bus: &SessionBus) -> bool {
     let SessionBus::Address(address) = bus else {
         return false;
@@ -211,7 +211,7 @@ fn create_private_dir(path: &Path) -> std::io::Result<()> {
 #[cfg(unix)]
 pub fn current_uid() -> u32 {
     // SAFETY: getuid takes no arguments, touches no memory we own, and cannot
-    // fail — it is one of the few libc calls with no failure mode at all.
+    // fail; it is one of the few libc calls with no failure mode at all.
     unsafe { getuid() }
 }
 
@@ -233,7 +233,7 @@ pub fn current_uid() -> u32 {
 /// the most confusing failure the whole feature has.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionBus {
-    /// One is already reachable — inherited, or the per-user socket systemd
+    /// One is already reachable: inherited, or the per-user socket systemd
     /// puts in the runtime directory. Nothing to do but say where it is.
     Address(String),
     /// None reachable, but `dbus-run-session` is installed: each application
@@ -302,7 +302,7 @@ const SLUG_MAX: usize = 32;
 const SLUG_DIGEST_HEX: usize = 16;
 
 /// FNV-1a. Small, dependency-free, and used here only to keep distinct session
-/// ids apart in a fixed-width name — not for anything a caller could gain by
+/// ids apart in a fixed-width name, not for anything a caller could gain by
 /// forging.
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
@@ -317,7 +317,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 ///
 /// Truncation alone is not enough, and quietly was not: the ids we are handed
 /// are `<orgId>-<resourceId>`, and the first 32 characters of that are all
-/// organization — so every resource in an org shared one socket, and the
+/// organization, so every resource in an org shared one socket, and the
 /// second session to start on a host died with "socket name is already in
 /// use" rather than getting a namespace of its own. Anything that does not fit
 /// therefore keeps a readable prefix and lets a hash of the *whole* id carry
@@ -340,7 +340,7 @@ fn session_slug(session_id: &str) -> String {
 }
 
 /// The socket name for a session. Namespaced so two Infrawrench sessions on
-/// one host — a second browser tab, a colleague on the same box — do not
+/// one host (a second browser tab, a colleague on the same box) do not
 /// collide.
 pub fn wayland_display_name(session_id: &str) -> String {
     format!("wayland-iw-{}", session_slug(session_id))

@@ -1,7 +1,7 @@
 //! Spawning applications, and noticing when they die.
 //!
 //! An app that exits immediately is the single most common failure on a bare
-//! host — a missing shared library, a toolkit that cannot find a backend — so
+//! host (a missing shared library, a toolkit that cannot find a backend) so
 //! its stderr is captured and reported rather than swallowed. "Firefox failed
 //! to start" helps nobody; `libgtk-4.so.1: cannot open shared object file`
 //! is the whole answer.
@@ -34,7 +34,7 @@ fn signal_group(child: &Child, signal: i32) {
         return;
     }
     // SAFETY: `kill` reads no memory we own and cannot fail in a way that
-    // matters here — the process may already be gone, which is the outcome we
+    // matters here; the process may already be gone, which is the outcome we
     // wanted anyway.
     unsafe {
         libc_kill(-pid, signal);
@@ -94,7 +94,7 @@ impl Nursery {
     }
 
     /// Collect any application that has exited. Returns one entry per death
-    /// that looks like a failure — a clean exit after the user closed the
+    /// that looks like a failure: a clean exit after the user closed the
     /// window is not news.
     pub fn reap(&mut self) -> Vec<(Option<String>, String)> {
         let mut failures = Vec::new();
@@ -142,7 +142,7 @@ impl Nursery {
     /// Ask everything to exit, then insist.
     ///
     /// The asking matters. `Child::kill` is SIGKILL, and an application killed
-    /// outright never saves anything or tidies up — Firefox in particular
+    /// outright never saves anything or tidies up: Firefox in particular
     /// counts it as a crash and greets the *next* session with "we're having
     /// trouble getting your pages back", which is how a clean shutdown of ours
     /// shows up as a broken window of theirs.

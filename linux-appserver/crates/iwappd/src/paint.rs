@@ -1,9 +1,9 @@
 //! Compositing arithmetic: putting one surface's pixels onto a window canvas.
 //!
 //! No Wayland types and no Linux, deliberately. Everything here is rectangles
-//! and bytes, which is the half most likely to be subtly wrong — a scale
+//! and bytes, which is the half most likely to be subtly wrong: a scale
 //! conversion off by one draws a browser at half size in the corner of its own
-//! window — and keeping it out of the compositor module is what lets these
+//! window, and keeping it out of the compositor module is what lets these
 //! tests run on a laptop rather than only on a host with `libxkbcommon` to
 //! link against.
 
@@ -56,12 +56,12 @@ pub fn blit(target: &mut Target<'_>, src: &SurfaceView<'_>, ox: i32, oy: i32, cl
     // The viewport decides the mapping when the client set one. The motivating
     // client is Firefox's software renderer: it draws HiDPI content at full
     // device resolution into a buffer committed at scale **1** and declares the
-    // logical size through `wp_viewport` — reading that buffer by its scale
+    // logical size through `wp_viewport`; reading that buffer by its scale
     // alone draws the window magnified by the output scale and cropped to the
     // canvas, which is exactly how it looked. Without a viewport the mapping
-    // follows the scales: a surface tree may legally mix buffer scales — a
+    // follows the scales: a surface tree may legally mix buffer scales (a
     // toplevel that took the output's 2 with content in a subsurface that
-    // stayed at 1 — and copying those pixels one for one draws the child at
+    // stayed at 1) and copying those pixels one for one draws the child at
     // half its size in the corner of the window. Either way the source is
     // sampled rather than copied whenever source and destination disagree.
     let (sx0, sy0, sw, sh) = match src.src_rect {
@@ -93,7 +93,7 @@ pub fn blit(target: &mut Target<'_>, src: &SurfaceView<'_>, ox: i32, oy: i32, cl
     }
     let row_bytes = (x1 - x0) as usize * 4;
     // Identity when one buffer pixel lands on one canvas pixel, which is every
-    // window that is neither mixed-scale nor viewported — and also Firefox's
+    // window that is neither mixed-scale nor viewported, and also Firefox's
     // viewported content on a whole-scale output, where the device-resolution
     // buffer is exactly the destination.
     let identity = dst_w == sw && dst_h == sh;
@@ -113,8 +113,8 @@ pub fn blit(target: &mut Target<'_>, src: &SurfaceView<'_>, ox: i32, oy: i32, cl
         let row_start = src_y * src.width as usize * 4;
         let to = (y as usize * canvas_w as usize + x0 as usize) * 4;
 
-        // A surface whose format has no alpha — which is most of them, and
-        // every toplevel that fills its own window — is a row copy. Blending it
+        // A surface whose format has no alpha (which is most of them, and
+        // every toplevel that fills its own window) is a row copy. Blending it
         // pixel by pixel produces the identical result at roughly ten times the
         // cost.
         if src.opaque && identity {
@@ -165,13 +165,13 @@ pub fn clear_region(canvas: &mut [u8], canvas_w: u32, region: Rect) {
 
 /// The toplevel size in logical pixels, from what the viewer asked for.
 ///
-/// The viewer asks in the device pixels it will paint — its CSS box times its
-/// device pixel ratio — and Wayland configures a toplevel in *logical* pixels,
+/// The viewer asks in the device pixels it will paint (its CSS box times its
+/// device pixel ratio) and Wayland configures a toplevel in *logical* pixels,
 /// so the request divides back down by the ratio, recovering the CSS box. The
 /// division must be by the fractional ratio itself, not the whole buffer scale
 /// rounded up from it: dividing 1.5× pixels by 2 configures a window a quarter
 /// smaller than its box, the application lays out for that smaller window, and
-/// the viewer stretches every frame back up — everything drawn a third too
+/// the viewer stretches every frame back up; everything drawn a third too
 /// large, on any display whose ratio is not whole.
 pub fn logical_size(width: u32, height: u32, ratio: f32) -> (i32, i32) {
     let ratio = if ratio.is_finite() && ratio > 1.0 {
@@ -188,7 +188,7 @@ pub fn logical_size(width: u32, height: u32, ratio: f32) -> (i32, i32) {
 /// `position` is where the positioner put the box, relative to the toplevel's
 /// buffer origin; `bounds` is the window's own size when it is known. The
 /// protocol's flip/slide adjustments have already run by the time this is
-/// called — this is the backstop for a client that set no adjustment at all,
+/// called: this is the backstop for a client that set no adjustment at all,
 /// because a popup drawn outside the canvas is simply not drawn, which reads
 /// as a click that did nothing. When the popup is larger than the window it
 /// pins to the top-left so at least its origin is visible.
@@ -209,7 +209,7 @@ pub fn place_popup(
 /// outwards.
 ///
 /// This is damage crossing from a buffer to the canvas: `from` is the buffer's
-/// size, `to` the box the buffer occupies on the canvas — a whole multiple for
+/// size, `to` the box the buffer occupies on the canvas; a whole multiple for
 /// an ordinary scaled surface, anything at all for a `wp_viewport` mapping.
 /// Outwards because covering a pixel that did not change costs a few bytes,
 /// and missing one that did leaves it stale on screen forever.
@@ -443,7 +443,7 @@ mod tests {
         // Whole ratios divide exactly.
         assert_eq!(logical_size(1600, 1200, 2.0), (800, 600));
         // A fractional ratio divides by *itself*, not by the whole scale it
-        // rounds up to — 1200/1.5 is the 800-pixel box the viewer measured,
+        // rounds up to: 1200/1.5 is the 800-pixel box the viewer measured,
         // where 1200/2 would configure a window 25% smaller than its box and
         // the application's layout a third too large once stretched back.
         assert_eq!(logical_size(1200, 900, 1.5), (800, 600));
@@ -493,7 +493,7 @@ mod tests {
             Rect::new(2, 2, 6, 6)
         );
         // Buffer pixels [2, 7) at scale 2 are logical [1, 3.5), which at
-        // scale 1 is canvas pixels 1 through 3 — three of them, not four.
+        // scale 1 is canvas pixels 1 through 3: three of them, not four.
         assert_eq!(
             rescale_to(Rect::new(2, 2, 5, 5), (8, 8), (4, 4)),
             Rect::new(1, 1, 3, 3)
@@ -514,7 +514,7 @@ mod tests {
             Rect::new(3, 4, 5, 6)
         );
         // The Firefox case: a 1600-pixel buffer shown in a 1600-pixel box on a
-        // 2× canvas — one for one, no magnification.
+        // 2× canvas; one for one, no magnification.
         assert_eq!(
             rescale_to(Rect::new(10, 20, 30, 40), (1600, 1200), (1600, 1200)),
             Rect::new(10, 20, 30, 40)

@@ -4,7 +4,7 @@
 //! where lossy compression looks like a smeared mess; a video player redraws
 //! everything at 30 Hz and lossless costs more bandwidth than we have. So the
 //! selector watches how much of the window each frame actually redraws and
-//! moves between tiers — with hysteresis, because flipping tiers costs a
+//! moves between tiers: with hysteresis, because flipping tiers costs a
 //! keyframe and a codec reset, and a window that sits on the threshold would
 //! otherwise thrash.
 
@@ -19,14 +19,14 @@ pub enum Tier {
     /// JPEG tiles, decoded by the browser with no shipped decoder.
     ///
     /// Two jobs. It is where a window in motion goes when the client has no
-    /// VP9 decoder — which today is every client, since nothing encodes VP9
-    /// yet — and it is the static fallback for a client with no zstd.
+    /// VP9 decoder (which today is every client, since nothing encodes VP9
+    /// yet) and it is the static fallback for a client with no zstd.
     Image,
 }
 
 /// Coverage at which a window is considered to be in motion.
 const ENTER_VIDEO: f32 = 0.35;
-/// Coverage it must drop below to come back — the gap is the hysteresis.
+/// Coverage it must drop below to come back: the gap is the hysteresis.
 const LEAVE_VIDEO: f32 = 0.15;
 /// Weight of the newest frame in the moving average. Low enough that one
 /// full-window repaint (opening a menu) does not flip a text editor to video.
@@ -76,7 +76,7 @@ impl TierSelector {
                 return self.current;
             }
         };
-        // The threshold depends on which side of it we are already on — that
+        // The threshold depends on which side of it we are already on: that
         // gap is the hysteresis, and without it a window sitting on the line
         // would change tier, and pay for a keyframe, every frame.
         let threshold = if self.current == moving {
@@ -121,7 +121,7 @@ mod tests {
     use super::*;
 
     /// Both ends agreeing. `vp9` is the only cap either side is missing in
-    /// practice — nothing encodes it yet — so it is the interesting axis.
+    /// practice (nothing encodes it yet) so it is the interesting axis.
     fn caps(vp9: bool, zstd: bool, jpeg: bool) -> (ClientCaps, ServerCaps) {
         (
             ClientCaps {

@@ -1,6 +1,6 @@
 //! Icon theme lookup, per the freedesktop Icon Theme Specification.
 //!
-//! `Icon=firefox` in a desktop file is not a path — it is a name to be
+//! `Icon=firefox` in a desktop file is not a path: it is a name to be
 //! resolved against a stack of themes, each of which declares subdirectories
 //! with a nominal size, a scale, and a matching rule. The lookup order is what
 //! decides whether a launcher shows the user's themed icon or the generic
@@ -158,7 +158,7 @@ impl IconResolver {
     }
 
     /// Themes actually found on disk, in lookup order. Mostly useful for
-    /// diagnostics — "why is this icon generic" is a common question.
+    /// diagnostics: "why is this icon generic" is a common question.
     pub fn theme_order(&self) -> &[String] {
         &self.order
     }
@@ -347,7 +347,7 @@ fn load_theme(roots: &[PathBuf], name: &str) -> Option<Theme> {
 }
 
 /// Recover size directories from the layout when `index.theme` is missing or
-/// unreadable — `48x48/apps`, `scalable/apps`.
+/// unreadable: `48x48/apps`, `scalable/apps`.
 fn guess_dirs(roots: &[PathBuf]) -> Vec<IconDir> {
     let mut dirs = Vec::new();
     for root in roots {

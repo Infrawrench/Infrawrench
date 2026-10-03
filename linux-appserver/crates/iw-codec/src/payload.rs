@@ -3,7 +3,7 @@
 //!
 //! The header is fixed-layout binary and the rectangle table is a flat array,
 //! so the browser can parse it with a `DataView` before handing the blob to
-//! wasm — no allocation per rectangle on the hot path.
+//! wasm: no allocation per rectangle on the hot path.
 //!
 //! ```text
 //! u8  codec        u8  flags        u16 rectCount
@@ -34,8 +34,8 @@ pub enum Codec {
     /// Per-rectangle baseline JPEG images, each `u32` length-prefixed, in table
     /// order for the [`RectOp::Pixels`] rectangles.
     ///
-    /// The lossy tier for windows in motion. The browser decodes these itself —
-    /// `createImageBitmap` on the blob — so the cost of the tier is an encoder
+    /// The lossy tier for windows in motion. The browser decodes these itself
+    /// (`createImageBitmap` on the blob) so the cost of the tier is an encoder
     /// on the host and nothing at all on the client, which is the whole reason
     /// it is JPEG rather than something we would have to ship a decoder for.
     JpegTiles = 4,
@@ -66,7 +66,7 @@ impl Codec {
 pub enum RectOp {
     /// Pixels for it are in the blob, in table order.
     Pixels = 0,
-    /// Fill it with `solid` — a cleared background, a blanked video area, the
+    /// Fill it with `solid`: a cleared background, a blanked video area, the
     /// dominant case in a window that just got resized.
     Solid = 1,
     /// The blob holds a per-byte wrapping difference from what the client
@@ -75,7 +75,7 @@ pub enum RectOp {
     /// Interframe compression: a toolkit damages a whole widget when one
     /// character of it changed, so the rectangle is mostly identical to the one
     /// the client is holding. Subtracting first turns "mostly identical" into
-    /// "mostly zero", which is what zstd is good at — the pixels themselves are
+    /// "mostly zero", which is what zstd is good at: the pixels themselves are
     /// high-entropy and compress badly.
     ///
     /// Only ever emitted against a rectangle the encoder knows exactly, which
@@ -219,7 +219,7 @@ impl PixelPayload {
 
     /// Apply this payload to a canvas of `width * height * 4` bytes.
     ///
-    /// This is the reference implementation of the client-side blit — the wasm
+    /// This is the reference implementation of the client-side blit: the wasm
     /// decoder mirrors it, and the cross-language golden test asserts the two
     /// agree byte for byte.
     pub fn apply(

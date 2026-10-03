@@ -3,7 +3,7 @@
 //! feed.
 //!
 //! Sans-io on purpose, like `Session`: bytes and a clock come in, reply bytes
-//! and mixed PCM come out, and nothing here owns a socket or a thread — the
+//! and mixed PCM come out, and nothing here owns a socket or a thread: the
 //! runtime half does. That is what lets the whole protocol exchange run in a
 //! unit test on a machine with no audio and no Wayland.
 
@@ -25,13 +25,13 @@ pub const SINK_NAME: &str = "iw_out";
 const SINK_DESCRIPTION: &str = "Infrawrench Stream";
 
 /// Highest protocol version whose semantics this server implements; a newer
-/// client negotiates down to it. v13 is 2007 — anything older is not libpulse.
+/// client negotiates down to it. v13 is 2007: anything older is not libpulse.
 const MAX_VERSION: u32 = 35;
 const MIN_VERSION: u32 = 13;
 
 /// What `GetPlaybackLatency` reports as the sink's own latency. The honest
-/// figure is unknowable from here — it is the SSH link plus the viewer's
-/// jitter buffer — so this is a stand-in for the typical total, which lets a
+/// figure is unknowable from here (it is the SSH link plus the viewer's
+/// jitter buffer) so this is a stand-in for the typical total, which lets a
 /// video player shift its picture roughly into sync instead of not at all.
 const REPORTED_SINK_LATENCY_USEC: u64 = 150_000;
 
@@ -124,7 +124,7 @@ impl Format {
     }
 }
 
-/// Resolved buffer attributes — no `-1` sentinels left.
+/// Resolved buffer attributes: no `-1` sentinels left.
 #[derive(Debug, Clone, Copy)]
 struct Attr {
     maxlength: u32,
@@ -156,7 +156,7 @@ fn resolve_attr(
     } else {
         minreq.min(tlength)
     };
-    // Prebuf of zero is meaningful — manual start control — so only the
+    // Prebuf of zero is meaningful (manual start control) so only the
     // sentinel gets a default.
     let prebuf = if prebuf == u32::MAX {
         tlength.saturating_sub(minreq).max(1)
@@ -402,7 +402,7 @@ fn mix_stream(stream: &mut Stream, acc: &mut [f32], frames: usize) -> usize {
 
 /// What a mixer tick produced.
 pub struct MixOutput {
-    /// Interleaved stereo s16, `frames * 2` long — or empty when no stream
+    /// Interleaved stereo s16, `frames * 2` long, or empty when no stream
     /// is uncorked and the chunk stream should stop.
     pub pcm: Vec<i16>,
     /// Packets owed to clients, keyed by connection id.
@@ -778,7 +778,7 @@ impl Connection {
     ) -> Result<Vec<Vec<u8>>, TagError> {
         let (format_code, mut channels, mut rate) = r.sample_spec()?;
         r.channel_map()?;
-        r.index()?; // sink index — there is only one sink
+        r.index()?; // sink index: there is only one sink
         r.string()?; // sink name
         let maxlength = r.u32()?;
         let start_corked = r.bool()?;
@@ -920,7 +920,7 @@ impl Connection {
         };
         if target < stream.write_index {
             // Rewind: drop unplayed tail bytes. Clamped to what is still in
-            // the ring — bytes already mixed cannot be taken back.
+            // the ring: bytes already mixed cannot be taken back.
             let rewind = ((stream.write_index - target) as usize).min(stream.ring.len());
             stream.ring.truncate(stream.ring.len() - rewind);
             stream.write_index -= rewind as i64;
@@ -1175,7 +1175,7 @@ mod tests {
         let requested = r.u32().unwrap();
         assert!(requested > 0, "the create reply asks for data immediately");
 
-        // Nothing plays before prebuf is met — the chunk stream starts (and
+        // Nothing plays before prebuf is met: the chunk stream starts (and
         // takes the reset flag) but carries silence.
         let quiet = state.mix(480);
         assert!(quiet.reset);

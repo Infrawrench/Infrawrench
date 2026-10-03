@@ -1,5 +1,5 @@
 //! Control messages. These are JSON because they are cold, and because the
-//! other end of this protocol is TypeScript — the field names here are the
+//! other end of this protocol is TypeScript: the field names here are the
 //! field names in `@infrawrench/appstream-core`, so they are camelCase and
 //! every optional field is genuinely optional rather than nullable.
 
@@ -14,7 +14,7 @@ use crate::ProtocolError;
 pub struct ClientCaps {
     /// `WebCodecs VideoDecoder` with a working vp09 config.
     pub vp9: bool,
-    /// `createImageBitmap` of a WebP blob — true everywhere we ship, kept as a
+    /// `createImageBitmap` of a WebP blob: true everywhere we ship, kept as a
     /// flag so a stripped-down host (a test harness, the CLI) can say no.
     pub webp: bool,
     /// The wasm zstd decoder loaded. Without it there is no lossless tier and
@@ -25,7 +25,7 @@ pub struct ClientCaps {
     /// enough to omit the field is one whose `webp` flag meant the same thing.
     #[serde(default = "yes")]
     pub jpeg: bool,
-    /// The client applies `RectOp::Delta` — interframe compression. Defaulted
+    /// The client applies `RectOp::Delta`: interframe compression. Defaulted
     /// **false**, because a client that does not know the op would paint a
     /// rectangle of differences as if they were pixels: garbage, silently.
     #[serde(default)]
@@ -57,14 +57,14 @@ impl Default for ClientCaps {
     }
 }
 
-/// What this build of `iwappd` can actually do on this host — resolved at
+/// What this build of `iwappd` can actually do on this host: resolved at
 /// startup, not compiled in, because it depends on what is installed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerCaps {
     pub vp9: bool,
     pub webp: bool,
-    /// This build has the JPEG encoder — the lossy tier. Always true today;
+    /// This build has the JPEG encoder: the lossy tier. Always true today;
     /// a flag because the client's tier choice reads both ends.
     #[serde(default)]
     pub jpeg: bool,
@@ -81,7 +81,7 @@ pub struct ServerCaps {
 }
 
 /// Byte order of the pixels in a lossless frame. `wl_shm`'s `Argb8888` is
-/// little-endian ARGB, which is BGRA in memory — the client's blit needs to be
+/// little-endian ARGB, which is BGRA in memory: the client's blit needs to be
 /// told, not to guess.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,7 +121,7 @@ pub struct AppEntry {
 pub enum WindowCloseReason {
     /// The application closed it (or we asked and it complied).
     Closed,
-    /// The process died without unmapping — a crash.
+    /// The process died without unmapping: a crash.
     Crashed,
     /// The session is going away.
     SessionEnded,
@@ -134,7 +134,7 @@ pub enum ErrorCode {
     ProtocolMismatch,
     /// No desktop entry with that id, or the binary it names is gone.
     UnknownApp,
-    /// The app was spawned and exited immediately — almost always a missing
+    /// The app was spawned and exited immediately: almost always a missing
     /// library on a bare host, so the message carries the real stderr.
     LaunchFailed,
     /// No `XDG_RUNTIME_DIR` and we could not create one.
@@ -223,7 +223,7 @@ pub enum ClientMessage {
         height: u32,
         scale: f32,
     },
-    /// Stop receiving pixels without closing the window — the tab is in the
+    /// Stop receiving pixels without closing the window: the tab is in the
     /// background. The app keeps running.
     #[serde(rename_all = "camelCase")]
     Detach { window_id: u32 },
@@ -261,7 +261,7 @@ pub enum ClientMessage {
     /// Ask for a window's accessibility tree, as its app reports it over
     /// AT-SPI. Answered by a [`ServerMessage::A11yTree`] carrying the same
     /// `request_id`. Only valid after a welcome whose [`ServerCaps::a11y`]
-    /// was true — an older server treats the unknown message as a bad frame.
+    /// was true: an older server treats the unknown message as a bad frame.
     #[serde(rename_all = "camelCase")]
     A11yTree { window_id: u32, request_id: u32 },
 }
@@ -402,7 +402,7 @@ pub struct A11yNode {
     /// their absence marks a hidden element.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub states: Vec<String>,
-    /// Window-local bounds in logical pixels — the same space pointer input
+    /// Window-local bounds in logical pixels: the same space pointer input
     /// uses at scale 1, so the centre of this rectangle is a valid click.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bounds: Option<A11yBounds>,

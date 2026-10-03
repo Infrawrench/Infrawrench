@@ -33,7 +33,7 @@ fn fixtures_dir() -> Option<PathBuf> {
 
 /// A deterministic little animation: a background wash, a moving block, and a
 /// cleared band. Between them they exercise every rectangle op the encoder can
-/// emit — solid fills, changed pixels, and rectangles that turn out not to have
+/// emit: solid fills, changed pixels, and rectangles that turn out not to have
 /// changed at all.
 fn render(step: u32, pixels: &mut [u8]) {
     for y in 0..HEIGHT {
@@ -73,7 +73,7 @@ struct Sequence {
     /// The frames as they go on the wire.
     wire: Vec<u8>,
     /// The canvas they reconstruct, in the client's RGBA. `None` for the lossy
-    /// tier, whose blob only a JPEG decoder can apply — the reference blit
+    /// tier, whose blob only a JPEG decoder can apply: the reference blit
     /// refuses it on purpose.
     canvas: Option<Vec<u8>>,
     /// Every payload, so a test can assert what the encoder actually chose
@@ -159,8 +159,8 @@ fn check(dir: &Path, name: &str, actual: &[u8]) {
 /// Like [`check`], but comparing the *shape* of the frames rather than their
 /// bytes: same frame count, same codec, same rectangle table.
 ///
-/// The lossy tier's exact bytes depend on the CPU the host happens to have —
-/// `jpeg-encoder` picks an AVX2 path at runtime — so pinning them would mean a
+/// The lossy tier's exact bytes depend on the CPU the host happens to have
+/// (`jpeg-encoder` picks an AVX2 path at runtime) so pinning them would mean a
 /// fixture that only reproduces on the machine that wrote it. What has to agree
 /// across the two languages is the framing, and the checked-in file is what the
 /// TypeScript test reads to verify it.
@@ -184,13 +184,13 @@ fn check_same_shape(dir: &Path, name: &str, actual: &[u8]) {
     );
 }
 
-/// One rectangle's position, size and op — the parts a decoder acts on.
+/// One rectangle's position, size and op: the parts a decoder acts on.
 type RectShape = (u32, u32, u32, u32, u8);
 
 /// One payload's codec, keyframe flag and rectangle table.
 type FrameShape = (u8, bool, Vec<RectShape>);
 
-/// Every frame's shape — everything about a payload except the compressed
+/// Every frame's shape: everything about a payload except the compressed
 /// bytes themselves.
 fn shape_of(wire: &[u8]) -> Vec<FrameShape> {
     let mut decoder = iw_proto::FrameDecoder::new();
@@ -221,7 +221,7 @@ fn golden_fixtures_match() {
         return;
     };
 
-    // No zstd: raw rectangles, and no deltas either — a difference is only
+    // No zstd: raw rectangles, and no deltas either; a difference is only
     // worth anything to a client that can then decompress it.
     let raw = encode_sequence(
         EncoderConfig {
@@ -257,9 +257,9 @@ fn golden_fixtures_match() {
         "the zstd fixture no longer exercises interframe compression"
     );
 
-    // The lossy tier. There is no canvas fixture for it — the pixels depend on
+    // The lossy tier. There is no canvas fixture for it: the pixels depend on
     // whichever JPEG decoder the client happens to have, which is the reason
-    // the encoder never deltas against one — so what is pinned is the framing:
+    // the encoder never deltas against one, so what is pinned is the framing:
     // a length-prefixed image per rectangle, in table order.
     let jpeg = encode_sequence(EncoderConfig::default(), EncodeMode::Lossy);
     check_same_shape(&dir, "jpeg-frames.bin", &jpeg.wire);
@@ -290,8 +290,8 @@ fn audio_pcm(frames: usize, offset: usize) -> Vec<u8> {
     out
 }
 
-/// The audio wire format, pinned the same way as the pixels: three chunks —
-/// zstd with the reset flag, raw, and compressed silence — plus the PCM they
+/// The audio wire format, pinned the same way as the pixels: three chunks
+/// (zstd with the reset flag, raw, and compressed silence) plus the PCM they
 /// decode back to. The TypeScript test replays the frames and must land on
 /// exactly that PCM.
 #[test]

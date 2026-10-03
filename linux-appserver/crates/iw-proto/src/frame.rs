@@ -7,7 +7,7 @@ const HEADER_LEN: u32 = 5;
 
 /// Hard ceiling on a single frame. A 4K window of BGRA pixels is ~33 MB
 /// uncompressed and we never send one uncompressed, so anything past this is a
-/// desynchronised stream rather than a legitimate frame — fail loudly instead
+/// desynchronised stream rather than a legitimate frame: fail loudly instead
 /// of allocating on a peer's say-so.
 pub const MAX_FRAME_LEN: u32 = 64 * 1024 * 1024;
 
@@ -69,8 +69,8 @@ pub fn encode_frame(kind: FrameKind, window_id: u32, payload: &[u8]) -> Vec<u8> 
     out
 }
 
-/// Incremental frame decoder. Feed it whatever the transport hands you —
-/// SSH gives us arbitrary chunk boundaries, often mid-header — and pull whole
+/// Incremental frame decoder. Feed it whatever the transport hands you
+/// (SSH gives us arbitrary chunk boundaries, often mid-header) and pull whole
 /// frames out until it returns `None`.
 #[derive(Debug, Default)]
 pub struct FrameDecoder {

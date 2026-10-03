@@ -62,7 +62,7 @@ pub struct WindowRec {
     pub app_id: Option<String>,
     pub parent: Option<u32>,
     /// Size of the pixels we hold, which is the client's buffer size and not
-    /// necessarily the size we last configured — a resize takes a round trip.
+    /// necessarily the size we last configured: a resize takes a round trip.
     pub width: u32,
     pub height: u32,
     /// Our own copy of the client's last committed buffer, tightly packed.
@@ -75,8 +75,8 @@ pub struct WindowRec {
     pub damage: Vec<Rect>,
     /// Where each surface of the tree sat last time it was composited, as
     /// `(surface id, x, y, width, height)` in tree order. A subsurface that
-    /// *moves* damages nothing — the pixels it vacated are unchanged as far as
-    /// it is concerned — so this is what turns a move into a full repaint
+    /// *moves* damages nothing (the pixels it vacated are unchanged as far as
+    /// it is concerned) so this is what turns a move into a full repaint
     /// instead of a trail.
     pub layout: Vec<(u32, i32, i32, u32, u32)>,
     /// The canvas holds nothing worth keeping: the next composite has to build
@@ -123,7 +123,7 @@ impl WindowRec {
 /// (relative to the parent's window-geometry origin).
 type PopupPlacement = (u32, (i32, i32), Rectangle<i32, smithay::utils::Logical>);
 
-/// One popup — a menu, a tooltip, Firefox's padlock panel — composited into
+/// One popup (a menu, a tooltip, Firefox's padlock panel) composited into
 /// the window it hangs off rather than becoming a window of its own.
 pub struct PopupRec {
     pub popup: PopupSurface,
@@ -135,7 +135,7 @@ pub struct PopupRec {
     /// toplevel surface's buffer origin.
     pub position: (i32, i32),
     /// The geometry box's size, as configured. This is the box input is
-    /// hit-tested against — the buffer may be larger by a shadow frame.
+    /// hit-tested against: the buffer may be larger by a shadow frame.
     pub size: (i32, i32),
     /// The popup asked for an explicit grab: keyboard focus is its while it
     /// lives, and a click outside dismisses it.
@@ -163,7 +163,7 @@ pub struct AppState {
     #[allow(dead_code)]
     pub output: Output,
     /// Held for its global, same as `decoration`. `wp_viewporter` is how a
-    /// client decouples its buffer from its logical size — and Firefox's
+    /// client decouples its buffer from its logical size, and Firefox's
     /// software renderer *requires* it for HiDPI: it renders device-resolution
     /// pixels into a scale-1 buffer and declares the logical size through a
     /// viewport. Every desktop compositor offers this, so the no-viewporter
@@ -179,7 +179,7 @@ pub struct AppState {
     /// window ever configured. The mode is this times the scale.
     desktop: (i32, i32),
     /// The keymap xkbcommon compiled, as text, read the first time a keysym
-    /// needs binding — reading it needs an `AppState`, which does not exist
+    /// needs binding: reading it needs an `AppState`, which does not exist
     /// while one is being built.
     ///
     /// Bound keysyms are appended to *this* rather than resolved from the xkb
@@ -224,15 +224,15 @@ impl AppState {
         // the browser's real auto-repeat as press events instead, so repeat is
         // driven by keystrokes that actually happened.
         if let Err(err) = seat.add_keyboard(Default::default(), 0, 0) {
-            // Without a compiled keymap there is no keyboard at all — which is
+            // Without a compiled keymap there is no keyboard at all, which is
             // what a host missing xkeyboard-config looks like, and what it used
             // to look like was nothing.
             eprintln!("iwappd: no keyboard: {err}; is xkeyboard-config installed?");
         }
         let _ = seat.add_pointer();
 
-        // One virtual output. Clients that ask for outputs before mapping —
-        // which is most of them — get a sane answer instead of none.
+        // One virtual output. Clients that ask for outputs before mapping
+        // (which is most of them) get a sane answer instead of none.
         let output = Output::new(
             "infrawrench".to_owned(),
             PhysicalProperties {
@@ -291,8 +291,8 @@ impl AppState {
     /// This is the whole of HiDPI on the host side: a toolkit renders at the
     /// scale of the output its surface entered, so an output that says 2 gets a
     /// buffer with four times the pixels and text drawn for it, rather than a
-    /// 1× buffer the browser then stretches. Everything else — the toplevel's
-    /// configured size, the coordinates in the composite pass — follows from
+    /// 1× buffer the browser then stretches. Everything else (the toplevel's
+    /// configured size, the coordinates in the composite pass) follows from
     /// the client's answer to this.
     pub fn set_scale(&mut self, scale: i32) -> bool {
         let scale = scale.clamp(1, MAX_SCALE);
@@ -316,7 +316,7 @@ impl AppState {
     ///
     /// Toolkits clamp windows to the desktop they can see, so a viewer tab
     /// larger than the advertised output got a window sized to the output
-    /// instead — Firefox visibly shrank itself to fit once the scale pushed
+    /// instead: Firefox visibly shrank itself to fit once the scale pushed
     /// the logical desktop below the tab. The desktop only ever grows: two
     /// windows on one output must not fight over it.
     pub fn ensure_desktop_fits(&mut self, logical: (i32, i32)) {
@@ -330,8 +330,8 @@ impl AppState {
     /// Re-advertise the output for the current scale and desktop.
     ///
     /// The mode is *physical* pixels, so it moves with the scale: held fixed
-    /// while the scale rose, the logical desktop shrank by the same factor —
-    /// 960×540 at 2× — and every window larger than that got clamped.
+    /// while the scale rose, the logical desktop shrank by the same factor
+    /// (960×540 at 2×) and every window larger than that got clamped.
     fn push_output_state(&mut self) {
         self.output.change_current_state(
             Some(Mode {
@@ -360,8 +360,8 @@ impl AppState {
             .collect()
     }
 
-    /// Where pointer input at `location` — logical pixels, relative to the
-    /// toplevel's buffer origin — should be delivered: the topmost popup under
+    /// Where pointer input at `location` (logical pixels, relative to the
+    /// toplevel's buffer origin) should be delivered: the topmost popup under
     /// the point, or the toplevel itself. The second element is the target
     /// surface's own origin in the same coordinates, which is what Smithay
     /// subtracts to make the event surface-local.
@@ -392,8 +392,8 @@ impl AppState {
         Some((rec.surface.clone(), (0.0, 0.0)))
     }
 
-    /// The surface keys should go to: the topmost live grabbed popup — a menu
-    /// wants its arrow keys and its Escape — or the toplevel.
+    /// The surface keys should go to: the topmost live grabbed popup (a menu
+    /// wants its arrow keys and its Escape) or the toplevel.
     pub fn keyboard_target(&self, window_id: u32) -> Option<WlSurface> {
         for rec in self.popups.iter().rev() {
             if rec.window_id == window_id && rec.mapped && rec.grabbed && !rec.dismissed {
@@ -430,8 +430,8 @@ impl AppState {
         }
     }
 
-    /// Recomposite a window outside the commit path — a popup was destroyed
-    /// or repositioned, so no client commit will trigger the repaint — and
+    /// Recomposite a window outside the commit path (a popup was destroyed
+    /// or repositioned, so no client commit will trigger the repaint) and
     /// report the damage so a frame actually goes out.
     fn refresh_window(&mut self, window_id: u32) {
         if !self.windows.contains_key(&window_id) {
@@ -450,7 +450,7 @@ impl AppState {
     }
 
     /// Resolve a popup's owning window and the origin of its positioner's
-    /// coordinate space — the parent's window-geometry origin — in logical
+    /// coordinate space (the parent's window-geometry origin) in logical
     /// pixels relative to the toplevel's buffer origin.
     fn popup_base(&self, parent: &WlSurface) -> Option<(u32, (i32, i32))> {
         if let Some(window_id) = self.window_id_for(parent) {
@@ -499,7 +499,7 @@ impl AppState {
 
     /// Re-draw a window from its whole surface tree.
     ///
-    /// A toplevel's own buffer is only half the picture — a Wayland client may
+    /// A toplevel's own buffer is only half the picture: a Wayland client may
     /// put its actual content in subsurfaces, and Firefox does exactly that:
     /// its toplevel carries the GTK shadow frame and nothing else, while the
     /// web page lives in a child. Compositing only the toplevel yields a white
@@ -540,7 +540,7 @@ impl AppState {
 
         // The canvas is kept between commits and only re-composited where
         // something changed. Rebuilding it whole was a fresh allocation, a
-        // zeroing pass and a blend of every pixel in the window — per commit,
+        // zeroing pass and a blend of every pixel in the window: per commit,
         // at whatever rate the application redraws, however little of it moved.
         let Some(rec) = self.windows.get_mut(&window_id) else {
             return;
@@ -555,7 +555,7 @@ impl AppState {
 
         // A subsurface that *moved* damages nothing: the pixels it left behind
         // are still where it was. So the layout is compared against the last
-        // one and any change means a full recomposite — the alternative is a
+        // one and any change means a full recomposite: the alternative is a
         // trail of whatever a menu was drawn over.
         let mut layout: Vec<(u32, i32, i32, u32, u32)> = Vec::new();
         let mut damage: Vec<Rect> = Vec::new();
@@ -567,8 +567,8 @@ impl AppState {
                 |surface, states, offset| {
                     // Draw on the way *down*: a parent is painted before its
                     // children, because a subsurface sits on top of the surface it
-                    // belongs to. Painting on the way up instead — which is what
-                    // the post-order callback does — lets a toplevel's mostly
+                    // belongs to. Painting on the way up instead (which is what
+                    // the post-order callback does) lets a toplevel's mostly
                     // transparent shadow frame erase the content beneath it, and
                     // produces an empty window from a client that drew everything
                     // correctly.
@@ -579,7 +579,7 @@ impl AppState {
                     let location = sub.current().location;
                     // A subsurface is positioned in *logical* pixels while the
                     // canvas is in buffer pixels, so on a HiDPI window every child
-                    // would land at half its offset — the content drifts up and
+                    // would land at half its offset: the content drifts up and
                     // left of where the application put it.
                     let at = (
                         offset.0 + location.x * root_scale,
@@ -594,7 +594,7 @@ impl AppState {
                         let dest = cache.dest_on_canvas(root_scale);
                         layout.push((surface.id().protocol_id(), at.0, at.1, dest.0, dest.1));
                         // Damage arrives in the surface's *own* buffer pixels, so
-                        // it maps through the box the buffer is shown in — a scale
+                        // it maps through the box the buffer is shown in: a scale
                         // ratio for an ordinary surface, the viewport mapping for
                         // a viewported one. A source crop makes that mapping
                         // rect-relative; the crop is rare enough that repainting
@@ -689,8 +689,8 @@ impl AppState {
             // exists; the encoder sends a keyframe for the new size instead.
             rec.damage.clear();
         } else if full {
-            // The whole canvas was rebuilt — a popup opened or closed, a
-            // subsurface moved — and the surfaces' own damage says nothing
+            // The whole canvas was rebuilt (a popup opened or closed, a
+            // subsurface moved) and the surfaces' own damage says nothing
             // about the pixels that were *vacated*. Report the whole window:
             // the encoder diffs against what it last sent, so over-reporting
             // costs a compare pass, not wire bytes.
@@ -717,7 +717,7 @@ impl SurfacePixels {
     /// The box this surface occupies on the window canvas, in canvas pixels.
     ///
     /// The viewport wins when the client set one; otherwise the size follows
-    /// from the buffer and the two scales, exactly as [`blit`] draws it — the
+    /// from the buffer and the two scales, exactly as [`blit`] draws it: the
     /// layout comparison and the damage mapping have to agree with the paint
     /// or a viewport change would repaint the wrong box.
     fn dest_on_canvas(&self, root_scale: i32) -> (u32, u32) {
@@ -757,9 +757,9 @@ pub struct SurfacePixels {
     /// `wp_viewport.set_source` as of the last commit, in buffer pixels.
     viewport_src: Option<(u32, u32, u32, u32)>,
     /// `wp_viewport.set_destination`: the surface's logical size, decoupled
-    /// from the buffer. This is how Firefox's software renderer does HiDPI —
-    /// device-resolution pixels in a scale-1 buffer, the logical size declared
-    /// here — so ignoring it reads that buffer as logical pixels and draws the
+    /// from the buffer. This is how Firefox's software renderer does HiDPI
+    /// (device-resolution pixels in a scale-1 buffer, the logical size declared
+    /// here) so ignoring it reads that buffer as logical pixels and draws the
     /// window magnified by the output scale, cropped to the canvas.
     viewport_dst: Option<(u32, u32)>,
 }
@@ -770,13 +770,13 @@ pub struct SurfacePixels {
 /// the buffer is the same shape as last time. That is the difference between
 /// work proportional to what changed and work proportional to the window: a
 /// character typed into a terminal damages a few hundred pixels, and copying
-/// the whole surface for it costs the same as a full-screen video frame — every
+/// the whole surface for it costs the same as a full-screen video frame; every
 /// commit, at whatever rate the application redraws.
 ///
 /// Copying only the damage is correct because that is what damage *means*: the
 /// client promises the rest of the new buffer matches what the compositor
-/// already has for this surface. Double buffering does not break that — the
-/// other buffer holds the same content — which is why every compositor does
+/// already has for this surface. Double buffering does not break that (the
+/// other buffer holds the same content) which is why every compositor does
 /// this and why a toolkit that under-reports damage is broken everywhere, not
 /// just here.
 fn absorb(cache: &mut SurfacePixels, buffer: &wl_buffer::WlBuffer, damage: &[Rect]) {
@@ -868,7 +868,7 @@ fn translate(rect: Rect, ox: i32, oy: i32) -> Rect {
     )
 }
 
-/// A surface's buffer scale — buffer pixels per logical pixel. 1 for a client
+/// A surface's buffer scale: buffer pixels per logical pixel. 1 for a client
 /// that never called `set_buffer_scale`, which is every client on a 1× output.
 ///
 /// Read from the surface rather than from the output because the two can
@@ -898,7 +898,7 @@ fn xdg_geometry_offset(surface: &WlSurface) -> (i32, i32) {
     })
 }
 
-/// Whether a point — logical, toplevel-relative — lands in a popup's
+/// Whether a point (logical, toplevel-relative) lands in a popup's
 /// geometry box.
 fn popup_contains(rec: &PopupRec, location: (f64, f64)) -> bool {
     let (x, y) = (f64::from(rec.position.0), f64::from(rec.position.1));
@@ -950,7 +950,7 @@ impl CompositorHandler for AppState {
 
         // A popup's first commit carries no buffer; the configure answering it
         // is what permits the client to attach one. Without this the popup
-        // waits forever — which is exactly what Firefox's padlock panel did.
+        // waits forever, which is exactly what Firefox's padlock panel did.
         if let Some(rec) = self.popups.iter().find(|rec| rec.surface == *surface)
             && !rec.popup.is_initial_configure_sent()
         {
@@ -969,7 +969,7 @@ impl CompositorHandler for AppState {
                 .expect("just inserted");
             let mut cache = cache.borrow_mut();
 
-            // The viewport, from its own cache cell — read here because the
+            // The viewport, from its own cache cell: read here because the
             // surface-attributes guard below holds that cell for the rest of
             // the closure.
             let viewport = *states.cached_state.get::<ViewportCachedState>().current();
@@ -999,7 +999,7 @@ impl CompositorHandler for AppState {
             // what says how much of the buffer has to be copied at all.
             // Everything downstream works in buffer pixels: `wl_surface.damage`
             // is in *surface* (logical) coordinates and `damage_buffer` is
-            // already in buffer ones — identical at scale 1, off by a factor of
+            // already in buffer ones; identical at scale 1, off by a factor of
             // the scale on a HiDPI client, which shows up as a window that
             // repaints a quarter of what it should.
             let fresh: Vec<Rect> = attrs
@@ -1018,7 +1018,7 @@ impl CompositorHandler for AppState {
                     // With a viewport between surface and buffer coordinates
                     // the conversion is no longer the buffer scale. Clients
                     // that viewport damage in buffer coordinates in practice,
-                    // so this path is rare — and repainting the whole surface
+                    // so this path is rare, and repainting the whole surface
                     // beats being subtly stale. Halved to keep `right()` from
                     // overflowing before the clip.
                     Damage::Surface(_) => Rect::new(0, 0, u32::MAX / 2, u32::MAX / 2),
@@ -1133,8 +1133,8 @@ impl CompositorHandler for AppState {
             .is_some_and(|rec| !rec.mapped && !rec.pixels.is_empty());
         if first_content {
             // Tell the client its surface is on our output. Without this the
-            // window belongs to no output at all, which some clients — Firefox
-            // among them — read as "not visible" and stop painting entirely.
+            // window belongs to no output at all, which some clients (Firefox
+            // among them) read as "not visible" and stop painting entirely.
             self.output.enter(&root);
             let opened = {
                 let rec = self.windows.get_mut(&window_id).expect("checked above");
@@ -1276,8 +1276,8 @@ impl XdgShellHandler for AppState {
     }
 
     /// A toplevel declared (or changed) its parent. This fires *after*
-    /// `new_toplevel` — Smithay raises that on `get_toplevel`, before the
-    /// client has said anything about the window — so the parent sampled at
+    /// `new_toplevel` (Smithay raises that on `get_toplevel`, before the
+    /// client has said anything about the window) so the parent sampled at
     /// creation is almost always `None`. Re-reading it here is what makes a
     /// GTK or Qt dialog report a parent, and land inside its parent's tab
     /// rather than opening one of its own.
@@ -1295,7 +1295,7 @@ impl XdgShellHandler for AppState {
     }
 
     fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
-        // A popup composites into the toplevel it hangs off — a menu must
+        // A popup composites into the toplevel it hangs off: a menu must
         // never open a workspace tab. A popup whose parent we cannot resolve
         // is left untracked and never configured, so it never maps.
         let Some(parent) = surface.get_parent_surface() else {
@@ -1308,7 +1308,7 @@ impl XdgShellHandler for AppState {
             state.geometry = geometry;
         });
         // The configure itself waits for the client's first commit, as the
-        // protocol requires — see `commit`.
+        // protocol requires: see `commit`.
         self.popups.push(PopupRec {
             surface: surface.wl_surface().clone(),
             popup: surface,
@@ -1447,7 +1447,7 @@ impl SelectionHandler for AppState {
     ///
     /// Only the offer is reported; the contents are fetched on demand, because
     /// a selection is often large, often never pasted, and always someone
-    /// else's data — pulling it eagerly across an SSH connection would be all
+    /// else's data: pulling it eagerly across an SSH connection would be all
     /// three of slow, wasteful and rude.
     fn new_selection(
         &mut self,
@@ -1480,7 +1480,7 @@ impl SelectionHandler for AppState {
             return;
         }
         // On a thread, because the far end of that pipe is an application that
-        // may not read promptly — and a compositor blocked on one client's
+        // may not read promptly, and a compositor blocked on one client's
         // read has stopped drawing for everybody.
         std::thread::spawn(move || {
             use std::io::Write;

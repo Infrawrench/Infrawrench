@@ -1,8 +1,8 @@
 //! The wire protocol spoken between an Infrawrench client (Electron main, the
 //! web server, or the CLI) and `iwappd` running on the remote host.
 //!
-//! The transport is whatever byte stream carries us — in production the stdio
-//! of an SSH exec channel — so everything here is framing over an unreliable
+//! The transport is whatever byte stream carries us: in production the stdio
+//! of an SSH exec channel, so everything here is framing over an unreliable
 //! chunking, never over message boundaries the transport might not preserve.
 //!
 //! ```text

@@ -1,6 +1,6 @@
 //! Damage rectangles and the coalescing that keeps them useful.
 //!
-//! A toolkit reports damage in whatever granularity suits it — GTK will happily
+//! A toolkit reports damage in whatever granularity suits it: GTK will happily
 //! hand us forty little rectangles for one blinking cursor and a redrawn
 //! toolbar. Forty rectangles cost forty headers, forty zstd frames' worth of
 //! ramp-up and forty canvas blits, so we merge until the count is sane and the
@@ -77,7 +77,7 @@ pub struct CoalesceLimits {
     /// Merge until at most this many rectangles remain.
     pub max_rects: usize,
     /// Once the damaged area passes this fraction of the canvas, send the
-    /// whole canvas — the per-rect overhead has stopped paying for itself.
+    /// whole canvas: the per-rect overhead has stopped paying for itself.
     pub full_frame_coverage: f32,
 }
 
@@ -93,7 +93,7 @@ impl Default for CoalesceLimits {
 /// Clip, drop empties, merge overlapping and near-adjacent rectangles, then
 /// merge by cheapest area growth until the count fits. Returns rectangles in
 /// top-to-bottom order, which is also the order they are written into the
-/// payload — a decoder walking them writes the canvas roughly in raster order.
+/// payload: a decoder walking them writes the canvas roughly in raster order.
 pub fn coalesce(input: &[Rect], width: u32, height: u32, limits: CoalesceLimits) -> Vec<Rect> {
     let canvas = Rect::new(0, 0, width, height);
     let mut rects: Vec<Rect> = input.iter().filter_map(|r| r.clip(width, height)).collect();
@@ -124,7 +124,7 @@ pub fn coalesce(input: &[Rect], width: u32, height: u32, limits: CoalesceLimits)
     }
 
     // Pass 2: bring the count down. Each step picks the pair whose union wastes
-    // the least — a naive "merge the first two" turns a top toolbar and a
+    // the least: a naive "merge the first two" turns a top toolbar and a
     // bottom status bar into the whole window.
     while rects.len() > limits.max_rects {
         let mut best: Option<(usize, usize, u64)> = None;
@@ -223,7 +223,7 @@ mod tests {
     fn merging_to_the_limit_picks_the_cheapest_pair() {
         // A toolbar at the top, a status bar at the bottom, and two adjacent
         // blobs in the middle. Squeezed to three, the two blobs must be what
-        // merges — merging toolbar and status bar would cover the window.
+        // merges: merging toolbar and status bar would cover the window.
         let limits = CoalesceLimits {
             max_rects: 3,
             ..CoalesceLimits::default()

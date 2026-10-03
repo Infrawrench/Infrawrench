@@ -117,7 +117,7 @@ impl Catalog for FsCatalog {
             return cached.clone();
         }
         // A window's `app_id` is usually the desktop file id without the
-        // suffix, but plenty of apps report something else entirely — which is
+        // suffix, but plenty of apps report something else entirely, which is
         // exactly what StartupWMClass exists to reconcile.
         let entries: Vec<DesktopEntry> = self.entries(false).to_vec();
         let matched = entries

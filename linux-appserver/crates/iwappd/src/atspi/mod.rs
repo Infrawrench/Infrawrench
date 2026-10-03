@@ -2,14 +2,14 @@
 //!
 //! Toolkits export their widget trees over D-Bus to whoever owns
 //! `org.a11y.atspi.Registry`. On a desktop that is `at-spi2-registryd`; on the
-//! headless hosts we serve there is nobody — so this module *is* the registry.
+//! headless hosts we serve there is nobody, so this module *is* the registry.
 //! It claims the name on the session bus (the same bus `launch_env::apply_a11y`
 //! points `AT_SPI_BUS_ADDRESS` at), answers each application's `Embed`, and
 //! remembers which connection is which process. Walking a tree is then a series
 //! of ordinary method calls against the application's own objects.
 //!
-//! If a real registry already owns the name — the host runs an actual desktop
-//! session — we read the application list from it instead of competing.
+//! If a real registry already owns the name: the host runs an actual desktop
+//! session: we read the application list from it instead of competing.
 //!
 //! Everything runs on one dedicated thread with its own bus connection, talked
 //! to over channels: a walk is thousands of round trips, and the serve loop has
@@ -35,8 +35,8 @@ const PROPERTIES: &str = "org.freedesktop.DBus.Properties";
 const BUS_NAME: &str = "org.freedesktop.DBus";
 const BUS_PATH: &str = "/org/freedesktop/DBus";
 
-/// Ceilings for one walk. The node cap is generous — a busy browser page can
-/// be thousands of elements — but bounded, because the reply crosses an SSH
+/// Ceilings for one walk. The node cap is generous (a busy browser page can
+/// be thousands of elements) but bounded, because the reply crosses an SSH
 /// link and a runaway tree helps nobody.
 const MAX_NODES: usize = 1500;
 const MAX_DEPTH: usize = 60;
@@ -49,7 +49,7 @@ pub struct A11yQuery {
     pub window_id: u32,
     pub request_id: u32,
     /// Pid of the Wayland client that owns the window, when the compositor
-    /// can tell — how a window is matched to its AT-SPI application.
+    /// can tell: how a window is matched to its AT-SPI application.
     pub pid: Option<u32>,
 }
 
@@ -216,7 +216,7 @@ impl Service {
         })
     }
 
-    /// Drain whatever the bus has for us — embeds, signals — without blocking.
+    /// Drain whatever the bus has for us (embeds, signals) without blocking.
     fn poll(&mut self) -> Result<(), DbusError> {
         loop {
             match self.conn.read_message(Duration::from_millis(1)) {
@@ -396,7 +396,7 @@ impl Service {
         Ok(apps)
     }
 
-    /// Walk one application's tree — the one whose process owns the window
+    /// Walk one application's tree: the one whose process owns the window
     /// when that can be told, otherwise the only (or first) one registered.
     fn walk(&mut self, pid: Option<u32>) -> (Option<A11yNode>, Option<String>) {
         let deadline = Instant::now() + WALK_BUDGET;
@@ -541,8 +541,8 @@ impl Walker<'_> {
         self.nodes += 1;
 
         // The role is the litmus test: an object that cannot answer it is
-        // gone (or the toolkit is not really speaking AT-SPI), so the node —
-        // and for the root, the walk — is abandoned rather than fabricated.
+        // gone (or the toolkit is not really speaking AT-SPI), so the node
+        // (and for the root, the walk) is abandoned rather than fabricated.
         let role_reply = self
             .method(dest, path, ACCESSIBLE, "GetRole", "", &[])
             .ok()?;
@@ -745,7 +745,7 @@ mod tests {
         }
     }
 
-    /// Serve a two-node fake application — a frame holding one push button —
+    /// Serve a two-node fake application (a frame holding one push button)
     /// answering with the same marshalling code the walker reads with.
     fn serve_fake_app(mut conn: Connection, unique: String, stop: mpsc::Receiver<()>) {
         let array = |elem_align: usize, fill: &dyn Fn(&mut Writer)| -> Vec<u8> {
@@ -923,7 +923,7 @@ mod tests {
         assert_eq!(parent, REGISTRY_NAME);
         assert_eq!(parent_path, ROOT_PATH);
 
-        // Serve the fake tree from its own thread — the walker's calls need
+        // Serve the fake tree from its own thread: the walker's calls need
         // answering while this thread drives the walk.
         let (stop_tx, stop_rx) = mpsc::channel();
         let server = std::thread::spawn(move || serve_fake_app(app, app_unique, stop_rx));

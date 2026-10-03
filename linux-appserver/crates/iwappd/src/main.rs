@@ -1,10 +1,10 @@
-//! `iwappd` — uploaded to a host over SSH and exec'd there.
+//! `iwappd`: uploaded to a host over SSH and exec'd there.
 //!
 //! It speaks the protocol in `iw-proto` over stdin and stdout; no port is ever
 //! listened on, and the only thing it needs from the host is a directory it can
 //! put a Wayland socket in.
 //!
-//! Two modes need no compositor at all — `--list-apps` and `--caps` — so
+//! Two modes need no compositor at all (`--list-apps` and `--caps`) so
 //! `infrawrench apps list` can answer over a plain SSH exec before any session
 //! is started.
 
@@ -111,7 +111,7 @@ fn host_caps() -> ServerCaps {
         vp9: false,
         webp: false,
         // The JPEG encoder is compiled in, so the lossy tier is always
-        // available — unlike VP9, which has no encoder yet.
+        // available: unlike VP9, which has no encoder yet.
         jpeg: true,
         xwayland: false,
         // The PulseAudio server is compiled in and needs nothing from the
@@ -173,7 +173,7 @@ fn yes_no(value: bool) -> &'static str {
 #[cfg(unix)]
 fn current_uid() -> u32 {
     // SAFETY: getuid takes no arguments, touches no memory we own, and cannot
-    // fail — it is one of the few libc calls with no failure mode at all.
+    // fail; it is one of the few libc calls with no failure mode at all.
     unsafe { getuid() }
 }
 

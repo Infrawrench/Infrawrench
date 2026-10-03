@@ -3,7 +3,7 @@
 //! Two kernels carry the encoder's per-pixel work: the interframe difference
 //! (read two bytes, subtract, store, and notice whether the answer was zero)
 //! and the uniform-colour test. Both are byte-parallel with no dependencies
-//! between iterations, which is the shape SIMD exists for — and both run over
+//! between iterations, which is the shape SIMD exists for, and both run over
 //! every damaged pixel of every frame, which on a HiDPI window is millions.
 //!
 //! The dispatch is deliberate rather than left to the autovectoriser. The zero
@@ -42,7 +42,7 @@ pub fn delta_in_place(buf: &mut [u8], prev: &[u8]) -> usize {
     delta_scalar(&mut buf[..len], &prev[..len])
 }
 
-/// `buf[i] = buf[i] + prev[i]`, wrapping — the inverse of [`delta_in_place`].
+/// `buf[i] = buf[i] + prev[i]`, wrapping: the inverse of [`delta_in_place`].
 ///
 /// Used to put the pixels back when a difference turned out not to be worth
 /// sending, which is why it is worth vectorising too: it runs on exactly the
@@ -97,7 +97,7 @@ pub fn is_uniform(bytes: &[u8], pixel: [u8; 4]) -> bool {
 }
 
 // The scalar twins. Also the implementation on any target that is neither
-// x86-64 nor AArch64 — which nothing ships on, but which has to be correct
+// x86-64 nor AArch64, which nothing ships on, but which has to be correct
 // because the tests below run against both halves on whatever the developer is
 // sitting at.
 

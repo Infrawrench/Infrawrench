@@ -1,7 +1,7 @@
 //! The seam between the protocol and the compositor.
 //!
-//! Everything above this trait — the session state machine, flow control, the
-//! launcher — is ordinary Rust that builds and tests on any platform. Below it
+//! Everything above this trait: the session state machine, flow control, the
+//! launcher: is ordinary Rust that builds and tests on any platform. Below it
 //! is Smithay, `wl_shm` buffers and process spawning, which only exist on
 //! Linux. Keeping the seam narrow is what lets the interesting logic be tested
 //! on a laptop instead of only in CI.
@@ -56,7 +56,7 @@ pub enum BackendEvent {
         shape: Option<String>,
     },
     /// An app put something on the clipboard. The data itself follows only if
-    /// the client asks for it — a copied 40 MB image should not cross the link
+    /// the client asks for it: a copied 40 MB image should not cross the link
     /// because someone pressed Ctrl-C on the far side.
     ClipboardOffer {
         mime_types: Vec<String>,
@@ -116,7 +116,7 @@ pub trait Backend {
     fn close_window(&mut self, window_id: u32) -> Result<(), BackendError>;
 
     /// Borrow a window's current pixels. `None` when nothing has been
-    /// committed yet — a window can exist for several frames before its
+    /// committed yet: a window can exist for several frames before its
     /// client draws anything.
     fn take_frame(&mut self, window_id: u32) -> Option<BackendFrame<'_>>;
 

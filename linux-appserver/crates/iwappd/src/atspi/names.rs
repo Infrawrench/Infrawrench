@@ -1,7 +1,7 @@
 //! The AT-SPI role and state vocabularies, by wire value.
 //!
 //! Transcribed from `atspi-constants.h` in at-spi2-core (`AtspiRole`,
-//! `AtspiStateType`) — the numbers are the protocol, the names are ours to
+//! `AtspiStateType`): the numbers are the protocol, the names are ours to
 //! phrase, so they are the traditional lowercase forms a screen-reader user
 //! would recognise. An unknown value degrades to `role-<n>` / `state-<n>`
 //! rather than being dropped: a newer toolkit's new role is still a node.
@@ -197,8 +197,8 @@ pub fn role_name(value: u32) -> String {
 }
 
 /// The state names set in an AT-SPI two-word bitfield, minus the ones that are
-/// on for practically every healthy widget (`enabled`, `sensitive`, `opaque`)
-/// — their *absence* still shows, as `visible`/`showing` do for hidden nodes.
+/// on for practically every healthy widget (`enabled`, `sensitive`, `opaque`):
+/// their *absence* still shows, as `visible`/`showing` do for hidden nodes.
 pub fn state_names(low: u32, high: u32) -> Vec<String> {
     const ELIDED: &[&str] = &["enabled", "sensitive", "opaque"];
     let bits = u64::from(low) | (u64::from(high) << 32);

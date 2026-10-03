@@ -1,8 +1,8 @@
 //! The Infrawrench remote application server.
 //!
-//! Split lib/bin on purpose: everything of substance — the protocol state
+//! Split lib/bin on purpose: everything of substance; the protocol state
 //! machine, flow control, the launcher, the environment applications are
-//! spawned into — is library code with a narrow [`backend::Backend`] seam, and
+//! spawned into: is library code with a narrow [`backend::Backend`] seam, and
 //! the binary is a thin main that wires it to stdio. The compositor
 //! implementation behind that seam is Linux-only; everything above it builds
 //! and tests anywhere.

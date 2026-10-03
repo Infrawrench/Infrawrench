@@ -1,6 +1,6 @@
 //! Finding the desktop entries on a host.
 //!
-//! Every input that varies per machine — `HOME`, the XDG variables, `PATH` —
+//! Every input that varies per machine (`HOME`, the XDG variables, `PATH`)
 //! is a parameter rather than a read of the ambient environment, so the tests
 //! describe a Linux host while running on whatever the developer has.
 

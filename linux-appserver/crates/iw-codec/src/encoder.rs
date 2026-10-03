@@ -72,7 +72,7 @@ pub struct EncoderConfig {
     /// nothing carries a megabyte per frame over SSH: the frames queue, each
     /// one arrives late, and the session feels laggy no matter how fast the
     /// host encoded them. So quality tracks a byte budget rather than staying
-    /// where it was set — the same trade every video call makes, for the same
+    /// where it was set: the same trade every video call makes, for the same
     /// reason.
     pub target_frame_bytes: usize,
 }
@@ -98,7 +98,7 @@ impl Default for EncoderConfig {
 /// the encoder just obeys it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EncodeMode {
-    /// Exact pixels — solid fills, deltas, and zstd.
+    /// Exact pixels: solid fills, deltas, and zstd.
     Lossless,
     /// JPEG tiles. Cheap for a window in motion, and wrong for still text,
     /// which is why leaving this mode forces a keyframe.
@@ -125,7 +125,7 @@ pub enum EncodeError {
 #[derive(Debug, Clone)]
 pub struct EncodedFrame {
     pub payload: PixelPayload,
-    /// Serialised payload — the body of an `iw_proto::FrameKind::Pixels` frame.
+    /// Serialised payload: the body of an `iw_proto::FrameKind::Pixels` frame.
     pub bytes: Vec<u8>,
     /// Fraction of the window this frame redraws, before compression. Feeds
     /// tier selection.
@@ -174,7 +174,7 @@ pub struct Encoder {
 /// a 4K window is a few thousand bools.
 const LOSSY_TILE: u32 = 64;
 
-/// A delta is only worth sending when most of its bytes came out zero — that is
+/// A delta is only worth sending when most of its bytes came out zero: that is
 /// the whole reason it compresses better than the pixels. A rectangle that
 /// genuinely changed everywhere (a photo, a video frame) deltas to noise, which
 /// zstd handles *worse* than the original.
@@ -193,7 +193,7 @@ const JPEG_BAND_BYTES: usize = 512 * 1024;
 const MAX_JPEG_BANDS: usize = 8;
 
 /// The quality the byte budget will not push below. Under this, text inside a
-/// moving window stops being legible and starts being a smear — at which point
+/// moving window stops being legible and starts being a smear: at which point
 /// the window is cheap and useless rather than expensive and useful.
 const MIN_JPEG_QUALITY: u8 = 35;
 
@@ -225,7 +225,7 @@ impl Encoder {
     /// Returns true when the caller must force a keyframe. Coming *back* from
     /// lossy is exactly that case: everything on screen is a JPEG of itself,
     /// and only a full lossless frame makes the text sharp again. Going the
-    /// other way needs nothing — a JPEG tile stands alone.
+    /// other way needs nothing: a JPEG tile stands alone.
     pub fn set_mode(&mut self, mode: EncodeMode) -> bool {
         let leaving_lossy = self.mode == EncodeMode::Lossy && mode == EncodeMode::Lossless;
         self.mode = mode;
@@ -233,7 +233,7 @@ impl Encoder {
     }
 
     /// Forget the client's canvas, so the next frame is a keyframe. Called on
-    /// attach and reattach — a client that just joined has nothing.
+    /// attach and reattach: a client that just joined has nothing.
     pub fn invalidate(&mut self) {
         self.prev.clear();
         self.prev_dims = (0, 0);
@@ -280,7 +280,7 @@ impl Encoder {
         let mut pixels: Vec<u8> = Vec::new();
         // Each rectangle's own JPEG, length-prefixed, when this is a lossy
         // frame. Kept apart from `pixels` because the two never mix in one
-        // payload — the codec byte describes the whole blob.
+        // payload: the codec byte describes the whole blob.
         let mut tiles: Vec<u8> = Vec::new();
         for rect in rects {
             if !keyframe && !self.rect_changed(&frame, rect) {
@@ -303,7 +303,7 @@ impl Encoder {
                 // are encoded at the same time. JPEG is the most expensive
                 // thing this encoder does by an order of magnitude, the bands
                 // are independent, and the wire already carries one image per
-                // rectangle — so the parallelism costs nothing but the split.
+                // rectangle, so the parallelism costs nothing but the split.
                 //
                 // The split is by size rather than by core count, so the frames
                 // a given window produces are the same on every host.
@@ -441,7 +441,7 @@ impl Encoder {
         false
     }
 
-    /// Replace `slice` — a rectangle's pixels, row-major — with the difference
+    /// Replace `slice` (a rectangle's pixels, row-major) with the difference
     /// from what the client holds, and say whether that was worth doing.
     ///
     /// Leaves the slice untouched when it was not: the caller then sends the
@@ -462,7 +462,7 @@ impl Encoder {
         if zeros as f32 >= total as f32 * DELTA_ZERO_FRACTION {
             return true;
         }
-        // Not worth it — put the pixels back. Undoing costs one more pass and
+        // Not worth it: put the pixels back. Undoing costs one more pass and
         // keeps the caller's code linear; the alternative is a second copy of
         // every rectangle we were only ever going to send one way.
         for row in 0..rect.h {
@@ -516,7 +516,7 @@ impl Encoder {
     }
 
     /// Bring our model of the client's canvas up to date with what we just
-    /// encoded — only the rectangles we actually sent.
+    /// encoded, only the rectangles we actually sent.
     fn commit(&mut self, frame: &FrameView<'_>, payload: &PixelPayload) {
         let lossy_frame = payload.codec.is_tiled_image();
         for entry in &payload.rects {
@@ -531,8 +531,8 @@ impl Encoder {
                             self.prev[dst + px * 4..dst + px * 4 + 4].copy_from_slice(&colour);
                         }
                     }
-                    // Both carry the same pixels — a delta *is* those pixels,
-                    // expressed against what the client had — so the model of
+                    // Both carry the same pixels (a delta *is* those pixels,
+                    // expressed against what the client had) so the model of
                     // the client's canvas ends up in the same place.
                     RectOp::Pixels | RectOp::Delta => {
                         let src = &frame.row(y)[r.x as usize * 4..][..row_bytes];
@@ -555,7 +555,7 @@ impl Encoder {
 /// cost is linear in the input while the *gain* from a higher level is not: on
 /// a megabyte-scale keyframe, level 1 against level 2 is a few percent of size
 /// against nearly half the time. A keyframe is exactly the frame the user is
-/// waiting on — a window opening, a resize settling — so the big ones trade the
+/// waiting on (a window opening, a resize settling) so the big ones trade the
 /// percent for the milliseconds and the small ones, where the whole thing is
 /// sub-millisecond either way, keep the ratio.
 fn zstd_level(config: &EncoderConfig, bytes: usize) -> i32 {
@@ -571,8 +571,8 @@ fn zstd_level(config: &EncoderConfig, bytes: usize) -> i32 {
 /// The rectangle is copied into `scratch` row by row because the encoder wants
 /// a tightly packed image and the frame is a window with a stride. It is copied
 /// as-is: `jpeg-encoder` takes BGRA directly and ignores the alpha, so the
-/// per-pixel channel shuffle this used to do — a full pass over every pixel of
-/// every lossy frame, into a fresh allocation — buys nothing.
+/// per-pixel channel shuffle this used to do (a full pass over every pixel of
+/// every lossy frame, into a fresh allocation) buys nothing.
 fn encode_jpeg(frame: &FrameView<'_>, rect: Rect, quality: u8) -> Result<Vec<u8>, EncodeError> {
     let row_bytes = rect.w as usize * 4;
     let mut packed = Vec::with_capacity(row_bytes * rect.h as usize);
@@ -818,7 +818,7 @@ mod tests {
         assert_eq!(frame.payload.blob.len(), 32 * 32 * 4);
     }
 
-    /// Change one small square inside a much larger damage rectangle — the
+    /// Change one small square inside a much larger damage rectangle: the
     /// shape every toolkit produces when a single widget redraws.
     fn poke(px: &mut [u8], width: u32, at: Rect, value: u8) {
         for y in at.y..at.bottom() {

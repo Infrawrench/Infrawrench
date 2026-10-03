@@ -1,6 +1,6 @@
 //! PulseAudio "tagstruct" encoding: every value on the native protocol's
 //! control channel is a one-byte type tag followed by big-endian data. This is
-//! the subset the server needs — enough to parse what libpulse sends and to
+//! the subset the server needs: enough to parse what libpulse sends and to
 //! write the replies it expects, nothing more.
 
 /// Type tags, from PulseAudio's `tagstruct.h`. The values are ASCII on

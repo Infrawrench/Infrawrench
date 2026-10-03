@@ -53,7 +53,7 @@ pub struct WaylandBackend {
     /// Interrupts [`Self::dispatch`] from another thread. Held so the reader
     /// thread can be handed a clone.
     waker: Ping,
-    /// Events raised off-thread — reading a client's clipboard, which is a
+    /// Events raised off-thread: reading a client's clipboard, which is a
     /// pipe an application fills at its own pace.
     async_events: (
         std::sync::mpsc::Sender<BackendEvent>,
@@ -68,7 +68,7 @@ impl WaylandBackend {
         let socket_name = launch_env::wayland_display_name(session_id);
 
         // Smithay binds the socket relative to XDG_RUNTIME_DIR, read from the
-        // environment at bind time — so this process's own view of it has to
+        // environment at bind time, so this process's own view of it has to
         // agree with the one we hand to applications.
         // SAFETY: single-threaded startup, before any thread is spawned.
         unsafe {
@@ -117,7 +117,7 @@ impl WaylandBackend {
 
         // Client input arrives on another thread. Without something to
         // interrupt it, `dispatch` sits on its timeout with a keystroke already
-        // in the channel — up to a whole turn of latency on every key and every
+        // in the channel: up to a whole turn of latency on every key and every
         // mouse move, for input the loop is holding but has not looked at.
         let (waker, wake_source) =
             make_ping().map_err(|e| BackendError::Compositor(format!("waker: {e}")))?;
@@ -174,7 +174,7 @@ impl WaylandBackend {
     /// The keycode a keysym is bound to, binding it first if it is new.
     ///
     /// `None` when there is no keyboard, or when the keymap the binding needs
-    /// would not compile — in which case the old keymap stays and the
+    /// would not compile: in which case the old keymap stays and the
     /// character is dropped, which is what this did for every keysym before.
     fn bind_keysym(&mut self, keysym: u32) -> Option<u32> {
         if self.data.state.base_keymap.is_none() {
@@ -246,7 +246,7 @@ impl WaylandBackend {
 impl Backend for WaylandBackend {
     fn launch(&mut self, spec: LaunchSpec) -> Result<(), BackendError> {
         let mut env = spec.env.clone();
-        // Whatever the caller assembled, the socket is ours to name — a stale
+        // Whatever the caller assembled, the socket is ours to name: a stale
         // WAYLAND_DISPLAY here sends the app to another compositor entirely.
         env.insert("WAYLAND_DISPLAY".into(), self.socket_name.clone());
         env.insert(
@@ -263,7 +263,7 @@ impl Backend for WaylandBackend {
         height: u32,
         scale: f32,
     ) -> Result<(), BackendError> {
-        // The client asks in the pixels it will actually paint — its CSS box
+        // The client asks in the pixels it will actually paint: its CSS box
         // times its device pixel ratio. Wayland configures a toplevel in
         // *logical* pixels and the application multiplies by the output scale
         // to get its buffer, so the conversion happens here, once.
@@ -272,13 +272,13 @@ impl Backend for WaylandBackend {
         // 1.5× display asks for 2×, and the browser downsamples the extra
         // pixels. Fractional scaling would save the difference in bandwidth
         // but not add any detail, and it needs two more protocols on both
-        // ends. The toplevel's size divides by the *fractional* ratio though —
+        // ends. The toplevel's size divides by the *fractional* ratio though:
         // that recovers the CSS box the viewer measured. At a fractional ratio
         // the application's buffer (logical × the whole scale) is therefore
         // larger than the request, which is exactly what the viewer expects to
         // downsample; dividing the size by the whole scale instead configured
-        // a window smaller than its box, and every frame was stretched back up
-        // — an application drawn too large everywhere.
+        // a window smaller than its box, and every frame was stretched back up:
+        // an application drawn too large everywhere.
         let buffer_scale = if scale.is_finite() && scale > 1.0 {
             (scale.ceil() as i32).min(MAX_SCALE)
         } else {
@@ -288,7 +288,7 @@ impl Backend for WaylandBackend {
 
         let logical = crate::paint::logical_size(width, height, scale);
         // Before the window is asked to take this size, make sure the desktop
-        // is big enough to hold it — a toolkit clamps a window to the output
+        // is big enough to hold it: a toolkit clamps a window to the output
         // it can see, and a viewer tab is under no obligation to fit ours.
         self.data.state.ensure_desktop_fits(logical);
 
@@ -318,7 +318,7 @@ impl Backend for WaylandBackend {
         let keyboard = self.data.state.seat.get_keyboard();
         let pointer = self.data.state.seat.get_pointer();
 
-        // The protocol carries pointer positions in *buffer* pixels — the same
+        // The protocol carries pointer positions in *buffer* pixels: the same
         // pixels the client is looking at, which is the only coordinate system
         // it has. Wayland delivers them surface-local and **logical**, so on a
         // HiDPI window every position has to come back down by the scale the
@@ -328,7 +328,7 @@ impl Backend for WaylandBackend {
         let scale = f64::from(state::surface_scale(&surface).max(1));
 
         // Keyboard focus follows whichever window is being typed into: with one
-        // window per tab, the tab the user is looking at is the focus — unless
+        // window per tab, the tab the user is looking at is the focus, unless
         // a popup holds a grab, in which case the menu owns the keys (its
         // arrows, its Escape) until it is dismissed.
         let keyboard_focus = self
@@ -384,7 +384,7 @@ impl Backend for WaylandBackend {
                 InputEvent::PointerMotion { time_ms, x, y } => {
                     let Some(pointer) = &pointer else { continue };
                     let at = (fixed_to_f64(x) / scale, fixed_to_f64(y) / scale);
-                    // The event lands on whatever is under the point — the
+                    // The event lands on whatever is under the point: the
                     // topmost popup, or the toplevel. The second element of
                     // the target is that surface's own origin in the same
                     // coordinates; Smithay subtracts it to make the position
@@ -414,7 +414,7 @@ impl Backend for WaylandBackend {
                     let Some(pointer) = &pointer else { continue };
                     if state == ButtonState::Pressed {
                         // A grabbed popup is dismissed by a press outside it,
-                        // before the press is delivered — the same order every
+                        // before the press is delivered: the same order every
                         // desktop compositor uses.
                         let at = pointer.current_location();
                         self.data
@@ -500,7 +500,7 @@ impl Backend for WaylandBackend {
         // Release the client to draw the next frame only now, as we consume
         // this one. That is what paces an application to the rate we can
         // actually ship rather than to how fast it can render. Popups draw
-        // into this same frame, so they are paced with it — a menu whose
+        // into this same frame, so they are paced with it: a menu whose
         // callbacks never fired would open once and never animate again.
         send_frame_callbacks(&surface, now);
         for popup in self.data.state.popup_surfaces(window_id) {
@@ -528,7 +528,7 @@ impl Backend for WaylandBackend {
         self.data.state.client_clipboard = Some((mime_type.to_owned(), data.to_vec()));
         // Publishing it is what makes it pasteable: until the seat holds a
         // selection, an application asking for the clipboard is told there is
-        // nothing there. The contents are not sent now — `send_selection`
+        // nothing there. The contents are not sent now: `send_selection`
         // hands them over when something actually reads.
         let dh = self.data.state.dh.clone();
         let seat = self.data.state.seat.clone();
@@ -593,7 +593,7 @@ fn button_state(state: ButtonState) -> smithay::backend::input::ButtonState {
 /// A pipe, as `(read, write)`.
 ///
 /// `std::io::pipe` would do this, and is two Rust releases newer than the one
-/// this workspace is pinned to — the binary runs on other people's machines,
+/// this workspace is pinned to: the binary runs on other people's machines,
 /// so the toolchain floor is a deliberate choice rather than an oversight.
 fn make_pipe() -> std::io::Result<(OwnedFd, OwnedFd)> {
     use std::os::fd::FromRawFd;

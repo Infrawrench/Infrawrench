@@ -19,7 +19,7 @@ serde_json = "1"
 thiserror = "2"
 zstd = "0.13"
 # Baseline JPEG for the lossy tier. Zero transitive dependencies, and the
-# browser decodes the result natively — which is the argument for JPEG over
+# browser decodes the result natively, which is the argument for JPEG over
 # anything we would have to ship a decoder for. 0.6 rather than 0.7 because 0.7
 # wants rustc 1.87 and this workspace is pinned to 1.85.
 #

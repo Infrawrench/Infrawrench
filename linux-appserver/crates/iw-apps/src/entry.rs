@@ -22,7 +22,7 @@ pub struct DesktopEntry {
     pub categories: Vec<String>,
     /// `Terminal=true`: needs a terminal emulator, which we do not provide.
     pub terminal: bool,
-    /// `StartupWMClass` — how a window whose `app_id` differs from its desktop
+    /// `StartupWMClass`: how a window whose `app_id` differs from its desktop
     /// file id still gets the right icon.
     pub wm_class: Option<String>,
     /// `Path`: working directory to spawn in.
@@ -33,7 +33,7 @@ pub struct DesktopEntry {
 /// report "48 entries, 12 hidden" instead of silently shrinking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Skipped {
-    /// `Type` is not `Application` — a Link or Directory entry.
+    /// `Type` is not `Application`: a Link or Directory entry.
     NotAnApplication,
     /// `NoDisplay=true` or `Hidden=true`.
     Hidden,
@@ -268,7 +268,7 @@ pub fn unescape(raw: &str) -> String {
 /// every field code.
 ///
 /// We pass no files or URLs, so `%f`/`%F`/`%u`/`%U` become nothing rather than
-/// an empty string argument — an app that gets `""` where it expected a path
+/// an empty string argument: an app that gets `""` where it expected a path
 /// opens a file called "" and shows an error dialog.
 pub fn exec_argv(exec: &str, entry_name: &str, icon: Option<&str>) -> Vec<String> {
     let mut argv: Vec<String> = Vec::new();
@@ -323,7 +323,7 @@ pub fn exec_argv(exec: &str, entry_name: &str, icon: Option<&str>) -> Vec<String
                     has_current = true;
                 }
                 // Every other code expands to files, URLs or deprecated
-                // values we do not supply, so it contributes nothing — and a
+                // values we do not supply, so it contributes nothing, and a
                 // bare "%U" argument disappears entirely rather than becoming
                 // an empty string.
                 Some(_) => {}

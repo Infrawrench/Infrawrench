@@ -1,5 +1,5 @@
 [toolchain]
-# Pinned so a laptop and CI agree on what `cargo fmt` and clippy produce — an
+# Pinned so a laptop and CI agree on what `cargo fmt` and clippy produce: an
 # unpinned toolchain turns a rustc release into a red build on an unrelated PR.
 channel = "1.96"
 components = ["rustfmt", "clippy"]
