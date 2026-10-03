@@ -14,6 +14,8 @@ import type {
   DashboardStat,
   MetricSeries,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
 } from "@infrawrench/plugin-base";
 import {
   joinSubtitle,
@@ -1335,6 +1337,58 @@ export class OvhClient implements PluginClient {
   /** Metric-name list order is provider-defined; cap fan-out per fetch. */
   private static readonly DB_METRIC_LIMIT = 8;
 
+  /**
+   * Logs tab for managed databases: `GET .../database/{engine}/{clusterId}/logs`
+   * returns the most recent cluster log messages (up to 1000) with host and
+   * timestamp. OVH marks the route deprecated (removal 2027-01-01) in favour
+   * of Logs Data Platform subscriptions, which need a separate LDP stream and
+   * only expose a WebSocket tail; until then this is the one pull-based log
+   * read on the plain API credential.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    const result = (text: string): LogsFetchResult => ({
+      text,
+      containers: [],
+      activeContainer: "",
+    });
+    if (typeId !== "managed-db") return result("");
+    const externalId = resourceId.split(":").pop();
+    if (!externalId) return result("");
+    let entries: Array<{ hostname?: string; message?: string; timestamp?: number }>;
+    try {
+      const svc = await this.ovhFetch<OvhDatabaseService>(
+        this.cloudPath(`/database/service/${enc(externalId)}`),
+      );
+      const engine = (svc.engine ?? "").trim().toLowerCase();
+      if (!engine) return result("");
+      entries = await this.ovhFetch<
+        Array<{ hostname?: string; message?: string; timestamp?: number }>
+      >(this.cloudPath(`${this.databaseEnginePath(engine)}/${enc(externalId)}/logs`));
+    } catch (err) {
+      return result(
+        `Could not read logs from OVHcloud: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+    }
+    const tail = Math.max(params.tailLines ?? 200, 1);
+    const hosts = new Set(entries.map((e) => e.hostname ?? ""));
+    const lines = [...entries]
+      .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+      .slice(-tail)
+      .map((e) => {
+        const ts = e.timestamp != null ? new Date(e.timestamp * 1000).toISOString() : "?";
+        const host = hosts.size > 1 && e.hostname ? `  [${e.hostname}]` : "";
+        return `${ts}${host}  ${e.message ?? ""}`;
+      });
+    return result(
+      lines.length > 0 ? lines.join("\n") + "\n" : "No recent log messages for this cluster.\n",
+    );
+  }
+
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     // Bind preserves the generic signature of the private signed fetch
     // helper so cost calls carry OVH request signing + bastion routing.
@@ -1517,6 +1571,10 @@ export class OvhClient implements PluginClient {
     // peerIntegration with the MongoDB plugin (which now implements
     // renderPeerPane), so the inline tab is dropped: the peer-pane lists
     // databases and opens each in the existing MongoDocumentBrowser.
+
+    if (resource.resourceTypeId === "managed-db") {
+      detail.logs = { defaultTailLines: 200 };
+    }
 
     return detail;
   }

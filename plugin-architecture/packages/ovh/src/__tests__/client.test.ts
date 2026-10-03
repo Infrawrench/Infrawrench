@@ -1260,6 +1260,51 @@ describe("fetchMetricSeries", () => {
   });
 });
 
+describe("getLogs", () => {
+  const dbId = "bbbb1111-2222-3333-4444-555555555555";
+
+  it("returns nothing for types without a log route", async () => {
+    const c = makeClient();
+    expect((await c.getLogs("instance", "x", ACCOUNT, {})).text).toBe("");
+    expect(apiCalls()).toHaveLength(0);
+  });
+
+  it("reads managed-db logs on the engine path, oldest first, tagged per host", async () => {
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith(`/database/service/${dbId}`))
+        return okJson({ id: dbId, engine: "postgresql" });
+      if (u.endsWith(`/database/postgresql/${dbId}/logs`))
+        return okJson([
+          { hostname: "node-2", message: "later", timestamp: 1700000002 },
+          { hostname: "node-1", message: "earlier", timestamp: 1700000001 },
+          { hostname: "node-1", message: "oldest", timestamp: 1700000000 },
+        ]);
+      return okJson({});
+    });
+    const c = makeClient();
+    const res = await c.getLogs("managed-db", `${ACCOUNT}:managed-db:${dbId}`, ACCOUNT, {
+      tailLines: 2,
+    });
+    expect(res.text).toBe(
+      "2023-11-14T22:13:21.000Z  [node-1]  earlier\n2023-11-14T22:13:22.000Z  [node-2]  later\n",
+    );
+  });
+
+  it("surfaces an API failure as text", async () => {
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith(`/database/service/${dbId}`)) return okJson({ id: dbId, engine: "mysql" });
+      return notOk(403, "denied");
+    });
+    const c = makeClient();
+    const res = await c.getLogs("managed-db", `${ACCOUNT}:managed-db:${dbId}`, ACCOUNT, {});
+    expect(res.text).toContain("Could not read logs");
+  });
+});
+
 describe("fetchDashboardStats", () => {
   function listImpl(body: unknown) {
     return async (url: string | URL | Request) => {
@@ -1356,6 +1401,15 @@ describe("renderDetail / renderSidebarItem", () => {
       ...overrides,
     };
   }
+
+  it("renderDetail adds a Logs tab to managed databases only", () => {
+    const c = makeClient();
+    expect(c.renderDetail(res()).logs).toBeUndefined();
+    const d = c.renderDetail(
+      res({ id: `${ACCOUNT}:managed-db:db-1`, resourceTypeId: "managed-db", fields: {} }),
+    );
+    expect(d.logs).toEqual({ defaultTailLines: 200 });
+  });
 
   it("renderDetail healthy with label", () => {
     const c = makeClient();
