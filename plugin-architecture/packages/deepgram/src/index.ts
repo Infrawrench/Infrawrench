@@ -5,4 +5,10 @@ export { MemberResourceType } from "./resources/member.js";
 export { InviteResourceType } from "./resources/invite.js";
 export { BalanceResourceType } from "./resources/balance.js";
 export { ModelResourceType } from "./resources/model.js";
+export {
+  AgentConfigResourceType,
+  AgentVariableResourceType,
+  DistributionCredentialResourceType,
+  PurchaseResourceType,
+} from "./resources/agent.js";
 export { DeepgramClient } from "./client.js";

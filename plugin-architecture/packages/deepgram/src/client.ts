@@ -6,6 +6,8 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
   MetricSeries,
   MetricSeriesPoint,
   PluginClient,
@@ -27,6 +29,7 @@ import {
   externalIdOf,
 } from "@infrawrench/plugin-base";
 import { fetchDeepgramCostData } from "./cost-data.js";
+import { DeepgramExtras, EXTRA_TYPES } from "./extras.js";
 
 const BASE_URL = "https://api.deepgram.com";
 
@@ -327,6 +330,8 @@ export class DeepgramClient implements PluginClient {
   private readonly apiKey: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  /** Voice Agent configurations and variables, purchases, self-hosted credentials, request log. */
+  private readonly extras: DeepgramExtras;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -334,6 +339,7 @@ export class DeepgramClient implements PluginClient {
     this.apiKey = apiKey;
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
+    this.extras = new DeepgramExtras({ apiKey, caCert: this.caCert, services });
   }
 
   private get authHeaders(): Record<string, string> {
@@ -375,6 +381,13 @@ export class DeepgramClient implements PluginClient {
         return this.listForEachProject(accountId, (p) => this.listBalances(accountId, p));
       case "model":
         return this.listForEachProject(accountId, (p) => this.listModels(accountId, p));
+      case "agent-config":
+      case "agent-variable":
+      case "purchase":
+      case "distribution-credential":
+        return this.listForEachProject(accountId, (p) =>
+          this.extras.listForProject(typeId, accountId, p),
+        );
       default:
         throw new Error(`Deepgram plugin: unknown resource type "${typeId}"`);
     }
@@ -689,6 +702,8 @@ export class DeepgramClient implements PluginClient {
       return instance;
     }
 
+    if (EXTRA_TYPES.has(typeId)) return this.extras.get(typeId, resourceId, accountId);
+
     const { projectId, childId } = splitChildId(resourceId);
 
     if (typeId === "api-key") {
@@ -818,6 +833,9 @@ export class DeepgramClient implements PluginClient {
         { label: "Requests (30d)", value: totals.requests.toLocaleString() },
         { label: "Audio Hours (30d)", value: totals.hours.toFixed(2) },
         { label: "TTS Characters (30d)", value: totals.ttsCharacters.toLocaleString() },
+        ...(totals.agentHours > 0
+          ? [{ label: "Voice Agent Hours (30d)", value: totals.agentHours.toFixed(2) }]
+          : []),
         ...(balances.length > 0
           ? [{ label: "Prepaid Balance", value: `$${credit.toFixed(2)}` }]
           : []),
@@ -826,6 +844,7 @@ export class DeepgramClient implements PluginClient {
 
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     const f = resource.fields;
+    if (EXTRA_TYPES.has(resourceTypeId)) return this.extras.stats(resource);
 
     switch (resourceTypeId) {
       case "api-key":
@@ -897,14 +916,32 @@ export class DeepgramClient implements PluginClient {
     // Deepgram can return several rows per interval (one per grouping key), so
     // sum into a map keyed by the bucket's own timestamp rather than assuming
     // one row per point.
-    const byStamp = new Map<number, { requests: number; hours: number; characters: number }>();
+    type Acc = {
+      requests: number;
+      hours: number;
+      characters: number;
+      agentHours: number;
+      tokensIn: number;
+      tokensOut: number;
+    };
+    const byStamp = new Map<number, Acc>();
     for (const bucket of buckets) {
       const stamp = Date.parse(bucket.grouping?.start ?? bucket.grouping?.end ?? "");
       if (!Number.isFinite(stamp)) continue;
-      const acc = byStamp.get(stamp) ?? { requests: 0, hours: 0, characters: 0 };
+      const acc = byStamp.get(stamp) ?? {
+        requests: 0,
+        hours: 0,
+        characters: 0,
+        agentHours: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      };
       acc.requests += num(bucket.requests);
       acc.hours += num(bucket.hours);
       acc.characters += num(bucket.tts_characters);
+      acc.agentHours += num(bucket.agent_hours);
+      acc.tokensIn += num(bucket.tokens_in);
+      acc.tokensOut += num(bucket.tokens_out);
       byStamp.set(stamp, acc);
     }
 
@@ -912,11 +949,17 @@ export class DeepgramClient implements PluginClient {
     const requests: MetricSeriesPoint[] = [];
     const hours: MetricSeriesPoint[] = [];
     const characters: MetricSeriesPoint[] = [];
+    const agentHours: MetricSeriesPoint[] = [];
+    const tokensIn: MetricSeriesPoint[] = [];
+    const tokensOut: MetricSeriesPoint[] = [];
     for (const stamp of stamps) {
       const acc = byStamp.get(stamp)!;
       requests.push({ timestamp: stamp, value: acc.requests });
       hours.push({ timestamp: stamp, value: acc.hours });
       characters.push({ timestamp: stamp, value: acc.characters });
+      agentHours.push({ timestamp: stamp, value: acc.agentHours });
+      tokensIn.push({ timestamp: stamp, value: acc.tokensIn });
+      tokensOut.push({ timestamp: stamp, value: acc.tokensOut });
     }
 
     const series: MetricSeries[] = [];
@@ -925,6 +968,15 @@ export class DeepgramClient implements PluginClient {
     if (nonZero(hours)) series.push({ label: "Audio Hours", unit: "hours", points: hours });
     if (nonZero(characters)) {
       series.push({ label: "TTS Characters", unit: "characters", points: characters });
+    }
+    // Voice Agent API usage: talk time plus the LLM tokens it spent.
+    if (nonZero(agentHours)) {
+      series.push({ label: "Voice Agent Hours", unit: "hours", points: agentHours });
+    }
+    if (nonZero(tokensIn))
+      series.push({ label: "LLM Tokens In", unit: "tokens", points: tokensIn });
+    if (nonZero(tokensOut)) {
+      series.push({ label: "LLM Tokens Out", unit: "tokens", points: tokensOut });
     }
     return series;
   }
@@ -1023,6 +1075,23 @@ export class DeepgramClient implements PluginClient {
       };
     }
 
+    if (typeId === "agent-config" || typeId === "agent-variable") {
+      // The agent form's model and voice pickers come from a project's own
+      // entitlements: the parent's when launched from one, else the first.
+      const projectId = parentResourceId
+        ? externalIdOf(parentResourceId)
+        : (await this.fetchProjects().catch(() => [] as DgProject[]))[0]?.project_id;
+      const catalogue = await this.loadSpeechOptions(projectId);
+      const config = await this.extras.createConfig(typeId, {
+        stt: catalogue.stt.map((m) => ({ id: m.id, label: m.label })),
+        tts: catalogue.tts.map((v) => ({
+          id: v.id,
+          label: v.description ? `${v.label} (${v.description})` : v.label,
+        })),
+      });
+      return { ...config, fields: [...projectField, ...config.fields] };
+    }
+
     throw new Error(`Deepgram plugin: no create config for type "${typeId}"`);
   }
 
@@ -1064,6 +1133,8 @@ export class DeepgramClient implements PluginClient {
     parentResourceId?: string,
   ): Promise<ResourceInstance> {
     const projectId = this.resolveProjectId(fields, parentResourceId);
+
+    if (EXTRA_TYPES.has(typeId)) return this.extras.create(typeId, accountId, projectId, fields);
 
     if (typeId === "api-key") {
       // https://developers.deepgram.com/reference/management-api/keys/create
@@ -1113,6 +1184,8 @@ export class DeepgramClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    if (EXTRA_TYPES.has(typeId)) return this.extras.update(typeId, resourceId, accountId, fields);
+
     if (typeId === "project") {
       // https://developers.deepgram.com/reference/management-api/projects/update
       const projectId = externalIdOf(resourceId);
@@ -1143,6 +1216,18 @@ export class DeepgramClient implements PluginClient {
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+    if (EXTRA_TYPES.has(typeId)) return this.extras.remove(typeId, resourceId);
+
+    if (typeId === "project") {
+      // https://developers.deepgram.com/reference/manage/projects/delete
+      // Permanent: the project and everything in it.
+      await this.fetch<{ message?: string }>(
+        `/v1/projects/${encodeURIComponent(externalIdOf(resourceId))}`,
+        { method: "DELETE" },
+      );
+      return;
+    }
+
     const { projectId, childId } = splitChildId(resourceId);
 
     if (typeId === "api-key") {
@@ -1174,6 +1259,23 @@ export class DeepgramClient implements PluginClient {
     }
 
     throw new Error(`Deepgram plugin: cannot delete type "${typeId}"`);
+  }
+
+  // -------------------------------------------------------------------------
+  // Request log
+  // -------------------------------------------------------------------------
+
+  /** The project's Logs tab: its recent API requests, one per line. */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    if (typeId !== "project") {
+      throw new Error(`Deepgram plugin: logs are not available on "${typeId}"`);
+    }
+    return this.extras.requestLog(externalIdOf(resourceId), params);
   }
 
   // -------------------------------------------------------------------------
@@ -1380,6 +1482,7 @@ export class DeepgramClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    if (EXTRA_TYPES.has(resource.resourceTypeId)) return this.extras.render(resource);
     switch (resource.resourceTypeId) {
       case "project":
         return this.renderProjectDetail(resource);
@@ -1489,6 +1592,8 @@ export class DeepgramClient implements PluginClient {
         },
       ],
       metricsCapability: { defaultTimeRangeMs: 30 * 24 * 60 * 60 * 1000 },
+      // Recent API requests from GET /v1/projects/{id}/requests.
+      logs: { defaultTailLines: 200 },
       speechPanel: {
         modes: ["stt", "tts"],
         subtitle: "Round-trip audio against this project's Deepgram entitlements.",
@@ -1743,6 +1848,7 @@ export class DeepgramClient implements PluginClient {
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
+    if (EXTRA_TYPES.has(resource.resourceTypeId)) return this.extras.sidebar(resource);
     switch (resource.resourceTypeId) {
       case "project":
         return {
@@ -1807,16 +1913,19 @@ function summariseUsage(buckets: DgUsageBucket[]): {
   requests: number;
   hours: number;
   ttsCharacters: number;
+  agentHours: number;
 } {
   let requests = 0;
   let hours = 0;
   let ttsCharacters = 0;
+  let agentHours = 0;
   for (const bucket of buckets) {
     requests += num(bucket.requests);
     hours += num(bucket.hours);
     ttsCharacters += num(bucket.tts_characters);
+    agentHours += num(bucket.agent_hours);
   }
-  return { requests, hours, ttsCharacters };
+  return { requests, hours, ttsCharacters, agentHours };
 }
 
 /**

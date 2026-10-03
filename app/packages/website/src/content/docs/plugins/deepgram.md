@@ -1,17 +1,21 @@
 ---
 title: Deepgram
-description: Manage Deepgram projects, API keys, members, invites and prepaid balances, chart usage, and round-trip audio through Nova transcription and Aura voices.
+description: Manage Deepgram projects, API keys, members, invites, balances and purchases, Voice Agent configurations and variables, chart usage, read the request log, and round-trip audio through Nova transcription and Aura voices.
 sidebar_order: 43
 ---
 
 ## What you can manage
 
-- **Projects** — the workspace that owns everything else. Rename it, chart its usage, and run the Speech tab from it.
+- **Projects** — the workspace that owns everything else. Rename it, chart its usage, read its request log, and run the Speech tab from it. Deleting a project is permanent and takes everything in it along.
 - **API keys** — create one with a scope, tags and an optional expiry, and delete it. The secret is shown **once**, on the create response.
 - **Members** — the users with access to a project. Change a member's role between `member`, `admin` and `owner`, or remove them.
 - **Invites** — send one to an email address with a scope, or revoke it. Invites are addressed by email rather than by an id.
 - **Balances** — prepaid credit on the project. Read-only; top-ups happen in Deepgram's billing console.
 - **Models** — the project's entitled speech-to-text models and Aura voices in one list. TTS entries carry the full voice metadata: accent, age, characteristics, use cases and a preview clip.
+- **Agent configurations** — saved Voice Agent `agent` blocks that a session references by `agent_id` instead of sending the whole block. Create one by picking the speech-to-text model (Flux by default), a Deepgram-managed LLM, an Aura voice, a prompt and an optional greeting; or paste a full agent block under **Advanced** to store functions, your own LLM endpoint or another speech provider. Deepgram treats the configuration as immutable, so only its labels (metadata, as `key=value` pairs) can be edited afterwards; the name you give it is stored as the `name` label.
+- **Agent variables** — `DG_<NAME>` template variables Deepgram substitutes into agent configurations when a session starts. The `DG_` prefix is added for you; values can be plain text or any JSON. Edit a variable to change its value.
+- **Purchases** — the purchase orders behind a project's credit (prepaid, promotional and so on) with amount and expiry. Read-only.
+- **Distribution credentials** — the container registry credentials used to pull Deepgram's self-hosted images, for projects that have self-hosted access. Listed with their scopes and creator, and revocable; create them in the Deepgram Console, which is the only place their username and secret are shown.
 
 ## Credentials
 
@@ -39,7 +43,11 @@ If the key cannot read the project's model catalogue, the tab explains that a me
 
 ## Metrics
 
-Projects get a **Metrics** tab over the last 30 days, charting requests, audio hours and TTS characters. Deepgram can return several rows per interval — one per grouping key — so the plugin sums them per bucket rather than assuming one row per point.
+Projects get a **Metrics** tab over the last 30 days, charting requests, audio hours and TTS characters, plus Voice Agent hours and the LLM tokens in and out that agents spent, when the project uses voice agents. Deepgram can return several rows per interval — one per grouping key — so the plugin sums them per bucket rather than assuming one row per point.
+
+## Request log
+
+Projects also get a **Logs** tab listing recent API requests from `GET /v1/projects/{id}/requests`, oldest first: time, status code, method, path, deployment, audio duration, billed USD, request id and the API key that made it. The tab's source dropdown filters to failed requests or to one endpoint (`listen`, `speak`, `agent`, `read`), and the line count is passed straight through as the page size, up to Deepgram's limit of 1,000.
 
 ## Cost graphs
 
@@ -57,4 +65,6 @@ A year of history is requested on the first sync and the most recent three days 
 - **A new key's secret exists in exactly one place: the create response.** The plugin shows it once with a warning. Deepgram only stores the key id and a truncated prefix, so there is genuinely no way to read it back.
 - **Deleting a member revokes every API key they own inside that project**, not just their access.
 - **Renaming is the only project edit.** `name` is the sole documented mutable attribute.
+- **Agent configurations are listed with their placeholders.** Variables are substituted when a session starts, not when the configuration is read.
+- **Deleting an agent configuration can break live traffic.** Sessions that reference its `agent_id` fail afterwards, so move them to a replacement first.
 - **Balances are read-only by design.** There is no billing mutation in the API — top-ups go through Deepgram's console.

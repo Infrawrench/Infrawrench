@@ -858,3 +858,282 @@ describe("getCreateConfig", () => {
     ).rejects.toThrow(/no create config/);
   });
 });
+
+describe("voice agent configurations", () => {
+  const parent = `${ACCOUNT}:project:${PROJECT}`;
+
+  it("lists configurations per project, naming them from their metadata", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/projects")) return jsonResponse(PROJECT_LIST);
+      return jsonResponse({
+        agents: [
+          {
+            agent_id: "ag-1",
+            config: {
+              listen: { provider: { type: "deepgram", model: "flux-general-en", version: "v2" } },
+              think: { provider: { type: "open_ai", model: "gpt-4o-mini" }, prompt: "Be kind." },
+              speak: { provider: { type: "deepgram", model: "aura-2-thalia-en" } },
+              greeting: "Hello",
+            },
+            metadata: { name: "Support", team: "cx" },
+            created_at: "2026-09-01T00:00:00Z",
+          },
+        ],
+      });
+    });
+    const [agent] = await client().listResources("agent-config", ACCOUNT);
+    expect(calls[1]?.url).toBe(`https://api.deepgram.com/v1/projects/${PROJECT}/agents`);
+    expect(agent?.id).toBe(`${ACCOUNT}:agent-config:${PROJECT}/ag-1`);
+    expect(agent?.displayName).toBe("Support");
+    expect(agent?.fields["think"]).toBe("open_ai · gpt-4o-mini");
+    expect(agent?.fields["labels"]).toBe("name=Support, team=cx");
+    expect(agent?.parentResourceId).toBe(parent);
+  });
+
+  it("offers managed think models and the project's voices in the create form", async () => {
+    installFetch((url) => {
+      if (url.startsWith("https://agent.deepgram.com/v1/agent/settings/think/models")) {
+        return jsonResponse({
+          models: [
+            { id: "gpt-4o-mini", name: "GPT-4o mini", provider: "open_ai" },
+            { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4", provider: "anthropic" },
+          ],
+        });
+      }
+      return jsonResponse(MODEL_LIST);
+    });
+    const config = await client().getCreateConfig("agent-config", parent);
+    const think = config.fields.find((f) => f.key === "thinkModel");
+    expect(think?.options?.map((o) => o.id)).toEqual([
+      "open_ai::gpt-4o-mini",
+      "anthropic::claude-sonnet-4-20250514",
+    ]);
+    expect(think?.defaultValue).toBe("open_ai::gpt-4o-mini");
+    const voice = config.fields.find((f) => f.key === "speakVoice");
+    expect(voice?.options?.map((o) => o.id)).toContain("aura-2-thalia-en");
+    expect(config.fields.find((f) => f.key === "projectId")).toBeUndefined();
+  });
+
+  it("builds the agent block from the pickers and posts it as a JSON string", async () => {
+    installFetch(() => jsonResponse({ agent_id: "ag-2", config: {}, metadata: { name: "Bot" } }));
+    await client().createResource(
+      "agent-config",
+      ACCOUNT,
+      {
+        name: "Bot",
+        listenModel: "flux-general-en",
+        thinkModel: "anthropic::claude-sonnet-4-20250514",
+        prompt: "Help.",
+        speakVoice: "aura-2-thalia-en",
+        greeting: "Hi",
+        labels: "env=prod",
+      },
+      parent,
+    );
+    expect(calls[0]?.url).toBe(`https://api.deepgram.com/v1/projects/${PROJECT}/agents`);
+    const body = JSON.parse(String(calls[0]?.init?.body));
+    expect(body.metadata).toEqual({ env: "prod", name: "Bot" });
+    expect(JSON.parse(body.config)).toEqual({
+      listen: { provider: { type: "deepgram", model: "flux-general-en", version: "v2" } },
+      think: {
+        provider: { type: "anthropic", model: "claude-sonnet-4-20250514" },
+        prompt: "Help.",
+      },
+      speak: { provider: { type: "deepgram", model: "aura-2-thalia-en" } },
+      greeting: "Hi",
+    });
+  });
+
+  it("stores an advanced agent block as given, unwrapping a Settings message", async () => {
+    installFetch(() => jsonResponse({ agent_id: "ag-3" }));
+    await client().createResource(
+      "agent-config",
+      ACCOUNT,
+      { name: "Adv", configJson: '{"type":"Settings","agent":{"greeting":"Yo"}}' },
+      parent,
+    );
+    expect(JSON.parse(JSON.parse(String(calls[0]?.init?.body)).config)).toEqual({ greeting: "Yo" });
+  });
+
+  it("edits only the metadata with PUT", async () => {
+    installFetch(() => jsonResponse({ agent_id: "ag-1", metadata: { name: "Renamed" } }));
+    await client().updateResource(
+      "agent-config",
+      `${ACCOUNT}:agent-config:${PROJECT}/ag-1`,
+      ACCOUNT,
+      {
+        labels: "name=Renamed",
+      },
+    );
+    expect(calls[0]?.url).toBe(`https://api.deepgram.com/v1/projects/${PROJECT}/agents/ag-1`);
+    expect(calls[0]?.init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ metadata: { name: "Renamed" } });
+  });
+});
+
+describe("voice agent variables", () => {
+  const parent = `${ACCOUNT}:project:${PROJECT}`;
+
+  it("prefixes the name with DG_ and parses JSON values", async () => {
+    installFetch(() => jsonResponse({ variable_id: "v1", key: "DG_LIMITS", value: { max: 3 } }));
+    const created = await client().createResource(
+      "agent-variable",
+      ACCOUNT,
+      { key: "limits", value: '{"max": 3}' },
+      parent,
+    );
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      key: "DG_LIMITS",
+      value: { max: 3 },
+    });
+    expect(created.fields["value"]).toBe('{"max":3}');
+  });
+
+  it("keeps a non-JSON value as a string and updates it with PATCH", async () => {
+    installFetch(() => jsonResponse({ variable_id: "v1", key: "DG_PHONE", value: "555 0100" }));
+    await client().updateResource(
+      "agent-variable",
+      `${ACCOUNT}:agent-variable:${PROJECT}/v1`,
+      ACCOUNT,
+      { value: "555 0100" },
+    );
+    expect(calls[0]?.url).toBe(
+      `https://api.deepgram.com/v1/projects/${PROJECT}/agent-variables/v1`,
+    );
+    expect(calls[0]?.init?.method).toBe("PATCH");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ value: "555 0100" });
+  });
+});
+
+describe("purchases, distribution credentials and project deletion", () => {
+  it("lists purchase orders", async () => {
+    installFetch((url) =>
+      url.endsWith("/v1/projects")
+        ? jsonResponse(PROJECT_LIST)
+        : jsonResponse({
+            orders: [
+              {
+                order_id: "o1",
+                amount: 150,
+                units: "usd",
+                order_type: "promotional",
+                expiration: "2027-03-04T00:00:00Z",
+              },
+            ],
+          }),
+    );
+    const [order] = await client().listResources("purchase", ACCOUNT);
+    expect(calls[1]?.url).toBe(
+      `https://api.deepgram.com/v1/projects/${PROJECT}/purchases?limit=1000`,
+    );
+    expect(order?.displayName).toBe("150.00 USD promotional");
+    expect(order?.fields["expiration"]).toBe("2027-03-04T00:00:00Z");
+  });
+
+  it("lists and revokes self-hosted distribution credentials", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "DELETE") return jsonResponse({});
+      if (url.endsWith("/v1/projects")) return jsonResponse(PROJECT_LIST);
+      return jsonResponse({
+        distribution_credentials: [
+          {
+            member: { member_id: "m1", email: "ops@example.com" },
+            distribution_credentials: {
+              distribution_credentials_id: "dc-1",
+              provider: "quay",
+              scopes: ["self-hosted:product:api"],
+              created: "2026-01-01T00:00:00Z",
+              comment: "prod pull",
+            },
+          },
+        ],
+      });
+    });
+    const [cred] = await client().listResources("distribution-credential", ACCOUNT);
+    expect(cred?.displayName).toBe("prod pull");
+    expect(cred?.fields["memberEmail"]).toBe("ops@example.com");
+    await client().deleteResource("distribution-credential", cred!.id, ACCOUNT);
+    expect(calls.at(-1)?.url).toBe(
+      `https://api.deepgram.com/v1/projects/${PROJECT}/self-hosted/distribution/credentials/dc-1`,
+    );
+  });
+
+  it("deletes a project", async () => {
+    installFetch(() => jsonResponse({ message: "deleted" }));
+    await client().deleteResource("project", `${ACCOUNT}:project:${PROJECT}`, ACCOUNT);
+    expect(calls[0]?.url).toBe(`https://api.deepgram.com/v1/projects/${PROJECT}`);
+    expect(calls[0]?.init?.method).toBe("DELETE");
+  });
+});
+
+describe("request log", () => {
+  it("prints requests oldest first and filters through the container dropdown", async () => {
+    installFetch(() =>
+      jsonResponse({
+        requests: [
+          {
+            request_id: "r2",
+            created: "2026-09-02T00:00:00Z",
+            path: "/v1/speak?model=aura-2",
+            response: { code: 200, deployment: "hosted:us" },
+          },
+          {
+            request_id: "r1",
+            created: "2026-09-01T00:00:00Z",
+            path: "/v1/listen?",
+            api_key_id: "k1",
+            response: {
+              code: 400,
+              deployment: "hosted:us",
+              details: { duration: 30, method: "sync", usd: 0.0075 },
+            },
+          },
+        ],
+      }),
+    );
+    const logs = await client().getLogs("project", `${ACCOUNT}:project:${PROJECT}`, ACCOUNT, {
+      tailLines: 50,
+      container: "failed",
+    });
+    expect(calls[0]?.url).toBe(
+      `https://api.deepgram.com/v1/projects/${PROJECT}/requests?limit=50&page=0&status=failed`,
+    );
+    const lines = logs.text.trim().split("\n");
+    expect(lines[0]).toContain("request=r1");
+    expect(lines[0]).toContain("30.0s audio");
+    expect(lines[0]).toContain("$0.0075");
+    expect(lines[1]).toContain("request=r2");
+    expect(logs.activeContainer).toBe("failed");
+    expect(logs.containers).toContain("agent");
+  });
+});
+
+describe("voice agent usage metrics", () => {
+  it("charts agent hours and LLM tokens when the project uses voice agents", async () => {
+    installFetch(() =>
+      jsonResponse({
+        results: [
+          {
+            requests: 2,
+            hours: 0,
+            agent_hours: 1.5,
+            tokens_in: 1000,
+            tokens_out: 400,
+            grouping: { start: "2026-09-01", end: "2026-09-02" },
+          },
+        ],
+      }),
+    );
+    const series = await client().fetchMetricSeries(
+      "project",
+      `${ACCOUNT}:project:${PROJECT}`,
+      ACCOUNT,
+    );
+    expect(series.map((s) => s.label)).toEqual([
+      "Requests",
+      "Voice Agent Hours",
+      "LLM Tokens In",
+      "LLM Tokens Out",
+    ]);
+  });
+});

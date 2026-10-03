@@ -7,6 +7,12 @@ import { MemberResourceType } from "./resources/member.js";
 import { InviteResourceType } from "./resources/invite.js";
 import { BalanceResourceType } from "./resources/balance.js";
 import { ModelResourceType } from "./resources/model.js";
+import {
+  AgentConfigResourceType,
+  AgentVariableResourceType,
+  DistributionCredentialResourceType,
+  PurchaseResourceType,
+} from "./resources/agent.js";
 
 /**
  * Deepgram's own mark: the first subpath of the wordmark they serve in their
@@ -33,7 +39,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Deepgram",
   description:
-    "Speech-to-text and text-to-speech. Manage projects, API keys, members, invites and prepaid balances, chart usage, and round-trip audio through Nova transcription and Aura voices.",
+    "Speech-to-text, text-to-speech and voice agents. Manage projects, API keys, members, invites, balances and purchases, Voice Agent configurations and variables, chart usage, read the request log, and round-trip audio through Nova transcription and Aura voices.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -80,6 +86,10 @@ const resourceTypes: ResourceTypeDefinition[] = [
   InviteResourceType,
   BalanceResourceType,
   ModelResourceType,
+  AgentConfigResourceType,
+  AgentVariableResourceType,
+  PurchaseResourceType,
+  DistributionCredentialResourceType,
 ];
 
 export const plugin: Plugin = {
