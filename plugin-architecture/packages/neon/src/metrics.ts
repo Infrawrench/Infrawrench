@@ -10,7 +10,8 @@
  * is no longer charted.
  *
  * Storage values are byte-months per timeframe; like `cost-data.ts`, they are
- * shown in binary gigabytes.
+ * shown in binary gigabytes. The project chart also carries snapshot storage
+ * and extra branch-months, which the per-branch endpoint does not report.
  */
 
 import type { Api } from "@neondatabase/api-client";
@@ -59,8 +60,28 @@ const V2_METRICS: Array<{
   },
 ];
 
+/**
+ * Project-only v2 metrics: the per-branch endpoint rejects these two, so they
+ * are asked of the project endpoint alone.
+ */
+const PROJECT_ONLY_METRICS: typeof V2_METRICS = [
+  {
+    name: "snapshot_storage_bytes_month",
+    label: "Snapshot Storage",
+    unit: "GB-month",
+    convert: (v) => v / BYTES_PER_GB,
+  },
+  {
+    name: "extra_branches_month",
+    label: "Extra Branches",
+    unit: "branch-months",
+    convert: (v) => v,
+  },
+];
+
 /** The branch endpoint accepts only the first six metrics, which these are. */
 const METRIC_NAMES = V2_METRICS.map((m) => m.name);
+const PROJECT_METRICS = [...V2_METRICS, ...PROJECT_ONLY_METRICS];
 
 interface Timeframe {
   timeframe_start?: string | undefined;
@@ -88,9 +109,9 @@ function window(timeRange?: { startMs: number; endMs: number }): Window {
   };
 }
 
-function toSeries(timeframes: Timeframe[]): MetricSeries[] {
+function toSeries(timeframes: Timeframe[], metrics = V2_METRICS): MetricSeries[] {
   const out: MetricSeries[] = [];
-  for (const metric of V2_METRICS) {
+  for (const metric of metrics) {
     const points = timeframes.flatMap((t) => {
       const entry = t.metrics?.find((m) => m.metric_name === metric.name);
       return entry && t.timeframe_start
@@ -116,12 +137,12 @@ export async function fetchProjectUsageSeries(
       const resp = await api.getConsumptionHistoryPerProjectV2({
         org_id: orgId,
         project_ids: [projectId],
-        metrics: METRIC_NAMES,
+        metrics: PROJECT_METRICS.map((m) => m.name),
         ...w,
       });
       const project = (resp.data.projects ?? []).find((p) => p.project_id === projectId);
       const timeframes = (project?.periods ?? []).flatMap((p) => p.consumption ?? []);
-      if (timeframes.length > 0) return toSeries(timeframes);
+      if (timeframes.length > 0) return toSeries(timeframes, PROJECT_METRICS);
     } catch {
       /* legacy plan or an older key: try the legacy endpoint */
     }

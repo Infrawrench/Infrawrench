@@ -7,6 +7,8 @@ import type {
   CreateResourceConfig,
   ResourceStatus,
   DashboardStat,
+  LogsFetchParams,
+  LogsFetchResult,
   MetricSeries,
   StorageObject,
   CostFetchRange,
@@ -29,6 +31,7 @@ import {
   NeonAuthSupportedAuthProvider,
 } from "@neondatabase/api-client";
 import { fetchNeonCostData } from "./cost-data.js";
+import { fetchBranchLogs } from "./logs.js";
 import { fetchBranchUsageSeries, fetchProjectUsageSeries } from "./metrics.js";
 import { COMPUTE_UNITS } from "./resources/endpoint.js";
 import { parseBranchExternalId, type BranchRef } from "./services/common.js";
@@ -349,6 +352,21 @@ export class NeonClient implements PluginClient {
     return branchId
       ? fetchBranchUsageSeries(this.api, orgId, projectId, branchId, timeRange)
       : fetchProjectUsageSeries(this.api, orgId, projectId, timeRange);
+  }
+
+  /** Branch Logs tab: OpenTelemetry records from the branch's services. */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    if (typeId !== "neon-branch") return { text: "", containers: [], activeContainer: "" };
+    const resource = await this.getResource(typeId, resourceId, accountId);
+    const projectId = String(resource.fields["projectId"] ?? "");
+    const branchId = String(resource.externalId ?? "");
+    if (!projectId || !branchId) return { text: "", containers: [], activeContainer: "" };
+    return fetchBranchLogs(this.api, projectId, branchId, params);
   }
 
   /** The organization a project belongs to; empty when it can't be read. */
@@ -2190,6 +2208,7 @@ export class NeonClient implements PluginClient {
       // Branch usage comes from the per-branch consumption history (falling
       // back to the project's), so the branch gets its own Metrics tab.
       metricsCapability: NEON_METRICS,
+      logs: { defaultTailLines: 200 },
     };
   }
 
