@@ -24,6 +24,7 @@ For provider-managed OpenSearch (DigitalOcean, AWS, OVH), you don't normally add
 - **Index lifecycle** tab — list Index State Management (ISM) policies with their states and the index patterns they auto-apply to; create a retention policy that deletes indices past an age, apply a policy to an index or detach it, delete a policy
 - **Query insights** tab — the slowest recent queries (latency, CPU, memory, indices, shard count and the query itself) from the Query Insights plugin
 - **Dashboard stats + metrics** — cluster status, total nodes/indices/docs, store size, JVM heap %, disk used %, CPU %, pending tasks, and cumulative search / indexing operations
+- **Node metrics** from `_nodes/stats`, summed or averaged across nodes: OS memory used % and 1-minute load, average search and indexing latency per operation, search and write thread pool queues and rejections, old-generation GC count and time, circuit breaker trips, open HTTP connections, segment count, running merges, query cache and fielddata size, query cache evictions, and transport bytes in / out. Counters are lifetime totals and latencies are lifetime averages, so watch the slope; the chart fills in as Infrawrench samples the cluster. Amazon OpenSearch Service domains also get CloudWatch history through the [AWS plugin](./aws.md).
 
 ![OpenSearch cluster detail page showing Cluster, Health, Nodes, and Indices sections with per-row action buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/opensearch/cluster-detail.png)
 

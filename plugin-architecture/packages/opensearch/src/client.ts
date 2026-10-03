@@ -70,17 +70,37 @@ interface ClusterStats {
   nodes: { count: { total: number; master: number; data: number } };
 }
 
-interface NodeInfo {
+export interface NodeInfo {
   name: string;
   roles?: string[];
   ip?: string;
-  os?: { available_processors?: number; cpu?: { percent?: number } };
-  indices?: {
-    search?: { query_total?: number };
-    indexing?: { index_total?: number };
+  os?: {
+    available_processors?: number;
+    cpu?: { percent?: number; load_average?: { "1m"?: number } };
+    mem?: { used_percent?: number };
   };
-  jvm?: { mem?: { heap_used_percent?: number; heap_max_in_bytes?: number } };
+  indices?: {
+    search?: { query_total?: number; query_time_in_millis?: number };
+    indexing?: { index_total?: number; index_time_in_millis?: number };
+    segments?: { count?: number };
+    merges?: { current?: number };
+    query_cache?: { memory_size_in_bytes?: number; evictions?: number };
+    fielddata?: { memory_size_in_bytes?: number; evictions?: number };
+  };
+  jvm?: {
+    mem?: { heap_used_percent?: number; heap_max_in_bytes?: number };
+    gc?: {
+      collectors?: Record<
+        string,
+        { collection_count?: number; collection_time_in_millis?: number }
+      >;
+    };
+  };
   fs?: { total?: { total_in_bytes?: number; available_in_bytes?: number } };
+  thread_pool?: Record<string, { queue?: number; rejected?: number; active?: number }>;
+  http?: { current_open?: number };
+  breakers?: Record<string, { tripped?: number }>;
+  transport?: { rx_size_in_bytes?: number; tx_size_in_bytes?: number };
 }
 
 interface CatIndex {
@@ -848,7 +868,7 @@ export class OpenSearchClient implements PluginClient {
         osRequest<{ nodes: Record<string, NodeInfo> }>(
           this.config,
           this.services?.http,
-          "/_nodes/stats/jvm,fs,os,indices",
+          "/_nodes/stats/jvm,fs,os,indices,thread_pool,http,breaker,transport",
         ),
       ]);
       const health = healthResp.body;
@@ -927,14 +947,10 @@ export class OpenSearchClient implements PluginClient {
         },
         {
           label: "Store size",
-          unit: "MB",
-          points: [
-            {
-              timestamp: ts,
-              value: Math.round((stats?.indices?.store?.size_in_bytes ?? 0) / 1024 / 1024),
-            },
-          ],
+          unit: "bytes",
+          points: [{ timestamp: ts, value: stats?.indices?.store?.size_in_bytes ?? 0 }],
         },
+        ...nodeStatsSeries(nodes, ts),
       ];
     } catch {
       return [];
@@ -1528,4 +1544,136 @@ function formatCount(n: number): string {
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
   if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   return `${(n / 1_000_000_000).toFixed(1)}B`;
+}
+
+/**
+ * The rest of `_nodes/stats`, summed or averaged across nodes
+ * (https://docs.opensearch.org/latest/api-reference/nodes-apis/nodes-stats/).
+ * Groups a node does not return (the `breaker` and `transport` metrics on
+ * some managed services, for instance) drop their series rather than charting
+ * a zero. Counters are lifetime totals, labelled so; the latency series are
+ * the lifetime mean per operation, which moves slowly but is the only
+ * latency the API reports without a second sample to diff against.
+ */
+export function nodeStatsSeries(nodes: NodeInfo[], ts: number): MetricSeries[] {
+  const out: MetricSeries[] = [];
+  const nums = (pick: (n: NodeInfo) => number | undefined) =>
+    nodes.map(pick).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const push = (label: string, values: number[], combine: "sum" | "avg", unit?: string) => {
+    if (values.length === 0) return;
+    const total = values.reduce((a, b) => a + b, 0);
+    const value = combine === "sum" ? total : total / values.length;
+    out.push({
+      label,
+      ...(unit ? { unit } : {}),
+      points: [{ timestamp: ts, value: Math.round(value * 100) / 100 }],
+    });
+  };
+  const ratio = (label: string, time: number[], count: number[]) => {
+    const t = time.reduce((a, b) => a + b, 0);
+    const c = count.reduce((a, b) => a + b, 0);
+    if (c > 0)
+      out.push({
+        label,
+        unit: "ms",
+        points: [{ timestamp: ts, value: Math.round((t / c) * 100) / 100 }],
+      });
+  };
+
+  push(
+    "Avg OS memory used %",
+    nums((n) => n.os?.mem?.used_percent),
+    "avg",
+    "%",
+  );
+  push(
+    "Avg load (1m)",
+    nums((n) => n.os?.cpu?.load_average?.["1m"]),
+    "avg",
+  );
+  ratio(
+    "Avg search query latency (lifetime)",
+    nums((n) => n.indices?.search?.query_time_in_millis),
+    nums((n) => n.indices?.search?.query_total),
+  );
+  ratio(
+    "Avg indexing latency (lifetime)",
+    nums((n) => n.indices?.indexing?.index_time_in_millis),
+    nums((n) => n.indices?.indexing?.index_total),
+  );
+  for (const pool of ["search", "write"] as const) {
+    push(
+      `${pool === "search" ? "Search" : "Write"} queue`,
+      nums((n) => n.thread_pool?.[pool]?.queue),
+      "sum",
+    );
+    push(
+      `${pool === "search" ? "Search" : "Write"} rejections (cumulative)`,
+      nums((n) => n.thread_pool?.[pool]?.rejected),
+      "sum",
+    );
+  }
+  push(
+    "Old GC collections (cumulative)",
+    nums((n) => n.jvm?.gc?.collectors?.["old"]?.collection_count),
+    "sum",
+  );
+  push(
+    "Old GC time (cumulative)",
+    nums((n) => n.jvm?.gc?.collectors?.["old"]?.collection_time_in_millis),
+    "sum",
+    "ms",
+  );
+  push(
+    "Circuit breaker trips (cumulative)",
+    nums((n) =>
+      n.breakers ? Object.values(n.breakers).reduce((a, b) => a + (b.tripped ?? 0), 0) : undefined,
+    ),
+    "sum",
+  );
+  push(
+    "Open HTTP connections",
+    nums((n) => n.http?.current_open),
+    "sum",
+  );
+  push(
+    "Segments",
+    nums((n) => n.indices?.segments?.count),
+    "sum",
+  );
+  push(
+    "Running merges",
+    nums((n) => n.indices?.merges?.current),
+    "sum",
+  );
+  push(
+    "Query cache size",
+    nums((n) => n.indices?.query_cache?.memory_size_in_bytes),
+    "sum",
+    "bytes",
+  );
+  push(
+    "Fielddata size",
+    nums((n) => n.indices?.fielddata?.memory_size_in_bytes),
+    "sum",
+    "bytes",
+  );
+  push(
+    "Query cache evictions (cumulative)",
+    nums((n) => n.indices?.query_cache?.evictions),
+    "sum",
+  );
+  push(
+    "Transport received (cumulative)",
+    nums((n) => n.transport?.rx_size_in_bytes),
+    "sum",
+    "bytes",
+  );
+  push(
+    "Transport sent (cumulative)",
+    nums((n) => n.transport?.tx_size_in_bytes),
+    "sum",
+    "bytes",
+  );
+  return out;
 }
