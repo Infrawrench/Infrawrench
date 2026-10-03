@@ -6,6 +6,7 @@ import type {
   SidebarItemSchema,
   CreateResourceConfig,
   DashboardStat,
+  MetricSeries,
   CostFetchRange,
   CostRow,
   QuotaUsage,
@@ -14,6 +15,7 @@ import type {
 import { joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
 import { fetchTursoCostData } from "./cost-data.js";
 import { fetchTursoQuotas } from "./quotas.js";
+import { fetchDatabaseUsageSeries, mapLimit, TURSO_METRICS_CAPABILITY } from "./metrics.js";
 import { createClient as createTursoApiClient } from "@tursodatabase/api";
 import type { DatabaseInstance, Location, OrganizationMember } from "@tursodatabase/api";
 
@@ -347,6 +349,23 @@ export class TursoClient implements PluginClient {
     }
     if (stats?.top_queries) fields["topQueries"] = JSON.stringify(stats.top_queries);
     return { ...resource, fields };
+  }
+
+  /** Daily usage for a database, one usage request per day (see `metrics.ts`). */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "turso-database") return [];
+    const name = resourceId.split(":").slice(2).join(":");
+    if (!name) return [];
+    return fetchDatabaseUsageSeries(
+      <T>(path: string) => this.fetch<T>(path),
+      `${this.orgPath}/databases/${encodeURIComponent(name)}`,
+      timeRange,
+    );
   }
 
   async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
@@ -1266,6 +1285,7 @@ export class TursoClient implements PluginClient {
           variant: "danger",
         },
       ],
+      metricsCapability: TURSO_METRICS_CAPABILITY,
       sqlEditor: {
         connectionStringOutputKey: "connectionString",
         defaultQuery: "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;",
@@ -1543,22 +1563,4 @@ function formatBytes(value: number | undefined): string {
     i += 1;
   }
   return `${n >= 10 || i === 0 ? n.toFixed(0) : n.toFixed(1)} ${units[i]}`;
-}
-
-/** `Promise.all` over `items` with at most `limit` calls in flight. */
-async function mapLimit<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await fn(items[index]!);
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
