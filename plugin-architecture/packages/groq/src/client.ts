@@ -775,6 +775,7 @@ export class GroqClient implements PluginClient {
         unit: "tokens/s",
         query: `sum(model_project_id:tokens_out:rate5m{${sel}})`,
       },
+      { label: "Queue latency p50", unit: "s", query: quantile(0.5, "queue_latency_seconds") },
       { label: "Queue latency p99", unit: "s", query: quantile(0.99, "queue_latency_seconds") },
       { label: "Time to first token p50", unit: "s", query: quantile(0.5, "ttft_latency_seconds") },
       {
@@ -784,6 +785,19 @@ export class GroqClient implements PluginClient {
       },
       { label: "End-to-end latency p50", unit: "s", query: quantile(0.5, "e2e_latency_seconds") },
       { label: "End-to-end latency p99", unit: "s", query: quantile(0.99, "e2e_latency_seconds") },
+      // Per-request token counts, from the `tokens_in`/`tokens_out` histograms.
+      { label: "Input tokens per request p50", unit: "tokens", query: quantile(0.5, "tokens_in") },
+      { label: "Input tokens per request p99", unit: "tokens", query: quantile(0.99, "tokens_in") },
+      {
+        label: "Output tokens per request p50",
+        unit: "tokens",
+        query: quantile(0.5, "tokens_out"),
+      },
+      {
+        label: "Output tokens per request p99",
+        unit: "tokens",
+        query: quantile(0.99, "tokens_out"),
+      },
       {
         label: "Prompt cache hit rate",
         unit: "%",
@@ -804,7 +818,7 @@ export class GroqClient implements PluginClient {
     };
 
     // Probe with the first query so a non-Enterprise key costs one request,
-    // not nine.
+    // not one per chart.
     const [first, ...rest] = queries;
     if (!first) return [];
     let firstResult: PromRangeResponse;
