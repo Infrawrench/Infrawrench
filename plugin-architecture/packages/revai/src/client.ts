@@ -3,6 +3,7 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  MetricSeries,
   PluginClient,
   ResourceInstance,
   SidebarItemSchema,
@@ -49,6 +50,11 @@ const TRANSCRIPT_JSON_ACCEPT = "application/vnd.rev.transcript.v1.0+json";
 
 const PAGE_SIZE = 100;
 const MAX_LIST_PAGES = 5;
+/** `GET /jobs` caps `limit` at 1000; the metrics walk uses the full page. */
+const METRICS_PAGE_SIZE = 1000;
+/** Bounds the metrics walk at 5,000 jobs. */
+const MAX_METRICS_PAGES = 5;
+const DAY_MS = 86_400_000;
 
 /** Rows of a companion job's result tabulated on its detail page. */
 const MAX_RESULT_ROWS = 200;
@@ -99,6 +105,8 @@ interface RevAiJob {
   created_on?: string;
   completed_on?: string;
   duration_seconds?: number;
+  /** Set on streaming sessions, which the list includes alongside async jobs. */
+  stream_duration_seconds?: number;
   media_url?: string;
   name?: string;
   metadata?: string;
@@ -1001,6 +1009,127 @@ export class RevAiClient implements PluginClient {
     };
   }
 
+  /**
+   * The account's Metrics tab, built from `GET /jobs`: Rev AI has no usage
+   * endpoint, and the job list (which covers only the last 30 days) is the
+   * one record of consumption. Each job carries `duration_seconds` (async)
+   * or `stream_duration_seconds` (streaming), its `transcriber`, `status`,
+   * and `created_on`/`completed_on`, which is enough for daily jobs,
+   * failures, audio minutes per transcriber, and turnaround.
+   * https://docs.rev.ai/api/asynchronous/reference/jobs/getlistofjobs
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "account") return [];
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = timeRange?.startMs ?? endMs - 30 * DAY_MS;
+
+    const jobs: RevAiJob[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < MAX_METRICS_PAGES; page++) {
+      const query = new URLSearchParams({ limit: String(METRICS_PAGE_SIZE) });
+      if (cursor) query.set("starting_after", cursor);
+      const batch = await this.fetch<RevAiJob[]>(`/jobs?${query.toString()}`);
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      jobs.push(...batch);
+      const last = batch[batch.length - 1];
+      const oldest = Date.parse(str(last?.created_on));
+      if (!str(last?.id) || batch.length < METRICS_PAGE_SIZE) break;
+      if (Number.isFinite(oldest) && oldest < startMs) break;
+      cursor = str(last?.id);
+    }
+
+    type Day = {
+      jobs: number;
+      failed: number;
+      minutes: number;
+      streamMinutes: number;
+      turnaroundSum: number;
+      turnaroundCount: number;
+      byTranscriber: Map<string, number>;
+    };
+    const days = new Map<number, Day>();
+    for (let t = Math.floor(startMs / DAY_MS) * DAY_MS; t <= endMs; t += DAY_MS) {
+      days.set(t, {
+        jobs: 0,
+        failed: 0,
+        minutes: 0,
+        streamMinutes: 0,
+        turnaroundSum: 0,
+        turnaroundCount: 0,
+        byTranscriber: new Map(),
+      });
+    }
+    const transcribers = new Set<string>();
+    for (const job of jobs) {
+      const created = Date.parse(str(job.created_on));
+      if (!Number.isFinite(created) || created < startMs || created > endMs) continue;
+      const day = days.get(Math.floor(created / DAY_MS) * DAY_MS);
+      if (!day) continue;
+      day.jobs += 1;
+      if (str(job.status) === "failed") day.failed += 1;
+      const minutes = (num(job.duration_seconds) ?? 0) / 60;
+      day.minutes += minutes;
+      day.streamMinutes += (num(job.stream_duration_seconds) ?? 0) / 60;
+      const transcriber = str(job.transcriber);
+      if (transcriber && minutes > 0) {
+        transcribers.add(transcriber);
+        day.byTranscriber.set(transcriber, (day.byTranscriber.get(transcriber) ?? 0) + minutes);
+      }
+      const completed = Date.parse(str(job.completed_on));
+      if (str(job.status) === "transcribed" && Number.isFinite(completed) && completed >= created) {
+        day.turnaroundSum += (completed - created) / 1000;
+        day.turnaroundCount += 1;
+      }
+    }
+
+    const stamps = [...days.keys()].sort((a, b) => a - b);
+    const line = (label: string, unit: string, read: (day: Day) => number): MetricSeries => ({
+      label,
+      unit,
+      points: stamps.map((t) => ({ timestamp: t, value: Number(read(days.get(t)!).toFixed(2)) })),
+    });
+    const series: MetricSeries[] = [
+      line("Jobs", "count", (d) => d.jobs),
+      line("Failed jobs", "count", (d) => d.failed),
+      line("Audio minutes", "minutes", (d) => d.minutes),
+    ];
+    // Transcribers bill at different rates, so the split is the useful view;
+    // it only adds information when more than one is in use.
+    if (transcribers.size > 1) {
+      for (const transcriber of [...transcribers].sort()) {
+        series.push(
+          line(
+            `Audio minutes: ${transcriber}`,
+            "minutes",
+            (d) => d.byTranscriber.get(transcriber) ?? 0,
+          ),
+        );
+      }
+    }
+    const streaming = line("Streaming minutes", "minutes", (d) => d.streamMinutes);
+    if (streaming.points.some((p) => p.value !== 0)) series.push(streaming);
+    // Days without a finished job have no turnaround; omit them rather than
+    // plot a misleading zero.
+    const turnaround = stamps
+      .filter((t) => days.get(t)!.turnaroundCount > 0)
+      .map((t) => {
+        const day = days.get(t)!;
+        return {
+          timestamp: t,
+          value: Number((day.turnaroundSum / day.turnaroundCount).toFixed(1)),
+        };
+      });
+    if (turnaround.length > 0) {
+      series.push({ label: "Avg turnaround", unit: "seconds", points: turnaround });
+    }
+    return series;
+  }
+
   private renderAccountDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const region = String(fields["region"] ?? "us");
@@ -1058,6 +1187,9 @@ export class RevAiClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // Daily jobs, failures, audio minutes and turnaround from GET /jobs,
+      // which only reaches back 30 days.
+      metricsCapability: { defaultTimeRangeMs: 30 * DAY_MS },
       speechPanel: {
         modes: ["stt"],
         tabLabel: "Speech",

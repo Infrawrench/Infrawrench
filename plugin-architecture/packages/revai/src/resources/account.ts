@@ -24,5 +24,7 @@ export const AccountResourceType = rt({
   ],
   outputs: [o("endpoint", "API Endpoint"), o("email", "Account Email")],
   supportsDelete: false,
+  // Daily jobs, failures, audio minutes and turnaround from GET /jobs.
+  supportsMetrics: true,
   iconKey: "account",
 });
