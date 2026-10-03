@@ -350,5 +350,8 @@ export function renderSpendingLimitDetail(resource: ResourceInstance): DetailVie
       },
     ],
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    // Team spend over time, from the billing analytics query (see
+    // `fetchMetricSeries` in client.ts).
+    metricsCapability: { defaultTimeRangeMs: 30 * 24 * 60 * 60 * 1000 },
   };
 }
