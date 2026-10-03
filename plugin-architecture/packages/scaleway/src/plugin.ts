@@ -7,6 +7,15 @@ import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
 import { ObjectStorageResourceType } from "./resources/object-storage.js";
 import { BlockVolumeResourceType } from "./resources/block-volume.js";
 import { scalewayTerraformExport } from "./terraform.js";
+import { FlexibleIpResourceType } from "./resources/flexible-ip.js";
+import { LoadBalancerResourceType } from "./resources/load-balancer.js";
+import { PrivateNetworkResourceType } from "./resources/private-network.js";
+import { ServerlessContainerResourceType } from "./resources/serverless-container.js";
+import { ServerlessFunctionResourceType } from "./resources/serverless-function.js";
+import { RegistryNamespaceResourceType } from "./resources/registry-namespace.js";
+import { SecretResourceType } from "./resources/secret.js";
+import { DnsZoneResourceType } from "./resources/dns-zone.js";
+import { DnsRecordResourceType } from "./resources/dns-record.js";
 
 const manifest: PluginManifest = {
   id: "scaleway",
@@ -72,6 +81,15 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ManagedDatabaseResourceType,
   ObjectStorageResourceType,
   BlockVolumeResourceType,
+  FlexibleIpResourceType,
+  LoadBalancerResourceType,
+  PrivateNetworkResourceType,
+  ServerlessContainerResourceType,
+  ServerlessFunctionResourceType,
+  RegistryNamespaceResourceType,
+  SecretResourceType,
+  DnsZoneResourceType,
+  DnsRecordResourceType,
 ];
 
 export const plugin: Plugin = {

@@ -33,6 +33,11 @@ const { sdkMocks, instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks
       serverAction: vi.fn(),
       setServerUserData: vi.fn(),
       attachVolume: vi.fn(),
+      listIps: vi.fn(),
+      createIp: vi.fn(),
+      updateIp: vi.fn(),
+      deleteIp: vi.fn(),
+      updateServer: vi.fn(),
     },
     k8sMethods: {
       listClusters: vi.fn(),
@@ -41,12 +46,18 @@ const { sdkMocks, instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks
       createCluster: vi.fn<(req: Readonly<K8Sv1.CreateClusterRequest>) => Promise<unknown>>(),
       deleteCluster: vi.fn(),
       getClusterKubeConfig: vi.fn(),
+      upgradeCluster: vi.fn(),
+      updatePool: vi.fn(),
     },
     rdbMethods: {
       listInstances: vi.fn(),
       getInstance: vi.fn(),
       createInstance: vi.fn<(req: Readonly<Rdbv1.CreateInstanceRequest>) => Promise<unknown>>(),
       deleteInstance: vi.fn(),
+      listDatabaseEngines: vi.fn(),
+      listNodeTypes: vi.fn(),
+      upgradeInstance: vi.fn(),
+      updateInstance: vi.fn(),
     },
     blockMethods: {
       listVolumes: vi.fn(),
@@ -1452,5 +1463,440 @@ describe("getManifest / applyManifest", () => {
     await expect(c.applyManifest(`${ACCOUNT}:instance:x`, ACCOUNT, "{}")).rejects.toThrow(
       /not supported/,
     );
+  });
+});
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  } as unknown as Response;
+}
+
+type RestCall = { url: string; method: string; body: unknown };
+
+/** Route REST calls by `METHOD url-substring`; the longest match wins. */
+function routeRest(table: Record<string, unknown>): RestCall[] {
+  const calls: RestCall[] = [];
+  fetchMock.mockImplementation(async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    const key = Object.keys(table)
+      .filter((k) => {
+        const [m, p] = k.split(" ");
+        return m === method && url.includes(p!);
+      })
+      .sort((a, b) => b.length - a.length)[0];
+    if (!key) return jsonResponse({ message: "not found" }, 404);
+    return jsonResponse(table[key]);
+  });
+  return calls;
+}
+
+describe("2025-2026 additions: regions", () => {
+  it("lists instances in Milan (it-mil-1)", async () => {
+    await makeClient().listResources("instance", ACCOUNT);
+    const zones = instanceMethods.listServers.mock.calls.map(
+      (c) => (c[0] as { zone: string }).zone,
+    );
+    expect(zones).toContain("it-mil-1");
+  });
+});
+
+describe("REST products", () => {
+  it("lists load balancers per zone with their IPs", async () => {
+    const calls = routeRest({
+      "GET /lb/v1/zones/fr-par-1/lbs": {
+        lbs: [
+          {
+            id: "lb1",
+            name: "edge",
+            status: "ready",
+            type: "LB-S",
+            zone: "fr-par-1",
+            ip: [{ id: "ip1", ip_address: "51.1.1.1" }],
+            frontend_count: 2,
+            backend_count: 1,
+          },
+        ],
+        total_count: 1,
+      },
+    });
+    const lbs = await makeClient().listResources("load-balancer", ACCOUNT);
+    expect(lbs).toHaveLength(1);
+    expect(lbs[0]!.id).toBe(`${ACCOUNT}:load-balancer:fr-par-1/lb1`);
+    expect(lbs[0]!.resolvedOutputs["ipv4"]).toBe("51.1.1.1");
+    expect(calls[0]!.url).toContain("project_id=proj-uuid");
+    const headers = (fetchMock.mock.calls[0]![1] as RequestInit).headers as Record<string, string>;
+    expect(headers["X-Auth-Token"]).toBe("sk");
+  });
+
+  it("creates a load balancer with a flexible IP", async () => {
+    const calls = routeRest({
+      "POST /lb/v1/zones/nl-ams-1/lbs": { id: "lb2", name: "web", zone: "nl-ams-1" },
+    });
+    await makeClient().createResource("load-balancer", ACCOUNT, {
+      name: "web",
+      zone: "nl-ams-1",
+      type: "LB-GP-M",
+      assignIpv6: "true",
+    });
+    expect(calls[0]!.body).toMatchObject({
+      project_id: "proj-uuid",
+      name: "web",
+      type: "LB-GP-M",
+      assign_flexible_ip: true,
+      assign_flexible_ipv6: true,
+    });
+  });
+
+  it("deletes a load balancer without releasing its IP", async () => {
+    const calls = routeRest({ "DELETE /lb/v1/zones/fr-par-1/lbs/lb1": {} });
+    await makeClient().deleteResource(
+      "load-balancer",
+      `${ACCOUNT}:load-balancer:fr-par-1/lb1`,
+      ACCOUNT,
+    );
+    expect(calls[0]!.url).toContain("release_ip=false");
+  });
+
+  it("lists v1 serverless containers and redeploys one", async () => {
+    const calls = routeRest({
+      "GET /containers/v1/regions/fr-par/containers": {
+        containers: [
+          {
+            id: "c1",
+            name: "api",
+            status: "ready",
+            image: "rg.fr-par.scw.cloud/ns/api:1",
+            min_scale: 0,
+            max_scale: 5,
+            memory_limit_bytes: 2048000000,
+            mvcpu_limit: 1000,
+            public_endpoint: "api-ns.functions.fnc.fr-par.scw.cloud",
+          },
+        ],
+        total_count: 1,
+      },
+      "POST /containers/v1/regions/fr-par/containers/c1/redeploy": {},
+    });
+    const [c] = await makeClient().listResources("serverless-container", ACCOUNT);
+    expect(c!.fields).toMatchObject({ memoryMb: 2048, vcpu: 1, maxScale: 5 });
+    expect(c!.resolvedOutputs["endpoint"]).toBe("https://api-ns.functions.fnc.fr-par.scw.cloud");
+    await makeClient().invokeAction("serverless-container", c!.id, "redeploy", ACCOUNT);
+    expect(calls.at(-1)!.url).toContain("/containers/c1/redeploy");
+  });
+
+  it("patches a container's scaling and image", async () => {
+    const calls = routeRest({
+      "GET /containers/v1/regions/fr-par/containers": {
+        containers: [{ id: "c1", name: "api", region: "fr-par" }],
+        total_count: 1,
+      },
+      "PATCH /containers/v1/regions/fr-par/containers/c1": { id: "c1", name: "api", max_scale: 9 },
+    });
+    await makeClient().updateResource(
+      "serverless-container",
+      `${ACCOUNT}:serverless-container:fr-par/c1`,
+      ACCOUNT,
+      { maxScale: "9", image: "img:2", memoryMb: "1024" },
+    );
+    expect(calls.find((c) => c.method === "PATCH")!.body).toEqual({
+      image: "img:2",
+      max_scale: 9,
+      memory_limit_bytes: 1024000000,
+    });
+  });
+
+  it("lists registry namespaces and flags public ones", async () => {
+    routeRest({
+      "GET /registry/v1/regions/fr-par/namespaces": {
+        namespaces: [
+          {
+            id: "n1",
+            name: "team",
+            is_public: true,
+            image_count: 4,
+            size: 2_500_000_000,
+            endpoint: "rg.fr-par.scw.cloud/team",
+          },
+        ],
+        total_count: 1,
+      },
+    });
+    const [ns] = await makeClient().listResources("registry-namespace", ACCOUNT);
+    expect(ns!.fields).toMatchObject({ isPublic: true, imageCount: 4, sizeGb: 2.5 });
+    expect(ns!.resolvedOutputs["endpoint"]).toBe("rg.fr-par.scw.cloud/team");
+  });
+
+  it("lists DNS zones and their records, skipping SOA", async () => {
+    routeRest({
+      "GET /domain/v2beta1/dns-zones?": {
+        dns_zones: [
+          { domain: "example.com", subdomain: "", ns: ["ns0.dom.scw.cloud"], status: "active" },
+        ],
+        total_count: 1,
+      },
+      "GET /domain/v2beta1/dns-zones/example.com/records": {
+        records: [
+          { id: "r0", name: "", type: "SOA", data: "x", ttl: 1800 },
+          { id: "r1", name: "www", type: "A", data: "1.2.3.4", ttl: 300 },
+        ],
+        total_count: 2,
+      },
+    });
+    const records = await makeClient().listResources("dns-record", ACCOUNT);
+    expect(records).toHaveLength(1);
+    expect(records[0]!.id).toBe(`${ACCOUNT}:dns-record:example.com/r1`);
+    expect(records[0]!.parentResourceId).toBe(`${ACCOUNT}:dns-zone:example.com`);
+    expect(records[0]!.displayName).toBe("A www.example.com");
+  });
+
+  it("creates, edits and deletes a DNS record through PATCH changes", async () => {
+    const calls = routeRest({
+      "PATCH /domain/v2beta1/dns-zones/example.com/records": {
+        records: [{ id: "r9", name: "api", type: "CNAME", data: "lb.example.net.", ttl: 600 }],
+      },
+      "GET /domain/v2beta1/dns-zones?": {
+        dns_zones: [{ domain: "example.com", subdomain: "" }],
+        total_count: 1,
+      },
+      "GET /domain/v2beta1/dns-zones/example.com/records": {
+        records: [{ id: "r9", name: "api", type: "CNAME", data: "lb.example.net.", ttl: 600 }],
+        total_count: 1,
+      },
+    });
+    const c = makeClient();
+    const created = await c.createResource(
+      "dns-record",
+      ACCOUNT,
+      { type: "CNAME", name: "api", content: "lb.example.net.", ttl: "600" },
+      `${ACCOUNT}:dns-zone:example.com`,
+    );
+    expect(created.externalId).toBe("example.com/r9");
+    await c.updateResource("dns-record", created.id, ACCOUNT, { ttl: "60" });
+    await c.deleteResource("dns-record", created.id, ACCOUNT);
+    const patches = calls
+      .filter((x) => x.method === "PATCH")
+      .map((x) => x.body as { changes: unknown[] });
+    expect(patches[0]!.changes).toEqual([
+      {
+        add: {
+          records: [{ name: "api", type: "CNAME", data: "lb.example.net.", ttl: 600, priority: 0 }],
+        },
+      },
+    ]);
+    expect(patches[1]!.changes).toEqual([
+      {
+        set: {
+          id: "r9",
+          records: [{ name: "api", type: "CNAME", data: "lb.example.net.", ttl: 60, priority: 0 }],
+        },
+      },
+    ]);
+    expect(patches[2]!.changes).toEqual([{ delete: { id: "r9" } }]);
+  });
+
+  it("lists secrets as metadata only", async () => {
+    routeRest({
+      "GET /secret-manager/v1beta1/regions/fr-par/secrets": {
+        secrets: [{ id: "s1", name: "db-pass", path: "/prod", version_count: 3, status: "ready" }],
+        total_count: 1,
+      },
+    });
+    const [secret] = await makeClient().listResources("secret", ACCOUNT);
+    expect(secret!.fields).toMatchObject({ name: "db-pass", path: "/prod", versionCount: 3 });
+    expect(secret!.resolvedOutputs).toEqual({});
+  });
+});
+
+describe("SDK-backed additions", () => {
+  it("lists flexible IPs and attaches one to an instance in the same zone", async () => {
+    instanceMethods.listIps.mockImplementation(async ({ zone }: { zone: string }) => ({
+      ips:
+        zone === "fr-par-1"
+          ? [{ id: "ip1", address: "51.2.2.2", type: "routed_ipv4", state: "detached", tags: [] }]
+          : [],
+    }));
+    instanceMethods.listServers.mockImplementation(async ({ zone }: { zone: string }) => ({
+      servers: zone === "fr-par-1" ? [{ id: "srv1", name: "web", state: "running" }] : [],
+    }));
+    instanceMethods.updateIp.mockResolvedValue({});
+    const c = makeClient();
+    const [ip] = await c.listResources("flexible-ip", ACCOUNT);
+    expect(ip!.fields).toMatchObject({ address: "51.2.2.2", serverId: "" });
+    await c.attachResource(
+      "flexible-ip",
+      ip!.id,
+      "instance",
+      `${ACCOUNT}:instance:fr-par-1/srv1`,
+      ACCOUNT,
+    );
+    expect(instanceMethods.updateIp).toHaveBeenCalledWith({
+      zone: "fr-par-1",
+      ip: "ip1",
+      server: "srv1",
+    });
+  });
+
+  it("runs the extra instance actions", async () => {
+    instanceMethods.serverAction.mockResolvedValue({});
+    const c = makeClient();
+    await c.invokeAction("instance", `${ACCOUNT}:instance:fr-par-1/srv1`, "reboot", ACCOUNT);
+    await c.invokeAction("instance", `${ACCOUNT}:instance:fr-par-1/srv1`, "backup", ACCOUNT);
+    expect(instanceMethods.serverAction.mock.calls[0]![0]).toEqual({
+      zone: "fr-par-1",
+      serverId: "srv1",
+      action: "reboot",
+    });
+    expect(instanceMethods.serverAction.mock.calls[1]![0]).toMatchObject({ action: "backup" });
+    expect((instanceMethods.serverAction.mock.calls[1]![0] as { name: string }).name).toMatch(
+      /^infrawrench-/,
+    );
+  });
+
+  it("edits an instance's name and commercial type", async () => {
+    instanceMethods.listServers.mockImplementation(async ({ zone }: { zone: string }) => ({
+      servers: zone === "fr-par-1" ? [{ id: "srv1", name: "web", state: "stopped" }] : [],
+    }));
+    instanceMethods.updateServer.mockResolvedValue({
+      server: { id: "srv1", name: "web-2", commercialType: "POP2-4C-16G", state: "stopped" },
+    });
+    const r = await makeClient().updateResource(
+      "instance",
+      `${ACCOUNT}:instance:fr-par-1/srv1`,
+      ACCOUNT,
+      {
+        name: "web-2",
+        commercialType: "POP2-4C-16G",
+      },
+    );
+    expect(instanceMethods.updateServer).toHaveBeenCalledWith({
+      zone: "fr-par-1",
+      serverId: "srv1",
+      name: "web-2",
+      commercialType: "POP2-4C-16G",
+    });
+    expect(r.fields["commercialType"]).toBe("POP2-4C-16G");
+  });
+
+  it("upgrades an RDB node type and volume in separate calls", async () => {
+    rdbMethods.listInstances.mockImplementation(async ({ region }: { region: string }) => ({
+      instances:
+        region === "fr-par"
+          ? [
+              {
+                id: "db1",
+                name: "main",
+                engine: "PostgreSQL-16",
+                nodeType: "DB-DEV-S",
+                status: "ready",
+              },
+            ]
+          : [],
+    }));
+    rdbMethods.upgradeInstance.mockResolvedValue({
+      id: "db1",
+      name: "main",
+      engine: "PostgreSQL-16",
+      nodeType: "db-pro2-xs",
+      status: "configuring",
+      volume: { type: "sbs_5k", size: 50_000_000_000 },
+      backupSchedule: { disabled: false, retention: 7, frequency: 24 },
+      isHaCluster: false,
+    });
+    const r = await makeClient().updateResource(
+      "rdb-instance",
+      `${ACCOUNT}:rdb-instance:fr-par/db1`,
+      ACCOUNT,
+      {
+        nodeType: "db-pro2-xs",
+        volumeSizeGb: "50",
+      },
+    );
+    expect(rdbMethods.upgradeInstance.mock.calls.map((c) => c[0])).toEqual([
+      { region: "fr-par", instanceId: "db1", nodeType: "db-pro2-xs" },
+      { region: "fr-par", instanceId: "db1", volumeSize: 50_000_000_000 },
+    ]);
+    expect(r.fields).toMatchObject({
+      volumeSizeGb: 50,
+      backupsEnabled: true,
+      backupRetentionDays: 7,
+    });
+  });
+
+  it("builds the RDB form from the engine and node type catalogues", async () => {
+    rdbMethods.listDatabaseEngines.mockResolvedValue({
+      engines: [
+        {
+          name: "PostgreSQL",
+          versions: [
+            { version: "17", disabled: false, beta: false },
+            { version: "12", disabled: true, beta: false },
+          ],
+        },
+      ],
+    });
+    rdbMethods.listNodeTypes.mockResolvedValue({
+      nodeTypes: [
+        {
+          name: "DB-DEV-S",
+          vcpus: 2,
+          memory: 2147483648,
+          disabled: false,
+          stockStatus: "available",
+          generation: "generation_v1",
+        },
+        {
+          name: "db-gone",
+          vcpus: 2,
+          memory: 1,
+          disabled: false,
+          stockStatus: "out_of_stock",
+          generation: "x",
+        },
+      ],
+    });
+    const cfg = await makeClient().getCreateConfig("rdb-instance");
+    expect(cfg.fields.find((f) => f.key === "engine")!.options).toEqual([
+      { id: "PostgreSQL-17", label: "PostgreSQL 17" },
+    ]);
+    const nodeField = cfg.fields.find((f) => f.key === "nodeType")!;
+    expect(nodeField.kind).toBe("size-picker");
+    expect(nodeField.sizes!.map((s) => s.id)).toEqual(["DB-DEV-S"]);
+  });
+
+  it("upgrades a Kapsule cluster and resizes its first pool", async () => {
+    k8sMethods.listClusters.mockImplementation(async ({ region }: { region: string }) => ({
+      clusters:
+        region === "fr-par" ? [{ id: "k1", name: "prod", version: "1.32.3", status: "ready" }] : [],
+    }));
+    k8sMethods.listPools.mockResolvedValue({
+      pools: [
+        { id: "p1", size: 3, nodeType: "DEV1-M" },
+        { id: "p2", size: 2, nodeType: "GP1-S" },
+      ],
+    });
+    k8sMethods.upgradeCluster.mockResolvedValue({});
+    k8sMethods.updatePool.mockResolvedValue({});
+    await makeClient().updateResource(
+      "kapsule-cluster",
+      `${ACCOUNT}:kapsule-cluster:fr-par/k1`,
+      ACCOUNT,
+      {
+        version: "1.33.4",
+        nodeCount: "6",
+      },
+    );
+    expect(k8sMethods.upgradeCluster).toHaveBeenCalledWith({
+      region: "fr-par",
+      clusterId: "k1",
+      version: "1.33.4",
+      upgradePools: true,
+    });
+    expect(k8sMethods.updatePool).toHaveBeenCalledWith({ region: "fr-par", poolId: "p1", size: 4 });
   });
 });

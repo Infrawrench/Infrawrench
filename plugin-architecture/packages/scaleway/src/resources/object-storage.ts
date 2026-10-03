@@ -1,6 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
-
-const REGIONS = ["fr-par", "nl-ams", "pl-waw"];
+import { SCW_REGIONS as REGIONS } from "../locations.js";
 
 export const ObjectStorageResourceType = rt({
   id: "object-storage-bucket",

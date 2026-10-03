@@ -1,16 +1,5 @@
 import { f, rt } from "@infrawrench/plugin-base";
-
-const ZONES = [
-  "fr-par-1",
-  "fr-par-2",
-  "fr-par-3",
-  "nl-ams-1",
-  "nl-ams-2",
-  "nl-ams-3",
-  "pl-waw-1",
-  "pl-waw-2",
-  "pl-waw-3",
-];
+import { SCW_ZONES as ZONES } from "../locations.js";
 
 export const BlockVolumeResourceType = rt({
   id: "block-volume",
