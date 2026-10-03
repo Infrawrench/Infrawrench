@@ -82,6 +82,47 @@ describe("renderDetail", () => {
   });
 });
 
+describe("renderDetail: models and files", () => {
+  it("renders published peak and off-peak prices for a priced model", () => {
+    const schema = client().renderDetail(
+      resource("model", "deepseek-v4-pro", {
+        modelId: "deepseek-v4-pro",
+        name: "DeepSeek-V4-Pro",
+        contextWindow: 1048576,
+        effortLevels: "low, high, max",
+        defaultEffort: "high",
+      }),
+    );
+    expect(schema.subtitle).toBe("DeepSeek-V4-Pro");
+    expect(schema.sections.map((s) => s.title)).toEqual(["Model", "Thinking", "Pricing"]);
+    const table = schema.sections[2]!.children.find((n) => n.kind === "table");
+    if (table?.kind !== "table") throw new Error("expected a pricing table");
+    expect(table.rows[2]!.cells).toEqual({ category: "Output", peak: "$3.96", offPeak: "$1.98" });
+  });
+
+  it("omits pricing for a model the published table does not cover", () => {
+    const schema = client().renderDetail(
+      resource("model", "deepseek-future", { modelId: "deepseek-future" }),
+    );
+    expect(schema.sections.map((s) => s.title)).toEqual(["Model"]);
+  });
+
+  it("says a file without an expiry is kept until deleted", () => {
+    const schema = client().renderDetail(
+      resource("file", "file-api-a", {
+        fileId: "file-api-a",
+        filename: "a.jpg",
+        bytes: 102400,
+        purpose: "user_data",
+        expiresAt: "",
+      }),
+    );
+    const list = schema.sections[0]!.children.find((n) => n.kind === "key-value-list");
+    if (list?.kind !== "key-value-list") throw new Error("expected a key-value list");
+    expect(list.items.find((i) => i.key === "Expires")?.value).toBe("Never (kept until deleted)");
+  });
+});
+
 describe("renderSidebarItem", () => {
   it("shows the balance amount as the status label", () => {
     const item = client().renderSidebarItem(
