@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ok, okText, err } from "../types";
+import { ok, okText, err, isNonBlankString } from "../types";
 
 describe("tool result helpers", () => {
   it("ok serializes a value to pretty JSON text", () => {
@@ -20,5 +20,15 @@ describe("tool result helpers", () => {
     const result = err("boom");
     expect(result.isError).toBe(true);
     expect(result.content[0]!.text).toBe("boom");
+  });
+});
+
+describe("isNonBlankString", () => {
+  it("accepts only strings with non-whitespace content", () => {
+    expect(isNonBlankString("xterm")).toBe(true);
+    expect(isNonBlankString("  ")).toBe(false);
+    expect(isNonBlankString("")).toBe(false);
+    expect(isNonBlankString(undefined)).toBe(false);
+    expect(isNonBlankString(1)).toBe(false);
   });
 });

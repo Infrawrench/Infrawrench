@@ -139,7 +139,8 @@ export function customGraphTools(): ToolDefinition[] {
         "errors: read them, fix the source, and call again (set skipTypecheck to save anyway). " +
         "After saving, call render_custom_graph to verify it actually renders, then add it to a " +
         'dashboard by POSTing a widget with kind "custom_graph" and config {version:1, graphId} ' +
-        "(POST /api/org/{orgId}/dashboards/widgets). Paid-plan feature. Audit-logged.",
+        "(POST /api/org/{orgId}/dashboards/widgets). Paid-plan feature. Audit-logged. In chat, " +
+        "a call that sets source waits for the user's approval.",
       inputSchema: {
         graphId: z.string().optional().describe("Omit to create a new graph."),
         name: z.string().optional(),
@@ -151,6 +152,10 @@ export function customGraphTools(): ToolDefinition[] {
           .describe("Save even when the source has type errors. Use only when deliberate."),
       },
       risk: "write",
+      // Graph source can run `resource.ssh(cmd)` with the saving user's
+      // permissions every time a dashboard renders it, so saving source waits
+      // for approval. Renaming or redescribing stays auto-run.
+      requiresApproval: async (input) => input["source"] !== undefined,
       permission: "dashboards:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "dashboards:write");

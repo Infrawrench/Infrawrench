@@ -9,7 +9,14 @@ import type { Permission } from "@infrawrench/server-core/permissions/catalog";
  * - `read`     non-mutating queries (listResources, getResource, listAccounts…)
  * - `write`    creates / non-destructive mutations (createResource…)
  * - `destructive`  deletions, manifest applies, exec, write SQL, add/destroy
- *                  secret versions, credential exports: always confirm in UI.
+ *                  secret versions, credential exports, anything that runs
+ *                  code or input on a host, schedules state changes, or saves
+ *                  code that later runs unattended: always confirm in UI.
+ *
+ * A tool whose danger depends on its input (a launcher that also takes a raw
+ * command, an editor whose save can arm a cron) keeps its tier and adds
+ * {@link ToolDefinition.requiresApproval}; chat gates through `needsApproval`
+ * in `./approval`, the single check every human-in-the-loop surface keys off.
  */
 type ToolRisk = "read" | "write" | "destructive";
 
@@ -64,11 +71,15 @@ export interface ToolDefinition {
   inputSchema: Record<string, ZodTypeAny>;
   risk: ToolRisk;
   /**
-   * Per-call escalation for a tool whose risk depends on its target. When it
-   * resolves true the chat surface queues the call for approval exactly as
-   * it would a `destructive` tool; a throw is treated as true. Used by
-   * `sql_query`, which is only a guaranteed read on engines that can run it
-   * in a read-only transaction.
+   * Per-call escalation for a tool whose risk depends on its input or its
+   * target. When it resolves true the chat surface queues the call for
+   * approval exactly as it would a `destructive` tool; a throw is treated as
+   * true (see `needsApproval` in `./approval`). Only ever widens the gate: a
+   * `destructive` tool always needs approval. Used by `sql_query`, which is
+   * only a guaranteed read on engines that can run it in a read-only
+   * transaction, and by `write` tools where one argument turns the call into
+   * running code (`launch_app` with `exec`, `write_workflow` saving source or
+   * arming a trigger, `write_custom_graph` saving source).
    */
   requiresApproval?(input: Record<string, unknown>, auth: ToolAuthContext): Promise<boolean>;
   /**
@@ -84,6 +95,11 @@ export interface ToolDefinition {
    */
   permission: Permission | null;
   handler(input: Record<string, unknown>, auth: ToolAuthContext): Promise<ToolResult>;
+}
+
+/** True when `value` is a string with something other than whitespace in it. */
+export function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 export function ok(value: unknown): ToolResult {

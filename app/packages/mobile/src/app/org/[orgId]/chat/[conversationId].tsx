@@ -11,6 +11,7 @@ import {
   createBearerChatClient,
   microsToUsd,
   parseAskQuestionInput,
+  toolInputPreview,
   type AskQuestion,
   type AskQuestionAnswer,
   type ChatContentBlock,
@@ -651,6 +652,7 @@ function BlockView({
   // While awaiting approval the input must be visible: the user is deciding
   // whether to run it. Otherwise collapsed until tapped.
   const showDetails = expanded || status === "pending";
+  const inputPreview = toolInputPreview(block.input);
 
   return (
     <View style={styles.toolCard}>
@@ -680,7 +682,17 @@ function BlockView({
       {showDetails && (
         <View style={styles.toolDetails}>
           <Text style={styles.toolDetailLabel}>Input</Text>
-          <Text style={styles.toolDetailText}>{JSON.stringify(block.input, null, 2)}</Text>
+          {(Object.keys(inputPreview.fields).length > 0 || inputPreview.blocks.length === 0) && (
+            <Text style={styles.toolDetailText}>
+              {JSON.stringify(inputPreview.fields, null, 2)}
+            </Text>
+          )}
+          {inputPreview.blocks.map(({ key, text }) => (
+            <View key={key}>
+              <Text style={styles.toolDetailLabel}>{key}</Text>
+              <Text style={styles.toolDetailText}>{text}</Text>
+            </View>
+          ))}
           {resultText != null && (
             <>
               <Text style={styles.toolDetailLabel}>

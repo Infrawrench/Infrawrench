@@ -53,7 +53,7 @@ function chatApprovalText(toolName: string, toolInput: unknown): { title: string
   return {
     title: `Approval needed: ${toolName}`,
     body:
-      `The chat agent wants to run the destructive tool \`${toolName}\` and is waiting for approval.\n\n` +
+      `The chat agent wants to run \`${toolName}\` and is waiting for approval.\n\n` +
       `Input: ${summarizeToolInput(toolInput)} — review the full input in Infrawrench before deciding.`,
   };
 }

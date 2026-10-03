@@ -56,7 +56,7 @@ The cloud poller executes due transitions server-side by invoking the plugin's o
 
 - **Mobile** shows the schedule list on the Costs tab with a pause/resume toggle; creating and editing stays on web and desktop.
 - **CLI**: `infrawrench schedules` lists windows, next transitions, and projected savings (`--json` for scripts).
-- **MCP**: the `list_schedules` and `create_schedule` tools let agents read and create schedules under the same permissions as the UI.
+- **MCP**: the `list_schedules` and `create_schedule` tools let agents read and create schedules under the same permissions as the UI. In the in-app [AI chat](./ai-chat.md), `create_schedule` waits for your approval, because it arms the poller to stop the resource on a timer.
 
 ## Permissions
 

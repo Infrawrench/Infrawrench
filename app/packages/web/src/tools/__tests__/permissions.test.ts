@@ -15,6 +15,7 @@ vi.mock("@infrawrench/server-core/permissions", () => ({
 const { authorizeToolCall, denyUnlessPermitted, effectiveToolPermissions } =
   await import("../permissions");
 const { getToolRegistry } = await import("../registry");
+const { needsApproval } = await import("../approval");
 
 const auth = { userId: "u1", organizationId: "o1", source: "mcp" as const };
 
@@ -202,6 +203,47 @@ describe("tool registry permission declarations", () => {
     expect(creates.length).toBeGreaterThan(0);
     for (const tool of creates) {
       expect(tool.permission, tool.name).toBe("resources:write");
+    }
+  });
+});
+
+/**
+ * Chat auto-runs anything `needsApproval` says no to. These are the
+ * calls that execute code, rotate credentials, or arm unattended state
+ * changes, and so must stop at the approval card like `ssh_exec` does.
+ */
+describe("chat approval gating", () => {
+  const target = { resourceId: "r1", windowId: 1 };
+  it.each<[string, Record<string, unknown>, boolean]>([
+    ["ssh_exec", { command: "uptime" }, true],
+    ["launch_app", { ...target, exec: "xterm" }, true],
+    ["launch_app", { ...target, appId: "org.gnome.Calculator" }, false],
+    ["launch_app", { ...target, appId: "org.gnome.Calculator", exec: "  " }, false],
+    ["type_in_app_window", { ...target, text: "ls" }, true],
+    ["press_keys_in_app_window", { ...target, keys: "Enter" }, true],
+    ["click_app_window", { ...target, x: 1, y: 1 }, false],
+    ["add_secret_version", { value: "v" }, true],
+    ["create_schedule", { resourceId: "r1" }, true],
+    ["write_workflow", { name: "new" }, false],
+    ["write_workflow", { workflowId: "w1", description: "d", enabled: false }, false],
+    ["write_workflow", { source: "infra.log(1)" }, true],
+    ["write_workflow", { workflowId: "w1", trigger: { kind: "cron", cron: "* * * * *" } }, true],
+    ["write_workflow", { workflowId: "w1", enabled: true }, true],
+    ["write_workflow", { workflowId: "w1", secretIds: ["s1"] }, true],
+    ["run_workflow", { workflowId: "w1" }, true],
+    ["write_custom_graph", { graphId: "g1", name: "renamed" }, false],
+    ["write_custom_graph", { source: "graph.render({})" }, true],
+  ])("%s %j needs approval: %s", async (name, input, expected) => {
+    const tool = (await getToolRegistry()).find((t) => t.name === name);
+    expect(tool, name).toBeDefined();
+    expect(await needsApproval(tool!, input, { ...auth, source: "chat" })).toBe(expected);
+  });
+
+  it("never puts a per-call approval hook on a destructive tool", async () => {
+    // A destructive tool always needs approval, so the hook would be dead
+    // code that reads as if some calls skip the card.
+    for (const tool of await getToolRegistry()) {
+      if (tool.requiresApproval) expect(tool.risk, tool.name).not.toBe("destructive");
     }
   });
 });

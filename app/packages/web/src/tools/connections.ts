@@ -667,7 +667,9 @@ export function connectionTools(): ToolDefinition[] {
         value: z.string(),
         parentResourceId: z.string().optional(),
       },
-      risk: "write",
+      // A new version becomes the secret's active value: every consumer that
+      // reads "latest" picks it up, so a bad rotation is a production outage.
+      risk: "destructive",
       permission: "secrets:write",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, value, parentResourceId } =
