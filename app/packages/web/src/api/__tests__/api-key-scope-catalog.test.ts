@@ -51,7 +51,7 @@ describe("API key scopes cover the permission catalog", () => {
 /**
  * The unoffered list is only defensible if the routes really are closed. One
  * representative request per permission, taken from the route→permission map
- * in `api/openapi/index.ts`, asserted against the deny policy itself.
+ * in `api/openapi/required-permissions.ts`, asserted against the deny policy itself.
  */
 describe("every unoffered scope gates a route API keys cannot reach anyway", () => {
   const samples: Record<string, { method: string; path: string }> = {

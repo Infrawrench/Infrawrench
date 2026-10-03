@@ -463,7 +463,7 @@ The catalog of permission strings lives in `app/packages/server-core/src/permiss
 
 System roles (owner/admin/member) are defined in code (`app/packages/server-core/src/permissions/system-roles.ts`) and seeded lazily per org via `ensureSystemRoles(orgId)` — every membership write triggers it. Custom roles live in the `roles` table with arbitrary permission arrays. `organizationMembers.roleId` (and `invitations.roleId`) point at a `roles` row; the legacy text `role` column is kept in sync for one release as a fallback.
 
-OpenAPI: `app/packages/web/src/api/openapi/index.ts:injectRequiredPermissions` walks the generated paths and stamps `x-required-permission` onto every operation using the `REQUIRED_PERMISSION` table. When you add a new endpoint, add the matching entry there.
+OpenAPI: `app/packages/web/src/api/openapi/index.ts:injectRequiredPermissions` walks the generated paths and stamps `x-required-permission` onto every operation using the `REQUIRED_PERMISSION` table in `openapi/required-permissions.ts`. When you add a new endpoint, add the matching entry there.
 
 Frontend: `app/packages/web/src/auth/permissions-context.tsx` provides `<PermissionsProvider>` (mounted in `org.$orgId.tsx`), the `usePermissions()` hook, and a `<Can permission="...">` component. The provider fetches `/api/org/:orgId/team/me` once per org switch. The pure `hasPermission` matcher is exported via the browser-safe `@infrawrench/server-core/permissions/catalog` subpath (the full `permissions` module pulls in `db/client` and is server-only).
 
