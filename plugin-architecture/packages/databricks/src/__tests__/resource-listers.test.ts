@@ -84,6 +84,11 @@ describe("listSqlWarehouses", () => {
           warehouse_type: "PRO",
           enable_photon: true,
           num_active_sessions: 2,
+          num_clusters: 1,
+          enable_serverless_compute: true,
+          spot_instance_policy: "COST_OPTIMIZED",
+          channel: { name: "CHANNEL_NAME_CURRENT" },
+          health: { status: "HEALTHY" },
           creator_name: "me",
         },
       ],
@@ -91,7 +96,16 @@ describe("listSqlWarehouses", () => {
     const res = await listSqlWarehouses(ctx, ACCOUNT);
     expect(res[0]).toMatchObject({
       id: "acct1:databricks-sql-warehouse:w1",
-      fields: { warehouseId: "w1", enablePhoton: true, numRunningQueries: 2 },
+      fields: {
+        warehouseId: "w1",
+        enablePhoton: true,
+        numActiveSessions: 2,
+        numClusters: 1,
+        enableServerlessCompute: true,
+        spotInstancePolicy: "COST_OPTIMIZED",
+        channel: "CHANNEL_NAME_CURRENT",
+        health: "HEALTHY",
+      },
     });
     expect(res[0]!.resolvedOutputs.jdbcUrl).toContain("httpPath=/sql/1.0/warehouses/w1");
     expect(res[0]!.resolvedOutputs.odbcUrl).toContain("Simba Spark");

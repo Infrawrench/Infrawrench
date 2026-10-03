@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const PipelineResourceType = rt({
   name: "Pipeline",
   id: "databricks-pipeline",
-  description: "A Databricks Delta Live Tables pipeline",
+  description: "A Lakeflow Spark Declarative Pipeline (formerly Delta Live Tables)",
   fields: [
     f("pipelineId", "Pipeline ID"),
     f("name", "Name"),
