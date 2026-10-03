@@ -3,9 +3,10 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A file uploaded through the Files API and referenced from message content
  * blocks by its `file_id`. Files are scoped to the workspace that owns the
- * API key.
+ * API key, and may carry an expiry set at upload time
+ * (`expires_in_seconds`), after which they can no longer be downloaded.
  *
- * Docs: https://platform.claude.com/docs/en/api/files-list
+ * Docs: https://platform.claude.com/docs/en/api/files/list
  */
 export const FileResourceType = rt({
   name: "File",
@@ -17,9 +18,8 @@ export const FileResourceType = rt({
     f("mimeType", "MIME Type", { required: false, editable: false }),
     f("sizeBytes", "Size (bytes)", { kind: "number", required: false, editable: false }),
     f("createdAt", "Created", { required: false, editable: false }),
+    f("expiresAt", "Expires", { required: false, editable: false }),
     f("downloadable", "Downloadable", { kind: "boolean", required: false, editable: false }),
-    f("scopeType", "Scope Type", { required: false, editable: false }),
-    f("scopeId", "Scope ID", { required: false, editable: false }),
   ],
   outputs: [
     o("fileId", "File ID", {
@@ -28,9 +28,7 @@ export const FileResourceType = rt({
     }),
     o("filename", "Filename"),
   ],
-  // A workspace-scoped file carries that workspace's id in `scope.id`; any
-  // other scope simply matches no workspace and produces no edge.
-  dependsOn: [{ fieldKey: "scopeId", targetTypeId: "workspace", label: "in workspace" }],
+  expiryFields: [{ fieldKey: "expiresAt", from: "expiry", kind: "other", label: "File expires" }],
   supportsCreate: false,
   supportsDelete: true,
   iconKey: "storage",

@@ -9,7 +9,12 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * `POST /v1/organizations/api_keys/{id}` with `{"status":"inactive"}`. That is
  * why this type sets `supportsCreate: false` and `supportsDelete: false`.
  *
- * Docs: https://platform.claude.com/docs/en/api/admin-api/apikeys/list-api-keys
+ * A key either belongs to one workspace (`scope.type` "workspace", which now
+ * names the Default Workspace by its real id too) or, for a personal or
+ * service-account key bound to a principal, to the whole organization
+ * (`scope.type` "organization").
+ *
+ * Docs: https://platform.claude.com/docs/en/api/organization/api_keys/list
  */
 export const ApiKeyResourceType = rt({
   name: "API Key",
@@ -24,9 +29,16 @@ export const ApiKeyResourceType = rt({
     }),
     f("partialKeyHint", "Key Hint", { required: false, editable: false }),
     f("workspaceId", "Workspace", { required: false, editable: false }),
+    f("scopeType", "Scope", {
+      kind: "enum",
+      required: false,
+      editable: false,
+      enumValues: ["workspace", "organization"],
+    }),
     f("createdAt", "Created", { required: false, editable: false }),
     f("expiresAt", "Expires", { required: false, editable: false }),
     f("createdById", "Created By", { required: false, editable: false }),
+    f("createdByType", "Created By Type", { required: false, editable: false }),
     f("principalType", "Principal Type", { required: false, editable: false }),
     f("principalId", "Principal ID", { required: false, editable: false }),
   ],
@@ -49,5 +61,6 @@ export const ApiKeyResourceType = rt({
   supportsCreate: false,
   supportsUpdate: true,
   supportsDelete: false,
+  supportsMetrics: true,
   iconKey: "key",
 });

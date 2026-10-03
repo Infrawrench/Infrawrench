@@ -73,12 +73,25 @@ describe("headers", () => {
     expect(headerOf(calls[0]!.init, "x-api-key")).toBe("sk-ant-admin01-test");
   });
 
-  it("sends the files beta header only on the Files API", async () => {
-    installFetch(() => jsonResponse({ data: [], has_more: false }));
-    await client().listResources("file", ACCOUNT);
+  it("calls the GA Files API without the old beta header and pages on next_page", async () => {
+    installFetch((url) => {
+      if (url === "https://api.anthropic.com/v1/files?limit=100") {
+        return jsonResponse({
+          data: [{ id: "file_1", filename: "a.pdf", expires_at: "2026-11-01T00:00:00Z" }],
+          next_page: "page_2",
+        });
+      }
+      if (url === "https://api.anthropic.com/v1/files?limit=100&page=page_2") {
+        return jsonResponse({ data: [{ id: "file_2", filename: "b.pdf" }], next_page: null });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const files = await client().listResources("file", ACCOUNT);
 
-    expect(calls[0]!.url).toBe("https://api.anthropic.com/v1/files?limit=100");
-    expect(headerOf(calls[0]!.init, "anthropic-beta")).toBe("files-api-2025-04-14");
+    expect(headerOf(calls[0]!.init, "anthropic-beta")).toBeUndefined();
+    expect(files.map((f) => f.externalId)).toEqual(["file_1", "file_2"]);
+    expect(files[0]!.fields["expiresAt"]).toBe("2026-11-01T00:00:00Z");
+    expect(files[1]!.fields["expiresAt"]).toBe("");
   });
 });
 
@@ -485,5 +498,388 @@ describe("invites", () => {
     await client().deleteResource("invite", `${ACCOUNT}:invite:invite_1`, ACCOUNT);
     expect(calls[0]!.url).toBe("https://api.anthropic.com/v1/organizations/invites/invite_1");
     expect(calls[0]!.init?.method).toBe("DELETE");
+  });
+});
+
+describe("API key mapping", () => {
+  it("reads the principal and scope objects, including organization-scoped keys", async () => {
+    installFetch(() =>
+      jsonResponse({
+        data: [
+          {
+            id: "apikey_ws",
+            name: "Workspace key",
+            status: "active",
+            workspace_id: null,
+            scope: { type: "workspace", workspace_id: "wrkspc_default" },
+            principal: { type: "user_actor", user_id: "user_1" },
+            created_by: { type: "user", id: "user_1" },
+          },
+          {
+            id: "apikey_org",
+            name: "Service key",
+            status: "active",
+            workspace_id: null,
+            scope: { type: "organization" },
+            principal: { type: "service_account_actor", service_account_id: "svac_1" },
+            created_by: null,
+          },
+        ],
+        has_more: false,
+      }),
+    );
+
+    const [ws, org] = await client().listResources("api-key", ACCOUNT);
+    expect(ws!.fields["workspaceId"]).toBe("wrkspc_default");
+    expect(ws!.parentResourceId).toBe(`${ACCOUNT}:workspace:wrkspc_default`);
+    expect(ws!.fields["principalId"]).toBe("user_1");
+    expect(org!.fields["scopeType"]).toBe("organization");
+    expect(org!.fields["principalType"]).toBe("service_account_actor");
+    expect(org!.fields["principalId"]).toBe("svac_1");
+    expect(org!.parentResourceId).toBeUndefined();
+  });
+
+  it("charts a key's usage by filtering the usage report on api_key_ids[]", async () => {
+    installFetch(() => jsonResponse({ data: [], has_more: false }));
+    await client().fetchMetricSeries("api-key", `${ACCOUNT}:api-key:apikey_1`, ACCOUNT);
+    expect(calls[0]!.url).toContain("api_key_ids%5B%5D=apikey_1");
+  });
+});
+
+describe("workspace members", () => {
+  it("lists members of every live workspace joined to member emails", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/organizations/workspaces?")) {
+        return jsonResponse({
+          data: [
+            { id: "wrkspc_1", name: "Prod" },
+            { id: "wrkspc_old", name: "Old", archived_at: "2026-01-01T00:00:00Z" },
+          ],
+          has_more: false,
+        });
+      }
+      if (url.includes("/v1/organizations/users?")) {
+        return jsonResponse({
+          data: [{ id: "user_1", email: "a@b.com", name: "Ada" }],
+          has_more: false,
+        });
+      }
+      if (url.includes("/v1/organizations/workspaces/wrkspc_1/members?")) {
+        return jsonResponse({
+          data: [
+            { user_id: "user_1", workspace_id: "wrkspc_1", workspace_role: "workspace_admin" },
+          ],
+          has_more: false,
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const [member, ...rest] = await client().listResources("workspace-member", ACCOUNT);
+    expect(rest).toHaveLength(0);
+    expect(member!.id).toBe(`${ACCOUNT}:workspace-member:wrkspc_1/user_1`);
+    expect(member!.parentResourceId).toBe(`${ACCOUNT}:workspace:wrkspc_1`);
+    expect(member!.fields["email"]).toBe("a@b.com");
+    expect(member!.fields["workspaceName"]).toBe("Prod");
+    expect(calls.some((c) => c.url.includes("wrkspc_old/members"))).toBe(false);
+  });
+
+  it("offers workspace and member pickers, and hides the workspace under a parent", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/organizations/workspaces?")) {
+        return jsonResponse({ data: [{ id: "wrkspc_1", name: "Prod" }], has_more: false });
+      }
+      return jsonResponse({ data: [{ id: "user_1", email: "a@b.com" }], has_more: false });
+    });
+
+    const standalone = await client().getCreateConfig("workspace-member");
+    const ws = standalone.fields.find((f) => f.key === "workspaceId")!;
+    expect(ws.kind).toBe("select");
+    expect(ws.options).toEqual([{ id: "wrkspc_1", label: "Prod", description: "wrkspc_1" }]);
+    expect(standalone.fields.find((f) => f.key === "userId")!.options![0]!.id).toBe("user_1");
+    const roles = standalone.fields.find((f) => f.key === "workspaceRole")!.options!;
+    expect(roles.map((r) => r.id)).not.toContain("workspace_billing");
+
+    const child = await client().getCreateConfig(
+      "workspace-member",
+      `${ACCOUNT}:workspace:wrkspc_9`,
+    );
+    const hidden = child.fields.find((f) => f.key === "workspaceId")!;
+    expect(hidden.hidden).toBe(true);
+    expect(hidden.defaultValue).toBe("wrkspc_9");
+  });
+
+  it("adds, re-roles and removes a member through the workspace members routes", async () => {
+    installFetch((_url, init) =>
+      init?.method === "DELETE"
+        ? jsonResponse({ type: "workspace_member_deleted" })
+        : jsonResponse({
+            type: "workspace_member",
+            user_id: "user_1",
+            workspace_id: "wrkspc_1",
+            workspace_role: "workspace_developer",
+          }),
+    );
+
+    const created = await client().createResource("workspace-member", ACCOUNT, {
+      workspaceId: "wrkspc_1",
+      userId: "user_1",
+      workspaceRole: "workspace_developer",
+    });
+    expect(calls[0]!.url).toBe(
+      "https://api.anthropic.com/v1/organizations/workspaces/wrkspc_1/members",
+    );
+    expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({
+      user_id: "user_1",
+      workspace_role: "workspace_developer",
+    });
+    expect(created.externalId).toBe("wrkspc_1/user_1");
+
+    await client().updateResource("workspace-member", created.id, ACCOUNT, {
+      workspaceRole: "workspace_billing",
+    });
+    expect(calls[1]!.url).toBe(
+      "https://api.anthropic.com/v1/organizations/workspaces/wrkspc_1/members/user_1",
+    );
+    expect(JSON.parse(calls[1]!.init?.body as string)).toEqual({
+      workspace_role: "workspace_billing",
+    });
+
+    await client().deleteResource("workspace-member", created.id, ACCOUNT);
+    expect(calls[2]!.init?.method).toBe("DELETE");
+    expect(calls[2]!.url).toBe(calls[1]!.url);
+  });
+
+  it("refuses workspace_billing when adding a member", async () => {
+    await expect(
+      client().createResource("workspace-member", ACCOUNT, {
+        workspaceId: "wrkspc_1",
+        userId: "user_1",
+        workspaceRole: "workspace_billing",
+      }),
+    ).rejects.toThrow(/cannot be assigned when adding/);
+  });
+});
+
+describe("workspace settings", () => {
+  it("creates a workspace with colour and data residency", async () => {
+    installFetch(() => jsonResponse({ id: "wrkspc_new", name: "EU" }));
+    await client().createResource("workspace", ACCOUNT, {
+      name: "EU",
+      displayColor: "#6C5BB9",
+      allowedInferenceGeos: "us",
+      defaultInferenceGeo: "us",
+    });
+    expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({
+      name: "EU",
+      display_color: "#6C5BB9",
+      data_residency: { allowed_inference_geos: ["us"], default_inference_geo: "us" },
+    });
+  });
+
+  it("updates tags and rejects a default geo outside the allowed list", async () => {
+    installFetch(() => jsonResponse({ id: "wrkspc_1", name: "Prod" }));
+    await client().updateResource("workspace", `${ACCOUNT}:workspace:wrkspc_1`, ACCOUNT, {
+      tags: "team=ml, env=prod",
+      allowedInferenceGeos: "unrestricted",
+    });
+    expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({
+      tags: { team: "ml", env: "prod" },
+      data_residency: { allowed_inference_geos: "unrestricted" },
+    });
+
+    await expect(
+      client().updateResource("workspace", `${ACCOUNT}:workspace:wrkspc_1`, ACCOUNT, {
+        allowedInferenceGeos: "us",
+        defaultInferenceGeo: "global",
+      }),
+    ).rejects.toThrow(/must be one of the allowed geos/);
+  });
+
+  it("enriches a workspace with its effective rate limits", async () => {
+    installFetch((url) => {
+      expect(url).toBe(
+        "https://api.anthropic.com/v1/organizations/workspaces/wrkspc_1/rate_limits?include_inherited=true",
+      );
+      return jsonResponse({
+        data: [
+          {
+            group: { type: "model_group", id: "rlg_1", display_name: "Claude Sonnet 4.x" },
+            limits: [
+              {
+                type: "requests_per_minute",
+                value: 1000,
+                org_limit: 4000,
+                source: { type: "workspace" },
+              },
+              {
+                type: "input_tokens_per_minute",
+                value: 10000000,
+                org_limit: 10000000,
+                source: { type: "organization" },
+              },
+            ],
+          },
+        ],
+        next_page: null,
+      });
+    });
+
+    const ws = await client().enrichDetail({
+      id: `${ACCOUNT}:workspace:wrkspc_1`,
+      pluginId: "anthropic",
+      resourceTypeId: "workspace",
+      accountId: ACCOUNT,
+      displayName: "Prod",
+      externalId: "wrkspc_1",
+      fields: { name: "Prod" },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    });
+    const detail = client().renderDetail(ws);
+    const section = detail.sections.find((s) => s.title === "Rate Limits")!;
+    const list = section.children[0] as { items: Array<{ key: string; value: string }> };
+    expect(list.items[0]).toEqual({
+      key: "Claude Sonnet 4.x · requests / min",
+      value: "1,000 (override; org 4,000)",
+    });
+    expect(list.items[1]!.value).toBe("10,000,000 (inherited)");
+  });
+});
+
+describe("rate limits", () => {
+  it("lists every organization group in a single unpaged request", async () => {
+    installFetch(() =>
+      jsonResponse({
+        data: [
+          {
+            id: "rl_1",
+            type: "rate_limit",
+            group: { type: "model_group", id: "rlg_1", display_name: "Claude Opus 4.x" },
+            models: ["claude-opus-4-8", "claude-opus-4-7"],
+            limits: [
+              { type: "requests_per_minute", value: 4000 },
+              { type: "input_tokens_per_minute", value: 10000000 },
+              { type: "output_tokens_per_minute", value: 800000 },
+            ],
+          },
+          {
+            id: "rl_2",
+            group: { type: "batch", id: "rlg_2" },
+            models: null,
+            limits: [{ type: "enqueued_batch_requests", value: 500000 }],
+          },
+        ],
+        next_page: null,
+      }),
+    );
+
+    const [opus, batch] = await client().listResources("rate-limit", ACCOUNT);
+    expect(calls[0]!.url).toBe("https://api.anthropic.com/v1/organizations/rate_limits");
+    expect(opus!.displayName).toBe("Claude Opus 4.x");
+    expect(opus!.fields["requestsPerMinute"]).toBe(4000);
+    expect(opus!.fields["models"]).toBe("claude-opus-4-8, claude-opus-4-7");
+    expect(batch!.displayName).toBe("Message Batches API");
+    expect(batch!.fields["limits"]).toBe("enqueued batch requests: 500,000");
+  });
+
+  it("is empty without an admin key", async () => {
+    const spy = installFetch(() => jsonResponse({ data: [] }));
+    expect(await client(false).listResources("rate-limit", ACCOUNT)).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("skills", () => {
+  it("lists GA skills with the data-plane key and deletes without a beta header", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "DELETE") return jsonResponse({ id: "skill_1", type: "skill_deleted" });
+      return jsonResponse({
+        data: [
+          {
+            id: "skill_1",
+            display_name: "Brand guidelines",
+            latest_version_id: "skver_1",
+            source: { type: "custom" },
+            created_at: "2026-09-01T00:00:00Z",
+            updated_at: "2026-09-02T00:00:00Z",
+          },
+        ],
+        next_page: null,
+      });
+    });
+
+    const [skill] = await client().listResources("skill", ACCOUNT);
+    expect(calls[0]!.url).toBe("https://api.anthropic.com/v1/skills?limit=100");
+    expect(headerOf(calls[0]!.init, "x-api-key")).toBe("sk-ant-api03-test");
+    expect(headerOf(calls[0]!.init, "anthropic-beta")).toBeUndefined();
+    expect(skill!.fields["source"]).toBe("custom");
+    expect(skill!.resolvedOutputs["latestVersionId"]).toBe("skver_1");
+
+    await client().deleteResource("skill", skill!.id, ACCOUNT);
+    expect(calls[1]!.url).toBe("https://api.anthropic.com/v1/skills/skill_1");
+    expect(calls[1]!.init?.method).toBe("DELETE");
+  });
+});
+
+describe("organization member metrics", () => {
+  it("adds Claude Code analytics for the member's email, one request per day", async () => {
+    installFetch((url) => {
+      if (url.includes("/usage_report/messages")) {
+        expect(url).toContain("account_ids%5B%5D=user_1");
+        return jsonResponse({ data: [], has_more: false });
+      }
+      if (url.endsWith("/v1/organizations/users/user_1")) {
+        return jsonResponse({ id: "user_1", email: "Dev@Example.com" });
+      }
+      if (url.includes("/usage_report/claude_code")) {
+        return jsonResponse({
+          data: [
+            {
+              actor: { type: "user_actor", email_address: "dev@example.com" },
+              core_metrics: {
+                num_sessions: 5,
+                lines_of_code: { added: 100, removed: 40 },
+                commits_by_claude_code: 2,
+                pull_requests_by_claude_code: 1,
+              },
+              tool_actions: {
+                edit_tool: { accepted: 9, rejected: 1 },
+                write_tool: { accepted: 0, rejected: 0 },
+              },
+              model_breakdown: [{ estimated_cost: { amount: 113, currency: "USD" } }],
+            },
+            {
+              actor: { type: "user_actor", email_address: "someone@else.com" },
+              core_metrics: { num_sessions: 99 },
+            },
+          ],
+          has_more: false,
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const series = await client().fetchMetricSeries(
+      "organization-user",
+      `${ACCOUNT}:organization-user:user_1`,
+      ACCOUNT,
+      { startMs: Date.parse("2026-09-01T00:00:00Z"), endMs: Date.parse("2026-09-02T12:00:00Z") },
+    );
+
+    const ccCalls = calls.filter((c) => c.url.includes("/usage_report/claude_code"));
+    expect(ccCalls.map((c) => new URL(c.url).searchParams.get("starting_at"))).toEqual([
+      "2026-09-01",
+      "2026-09-02",
+    ]);
+    const byLabel = Object.fromEntries(
+      series.filter((s) => s.points.length > 0).map((s) => [s.label, s.points[0]!.value]),
+    );
+    expect(byLabel["Claude Code sessions"]).toBe(5);
+    expect(byLabel["Claude Code lines added"]).toBe(100);
+    expect(byLabel["Claude Code edit acceptance"]).toBe(90);
+    expect(byLabel["Claude Code estimated cost"]).toBe(1.13);
   });
 });

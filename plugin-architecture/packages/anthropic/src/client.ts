@@ -26,12 +26,6 @@ const BASE_URL = "https://api.anthropic.com";
  */
 const ANTHROPIC_VERSION = "2023-06-01";
 
-/**
- * The Files API is still behind a beta header.
- * https://platform.claude.com/docs/en/api/files-list
- */
-const FILES_BETA = "files-api-2025-04-14";
-
 /** `limit` ranges 1–1000 on every cursor-paginated Anthropic list endpoint. */
 const PAGE_SIZE = 100;
 
@@ -52,6 +46,37 @@ const ASSIGNABLE_ROLES: Array<{ id: string; label: string }> = [
   { id: "billing", label: "Billing — Workbench + manage billing" },
   { id: "managed", label: "Managed — Claude Enterprise organizations only" },
 ];
+
+/**
+ * Workspace roles, least to most privileged. `workspace_billing` can be set
+ * on an existing member but the add-member endpoint rejects it.
+ */
+const WORKSPACE_ROLES: Array<{ id: string; label: string; description: string }> = [
+  { id: "workspace_user", label: "Workspace User", description: "Workbench only" },
+  {
+    id: "workspace_restricted_developer",
+    label: "Restricted Developer",
+    description: "Use the API with existing keys; cannot manage keys",
+  },
+  { id: "workspace_developer", label: "Developer", description: "Use the API and manage keys" },
+  { id: "workspace_admin", label: "Workspace Admin", description: "Full control of the workspace" },
+];
+
+const INFERENCE_GEOS = ["global", "us"] as const;
+
+/** `allowed_inference_geos` choices offered in the create and edit forms. */
+const ALLOWED_GEO_OPTIONS: Array<{ id: string; label: string }> = [
+  { id: "unrestricted", label: "Unrestricted (every geo, including future ones)" },
+  { id: "global, us", label: "global and us" },
+  { id: "global", label: "global only" },
+  { id: "us", label: "us only" },
+];
+
+/**
+ * Claude Code analytics is one request per UTC day, so the window a chart
+ * asks for is capped to keep a 90-day view from fanning out into 90 calls.
+ */
+const MAX_CLAUDE_CODE_DAYS = 31;
 
 // ---- API response shapes ---------------------------------------------------
 
@@ -114,6 +139,10 @@ interface AnthropicMessageBatch {
   results_url?: string | null;
 }
 
+/**
+ * GA (no beta header) file shape. The beta shape's `scope` object is gone;
+ * `expires_at` is new and null for files uploaded without an expiry.
+ */
 interface AnthropicFile {
   id: string;
   filename?: string;
@@ -121,7 +150,13 @@ interface AnthropicFile {
   size_bytes?: number;
   created_at?: string;
   downloadable?: boolean;
-  scope?: { id?: string; type?: string } | null;
+  expires_at?: string | null;
+}
+
+/** Page-cursor envelope used by the GA Files and Skills lists. */
+interface AnthropicCursorPage<T> {
+  data?: T[];
+  next_page?: string | null;
 }
 
 interface AnthropicWorkspace {
@@ -162,11 +197,83 @@ interface AnthropicApiKey {
   name?: string;
   status?: string;
   partial_key_hint?: string | null;
+  /** Deprecated in favour of `scope`; null for the Default Workspace. */
   workspace_id?: string | null;
+  scope?: { type?: "workspace" | "organization"; workspace_id?: string } | null;
   created_at?: string;
   expires_at?: string | null;
   created_by?: { id?: string; type?: string } | null;
-  principal?: { id?: string; type?: string } | null;
+  principal?: {
+    type?: "user_actor" | "service_account_actor" | string;
+    user_id?: string;
+    service_account_id?: string;
+  } | null;
+}
+
+interface AnthropicWorkspaceMember {
+  user_id: string;
+  workspace_id: string;
+  workspace_role?: string;
+}
+
+interface RateLimitGroup {
+  id?: string;
+  type?: string;
+  display_name?: string;
+}
+
+interface AnthropicRateLimit {
+  id?: string;
+  group?: RateLimitGroup;
+  group_type?: string;
+  models?: string[] | null;
+  limits?: Array<{ type?: string; value?: number }>;
+}
+
+interface AnthropicWorkspaceRateLimit {
+  group?: RateLimitGroup;
+  group_type?: string;
+  models?: string[] | null;
+  limits?: Array<{
+    type?: string;
+    value?: number;
+    org_limit?: number | null;
+    source?: { type?: "workspace" | "organization" };
+  }>;
+}
+
+interface AnthropicSkill {
+  id: string;
+  display_name?: string;
+  latest_version_id?: string;
+  source?: { type?: string } | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface AnthropicSkillVersion {
+  id: string;
+  name?: string;
+  description?: string;
+  created_at?: string;
+}
+
+interface ClaudeCodeRecord {
+  actor?: { type?: string; email_address?: string; api_key_name?: string };
+  core_metrics?: {
+    num_sessions?: number;
+    lines_of_code?: { added?: number; removed?: number };
+    commits_by_claude_code?: number;
+    pull_requests_by_claude_code?: number;
+  };
+  tool_actions?: Record<string, { accepted?: number; rejected?: number }>;
+  model_breakdown?: Array<{ estimated_cost?: { amount?: number; currency?: string } }>;
+}
+
+interface ClaudeCodeReport {
+  data?: ClaudeCodeRecord[];
+  has_more?: boolean;
+  next_page?: string | null;
 }
 
 interface UsageResult {
@@ -229,6 +336,37 @@ function num(value: unknown): number {
 
 function supported(cap: CapabilitySupport | undefined): boolean {
   return cap?.supported === true;
+}
+
+/** Human label for a limiter type: `input_tokens_per_minute` → "input tokens / min". */
+function limiterLabel(type: string): string {
+  return type
+    .replace(/_per_minute$/, " / min")
+    .replace(/_per_day$/, " / day")
+    .replace(/_/g, " ");
+}
+
+/** `"a=b, c=d"` → `{a: "b", c: "d"}`. Blank input clears every tag. */
+function parseTags(raw: string): Record<string, string> {
+  const tags: Record<string, string> = {};
+  for (const pair of raw.split(",")) {
+    const trimmed = pair.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) throw new Error(`Anthropic plugin: tag "${trimmed}" must look like key=value`);
+    tags[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
+  }
+  return tags;
+}
+
+/** Form value for `allowed_inference_geos` → request body value. */
+function parseAllowedGeos(raw: string): string[] | "unrestricted" {
+  const value = raw.trim();
+  if (!value || value === "unrestricted") return "unrestricted";
+  return value
+    .split(",")
+    .map((g) => g.trim())
+    .filter((g) => g.length > 0);
 }
 
 function addDays(isoDate: string, days: number): string {
@@ -328,6 +466,38 @@ export class AnthropicClient implements PluginClient {
     return out;
   }
 
+  /**
+   * Walk the `page` / `next_page` cursor the GA Files API, the Skills API and
+   * the Rate Limits API use instead of `after_id`.
+   */
+  private async listByPage<T>(
+    path: string,
+    params: Record<string, string>,
+    opts: { admin?: boolean; pageSize?: number | null } = {},
+  ): Promise<T[]> {
+    const out: T[] = [];
+    let page: string | undefined;
+
+    for (let i = 0; i < MAX_LIST_PAGES; i++) {
+      const query = new URLSearchParams(params);
+      // The rate-limit lists return everything in one page when `limit` is
+      // omitted, which is what `pageSize: null` asks for.
+      if (opts.pageSize !== null) query.set("limit", String(opts.pageSize ?? PAGE_SIZE));
+      if (page) query.set("page", page);
+      const qs = query.toString();
+      const body = await this.fetch<AnthropicCursorPage<T>>(
+        qs ? `${path}?${qs}` : path,
+        undefined,
+        opts.admin ? { admin: true } : {},
+      );
+      out.push(...(body.data ?? []));
+      if (!body.next_page) break;
+      page = body.next_page;
+    }
+
+    return out;
+  }
+
   // ---- Listing -------------------------------------------------------------
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -346,6 +516,12 @@ export class AnthropicClient implements PluginClient {
         return (await this.fetchInvites()).map((i) => this.mapInvite(accountId, i));
       case "api-key":
         return (await this.fetchApiKeys()).map((k) => this.mapApiKey(accountId, k));
+      case "workspace-member":
+        return this.listWorkspaceMembers(accountId);
+      case "rate-limit":
+        return (await this.fetchRateLimits()).map((r) => this.mapRateLimit(accountId, r));
+      case "skill":
+        return (await this.fetchSkills()).map((sk) => this.mapSkill(accountId, sk));
       default:
         throw new Error(`Anthropic plugin: unknown resource type "${typeId}"`);
     }
@@ -368,12 +544,85 @@ export class AnthropicClient implements PluginClient {
   }
 
   /**
-   * GET /v1/files: verified 2026-07-28 against
-   * https://platform.claude.com/docs/en/api/files-list
-   * Still gated behind the `files-api-2025-04-14` beta header.
+   * GET /v1/files: verified 2026-10-03 against
+   * https://platform.claude.com/docs/en/api/files/list
+   *
+   * The Files API went GA on 2026-08-19. Without the old
+   * `files-api-2025-04-14` beta header the list pages on `page`/`next_page`
+   * and each file reports `expires_at`; the beta-only `scope` object is gone.
    */
   private fetchFiles(): Promise<AnthropicFile[]> {
-    return this.listPaginated<AnthropicFile>("/v1/files", {}, { beta: FILES_BETA });
+    return this.listByPage<AnthropicFile>("/v1/files", {});
+  }
+
+  /**
+   * GET /v1/skills: verified 2026-10-03 against
+   * https://platform.claude.com/docs/en/api/skills/list
+   * GA since 2026-08-19; no `skills-2025-10-02` header, so `source` is an
+   * object and the newest version is `latest_version_id`.
+   */
+  private fetchSkills(): Promise<AnthropicSkill[]> {
+    return this.listByPage<AnthropicSkill>("/v1/skills", {});
+  }
+
+  /**
+   * GET /v1/organizations/rate_limits: verified 2026-10-03 against
+   * https://platform.claude.com/docs/en/api/organization/rate_limits/list
+   */
+  private async fetchRateLimits(): Promise<AnthropicRateLimit[]> {
+    if (!this.hasAdminKey) return [];
+    return this.listByPage<AnthropicRateLimit>(
+      "/v1/organizations/rate_limits",
+      {},
+      { admin: true, pageSize: null },
+    );
+  }
+
+  /**
+   * GET /v1/organizations/workspaces/{id}/rate_limits?include_inherited=true:
+   * verified 2026-10-03 against
+   * https://platform.claude.com/docs/en/api/organization/workspaces/rate_limits/list
+   * With `include_inherited` every group the workspace can see comes back,
+   * each value marked as a workspace override or inherited from the org.
+   */
+  private fetchWorkspaceRateLimits(workspaceId: string): Promise<AnthropicWorkspaceRateLimit[]> {
+    return this.listByPage<AnthropicWorkspaceRateLimit>(
+      `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/rate_limits`,
+      { include_inherited: "true" },
+      { admin: true, pageSize: null },
+    );
+  }
+
+  /**
+   * GET /v1/organizations/workspaces/{id}/members: verified 2026-10-03
+   * against https://platform.claude.com/docs/en/api/organization/workspaces/members/list
+   */
+  private fetchWorkspaceMembers(workspaceId: string): Promise<AnthropicWorkspaceMember[]> {
+    return this.listPaginated<AnthropicWorkspaceMember>(
+      `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members`,
+      {},
+      { admin: true },
+    );
+  }
+
+  /**
+   * Members of every live workspace, joined to the organization member list
+   * so each row carries an email rather than a bare user id. Archived
+   * workspaces are skipped: archiving revokes everything in them.
+   */
+  private async listWorkspaceMembers(accountId: string): Promise<ResourceInstance[]> {
+    if (!this.hasAdminKey) return [];
+    const [workspaces, users] = await Promise.all([this.fetchWorkspaces(), this.fetchUsers()]);
+    const usersById = new Map(users.map((u) => [u.id, u]));
+    const live = workspaces.filter((w) => !w.archived_at);
+    const perWorkspace = await Promise.all(
+      live.map(async (w) =>
+        (await this.fetchWorkspaceMembers(w.id)).map((m) =>
+          this.mapWorkspaceMember(accountId, m, usersById.get(m.user_id), w),
+        ),
+      ),
+    );
+    return perWorkspace.flat();
   }
 
   /**
@@ -435,12 +684,39 @@ export class AnthropicClient implements PluginClient {
       return this.mapBatch(accountId, batch);
     }
     if (typeId === "file") {
-      const file = await this.fetch<AnthropicFile>(
-        `/v1/files/${encodeURIComponent(externalId)}`,
-        undefined,
-        { beta: FILES_BETA },
-      );
+      const file = await this.fetch<AnthropicFile>(`/v1/files/${encodeURIComponent(externalId)}`);
       return this.mapFile(accountId, file);
+    }
+    if (typeId === "skill") {
+      // GET /v1/skills/{id}: https://platform.claude.com/docs/en/api/skills/retrieve
+      const skill = await this.fetch<AnthropicSkill>(
+        `/v1/skills/${encodeURIComponent(externalId)}`,
+      );
+      return this.mapSkill(accountId, skill);
+    }
+    if (typeId === "workspace-member") {
+      // GET /v1/organizations/workspaces/{ws}/members/{user}: verified
+      // 2026-10-03 against
+      // https://platform.claude.com/docs/en/api/organization/workspaces/members/retrieve
+      const [workspaceId, userId] = splitMemberId(externalId);
+      const [member, user, workspace] = await Promise.all([
+        this.fetch<AnthropicWorkspaceMember>(
+          `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+          undefined,
+          { admin: true },
+        ),
+        this.fetch<AnthropicUser>(
+          `/v1/organizations/users/${encodeURIComponent(userId)}`,
+          undefined,
+          { admin: true },
+        ).catch(() => undefined),
+        this.fetch<AnthropicWorkspace>(
+          `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}`,
+          undefined,
+          { admin: true },
+        ).catch(() => undefined),
+      ]);
+      return this.mapWorkspaceMember(accountId, member, user, workspace);
     }
 
     const all = await this.listResources(typeId, accountId);
@@ -463,7 +739,7 @@ export class AnthropicClient implements PluginClient {
 
   // ---- Mutations -----------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
     if (typeId === "workspace") {
       return {
         fields: [
@@ -474,10 +750,90 @@ export class AnthropicClient implements PluginClient {
             required: true,
             placeholder: "Production",
             description:
-              "Shown in the Console workspace switcher. Up to 100 workspaces per organization; archived ones don't count.",
+              "Shown in the Console workspace switcher. Up to 40 characters, and up to 100 workspaces per organization; archived ones don't count.",
+          },
+          {
+            key: "displayColor",
+            label: "Display Color",
+            kind: "text",
+            required: false,
+            placeholder: "#6C5BB9",
+            description:
+              "Hex colour for the workspace in the Console. Leave blank for the default.",
+          },
+          {
+            key: "allowedInferenceGeos",
+            label: "Allowed Inference Geos",
+            kind: "select",
+            required: false,
+            options: ALLOWED_GEO_OPTIONS,
+            defaultValue: "unrestricted",
+            description: "Where requests from this workspace are allowed to run.",
+          },
+          {
+            key: "defaultInferenceGeo",
+            label: "Default Inference Geo",
+            kind: "select",
+            required: false,
+            options: INFERENCE_GEOS.map((g) => ({ id: g, label: g })),
+            defaultValue: "global",
+            description:
+              "Used when a request omits inference_geo. Must be one of the allowed geos. Data is stored in the us workspace geo, which cannot be changed later.",
           },
         ],
       };
+    }
+    if (typeId === "workspace-member") {
+      const [workspaces, users] = await Promise.all([this.fetchWorkspaces(), this.fetchUsers()]);
+      const parentWorkspace = parentResourceId ? externalIdOf(parentResourceId) : "";
+      const fields: CreateResourceConfig["fields"] = [];
+      if (parentWorkspace) {
+        fields.push({
+          key: "workspaceId",
+          label: "Workspace",
+          kind: "text",
+          required: true,
+          hidden: true,
+          defaultValue: parentWorkspace,
+        });
+      } else {
+        fields.push({
+          key: "workspaceId",
+          label: "Workspace",
+          kind: "select",
+          required: true,
+          options: workspaces
+            .filter((w) => !w.archived_at)
+            .map((w) => ({ id: w.id, label: str(w.name) || w.id, description: w.id })),
+          description:
+            "The Default Workspace has no id and cannot be managed here: every organization member can already use it.",
+        });
+      }
+      fields.push(
+        {
+          key: "userId",
+          label: "Member",
+          kind: "select",
+          required: true,
+          options: users.map((u) => ({
+            id: u.id,
+            label: str(u.name) || str(u.email) || u.id,
+            description: [str(u.email), str(u.role)].filter(Boolean).join(" · "),
+          })),
+          description: "Only existing organization members can be added. Invite new people first.",
+        },
+        {
+          key: "workspaceRole",
+          label: "Workspace Role",
+          kind: "select",
+          required: true,
+          options: WORKSPACE_ROLES,
+          defaultValue: "workspace_developer",
+          description:
+            "Workspace Billing cannot be assigned when adding a member; set it afterwards by editing the membership.",
+        },
+      );
+      return { fields };
     }
     if (typeId === "invite") {
       return {
@@ -520,12 +876,39 @@ export class AnthropicClient implements PluginClient {
       // https://platform.claude.com/docs/en/manage-claude/workspaces
       const name = fields["name"]?.trim();
       if (!name) throw new Error("Workspace name is required");
+      const body: Record<string, unknown> = { name };
+      const color = fields["displayColor"]?.trim();
+      if (color) body["display_color"] = color;
+      const residency = this.residencyBody(fields);
+      if (residency) body["data_residency"] = residency;
       const created = await this.fetch<AnthropicWorkspace>(
         "/v1/organizations/workspaces",
-        { method: "POST", body: JSON.stringify({ name }) },
+        { method: "POST", body: JSON.stringify(body) },
         { admin: true },
       );
       return this.mapWorkspace(accountId, created);
+    }
+    if (typeId === "workspace-member") {
+      // POST /v1/organizations/workspaces/{id}/members: verified 2026-10-03
+      // against https://platform.claude.com/docs/en/api/organization/workspaces/members/add
+      const workspaceId = fields["workspaceId"]?.trim();
+      const userId = fields["userId"]?.trim();
+      const workspaceRole = fields["workspaceRole"] || "workspace_developer";
+      if (!workspaceId || !userId) throw new Error("Pick a workspace and a member");
+      if (workspaceRole === "workspace_billing") {
+        throw new Error(
+          "Anthropic plugin: workspace_billing cannot be assigned when adding a member. Add them with another role, then edit the membership.",
+        );
+      }
+      const created = await this.fetch<AnthropicWorkspaceMember>(
+        `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members`,
+        {
+          method: "POST",
+          body: JSON.stringify({ user_id: userId, workspace_role: workspaceRole }),
+        },
+        { admin: true },
+      );
+      return this.mapWorkspaceMember(accountId, created);
     }
     if (typeId === "invite") {
       // POST /v1/organizations/invites: verified 2026-07-28 against
@@ -556,12 +939,34 @@ export class AnthropicClient implements PluginClient {
       // https://platform.claude.com/docs/en/api/admin-api/workspaces/update-workspace
       const body: Record<string, unknown> = {};
       if (fields["name"] !== undefined) body["name"] = fields["name"];
+      const color = fields["displayColor"]?.trim();
+      if (color) body["display_color"] = color;
+      if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
+      const residency = this.residencyBody(fields);
+      if (residency) body["data_residency"] = residency;
       const updated = await this.fetch<AnthropicWorkspace>(
         `/v1/organizations/workspaces/${encodeURIComponent(externalId)}`,
         { method: "POST", body: JSON.stringify(body) },
         { admin: true },
       );
       return this.mapWorkspace(accountId, updated);
+    }
+
+    if (typeId === "workspace-member") {
+      // POST /v1/organizations/workspaces/{ws}/members/{user}: verified
+      // 2026-10-03 against
+      // https://platform.claude.com/docs/en/api/organization/workspaces/members/update
+      const workspaceRole = fields["workspaceRole"];
+      if (!workspaceRole) {
+        throw new Error("Anthropic plugin: workspace role is the only editable field on a member");
+      }
+      const [workspaceId, userId] = splitMemberId(externalId);
+      const updated = await this.fetch<AnthropicWorkspaceMember>(
+        `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+        { method: "POST", body: JSON.stringify({ workspace_role: workspaceRole }) },
+        { admin: true },
+      );
+      return this.mapWorkspaceMember(accountId, updated);
     }
 
     if (typeId === "organization-user") {
@@ -605,6 +1010,29 @@ export class AnthropicClient implements PluginClient {
     throw new Error(`Anthropic plugin: updateResource not supported for type "${typeId}"`);
   }
 
+  /**
+   * `data_residency` for a workspace create/update, or undefined when the
+   * form left both geo fields untouched. `workspace_geo` is never sent: "us"
+   * is its only value and it is immutable after creation.
+   */
+  private residencyBody(fields: Record<string, string>): Record<string, unknown> | undefined {
+    const allowedRaw = fields["allowedInferenceGeos"];
+    const defaultGeo = fields["defaultInferenceGeo"]?.trim();
+    if (allowedRaw === undefined && !defaultGeo) return undefined;
+    const residency: Record<string, unknown> = {};
+    if (allowedRaw !== undefined) {
+      const allowed = parseAllowedGeos(allowedRaw);
+      if (defaultGeo && Array.isArray(allowed) && !allowed.includes(defaultGeo)) {
+        throw new Error(
+          `Anthropic plugin: the default inference geo "${defaultGeo}" must be one of the allowed geos (${allowed.join(", ")}).`,
+        );
+      }
+      residency["allowed_inference_geos"] = allowed;
+    }
+    if (defaultGeo) residency["default_inference_geo"] = defaultGeo;
+    return residency;
+  }
+
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     const externalId = externalIdOf(resourceId);
 
@@ -619,13 +1047,31 @@ export class AnthropicClient implements PluginClient {
         return;
       case "file":
         // DELETE /v1/files/{id}
-        // https://platform.claude.com/docs/en/api/files-delete
+        // https://platform.claude.com/docs/en/api/files/delete
+        await this.fetch<unknown>(`/v1/files/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      case "skill":
+        // DELETE /v1/skills/{id}: without the beta header this removes the
+        // Skill and every version in one call. Anthropic-published Skills are
+        // read-only and the API refuses them.
+        // https://platform.claude.com/docs/en/api/skills/delete
+        await this.fetch<unknown>(`/v1/skills/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      case "workspace-member": {
+        // DELETE /v1/organizations/workspaces/{ws}/members/{user}
+        // https://platform.claude.com/docs/en/api/organization/workspaces/members/remove
+        const [workspaceId, userId] = splitMemberId(externalId);
         await this.fetch<unknown>(
-          `/v1/files/${encodeURIComponent(externalId)}`,
+          `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
           { method: "DELETE" },
-          { beta: FILES_BETA },
+          { admin: true },
         );
         return;
+      }
       case "organization-user":
         // DELETE /v1/organizations/users/{id}. Members holding the admin,
         // owner or primary_owner role cannot be removed through the API.
@@ -707,8 +1153,10 @@ export class AnthropicClient implements PluginClient {
    * https://platform.claude.com/docs/en/api/admin-api/usage-cost/get-messages-usage-report
    *
    * Scoped per resource: a model row filters on `models[]`, a workspace row on
-   * `workspace_ids[]`. Admin-key only, so this returns an empty chart rather
-   * than an error when the account has no Admin key.
+   * `workspace_ids[]`, an API key on `api_key_ids[]` and an organization
+   * member on `account_ids[]`. Members additionally get their Claude Code
+   * activity (see `fetchClaudeCodeSeries`). Admin-key only, so this returns an
+   * empty chart rather than an error when the account has no Admin key.
    */
   async fetchMetricSeries(
     resourceTypeId: string,
@@ -722,11 +1170,31 @@ export class AnthropicClient implements PluginClient {
     const filter = new URLSearchParams();
     if (resourceTypeId === "model") filter.append("models[]", externalId);
     else if (resourceTypeId === "workspace") filter.append("workspace_ids[]", externalId);
+    else if (resourceTypeId === "api-key") filter.append("api_key_ids[]", externalId);
+    else if (resourceTypeId === "organization-user") filter.append("account_ids[]", externalId);
     else return [];
 
     const endMs = timeRange?.endMs ?? Date.now();
     const startMs = timeRange?.startMs ?? endMs - 7 * 24 * 60 * 60 * 1000;
 
+    const tokenSeries = await this.fetchTokenSeries(filter, startMs, endMs);
+    if (resourceTypeId !== "organization-user") return tokenSeries;
+
+    const user = await this.fetch<AnthropicUser>(
+      `/v1/organizations/users/${encodeURIComponent(externalId)}`,
+      undefined,
+      { admin: true },
+    );
+    const email = str(user.email).toLowerCase();
+    if (!email) return tokenSeries;
+    return [...tokenSeries, ...(await this.fetchClaudeCodeSeries(email, startMs, endMs))];
+  }
+
+  private async fetchTokenSeries(
+    filter: URLSearchParams,
+    startMs: number,
+    endMs: number,
+  ): Promise<MetricSeries[]> {
     // bucket_width caps: 1d → 31 buckets, 1h → 168, 1m → 1440. Pick the
     // finest granularity the requested window fits into.
     const spanMs = Math.max(endMs - startMs, 60_000);
@@ -787,6 +1255,95 @@ export class AnthropicClient implements PluginClient {
       { label: "Cache read tokens", unit: "tokens", points: cacheReadPoints },
       { label: "Cache write tokens", unit: "tokens", points: cacheWritePoints },
       { label: "Web search requests", unit: "requests", points: webSearchPoints },
+    ];
+  }
+
+  /**
+   * GET /v1/organizations/usage_report/claude_code: verified 2026-10-03
+   * against https://platform.claude.com/docs/en/manage-claude/claude-code-analytics-api
+   *
+   * The report is one UTC day per request (`starting_at=YYYY-MM-DD`), one
+   * record per actor, so the member's rows are picked out by email address.
+   * Usage through Bedrock, Vertex or Foundry is not included, and the
+   * newest hour is withheld for consistency.
+   */
+  private async fetchClaudeCodeSeries(
+    email: string,
+    startMs: number,
+    endMs: number,
+  ): Promise<MetricSeries[]> {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const lastDay = Math.floor(endMs / dayMs) * dayMs;
+    const firstDay = Math.max(
+      Math.floor(startMs / dayMs) * dayMs,
+      lastDay - (MAX_CLAUDE_CODE_DAYS - 1) * dayMs,
+    );
+    const days: number[] = [];
+    for (let day = firstDay; day <= lastDay; day += dayMs) days.push(day);
+
+    const perDay = await Promise.all(
+      days.map(async (day) => {
+        const date = new Date(day).toISOString().slice(0, 10);
+        const totals = {
+          sessions: 0,
+          added: 0,
+          removed: 0,
+          commits: 0,
+          prs: 0,
+          accepted: 0,
+          rejected: 0,
+          cost: 0,
+        };
+        let page: string | undefined;
+        for (let i = 0; i < 5; i++) {
+          const query = new URLSearchParams({ starting_at: date, limit: "1000" });
+          if (page) query.set("page", page);
+          const body = await this.fetch<ClaudeCodeReport>(
+            `/v1/organizations/usage_report/claude_code?${query.toString()}`,
+            undefined,
+            { admin: true },
+          );
+          for (const record of body.data ?? []) {
+            if (str(record.actor?.email_address).toLowerCase() !== email) continue;
+            const core = record.core_metrics ?? {};
+            totals.sessions += num(core.num_sessions);
+            totals.added += num(core.lines_of_code?.added);
+            totals.removed += num(core.lines_of_code?.removed);
+            totals.commits += num(core.commits_by_claude_code);
+            totals.prs += num(core.pull_requests_by_claude_code);
+            for (const tool of Object.values(record.tool_actions ?? {})) {
+              totals.accepted += num(tool?.accepted);
+              totals.rejected += num(tool?.rejected);
+            }
+            for (const model of record.model_breakdown ?? []) {
+              // Estimated cost is in cents USD, like the cost report.
+              totals.cost += num(model.estimated_cost?.amount) / 100;
+            }
+          }
+          if (!body.has_more || !body.next_page) break;
+          page = body.next_page;
+        }
+        return { timestamp: day, ...totals };
+      }),
+    );
+
+    const series = (label: string, unit: string, pick: (d: (typeof perDay)[number]) => number) => ({
+      label,
+      unit,
+      points: perDay.map((d) => ({ timestamp: d.timestamp, value: pick(d) })),
+    });
+    return [
+      series("Claude Code sessions", "sessions", (d) => d.sessions),
+      series("Claude Code lines added", "lines", (d) => d.added),
+      series("Claude Code lines removed", "lines", (d) => d.removed),
+      series("Claude Code commits", "commits", (d) => d.commits),
+      series("Claude Code pull requests", "PRs", (d) => d.prs),
+      series("Claude Code edit acceptance", "%", (d) =>
+        d.accepted + d.rejected > 0
+          ? Math.round((d.accepted / (d.accepted + d.rejected)) * 1000) / 10
+          : 0,
+      ),
+      series("Claude Code estimated cost", "USD", (d) => Math.round(d.cost * 100) / 100),
     ];
   }
 
@@ -941,6 +1498,44 @@ export class AnthropicClient implements PluginClient {
           { label: "Hint", value: str(fields["partialKeyHint"]) || "—" },
         ];
       }
+      case "workspace-member":
+        return [
+          { label: "Role", value: workspaceRoleLabel(str(fields["workspaceRole"])) },
+          { label: "Workspace", value: str(fields["workspaceName"]) || str(fields["workspaceId"]) },
+        ];
+      case "rate-limit":
+        return [
+          ...(num(fields["requestsPerMinute"])
+            ? [
+                {
+                  label: "Requests / min",
+                  value: num(fields["requestsPerMinute"]).toLocaleString(),
+                },
+              ]
+            : []),
+          ...(num(fields["inputTokensPerMinute"])
+            ? [
+                {
+                  label: "Input tok / min",
+                  value: num(fields["inputTokensPerMinute"]).toLocaleString(),
+                },
+              ]
+            : []),
+          ...(num(fields["outputTokensPerMinute"])
+            ? [
+                {
+                  label: "Output tok / min",
+                  value: num(fields["outputTokensPerMinute"]).toLocaleString(),
+                },
+              ]
+            : []),
+          { label: "Group", value: str(fields["groupType"]) },
+        ];
+      case "skill":
+        return [
+          { label: "Source", value: str(fields["source"]) },
+          { label: "Updated", value: str(fields["updatedAt"]).slice(0, 10) || "—" },
+        ];
       default:
         return [];
     }
@@ -1050,9 +1645,8 @@ export class AnthropicClient implements PluginClient {
         mimeType: str(file.mime_type),
         sizeBytes: num(file.size_bytes),
         createdAt: str(file.created_at),
+        expiresAt: str(file.expires_at),
         downloadable: file.downloadable === true,
-        scopeType: str(file.scope?.type),
-        scopeId: str(file.scope?.id),
       },
       resolvedOutputs: { fileId: file.id, filename: str(file.filename) },
       secretStates: [],
@@ -1145,7 +1739,12 @@ export class AnthropicClient implements PluginClient {
 
   private mapApiKey(accountId: string, key: AnthropicApiKey): ResourceInstance {
     const createdAt = str(key.created_at) || new Date().toISOString();
-    const workspaceId = str(key.workspace_id);
+    // `scope.workspace_id` names the Default Workspace by its real id; the
+    // deprecated top-level `workspace_id` is null for it.
+    const scopeType = str(key.scope?.type) || (key.workspace_id ? "workspace" : "");
+    const workspaceId = str(key.scope?.workspace_id) || str(key.workspace_id);
+    const principalType = str(key.principal?.type);
+    const principalId = str(key.principal?.user_id) || str(key.principal?.service_account_id);
     return {
       id: `${accountId}:api-key:${key.id}`,
       pluginId: "anthropic",
@@ -1153,19 +1752,22 @@ export class AnthropicClient implements PluginClient {
       accountId,
       displayName: str(key.name) || key.id,
       externalId: key.id,
-      // Keys in the Default Workspace come back with a null workspace_id, so
-      // they simply have no parent to hang off.
+      // Organization-scoped keys have no workspace, so they simply have no
+      // parent to hang off. The Default Workspace never appears in the
+      // workspace list either, so its keys resolve to no parent row.
       ...(workspaceId ? { parentResourceId: `${accountId}:workspace:${workspaceId}` } : {}),
       fields: {
         name: str(key.name),
         status: str(key.status),
         partialKeyHint: str(key.partial_key_hint),
-        workspaceId: workspaceId || "Default Workspace",
+        workspaceId: workspaceId || (scopeType === "organization" ? "" : "Default Workspace"),
+        scopeType,
         createdAt: str(key.created_at),
         expiresAt: str(key.expires_at),
         createdById: str(key.created_by?.id),
-        principalType: str(key.principal?.type),
-        principalId: str(key.principal?.id),
+        createdByType: str(key.created_by?.type),
+        principalType,
+        principalId,
       },
       resolvedOutputs: {
         apiKeyId: key.id,
@@ -1176,6 +1778,130 @@ export class AnthropicClient implements PluginClient {
       createdAt,
       updatedAt: createdAt,
     };
+  }
+
+  private mapWorkspaceMember(
+    accountId: string,
+    member: AnthropicWorkspaceMember,
+    user?: AnthropicUser,
+    workspace?: AnthropicWorkspace,
+  ): ResourceInstance {
+    const externalId = `${member.workspace_id}/${member.user_id}`;
+    const now = new Date().toISOString();
+    const email = str(user?.email);
+    return {
+      id: `${accountId}:workspace-member:${externalId}`,
+      pluginId: "anthropic",
+      resourceTypeId: "workspace-member",
+      accountId,
+      displayName: str(user?.name) || email || member.user_id,
+      externalId,
+      parentResourceId: `${accountId}:workspace:${member.workspace_id}`,
+      fields: {
+        email,
+        name: str(user?.name),
+        userId: member.user_id,
+        workspaceId: member.workspace_id,
+        workspaceName: str(workspace?.name),
+        workspaceRole: str(member.workspace_role),
+      },
+      resolvedOutputs: { userId: member.user_id, workspaceId: member.workspace_id, email },
+      secretStates: [],
+      createdAt: str(user?.added_at) || now,
+      updatedAt: str(user?.added_at) || now,
+    };
+  }
+
+  private mapRateLimit(accountId: string, entry: AnthropicRateLimit): ResourceInstance {
+    const groupType = str(entry.group?.type) || str(entry.group_type);
+    const groupId = str(entry.group?.id);
+    const externalId = str(entry.id) || groupId || groupType;
+    const groupName =
+      str(entry.group?.display_name) || RATE_LIMIT_GROUP_LABELS[groupType] || groupType;
+    const limits = entry.limits ?? [];
+    const valueOf = (type: string) => num(limits.find((l) => l.type === type)?.value);
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:rate-limit:${externalId}`,
+      pluginId: "anthropic",
+      resourceTypeId: "rate-limit",
+      accountId,
+      displayName: groupName,
+      externalId,
+      fields: {
+        groupName,
+        groupType,
+        groupId,
+        models: (entry.models ?? []).join(", "),
+        requestsPerMinute: valueOf("requests_per_minute"),
+        inputTokensPerMinute: valueOf("input_tokens_per_minute"),
+        outputTokensPerMinute: valueOf("output_tokens_per_minute"),
+        limits: limits
+          .map((l) => `${limiterLabel(str(l.type))}: ${num(l.value).toLocaleString("en-US")}`)
+          .join("; "),
+      },
+      resolvedOutputs: { groupId, groupName },
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private mapSkill(accountId: string, skill: AnthropicSkill): ResourceInstance {
+    const createdAt = str(skill.created_at) || new Date().toISOString();
+    return {
+      id: `${accountId}:skill:${skill.id}`,
+      pluginId: "anthropic",
+      resourceTypeId: "skill",
+      accountId,
+      displayName: str(skill.display_name) || skill.id,
+      externalId: skill.id,
+      fields: {
+        displayName: str(skill.display_name) || skill.id,
+        source: str(skill.source?.type),
+        latestVersionId: str(skill.latest_version_id),
+        createdAt: str(skill.created_at),
+        updatedAt: str(skill.updated_at),
+      },
+      resolvedOutputs: { skillId: skill.id, latestVersionId: str(skill.latest_version_id) },
+      secretStates: [],
+      createdAt,
+      updatedAt: str(skill.updated_at) || createdAt,
+    };
+  }
+
+  // ---- Detail enrichment ---------------------------------------------------
+
+  /**
+   * Workspaces gain their effective rate limits (overrides plus inherited
+   * organization values); Skills gain their version history. Both land in
+   * hidden `__…__` outputs that only `renderDetail` reads.
+   */
+  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    const externalId = resource.externalId ?? externalIdOf(resource.id);
+    if (resource.resourceTypeId === "workspace" && this.hasAdminKey) {
+      if (resource.fields["archivedAt"]) return resource;
+      const limits = await this.fetchWorkspaceRateLimits(externalId);
+      return {
+        ...resource,
+        resolvedOutputs: { ...resource.resolvedOutputs, __rateLimits__: JSON.stringify(limits) },
+      };
+    }
+    if (resource.resourceTypeId === "skill") {
+      // GET /v1/skills/{id}/versions: newest first without the beta header.
+      // https://platform.claude.com/docs/en/api/skills/versions/list
+      const body = await this.fetch<AnthropicCursorPage<AnthropicSkillVersion>>(
+        `/v1/skills/${encodeURIComponent(externalId)}/versions?limit=20`,
+      );
+      return {
+        ...resource,
+        resolvedOutputs: {
+          ...resource.resolvedOutputs,
+          __versions__: JSON.stringify(body.data ?? []),
+        },
+      };
+    }
+    return resource;
   }
 
   // ---- Rendering -----------------------------------------------------------
@@ -1196,6 +1922,12 @@ export class AnthropicClient implements PluginClient {
         return this.renderInviteDetail(resource);
       case "api-key":
         return this.renderApiKeyDetail(resource);
+      case "workspace-member":
+        return this.renderWorkspaceMemberDetail(resource);
+      case "rate-limit":
+        return this.renderRateLimitDetail(resource);
+      case "skill":
+        return this.renderSkillDetail(resource);
       default:
         return {
           title: resource.displayName,
@@ -1286,6 +2018,34 @@ export class AnthropicClient implements PluginClient {
           },
         };
       }
+      case "workspace-member":
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: "healthy",
+            label: workspaceRoleLabel(str(fields["workspaceRole"])),
+          },
+        };
+      case "rate-limit":
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: {
+            kind: "status-dot",
+            status: "info",
+            label: num(fields["requestsPerMinute"])
+              ? `${num(fields["requestsPerMinute"]).toLocaleString()} RPM`
+              : str(fields["groupType"]),
+          },
+        };
+      case "skill":
+        return {
+          id: resource.id,
+          label: resource.displayName,
+          status: { kind: "status-dot", status: "healthy", label: str(fields["source"]) },
+        };
       default:
         return { id: resource.id, label: resource.displayName };
     }
@@ -1486,15 +2246,8 @@ export class AnthropicClient implements PluginClient {
                 { key: "MIME Type", value: str(fields["mimeType"]) || "—" },
                 { key: "Size", value: formatBytes(num(fields["sizeBytes"])) },
                 { key: "Created", value: str(fields["createdAt"]) || "—" },
+                { key: "Expires", value: str(fields["expiresAt"]) || "never" },
                 { key: "Downloadable", value: fields["downloadable"] ? "Yes" : "No" },
-                ...(str(fields["scopeType"])
-                  ? [
-                      {
-                        key: "Scope",
-                        value: `${str(fields["scopeType"])} ${str(fields["scopeId"])}`.trim(),
-                      },
-                    ]
-                  : []),
               ],
             },
             {
@@ -1582,6 +2335,7 @@ export class AnthropicClient implements PluginClient {
             },
           ],
         },
+        ...workspaceRateLimitSections(resource.resolvedOutputs["__rateLimits__"]),
       ],
       headerActions,
       metricsCapability: { defaultTimeRangeMs: 7 * 24 * 60 * 60 * 1000 },
@@ -1626,6 +2380,7 @@ export class AnthropicClient implements PluginClient {
         },
       ],
       headerActions: [refreshAction()],
+      metricsCapability: { defaultTimeRangeMs: 7 * 24 * 60 * 60 * 1000 },
     };
   }
 
@@ -1727,12 +2482,20 @@ export class AnthropicClient implements PluginClient {
                 { key: "Workspace", value: str(fields["workspaceId"]) },
                 { key: "Created", value: str(fields["createdAt"]) || "—" },
                 { key: "Expires", value: str(fields["expiresAt"]) || "never" },
+                ...(str(fields["scopeType"])
+                  ? [{ key: "Scope", value: str(fields["scopeType"]) }]
+                  : []),
                 ...(str(fields["principalType"])
                   ? [
                       {
                         key: "Acts As",
-                        value:
-                          `${str(fields["principalType"])} ${str(fields["principalId"])}`.trim(),
+                        value: `${
+                          str(fields["principalType"]) === "service_account_actor"
+                            ? "Service account"
+                            : str(fields["principalType"]) === "user_actor"
+                              ? "User"
+                              : str(fields["principalType"])
+                        } ${str(fields["principalId"])}`.trim(),
                       },
                     ]
                   : []),
@@ -1748,8 +2511,231 @@ export class AnthropicClient implements PluginClient {
         },
       ],
       headerActions,
+      metricsCapability: { defaultTimeRangeMs: 7 * 24 * 60 * 60 * 1000 },
     };
   }
+
+  private renderWorkspaceMemberDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const role = str(fields["workspaceRole"]);
+    return {
+      title: resource.displayName,
+      subtitle: `Workspace Member · ${str(fields["workspaceName"]) || str(fields["workspaceId"])}`,
+      status: { kind: "status-dot", status: "healthy", label: workspaceRoleLabel(role) },
+      sections: [
+        {
+          kind: "section",
+          title: "Membership",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Email", value: str(fields["email"]) || "—", copyable: true },
+                { key: "Name", value: str(fields["name"]) || "—" },
+                { key: "User ID", value: str(fields["userId"]), copyable: true },
+                {
+                  key: "Workspace",
+                  value: str(fields["workspaceName"]) || str(fields["workspaceId"]),
+                },
+                { key: "Workspace ID", value: str(fields["workspaceId"]), copyable: true },
+                { key: "Workspace Role", value: workspaceRoleLabel(role) },
+              ],
+            },
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                "Workspace roles are separate from the organization role. Organization admins have admin access to every workspace whatever their workspace role says.",
+            },
+          ],
+        },
+      ],
+      headerActions: [refreshAction()],
+    };
+  }
+
+  private renderRateLimitDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const limitItems: KVItem[] = str(fields["limits"])
+      .split("; ")
+      .filter(Boolean)
+      .map((entry) => {
+        const idx = entry.lastIndexOf(": ");
+        return { key: entry.slice(0, idx), value: entry.slice(idx + 2) };
+      });
+    return {
+      title: resource.displayName,
+      subtitle: `Rate Limit · ${str(fields["groupType"])}`,
+      status: { kind: "status-dot", status: "info", label: str(fields["groupType"]) },
+      sections: [
+        {
+          kind: "section",
+          title: "Limits",
+          children: [
+            {
+              kind: "key-value-list",
+              items: limitItems.length > 0 ? limitItems : [{ key: "Limits", value: "None" }],
+            },
+          ],
+        },
+        {
+          kind: "section",
+          title: "Group",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Group", value: str(fields["groupName"]) },
+                { key: "Group ID", value: str(fields["groupId"]) || "—", copyable: true },
+                ...(str(fields["models"]) ? [{ key: "Models", value: str(fields["models"]) }] : []),
+              ],
+            },
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                "Organization limits come from your usage tier and are read-only over the API. Workspace overrides are set in the Claude Console and show on each workspace's page.",
+            },
+          ],
+        },
+      ],
+      headerActions: [refreshAction()],
+    };
+  }
+
+  private renderSkillDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const source = str(fields["source"]);
+    let versions: AnthropicSkillVersion[] = [];
+    try {
+      versions = JSON.parse(
+        resource.resolvedOutputs["__versions__"] ?? "[]",
+      ) as AnthropicSkillVersion[];
+    } catch {
+      versions = [];
+    }
+    const sections: SectionNode[] = [
+      {
+        kind: "section",
+        title: "Skill",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Skill ID", value: resource.externalId ?? "", copyable: true },
+              { key: "Display Name", value: str(fields["displayName"]) },
+              { key: "Source", value: source || "—" },
+              {
+                key: "Latest Version",
+                value: str(fields["latestVersionId"]) || "—",
+                copyable: true,
+              },
+              { key: "Created", value: str(fields["createdAt"]) || "—" },
+              { key: "Updated", value: str(fields["updatedAt"]) || "—" },
+            ],
+          },
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              source === "custom"
+                ? "Custom Skills are shared with every API key in the workspace. Deleting this Skill removes all of its versions."
+                : "Anthropic-published Skills are read-only.",
+          },
+        ],
+      },
+    ];
+    if (versions.length > 0) {
+      sections.push({
+        kind: "section",
+        title: "Versions",
+        children: [
+          {
+            kind: "key-value-list",
+            items: versions.map((v) => ({
+              key: `${str(v.created_at).slice(0, 10)} · ${v.id}`,
+              value: str(v.description) || str(v.name) || "—",
+            })),
+          },
+        ],
+      });
+    }
+    return {
+      title: resource.displayName,
+      subtitle: `Skill · ${source}`,
+      status: { kind: "status-dot", status: "healthy", label: source },
+      sections,
+      headerActions: [refreshAction()],
+    };
+  }
+}
+
+/** Workspace member ids are `{workspaceId}/{userId}`. */
+function splitMemberId(externalId: string): [string, string] {
+  const idx = externalId.indexOf("/");
+  if (idx <= 0) throw new Error(`Anthropic plugin: malformed workspace member id "${externalId}"`);
+  return [externalId.slice(0, idx), externalId.slice(idx + 1)];
+}
+
+function workspaceRoleLabel(role: string): string {
+  if (role === "workspace_billing") return "Workspace Billing";
+  return WORKSPACE_ROLES.find((r) => r.id === role)?.label ?? role;
+}
+
+/** Non-model rate-limit groups have no display_name of their own. */
+const RATE_LIMIT_GROUP_LABELS: Record<string, string> = {
+  batch: "Message Batches API",
+  files: "Files API",
+  skills: "Skills API",
+  token_count: "Token Counting API",
+  web_search: "Web search tool",
+};
+
+/**
+ * One section per rate-limit group from the enriched workspace, each limiter
+ * labelled with whether it is a workspace override or inherited.
+ */
+function workspaceRateLimitSections(raw: string | undefined): SectionNode[] {
+  if (!raw) return [];
+  let entries: AnthropicWorkspaceRateLimit[];
+  try {
+    entries = JSON.parse(raw) as AnthropicWorkspaceRateLimit[];
+  } catch {
+    return [];
+  }
+  const items: KVItem[] = [];
+  for (const entry of entries) {
+    const groupType = str(entry.group?.type) || str(entry.group_type);
+    const group = str(entry.group?.display_name) || RATE_LIMIT_GROUP_LABELS[groupType] || groupType;
+    for (const limit of entry.limits ?? []) {
+      const override = limit.source?.type === "workspace";
+      items.push({
+        key: `${group} · ${limiterLabel(str(limit.type))}`,
+        value: override
+          ? `${num(limit.value).toLocaleString("en-US")} (override; org ${
+              limit.org_limit == null ? "unlimited" : num(limit.org_limit).toLocaleString("en-US")
+            })`
+          : `${num(limit.value).toLocaleString("en-US")} (inherited)`,
+      });
+    }
+  }
+  return [
+    {
+      kind: "section",
+      title: "Rate Limits",
+      children: [
+        items.length > 0
+          ? { kind: "key-value-list", items }
+          : { kind: "text", variant: "muted", content: "No rate limits reported." },
+        {
+          kind: "text",
+          variant: "muted",
+          content:
+            "Overrides are set on the workspace's Rate limits tab in the Claude Console; the API can read them but not change them.",
+        },
+      ],
+    },
+  ];
 }
 
 function refreshAction(): ActionNode {
