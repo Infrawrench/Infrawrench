@@ -43,7 +43,7 @@ export function baseUrlForRegion(region: string): string {
 }
 
 /**
- * `transcriber` enum, verified 2026-07-28 against
+ * `transcriber` enum, verified 2026-10-03 against
  * https://docs.rev.ai/api/asynchronous/reference/jobs/submittranscriptionjob.md
  *
  * These four are the whole set. "Reverb", "Reverb Turbo" and "Whisper" are
@@ -56,15 +56,19 @@ export const REVAI_TRANSCRIBER_OPTIONS: SpeechPanelOption[] = [
     label: "Machine",
     description: "Default automatic transcription",
   },
+  // Both being sunset (changelog 2026-07-28 and 2026-08-20): Rev AI still
+  // accepts them for now but recommends `machine`, so they stay selectable
+  // with the deprecation spelled out rather than vanishing from under jobs
+  // that already use them.
   {
     id: "low_cost",
-    label: "Low cost",
-    description: "Cheaper automatic tier, lower accuracy",
+    label: "Low cost (deprecated)",
+    description: "Being sunset by Rev AI; use Machine",
   },
   {
     id: "fusion",
-    label: "Fusion",
-    description: "Higher-accuracy automatic tier, better on rare words",
+    label: "Fusion (deprecated)",
+    description: "Being sunset by Rev AI; use Machine",
   },
   {
     id: "human",

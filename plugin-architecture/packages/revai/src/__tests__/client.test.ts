@@ -331,3 +331,132 @@ describe("transcribeAudio", () => {
     ).rejects.toThrow(/cannot transcribe audio for type "job"/);
   });
 });
+
+describe("companion job APIs", () => {
+  it("lists language identification jobs on the deployment root host", async () => {
+    installFetch(() =>
+      jsonResponse([
+        {
+          id: "lid1",
+          status: "completed",
+          type: "language_id",
+          created_on: "2026-09-01T00:00:00Z",
+        },
+      ]),
+    );
+    const [job] = await client().listResources("language-id-job", ACCOUNT);
+    expect(calls[0]?.url).toBe("https://api.rev.ai/languageid/v1/jobs?limit=100");
+    expect(job?.id).toBe(`${ACCOUNT}:language-id-job:lid1`);
+    expect(job?.fields["status"]).toBe("completed");
+  });
+
+  it("serves language identification on EU but hides the US-only APIs", async () => {
+    installFetch(() => jsonResponse([]));
+    await client("eu").listResources("language-id-job", ACCOUNT);
+    expect(calls[0]?.url).toBe("https://ec1.api.rev.ai/languageid/v1/jobs?limit=100");
+    expect(await client("eu").listResources("sentiment-job", ACCOUNT)).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reads a completed language identification result into fields", async () => {
+    installFetch((url) =>
+      url.endsWith("/result")
+        ? jsonResponse({
+            top_language: "en",
+            language_confidences: [
+              { language: "nl", confidence: 0.05 },
+              { language: "en", confidence: 0.9 },
+            ],
+          })
+        : jsonResponse({ id: "lid1", status: "completed" }),
+    );
+    const job = await client().getResource(
+      "language-id-job",
+      `${ACCOUNT}:language-id-job:lid1`,
+      ACCOUNT,
+    );
+    expect(calls[1]?.url).toBe("https://api.rev.ai/languageid/v1/jobs/lid1/result");
+    expect(job.fields["topLanguage"]).toBe("en");
+    expect(job.fields["topConfidence"]).toBe(0.9);
+    const detail = client().renderDetail(job);
+    expect(JSON.stringify(detail.sections)).toContain("90%");
+  });
+
+  it("counts sentiments and asks for the versioned result type", async () => {
+    installFetch((url) =>
+      url.endsWith("/result")
+        ? jsonResponse({
+            messages: [
+              { content: "Great.", score: 0.9, sentiment: "positive", ts: 1, end_ts: 2 },
+              { content: "Bad.", score: -0.8, sentiment: "negative", ts: 3, end_ts: 4 },
+              { content: "Fine.", score: 0.6, sentiment: "positive", ts: 5, end_ts: 6 },
+            ],
+          })
+        : jsonResponse({ id: "s1", status: "completed", language: "en", word_count: 3 }),
+    );
+    const job = await client().getResource("sentiment-job", `${ACCOUNT}:sentiment-job:s1`, ACCOUNT);
+    expect(calls[1]?.url).toBe("https://api.rev.ai/sentiment_analysis/v1/jobs/s1/result");
+    expect(headerOf(calls[1]?.init, "Accept")).toBe("application/vnd.rev.sentiment.v1.0+json");
+    expect(job.fields["positive"]).toBe(2);
+    expect(job.fields["negative"]).toBe(1);
+  });
+
+  it("ranks topics and exposes the top ones as an output", async () => {
+    installFetch((url) =>
+      url.endsWith("/result")
+        ? jsonResponse({
+            topics: [
+              { topic_name: "pricing", score: 0.4, informants: [] },
+              { topic_name: "team", score: 0.9, informants: [{ content: "our team", ts: 1 }] },
+            ],
+          })
+        : jsonResponse({ id: "t1", status: "completed" }),
+    );
+    const job = await client().getResource("topic-job", `${ACCOUNT}:topic-job:t1`, ACCOUNT);
+    expect(job.fields["topTopics"]).toBe("team, pricing");
+    expect(job.resolvedOutputs["topTopics"]).toBe("team, pricing");
+  });
+
+  it("offers transcribed jobs as the sentiment source and submits the transcript json", async () => {
+    installFetch((url, init) => {
+      if (url.includes("/jobs?limit=")) {
+        return jsonResponse([
+          { id: "j1", status: "transcribed", name: "call.mp3", language: "en" },
+          { id: "j2", status: "in_progress" },
+        ]);
+      }
+      if (url.endsWith("/jobs/j1/transcript")) return jsonResponse(TRANSCRIPT);
+      if (init?.method === "POST") return jsonResponse({ id: "s9", status: "in_progress" });
+      return jsonResponse({});
+    });
+    const config = await client().getCreateConfig("sentiment-job");
+    expect(config.fields[0]?.options?.map((o) => o.id)).toEqual(["j1"]);
+
+    const created = await client().createResource("sentiment-job", ACCOUNT, { sourceJobId: "j1" });
+    const post = calls.find((c) => c.init?.method === "POST");
+    expect(post?.url).toBe("https://api.rev.ai/sentiment_analysis/v1/jobs");
+    const body = JSON.parse(String(post?.init?.body));
+    expect(body.json).toEqual(TRANSCRIPT);
+    expect(body.language).toBe("en");
+    expect(created.id).toBe(`${ACCOUNT}:sentiment-job:s9`);
+  });
+
+  it("submits a language identification job from a media URL", async () => {
+    installFetch(() => jsonResponse({ id: "lid2", status: "in_progress" }));
+    await client().createResource("language-id-job", ACCOUNT, {
+      mediaUrl: "https://example.com/a.mp3",
+      enableMultilingual: "true",
+    });
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      source_config: { url: "https://example.com/a.mp3" },
+      enable_multilingual: true,
+    });
+  });
+
+  it("deletes a companion job on its own prefix", async () => {
+    installFetch(() => jsonResponse("", 204));
+    await client().deleteResource("alignment-job", `${ACCOUNT}:alignment-job:a1`, ACCOUNT);
+    expect(calls[0]?.url).toBe("https://api.rev.ai/alignment/v1/jobs/a1");
+    expect(calls[0]?.init?.method).toBe("DELETE");
+  });
+});

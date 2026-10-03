@@ -24,6 +24,17 @@ import {
   REVAI_PANEL_TRANSCRIBER_OPTIONS,
   REVAI_REGIONS,
 } from "./options.js";
+import {
+  ALIGNMENT_LANGUAGES,
+  INSIGHT_APIS,
+  insightStatusDot,
+  isInsightType,
+  type InsightApi,
+  type LanguageIdResult,
+  type RevAiInsightJob,
+  type SentimentResult,
+  type TopicResult,
+} from "./insights.js";
 
 /** The single account pseudo-resource's external id. */
 const ACCOUNT_ID = "self";
@@ -38,6 +49,9 @@ const TRANSCRIPT_JSON_ACCEPT = "application/vnd.rev.transcript.v1.0+json";
 
 const PAGE_SIZE = 100;
 const MAX_LIST_PAGES = 5;
+
+/** Rows of a companion job's result tabulated on its detail page. */
+const MAX_RESULT_ROWS = 200;
 
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_WAIT_MS = 120_000;
@@ -180,6 +194,8 @@ export class RevAiClient implements PluginClient {
   private readonly accessToken: string;
   private readonly region: string;
   private readonly baseUrl: string;
+  /** Deployment root (`https://api.rev.ai`), where the companion job APIs live. */
+  private readonly hostUrl: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
@@ -189,6 +205,7 @@ export class RevAiClient implements PluginClient {
     this.accessToken = accessToken;
     this.region = credentials["region"] || "us";
     this.baseUrl = baseUrlForRegion(this.region);
+    this.hostUrl = this.baseUrl.replace(/\/speechtotext\/v1$/, "");
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
   }
@@ -203,10 +220,19 @@ export class RevAiClient implements PluginClient {
   }
 
   private async fetch<T>(path: string, options?: RequestInit, accept?: string): Promise<T> {
+    return this.fetchFrom<T>(this.baseUrl, path, options, accept);
+  }
+
+  private async fetchFrom<T>(
+    root: string,
+    path: string,
+    options?: RequestInit,
+    accept?: string,
+  ): Promise<T> {
     try {
       return await jsonRestFetch<T>({
         vendor: "Rev AI",
-        url: `${this.baseUrl}${path}`,
+        url: `${root}${path}`,
         errorPath: path,
         headers: this.headers(accept),
         ...(options ? { init: options } : {}),
@@ -222,8 +248,8 @@ export class RevAiClient implements PluginClient {
    * Issue a request whose response body we do not want parsed as JSON: the
    * `DELETE` endpoints answer 204 with no body.
    */
-  private async requestVoid(path: string, method: string): Promise<void> {
-    const url = `${this.baseUrl}${path}`;
+  private async requestVoid(path: string, method: string, root = this.baseUrl): Promise<void> {
+    const url = `${root}${path}`;
     let status: number;
     let body: string;
 
@@ -298,6 +324,15 @@ export class RevAiClient implements PluginClient {
         const vocabularies = await this.fetchVocabularies();
         return vocabularies.map((vocabulary) => this.mapVocabulary(accountId, vocabulary));
       }
+      case "language-id-job":
+      case "sentiment-job":
+      case "topic-job":
+      case "alignment-job": {
+        const api = INSIGHT_APIS[typeId];
+        if (!this.supportsInsight(api)) return [];
+        const jobs = await this.fetchInsightJobs(api);
+        return jobs.map((job) => this.mapInsightJob(accountId, api, job));
+      }
       default:
         throw new Error(`Rev AI plugin: unknown resource type "${typeId}"`);
     }
@@ -334,6 +369,29 @@ export class RevAiClient implements PluginClient {
       return this.mapVocabulary(accountId, vocabulary);
     }
 
+    if (isInsightType(typeId)) {
+      const api = INSIGHT_APIS[typeId];
+      const job = await this.fetchFrom<RevAiInsightJob>(
+        this.hostUrl,
+        `${api.prefix}/jobs/${encodeURIComponent(externalId)}`,
+      );
+      const resource = this.mapInsightJob(accountId, api, job);
+      if (str(job.status) === "completed") {
+        try {
+          const result = await this.fetchFrom<unknown>(
+            this.hostUrl,
+            `${api.prefix}/jobs/${encodeURIComponent(externalId)}/${api.resultPath}`,
+            undefined,
+            api.resultAccept,
+          );
+          this.applyInsightResult(resource, api, result);
+        } catch {
+          // A result that can't be fetched shouldn't blank the whole page.
+        }
+      }
+      return resource;
+    }
+
     throw new Error(`Rev AI plugin: unknown resource type "${typeId}"`);
   }
 
@@ -363,6 +421,13 @@ export class RevAiClient implements PluginClient {
     }
 
     if (typeId === "vocabulary" && outputKey === "vocabularyId") return externalId;
+
+    if (isInsightType(typeId)) {
+      if (outputKey === "jobId") return externalId;
+      const resource = await this.getResource(typeId, resourceId, _accountId);
+      const value = resource.fields[outputKey];
+      if (value !== undefined) return String(value);
+    }
 
     throw new Error(`Rev AI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
@@ -416,6 +481,35 @@ export class RevAiClient implements PluginClient {
       ];
     }
 
+    if (isInsightType(resourceTypeId)) {
+      const status = String(fields["status"] ?? "");
+      const stats: DashboardStat[] = [
+        {
+          label: "Status",
+          value: status || "—",
+          variant:
+            status === "failed"
+              ? "status-error"
+              : status === "completed"
+                ? "status-healthy"
+                : "default",
+        },
+      ];
+      if (resourceTypeId === "language-id-job" && fields["topLanguage"]) {
+        stats.push({ label: "Top language", value: String(fields["topLanguage"]) });
+      }
+      if (resourceTypeId === "sentiment-job") {
+        stats.push(
+          { label: "Positive", value: String(fields["positive"] ?? 0) },
+          { label: "Negative", value: String(fields["negative"] ?? 0) },
+        );
+      }
+      if (resourceTypeId === "topic-job") {
+        stats.push({ label: "Topics", value: String(fields["topicCount"] ?? 0) });
+      }
+      return stats;
+    }
+
     return [];
   }
 
@@ -427,6 +521,11 @@ export class RevAiClient implements PluginClient {
         return this.renderJobDetail(resource);
       case "vocabulary":
         return this.renderVocabularyDetail(resource);
+      case "language-id-job":
+      case "sentiment-job":
+      case "topic-job":
+      case "alignment-job":
+        return this.renderInsightDetail(resource, INSIGHT_APIS[resource.resourceTypeId]);
       default:
         return {
           title: resource.displayName,
@@ -458,6 +557,13 @@ export class RevAiClient implements PluginClient {
         id: resource.id,
         label: resource.displayName,
         status: { kind: "status-dot", status: vocabularyStatusDot(status) },
+      };
+    }
+    if (isInsightType(resource.resourceTypeId)) {
+      return {
+        id: resource.id,
+        label: resource.displayName,
+        status: { kind: "status-dot", status: insightStatusDot(status) },
       };
     }
     return {
@@ -496,6 +602,8 @@ export class RevAiClient implements PluginClient {
       };
     }
 
+    if (isInsightType(typeId)) return this.insightCreateConfig(INSIGHT_APIS[typeId]);
+
     throw new Error(`Rev AI plugin: no create config for type "${typeId}"`);
   }
 
@@ -504,6 +612,9 @@ export class RevAiClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    if (isInsightType(typeId)) {
+      return this.createInsightJob(accountId, INSIGHT_APIS[typeId], fields);
+    }
     if (typeId !== "vocabulary") {
       throw new Error(`Rev AI plugin: cannot create type "${typeId}"`);
     }
@@ -546,6 +657,18 @@ export class RevAiClient implements PluginClient {
       }
       // DELETE /vocabularies/{id}: 204 No Content, 409 while in_progress.
       await this.requestVoid(`/vocabularies/${encodeURIComponent(externalId)}`, "DELETE");
+      return;
+    }
+
+    if (isInsightType(typeId)) {
+      const api = INSIGHT_APIS[typeId];
+      this.assertInsightAvailable(api);
+      // DELETE {prefix}/jobs/{id}: 204, 409 while the job is still in_progress.
+      await this.requestVoid(
+        `${api.prefix}/jobs/${encodeURIComponent(externalId)}`,
+        "DELETE",
+        this.hostUrl,
+      );
       return;
     }
 
@@ -1045,6 +1168,406 @@ export class RevAiClient implements PluginClient {
       title: resource.displayName,
       subtitle: `Rev AI job · ${status || "unknown"}`,
       status: { kind: "status-dot", status: jobStatusDot(status) },
+      sections,
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Companion job APIs (language identification, sentiment, topics, alignment)
+  // -------------------------------------------------------------------------
+
+  private supportsInsight(api: InsightApi): boolean {
+    return !api.usOnly || this.region !== "eu";
+  }
+
+  private assertInsightAvailable(api: InsightApi): void {
+    if (!this.supportsInsight(api)) {
+      throw new Error(
+        `Rev AI plugin: the EU deployment does not offer the ${api.label} API; only ` +
+          "asynchronous transcription and language identification run in Frankfurt.",
+      );
+    }
+  }
+
+  /** `GET {prefix}/jobs`: a bare array, newest first, paged by `starting_after`. */
+  private async fetchInsightJobs(api: InsightApi): Promise<RevAiInsightJob[]> {
+    const out: RevAiInsightJob[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < MAX_LIST_PAGES; page++) {
+      const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (cursor) query.set("starting_after", cursor);
+      const jobs = await this.fetchFrom<RevAiInsightJob[]>(
+        this.hostUrl,
+        `${api.prefix}/jobs?${query.toString()}`,
+      );
+      if (!Array.isArray(jobs) || jobs.length === 0) break;
+      out.push(...jobs);
+      const lastId = str(jobs[jobs.length - 1]?.id);
+      if (!lastId || jobs.length < PAGE_SIZE) break;
+      cursor = lastId;
+    }
+    return out;
+  }
+
+  private mapInsightJob(
+    accountId: string,
+    api: InsightApi,
+    job: RevAiInsightJob,
+  ): ResourceInstance {
+    const id = str(job.id);
+    const createdOn = str(job.created_on) || new Date().toISOString();
+    const completedOn = str(job.completed_on);
+    const fields: Record<string, string | number | boolean> = {
+      status: str(job.status),
+      createdOn,
+      completedOn,
+      metadata: str(job.metadata),
+      failure: str(job.failure),
+      failureDetail: str(job.failure_detail),
+      deleteAfterSeconds: num(job.delete_after_seconds) ?? 0,
+    };
+    if (api.typeId === "language-id-job" || api.typeId === "alignment-job") {
+      fields["processedDurationSeconds"] = num(job.processed_duration_seconds) ?? 0;
+      fields["mediaUrl"] = str(job.media_url);
+    }
+    if (api.typeId !== "language-id-job") fields["language"] = str(job.language);
+    if (api.typeId === "sentiment-job" || api.typeId === "topic-job") {
+      fields["wordCount"] = num(job.word_count) ?? 0;
+    }
+
+    return {
+      id: `${accountId}:${api.typeId}:${id}`,
+      pluginId: "revai",
+      resourceTypeId: api.typeId,
+      accountId,
+      displayName: str(job.metadata) || id || api.typeId,
+      externalId: id,
+      fields,
+      resolvedOutputs: { jobId: id },
+      secretStates: [],
+      createdAt: createdOn,
+      updatedAt: completedOn || createdOn,
+    };
+  }
+
+  /**
+   * Fold a completed job's result into the resource: headline numbers into
+   * fields (so they reach dashboards and outputs) and the rows the detail view
+   * tabulates into `__result__`, because `renderDetail` is synchronous.
+   */
+  private applyInsightResult(resource: ResourceInstance, api: InsightApi, raw: unknown): void {
+    const fields = resource.fields;
+    let rows: Array<Record<string, string>> = [];
+
+    if (api.typeId === "language-id-job") {
+      const result = (raw ?? {}) as LanguageIdResult;
+      const confidences = [...(result.language_confidences ?? [])].sort(
+        (a, b) => (b.confidence ?? 0) - (a.confidence ?? 0),
+      );
+      fields["topLanguage"] = str(result.top_language);
+      fields["topConfidence"] = round(num(confidences[0]?.confidence) ?? 0, 3);
+      resource.resolvedOutputs["topLanguage"] = str(result.top_language);
+      rows = confidences.map((c) => ({
+        language: str(c.language),
+        confidence: `${round((num(c.confidence) ?? 0) * 100, 1)}%`,
+      }));
+    } else if (api.typeId === "sentiment-job") {
+      const messages = ((raw ?? {}) as SentimentResult).messages ?? [];
+      for (const label of ["positive", "negative", "neutral"]) {
+        fields[label] = messages.filter((m) => m.sentiment === label).length;
+      }
+      rows = messages.map((m) => ({
+        sentiment: str(m.sentiment),
+        score: String(round(num(m.score) ?? 0, 2)),
+        at: num(m.ts) !== undefined ? `${round(num(m.ts) ?? 0, 1)} s` : "",
+        content: str(m.content),
+      }));
+    } else if (api.typeId === "topic-job") {
+      const topics = [...(((raw ?? {}) as TopicResult).topics ?? [])].sort(
+        (a, b) => (b.score ?? 0) - (a.score ?? 0),
+      );
+      fields["topicCount"] = topics.length;
+      fields["topTopics"] = topics
+        .slice(0, 5)
+        .map((t) => str(t.topic_name))
+        .filter(Boolean)
+        .join(", ");
+      resource.resolvedOutputs["topTopics"] = String(fields["topTopics"]);
+      rows = topics.map((t) => ({
+        topic: str(t.topic_name),
+        score: String(round(num(t.score) ?? 0, 2)),
+        informants: String(t.informants?.length ?? 0),
+        example: str(t.informants?.[0]?.content),
+      }));
+    } else {
+      // Alignment answers a Rev AI transcript: the timed words are the result.
+      const transcript = (raw ?? {}) as RevAiTranscript;
+      resource.resolvedOutputs["__transcript__"] = assembleTranscript(transcript);
+      rows = (transcript.monologues ?? [])
+        .flatMap((m) => (m.elements ?? []).filter((e) => e.type === "text"))
+        .slice(0, MAX_RESULT_ROWS)
+        .map((e) => ({
+          word: str(e.value),
+          start: num(e.ts) !== undefined ? `${round(num(e.ts) ?? 0, 2)} s` : "",
+          end: num(e.end_ts) !== undefined ? `${round(num(e.end_ts) ?? 0, 2)} s` : "",
+        }));
+    }
+
+    resource.resolvedOutputs["__result__"] = JSON.stringify(rows.slice(0, MAX_RESULT_ROWS));
+  }
+
+  /**
+   * Create forms. Sentiment and topic jobs analyse a transcript, so their form
+   * is a picker over this account's transcribed jobs: the plugin fetches the
+   * chosen job's transcript and submits it as `json`, which keeps the
+   * timestamps in the result.
+   */
+  private async insightCreateConfig(api: InsightApi): Promise<CreateResourceConfig> {
+    this.assertInsightAvailable(api);
+    const metadataField = {
+      key: "metadata",
+      label: "Metadata",
+      kind: "text" as const,
+      required: false,
+      description: "Optional free-text label echoed back on the job (max 512 characters).",
+    };
+
+    if (api.typeId === "language-id-job") {
+      return {
+        fields: [
+          {
+            key: "mediaUrl",
+            label: "Media URL",
+            kind: "text",
+            required: true,
+            placeholder: "https://example.com/recording.mp3",
+            description: "A public URL Rev AI can download the audio or video from.",
+          },
+          {
+            key: "enableMultilingual",
+            label: "Multilingual Audio",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "false", label: "No, one language" },
+              { id: "true", label: "Yes, several languages" },
+            ],
+            defaultValue: "false",
+            description: "Tell Rev AI the media may switch between languages.",
+          },
+          metadataField,
+        ],
+      };
+    }
+
+    if (api.typeId === "alignment-job") {
+      return {
+        fields: [
+          {
+            key: "mediaUrl",
+            label: "Media URL",
+            kind: "text",
+            required: true,
+            placeholder: "https://example.com/recording.mp3",
+            description: "A public URL Rev AI can download the audio or video from.",
+          },
+          {
+            key: "transcriptText",
+            label: "Transcript",
+            kind: "code",
+            required: true,
+            description:
+              "The words spoken in the media, separated by spaces. Leave punctuation out; Rev AI aligns words, not symbols.",
+          },
+          {
+            key: "language",
+            label: "Language",
+            kind: "select",
+            required: true,
+            options: ALIGNMENT_LANGUAGES,
+            defaultValue: "en",
+          },
+          metadataField,
+        ],
+      };
+    }
+
+    const jobs = await this.fetchJobs().catch(() => [] as RevAiJob[]);
+    const options = jobs
+      .filter((job) => str(job.status) === "transcribed" && str(job.id))
+      .map((job) => ({
+        id: str(job.id),
+        label: str(job.name) || str(job.metadata) || str(job.id),
+        description: [str(job.language), str(job.created_on).slice(0, 10)]
+          .filter(Boolean)
+          .join(" · "),
+      }));
+    return {
+      fields: [
+        {
+          key: "sourceJobId",
+          label: "Transcript",
+          kind: "select",
+          required: true,
+          options,
+          ...(options[0] ? { defaultValue: options[0].id } : {}),
+          description:
+            "A transcribed job from the last 30 days. Rev AI analyses English transcripts only.",
+        },
+        metadataField,
+      ],
+    };
+  }
+
+  private async createInsightJob(
+    accountId: string,
+    api: InsightApi,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    this.assertInsightAvailable(api);
+    const body: Record<string, unknown> = {};
+    const metadata = (fields["metadata"] ?? "").trim();
+    if (metadata) body["metadata"] = metadata.slice(0, 512);
+
+    if (api.typeId === "language-id-job" || api.typeId === "alignment-job") {
+      const url = (fields["mediaUrl"] ?? "").trim();
+      if (!/^https?:\/\//i.test(url)) {
+        throw new Error("Rev AI plugin: a public http(s) media URL is required");
+      }
+      body["source_config"] = { url };
+      if (api.typeId === "language-id-job") {
+        if (fields["enableMultilingual"] === "true") body["enable_multilingual"] = true;
+      } else {
+        const text = (fields["transcriptText"] ?? "").trim();
+        if (!text) throw new Error("Rev AI plugin: the transcript to align is required");
+        body["transcript_text"] = text;
+        body["language"] = ALIGNMENT_LANGUAGES.some((l) => l.id === fields["language"])
+          ? fields["language"]
+          : "en";
+      }
+    } else {
+      const sourceJobId = (fields["sourceJobId"] ?? "").trim();
+      if (!sourceJobId) throw new Error("Rev AI plugin: pick a transcribed job to analyse");
+      body["json"] = await this.fetchTranscript(sourceJobId);
+      body["language"] = "en";
+      if (!metadata) body["metadata"] = `Job ${sourceJobId}`;
+    }
+
+    const created = await this.fetchFrom<RevAiInsightJob>(this.hostUrl, `${api.prefix}/jobs`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return this.mapInsightJob(accountId, api, created);
+  }
+
+  private renderInsightDetail(resource: ResourceInstance, api: InsightApi): DetailViewSchema {
+    const fields = resource.fields;
+    const status = String(fields["status"] ?? "");
+    let rows: Array<Record<string, string>> = [];
+    try {
+      rows = JSON.parse(resource.resolvedOutputs["__result__"] ?? "[]") as Array<
+        Record<string, string>
+      >;
+    } catch {
+      rows = [];
+    }
+
+    const summary: Array<{ key: string; value: string; copyable?: boolean }> = [
+      { key: "ID", value: resource.externalId ?? "", copyable: true },
+      { key: "Status", value: status || "—" },
+    ];
+    if (fields["topLanguage"]) {
+      summary.push({
+        key: "Top Language",
+        value: `${fields["topLanguage"]} (${round(Number(fields["topConfidence"] ?? 0) * 100, 1)}%)`,
+      });
+    }
+    if (fields["language"]) summary.push({ key: "Language", value: String(fields["language"]) });
+    if (Number(fields["wordCount"] ?? 0)) {
+      summary.push({ key: "Words", value: String(fields["wordCount"]) });
+    }
+    if (Number(fields["processedDurationSeconds"] ?? 0)) {
+      summary.push({
+        key: "Processed",
+        value: `${round(Number(fields["processedDurationSeconds"]), 2)} s`,
+      });
+    }
+    if (fields["mediaUrl"]) summary.push({ key: "Media URL", value: String(fields["mediaUrl"]) });
+    summary.push(
+      { key: "Metadata", value: String(fields["metadata"] ?? "") || "—" },
+      { key: "Created", value: String(fields["createdOn"] ?? "") || "—" },
+      { key: "Completed", value: String(fields["completedOn"] ?? "") || "—" },
+    );
+
+    const sections: DetailViewSchema["sections"] = [
+      { kind: "section", title: "Job", children: [{ kind: "key-value-list", items: summary }] },
+    ];
+
+    if (status === "failed") {
+      sections.push({
+        kind: "section",
+        title: "Failure",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Reason", value: String(fields["failure"] ?? "") || "—" },
+              { key: "Detail", value: String(fields["failureDetail"] ?? "") || "—" },
+            ],
+          },
+        ],
+      });
+    }
+
+    const columns: Array<{ key: string; label: string; width?: "wide" }> =
+      api.typeId === "language-id-job"
+        ? [
+            { key: "language", label: "Language" },
+            { key: "confidence", label: "Confidence" },
+          ]
+        : api.typeId === "sentiment-job"
+          ? [
+              { key: "sentiment", label: "Sentiment" },
+              { key: "score", label: "Score" },
+              { key: "at", label: "At" },
+              { key: "content", label: "Statement", width: "wide" },
+            ]
+          : api.typeId === "topic-job"
+            ? [
+                { key: "topic", label: "Topic" },
+                { key: "score", label: "Score" },
+                { key: "informants", label: "Statements" },
+                { key: "example", label: "Example", width: "wide" },
+              ]
+            : [
+                { key: "word", label: "Word" },
+                { key: "start", label: "Start" },
+                { key: "end", label: "End" },
+              ];
+
+    sections.push({
+      kind: "section",
+      title: "Result",
+      children:
+        rows.length > 0
+          ? [{ kind: "table", columns, rows: rows.map((cells) => ({ cells })) }]
+          : [
+              {
+                kind: "text",
+                content:
+                  status === "completed"
+                    ? "Rev AI returned an empty result for this job."
+                    : 'The result appears once the job reaches status "completed".',
+                variant: "muted",
+              },
+            ],
+    });
+
+    return {
+      title: resource.displayName,
+      subtitle: `Rev AI ${api.label} · ${status || "unknown"}`,
+      status: { kind: "status-dot", status: insightStatusDot(status) },
       sections,
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
