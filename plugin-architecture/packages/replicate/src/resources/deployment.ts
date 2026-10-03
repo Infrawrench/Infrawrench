@@ -30,5 +30,7 @@ export const DeploymentResourceType = rt({
   ],
   supportsCreate: true,
   supportsUpdate: true,
+  // Prediction volume and timings, aggregated from the predictions list.
+  supportsMetrics: true,
   iconKey: "deployment",
 });

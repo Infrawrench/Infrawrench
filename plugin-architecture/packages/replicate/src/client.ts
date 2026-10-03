@@ -5,6 +5,7 @@ import type {
   HostServices,
   LogsFetchParams,
   LogsFetchResult,
+  MetricSeries,
   PluginClient,
   ResourceInstance,
   ResourceStatus,
@@ -12,7 +13,15 @@ import type {
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle, jsonRestFetch, externalIdOf, formatBytes } from "@infrawrench/plugin-base";
+import {
+  joinSubtitle,
+  jsonRestFetch,
+  externalIdOf,
+  formatBytes,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
+import { DeploymentResourceType } from "./resources/deployment.js";
+import { ModelResourceType } from "./resources/model.js";
 
 const API_BASE = "https://api.replicate.com/v1";
 
@@ -24,6 +33,23 @@ const API_BASE = "https://api.replicate.com/v1";
  */
 const MAX_PAGES_HOT = 3;
 const MAX_PAGES_COLD = 10;
+
+/**
+ * Replicate has no metrics endpoint, so the Metrics tab on deployments and
+ * models is built from `GET /v1/predictions?created_after=…&created_before=…`
+ * (each prediction names its `model` and `deployment` and carries
+ * `metrics.predict_time` / `metrics.total_time`). The list is account-wide and
+ * 100 records a page, so the walk is capped; when the cap cuts it short the
+ * charts start at the oldest prediction actually read rather than showing a
+ * run of false zeros.
+ * https://replicate.com/docs/reference/http#predictions.list
+ */
+const METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MAX_PAGES_METRICS = 20;
+const METRICS_BUCKETS = 48;
+
+/** The two types with a Metrics tab, for `withMetricsCapability`. */
+const METRIC_RESOURCE_TYPES = [DeploymentResourceType, ModelResourceType];
 
 // ---------------------------------------------------------------------------
 // Wire shapes: mirrored from https://api.replicate.com/openapi.json (1.0.0-a1)
@@ -1513,6 +1539,125 @@ export class ReplicateClient implements PluginClient {
   }
 
   // -------------------------------------------------------------------------
+  // Metrics
+  // -------------------------------------------------------------------------
+
+  /**
+   * Prediction volume, failures and timings for one deployment or model,
+   * aggregated client-side from the predictions list (see
+   * {@link METRICS_WINDOW_MS}). `deployment` on a prediction is documented
+   * only as "the name of the deployment", so both the bare name and the
+   * `owner/name` reference are accepted as a match.
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "deployment" && resourceTypeId !== "model") return [];
+    const ref = externalIdOf(resourceId);
+    if (!ref) return [];
+    const endMs = timeRange?.endMs ?? Date.now();
+    let startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
+
+    const qs = new URLSearchParams({
+      created_after: new Date(startMs).toISOString(),
+      created_before: new Date(endMs).toISOString(),
+    });
+    const predictions: ReplicatePrediction[] = [];
+    let url: string | undefined = `${API_BASE}/predictions?${qs.toString()}`;
+    let truncated = false;
+    for (let page = 0; url; page += 1) {
+      if (page >= MAX_PAGES_METRICS) {
+        truncated = true;
+        break;
+      }
+      const data: Page<ReplicatePrediction> = await this.request<Page<ReplicatePrediction>>(url);
+      predictions.push(...(data.results ?? []));
+      url = data.next ?? undefined;
+    }
+    if (truncated) {
+      // Newest first, so the last one read is the oldest the chart can vouch for.
+      const oldest = Date.parse(predictions[predictions.length - 1]?.created_at ?? "");
+      if (Number.isFinite(oldest) && oldest > startMs) startMs = oldest;
+    }
+
+    const name = ref.slice(ref.indexOf("/") + 1);
+    const matches = predictions.filter((p) =>
+      resourceTypeId === "model"
+        ? p.model === ref
+        : p.deployment != null && (p.deployment === ref || p.deployment === name),
+    );
+
+    const bucketMs = Math.max(5 * 60 * 1000, Math.ceil((endMs - startMs) / METRICS_BUCKETS));
+    const firstBucket = Math.floor(startMs / bucketMs) * bucketMs;
+    const buckets: Array<{
+      count: number;
+      failed: number;
+      predictSum: number;
+      predictN: number;
+      queueSum: number;
+      queueN: number;
+    }> = [];
+    for (let t = firstBucket; t < endMs; t += bucketMs) {
+      buckets.push({ count: 0, failed: 0, predictSum: 0, predictN: 0, queueSum: 0, queueN: 0 });
+    }
+    for (const p of matches) {
+      const created = Date.parse(p.created_at ?? "");
+      if (!Number.isFinite(created) || created < startMs || created >= endMs) continue;
+      const bucket = buckets[Math.floor((created - firstBucket) / bucketMs)];
+      if (!bucket) continue;
+      bucket.count += 1;
+      if (p.status === "failed") bucket.failed += 1;
+      const predictTime = p.metrics?.["predict_time"];
+      if (typeof predictTime === "number" && Number.isFinite(predictTime)) {
+        bucket.predictSum += predictTime;
+        bucket.predictN += 1;
+      }
+      const started = Date.parse(p.started_at ?? "");
+      if (Number.isFinite(started) && started >= created) {
+        bucket.queueSum += (started - created) / 1000;
+        bucket.queueN += 1;
+      }
+    }
+
+    const at = (index: number) => firstBucket + index * bucketMs;
+    const averaged = (
+      sum: (b: (typeof buckets)[number]) => number,
+      n: (b: (typeof buckets)[number]) => number,
+    ) => buckets.flatMap((b, i) => (n(b) > 0 ? [{ timestamp: at(i), value: sum(b) / n(b) }] : []));
+    return [
+      {
+        label: "Predictions",
+        unit: "count",
+        points: buckets.map((b, i) => ({ timestamp: at(i), value: b.count })),
+      },
+      {
+        label: "Failed predictions",
+        unit: "count",
+        points: buckets.map((b, i) => ({ timestamp: at(i), value: b.failed })),
+      },
+      {
+        label: "Avg predict time",
+        unit: "s",
+        points: averaged(
+          (b) => b.predictSum,
+          (b) => b.predictN,
+        ),
+      },
+      {
+        label: "Avg queue time",
+        unit: "s",
+        points: averaged(
+          (b) => b.queueSum,
+          (b) => b.queueN,
+        ),
+      },
+    ];
+  }
+
+  // -------------------------------------------------------------------------
   // Rendering
   // -------------------------------------------------------------------------
 
@@ -1523,9 +1668,19 @@ export class ReplicateClient implements PluginClient {
       case "training":
         return this.renderTrainingDetail(resource);
       case "deployment":
-        return this.renderDeploymentDetail(resource);
+        return withMetricsCapability(
+          this.renderDeploymentDetail(resource),
+          METRIC_RESOURCE_TYPES,
+          "deployment",
+          METRICS_WINDOW_MS,
+        );
       case "model":
-        return this.renderModelDetail(resource);
+        return withMetricsCapability(
+          this.renderModelDetail(resource),
+          METRIC_RESOURCE_TYPES,
+          "model",
+          METRICS_WINDOW_MS,
+        );
       case "collection":
         return this.renderCollectionDetail(resource);
       case "file":

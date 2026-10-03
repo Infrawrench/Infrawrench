@@ -36,10 +36,11 @@ Replicate has a single token type — the same token covers predictions, models,
 - **Follow logs** for a prediction or training in its **Logs** tab. The text is the log Replicate stores on the run itself.
 - **Delete a model** in two steps: delete its versions, then the model. Replicate only deletes private models with no versions left, and refuses to delete a version while a deployment, a training or another account's prediction still uses it. Deleting a version also deletes every prediction made with it, output files included.
 - **Cancel a running prediction or training** from its detail page.
+- **Watch traffic** on a deployment or model in its **Metrics** tab: predictions, failed predictions, average predict time and average queue time (from creation to start), over the last 24 hours by default. Replicate has no metrics endpoint, so these are counted from your predictions list, filtered to the window. The list is walked at most 2,000 predictions deep; on a busy account the charts start at the oldest prediction that reached rather than showing false zeros before it.
 
 ## Tips & limits
 
-- **There is no billing, usage or spend API.** `GET /v1/account` returns your username and nothing else — no credits, no balance, no usage series. Infrawrench therefore shows no cost data for Replicate at all; the deployment page links to the Replicate billing dashboard instead.
+- **There is no billing, usage or spend API.** `GET /v1/account` returns your username and nothing else: no credits, no balance, no usage series. Infrawrench therefore shows no cost data for Replicate at all; the deployment page links to the Replicate billing dashboard instead. The Metrics tabs count predictions, not spend.
 - **Output files expire after one hour.** For predictions created through the API, Replicate deletes the input, output and logs an hour after the prediction completes, and the `replicate.delivery` URLs stop working. Predictions made on the Replicate website keep their files. Download anything you want to keep.
 - **Uploaded input files expire on their own schedule**, which is not the same window. Each file carries its own `Expires` timestamp — the detail page shows it, and that is the value to trust.
 - **`aborted` is not `canceled`.** Replicate distinguishes a run that was stopped while executing (`canceled`) from one that was terminated before it ever started (`aborted`, usually a missed deadline). Both appear, with different labels and colours.

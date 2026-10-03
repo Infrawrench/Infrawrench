@@ -37,5 +37,7 @@ export const ModelResourceType = rt({
   supportsUpdate: true,
   // Replicate only deletes private models you own that have no versions left.
   supportsDelete: true,
+  // Prediction volume and timings, aggregated from the predictions list.
+  supportsMetrics: true,
   iconKey: "model",
 });
