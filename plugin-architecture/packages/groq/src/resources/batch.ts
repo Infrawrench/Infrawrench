@@ -22,6 +22,8 @@ export const GroqBatchResourceType = rt({
     f("totalRequests", "Total Requests", { kind: "number", required: false }),
     f("completedRequests", "Completed Requests", { kind: "number", required: false }),
     f("failedRequests", "Failed Requests", { kind: "number", required: false }),
+    f("errors", "Validation Errors", { required: false }),
+    f("metadata", "Metadata", { required: false }),
     f("createdAt", "Created", { required: false }),
     f("expiresAt", "Expires", { required: false }),
     f("completedAt", "Completed", { required: false }),
@@ -37,7 +39,9 @@ export const GroqBatchResourceType = rt({
     { fieldKey: "outputFileId", targetTypeId: "groq-file", label: "writes" },
     { fieldKey: "errorFileId", targetTypeId: "groq-file", label: "errors to" },
   ],
-  // Groq exposes cancel but no delete for batches.
+  // Created from an uploaded `purpose: batch` file. Groq exposes cancel but
+  // no delete for batches.
+  supportsCreate: true,
   supportsDelete: false,
   iconKey: "layers",
 });

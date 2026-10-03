@@ -258,3 +258,113 @@ describe("transcribeAudio", () => {
     expect((form.get("file") as Blob & { name?: string }).name).toBe("clip.mp4");
   });
 });
+
+describe("batch create", () => {
+  it("offers only batch-purpose files and posts the batch", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/files")) {
+        return jsonResponse({
+          data: [
+            { id: "file_in", filename: "requests.jsonl", purpose: "batch", bytes: 966 },
+            { id: "file_out", filename: "results.jsonl", purpose: "batch_output" },
+          ],
+        });
+      }
+      if (url.endsWith("/batches") && init?.method === "POST") {
+        return jsonResponse({
+          id: "batch_1",
+          status: "validating",
+          endpoint: "/v1/chat/completions",
+          input_file_id: "file_in",
+          completion_window: "48h",
+          errors: null,
+          metadata: null,
+          created_at: 1736472600,
+        });
+      }
+      return jsonResponse({}, 404);
+    });
+
+    const config = await client().getCreateConfig("groq-batch");
+    const fileField = config.fields.find((field) => field.key === "inputFileId");
+    expect(fileField?.options?.map((option) => option.id)).toEqual(["file_in"]);
+
+    const created = await client().createResource("groq-batch", ACCOUNT, {
+      inputFileId: "file_in",
+      endpoint: "/v1/chat/completions",
+      completionWindow: "48h",
+    });
+    const post = calls.find((call) => call.init?.method === "POST");
+    expect(post?.url).toBe("https://api.groq.com/openai/v1/batches");
+    expect(JSON.parse(String(post?.init?.body))).toEqual({
+      input_file_id: "file_in",
+      endpoint: "/v1/chat/completions",
+      completion_window: "48h",
+    });
+    expect(created.id).toBe(`${ACCOUNT}:groq-batch:batch_1`);
+    expect(created.fields["status"]).toBe("validating");
+  });
+});
+
+describe("fetchMetricSeries", () => {
+  it("queries the Prometheus range API per model and maps matrix results", async () => {
+    installFetch((url) => {
+      const query = new URL(url).searchParams.get("query") ?? "";
+      if (query.includes("requests:rate5m")) {
+        return jsonResponse({
+          status: "success",
+          data: {
+            resultType: "matrix",
+            result: [
+              {
+                metric: { status_code: "200" },
+                values: [
+                  [1700000000, "1.5"],
+                  [1700000060, "2"],
+                ],
+              },
+            ],
+          },
+        });
+      }
+      return jsonResponse({ status: "success", data: { resultType: "matrix", result: [] } });
+    });
+
+    const series = await client().fetchMetricSeries(
+      "groq-model",
+      `${ACCOUNT}:groq-model:llama-3.1-8b-instant`,
+      ACCOUNT,
+      { startMs: 1700000000000, endMs: 1700003600000 },
+    );
+
+    expect(calls).toHaveLength(9);
+    const first = new URL(calls[0]?.url ?? "");
+    expect(first.origin + first.pathname).toBe(
+      "https://api.groq.com/v1/metrics/prometheus/api/v1/query_range",
+    );
+    expect(first.searchParams.get("query")).toContain('model="llama-3.1-8b-instant"');
+    expect(first.searchParams.get("start")).toBe("1700000000");
+    expect(first.searchParams.get("step")).toBe("60s");
+    expect(series).toEqual([
+      {
+        label: "Requests/s (200)",
+        unit: "req/s",
+        points: [
+          { timestamp: 1700000000000, value: 1.5 },
+          { timestamp: 1700000060000, value: 2 },
+        ],
+      },
+    ]);
+  });
+
+  it("returns no series after one request when the key is not on the Enterprise tier", async () => {
+    installFetch(() => jsonResponse({ error: { message: "forbidden" } }, 403));
+    const series = await client().fetchMetricSeries(
+      "groq-model",
+      `${ACCOUNT}:groq-model:llama-3.1-8b-instant`,
+      ACCOUNT,
+    );
+    expect(series).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+});
