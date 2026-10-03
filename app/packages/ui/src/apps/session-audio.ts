@@ -22,7 +22,7 @@ import {
  */
 export interface AudioContextLike {
   readonly currentTime: number;
-  readonly state: "suspended" | "running" | "closed";
+  readonly state: AudioContextState;
   readonly destination: unknown;
   createGain(): GainNodeLike;
   createBuffer(channels: number, frames: number, sampleRate: number): AudioBufferLike;
@@ -79,9 +79,7 @@ export class SessionAudio {
     this.#session = session;
     this.#createContext =
       createContext ??
-      (typeof AudioContext === "function"
-        ? () => new AudioContext() as unknown as AudioContextLike
-        : undefined);
+      (typeof AudioContext === "function" ? (): AudioContextLike => new AudioContext() : undefined);
     session.addAudioListener(this.#onChunk);
   }
 
@@ -183,7 +181,7 @@ export class SessionAudio {
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.#gain as unknown as object);
+    source.connect(this.#gain);
     source.start(this.#nextTime);
     this.#nextTime += frames / chunk.sampleRate;
   }

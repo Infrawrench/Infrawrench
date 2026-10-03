@@ -48,13 +48,13 @@ function hostTimeZone(): string {
 
 /**
  * IANA zone list, when the runtime can enumerate it. `Intl.supportedValuesOf`
- * needs a lib newer than our ES2022 target, so it is feature-detected; the
- * fallback keeps the field editable as free text.
+ * is typed by lib.es2022.intl but older engines lack it, so it is still
+ * feature-detected; the fallback keeps the field editable as free text.
  */
 function knownTimeZones(): string[] {
-  const intl = Intl as unknown as { supportedValuesOf?: (key: string) => string[] };
   try {
-    return intl.supportedValuesOf?.("timeZone") ?? [];
+    if (typeof Intl.supportedValuesOf !== "function") return [];
+    return Intl.supportedValuesOf("timeZone");
   } catch {
     return [];
   }

@@ -41,11 +41,10 @@ const HOURS = Array.from({ length: 24 }, (_, h) => h);
  * server validates either way.
  */
 function supportedTimeZones(): string[] | null {
-  const supportedValuesOf = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] })
-    .supportedValuesOf;
-  if (typeof supportedValuesOf !== "function") return null;
+  // Typed by lib.es2022.intl, but still feature-detected for older engines.
+  if (typeof Intl.supportedValuesOf !== "function") return null;
   try {
-    const zones = supportedValuesOf("timeZone");
+    const zones = Intl.supportedValuesOf("timeZone");
     return zones.includes("UTC") ? zones : ["UTC", ...zones];
   } catch {
     return null;

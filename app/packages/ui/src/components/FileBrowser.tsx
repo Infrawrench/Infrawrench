@@ -4,6 +4,17 @@ import type { StorageObject } from "@infrawrench/plugin-base";
 import { formatSize, formatDate, formatErrorMessage } from "../utils.js";
 import type { TransferEntry } from "../utils.js";
 
+declare module "react" {
+  interface InputHTMLAttributes<T> {
+    /**
+     * Non-standard but supported by every engine we ship on: turns a file
+     * input into a folder picker. `@types/react` does not declare it. The
+     * presence of the attribute is what matters, so the value is `""`.
+     */
+    webkitdirectory?: string | undefined;
+  }
+}
+
 export interface FileBrowserProps {
   bucketName: string;
   onList: (prefix: string) => Promise<StorageObject[]>;
@@ -404,7 +415,6 @@ export function FileBrowser({
                     ref={folderInputRef}
                     type="file"
                     aria-label={gt("Upload folder")}
-                    // @ts-expect-error webkitdirectory non-standard
                     webkitdirectory=""
                     multiple
                     className="hidden"
