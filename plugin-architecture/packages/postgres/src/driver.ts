@@ -6,6 +6,9 @@ import {
   type SqlNodeDriver,
   type SqlNodeDriverOptions,
 } from "@infrawrench/plugin-base";
+import { serverPostgresConnectionStringError } from "./uri-policy.js";
+
+export { serverPostgresConnectionStringError } from "./uri-policy.js";
 
 /**
  * Bound connect + statement so a misconfigured target (most commonly: Cloud
@@ -185,5 +188,51 @@ export const driver = {
     return runWithTimeout(connectionString, options, async (pool) => {
       return (await pool.query(sql, params)).rowCount ?? 0;
     });
+  },
+} satisfies SqlNodeDriver;
+
+function assertSafeForServer(connectionString: string): void {
+  const error = serverPostgresConnectionStringError(connectionString);
+  if (error) throw new Error(error);
+}
+
+/**
+ * Server driver for the shared cloud pods: refuses connection strings whose
+ * parameters name local files (see `./uri-policy.ts`) before pg reads them.
+ * Checked on every call, not only when an account is saved, because
+ * connection strings also arrive by paths that skip the account routes
+ * (desktop sync, peer plugins resolving a managed database's URI). The
+ * desktop keeps using `driver`.
+ */
+export const serverDriver = {
+  id: driver.id,
+  dialTargets(connectionString: string): DialTarget[] {
+    assertSafeForServer(connectionString);
+    return dialTargets(connectionString);
+  },
+  async query(
+    connectionString: string,
+    sql: string,
+    options?: SqlNodeDriverOptions,
+  ): Promise<Record<string, unknown>[]> {
+    assertSafeForServer(connectionString);
+    return driver.query(connectionString, sql, options);
+  },
+  async queryReadOnly(
+    connectionString: string,
+    sql: string,
+    options?: SqlNodeDriverOptions,
+  ): Promise<Record<string, unknown>[]> {
+    assertSafeForServer(connectionString);
+    return driver.queryReadOnly(connectionString, sql, options);
+  },
+  async execute(
+    connectionString: string,
+    sql: string,
+    params: unknown[],
+    options?: SqlNodeDriverOptions,
+  ): Promise<number> {
+    assertSafeForServer(connectionString);
+    return driver.execute(connectionString, sql, params, options);
   },
 } satisfies SqlNodeDriver;
