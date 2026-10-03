@@ -31,6 +31,7 @@ export {
 } from "./sidecars.js";
 export { PRELUDE } from "./prelude.js";
 export { runIsolate, PAUSED_METHODS, type RunIsolateOptions } from "./isolate.js";
+export { testRegexBounded, RegexTimeoutError, DEFAULT_REGEX_TIMEOUT_MS } from "./bounded-regex.js";
 export * from "./graphs/types.js";
 export { runGraph } from "./graphs/run.js";
 export { generateGraphDts } from "./graphs/codegen.js";

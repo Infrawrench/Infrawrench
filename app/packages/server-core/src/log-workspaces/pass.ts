@@ -17,6 +17,10 @@
  *   `LOG_WORKSPACE_LIMITS.alertTailLines` tail lines and match counting stops
  *   at `alertMatchCap`: a pathological log volume can never make an
  *   evaluation unbounded.
+ * - **Tenant regexes run off-thread.** A `/regex/` search is matched in a
+ *   worker with a deadline (`bounded-match.ts`), so a catastrophically
+ *   backtracking pattern fails its own row with a recorded error instead of
+ *   stalling the poller for every org.
  * - **Cooldown.** A notification is dispatched at most once per
  *   `alertCooldownMs` per query (`last_alerted_at`), so a query that keeps
  *   matching reports "still matching" on the next cooldown boundary instead
@@ -30,10 +34,10 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   compileLogSearch,
-  evaluateLogMatches,
   LOG_WORKSPACE_LIMITS,
   type LogStreamSelector,
 } from "@infrawrench/client-core";
+import { evaluateLogMatchesBounded } from "./bounded-match";
 import { db } from "../db/client";
 import { logWorkspaceQueries, resources } from "../db/schema";
 import { getOrgAccountClient } from "../org-accounts";
@@ -50,6 +54,12 @@ export interface LogAlertPassOptions {
   limit?: number;
   /** Fixed clock for tests. */
   now?: number;
+  /**
+   * Per-stream deadline for a `/regex/` search, in ms. Defaults to the
+   * worker's `DEFAULT_REGEX_TIMEOUT_MS`; tests pass a short one so the
+   * timeout path does not depend on how fast the runner backtracks.
+   */
+  regexTimeoutMs?: number;
 }
 
 export interface LogAlertPassResult {
@@ -187,6 +197,7 @@ async function evaluateStream(
   displayName: string,
   search: ReturnType<typeof compileLogSearch>,
   clients: AccountClientCache,
+  regexTimeoutMs: number | undefined,
 ): Promise<StreamMatchResult> {
   const base: StreamMatchResult = {
     selector,
@@ -230,8 +241,9 @@ async function evaluateStream(
         ...(selector.container ? { container: selector.container } : {}),
       },
     );
-    const evaluated = evaluateLogMatches(result.text, search, {
+    const evaluated = await evaluateLogMatchesBounded(result.text, search, {
       matchCap: LOG_WORKSPACE_LIMITS.alertMatchCap,
+      ...(regexTimeoutMs !== undefined ? { timeoutMs: regexTimeoutMs } : {}),
     });
     return {
       ...base,
@@ -253,6 +265,7 @@ async function evaluateQuery(
   row: LogWorkspaceQueryRecord,
   now: number,
   claimToken: string,
+  regexTimeoutMs: number | undefined,
 ): Promise<{ matched: boolean; notified: boolean; failed: boolean }> {
   const search = compileLogSearch(row.search);
   if (search.error) {
@@ -299,7 +312,7 @@ async function evaluateQuery(
     const displayName = selector.parentResourceId
       ? sidecarStreamName(selector, name.displayName)
       : name.displayName;
-    results.push(await evaluateStream(row, selector, displayName, search, clients));
+    results.push(await evaluateStream(row, selector, displayName, search, clients, regexTimeoutMs));
   }
 
   const errors = results.filter((r) => r.error !== null).map((r) => r.error!);
@@ -394,7 +407,7 @@ export async function runLogAlertPass(
         .limit(1);
       const row = rows[0] as LogWorkspaceQueryRecord | undefined;
       if (!row || !row.alertEnabled) continue;
-      const outcome = await evaluateQuery(row, now, claimToken);
+      const outcome = await evaluateQuery(row, now, claimToken, options.regexTimeoutMs);
       result.evaluated += 1;
       if (outcome.matched) result.matched += 1;
       if (outcome.notified) result.notified += 1;

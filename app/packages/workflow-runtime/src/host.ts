@@ -208,6 +208,14 @@ export interface WorkflowRunContext {
    * identical on every platform: see `infrafile/types.ts`.
    */
   infrafile?: InfrafileRunSink;
+  /**
+   * Tests an author-supplied `ask(…, { pattern })` regex against an answer.
+   * Both are tenant-controlled on a cloud run, so a backtracking pattern must
+   * not run on the shared host's event loop: `runIsolate` fills this with the
+   * worker-backed `testRegexBounded`. Absent (direct `dispatch` callers) falls
+   * back to an inline `RegExp.test`.
+   */
+  testPattern?: (source: string, input: string) => Promise<boolean>;
 }
 
 /**
@@ -741,7 +749,11 @@ function isIsoDate(value: string): boolean {
  * Every failure names the key, because the person reading it is often looking
  * at CI output with no other context.
  */
-function coerceAnswer(spec: InfrafileAskSpec, raw: MetricValue): MetricValue {
+async function coerceAnswer(
+  spec: InfrafileAskSpec,
+  raw: MetricValue,
+  testPattern: (source: string, input: string) => Promise<boolean>,
+): Promise<MetricValue> {
   const where = `ask(${JSON.stringify(spec.key)})`;
   const text = raw === null || raw === undefined ? "" : String(raw).trim();
 
@@ -750,7 +762,7 @@ function coerceAnswer(spec: InfrafileAskSpec, raw: MetricValue): MetricValue {
       // Drop the default before recursing, or a default that fails validation
       // would loop forever rather than reporting itself.
       const { defaultValue, ...withoutDefault } = spec;
-      return coerceAnswer(withoutDefault, defaultValue);
+      return coerceAnswer(withoutDefault, defaultValue, testPattern);
     }
     if (spec.required === false) return spec.kind === "boolean" ? false : "";
     throw new Error(`${where} requires an answer.`);
@@ -794,13 +806,12 @@ function coerceAnswer(spec: InfrafileAskSpec, raw: MetricValue): MetricValue {
     }
     default: {
       if (spec.pattern) {
-        let re: RegExp;
         try {
-          re = new RegExp(spec.pattern);
+          new RegExp(spec.pattern);
         } catch {
           throw new Error(`${where}: 'pattern' is not a valid regular expression.`);
         }
-        if (!re.test(text)) {
+        if (!(await testPattern(spec.pattern, text))) {
           throw new Error(`${where}: ${JSON.stringify(text)} does not match ${spec.pattern}.`);
         }
       }
@@ -1510,7 +1521,12 @@ export async function dispatch(
       // A pre-supplied answer is validated by exactly the same code a typed one
       // is: the whole point of doing this host-side.
       const preset = await host.infrafileAnswer?.(spec.key);
-      if (preset !== undefined && preset !== null) return coerceAnswer(spec, preset);
+      const testPattern =
+        ctx.testPattern ??
+        ((source: string, input: string) => Promise.resolve(new RegExp(source).test(input)));
+      if (preset !== undefined && preset !== null) {
+        return coerceAnswer(spec, preset, testPattern);
+      }
       if (!ctx.interactive) {
         throw new WorkflowCapabilityError(
           `ask(${JSON.stringify(spec.key)}, …) has no answer and this run is not interactive. ` +
@@ -1522,7 +1538,7 @@ export async function dispatch(
         kind: spec.kind === "date" ? "date" : spec.kind,
         ...(spec.defaultValue !== undefined ? { defaultValue: spec.defaultValue } : {}),
       });
-      return coerceAnswer(spec, answered);
+      return coerceAnswer(spec, answered, testPattern);
     }
 
     case "infrafile.build": {
