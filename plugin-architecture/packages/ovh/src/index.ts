@@ -8,4 +8,7 @@ export { LoadBalancerResourceType } from "./resources/load-balancer.js";
 export { PrivateNetworkResourceType } from "./resources/private-network.js";
 export { FloatingIpResourceType } from "./resources/floating-ip.js";
 export { GatewayResourceType } from "./resources/gateway.js";
+export { OctaviaLoadBalancerResourceType } from "./resources/octavia-load-balancer.js";
+export { VolumeSnapshotResourceType } from "./resources/volume-snapshot.js";
+export { ContainerRegistryResourceType } from "./resources/container-registry.js";
 export { OvhClient } from "./client.js";

@@ -858,7 +858,7 @@ describe("createResource", () => {
     await c.createResource("managed-kube", ACCOUNT, { name: "My Cluster", region: "GRA11" });
     const kubeCall = apiCalls().find((call) => String(call[0]).endsWith("/kube"))!;
     const kubeBody = JSON.parse(kubeCall[1]!.body as string);
-    expect(kubeBody.version).toBe("1.31");
+    expect(kubeBody.version).toBe("1.35");
     const poolCall = apiCalls().find((call) => String(call[0]).endsWith("/nodepool"))!;
     expect(String(poolCall[0])).toContain("/kube/c-12/nodepool");
     const poolBody = JSON.parse(poolCall[1]!.body as string);

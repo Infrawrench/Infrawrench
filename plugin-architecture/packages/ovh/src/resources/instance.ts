@@ -1,21 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
-const REGIONS = [
-  "GRA1",
-  "GRA3",
-  "GRA5",
-  "GRA7",
-  "GRA9",
-  "GRA11",
-  "SBG5",
-  "BHS5",
-  "WAW1",
-  "DE1",
-  "UK1",
-  "SGP1",
-  "SYD1",
-];
-
 export const InstanceResourceType = rt({
   id: "instance",
   name: "Instance",
@@ -23,14 +7,32 @@ export const InstanceResourceType = rt({
   description: "An OVHcloud Public Cloud virtual machine",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { kind: "enum", enumValues: REGIONS }),
-    f("flavorName", "Flavor", { description: "Instance flavor name, e.g. b2-7" }),
-    f("imageName", "Image", { description: "OS image name, e.g. Ubuntu 24.04" }),
-    f("status", "Status", { required: false }),
+    f("region", "Region", {
+      description: "OpenStack region, e.g. GRA11, EU-WEST-PAR",
+      editable: false,
+    }),
+    f("flavorName", "Flavor", {
+      description:
+        "Instance flavor name, e.g. b3-8. Changing it resizes the instance (OVH can only resize to a flavor with an equal or larger disk)",
+    }),
+    f("imageName", "Image", { description: "OS image name, e.g. Ubuntu 24.04", editable: false }),
+    f("status", "Status", { required: false, editable: false }),
+    f("monthlyBilling", "Monthly Billing", {
+      kind: "boolean",
+      required: false,
+      description: "Billed at the monthly rate instead of hourly",
+      editable: false,
+    }),
+    f("outgoingTrafficGb", "Outgoing Traffic This Month (GB)", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("networkIds", "Networks", {
       required: false,
       description:
         "Comma-separated IDs of the networks this instance has an address on. Public addresses reference the shared Ext-Net, private ones a private network.",
+      editable: false,
     }),
   ],
   outputs: [o("ipv4", "Public IPv4"), o("ipv6", "Public IPv6"), o("ipv4Private", "Private IPv4")],
@@ -47,6 +49,16 @@ export const InstanceResourceType = rt({
   // nothing.
   dependsOn: [{ fieldKey: "networkIds", targetTypeId: "private-network", label: "attached to" }],
   iconKey: "instance",
+  // Sleep/wake schedules: `start` / `stop`. OVH keeps billing a stopped
+  // instance at the full rate; only shelving (a separate action) stops the
+  // compute charge.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "status",
+    runningValues: ["ACTIVE"],
+    stoppedValues: ["SHUTOFF", "STOPPED", "SHELVED", "SHELVED_OFFLOADED"],
+  },
   sshEndpoint: {
     hostOutputKey: "ipv4",
     privateHostOutputKey: "ipv4Private",
@@ -55,4 +67,6 @@ export const InstanceResourceType = rt({
     usernameFieldKey: "sshUsername",
   },
   supportsCreate: true,
+  // Edit = rename (`PUT /instance/{id}`) and resize (`POST /instance/{id}/resize`).
+  supportsUpdate: true,
 });

@@ -1,19 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
-const REGIONS = [
-  "GRA5",
-  "GRA7",
-  "GRA9",
-  "GRA11",
-  "SBG5",
-  "BHS5",
-  "WAW1",
-  "DE1",
-  "UK1",
-  "SGP1",
-  "SYD1",
-];
-
 export const ManagedKubeResourceType = rt({
   id: "managed-kube",
   name: "Managed Kubernetes",
@@ -21,26 +7,50 @@ export const ManagedKubeResourceType = rt({
   description: "An OVHcloud Managed Kubernetes Service cluster",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { kind: "enum", enumValues: REGIONS }),
-    f("version", "Kubernetes Version", { description: "e.g. 1.30" }),
-    f("status", "Status", { required: false }),
+    f("region", "Region", {
+      description: "OpenStack region, e.g. GRA11, EU-WEST-PAR",
+      editable: false,
+    }),
+    f("version", "Kubernetes Version", {
+      description: "e.g. 1.33. Use the upgrade actions to move to a newer version",
+      editable: false,
+    }),
+    f("status", "Status", { required: false, editable: false }),
     f("flavor", "Flavor", {
       required: false,
       description: "Flavor of the first node pool, e.g. b3-8",
+      editable: false,
     }),
-    f("nodeCount", "Node Count", { kind: "number", required: false }),
-    f("nodePoolCount", "Node Pools", { kind: "number", required: false }),
-    f("nodesUrl", "Nodes URL", { required: false }),
+    f("nodeCount", "Node Count", {
+      kind: "number",
+      required: false,
+      description: "Total desired nodes. Editing it resizes the first node pool",
+    }),
+    f("nodePoolCount", "Node Pools", { kind: "number", required: false, editable: false }),
+    f("updatePolicy", "Update Policy", {
+      kind: "enum",
+      required: false,
+      enumValues: ["ALWAYS_UPDATE", "MINIMAL_DOWNTIME", "NEVER_UPDATE"],
+      description: "When OVH applies security patches and minor upgrades",
+    }),
+    f("isUpToDate", "Up To Date", { kind: "boolean", required: false, editable: false }),
+    f("nextUpgradeVersions", "Upgrade Available To", { required: false, editable: false }),
+    f("plan", "Plan", { required: false, editable: false }),
+    f("etcdUsagePercent", "etcd Usage (%)", { kind: "number", required: false, editable: false }),
+    f("nodesUrl", "Nodes URL", { required: false, editable: false }),
     f("privateNetworkId", "Private Network", {
       required: false,
       description: "OpenStack ID of the private network the cluster's nodes sit in, if attached",
+      editable: false,
     }),
     f("nodesSubnetId", "Nodes Subnet", {
       required: false,
       description: "OpenStack subnet ID the cluster nodes use",
+      editable: false,
     }),
     f("loadBalancersSubnetId", "Load Balancers Subnet", {
       required: false,
+      editable: false,
       description: "OpenStack subnet ID the cluster's load balancers use",
     }),
   ],
@@ -76,6 +86,9 @@ export const ManagedKubeResourceType = rt({
   ],
   iconKey: "kubernetes",
   supportsCreate: true,
+  // Edit = name and update policy (`PUT /kube/{id}`) and the first pool's
+  // size (`PUT /nodepool/{id}`).
+  supportsUpdate: true,
   peerIntegrations: [
     {
       pluginId: "kubernetes",

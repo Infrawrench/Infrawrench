@@ -1,15 +1,22 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
+// `cloud.project.database.EngineEnum` today, plus the engines OVH has
+// retired (redis, cassandra, m3db) so services synced before then still
+// validate. Valkey replaced Redis.
 const ENGINES = [
   "postgresql",
   "mysql",
   "mongodb",
-  "redis",
+  "valkey",
   "kafka",
+  "kafkaConnect",
+  "kafkaMirrorMaker",
   "opensearch",
+  "clickhouse",
+  "grafana",
+  "redis",
   "cassandra",
   "m3db",
-  "grafana",
 ];
 const connectionMapping = [{ outputKey: "connectionString", credentialKey: "connectionString" }];
 
@@ -19,13 +26,33 @@ export const ManagedDbResourceType = rt({
   description: "An OVHcloud Public Cloud managed database service",
   fields: [
     f("description", "Name"),
-    f("engine", "Engine", { kind: "enum", enumValues: ENGINES }),
-    f("version", "Version", { description: "Engine version, e.g. 16 for PostgreSQL 16" }),
-    f("plan", "Plan", { description: "Service plan, e.g. essential, business, enterprise" }),
-    f("region", "Region"),
-    f("flavor", "Flavor", { description: "Node flavor, e.g. db1-7" }),
-    f("nodeCount", "Node Count", { kind: "number" }),
-    f("status", "Status", { required: false }),
+    f("engine", "Engine", { kind: "enum", enumValues: ENGINES, editable: false }),
+    f("version", "Version", {
+      description: "Engine version, e.g. 16 for PostgreSQL 16. Changing it upgrades the service",
+    }),
+    f("plan", "Plan", {
+      description:
+        "Service plan, e.g. discovery, production, advanced. Changing it migrates the service",
+    }),
+    f("region", "Region", { editable: false }),
+    f("flavor", "Flavor", {
+      description: "Node flavor, e.g. b3-8. Changing it resizes every node",
+    }),
+    f("nodeCount", "Node Count", { kind: "number", editable: false }),
+    f("status", "Status", { required: false, editable: false }),
+    f("storageSizeGb", "Storage (GB)", { kind: "number", required: false, editable: false }),
+    f("deletionProtection", "Deletion Protection", { kind: "boolean", required: false }),
+    f("backupTime", "Backup Time", {
+      required: false,
+      description: "UTC time daily backups start, e.g. 02:00:00",
+      editable: false,
+    }),
+    f("backupRetentionDays", "Backup Retention (days)", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("maintenanceTime", "Maintenance Time", { required: false, editable: false }),
   ],
   outputs: [
     o("connectionString", "Connection String", {
@@ -39,7 +66,11 @@ export const ManagedDbResourceType = rt({
     o("database", "Database Name"),
   ],
   supportsCreate: true,
+  // Edit = `PUT /database/{engine}/{id}`: description, version, plan, flavor
+  // and deletion protection.
+  supportsUpdate: true,
   supportsMetrics: true,
+  backupPolicy: { protectedBy: [], retentionDaysFieldKey: "backupRetentionDays" },
   iconKey: "database",
   peerIntegrations: [
     {
@@ -59,6 +90,13 @@ export const ManagedDbResourceType = rt({
       credentialMappings: connectionMapping,
       tabLabel: "Redis",
       showWhen: { fieldKey: "engine", equals: "redis" },
+    },
+    {
+      // Valkey speaks the Redis protocol; the Redis plugin drives it.
+      pluginId: "redis",
+      credentialMappings: connectionMapping,
+      tabLabel: "Valkey",
+      showWhen: { fieldKey: "engine", equals: "valkey" },
     },
     {
       pluginId: "mongodb",

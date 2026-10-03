@@ -10,6 +10,9 @@ import { LoadBalancerResourceType } from "./resources/load-balancer.js";
 import { PrivateNetworkResourceType } from "./resources/private-network.js";
 import { FloatingIpResourceType } from "./resources/floating-ip.js";
 import { GatewayResourceType } from "./resources/gateway.js";
+import { OctaviaLoadBalancerResourceType } from "./resources/octavia-load-balancer.js";
+import { VolumeSnapshotResourceType } from "./resources/volume-snapshot.js";
+import { ContainerRegistryResourceType } from "./resources/container-registry.js";
 import { ovhTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
@@ -85,6 +88,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   PrivateNetworkResourceType,
   FloatingIpResourceType,
   GatewayResourceType,
+  OctaviaLoadBalancerResourceType,
+  VolumeSnapshotResourceType,
+  ContainerRegistryResourceType,
 ];
 
 export const plugin: Plugin = {
