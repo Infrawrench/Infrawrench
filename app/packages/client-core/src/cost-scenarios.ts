@@ -1,5 +1,5 @@
 /**
- * Scenario models — **known future cost the trend cannot see.**
+ * Scenario models: **known future cost the trend cannot see.**
  *
  * Forecasting is a least-squares fit over trailing daily totals. That is a
  * trend estimate and nothing else: it cannot anticipate a purchase nobody has
@@ -22,12 +22,12 @@
  *
  * 1. **A scenario never alters recorded history.** Adjustments are evaluated
  *    only on days strictly after the last observed day. An adjustment dated in
- *    the past is not an error — a recurring cost that started in June is a
- *    perfectly sensible thing to describe — it simply contributes nothing to
+ *    the past is not an error (a recurring cost that started in June is a
+ *    perfectly sensible thing to describe) it simply contributes nothing to
  *    days that already have real spend behind them.
  * 2. **A model never silently mixes currencies.** The model declares one, and
  *    every amount in it must be in that currency.
- * 3. **Composition is defined, not incidental** — see
+ * 3. **Composition is defined, not incidental**: see
  *    {@link applyCostScenario}.
  *
  * Types live here rather than in `@infrawrench/ui` because mobile doesn't
@@ -45,12 +45,12 @@ import { CloudApiError, type CloudFetch } from "./fetch";
 /**
  * What one adjustment says about the future.
  *
- * - `one_off` — a single amount on a single day. An annual licence renewal, a
+ * - `one_off`: a single amount on a single day. An annual licence renewal, a
  *   reserved-instance purchase, a data-migration egress bill.
- * - `recurring` — an amount every month (or every day) from a date, optionally
+ * - `recurring`: an amount every month (or every day) from a date, optionally
  *   ending. A new team's fixed cost, a support contract, a pilot that stops in
  *   November.
- * - `rate_change` — ±X% of the trend from a date, optionally ending. A
+ * - `rate_change`: ±X% of the trend from a date, optionally ending. A
  *   migration that takes a fifth off compute, a pricing tier that adds 8%.
  *
  * The split between "an amount" and "a percentage of the trend" is the one
@@ -81,7 +81,7 @@ export const COST_SCENARIO_ADJUSTMENT_KIND_DESCRIPTIONS: Record<
  * A monthly amount is spread evenly across the days of each calendar month it
  * covers, rather than landing as a spike on the 1st. Two reasons: a daily-binned
  * chart with a $30,000 spike on one day and nothing either side is unreadable,
- * and — more importantly — a month the scenario only partly covers should cost
+ * and (more importantly) a month the scenario only partly covers should cost
  * proportionally less. A team that starts on the 20th costs a third of a month
  * in its first month, which is what "from the 20th" means.
  */
@@ -105,7 +105,7 @@ export const COST_SCENARIO_PERIOD_LABELS: Record<CostScenarioPeriod, string> = {
 export interface CostScenarioAdjustment {
   /** Stable within the model. Used for ordering and for per-adjustment totals. */
   id: string;
-  /** What this adjustment is — shown on the chart's scenario breakdown. */
+  /** What this adjustment is: shown on the chart's scenario breakdown. */
   label: string;
   kind: CostScenarioAdjustmentKind;
   /** Inclusive first day this applies, YYYY-MM-DD. */
@@ -117,7 +117,7 @@ export interface CostScenarioAdjustment {
   endDate: string | null;
   /**
    * The amount, in the model's currency's minor unit. Set for `one_off` and
-   * `recurring`, null for `rate_change`. May be negative — "we are turning off
+   * `recurring`, null for `rate_change`. May be negative: "we are turning off
    * the old cluster" is as real a known future cost as buying a new one.
    */
   amountCents: number | null;
@@ -137,7 +137,7 @@ export interface CostScenarioAdjustment {
    * For a `rate_change` the scope is what the percentage is *of*: -20% scoped
    * to `provider = 'aws'` takes a fifth off the AWS trend and leaves everything
    * else alone. For an amount it decides whether the adjustment applies to a
-   * given chart at all — a $40,000 GCP commitment does not belong on a chart
+   * given chart at all: a $40,000 GCP commitment does not belong on a chart
    * filtered to AWS.
    */
   scope: CostFilter[];
@@ -168,7 +168,7 @@ export interface CostScenarioModelInput {
 export type CostScenarioReferentKind = "budget" | "cost_report" | "cost_graph_widget";
 
 /**
- * One object still pointing at a scenario model — what a refused DELETE lists.
+ * One object still pointing at a scenario model: what a refused DELETE lists.
  *
  * Same stance as saved filters, for a sharper reason: a **budget** can opt into
  * a model, and deleting the model out from under it would silently move the
@@ -191,7 +191,7 @@ export const COST_SCENARIO_LIMITS = {
   /** More than this is a spreadsheet, not a scenario somebody reasons about. */
   maxAdjustments: 50,
   maxScopeFilters: 20,
-  /** ±$1bn in cents — far above any real adjustment, far below overflow. */
+  /** ±$1bn in cents: far above any real adjustment, far below overflow. */
   maxAmountCents: 100_000_000_000,
   /** -100% is "this goes to zero"; nothing below it means anything. */
   minPercent: -100,
@@ -222,8 +222,8 @@ function isIsoDay(value: unknown): value is string {
  *
  * The currency rule is the one worth reading twice: a model with a EUR amount
  * and a USD amount would produce a projection that is the sum of two different
- * kinds of money. Rather than convert behind the user's back — at rates they
- * may not have stated, on a date nobody chose — the model refuses to hold both.
+ * kinds of money. Rather than convert behind the user's back (at rates they
+ * may not have stated, on a date nobody chose) the model refuses to hold both.
  */
 export function costScenarioModelInputError(input: CostScenarioModelInput): string | null {
   const name = input.name?.trim() ?? "";
@@ -347,7 +347,7 @@ export function costScenarioModelInputError(input: CostScenarioModelInput): stri
 }
 
 /* ------------------------------------------------------------------ *
- * The composition engine — pure, and shared by every surface.
+ * The composition engine: pure, and shared by every surface.
  * ------------------------------------------------------------------ */
 
 /** A projected day, in the currency the caller is working in. */
@@ -377,7 +377,7 @@ export interface CostScenarioProjection {
   /** The currency `points` and `contributions` are expressed in. */
   currency: string;
   /**
-   * The adjusted daily projection — exactly the same days as the response's
+   * The adjusted daily projection: exactly the same days as the response's
    * `forecast`, never one day more or fewer. A scenario modifies the projected
    * region; it does not extend it.
    */
@@ -388,7 +388,7 @@ export interface CostScenarioProjection {
   totalDelta: number;
   /**
    * Set when the model's amounts were converted into `currency` at the org's
-   * stated rates — the caveat belongs next to the number, not in a tooltip.
+   * stated rates: the caveat belongs next to the number, not in a tooltip.
    */
   convertedFrom?: string | undefined;
   /**
@@ -415,7 +415,7 @@ function isActiveOn(adjustment: CostScenarioAdjustment, day: string): boolean {
 
 /**
  * The amount an absolute adjustment contributes on one day, in major units.
- * A monthly amount is spread evenly across that calendar month's days — see
+ * A monthly amount is spread evenly across that calendar month's days: see
  * {@link COST_SCENARIO_PERIODS}.
  */
 function absoluteAmountOn(adjustment: CostScenarioAdjustment, day: string): number {
@@ -452,7 +452,7 @@ export function costScenarioScopeKey(scope: CostFilter[]): string {
  * `provider = 'aws'` on the adjustment, or a chart that excludes exactly what
  * the adjustment includes). Anything it cannot decide is treated as in scope,
  * because a rate change's real contribution is measured from its own scoped
- * baseline anyway — where a genuinely disjoint scope produces zero spend and
+ * baseline anyway, where a genuinely disjoint scope produces zero spend and
  * therefore zero delta. The check exists for the *amount* kinds, which have no
  * baseline to be measured against and would otherwise add a GCP commitment to
  * an AWS-only chart.
@@ -506,7 +506,7 @@ export interface ApplyCostScenarioInput {
  * Two stages, and the order between them is the contract:
  *
  * 1. **Rate changes**, measured against the trend. Each contributes
- *    `scopedBaseline(day) × percent/100` — a *delta*, computed from the
+ *    `scopedBaseline(day) × percent/100`: a *delta*, computed from the
  *    unadjusted baseline of its own scope. Two overlapping rate changes
  *    therefore compose additively (+10% and −20% is −10%, not ×1.1×0.8), and
  *    because every one of them reads the same untouched baseline, **their order
@@ -517,12 +517,12 @@ export interface ApplyCostScenarioInput {
  * everything gets 20% cheaper" is a statement about the *running* cost; it is
  * not a discount on the annual licence you also told us about. Applying the
  * percentage to the amounts would quietly rewrite a number the user typed in
- * full — a $50,000 purchase would appear as $40,000 with nothing saying why.
+ * full: a $50,000 purchase would appear as $40,000 with nothing saying why.
  *
  * The result is clamped at zero per day, exactly as the trend forecast is: a
  * projection cannot be negative spend.
  *
- * **History is untouched by construction** — this function only ever sees the
+ * **History is untouched by construction**: this function only ever sees the
  * projected days, and returns exactly those days back.
  */
 export function applyCostScenario(input: ApplyCostScenarioInput): CostScenarioProjection {
@@ -543,7 +543,7 @@ export function applyCostScenario(input: ApplyCostScenarioInput): CostScenarioPr
     if (key === "") return baselineByDay;
     const points = scopedBaselines?.get(key);
     // No sub-baseline fetched (or none fittable) means no measurable spend in
-    // that scope, so a percentage of it is zero — never a percentage of the
+    // that scope, so a percentage of it is zero, never a percentage of the
     // whole chart, which would silently widen the adjustment.
     return points ? new Map(points.map((p) => [p.day, p.amount])) : new Map();
   };
@@ -565,7 +565,7 @@ export function applyCostScenario(input: ApplyCostScenarioInput): CostScenarioPr
   for (const point of baseline) {
     let delta = 0;
 
-    // Stage 1 — rate changes, every one of them measured against the untouched
+    // Stage 1: rate changes, every one of them measured against the untouched
     // baseline of its own scope.
     for (const { adjustment, scoped } of active) {
       if (adjustment.kind !== "rate_change") continue;
@@ -576,7 +576,7 @@ export function applyCostScenario(input: ApplyCostScenarioInput): CostScenarioPr
       contributions.set(adjustment.id, (contributions.get(adjustment.id) ?? 0) + contribution);
     }
 
-    // Stage 2 — absolute amounts, added on top of the re-rated trend.
+    // Stage 2: absolute amounts, added on top of the re-rated trend.
     for (const { adjustment } of active) {
       if (adjustment.kind === "rate_change") continue;
       const contribution = absoluteAmountOn(adjustment, point.day) * amountRate;
@@ -610,13 +610,13 @@ export function applyCostScenario(input: ApplyCostScenarioInput): CostScenarioPr
   };
 }
 
-/** Six places, matching `cost/currency-convert.ts` — see its AMOUNT_DECIMALS. */
+/** Six places, matching `cost/currency-convert.ts`: see its AMOUNT_DECIMALS. */
 function round6(value: number): number {
   return Math.round(value * 1e6) / 1e6;
 }
 
 /* ------------------------------------------------------------------ *
- * Presentation helpers — shared so every surface says the same thing.
+ * Presentation helpers: shared so every surface says the same thing.
  * ------------------------------------------------------------------ */
 
 /** "+$40,000 on 12 Sep 2026", "−20% from 1 Oct 2026", "+$8,000 per month". */
@@ -648,7 +648,7 @@ export function describeCostScenarioModel(model: CostScenarioModel): string {
   return `${parts.join(", ")} · ${model.currency}`;
 }
 
-/** "budget \"prod\", dashboard graph \"Spend\" on Ops" — how a refusal reads. */
+/** "budget \"prod\", dashboard graph \"Spend\" on Ops": how a refusal reads. */
 export function describeCostScenarioReferents(referents: CostScenarioReferent[]): string {
   const label: Record<CostScenarioReferentKind, string> = {
     budget: "budget",
@@ -684,7 +684,7 @@ function formatScenarioMoney(amount: number, currency: string): string {
 }
 
 /* ------------------------------------------------------------------ *
- * Fetch helpers — used by mobile (web and desktop go through their own
+ * Fetch helpers: used by mobile (web and desktop go through their own
  * transports, like the rest of the cost surface).
  * ------------------------------------------------------------------ */
 

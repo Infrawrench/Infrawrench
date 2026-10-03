@@ -1,7 +1,7 @@
-// `infrawrench costs` — org cost graphs in the terminal, backed by the same
+// `infrawrench costs`: org cost graphs in the terminal, backed by the same
 // /costs/query API the web + desktop dashboards use.
 //
-// The request/response shapes come from `@infrawrench/client-core` — the same
+// The request/response shapes come from `@infrawrench/client-core`: the same
 // definitions the web, desktop, and mobile cost views describe the wire with,
 // so a server-side change breaks the CLI's build instead of its output. The
 // import is type-only, so the CLI still ships zero new runtime dependencies.
@@ -40,7 +40,7 @@ const GROUP_DIMENSIONS = [
  *
  * The wire types above are imported type-only so the CLI keeps its zero runtime
  * dependencies; a `const` from client-core would be a real import. Drift is
- * caught at build time anyway — the values are assigned to the imported types
+ * caught at build time anyway: the values are assigned to the imported types
  * below, so removing a charge type upstream fails this file's typecheck.
  */
 const COST_BASES: readonly CostBasis[] = ["cash", "amortized"];
@@ -58,7 +58,7 @@ const CHARGE_TYPES: readonly CostChargeType[] = [
 ];
 
 /**
- * `--currency USD` — the display currency to convert into.
+ * `--currency USD`: the display currency to convert into.
  *
  * Validated for shape only. Whether the org has actually configured this
  * currency and stated rates is a server-side question, and the answer comes
@@ -80,7 +80,7 @@ function parseCurrency(raw: string | undefined): string | undefined {
  *
  * Two things, in the order they matter: what got folded in and at whose rates,
  * then what is still outside the headline figure. The second is the one that
- * must never be dropped — a currency with no rate is shown separately, so the
+ * must never be dropped: a currency with no rate is shown separately, so the
  * big number is not the whole spend and the reader has to be told.
  */
 function printConversionNotice(conversion: CostConversion | undefined): void {
@@ -139,7 +139,7 @@ function parseChargeTypes(raw: string[] | undefined): CostChargeType[] {
  *
  * Compiled here rather than posted as the API's `query` field for two reasons.
  * A mistake is reported before the round trip, with the offset and a caret
- * under it — the shared parser knows exactly where it gave up, and that
+ * under it: the shared parser knows exactly where it gave up, and that
  * information does not survive being turned into an HTTP status. And the
  * compiled `filters` are understood by every server version, whereas a `query`
  * sent to a server that predates it would be ignored and quietly return
@@ -166,7 +166,7 @@ async function parseWhere(where: string | undefined): Promise<CostFilter[]> {
  * `--filter <name|id>` → the saved filter it names, or null when the flag is
  * absent.
  *
- * Resolved to an *id* here and to rows on the server at query time — the same
+ * Resolved to an *id* here and to rows on the server at query time: the same
  * reference semantics every graph and budget pointing at the filter gets. The
  * list is fetched once to match by id or (case-insensitive) name; names are
  * unique per org, so a name can never be ambiguous. An unknown value is an
@@ -202,7 +202,7 @@ async function resolveSavedFilterFlag(
  *
  * Three states are worth reporting: collection that failed, collection that
  * succeeded with nothing to show (a billing export that hasn't produced its
- * first rows yet) — both otherwise look like an account with no spend — and
+ * first rows yet) (both otherwise look like an account with no spend) and
  * spend that was computed here rather than billed by the provider, which looks
  * like nothing at all until someone reconciles it against an invoice.
  */
@@ -285,10 +285,10 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     ...(basis ? { costBasis: basis } : {}),
     ...(chargeTypes.length > 0 ? { chargeTypes } : {}),
     // Omitted unless asked for, so a server that has never heard of conversion
-    // — and an org that has not opted in — answers the request it always did.
+    // (and an org that has not opted in) answers the request it always did.
     ...(displayCurrency ? { displayCurrency } : {}),
     // The *id*, resolved server-side at query time and AND-composed with the
-    // --where filter above — the same reference semantics a graph or budget
+    // --where filter above: the same reference semantics a graph or budget
     // pointing at this filter gets, so `--filter prod-only` cannot drift from
     // what "prod-only" means everywhere else.
     ...(savedFilter ? { savedFilterId: savedFilter.id } : {}),
@@ -354,7 +354,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     // The filter belongs on the header line for the same reason the basis
     // does: a narrowed total that does not say what it excludes gets quoted as
     // if it were the whole bill.
-    // The saved filter's name too — a total scoped by "prod only" that does
+    // The saved filter's name too: a total scoped by "prod only" that does
     // not say so gets quoted as the whole bill.
     ...(savedFilter ? [`filter "${savedFilter.name}"`] : []),
     ...(filters.length > 0 ? [range.where!.trim()] : []),
@@ -413,7 +413,7 @@ const DIMENSION_LABELS: Record<CostAnomaly["dimension"], string> = {
 };
 
 /**
- * Recent spend anomalies — days where one provider's or service's spend cleared
+ * Recent spend anomalies: days where one provider's or service's spend cleared
  * its own trailing baseline, and days where one started spending with no
  * history at all. Detection runs server-side after each cost collection, so
  * this is a read; the thresholds it uses are tuned from the Costs panel.
@@ -538,7 +538,7 @@ function alertThresholdLabel(alert: CostAlert): string {
 }
 
 /**
- * Change-based cost alerts and their recent firings — the third cost-alert
+ * Change-based cost alerts and their recent firings; the third cost-alert
  * family alongside budgets (absolute monthly total) and anomalies
  * (statistical outliers): a configured "spend on this scope moved more than
  * X% (or $Y) versus the prior period". Evaluation runs server-side after

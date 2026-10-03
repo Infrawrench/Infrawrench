@@ -1,9 +1,9 @@
 /**
- * **Incident mode** — the shared contract for `/api/org/:orgId/incidents`.
+ * **Incident mode**: the shared contract for `/api/org/:orgId/incidents`.
  *
  * An *incident* here is an operational incident **your organisation declared**,
- * not a provider outage. The other thing called an incident in this codebase —
- * `status-incidents.ts`, `OrgStatusIncident`, `provider_status_incidents` — is
+ * not a provider outage. The other thing called an incident in this codebase
+ * (`status-incidents.ts`, `OrgStatusIncident`, `provider_status_incidents`) is
  * a **provider** status-page entry we scrape and correlate. They are different
  * objects with a colliding English word, and they meet in exactly one place:
  * a provider incident overlapping a declared incident's window shows up on the
@@ -15,7 +15,7 @@
  * - the wire types both ends of the HTTP boundary compile against,
  * - {@link buildIncidentTimeline}, which merges the timeline **on read** from
  *   sources that already exist (no rows are copied into the incident's own
- *   tables — the timeline is a join, and re-running it after the fact gives
+ *   tables: the timeline is a join, and re-running it after the fact gives
  *   the record as it stands today rather than a snapshot),
  * - {@link renderPostmortemMarkdown}, so the export the browser previews and
  *   the one the API returns are byte-identical.
@@ -32,7 +32,7 @@ import type { MomentEvent, MomentSeverity } from "./moment";
  * ------------------------------------------------------------------ */
 
 /**
- * Severity, in the ordinary sev1..sev4 register rather than a bespoke one —
+ * Severity, in the ordinary sev1..sev4 register rather than a bespoke one:
  * at 03:14 nobody wants to learn a new scale. Ordered most severe first, which
  * is also the list order every picker renders.
  */
@@ -63,7 +63,7 @@ export type IncidentSeverity = (typeof INCIDENT_SEVERITIES)[number]["id"];
 
 export const DEFAULT_INCIDENT_SEVERITY: IncidentSeverity = "sev2";
 
-/** Rank for sorting/comparison — lower is worse. */
+/** Rank for sorting/comparison: lower is worse. */
 export function incidentSeverityRank(severity: IncidentSeverity): number {
   const index = INCIDENT_SEVERITIES.findIndex((s) => s.id === severity);
   return index === -1 ? INCIDENT_SEVERITIES.length : index;
@@ -76,7 +76,7 @@ export function incidentSeverityLabel(severity: string): string {
 /**
  * Three states, and the middle one is the point.
  *
- * `mitigated` is "users are fine again, we are not finished" — the moment the
+ * `mitigated` is "users are fine again, we are not finished": the moment the
  * page stops and the write-up starts. Collapsing it into `resolved` is what
  * makes every postmortem's "time to mitigate" a guess, and collapsing it into
  * `open` is what keeps people paged after the bleeding stopped.
@@ -98,7 +98,7 @@ export function incidentStatusLabel(status: string): string {
 }
 
 /* ------------------------------------------------------------------ *
- * Artefacts — the six things declaring used to mean doing by hand
+ * Artefacts: the six things declaring used to mean doing by hand
  * ------------------------------------------------------------------ */
 
 /**
@@ -134,7 +134,7 @@ export type IncidentArtifactStatus = (typeof INCIDENT_ARTIFACT_STATUSES)[number]
  *
  * Resolving an incident lifts the freeze it opened and closes the public notice
  * it posted. If *that* fails, the artefact still refers to a real freeze and a
- * real public notice — so it is emphatically not `failed` (retrying would open a
+ * real public notice, so it is emphatically not `failed` (retrying would open a
  * **second** freeze) and equally not `created` (which reads as "fine"). It is
  * "we made this and could not put it away", and the retry path has to run the
  * *closing* half for it. See {@link planIncidentArtifactRetry}.
@@ -188,7 +188,7 @@ export interface IncidentNote {
   authorUserId: string | null;
   authorName: string | null;
   /**
-   * When the note is *about* — defaults to when it was written, but an
+   * When the note is *about*: defaults to when it was written, but an
    * operator catching up at 04:00 can date a note to 03:14 and have it land in
    * the right place on the timeline.
    */
@@ -210,7 +210,7 @@ export interface Incident {
   declaredByUserId: string | null;
   declaredByName: string | null;
   resolvedByUserId: string | null;
-  /** Resource ids believed affected. Advisory — not foreign keys. */
+  /** Resource ids believed affected. Advisory, not foreign keys. */
   affectedResourceIds: string[];
   /** Account ids believed affected. */
   affectedAccountIds: string[];
@@ -247,7 +247,7 @@ export const INCIDENT_LIMITS = {
  * What a declaration should *do*, beyond recording itself. Every flag defaults
  * to something defensible for a fresh declaration (see
  * {@link defaultIncidentActions}) and every one is overridable at the moment of
- * declaring — the whole point is that a person at 03:14 confirms a form rather
+ * declaring: the whole point is that a person at 03:14 confirms a form rather
  * than performing six errands.
  */
 export interface IncidentActions {
@@ -266,7 +266,7 @@ export interface IncidentActions {
 /**
  * Defaults, chosen so that accepting them is the right answer more often than
  * not: tell people (Slack), pin the moment (free, and the investigation always
- * wants it), and do **not** freeze or publish — those two have blast radius
+ * wants it), and do **not** freeze or publish; those two have blast radius
  * beyond the incident and should be a deliberate tick.
  */
 export function defaultIncidentActions(): Required<
@@ -280,7 +280,7 @@ export interface IncidentDeclare {
   title: string;
   severity?: IncidentSeverity;
   summary?: string | null;
-  /** Defaults to now. Backdating is allowed — people declare late. */
+  /** Defaults to now. Backdating is allowed: people declare late. */
   startedAt?: string;
   affectedResourceIds?: string[];
   affectedAccountIds?: string[];
@@ -312,7 +312,7 @@ export interface IncidentNoteCreate {
 /**
  * Where a timeline entry came from. `moment` covers everything the moment
  * union already indexes (resource changes, deploys, cost anomalies, provider
- * incidents, audit, freezes, workflow runs) — reusing that one loader is why
+ * incidents, audit, freezes, workflow runs): reusing that one loader is why
  * this feature adds no new feed plumbing.
  */
 export const INCIDENT_TIMELINE_SOURCES = [
@@ -365,7 +365,7 @@ export interface IncidentTimelineEntry {
   /** Stable within a response: `<source>:<rowId>[:<phase>]`. */
   id: string;
   source: IncidentTimelineSource;
-  /** `<noun>.<verb>` — `incident.declared`, `artifact.failed`, `probe.down`… */
+  /** `<noun>.<verb>`: `incident.declared`, `artifact.failed`, `probe.down`… */
   kind: string;
   at: string;
   title: string;
@@ -437,16 +437,16 @@ export interface IncidentTimelineResponse {
  * Two lists, because "this artefact went wrong" has two meanings that call for
  * opposite actions:
  *
- * - **`recreate`** — the artefact was never made (`failed`). Run the creating
+ * - **`recreate`**: the artefact was never made (`failed`). Run the creating
  *   half again.
- * - **`reclose`** — the artefact *was* made and could not be put away
+ * - **`reclose`**: the artefact *was* made and could not be put away
  *   (`close_failed`): the freeze is still in force, the public notice still
  *   says there is an outage. Run the *closing* half. Recreating one of these
  *   would open a second freeze or post a duplicate notice, which is worse than
  *   the failure it was trying to fix.
  *
  * Pure, and separated from the service that performs the work, so the rule can
- * be tested without a database — the mistake it guards against (a failure state
+ * be tested without a database: the mistake it guards against (a failure state
  * the retry path cannot see) is invisible in a type check and expensive in
  * production.
  */
@@ -478,7 +478,7 @@ export function incidentHasRetryableArtifacts(incident: Pick<Incident, "artifact
 
 // C0 controls except tab (09) and newline (0A), DEL, and the C1 range. Note
 // that carriage return (0D) IS stripped: it needs no ESC and is the simplest
-// spoofing primitive there is — print a plausible line, return to column zero,
+// spoofing primitive there is; print a plausible line, return to column zero,
 // print something else over it. Kept as a character
 // class rather than a sequence matcher: the goal is that no escape sequence can
 // begin, which is simpler to be sure of than enumerating the ones that hurt.
@@ -499,7 +499,7 @@ const CONTROL_CHARACTERS = /[\x00-\x08\x0B-\x1F\x7F-\x9F]/g;
  * data in the first place. That is defence in depth and not the whole defence:
  * rows written before this existed, or through some other path, still reach a
  * terminal, so the CLI sanitises again at its own render boundary. Newlines and
- * tabs survive — a summary is allowed to have paragraphs.
+ * tabs survive: a summary is allowed to have paragraphs.
  */
 export function stripControlCharacters(value: string): string {
   return value.replace(CONTROL_CHARACTERS, "");
@@ -517,8 +517,8 @@ export function incidentWindow(
 }
 
 /**
- * Chronological (oldest first) with deterministic tie-breaks — source order,
- * then id — so two assemblies of the same data agree, and so an entry that
+ * Chronological (oldest first) with deterministic tie-breaks (source order,
+ * then id) so two assemblies of the same data agree, and so an entry that
  * shares a timestamp with the declaration (the artefacts always do) lands in a
  * stable place instead of shuffling on every refresh.
  */
@@ -562,7 +562,7 @@ function artifactEntry(
       kind: "artifact.failed",
       at: artifact.updatedAt,
       title: `${label} could not be created`,
-      // The error is the whole value of recording a failure — an artefact that
+      // The error is the whole value of recording a failure: an artefact that
       // says only "failed" sends the operator back to the surface that failed.
       detail: artifact.error ?? "No detail was recorded.",
       severity: "critical",
@@ -610,8 +610,8 @@ function artifactEntry(
 
 /**
  * Merge everything recorded between an incident's start and its resolution
- * into one ordered list. **Pure** — the caller does every query, this does
- * every decision — which is what makes ordering across sources, an empty
+ * into one ordered list. **Pure**: the caller does every query, this does
+ * every decision, which is what makes ordering across sources, an empty
  * window and a half-created declaration all testable without a database.
  *
  * Three rules worth stating:
@@ -622,8 +622,8 @@ function artifactEntry(
  * 2. **The window is inclusive at both ends** and is `[startedAt, resolvedAt ??
  *    now]`. An entry outside it is dropped even if the caller passed it, so a
  *    loader with a sloppier range cannot widen the incident's story.
- * 3. **The incident's own life events are always present** — declared, and
- *    mitigated/resolved when they happened — because a timeline that begins
+ * 3. **The incident's own life events are always present**: declared, and
+ *    mitigated/resolved when they happened, because a timeline that begins
  *    with a resource change and never says "we declared this" reads as though
  *    the tooling noticed before the humans did.
  */
@@ -684,7 +684,7 @@ export function buildIncidentTimeline(input: IncidentTimelineInput): {
     });
   }
 
-  // 2. Artefacts — including the failures, which is the point.
+  // 2. Artefacts: including the failures, which is the point.
   for (const artifact of incident.artifacts) {
     const entry = artifactEntry(incident.id, artifact);
     if (entry) entries.push(entry);
@@ -741,7 +741,7 @@ export function buildIncidentTimeline(input: IncidentTimelineInput): {
     });
   }
 
-  // 6. Metric-alert firings and recoveries — two entries from one row, so a
+  // 6. Metric-alert firings and recoveries: two entries from one row, so a
   //    rule that fired and cleared inside the window reads as a shape rather
   //    than a point.
   for (const alert of metricAlertEvents) {
@@ -794,7 +794,7 @@ function formatNumber(value: number): string {
  * Duration + postmortem
  * ------------------------------------------------------------------ */
 
-/** `"1h 42m"`, `"14m"`, `"—"` for an unparseable or open-ended span. */
+/** `"1h 42m"`, `"14m"`, `": "` for an unparseable or open-ended span. */
 export function formatIncidentDuration(
   startedAt: string,
   endedAt: string | null | undefined,
@@ -814,7 +814,7 @@ export function formatIncidentDuration(
   return parts.join(" ");
 }
 
-/** A resource named on the postmortem — resolved by the caller, if it can. */
+/** A resource named on the postmortem: resolved by the caller, if it can. */
 export interface PostmortemResource {
   resourceId: string;
   displayName?: string | null;
@@ -851,7 +851,7 @@ function escapePipes(value: string): string {
  *
  * The blank sections at the end (impact, root cause, action items) are
  * deliberately blank. A generated document that guesses at a root cause is
- * worse than one that leaves a heading — this exports the facts nobody enjoys
+ * worse than one that leaves a heading: this exports the facts nobody enjoys
  * transcribing and stops exactly where judgement starts.
  *
  * Pure, so the preview a browser renders and the file the API serves are the

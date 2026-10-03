@@ -117,7 +117,7 @@ export function LeaseEditorModal({
   };
 
   // A dismissal mid-save would leave the request in flight with no surface
-  // for its outcome — the modal stays up until the save settles.
+  // for its outcome: the modal stays up until the save settles.
   const dismiss = () => {
     if (!saving) onClose();
   };

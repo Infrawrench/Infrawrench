@@ -1,5 +1,5 @@
 /**
- * Synthetic probes — cloud-mode only (checks run in the cloud poller through
+ * Synthetic probes: cloud-mode only (checks run in the cloud poller through
  * the egress proxy). One wrapper per allowlisted IPC channel, matching
  * `cloud-metric-alerts.ts`.
  */

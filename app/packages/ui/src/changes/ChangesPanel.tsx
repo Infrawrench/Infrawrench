@@ -19,7 +19,7 @@ const PAGE_SIZE = 50;
 export interface ChangesPanelProps {
   /**
    * Org-scoped data access. Hosts mount the panel with `key={orgId}` so an org
-   * switch remounts it — that is what clears the previous org's rows, rather
+   * switch remounts it: that is what clears the previous org's rows, rather
    * than an effect resetting every state value by hand.
    */
   client: ChangesClient;
@@ -41,7 +41,7 @@ export interface ChangesPanelProps {
 }
 
 /**
- * Org-wide change timeline — every resource that appeared, changed a stored
+ * Org-wide change timeline: every resource that appeared, changed a stored
  * field, or disappeared upstream, across all providers, newest first.
  *
  * Cloud-only by nature: the events are recorded by the poller as it syncs, so a
@@ -70,7 +70,7 @@ export function ChangesPanel({
   const [annotateError, setAnnotateError] = useState<string | null>(null);
   const [annotatedIds, setAnnotatedIds] = useState<string[]>([]);
   // Bumped per request so a slow page can't overwrite a later one that already
-  // landed — filters change faster than a feed query returns.
+  // landed: filters change faster than a feed query returns.
   const requestSeq = useRef(0);
 
   const kindLabel = useCallback(
@@ -329,7 +329,7 @@ export function ChangesPanel({
                       </button>
                     )}
                     {/* Rendered for every row, disabled with its reason on the
-                        kinds that can't be reverted — a button that vanishes on
+                        kinds that can't be reverted: a button that vanishes on
                         creations and deletions reads as a bug rather than as a
                         boundary. */}
                     {client.revert && (

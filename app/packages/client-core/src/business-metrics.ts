@@ -1,5 +1,5 @@
 /**
- * Business metrics and unit costs — "what does one of the thing we do cost?"
+ * Business metrics and unit costs: "what does one of the thing we do cost?"
  *
  * Absolute spend answers "are we spending more". It cannot answer "are we
  * spending more *per customer*", which is the question that decides whether a
@@ -7,8 +7,8 @@
  * daily series the org reports itself (customers, API requests, GB processed,
  * revenue), optionally tied to the slice of spend it divides.
  *
- * Three rules are contractual rather than incidental, and every surface — web,
- * desktop, mobile, the CLI, the MCP tools — has to honour all three:
+ * Three rules are contractual rather than incidental, and every surface (web,
+ * desktop, mobile, the CLI, the MCP tools) has to honour all three:
  *
  * 1. **The ratio is computed at the bucket the caller asked for**, from a summed
  *    numerator and a summed denominator. A daily unit cost averaged over a month
@@ -16,12 +16,12 @@
  *    by more than anyone would tolerate in a finance review.
  * 2. **A missing or non-positive denominator is a gap, never 0 and never ∞.**
  *    A chart that reads 0 on days a metric was not reported will be believed,
- *    and it says the opposite of the truth — "that day was free" instead of
+ *    and it says the opposite of the truth: "that day was free" instead of
  *    "we do not know". {@link UnitCostPoint.value} is `null` for those buckets
  *    and {@link UnitCostPoint.gap} says which case it was.
  * 3. **Currencies are never merged.** Spend in a currency the org holds no rate
  *    for keeps its own unit-cost series rather than vanishing into another
- *    one's — the same invariant the cost graph already holds, for the same
+ *    one's; the same invariant the cost graph already holds, for the same
  *    reason: a silently understated numerator is worse than two numbers.
  *
  * Types live here rather than in `@infrawrench/ui` because mobile doesn't
@@ -48,9 +48,9 @@ import type { CloudFetch } from "./fetch";
 /**
  * What a metric's numbers *are*, which decides what can be computed from them.
  *
- * - `count` — a unit-less quantity: customers, requests, GB, orders. Supports
+ * - `count`: a unit-less quantity: customers, requests, GB, orders. Supports
  *   unit cost (spend ÷ count) and nothing else.
- * - `currency` — money the business took in, denominated in the metric's own
+ * - `currency`: money the business took in, denominated in the metric's own
  *   {@link BusinessMetric.currency}. Supports unit cost *and* margin.
  *
  * Margin is modelled as a property of the metric rather than as a flag on the
@@ -59,7 +59,7 @@ import type { CloudFetch } from "./fetch";
  * subtracts dollars from requests and divides by requests, which type-checks in
  * every language and means nothing. Making the org declare the metric's kind
  * once, at definition time, is what lets every surface refuse the nonsense
- * without each of them re-deriving the rule — and a `currency` metric must
+ * without each of them re-deriving the rule, and a `currency` metric must
  * carry a currency code, which is the fact the margin computation needs anyway.
  */
 export const BUSINESS_METRIC_KINDS = ["count", "currency"] as const;
@@ -88,7 +88,7 @@ export interface BusinessMetric {
   key: string;
   name: string;
   /**
-   * Singular unit label for display — "customer", "request", "GB". Purely a
+   * Singular unit label for display: "customer", "request", "GB". Purely a
    * label: nothing is converted or validated against it, because there is no
    * closed set of business units and pretending otherwise would just make the
    * form refuse legitimate ones.
@@ -105,7 +105,7 @@ export interface BusinessMetric {
    * Stored on the metric rather than supplied per query because it is a
    * property of the metric's meaning: "cost per customer" is only honest if the
    * numerator is the spend that serves customers. A query may narrow it further
-   * (the two are AND-composed), but never widen it — a caller who could drop the
+   * (the two are AND-composed), but never widen it: a caller who could drop the
    * scope would silently be answering a different question under the same name.
    */
   costScope: CostFilter[];
@@ -121,7 +121,7 @@ export interface BusinessMetric {
   updatedAt: string;
   /**
    * The reported range, or null when the metric has no values at all. A metric
-   * with no values is not broken — it was just created — but every unit-cost
+   * with no values is not broken (it was just created) but every unit-cost
    * chart drawn from it is one continuous gap, so the surfaces say so.
    */
   coverage: BusinessMetricCoverage | null;
@@ -154,7 +154,7 @@ export interface BusinessMetricValue {
   /** UTC day, YYYY-MM-DD. */
   day: string;
   value: number;
-  /** Where the number came from — for "who wrote this" on a surprising point. */
+  /** Where the number came from, for "who wrote this" on a surprising point. */
   source: BusinessMetricValueSource;
   updatedAt: string;
 }
@@ -233,16 +233,16 @@ export function normalizeBusinessMetricKey(raw: string): string {
 }
 
 /* ------------------------------------------------------------------ *
- * The unit-cost query — POST /business-metrics/{id}/unit-costs.
+ * The unit-cost query: POST /business-metrics/{id}/unit-costs.
  * ------------------------------------------------------------------ */
 
 /**
  * Which ratio to compute.
  *
- * - `unit_cost` — spend ÷ metric value. Available for every metric.
- * - `margin` — (revenue − spend) ÷ revenue, as a fraction (0.42 is 42%).
+ * - `unit_cost`: spend ÷ metric value. Available for every metric.
+ * - `margin`: (revenue − spend) ÷ revenue, as a fraction (0.42 is 42%).
  *   Available only for a `currency` metric, and only when the whole numerator
- *   can be expressed in that metric's currency — see {@link UnitCostQueryResponse}.
+ *   can be expressed in that metric's currency: see {@link UnitCostQueryResponse}.
  */
 export const UNIT_COST_MODES = ["unit_cost", "margin"] as const;
 export type UnitCostMode = (typeof UNIT_COST_MODES)[number];
@@ -270,7 +270,7 @@ export interface UnitCostQueryRequest {
   /** Absent is `unit_cost`. */
   mode?: UnitCostMode | undefined;
   /**
-   * Extra filters AND-composed with the metric's own `costScope` — narrowing
+   * Extra filters AND-composed with the metric's own `costScope`: narrowing
    * only. There is no way to widen past the scope, because the scope is part of
    * what the metric *means*.
    */
@@ -288,14 +288,14 @@ export interface UnitCostQueryRequest {
    * dividing. Absent means no conversion, and a mixed-currency estate then
    * yields one unit-cost series per currency rather than one wrong number.
    *
-   * Ignored for `margin`, which always converts to the metric's own currency —
+   * Ignored for `margin`, which always converts to the metric's own currency:
    * subtracting spend from revenue is only defined in one currency.
    */
   displayCurrency?: string | undefined;
 }
 
 /**
- * Why a bucket has no ratio. Never rendered as a number by any surface — a gap
+ * Why a bucket has no ratio. Never rendered as a number by any surface: a gap
  * is drawn as a gap and explained in words.
  */
 export const UNIT_COST_GAP_REASONS = [
@@ -318,7 +318,7 @@ export const UNIT_COST_GAP_REASON_LABELS: Record<UnitCostGapReason, string> = {
  * meaningful (spend of nothing over a positive denominator genuinely costs
  * nothing per unit), so the two must stay distinguishable. `cost` and
  * `metricValue` carry the numerator and denominator that produced the ratio so
- * a reader can check the arithmetic without a second query — and so a tooltip
+ * a reader can check the arithmetic without a second query, and so a tooltip
  * can say "$1,240 ÷ 310 customers" rather than only the quotient.
  */
 export interface UnitCostPoint {
@@ -340,8 +340,8 @@ export interface UnitCostPoint {
    * These matter because a partially reported bucket is the one silently wrong
    * number this feature can still produce: six days of volume under seven days
    * of spend inflates a weekly unit cost by about a sixth, and nothing about the
-   * quotient looks wrong. The point is still computed — discarding six days of
-   * real data would be its own distortion — but every surface flags it, and
+   * quotient looks wrong. The point is still computed (discarding six days of
+   * real data would be its own distortion) but every surface flags it, and
    * `daily` binning makes the whole question moot (every bucket is one day).
    */
   reportedDays: number;
@@ -356,20 +356,20 @@ export function isPartialUnitCostPoint(point: UnitCostPoint): boolean {
 /**
  * One unit-cost series, in one currency.
  *
- * There is one series per currency the numerator ended up in — usually exactly
+ * There is one series per currency the numerator ended up in: usually exactly
  * one. More than one means the org has spend in a currency it holds no rate
  * for, and rather than dropping that spend (understating every unit cost) or
  * adding euros to dollars (inventing a number), each currency divides the same
  * denominator on its own.
  */
 export interface UnitCostSeries {
-  /** ISO-4217 code the numerator — and therefore the ratio — is expressed in. */
+  /** ISO-4217 code the numerator (and therefore the ratio) is expressed in. */
   currency: string;
   points: UnitCostPoint[];
   /**
    * The period ratio: **summed numerator ÷ summed denominator** across every
    * bucket, not the mean of the per-bucket ratios. The two differ whenever
-   * volume moves, and the mean is the wrong one — it weights a quiet Sunday the
+   * volume moves, and the mean is the wrong one: it weights a quiet Sunday the
    * same as a peak Monday.
    *
    * Null when nothing in the range had a usable denominator.
@@ -386,7 +386,7 @@ export interface UnitCostQueryResponse {
   mode: UnitCostMode;
   binning: CostBinningId;
   series: UnitCostSeries[];
-  /** Set when spend currencies were folded together — same shape as a cost query. */
+  /** Set when spend currencies were folded together: same shape as a cost query. */
   conversion?: CostConversion;
   /** Buckets in the queried range that produced no ratio at all. */
   gapBuckets: number;
@@ -400,7 +400,7 @@ export interface UnitCostQueryResponse {
  * The sibling of `costQueryForConfig`, and it carries across exactly the fields
  * that describe the *numerator*: the resolved date range, the binning, the
  * filters, the saved filter, the cost basis. It deliberately drops `groupBy`,
- * `topN`, `comparePreviousPeriod` and `showForecast` — the four options that
+ * `topN`, `comparePreviousPeriod` and `showForecast`: the four options that
  * presuppose a stack of series or a projection, neither of which survives being
  * divided by a single declared denominator. Dropping them here, in one shared
  * place, is what stops each surface from inventing its own answer to "what does
@@ -441,7 +441,7 @@ export function unitCostUnitLabel(
  *
  * Unit costs are routinely sub-cent (cost per API request), so this keeps
  * enough significant digits to be useful rather than rounding a real number to
- * `$0.00` — which reads as "free" and is the same lie as rendering a gap as
+ * `$0.00`, which reads as "free" and is the same lie as rendering a gap as
  * zero.
  */
 export function formatUnitCostValue(value: number | null, mode: UnitCostMode): string {
@@ -487,7 +487,7 @@ export function describeUnitCostCaveats(response: UnitCostQueryResponse): string
 }
 
 /* ------------------------------------------------------------------ *
- * Fetch helpers — used by mobile and anything else holding a CloudFetch.
+ * Fetch helpers: used by mobile and anything else holding a CloudFetch.
  * ------------------------------------------------------------------ */
 
 /** The org's business metrics (`GET /business-metrics`, `costs:read`). */

@@ -64,7 +64,7 @@ const demoCapability: TerraformExportCapability = {
           },
         };
       case "picky": {
-        // Needs a field the probe cannot invent — the reverse mapping for this
+        // Needs a field the probe cannot invent: the reverse mapping for this
         // type is deliberately underivable.
         const raw = resource.fields["spec"];
         if (typeof raw !== "string") return null;
@@ -324,14 +324,14 @@ describe("parseTerraformStateDocument", () => {
   // The regression, at a depth that genuinely overflows the stack.
   //
   // `JSON.parse` is iterative in V8, so the document loads fine; `JSON.stringify`
-  // — which is what the old size measurement used — is recursive and throws
+  // (which is what the old size measurement used) is recursive and throws
   // `RangeError: Maximum call stack size exceeded` here. That escaped the
   // parser's own error type and surfaced as an HTTP 500.
   it("rejects stack-overflowing nesting as a controlled error, not a RangeError", () => {
     const document = stateWithAttributeJson(nestObjectsJson(20_000));
     // Size-compliant: this is a shape problem, not a volume problem.
     expect(document.length).toBeLessThan(IAC_STATE_LIMITS.maxDocumentBytes);
-    // The document loads fine — it is the *measurement* that used to blow up.
+    // The document loads fine: it is the *measurement* that used to blow up.
     const loaded: unknown = JSON.parse(document);
     expect(() => JSON.stringify(loaded)).toThrow(RangeError);
 
@@ -646,7 +646,7 @@ describe("reconcileTerraformState", () => {
     });
     const entry = out.resources[0];
     expect(entry?.unmappableReason).toBe("This plugin has no Terraform mapping yet");
-    // Still matched — an unmappable resource can carry an external id.
+    // Still matched: an unmappable resource can carry an external id.
     expect(entry?.status).toBe("managed");
     expect(entry?.matchedBy).toBe("identifier");
     expect(entry?.drift).toEqual([]);
@@ -702,7 +702,7 @@ describe("reconcileTerraformState", () => {
             instances: [
               {
                 // Same resource as the drifted case above, except the size the
-                // state carries is sensitive — so the one field that differs
+                // state carries is sensitive, so the one field that differs
                 // is one we deliberately never stored.
                 attributes: { id: "srv-2", name: "api", size: "s-1vcpu", backups: false },
                 sensitive_attributes: [[{ type: "get_attr", value: "size" }]],

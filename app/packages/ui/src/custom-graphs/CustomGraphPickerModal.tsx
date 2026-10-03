@@ -16,12 +16,12 @@ export interface CustomGraphPickerModalProps {
   onClose: () => void;
   /**
    * Open the script editor for this graph (the picker closes itself first).
-   * Present on hosts that can edit — it is what makes a graph with no
+   * Present on hosts that can edit: it is what makes a graph with no
    * dashboard card still reachable for editing.
    */
   onEdit?: ((graph: CustomGraphSummary) => void) | undefined;
   /**
-   * The graph (and every card showing it, server-side) was deleted — hosts
+   * The graph (and every card showing it, server-side) was deleted: hosts
    * drop any of their own widgets pointing at it.
    */
   onDeleted?: ((graphId: string) => void) | undefined;
@@ -32,7 +32,7 @@ export interface CustomGraphPickerModalProps {
 /**
  * Add a custom graph to the dashboard: pick one the org already has, or
  * create a new one (seeded with a working example script) and open it. A graph
- * is an org object like a budget — many dashboards can show the same one —
+ * is an org object like a budget (many dashboards can show the same one)
  * so this list doubles as the management surface: it is where a graph with no
  * card anywhere can still be edited or deleted.
  */

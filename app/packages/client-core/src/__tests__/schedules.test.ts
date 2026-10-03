@@ -120,7 +120,7 @@ describe("computeUpcomingTransitions", () => {
 
 describe("computeMostRecentTransition + transitionKey", () => {
   it("finds the transition that just became due", () => {
-    // Monday 19:05 London — the 19:00 stop is due.
+    // Monday 19:05 London: the 19:00 stop is due.
     const now = Date.parse("2026-08-03T18:05:00.000Z");
     const due = computeMostRecentTransition(officeHours, now);
     expect(due).toEqual({ at: "2026-08-03T18:00:00.000Z", action: "stop" });

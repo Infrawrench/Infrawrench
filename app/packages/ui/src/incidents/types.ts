@@ -14,7 +14,7 @@ import type {
 /**
  * What a host must provide for the incidents panel.
  *
- * The write methods are optional — their absence renders the panel read-only,
+ * The write methods are optional: their absence renders the panel read-only,
  * the capability gating `ProbesClient` and `MetricAlertsClient` established.
  * `listStatusPages` is optional separately: an org with no status pages simply
  * loses that row of the declare form rather than seeing an empty picker, and a
@@ -43,7 +43,7 @@ export interface IncidentsClient {
  * it is declaring an incident *for*.
  *
  * This is how a probe row or a firing metric alert opens the declare form with
- * the title and the affected resource already filled in — the alternative,
+ * the title and the affected resource already filled in: the alternative,
  * making somebody retype it while the graph is still red, is the reason
  * incidents get declared in Slack instead of in a tool.
  */
@@ -52,6 +52,6 @@ export interface IncidentSeed {
   summary?: string;
   severity?: Incident["severity"];
   resourceIds?: string[];
-  /** ISO — when the thing that prompted this actually started. */
+  /** ISO, when the thing that prompted this actually started. */
   startedAt?: string;
 }

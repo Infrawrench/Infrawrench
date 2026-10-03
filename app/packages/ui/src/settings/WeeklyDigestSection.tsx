@@ -16,7 +16,7 @@ import { useSettingsHost } from "./host.js";
  *
  * That last part is the point of the status block below. The digest is sent by
  * a background poller, so without a surface here a failing digest is a log line
- * nobody reads — the exact failure mode KNOWLEDGE.md warns about for the
+ * nobody reads: the exact failure mode KNOWLEDGE.md warns about for the
  * poller's sync errors. Slack and Teams routing stays on the channel rows
  * above; this section owns everything that is org-wide.
  */
@@ -135,7 +135,7 @@ export function WeeklyDigestSection() {
     async (patch: DigestSettingsPatch) => {
       if (!settings) return;
       const previous = settings;
-      // Optimistic, then reconciled with the server's answer — the server
+      // Optimistic, then reconciled with the server's answer: the server
       // recomputes `lastSentWeekStart` when the schedule moves, so the
       // response is the truth.
       setSettings({ ...settings, ...patch } as DigestSettings);

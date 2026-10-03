@@ -44,7 +44,7 @@ describe("CostFilterEditor error reporting", () => {
     render(<Harness api={makeApi()} onErrorChange={onErrorChange} />);
 
     expect(await screen.findByText("+ Add filter")).toBeInTheDocument();
-    // The rows can't produce a query error, so there is nothing to report yet —
+    // The rows can't produce a query error, so there is nothing to report yet,
     // and reporting it from an effect would re-render the host for nothing.
     expect(onErrorChange).not.toHaveBeenCalled();
   });

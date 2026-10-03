@@ -1,11 +1,11 @@
 /**
- * Layout rules shared by the `select` field kind's two renderings — the inline
+ * Layout rules shared by the `select` field kind's two renderings: the inline
  * chip row (few, short options) and {@link SelectPicker}'s searchable option
  * grid. Kept as pure functions so the choice can be unit-tested without a DOM.
  *
  * The numbers come from the create modal, which is a fixed 560px wide: after
  * the modal padding, the picker's border and its `p-3`, a two-column cell has
- * roughly 220px of text — about 30 characters at `text-sm`. Anything longer
+ * roughly 220px of text; about 30 characters at `text-sm`. Anything longer
  * used to truncate, which is how a size option built as
  * `gpu-h100x1-80gb (1× GPU, $3219/mo)` rendered as `gpu-h100x1-80gb (1× GPU, $3…`
  * and hid the price the option existed to show.
@@ -34,12 +34,12 @@ export function selectPickerColumns(options: SelectOption[]): 1 | 2 {
 
 /**
  * Whether the options can be drawn as a row of chips. Options carrying a
- * `description` always need the picker — a chip has nowhere to put a second
+ * `description` always need the picker: a chip has nowhere to put a second
  * line, and dropping the description would lose exactly the pricing/spec
  * detail the plugin moved out of the label.
  */
 export function selectRendersAsChips(options: SelectOption[]): boolean {
-  // An empty list stays on the chip branch, which renders nothing — routing it
+  // An empty list stays on the chip branch, which renders nothing: routing it
   // to the picker would show a search box over "No matches".
   if (options.length > SELECT_CHIP_MAX_OPTIONS) return false;
   if (options.some((opt) => opt.description)) return false;

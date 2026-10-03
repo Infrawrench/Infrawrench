@@ -6,7 +6,7 @@ import type { CloudFetch } from "./fetch";
  *
  * A channel is a *destination*, not a policy. Which alerts reach it is decided
  * by the org's routing rules (`alert-routing.ts`), which reference this row by
- * id — so the twelve trigger booleans a channel used to carry are gone.
+ * id, so the twelve trigger booleans a channel used to carry are gone.
  */
 
 export interface SlackInstallation {

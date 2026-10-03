@@ -2,14 +2,14 @@ import { useGT } from "gt-react";
 import { useSerializedRows } from "./useSerializedRows.js";
 
 interface KeyValueEntry {
-  /** Stable per-row id for React keys — rows are editable and removable. */
+  /** Stable per-row id for React keys: rows are editable and removable. */
   id: string;
   key: string;
   value: string;
 }
 
 interface KeyValueListPickerProps {
-  /** Current field value — a JSON-serialized array of { [keyName]: string, [valueName]: string } objects. */
+  /** Current field value; a JSON-serialized array of { [keyName]: string, [valueName]: string } objects. */
   value: string;
   /** Called with the updated JSON-serialized value. */
   onChange: (next: string) => void;
@@ -28,7 +28,7 @@ interface KeyValueListPickerProps {
 }
 
 /**
- * Generic editor for a list of (text, pick-one) rows — e.g. Firestore index
+ * Generic editor for a list of (text, pick-one) rows, e.g. Firestore index
  * fields (fieldPath + order), firewall rule allow-lists (port + protocol),
  * tag lists, and so on. Stores its value as a JSON-serialized array so it
  * drops into any string-valued `CreateFieldConfig` without special plumbing.

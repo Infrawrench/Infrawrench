@@ -6,7 +6,7 @@ import { createDesktopIacClient } from "@/lib/iac-client";
 import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tabs";
 
 /**
- * Infrastructure as Code on desktop — the same panel web renders, over the
+ * Infrastructure as Code on desktop: the same panel web renders, over the
  * `cloud_iac_*` IPC. Rendered as a workspace tab (the "iac" kind).
  *
  * Cloud-only: the reconciliation classifies the org's synced inventory, which

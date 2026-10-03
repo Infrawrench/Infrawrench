@@ -16,7 +16,7 @@ interface ResourceTypeInfo {
    */
   showInSidebar?: boolean | undefined;
   /**
-   * The plugin's singleton root — the account opens straight to it, so the
+   * The plugin's singleton root: the account opens straight to it, so the
    * sidebar promotes its children in its place. See
    * `ResourceTypeDefinition.accountRoot`.
    */
@@ -32,7 +32,7 @@ export const REFRESH_RESOURCE_EVENT = "iw:refresh-resource";
 /**
  * Custom DOM event name dispatched when the schema emits a `navigate-to-resource`
  * host action. Each host (web, desktop) listens and performs its own client-side
- * navigation — full-page `window.location` assignments would drop tanstack state.
+ * navigation: full-page `window.location` assignments would drop tanstack state.
  */
 export const NAVIGATE_TO_RESOURCE_EVENT = "iw:navigate-to-resource";
 
@@ -87,7 +87,7 @@ export interface InvokePluginActionDetail {
   /**
    * Full id of the resource the action targets. The desktop workspace keeps
    * every open tab's detail panel mounted at once, and all of them listen on
-   * this global event — so handlers must ignore events whose `resourceId`
+   * this global event, so handlers must ignore events whose `resourceId`
    * doesn't match their own panel, or one click runs the action in every
    * mounted panel (against the wrong resource). Omitted = legacy/unscoped.
    */
@@ -132,7 +132,7 @@ export interface PromptNoSqlCommandDetail {
   danger?: boolean;
   /**
    * Full id of the resource this prompt targets. Mounted detail panels ignore
-   * events whose `resourceId` doesn't match — otherwise the desktop's
+   * events whose `resourceId` doesn't match, otherwise the desktop's
    * always-mounted tabs each open their own copy of the modal. Omitted =
    * legacy/unscoped (every listener responds).
    */
@@ -249,7 +249,7 @@ function formatGoogleApiError(errorRecord: Record<string, unknown>): string | nu
 
   if (message && /sync mutate calls cannot be queued/i.test(message)) {
     // Cloud Scheduler v1 mutations require an App Engine app to exist in the
-    // project. Surface that explicitly — Google's own error text is opaque.
+    // project. Surface that explicitly: Google's own error text is opaque.
     return "Cloud Scheduler can't mutate jobs because this project has no App Engine application. Run `gcloud app create --region=<region>` (in the same region as the job), then retry.";
   }
 
@@ -328,7 +328,7 @@ export function formatErrorMessage(error: unknown): string {
 export { evaluateShowWhen, buildDefaultFields } from "@infrawrench/client-core";
 
 /**
- * Returns resource types whose instances should be listed in the sidebar —
+ * Returns resource types whose instances should be listed in the sidebar:
  * top-level types plus child types that opted in via `showInSidebar`.
  *
  * This is the only place `showInSidebar` belongs. Account pages list every

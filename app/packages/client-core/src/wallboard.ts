@@ -1,5 +1,5 @@
 /**
- * The wallboard — one screen, read from across the room.
+ * The wallboard: one screen, read from across the room.
  *
  * Every page in this product is designed for somebody sitting at it: dense
  * tables, hover states, filters. None of that survives being put on a television
@@ -9,7 +9,7 @@
  * same data, built on one rule: **a wallboard may only show things that are
  * true right now and that somebody would walk over to look at.** A count that
  * nobody would cross a room for does not belong on a wall, and every trend,
- * breakdown and history has therefore been left out — they belong on the page
+ * breakdown and history has therefore been left out; they belong on the page
  * you open when you do walk over.
  *
  * This module is the pure half: the panel shapes, the overall status rule, and
@@ -31,7 +31,7 @@ export interface WallboardTile {
   /** Stable across refreshes so a tile does not jump when its value changes. */
   id: string;
   label: string;
-  /** The number or short phrase. Big type — this is what carries across a room. */
+  /** The number or short phrase. Big type: this is what carries across a room. */
   value: string;
   /** One line under it, when there is something worth saying. */
   detail: string | null;
@@ -66,7 +66,7 @@ export interface WallboardResponse {
   /**
    * Sources that could not be read. Named on the wall itself, because a
    * wallboard showing green because a query failed is worse than a blank
-   * screen — it is a screen actively telling the room the wrong thing.
+   * screen: it is a screen actively telling the room the wrong thing.
    */
   failedSources: string[];
   generatedAt: string;
@@ -77,8 +77,8 @@ export interface WallboardResponse {
  *
  * `down` is reserved for the two things that mean customers are affected right
  * now: a sev1 incident, or a probe that is down. Everything else that is wrong
- * — a lower-severity incident, a breaching monitor, an account that stopped
- * syncing — is `degraded`.
+ * (a lower-severity incident, a breaching monitor, an account that stopped
+ * syncing) is `degraded`.
  *
  * A failed source is `degraded` and never `ok`: a wall that shows green because
  * a query threw is worse than a blank one.
@@ -112,7 +112,7 @@ export const WALLBOARD_LIMITS = {
  * Which panel a rotating wall should be showing.
  *
  * Derived from the clock rather than held in a timer, so every screen in the
- * building shows the same panel at the same moment — two televisions in one
+ * building shows the same panel at the same moment: two televisions in one
  * room rotating out of step is the sort of thing people notice and nobody can
  * explain. It also means a browser that was asleep resumes in the right place
  * instead of continuing from where it stopped.
@@ -133,7 +133,7 @@ export function clampWallboardSeconds(
   return Math.min(bounds.max, Math.max(bounds.min, Math.round(value)));
 }
 
-/** "41m", "3h 12m", "2d" — a duration read from across a room. */
+/** "41m", "3h 12m", "2d": a duration read from across a room. */
 export function formatWallDuration(sinceIso: string | null, nowMs: number): string {
   if (!sinceIso) return "";
   const since = Date.parse(sinceIso);

@@ -1,5 +1,5 @@
 /**
- * Provider status correlation — host-injected transport contract, same
+ * Provider status correlation; host-injected transport contract, same
  * convention as `ChangesClient`: `@infrawrench/ui` owns the markup, each
  * host (web `apiGet`, desktop cloud IPC) injects how to reach
  * `GET /api/org/{orgId}/status-incidents`. Wire types live in

@@ -111,7 +111,7 @@ export interface EfficiencyAlertsSectionProps {
  *
  * Kept apart from the anomaly and change-alert sections above it because it is
  * a different *kind* of reading. Those two answer "did something happen
- * yesterday"; these three answer "is something quietly wrong" — the reader
+ * yesterday"; these three answer "is something quietly wrong": the reader
  * acts on them within a week rather than within an hour, and every one of them
  * is derived from a fact (a term end, an obligation, a volume) that no spend
  * total contains.
@@ -153,7 +153,7 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
 
   if (!client.listEfficiencyAlerts) return null;
   const canTune = Boolean(client.getEfficiencyAlertSettings);
-  // Nothing has ever fired and there is nothing to configure — say nothing.
+  // Nothing has ever fired and there is nothing to configure: say nothing.
   if (!canTune && error === null && events !== null && events.length === 0) return null;
 
   return (
@@ -275,7 +275,7 @@ function NumberField({
         disabled={disabled}
         value={value}
         onChange={(e) => {
-          // `Number("")` is 0 — clearing the box to retype would otherwise
+          // `Number("")` is 0: clearing the box to retype would otherwise
           // store a threshold of zero. See `form-values.ts`.
           const next = parseNumericInputValue(e.target.value);
           if (next !== null) onChange(next);
@@ -289,7 +289,7 @@ function NumberField({
 
 /**
  * The per-org thresholds, edited in place. Read-only when the host omits
- * `updateEfficiencyAlertSettings` — a viewer without `costs:write` sees what
+ * `updateEfficiencyAlertSettings`: a viewer without `costs:write` sees what
  * the detectors are tuned to without controls that would fail on save.
  *
  * The bounds mirror the ones the API enforces, so a value the server would

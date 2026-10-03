@@ -1,5 +1,5 @@
 /**
- * Fan-out SSH — shared, platform-neutral logic for running one command across
+ * Fan-out SSH: shared, platform-neutral logic for running one command across
  * many hosts and making the odd one out obvious.
  *
  * Pure functions only: output grouping (collapse identical results), line
@@ -28,13 +28,13 @@ export interface FanoutHostResult {
 
 /** A set of hosts that produced byte-identical (normalized) output. */
 export interface FanoutOutputGroup {
-  /** Stable grouping key — normalized output + exit code (or error class). */
+  /** Stable grouping key: normalized output + exit code (or error class). */
   key: string;
   results: FanoutHostResult[];
   /** Representative output shown for the collapsed group. */
   output: string;
   exitCode: number | null;
-  /** True for the largest group — the "expected" output the rest diff against. */
+  /** True for the largest group: the "expected" output the rest diff against. */
   isMajority: boolean;
   /** True when every host in the group failed to run (transport/policy error). */
   isFailure: boolean;
@@ -175,7 +175,7 @@ export const FANOUT_MAX_TARGETS = 100;
 
 /**
  * Run `fn` over `items` with at most `limit` in flight. Results keep input
- * order. Rejections are not swallowed — callers wrap `fn` to capture errors
+ * order. Rejections are not swallowed: callers wrap `fn` to capture errors
  * per item.
  */
 export async function runWithConcurrency<T, R>(

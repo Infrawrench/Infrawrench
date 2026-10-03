@@ -37,7 +37,7 @@ const SERVICE_OPTIONS: { id: TunnelServiceType; label: string; defaultPort: stri
 export interface TunnelSshAttachModalProps {
   tunnelName: string;
   hostName: string;
-  /** CF zones in the tunnel's account — the hostname's parent zone. */
+  /** CF zones in the tunnel's account: the hostname's parent zone. */
   zones: TunnelSshAttachZone[];
   /** SSH keys to authenticate the install (web/org keystore). Empty on desktop (agent-based). */
   sshKeys: TunnelSshAttachKey[];

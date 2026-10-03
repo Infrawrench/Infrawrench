@@ -1,5 +1,5 @@
 /**
- * Resource ownership — cloud-mode only. One wrapper per allowlisted IPC
+ * Resource ownership: cloud-mode only. One wrapper per allowlisted IPC
  * channel, matching `cloud-probes.ts`.
  */
 import type {
@@ -25,7 +25,7 @@ export async function fetchCloudResourceOwnership(
   return res.ownership;
 }
 
-/** Answers null when the patch left nothing to record — the row is dropped. */
+/** Answers null when the patch left nothing to record: the row is dropped. */
 export async function saveCloudResourceOwnership(
   orgId: string,
   patch: ResourceOwnershipPatch,

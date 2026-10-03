@@ -2,15 +2,15 @@
  * Local-mode environment diff for the CLI.
  *
  * The cloud path (`GET /api/org/:orgId/environment-diff`) compares two
- * accounts' already-synced rows server-side. This is the same computation —
- * client-core's `computeEnvironmentDiff` — run against two of the desktop's
+ * accounts' already-synced rows server-side. This is the same computation
+ * (client-core's `computeEnvironmentDiff`) run against two of the desktop's
  * local accounts, so `infrawrench diff --local` works signed out.
  *
  * The inventories come from the *provider*, not from a table: the desktop's
  * local `resources` table only holds what the app created or pinned, so a
  * local diff enumerates both accounts through the plugin the way
  * `infrawrench resources` does. A resource type whose list fails is excluded
- * from the comparison rather than reported as absent — "we couldn't ask" and
+ * from the comparison rather than reported as absent: "we couldn't ask" and
  * "prod doesn't have one" are opposite answers.
  *
  * The renderer has its own twin (src/lib/local-environment-diff.ts) because
@@ -85,7 +85,7 @@ export async function computeLocalEnvironmentDiff(
     accountName: account.displayName,
     pluginId: account.pluginId,
     // `listResources` leaves outputs empty by contract, so a local diff
-    // compares stored fields only — resolving outputs would mean a call per
+    // compares stored fields only: resolving outputs would mean a call per
     // resource on both sides.
     resources: listed.resources.map((r) => ({
       id: r.id,

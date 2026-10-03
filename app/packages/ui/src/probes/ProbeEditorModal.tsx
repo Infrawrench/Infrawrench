@@ -27,7 +27,7 @@ export interface ProbeEditorModalProps {
 const CUSTOM = "__custom__";
 
 /**
- * A numeric field's string as a whole number, or null when empty/partial —
+ * A numeric field's string as a whole number, or null when empty/partial:
  * `Number("")` is 0 and `Number("1e")` is NaN, and neither belongs in state
  * or a request body.
  */
@@ -41,7 +41,7 @@ function parseFieldInt(raw: string): number | null {
 /**
  * The probe editor. The endpoint field is a *picker* first: it lists every
  * URL mined from the org's synced resource outputs (`GET /probes/suggestions`)
- * so nobody has to remember what their load balancer's hostname is — with a
+ * so nobody has to remember what their load balancer's hostname is; with a
  * custom-URL option for endpoints Infrawrench doesn't know about.
  */
 export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEditorModalProps) {
@@ -49,7 +49,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
   const [name, setName] = useState(existing?.name ?? "");
   const [url, setUrl] = useState(existing?.url ?? "");
   const [method, setMethod] = useState(existing?.method ?? PROBE_DEFAULTS.method);
-  // The numeric fields hold the input's raw string — parsing happens at the
+  // The numeric fields hold the input's raw string: parsing happens at the
   // edge (parseFieldInt) so a cleared or half-typed field can't leak 0/NaN
   // into state or the request body.
   const [intervalSeconds, setIntervalSeconds] = useState(
@@ -128,7 +128,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
     }
     const mutate = existing ? client.updateProbe : client.createProbe;
     if (!mutate) {
-      // A read-only host opened the editor by mistake — fail loudly instead
+      // A read-only host opened the editor by mistake: fail loudly instead
       // of "saving" nothing and closing as if it worked.
       setError(gt("Probe editing isn't available here."));
       return;
@@ -137,7 +137,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
     setError(null);
     try {
       // The suggestion's resource attribution only holds while the URL still
-      // IS that suggestion — a hand-edited URL is not the resource's output.
+      // IS that suggestion: a hand-edited URL is not the resource's output.
       const attribution =
         pickedSuggestion && pickedSuggestion.url === parsed.url
           ? { resourceId: pickedSuggestion.resourceId, outputKey: pickedSuggestion.outputKey }
@@ -170,7 +170,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
   };
 
   // A dismissal mid-save would leave the request in flight with no surface
-  // for its outcome — the modal stays up until the save settles.
+  // for its outcome: the modal stays up until the save settles.
   const dismiss = () => {
     if (!saving) onClose();
   };

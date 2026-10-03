@@ -1,10 +1,10 @@
 /**
- * Runbooks — the checklist somebody wrote down at 03:00, made runnable.
+ * Runbooks: the checklist somebody wrote down at 03:00, made runnable.
  *
  * An organization's recovery knowledge normally lives in three places: a wiki
  * page nobody updated, a Slack thread from the last incident, and one
  * engineer's memory. What this adds is a place for it *inside the tool the
- * steps are performed in* — so a step that says "run the failover workflow" is
+ * steps are performed in*, so a step that says "run the failover workflow" is
  * a button, and a run leaves a record of who did what and when.
  *
  * This module is the pure half: the shapes all three surfaces agree on, the
@@ -48,7 +48,7 @@ export interface Runbook {
   /**
    * Resource types this runbook is *about*; empty means it is not scoped to a
    * type. Used to answer "which runbooks apply here", never to restrict who
-   * may open it — a runbook nobody can find is the failure mode this feature
+   * may open it: a runbook nobody can find is the failure mode this feature
    * exists to fix.
    */
   resourceTypeIds: string[];
@@ -97,12 +97,12 @@ export interface RunbookRunStep {
    *
    * Copied rather than joined, because the runbook is edited between incidents
    * and a postmortem that shows today's wording against last month's run is
-   * worse than useless — it is quietly wrong.
+   * worse than useless: it is quietly wrong.
    */
   title: string;
   kind: RunbookStepKind;
   status: RunbookStepStatus;
-  /** What the responder typed — the output, the reason it was skipped. */
+  /** What the responder typed: the output, the reason it was skipped. */
   note: string | null;
   /** Workflow run this step kicked off, when it was a `workflow` step. */
   workflowRunId: string | null;
@@ -261,7 +261,7 @@ export interface RunbookMatchTarget {
 /**
  * Does this runbook apply to that resource?
  *
- * Two independent narrowings — type and one tag — rather than a query
+ * Two independent narrowings (type and one tag) rather than a query
  * language, the `backup_policies` selector shape and for the same reason: those
  * are the two axes people reason about, and a runbook with an empty selector
  * applying to everything is the useful shape for an org's first one.
@@ -291,7 +291,7 @@ export function runbookMatchesResource(
 /**
  * Turn edited steps into stored ones, assigning ids to new steps.
  *
- * `makeId` is injected rather than imported so this stays pure — the server
+ * `makeId` is injected rather than imported so this stays pure: the server
  * passes `randomUUID`, tests pass a counter.
  */
 export function normalizeRunbookSteps(

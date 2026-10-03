@@ -10,7 +10,7 @@ function resource(id: string, overrides: Partial<InferenceResource> = {}): Infer
   return { id, accountId: "acct-a", fields: {}, outputs: {}, ...overrides };
 }
 
-/** A resource of a plugin-declared type — the shape a host feeds inference. */
+/** A resource of a plugin-declared type: the shape a host feeds inference. */
 function typed(
   id: string,
   resourceTypeId: string,
@@ -83,7 +83,7 @@ describe("inferDependencyEdges", () => {
   });
 
   it("drops tokens claimed by more than one resource", () => {
-    // Two things called "default" — no way to tell which one is meant.
+    // Two things called "default": no way to tell which one is meant.
     const { edges } = inferDependencyEdges([
       resource("ns-1", { externalId: "default" }),
       resource("ns-2", { fields: { name: "default" } }),
@@ -352,7 +352,7 @@ describe("plugin-declared rules", () => {
 
 describe("matchTemplate", () => {
   // PlanetScale branches have composite external ids ("{db}/{branch}") while
-  // consumers hold the bare branch name — the whole reason the template exists.
+  // consumers hold the bare branch name: the whole reason the template exists.
   const rules = collectDependencyRules([
     {
       id: "planetscale",
@@ -384,7 +384,7 @@ describe("matchTemplate", () => {
     const { edges } = inferDependencyEdges(
       [
         branch("branch-a", "shop/main"),
-        // Same branch name under a different database — the exact composition
+        // Same branch name under a different database: the exact composition
         // is what keeps these apart; a bare-name match would be ambiguous.
         branch("branch-b", "blog/main"),
         {
@@ -438,7 +438,7 @@ describe("matchTemplate", () => {
       [
         configMap("cm-a", "prod/a"),
         configMap("cm-b", "prod/b"),
-        // Same names in another namespace — must not be picked up.
+        // Same names in another namespace: must not be picked up.
         configMap("cm-a-dev", "dev/a"),
         configMap("cm-b-dev", "dev/b"),
         {
@@ -492,7 +492,7 @@ describe("matchTemplate", () => {
 
 describe("multiple identities for one value", () => {
   // A resource whose `name` equals its `externalId` (azure-resource-group,
-  // aws/target-group) must stay findable under BOTH keys — indexing only the
+  // aws/target-group) must stay findable under BOTH keys: indexing only the
   // first one silently disabled any rule matching on the other.
   it("resolves a rule matching on a key that duplicates the external id", () => {
     const rules = collectDependencyRules([
@@ -678,7 +678,7 @@ describe("focusPrefilterTokens", () => {
       outputs: { roleArn: "arn:aws:iam::1:role/my-role" },
     });
     expect(focusPrefilterTokens(role, rules)).toContain("arn:aws:iam::1:role/my-role");
-    // Without the rules it is invisible — `roleArn` is not a built-in identity.
+    // Without the rules it is invisible: `roleArn` is not a built-in identity.
     expect(focusPrefilterTokens(role)).not.toContain("arn:aws:iam::1:role/my-role");
   });
 
@@ -703,7 +703,7 @@ describe("focusPrefilterTokens", () => {
 
   it("omits short numeric values the guessing pass could never match", () => {
     // `port: 5432` can produce no edge, but as a prefilter token it becomes
-    // `[",:]\s*5432` over every resource's JSON — matching the port field of
+    // `[",:]\s*5432` over every resource's JSON: matching the port field of
     // every Postgres-family resource in the org.
     const record = typed("dns", "dns-record", {
       fields: { name: "api.example.com", ttl: 300, port: 5432 },

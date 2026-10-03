@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// The operations calendar — cloud only, deliberately. Five of its six sources
+// The operations calendar: cloud only, deliberately. Five of its six sources
 // (freezes, commitments, workflow schedules, incidents, and the org's expiry
 // settings) are org state with nowhere to live in a single-machine workspace,
 // and a calendar that could only ever show one of them would be the wrong half

@@ -4,7 +4,7 @@ interface BackupsIconProps {
 }
 
 /**
- * Backup-coverage glyph — a database drum with a clockwise restore arrow.
+ * Backup-coverage glyph: a database drum with a clockwise restore arrow.
  * Same 24x24 stroke grid and 2px weight as PostureIcon/ExpiryIcon so the
  * Backups sidebar entry sits level with its neighbours.
  */

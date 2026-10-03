@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Cost graphs, budgets, and dashboard widgets — cloud-mode only (there is no
+// Cost graphs, budgets, and dashboard widgets: cloud-mode only (there is no
 // local-SQLite equivalent; cost data lives in the cloud ClickHouse store).
 
 ipcMain.handle(
@@ -69,8 +69,8 @@ ipcMain.handle(
 );
 
 /**
- * The three efficiency alerts — commitment expiry, idle commitments, unit-cost
- * regression — and their tuning. Cloud-only for the same reason the anomaly
+ * The three efficiency alerts (commitment expiry, idle commitments, unit-cost
+ * regression) and their tuning. Cloud-only for the same reason the anomaly
  * settings are: the detectors run server-side after each cost collection.
  */
 ipcMain.handle(
@@ -139,7 +139,7 @@ ipcMain.handle("cloud_billing_rules", async (_e, { orgId }: { orgId: string }) =
 
 /**
  * Prepaid credit balances with their burn rate and runway. Cloud-only, like
- * every other read here — the burn is derived from a server-side series of
+ * every other read here: the burn is derived from a server-side series of
  * readings, and a local-only workspace has no series to derive it from.
  */
 ipcMain.handle("cloud_credit_burndown", async (_e, { orgId }: { orgId: string }) => {
@@ -147,7 +147,7 @@ ipcMain.handle("cloud_credit_burndown", async (_e, { orgId }: { orgId: string })
 });
 
 /**
- * Commitments — reservations, savings plans, committed-use discounts — with
+ * Commitments (reservations, savings plans, committed-use discounts) with
  * coverage, utilization and planner recommendations. Cloud-only: the
  * inventory is collected server-side and joined against server-side cost
  * rows; a local-only workspace has neither.
@@ -185,7 +185,7 @@ ipcMain.handle(
 );
 
 /* ------------------------------------------------------------------ *
- * Change-based cost alerts — "spend moved more than X% (or $Y) vs the
+ * Change-based cost alerts: "spend moved more than X% (or $Y) vs the
  * prior period". Cloud-mode only like everything above: evaluation and
  * the fired events live server-side.
  * ------------------------------------------------------------------ */
@@ -264,7 +264,7 @@ ipcMain.handle(
 );
 
 /* ------------------------------------------------------------------ *
- * Cost reports — named, saved cost graphs. Cloud-mode only for the same
+ * Cost reports: named, saved cost graphs. Cloud-mode only for the same
  * reason as everything above: the spend they draw lives in the cloud.
  * ------------------------------------------------------------------ */
 
@@ -315,7 +315,7 @@ ipcMain.handle(
 );
 
 /* ------------------------------------------------------------------ *
- * Cost annotations — dated notes drawn over cost charts. Their own
+ * Cost annotations: dated notes drawn over cost charts. Their own
  * channel family rather than a child of the report ones: a note with no
  * report id is org-wide and belongs to every chart, so it is not a
  * sub-resource of any one report.
@@ -362,7 +362,7 @@ ipcMain.handle(
 );
 
 /* ------------------------------------------------------------------ *
- * Cost-report folders — the tree the Reports list groups by.
+ * Cost-report folders: the tree the Reports list groups by.
  * ------------------------------------------------------------------ */
 
 ipcMain.handle("cloud_list_cost_report_folders", async (_e, { orgId }: { orgId: string }) => {
@@ -399,7 +399,7 @@ ipcMain.handle(
 );
 
 /* ------------------------------------------------------------------ *
- * Report delivery schedules — scheduled sends of a saved report to
+ * Report delivery schedules: scheduled sends of a saved report to
  * Slack/Teams/email. Same thin proxy pattern as everything above; the
  * server owns validation and permissions (reads costs:read, writes
  * org:settings:write).
@@ -487,7 +487,7 @@ ipcMain.handle(
 );
 
 /* ------------------------------------------------------------------ *
- * Saved cost filters — named `CostFilter[]` sets that graphs, reports and
+ * Saved cost filters: named `CostFilter[]` sets that graphs, reports and
  * budgets apply by reference; the server resolves the id at query time.
  * Cloud-mode only like everything above.
  * ------------------------------------------------------------------ */
@@ -519,7 +519,7 @@ ipcMain.handle(
   },
 );
 
-// A 409 passes through as an error whose message lists the referents — the
+// A 409 passes through as an error whose message lists the referents: the
 // server's refusal to delete a still-referenced filter is the feature, and the
 // renderer shows it verbatim.
 ipcMain.handle(
@@ -539,7 +539,7 @@ ipcMain.handle(
 );
 
 /* ------------------------------------------------------------------ *
- * Scenario models — named sets of known future cost overlaid on a
+ * Scenario models: named sets of known future cost overlaid on a
  * forecast. Cloud-mode only like everything above; the model is resolved
  * server-side at query time, so nothing here holds a copy.
  * ------------------------------------------------------------------ */
@@ -566,7 +566,7 @@ ipcMain.handle(
   },
 );
 
-// A 409 passes through as an error whose message lists the referents — the
+// A 409 passes through as an error whose message lists the referents: the
 // server's refusal to delete a still-referenced model is the feature, and the
 // renderer shows it verbatim.
 ipcMain.handle(
@@ -586,7 +586,7 @@ ipcMain.handle(
 );
 
 /* ------------------------------------------------------------------ *
- * Business metrics — the denominators unit costs divide by, plus the
+ * Business metrics: the denominators unit costs divide by, plus the
  * unit-cost query itself. Cloud-mode only like everything above: the
  * numerator lives in the cloud's cost store.
  * ------------------------------------------------------------------ */
@@ -636,7 +636,7 @@ ipcMain.handle(
   },
 );
 
-// Re-reporting a day restates it rather than accumulating — the server's
+// Re-reporting a day restates it rather than accumulating: the server's
 // guarantee, repeated here only because it is what makes this handler safe to
 // call twice from a retrying renderer.
 ipcMain.handle(

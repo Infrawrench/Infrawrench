@@ -206,7 +206,7 @@ describe("upcomingOnCallShifts", () => {
   it("lists consecutive shifts in rotation order", () => {
     const shifts = upcomingOnCallShifts(schedule(), at("2026-08-05T10:00:00.000Z"), 4);
     expect(shifts.map((s) => s.userId)).toEqual(["ana", "ben", "cass", "ana"]);
-    // Each shift ends where the next begins — no gaps, no overlaps.
+    // Each shift ends where the next begins: no gaps, no overlaps.
     expect(shifts[0]?.endsAt).toBe(shifts[1]?.startsAt);
     expect(shifts[1]?.endsAt).toBe(shifts[2]?.startsAt);
   });

@@ -40,7 +40,7 @@ interface AuthContextValue {
   state: AuthState;
   email: string | null;
   orgs: CloudOrg[];
-  /** Set when the last orgs fetch failed — `orgs` may be stale or empty. */
+  /** Set when the last orgs fetch failed: `orgs` may be stale or empty. */
   orgsError: string | null;
   /**
    * Set when restoring the session failed outright (rather than resolving to
@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadSession = useCallback(async () => {
     // Everything here runs while the launch screen shows a bare spinner, so
     // every path out of this function has to settle `state`. A throw used to
-    // leave it on "loading" forever — no error, no retry, nothing to do but
+    // leave it on "loading" forever: no error, no retry, nothing to do but
     // reinstall.
     try {
       setSessionError(null);
@@ -123,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setState("signed-in");
     } catch (e) {
-      // Unreadable secure storage, a wedged token refresh — we can't tell
+      // Unreadable secure storage, a wedged token refresh: we can't tell
       // whether the session is good, so send them to sign-in with the reason
       // rather than stranding them. Tokens are left alone: if they were fine,
       // signing in again is a no-op round trip.

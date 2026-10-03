@@ -4,7 +4,7 @@
  * A cloud-held org key's private half never reaches this machine, so the main
  * process authenticates with a `RemoteKeyAgent` whose backend asks Infrawrench
  * Cloud to sign each publickey-auth challenge (`POST /ssh-keys/:id/sign`).
- * The SSH connection itself — and everything streamed over it — stays between
+ * The SSH connection itself (and everything streamed over it) stays between
  * this machine and the host; only signatures cross the cloud.
  */
 import {

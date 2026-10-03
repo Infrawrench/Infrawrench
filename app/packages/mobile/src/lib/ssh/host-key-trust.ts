@@ -4,7 +4,7 @@ import { isHostKeyTrustResponse, type HostKeyTrustPayload } from "@infrawrench/c
  * Registry connecting the two places a host-key refusal can surface to the one
  * place that can ask the operator about it.
  *
- * The refusal arrives either as an HTTP 409 (SFTP, tunnels — intercepted by
+ * The refusal arrives either as an HTTP 409 (SFTP, tunnels: intercepted by
  * `CloudFetch`'s `on409` hook, which lives below the React tree) or as an
  * `ssh:error` frame in the terminal. Neither can render a modal, so
  * `HostKeyTrustHost` registers the prompt here at mount and both call into it.
@@ -26,7 +26,7 @@ export function registerHostKeyTrustPrompt(prompt: TrustPrompt | null): void {
 
 /**
  * Ask the operator to trust `payload`. Resolves true once the fingerprint is
- * pinned, false if they declined — or if nothing is mounted to ask, in which
+ * pinned, false if they declined, or if nothing is mounted to ask, in which
  * case the caller reports the refusal as an ordinary error.
  */
 export function requestHostKeyTrust(payload: HostKeyTrustPayload): Promise<boolean> {
@@ -37,7 +37,7 @@ export function requestHostKeyTrust(payload: HostKeyTrustPayload): Promise<boole
 /**
  * Mark the trust POST itself as in flight. That request can 409 in its own
  * right when a concurrent connect saw a different key, and letting the
- * interceptor retry it would replay the fingerprint the server just rejected —
+ * interceptor retry it would replay the fingerprint the server just rejected:
  * forever. The sheet handles that race by re-prompting with the new payload.
  */
 export function setTrustRequestInFlight(value: boolean): void {

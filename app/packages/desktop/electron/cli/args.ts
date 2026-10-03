@@ -17,7 +17,7 @@ export interface RangeFlags {
    * scripts read better spelling it the same way.
    */
   days?: number | undefined;
-  /** Row cap for listings (`changes`) — maps to the endpoint's `pageSize`. */
+  /** Row cap for listings (`changes`): maps to the endpoint's `pageSize`. */
   limit?: number | undefined;
   /** `changes` filter: created | updated | deleted. */
   kind?: string | undefined;
@@ -29,7 +29,7 @@ export interface RangeFlags {
    */
   window?: string | undefined;
   /**
-   * `costs --basis cash|amortized` — which number to sum. Left as a raw string
+   * `costs --basis cash|amortized`, which number to sum. Left as a raw string
    * so the command validates it and can name the valid values in the error,
    * the way `--group-by` does.
    */
@@ -40,7 +40,7 @@ export interface RangeFlags {
    */
   chargeTypes?: string[] | undefined;
   /**
-   * `costs --currency <code>` — fold every currency the org holds a rate for
+   * `costs --currency <code>`: fold every currency the org holds a rate for
    * into this one, so a mixed-currency org gets a single number.
    *
    * Opt-in and inert without it: absent, the field is not sent at all and the
@@ -51,7 +51,7 @@ export interface RangeFlags {
    */
   currency?: string | undefined;
   /**
-   * `costs --where "provider = 'aws' AND tag['env'] != 'dev'"` — the cost
+   * `costs --where "provider = 'aws' AND tag['env'] != 'dev'"`: the cost
    * filter in the cost query language.
    *
    * Left a raw string: the command compiles it with the shared parser from
@@ -60,7 +60,7 @@ export interface RangeFlags {
    */
   where?: string | undefined;
   /**
-   * `costs --filter <name|id>` — a saved cost filter, applied by reference.
+   * `costs --filter <name|id>`: a saved cost filter, applied by reference.
    *
    * Left a raw string: the command resolves it against the org's saved
    * filters (by id, then case-insensitive name) and sends the *id*, so the
@@ -99,7 +99,7 @@ export interface DeployFlags {
   toRun?: string | undefined;
   /**
    * `deploy rollback` only: also delete the resources that runs after the
-   * target created through `infra.accounts` — undo the provisioning, not just
+   * target created through `infra.accounts`; undo the provisioning, not just
    * the shipping. Destructive, so it is never the default.
    */
   deleteCreated: boolean;
@@ -143,7 +143,7 @@ export interface FanoutFlags {
   concurrency?: number | undefined;
 }
 
-/** Flags for `apps` — listing a host's applications, or opening one. */
+/** Flags for `apps`: listing a host's applications, or opening one. */
 export interface AppsFlags {
   /** Path to a private key for the connection. */
   key?: string | undefined;
@@ -169,9 +169,9 @@ export interface DiffFlags {
 export interface ConfigFlags {
   /** `--file <path>`; stdin when omitted (apply/plan), stdout (export). */
   file?: string | undefined;
-  /** `--out <path>` for export — `--file` also works, this is the readable name. */
+  /** `--out <path>` for export: `--file` also works, this is the readable name. */
   out?: string | undefined;
-  /** `--sections a,b` — narrow the export, or the document sent to plan/apply. */
+  /** `--sections a,b`: narrow the export, or the document sent to plan/apply. */
   sections?: string | undefined;
   /** `--prune`: delete what the document doesn't name (mode `replace`). */
   prune: boolean;
@@ -191,12 +191,12 @@ export interface ParsedCli {
   config: ConfigFlags;
   positionals: string[];
   version: boolean;
-  /** `costs --anomalies` — the spend-spike list instead of the spend chart. */
+  /** `costs --anomalies`: the spend-spike list instead of the spend chart. */
   anomalies: boolean;
-  /** `costs --alerts` — the change-alert list + recent firings instead of the chart. */
+  /** `costs --alerts`: the change-alert list + recent firings instead of the chart. */
   alerts: boolean;
   /**
-   * `unit-costs <metric> --margin` — draw margin instead of cost per unit.
+   * `unit-costs <metric> --margin`: draw margin instead of cost per unit.
    * Only meaningful for a metric declared revenue-shaped; the server refuses it
    * for a count metric rather than returning a plausible wrong number.
    */
@@ -236,19 +236,19 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         // `costs` money selectors: which number, and which kinds of charge.
         basis: { type: "string" },
         currency: { type: "string" },
-        // `costs --where "<cost query>"` — the filter, as text.
+        // `costs --where "<cost query>"`: the filter, as text.
         where: { type: "string" },
-        // `costs --filter <name|id>` — a saved filter, applied by reference.
+        // `costs --filter <name|id>`: a saved filter, applied by reference.
         filter: { type: "string" },
         // Repeatable: one --charge-type per kind to keep.
         "charge-type": { type: "string", multiple: true },
-        // `costs --anomalies` — same command, different question.
+        // `costs --anomalies`: same command, different question.
         anomalies: { type: "boolean", default: false },
-        // `costs --alerts` — the third cost question: configured change alerts.
+        // `costs --alerts`; the third cost question: configured change alerts.
         alerts: { type: "boolean", default: false },
-        // `unit-costs <metric> --margin` — the ratio's other form.
+        // `unit-costs <metric> --margin`: the ratio's other form.
         margin: { type: "boolean", default: false },
-        // `posture dismiss` — why the finding is an accepted risk.
+        // `posture dismiss`: why the finding is an accepted risk.
         reason: { type: "string" },
         // Push-up flags (`page`, `costs push`).
         source: { type: "string" },
@@ -320,7 +320,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     typeof values[key] === "string" ? (values[key] as string) : undefined;
 
   // `multiple: true` options come back as arrays, which the `values` cast above
-  // flattens away — read them off the untyped parse result instead.
+  // flattens away: read them off the untyped parse result instead.
   const multi = parsed.values as Record<string, string[] | undefined>;
 
   const cooldownText = str("cooldown");

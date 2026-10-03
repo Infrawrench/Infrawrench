@@ -17,8 +17,8 @@
  *   momentarily stale one.
  * - An org with no rules is shown its synthesized default plus a note saying so,
  *   which keeps "connect Slack, get alerts" true without pretending the org has
- *   written anything. Editing it is what turns it into a real rule — the client
- *   -side `default` id is dropped on save and the server mints one — so the
+ *   written anything. Editing it is what turns it into a real rule (the client
+ *   -side `default` id is dropped on save and the server mints one) so the
  *   "Start from the default" button is a shortcut rather than a gate.
  */
 import { useEffect, useState } from "react";
@@ -73,7 +73,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
   const { api } = useSettingsHost();
   // The effects below depend on `apiGet`, not on `api`. The host's `api`
   // container is rebuilt whenever the host value is (a permission refresh does
-  // it), while the method itself is stable on both platforms — module-level on
+  // it), while the method itself is stable on both platforms: module-level on
   // web, `useMemo`'d on desktop. Depending on the container would refetch the
   // whole rule list every time permissions settle.
   const apiGet = api.get;
@@ -95,7 +95,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
         setRules(res.rules);
         setDirty(false);
       } catch {
-        // Non-admins get a 403 — hide the section rather than show an error,
+        // Non-admins get a 403: hide the section rather than show an error,
         // matching how the drift and digest settings behave.
         if (!cancelled) setForbidden(true);
       }

@@ -3,7 +3,7 @@
  * graphs). Each block is a fragment of JS spliced into a prelude's IIFE and
  * assumes `rpc` is already defined in the enclosing scope. Factored out so a
  * fix to the hand-rolled codecs or the fetch shim lands in every program kind
- * at once — these are raw strings no typechecker guards against drift.
+ * at once: these are raw strings no typechecker guards against drift.
  */
 
 /** base64/UTF-8 codecs + log-argument formatting (QuickJS guarantees neither atob nor TextDecoder). */

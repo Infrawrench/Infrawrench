@@ -28,7 +28,7 @@ export interface DeploymentsPanelProps {
   client: DeploymentClient;
   /**
    * Preselect a repository, e.g. from a `/deploy/github.com/owner/name`
-   * hotlink. Ignored when the org's GitHub App cannot see it — the picker then
+   * hotlink. Ignored when the org's GitHub App cannot see it: the picker then
    * stays empty rather than showing a repo no deploy could actually read.
    */
   initialRepo?: string;
@@ -40,7 +40,7 @@ export interface DeploymentsPanelProps {
  * The flow is deliberately plan-then-deploy: picking a repo and branch fetches
  * the environments the Infrafile declares, Plan shows what it decided and the
  * Dockerfile it rendered, and only then does Deploy build anything. That
- * ordering is the whole point of having a plan stage — you should be able to
+ * ordering is the whole point of having a plan stage: you should be able to
  * see what a deploy will do before it does it.
  *
  * Prompts raised by `select(...)` are rendered by `PromptHost` at the app root,
@@ -85,7 +85,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
 
   /**
    * A non-interactive run fails naming the key it could not answer, and Plan
-   * runs over HTTP are non-interactive — so planning is usually the first time
+   * runs over HTTP are non-interactive, so planning is usually the first time
    * the UI can know which selects a trigger will have to pre-answer.
    */
   const noteSelectKeys = useCallback((message: string | undefined) => {
@@ -142,7 +142,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
     try {
       const info = await client.listEnvs(repo, branch);
       setEnvInfo(info);
-      // One environment needs no choosing — mirrors the CLI, where omitting
+      // One environment needs no choosing: mirrors the CLI, where omitting
       // --env is fine for a single-environment project.
       if (info.envs.length === 1) setEnv(info.envs[0]!);
     } catch (e) {
@@ -427,7 +427,7 @@ const ghostButton =
 /**
  * A captioned control. The caption is a real `<label htmlFor>` rather than a
  * wrapper, so the control's accessible name survives however the child is
- * composed — hence the id passed down to the render prop.
+ * composed, hence the id passed down to the render prop.
  */
 function Field({ label, children }: { label: string; children: (id: string) => React.ReactNode }) {
   const id = useId();
@@ -550,7 +550,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 /**
  * Deploy-on-push triggers: "when this branch moves, ship this environment".
  *
- * The form deliberately has no repo/branch/env inputs of its own — it watches
+ * The form deliberately has no repo/branch/env inputs of its own: it watches
  * whatever the header is pointed at, so you add a trigger for something you
  * have just planned or deployed rather than typing a repo name twice.
  */
@@ -839,8 +839,8 @@ function RunHistory({
 /**
  * A deploy's per-resource cost breakdown.
  *
- * The breakdown sums to the total by construction — unmeasurable resources are
- * counted separately rather than folded in as zero — and that is stated on
+ * The breakdown sums to the total by construction (unmeasurable resources are
+ * counted separately rather than folded in as zero) and that is stated on
  * screen, because a total that silently omits rows is worse than no total.
  */
 function DeploymentCostImpactPanel({

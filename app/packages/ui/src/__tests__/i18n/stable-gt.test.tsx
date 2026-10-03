@@ -7,7 +7,7 @@ import { useStableGT } from "../../i18n/stable-gt.js";
  * gt-react's own `useGT()` hands back a new function on every render, so any
  * `useMemo`/`useCallback` keyed on `[gt]` is keyed on nothing. When such a
  * value reaches an effect that fetches and sets state, the effect re-fires on
- * its own output — the custom-graph render loop in #122.
+ * its own output: the custom-graph render loop in #122.
  *
  * These tests pin the property the fix depends on. The first is a guard on the
  * upstream behaviour: if a gt-react upgrade ever makes `useGT()` stable on its

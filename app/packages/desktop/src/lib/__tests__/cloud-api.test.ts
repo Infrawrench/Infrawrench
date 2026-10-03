@@ -40,7 +40,7 @@ describe("cloud-api barrel", () => {
    * value import from it drags the whole component library into every module
    * graph that touches `cloud-api`. That is what made the test above take four
    * times as long as it needed to, and time out outright whenever `turbo test`
-   * saturated the machine — a flake with a cause, not a slow machine.
+   * saturated the machine: a flake with a cause, not a slow machine.
    *
    * Types are free, being erased. A subpath is fine too, and is how
    * `cloud-workflows` reaches a real shared value: `@infrawrench/ui/workflows/
@@ -51,7 +51,7 @@ describe("cloud-api barrel", () => {
    * added to `cloud-api.ts` is covered without anybody remembering to.
    */
   it("takes no value import from the @infrawrench/ui barrel", () => {
-    // `[^;]*?` keeps each match inside one statement — without it the pattern
+    // `[^;]*?` keeps each match inside one statement: without it the pattern
     // starts at an earlier import and runs across the file to a later,
     // perfectly legitimate `import type … from "@infrawrench/ui"`.
     const valueImport = /^import\s+(?!type\b)[^;]*?from\s+"@infrawrench\/ui";/gm;

@@ -28,7 +28,7 @@ import { SavingsSection } from "@/features/savings/SavingsSection";
 import { SchedulesSection } from "@/features/schedules/SchedulesSection";
 
 /**
- * The org's spend, budgets, anomalies, and potential savings — the Costs panel
+ * The org's spend, budgets, anomalies, and potential savings; the Costs panel
  * of web and desktop, in the same order, so the four sections answer one
  * question together: what is this org spending, what did we promise to spend,
  * what changed unexpectedly, and what of it is wasted.

@@ -319,14 +319,14 @@ describe("formatCostQuery", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * Round-trip — the property, over generated inputs rather than examples.
+ * Round-trip: the property, over generated inputs rather than examples.
  * ------------------------------------------------------------------ */
 
 /**
  * A small deterministic PRNG so a failure is reproducible from its seed. The
  * generated corpus is the point of these tests: hand-picked examples check the
  * cases the author thought of, and the round trip has to hold for the ones they
- * did not — values carrying quotes, backslashes, keywords, brackets, commas and
+ * did not; values carrying quotes, backslashes, keywords, brackets, commas and
  * empty strings, in every operator and dimension combination.
  */
 function makeRandom(seed: number): () => number {

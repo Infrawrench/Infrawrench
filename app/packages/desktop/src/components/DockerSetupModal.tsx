@@ -345,7 +345,7 @@ export function DockerSetupModal({
                         "SELECT id, name FROM dashboards ORDER BY is_default DESC, name ASC",
                       );
                       if (rows.length <= 1) {
-                        // Only one (or zero) dashboard — pin directly
+                        // Only one (or zero) dashboard: pin directly
                         await pinResource(
                           {
                             id: createdAccountId,

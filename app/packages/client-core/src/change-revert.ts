@@ -1,5 +1,5 @@
 /**
- * Reverting a change-timeline event — the pure half.
+ * Reverting a change-timeline event: the pure half.
  *
  * The drift feed already records, per changed field, what the value was before
  * and after. Inverting that is arithmetic; what makes a revert honest is
@@ -7,7 +7,7 @@
  * that saw the change may have run hours ago and the field may have moved
  * again since. `computeRevertPlan` is that reconciliation, and it is
  * deliberately pure so both the dry run and the apply path compute the plan the
- * same way — the apply recomputes against a fresh read rather than trusting the
+ * same way: the apply recomputes against a fresh read rather than trusting the
  * preview.
  *
  * That re-read *narrows* the window in which a third party's newer value could
@@ -18,8 +18,8 @@
  *
  * Nothing provider-specific lives here. The writable field set arrives as a
  * list of keys derived from the plugin's own field schema through
- * `isFieldEditable` (plugin-base) — the same predicate that decides what the
- * Edit form offers — so a revert can never write something an edit couldn't.
+ * `isFieldEditable` (plugin-base) (the same predicate that decides what the
+ * Edit form offers) so a revert can never write something an edit couldn't.
  */
 
 import type { CloudFetch } from "./fetch";
@@ -31,16 +31,16 @@ const OUTPUT_PREFIX = "outputs.";
 /**
  * What would happen to one field if the revert ran now.
  *
- * - `revertible` — the field still holds the value the change moved it to, and
+ * - `revertible`: the field still holds the value the change moved it to, and
  *   the plugin's edit form can set it. This is the only status that writes.
- * - `already-reverted` — the field already holds the old value. A no-op, not a
+ * - `already-reverted`: the field already holds the old value. A no-op, not a
  *   failure: someone (or something) put it back before you got here.
- * - `conflict` — the field changed *again* since the recorded event, so the
+ * - `conflict`: the field changed *again* since the recorded event, so the
  *   live value is neither side of the diff. Reverting would silently discard
  *   whatever that later change was, so it is excluded and both values shown.
- * - `not-writable` — the field is outside the plugin's editable surface, or its
+ * - `not-writable`: the field is outside the plugin's editable surface, or its
  *   old value isn't something the edit form can submit.
- * - `provider-derived` — an `outputs.*` entry. Outputs are computed by the
+ * - `provider-derived`: an `outputs.*` entry. Outputs are computed by the
  *   provider from other state; there is nothing to write.
  */
 export type RevertFieldStatus =
@@ -49,9 +49,9 @@ export type RevertFieldStatus =
 export interface RevertFieldPlan {
   /** Field key exactly as the change event recorded it. */
   field: string;
-  /** What the field held before the recorded change — the value a revert writes. */
+  /** What the field held before the recorded change: the value a revert writes. */
   revertTo: unknown;
-  /** What the recorded change moved it to — what the field should still hold. */
+  /** What the recorded change moved it to: what the field should still hold. */
   changedTo: unknown;
   /** What the field holds right now, read live from the provider. */
   current: unknown;
@@ -83,7 +83,7 @@ export interface ComputeRevertPlanArgs {
   /** The resource's live field bag, freshly fetched from the provider. */
   currentFields: Record<string, unknown>;
   /**
-   * Field keys the plugin's Edit form exposes for this resource type — the
+   * Field keys the plugin's Edit form exposes for this resource type: the
    * `isFieldEditable` filter over the type's declared fields. Empty when the
    * type or the plugin client has no update path at all, in which case pass
    * `supportsUpdate: false` too so the refusal reads correctly.
@@ -101,7 +101,7 @@ export interface ComputeRevertPlanArgs {
  *
  * `updateResource` takes `Record<string, string>`: the host has exactly one
  * way to write a field and it is text. A previous value that was an object, an
- * array, or absent altogether has no faithful text form — writing `"[object
+ * array, or absent altogether has no faithful text form: writing `"[object
  * Object]"` or `""` would be inventing a provider call, which is the one thing
  * a generic revert must never do.
  */
@@ -138,7 +138,7 @@ function planField(
   const current = base.current;
 
   // A field that already holds the old value needs nothing done to it, whether
-  // or not it is writable — say so rather than reporting it as blocked.
+  // or not it is writable: say so rather than reporting it as blocked.
   if (valuesEqual(current, change.from)) {
     return {
       ...base,
@@ -223,7 +223,7 @@ export function computeRevertPlan(args: ComputeRevertPlanArgs): RevertPlan {
     return { fields, revertibleFields, revertible: true, blockedReason: null };
   }
 
-  // Nothing to write — explain which of the three reasons it was, since the
+  // Nothing to write: explain which of the three reasons it was, since the
   // dialog's whole job is telling the user why the button is dead.
   const has = (status: RevertFieldStatus) => fields.some((f) => f.status === status);
   let reason: string;
@@ -240,7 +240,7 @@ export function computeRevertPlan(args: ComputeRevertPlanArgs): RevertPlan {
 }
 
 /**
- * The `updateResource` payload for a plan — only the `revertible` fields, and
+ * The `updateResource` payload for a plan, only the `revertible` fields, and
  * only ever as text, because that is the shape the plugin's update path takes.
  *
  * Non-revertible entries are dropped rather than coerced: the plan already
@@ -263,8 +263,8 @@ export function buildRevertPatch(plan: RevertPlan): Record<string, string> {
  * *this* revert wrote, and never got to record it".
  *
  * This is the reconciliation half of the revert lifecycle. A revert that reaches
- * the provider and then fails to write `reverted_at` — the database blinked,
- * the process died — leaves the resource reverted and the event marked
+ * the provider and then fails to write `reverted_at` (the database blinked,
+ * the process died) leaves the resource reverted and the event marked
  * un-reverted. The retry sees every field already back at its old value, has
  * nothing to write, and would otherwise walk away, leaving the feed permanently
  * disagreeing with the world.
@@ -277,14 +277,14 @@ export function buildRevertPatch(plan: RevertPlan): Record<string, string> {
  * `writeWasAttempted` is what separates them, and it has to be a **recorded
  * fact rather than an inference**: `revert_write_attempted_at`, journalled
  * immediately before the provider call. An earlier design inferred it from the
- * revert's claim still being outstanding, which is subtly unsound — a claim
+ * revert's claim still being outstanding, which is subtly unsound (a claim
  * outlives an attempt that died *before* writing exactly as readily as one that
- * died after — and that unsoundness showed up twice, once as events wedged
+ * died after) and that unsoundness showed up twice, once as events wedged
  * behind a self-renewing lease and once as a hand-edit recorded as somebody's
  * revert. A lock cannot double as a journal.
  *
  * The rest of the predicate is deliberately conservative: nothing left to write
- * (no `revertible`), nothing ambiguous (no `conflict` — a field that moved on
+ * (no `revertible`), nothing ambiguous (no `conflict`; a field that moved on
  * again is not evidence of anything), and at least one field that actually did
  * move back. `not-writable` and `provider-derived` entries are ignored because
  * a revert would never have written them in the first place.
@@ -301,7 +301,7 @@ export function revertLooksAlreadyApplied(plan: RevertPlan, writeWasAttempted: b
  * ------------------------------------------------------------------ */
 
 /**
- * `GET /api/org/{orgId}/changes/{changeId}/revert` — the dry run. Carries the
+ * `GET /api/org/{orgId}/changes/{changeId}/revert`: the dry run. Carries the
  * plan plus enough identity for a host to render the dialog without a second
  * lookup.
  */
@@ -317,7 +317,7 @@ export interface RevertPreviewResponse {
   revertedAt?: string | null;
 }
 
-/** `POST /api/org/{orgId}/changes/{changeId}/revert` — what actually happened. */
+/** `POST /api/org/{orgId}/changes/{changeId}/revert`: what actually happened. */
 export interface RevertApplyResponse {
   changeId: string;
   resourceId: string;
@@ -335,7 +335,7 @@ export interface RevertApplyResponse {
   reconciled?: boolean;
   /**
    * Present and `false` only when the audit entry for this revert could not be
-   * written. The provider change still happened — this says the *attribution*
+   * written. The provider change still happened: this says the *attribution*
    * for it did not reach the audit table, and the details were written to the
    * server log instead. Absent means audited normally.
    *
@@ -353,13 +353,13 @@ export interface RevertApplyResponse {
  * The four values are the four ways an attempt that got as far as mattering can
  * end, and they exist so a reader of the audit log can tell them apart:
  *
- * - `recorded` — wrote to the provider and recorded it. The ordinary success.
- * - `superseded` — wrote to the provider, but its lease had lapsed and another
+ * - `recorded`: wrote to the provider and recorded it. The ordinary success.
+ * - `superseded`: wrote to the provider, but its lease had lapsed and another
  *   attempt owned the event by the time it finished. The write is real; the
  *   recorded outcome belongs to the other attempt.
- * - `unrecorded` — wrote to the provider, and could not record it at all. The
+ * - `unrecorded`: wrote to the provider, and could not record it at all. The
  *   resource moved and the feed does not yet know; a later attempt reconciles.
- * - `reconciled` — wrote nothing, and recorded an earlier attempt's write. The
+ * - `reconciled`: wrote nothing, and recorded an earlier attempt's write. The
  *   only outcome that involves no provider call, which is why it is not simply
  *   folded into `recorded`.
  */
@@ -369,7 +369,7 @@ export type RevertAuditOutcome = "recorded" | "superseded" | "unrecorded" | "rec
 export const REVERT_CONFLICT_CODE = "change_revert_conflict";
 
 /**
- * Bearer readers, for hosts that talk to the cloud API directly — mobile
+ * Bearer readers, for hosts that talk to the cloud API directly: mobile
  * today. Web and desktop inject their own transport into `@infrawrench/ui`'s
  * `ChangeRevertClient` instead, exactly as they do for the feed itself.
  */
@@ -394,7 +394,7 @@ export async function applyRevert(
 /**
  * Why a row can't be reverted without asking the server, or null when it is
  * worth asking. Shared by every surface's Revert affordance so the three
- * refusals are worded once — and so no host opens the dialog just to be told
+ * refusals are worded once, and so no host opens the dialog just to be told
  * something the row already knew.
  */
 export function localRevertRefusal(entry: {

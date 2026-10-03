@@ -9,7 +9,7 @@ ipcMain.handle("cloud_ssh_fanout_targets", async (_e, { orgId }: { orgId: string
 
 /**
  * Run a fan-out. Unlike the generic `cloudFetch`, a 423 (change freeze) is not
- * an error here — the renderer surfaces it with an override affordance — so
+ * an error here (the renderer surfaces it with an override affordance) so
  * the handler returns `{ status, body }` and lets the caller decide.
  */
 ipcMain.handle(

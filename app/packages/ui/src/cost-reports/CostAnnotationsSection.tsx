@@ -19,7 +19,7 @@ export interface CostAnnotationsSectionProps {
 /**
  * The notes drawn on this report's chart, as a list.
  *
- * The chart itself is the fast path — click a bar, write what happened — but a
+ * The chart itself is the fast path (click a bar, write what happened) but a
  * chart only shows the window it is configured for, and a list is where you go
  * to find the note you wrote in March, fix a date, or move one from "this
  * report" to org-wide. It is the same relationship the Reports list has to a

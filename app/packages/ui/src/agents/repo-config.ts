@@ -1,6 +1,6 @@
 /**
  * Helpers for the repo-provided agent config (`.infrawrench/agent.json`) and
- * the per-session env file delivered to the VM. Pure module — imported by
+ * the per-session env file delivered to the VM. Pure module: imported by
  * the desktop renderer and unit tests.
  */
 
@@ -14,7 +14,7 @@ interface TemplateResource {
 
 /**
  * Resolve `{{outputs.<key>}}` / `{{fields.<key>}}` placeholders in an env
- * template against a created resource. Unknown placeholders throw — a half
+ * template against a created resource. Unknown placeholders throw: a half
  * templated connection string is worse than a loud config error.
  */
 export function resolveAgentEnvTemplate(template: string, resource: TemplateResource): string {

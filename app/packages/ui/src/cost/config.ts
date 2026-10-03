@@ -1,5 +1,5 @@
 /**
- * Zod schemas for cost widgets — what the web API validates request bodies and
+ * Zod schemas for cost widgets: what the web API validates request bodies and
  * stored widget configs against, and what the config editors build.
  *
  * The *types* those schemas describe live in `@infrawrench/client-core` so
@@ -77,7 +77,7 @@ import {
 
 export {
   COST_DIMENSIONS,
-  // The cost query language — the text front-end for `costFilterSchema`. Kept
+  // The cost query language: the text front-end for `costFilterSchema`. Kept
   // in client-core so mobile, the CLI and the server share one parser;
   // re-exported here so cost code that already imports from "./config.js" does
   // not need a second import path.
@@ -150,7 +150,7 @@ export {
   flattenCostReportFolderTree,
   costReportFolderPaths,
   costReportFolderMoveBlocker,
-  // Cost annotations — dated notes drawn over a chart, never part of its data.
+  // Cost annotations: dated notes drawn over a chart, never part of its data.
   COST_ANNOTATION_LIMITS,
   costAnnotationInputError,
   bucketCostAnnotations,
@@ -218,7 +218,7 @@ export {
   type UntaggedSpendReport,
   type ShowbackReportCentre,
   type ShowbackReport,
-  // Saved cost filters — the named, referenced-by-id form of `CostFilter[]`.
+  // Saved cost filters: the named, referenced-by-id form of `CostFilter[]`.
   SAVED_COST_FILTER_LIMITS,
   resolveSavedCostFilterInput,
   describeSavedCostFilterReferents,
@@ -226,7 +226,7 @@ export {
   type SavedCostFilterInput,
   type SavedCostFilterReferent,
   type SavedCostFilterReferentKind,
-  // Scenario models — known future cost overlaid on a forecast. The arithmetic
+  // Scenario models: known future cost overlaid on a forecast. The arithmetic
   // (`applyCostScenario`) is shared with the server, which is what keeps a
   // chart's scenario line and a budget's adjusted threshold in agreement.
   COST_SCENARIO_ADJUSTMENT_KINDS,
@@ -250,7 +250,7 @@ export {
   type CostScenarioProjection,
   type CostScenarioReferent,
   type CostScenarioReferentKind,
-  // Billing rules — the org's own adjustments to collected spend. The
+  // Billing rules: the org's own adjustments to collected spend. The
   // arithmetic and the ordering model are shared with the server, which is what
   // keeps an adjusted chart and an adjusted budget in agreement.
   BILLING_RULE_KINDS,
@@ -276,7 +276,7 @@ export {
   type BillingRuleTargetKind,
   type CostAdjustmentRule,
   type CostAdjustmentSummary,
-  // Business metrics — the denominators unit costs divide by. Re-exported here
+  // Business metrics: the denominators unit costs divide by. Re-exported here
   // so cost components keep importing one module.
   BUSINESS_METRIC_KINDS,
   BUSINESS_METRIC_KIND_LABELS,
@@ -367,13 +367,13 @@ export const costGraphConfigSchema = z.object({
   /**
    * Draw the org's billing rules applied. Optional, never defaulted: absent
    * means collected spend, which is what every card written before billing
-   * rules existed draws — and the card labels itself from the response's
+   * rules existed draws, and the card labels itself from the response's
    * `adjustment` field whenever this is on.
    */
   adjusted: z.boolean().optional(),
 });
 
-/** A budget widget is a dashboard view onto a budgets row — alerts outlive it. */
+/** A budget widget is a dashboard view onto a budgets row: alerts outlive it. */
 export const budgetWidgetConfigSchema = z.object({
   version: z.literal(1),
   budgetId: z.string().min(1),
@@ -418,8 +418,8 @@ export const costReportFolderInputSchema = z.object({
 /**
  * Create/update body for a cost annotation (POST/PUT /cost-annotations).
  *
- * Shape-only, deliberately: the semantic rules — a non-empty note, an end date
- * that isn't before the start, a span that isn't a year long — live in
+ * Shape-only, deliberately: the semantic rules (a non-empty note, an end date
+ * that isn't before the start, a span that isn't a year long) live in
  * `costAnnotationInputError` (client-core), which both the editors and the
  * service run, so a form refuses exactly what the API refuses and in the same
  * words.
@@ -441,7 +441,7 @@ export const costAnnotationInputSchema = z.object({
  *
  * One field, because everything else about the note it creates is derived from
  * the finding: the date is the anomalous day and the scope is org-wide, and
- * neither is the caller's to choose — a client that could date the note would
+ * neither is the caller's to choose; a client that could date the note would
  * be a client that could put the marker on the wrong bar.
  *
  * The ceiling is the annotation's, since the sentence becomes one. The semantic
@@ -465,13 +465,13 @@ export const budgetInputSchema = z.object({
   filters: z.array(costFilterSchema).default([]),
   /**
    * A saved cost filter applied by reference and AND-composed with `filters`
-   * at evaluation time. A PUT that omits it clears it — budget updates are
+   * at evaluation time. A PUT that omits it clears it: budget updates are
    * full replaces.
    */
   savedFilterId: z.string().min(1).optional(),
   /**
-   * Opt this budget's **forecast** thresholds into a scenario model. Absent —
-   * the default — keeps them on the bare trend. A PUT that omits it clears the
+   * Opt this budget's **forecast** thresholds into a scenario model. Absent
+   * (the default) keeps them on the bare trend. A PUT that omits it clears the
    * opt-in, which is the safe direction.
    */
   scenarioModelId: z.string().min(1).optional(),
@@ -479,8 +479,8 @@ export const budgetInputSchema = z.object({
   /** Which number the budget tracks; absent is cash. */
   costBasis: z.enum(COST_BASES).optional(),
   /**
-   * Measure this budget against billing-rule-adjusted spend. Absent — the
-   * default, and every budget nobody opted in — measures what the providers
+   * Measure this budget against billing-rule-adjusted spend. Absent (the
+   * default, and every budget nobody opted in) measures what the providers
    * charged. A PUT that omits it clears the opt-in, the safe direction.
    */
   useAdjustedSpend: z.boolean().optional(),
@@ -490,7 +490,7 @@ export const budgetInputSchema = z.object({
  * Create/update body for a change-based cost alert (POST/PUT /cost-alerts).
  *
  * The refinements are the contract, not decoration: an alert with no
- * threshold at all would fire on every wobble (or never — either way it is a
+ * threshold at all would fire on every wobble (or never; either way it is a
  * mis-set form, and the evaluator additionally refuses to judge such a row),
  * and a tag grouping without a tag key has nothing to group on.
  */
@@ -534,7 +534,7 @@ export const costAlertInputSchema = z
  * silently switching detection off.
  *
  * `sigmas` is rounded to one decimal so the stored value matches what the
- * form's step shows — an org cannot end up with 2.9999999999 and wonder why.
+ * form's step shows: an org cannot end up with 2.9999999999 and wonder why.
  */
 export const costAnomalySettingsSchema = z.object({
   sigmas: z
@@ -571,7 +571,7 @@ export const costAnomalySettingsSchema = z.object({
  *
  * Two bounds are worth explaining because they are not merely "a sane range".
  * `commitmentExpiryHorizonDays` is capped at six entries because past that one
- * commitment is its own digest — six notices about one term end is not six
+ * commitment is its own digest: six notices about one term end is not six
  * decisions. And the two "minimum days" fields are floors on *confidence*, not
  * on noise: below them a detector is comparing against a window that is mostly
  * gaps, which is the failure the whole gap-versus-zero rule exists to prevent.
@@ -701,7 +701,7 @@ export const allocationRuleInputSchema = z.object({
   match: allocationRuleMatchSchema,
 });
 
-/** The cost query the API accepts — a graph config resolved to concrete dates. */
+/** The cost query the API accepts: a graph config resolved to concrete dates. */
 export const costQueryRequestSchema = z.object({
   from: isoDate,
   to: isoDate,
@@ -710,7 +710,7 @@ export const costQueryRequestSchema = z.object({
   groupByTagKey: z.string().optional(),
   filters: z.array(costFilterSchema).default([]),
   /**
-   * The same filter in the cost query language — `provider = 'aws' AND
+   * The same filter in the cost query language: `provider = 'aws' AND
    * tag['env'] != 'dev'`. Compiled server-side to exactly `filters`; a parse
    * failure is a 400 carrying the offset. Sending both this and a non-empty
    * `filters` is rejected rather than resolved by a precedence rule.
@@ -722,7 +722,7 @@ export const costQueryRequestSchema = z.object({
   query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
   /**
    * A saved cost filter resolved server-side and AND-composed with whichever
-   * inline spelling is present — unlike `query`/`filters` it is a composition,
+   * inline spelling is present: unlike `query`/`filters` it is a composition,
    * not an alternative. An id that does not resolve is a 400, never a silent
    * fall-through to unfiltered spend.
    */
@@ -732,7 +732,7 @@ export const costQueryRequestSchema = z.object({
   forecast: z.boolean().default(false),
   /**
    * Apply a scenario model to the projection, returning it alongside the
-   * untouched trend. Requires `forecast: true` — the server refuses the
+   * untouched trend. Requires `forecast: true`: the server refuses the
    * combination rather than silently returning no scenario.
    */
   scenarioModelId: z.string().min(1).optional(),
@@ -743,13 +743,13 @@ export const costQueryRequestSchema = z.object({
   /**
    * Fold currencies the org holds a rate for into this one. Optional rather
    * than defaulted, like `costBasis` above: absent must keep meaning "no
-   * conversion", so an older client — and a stored widget config written before
-   * this field existed — gets the unconverted per-currency answer it expects.
+   * conversion", so an older client (and a stored widget config written before
+   * this field existed) gets the unconverted per-currency answer it expects.
    */
   displayCurrency: z.string().regex(CURRENCY_CODE_PATTERN).optional(),
   /**
-   * Apply the org's billing rules. Absent — the default and what every
-   * unattended reader sends — is raw collected spend. Present, the response
+   * Apply the org's billing rules. Absent (the default and what every
+   * unattended reader sends) is raw collected spend. Present, the response
    * carries `adjustment` with the collected totals beside the adjusted ones,
    * so no client can render an adjusted figure without being handed what it
    * needs to label it.
@@ -758,7 +758,7 @@ export const costQueryRequestSchema = z.object({
 });
 
 /* ------------------------------------------------------------------ *
- * Billing rules — POST/PUT /billing-rules.
+ * Billing rules: POST/PUT /billing-rules.
  * ------------------------------------------------------------------ */
 
 /**
@@ -783,7 +783,7 @@ export const billingRuleMatchSchema = z
 
 /**
  * Every kind-specific field is `.nullable().default(null)` so a PUT round-trip
- * of a rule this client did not create still parses — the same rule
+ * of a rule this client did not create still parses: the same rule
  * `costScenarioAdjustmentSchema` follows.
  */
 export const billingRuleAdjustmentSchema = z.object({
@@ -816,7 +816,7 @@ export const billingRuleInputSchema = z.object({
 });
 
 /* ------------------------------------------------------------------ *
- * Org currency settings — PUT /currency and PUT /currency/rates.
+ * Org currency settings: PUT /currency and PUT /currency/rates.
  * ------------------------------------------------------------------ */
 
 const currencyCode = z
@@ -829,7 +829,7 @@ const currencyCode = z
  *
  * Nullable and *required*, not optional: a PUT that omits the field is rejected
  * rather than quietly clearing a setting the org deliberately turned on. Same
- * reasoning as `smsAlerts` above — a field with org-wide consequences should
+ * reasoning as `smsAlerts` above: a field with org-wide consequences should
  * never be settable by accident.
  */
 export const currencySettingsSchema = z.object({
@@ -847,9 +847,9 @@ export const currencySettingsSchema = z.object({
 /**
  * Create/update body for a saved cost filter (POST/PUT /saved-cost-filters).
  *
- * Shape-only, deliberately: the semantic rules — `filters` XOR `query`, the
+ * Shape-only, deliberately: the semantic rules; `filters` XOR `query`, the
  * result non-empty, every tag term carrying its key so the filter is always
- * expressible in query text — live in `resolveSavedCostFilterInput`
+ * expressible in query text; live in `resolveSavedCostFilterInput`
  * (client-core), which the service runs on every write. Keeping them out of
  * the schema means the editors and the API share one implementation of the
  * rules and one set of messages.
@@ -858,23 +858,23 @@ export const savedCostFilterInputSchema = z.object({
   name: z.string().min(1).max(SAVED_COST_FILTER_LIMITS.maxNameLength),
   description: z.string().max(SAVED_COST_FILTER_LIMITS.maxDescriptionLength).optional(),
   filters: z.array(costFilterSchema).max(SAVED_COST_FILTER_LIMITS.maxFilters).default([]),
-  /** The same filter as query text — an alternative spelling of `filters`. */
+  /** The same filter as query text: an alternative spelling of `filters`. */
   query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
 });
 
 /**
  * One adjustment inside a scenario model.
  *
- * Shape-only, deliberately: the semantic rules — which fields each `kind` may
+ * Shape-only, deliberately: the semantic rules, which fields each `kind` may
  * carry, that a model holds one currency, that an end date is not before its
- * start — live in `costScenarioModelInputError` (client-core), which both the
+ * start; live in `costScenarioModelInputError` (client-core), which both the
  * editors and the service run. Keeping them out of the schema means a form
  * refuses exactly what the API refuses, in the same words, rather than
  * rendering a zod union's account of three failed branches.
  *
  * Every kind-specific field is `.nullable().default(null)`: each of the three
  * kinds leaves most of them unset, so "unset" and "explicitly null" must both
- * parse (a client round-tripping a stored model through a PUT sends nulls) —
+ * parse (a client round-tripping a stored model through a PUT sends nulls),
  * and defaulting rather than merely allowing `undefined` is what makes the
  * parsed output exactly `CostScenarioAdjustment`, which the assertion at the
  * bottom of this file checks.
@@ -954,7 +954,7 @@ export type SchemasMatchCostContract = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Business metrics and unit costs — POST/PUT /business-metrics,
+ * Business metrics and unit costs: POST/PUT /business-metrics,
  * POST /business-metrics/{id}/values, POST /business-metrics/{id}/unit-costs.
  * ------------------------------------------------------------------ */
 
@@ -981,7 +981,7 @@ const businessMetricKey = z
 export const businessMetricInputSchema = z.object({
   key: businessMetricKey,
   name: z.string().min(1).max(BUSINESS_METRIC_LIMITS.maxNameLength),
-  /** Singular unit label — "customer", "request", "GB". Purely display. */
+  /** Singular unit label: "customer", "request", "GB". Purely display. */
   unit: z.string().min(1).max(BUSINESS_METRIC_LIMITS.maxUnitLength),
   description: z.string().max(BUSINESS_METRIC_LIMITS.maxDescriptionLength).optional(),
   kind: z.enum(BUSINESS_METRIC_KINDS),
@@ -992,7 +992,7 @@ export const businessMetricInputSchema = z.object({
 });
 
 /**
- * One reported day. Re-reporting a day restates it rather than accumulating —
+ * One reported day. Re-reporting a day restates it rather than accumulating:
  * see `server-core/cost/metric-ingest.ts` for why that is the only ingest
  * semantics an unattended nightly job can safely retry.
  */
@@ -1021,7 +1021,7 @@ export const unitCostQueryRequestSchema = z.object({
   binning: z.enum(COST_BINNINGS),
   /** Absent is "unit_cost". */
   mode: z.enum(UNIT_COST_MODES).optional(),
-  /** Narrowing on top of the metric's own scope — never a replacement for it. */
+  /** Narrowing on top of the metric's own scope, never a replacement for it. */
   filters: z.array(costFilterSchema).optional(),
   query: z.string().max(COST_QUERY_MAX_LENGTH).optional(),
   savedFilterId: z.string().min(1).optional(),
@@ -1039,7 +1039,7 @@ export type SchemasMatchBusinessMetricContract = [
 ];
 
 /* ------------------------------------------------------------------ *
- * Managed accounts and invoices — POST/PUT /managed-accounts,
+ * Managed accounts and invoices: POST/PUT /managed-accounts,
  * POST/PUT /invoices, POST /invoices/{id}/void.
  * ------------------------------------------------------------------ */
 
@@ -1050,8 +1050,8 @@ export type SchemasMatchBusinessMetricContract = [
  * vocabulary over the same columns would eventually give the organisation two
  * answers to one question.
  *
- * The semantic rules — the scope ids existing, and belonging to no other
- * customer — live in `server-core/src/cost/managed-accounts.ts`, because they
+ * The semantic rules (the scope ids existing, and belonging to no other
+ * customer) live in `server-core/src/cost/managed-accounts.ts`, because they
  * are questions about other rows that no schema can answer.
  */
 export const managedAccountInputSchema = z.object({
@@ -1072,7 +1072,7 @@ export const managedAccountInputSchema = z.object({
  * generating and issuing are two acts and letting one call do both would mean a
  * mistyped period could reach a customer with nobody having read the numbers.
  *
- * No currency or scope either — both come from the customer, so an invoice
+ * No currency or scope either: both come from the customer, so an invoice
  * cannot be raised over a scope its customer does not own.
  */
 export const managedInvoiceInputSchema = z.object({
@@ -1095,7 +1095,7 @@ export const managedInvoiceUpdateSchema = z.object({
  * customer was sent an invoice that was then withdrawn.
  *
  * `supersede` raises the corrective draft in the same act, linked both ways to
- * the original — the common case, and doing it in one call is what keeps the
+ * the original: the common case, and doing it in one call is what keeps the
  * pair from being left half-made by a failed second request.
  */
 export const managedInvoiceVoidSchema = z.object({

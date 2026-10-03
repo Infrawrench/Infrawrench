@@ -1,4 +1,4 @@
-// `infrawrench alerts` — metric threshold alert rules ("CPU > 90% for 15m")
+// `infrawrench alerts`: metric threshold alert rules ("CPU > 90% for 15m")
 // and `infrawrench alerts events`, their recent firings.
 //
 // Cloud-only, like `oversized`: rules are evaluated by the cloud poller
@@ -6,8 +6,8 @@
 // list. The CLI lists; creating and editing rules lives on the web/desktop
 // Metric alerts page.
 //
-// The response shapes come from `@infrawrench/client-core` — the same
-// definitions every other surface renders — so a server-side change breaks
+// The response shapes come from `@infrawrench/client-core` (the same
+// definitions every other surface renders) so a server-side change breaks
 // the CLI's build instead of its output. The imports are type-only, so the
 // CLI still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";

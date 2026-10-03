@@ -11,13 +11,13 @@ export interface PromptNoSqlCommandModalProps {
   description?: string;
   /** Styling for `description`. `"error"` renders a red warning banner. Defaults to muted info text. */
   descriptionVariant?: "info" | "error";
-  /** When true, render as an informational dialog — no fields, no submit, just a Close button. */
+  /** When true, render as an informational dialog: no fields, no submit, just a Close button. */
   blocked?: boolean;
-  /** Field definitions — same shape as the standard create modal. */
+  /** Field definitions: same shape as the standard create modal. */
   fields: CreateFieldConfig[];
   /** Submit button label. Defaults to "Submit". */
   submitLabel?: string;
-  /** Render the submit button in a danger (red) style — use for destructive actions. */
+  /** Render the submit button in a danger (red) style: use for destructive actions. */
   danger?: boolean;
   /** Required if any field is `kind: "resource-picker"`. Same shape as create modal. */
   resourcePickerProps?: ResourcePickerCallbacks;
@@ -27,12 +27,12 @@ export interface PromptNoSqlCommandModalProps {
 }
 
 /**
- * Modal that renders a `CreateFieldConfig[]` form — the same component the
+ * Modal that renders a `CreateFieldConfig[]` form: the same component the
  * standard create-resource modal uses. Replaces `window.prompt` and
  * `window.confirm` for plugin-action commands: one modal per action, no
  * stacked native dialogs.
  *
- * Intentionally does NOT wrap the fields in a `<form>` element — several of
+ * Intentionally does NOT wrap the fields in a `<form>` element: several of
  * the create-resource pickers use plain `<button>` elements that would
  * otherwise default to `type="submit"` and trigger premature submission when
  * selecting an option.
@@ -65,7 +65,7 @@ export function PromptNoSqlCommandModal({
   }, []);
 
   // Fields that render in the form. Hidden fields still participate in the
-  // submit payload — they're typically context values (resource name to
+  // submit payload: they're typically context values (resource name to
   // delete, etc.) pre-filled by the plugin.
   const visibleFields = fields.filter((f) => evaluateShowWhen(f, values) && !f.hidden);
   const submittedFields = fields.filter((f) => evaluateShowWhen(f, values));

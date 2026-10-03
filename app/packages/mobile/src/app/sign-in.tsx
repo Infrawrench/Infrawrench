@@ -25,7 +25,7 @@ export default function SignIn() {
         if (result.type === "error") setError(result.error?.message ?? "Sign-in failed");
         return;
       }
-      // A missing or mismatched state means the callback wasn't ours — refuse it.
+      // A missing or mismatched state means the callback wasn't ours: refuse it.
       if (result.params.state !== request.state) {
         setError("Sign-in failed: state mismatch");
         return;
@@ -64,7 +64,7 @@ export default function SignIn() {
         <Text style={styles.error}>Couldn&apos;t restore your session: {sessionError}</Text>
       )}
       {error && <Text style={styles.error}>{error}</Text>}
-      {/* Callback URI is a debugging aid — not something a released build should surface. */}
+      {/* Callback URI is a debugging aid, not something a released build should surface. */}
       {__DEV__ && <Text style={styles.hint}>Redirects to {redirectUri} after WorkOS sign-in.</Text>}
     </View>
   );

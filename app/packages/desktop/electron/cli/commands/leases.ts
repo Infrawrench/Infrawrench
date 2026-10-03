@@ -4,7 +4,7 @@ import type { ResourceLease, ResourceLeaseListResponse } from "@infrawrench/clie
 };
 import { c, printJson, println, printTable, type Column } from "../output";
 
-/** "in 3d" / "in 5h" / "2d overdue" — the lease countdown cell. */
+/** "in 3d" / "in 5h" / "2d overdue": the lease countdown cell. */
 function expiresSummary(lease: ResourceLease): string {
   const ms = Date.parse(lease.expiresAt) - Date.now();
   const abs = Math.abs(ms);
@@ -35,7 +35,7 @@ function statusSummary(lease: ResourceLease): string {
 }
 
 /**
- * `infrawrench leases` — every resource lease in the org: deadline,
+ * `infrawrench leases`; every resource lease in the org: deadline,
  * auto-delete flag and status. (The `expiring` command already shows lease
  * deadlines inside the expiry radar; this is the lease-management view.)
  */

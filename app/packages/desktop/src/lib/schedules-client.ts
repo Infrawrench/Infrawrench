@@ -11,7 +11,7 @@ import {
 import { invoke } from "./invoke";
 
 /**
- * Sleep/wake schedule data access — cloud-mode only (the rows live
+ * Sleep/wake schedule data access: cloud-mode only (the rows live
  * server-side and the cloud poller executes the transitions; local mode has
  * no scheduler). The org is resolved at call time so signing in or out under
  * a mounted panel reaches the right store, the costs-client convention.

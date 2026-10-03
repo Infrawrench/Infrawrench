@@ -2,15 +2,15 @@
  * JavaScript source injected into the sandbox before the user's workflow runs.
  * It builds `globalThis.infra` from two host-provided globals:
  *
- *   - `__host(method, argsJson)` — async RPC into the host (returns a JSON string)
- *   - `__accountsTree` — JSON string of WorkflowPluginInfo[] (accounts by plugin)
- *   - `__metrics` — JSON string of the declared metrics' current values
- *   - `__secrets` — JSON string of the assigned secrets' plaintext values
- *   - `__event` — JSON string describing what triggered this run
+ *   - `__host(method, argsJson)`: async RPC into the host (returns a JSON string)
+ *   - `__accountsTree`: JSON string of WorkflowPluginInfo[] (accounts by plugin)
+ *   - `__metrics`: JSON string of the declared metrics' current values
+ *   - `__secrets`: JSON string of the assigned secrets' plaintext values
+ *   - `__event`: JSON string describing what triggered this run
  *
  * Keeping the ergonomic object graph in pure JS here (rather than marshalling a
  * deep object across the WASM boundary) makes the bridge robust and trivially
- * typeable — the generated infra.d.ts mirrors exactly the shape built below.
+ * typeable; the generated infra.d.ts mirrors exactly the shape built below.
  */
 import { GUEST_CODECS, GUEST_CONSOLE, GUEST_FETCH } from "./guest-lib.js";
 

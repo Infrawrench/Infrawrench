@@ -6,7 +6,7 @@
  * `typecheck.ts` builds a real `ts.Program` to give headless authors (the
  * MCP/chat `write_workflow` tool) the same diagnostics the Monaco editor
  * shows. esbuild bundles the compiler's *code*, but the lib declarations are
- * data files read from disk at runtime — and a bundled service can no longer
+ * data files read from disk at runtime, and a bundled service can no longer
  * resolve the TypeScript package to find them. Without this copy the check
  * silently degrades to syntax-only (`degraded: true`).
  *
@@ -17,7 +17,7 @@
  *
  * Resolution happens from this package, which declares `@typescript/typescript6`
  * as a direct dependency (TS 7 has no stable JS API / lib data layout for this
- * path yet) — service packages don't (and shouldn't) depend on it.
+ * path yet); service packages don't (and shouldn't) depend on it.
  *
  * `@typescript/typescript6` is a thin re-export (`require("@typescript/old")` →
  * `typescript@^6`); its own `lib/` only has the JS stubs. The real `lib.*.d.ts`

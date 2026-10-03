@@ -3,7 +3,7 @@ import type { BlastRadiusClient } from "@infrawrench/ui";
 import { fetchCloudBlastRadius } from "./cloud-resources";
 
 /**
- * The impact report is cloud-only — most of what it looks at (dashboards,
+ * The impact report is cloud-only: most of what it looks at (dashboards,
  * probes, status pages, leases, schedules, owners, flow attribution) exists
  * only server-side. The active org is resolved at call time rather than closed
  * over, matching `ownership-client.ts`: the org can change under a mounted

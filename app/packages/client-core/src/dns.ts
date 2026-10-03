@@ -1,5 +1,5 @@
 /**
- * The Domains surface — every zone and every record across every provider in
+ * The Domains surface: every zone and every record across every provider in
  * one view, with each record's target classified against the rest of the
  * workspace.
  *
@@ -8,34 +8,34 @@
  * their service namespaces with `dnsServiceHosts` (both in
  * `@infrawrench/plugin-base`), and this module turns stored rows + those
  * declarations into the inventory every surface renders. Rows in, records out:
- * no plugin client, no credentials, no provider API calls, and — the point of
- * the whole thing — **no DNS resolution**. A record's target is judged against
+ * no plugin client, no credentials, no provider API calls, and: the point of
+ * the whole thing; **no DNS resolution**. A record's target is judged against
  * what we already synced, never against what the internet currently says.
  *
  * ## Classifying a target
  *
- * `owned` — the target value is an identity of some synced resource. This is
+ * `owned`: the target value is an identity of some synced resource. This is
  * the same question `dependency-inference` asks, over the same identity keys
  * (imported, not re-listed), with the same uniqueness rule: a value claimed by
  * two resources is ambiguous and settles nothing.
  *
- * `dangling` — the target falls inside a provider namespace some plugin
+ * `dangling`: the target falls inside a provider namespace some plugin
  * declared (`*.vercel.app`, `*.s3.amazonaws.com`) and **nothing in the
  * workspace claims it**. That is the subdomain-takeover signature: the name
  * still points at the provider, the provider no longer holds it for you, and
  * whoever registers it next serves content on your domain.
  *
- * `external` — the target points somewhere we have no declaration for. A
+ * `external`: the target points somewhere we have no declaration for. A
  * third-party SaaS, someone else's nameserver, an IP we never synced. Not a
  * finding: we have nothing to compare it against.
  *
- * `not-analysed` — the record type carries no host target we reason about
+ * `not-analysed`: the record type carries no host target we reason about
  * (TXT, SOA, CAA, MX…). Listed, never judged.
  *
  * ## Why `dangling` is deliberately hard to reach
  *
  * The tempting version of this check flags any A record whose IP no longer
- * matches a synced resource — which is most A records, because most targets
+ * matches a synced resource, which is most A records, because most targets
  * are things you legitimately don't manage here. A takeover check that cries
  * wolf gets muted, and a muted check finds nothing. So a namespace is only
  * evaluated when the org has a synced account for the declaring plugin **and**
@@ -43,7 +43,7 @@
  * connected AWS account we cannot tell your bucket from a stranger's, and
  * without a single synced bucket we cannot tell an empty account from a lister
  * that lacks `s3:ListAllMyBuckets`. Both cases are missing data, and missing
- * data must not alarm — they are reported through `skippedNamespaces` so the
+ * data must not alarm: they are reported through `skippedNamespaces` so the
  * silence is visible rather than mysterious.
  *
  * The residual false positive is real and worth stating plainly: a bucket that
@@ -115,7 +115,7 @@ export interface DnsTargetService {
   claimLabel: string;
 }
 
-/** One target value of one record — records can carry several. */
+/** One target value of one record: records can carry several. */
 export interface DnsRecordTarget {
   /** The value as stored, normalised: lowercased host, no trailing dot. */
   value: string;
@@ -164,13 +164,13 @@ export interface DnsZoneEntry {
   domain: string;
   /** Provider status string, when the lister stores one. */
   status: string | null;
-  /** Split-horizon/internal zone — listed, never analysed for takeover. */
+  /** Split-horizon/internal zone: listed, never analysed for takeover. */
   isPrivate: boolean;
   /** Records we synced into this zone. */
   recordCount: number;
   /**
-   * The provider's own record count, when reported. May exceed `recordCount`
-   * — several plugins list zones without listing their records.
+   * The provider's own record count, when reported. May exceed `recordCount`:
+   * several plugins list zones without listing their records.
    */
   providerRecordCount: number | null;
   /** Dangling targets across this zone's records. */
@@ -231,7 +231,7 @@ export interface DnsScanAccount {
 
 /**
  * The part of a stored resource row the scan reads. Hosts map their own store
- * onto this — Postgres jsonb, SQLite TEXT bags — so the computation never
+ * onto this (Postgres jsonb, SQLite TEXT bags) so the computation never
  * learns which database it is looking at.
  */
 export interface DnsScanResource {
@@ -272,7 +272,7 @@ const ADDRESS_RECORD_TYPES = new Set(["A", "AAAA"]);
 
 const TRUE_WORDS = new Set(["true", "1", "yes", "enabled"]);
 
-/** Strictly an IPv4 dotted quad — `1.2.3.4.5` and `1.2.3` must not qualify. */
+/** Strictly an IPv4 dotted quad: `1.2.3.4.5` and `1.2.3` must not qualify. */
 const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 /** Loose on purpose: anything with two colons and only hex/colon/dot is IPv6. */
 const IPV6 = /^[0-9a-f:]*:[0-9a-f:]*:[0-9a-f.:]*$/;
@@ -359,7 +359,7 @@ function qualifyRecordName(rawName: string, zoneDomain: string | null): string {
 
 interface IdentityClaim {
   resource: DnsTargetResource;
-  /** Bumped past 1 when a second resource answers to the token — ambiguous. */
+  /** Bumped past 1 when a second resource answers to the token: ambiguous. */
   claimants: number;
 }
 
@@ -534,7 +534,7 @@ function collectNamespaces(
  * declared record, and each record target judged against the rest of the
  * synced rows.
  *
- * Pure and deterministic — two hosts reading the same rows render the same
+ * Pure and deterministic: two hosts reading the same rows render the same
  * inventory. Resources whose account is missing from `accounts` are skipped
  * (soft-deleted account, not a zone worth showing), as is any bag that isn't a
  * plain object.
@@ -761,7 +761,7 @@ function classifyTargets(args: {
           return { value, classification: "owned" as const, resource: claimant, service: null };
         }
         // Ambiguous identity (two synced resources answer to the same token)
-        // must never become a takeover finding — the host is claimed, just
+        // must never become a takeover finding: the host is claimed, just
         // not uniquely. Fall through as external rather than dangling.
         if (claim && claim.claimants > 1) {
           return { value, classification: "external" as const, resource: null, service: null };
@@ -805,7 +805,7 @@ export function danglingDnsRecords(inventory: DnsInventoryResponse): DnsRecordEn
   return inventory.records.filter((r) => r.status === "dangling");
 }
 
-/** Fresh empty inventory — never share mutable arrays/objects across callers. */
+/** Fresh empty inventory, never share mutable arrays/objects across callers. */
 function emptyInventory(): DnsInventoryResponse {
   return {
     zones: [],
@@ -820,7 +820,7 @@ function emptyInventory(): DnsInventoryResponse {
  * Read `GET /api/org/:orgId/dns` (permission `resources:read`).
  *
  * Cheap and side-effect free: the server computes the inventory over rows it
- * already synced and makes no provider API calls — and, as everywhere in this
+ * already synced and makes no provider API calls, and, as everywhere in this
  * module, resolves no DNS.
  */
 export async function fetchDnsInventory(

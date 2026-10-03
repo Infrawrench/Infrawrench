@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
  * require, and electron-builder's `files` drops `node_modules/@infrawrench/**`
  * from the asar. A workspace package that is a `dependencies` entry and is not
  * in the main build's `exclude` list therefore throws "Cannot find module" the
- * moment the packaged app starts — a lit dock icon and no window, invisible in
+ * moment the packaged app starts: a lit dock icon and no window, invisible in
  * dev because dev resolves through the real `node_modules`.
  *
  * This has shipped twice (`appstream-host`, then `appstream-core`, the latter

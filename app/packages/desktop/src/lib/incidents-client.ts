@@ -18,7 +18,7 @@ import { listCloudStatusPages } from "./cloud-status-pages";
  * Incidents are cloud-only: the object is org-scoped and declaring composes
  * cloud features (change freezes, alert routing, status pages), none of which a
  * local-mode desktop app has. The active org is resolved at call time rather
- * than closed over, matching `probes-client.ts` — the org can change under a
+ * than closed over, matching `probes-client.ts`: the org can change under a
  * mounted panel.
  */
 function requireOrgId(): string {

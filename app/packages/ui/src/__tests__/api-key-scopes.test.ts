@@ -2,8 +2,8 @@
  * The Create API Key dialog's scope catalog.
  *
  * These are the properties that hold without knowing the server's permission
- * list; the half that needs it — that the offered scopes and the deliberately
- * unoffered ones partition `ALL_PERMISSIONS` exactly — lives in
+ * list; the half that needs it (that the offered scopes and the deliberately
+ * unoffered ones partition `ALL_PERMISSIONS` exactly) lives in
  * `web/src/api/__tests__/api-key-scope-catalog.test.ts`, which is the only
  * package that can import both sides.
  */

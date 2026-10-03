@@ -2,7 +2,7 @@ import * as SecureStore from "expo-secure-store";
 import type { TokenStorage } from "@infrawrench/client-core";
 
 /**
- * TokenStorage backed by the platform keychain/keystore — the mobile analog
+ * TokenStorage backed by the platform keychain/keystore: the mobile analog
  * of the desktop's encrypted SQLite token store.
  */
 export const secureStoreStorage: TokenStorage = {

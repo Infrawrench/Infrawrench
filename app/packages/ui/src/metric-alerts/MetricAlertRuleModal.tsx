@@ -30,7 +30,7 @@ export interface MetricAlertRuleModalProps {
  * Create/edit form for one metric alert rule. The selector is pickers over
  * what the org actually has (plugins, types, tag keys), the metric key is a
  * picker over the series the selected resources really report, and the form
- * previews live how many resources the selector covers — nobody should have
+ * previews live how many resources the selector covers: nobody should have
  * to know internal ids or series labels.
  */
 export function MetricAlertRuleModal({

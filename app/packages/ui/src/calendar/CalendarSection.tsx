@@ -25,7 +25,7 @@ export interface CalendarSectionProps {
   /**
    * The events for the range last requested, or null while the first load is
    * in flight. Hosts fetch (web: `/calendar`, desktop: cloud IPC) and hand the
-   * response over — this component never talks to a network.
+   * response over; this component never talks to a network.
    */
   data: CalendarResponse | null;
   /**
@@ -52,14 +52,14 @@ export interface CalendarSectionProps {
   subscriptions?: CalendarSubscription[] | null | undefined;
   /**
    * Mint a subscription. Resolves with the one-time URL, which the section
-   * shows until dismissed — there is no second chance to read it.
+   * shows until dismissed: there is no second chance to read it.
    */
   onCreateSubscription?:
     ((input: { name: string; kinds: CalendarEventKind[] }) => Promise<string>) | undefined;
   onRevokeSubscription?: ((subscriptionId: string) => Promise<void>) | undefined;
   /**
    * IANA zone the grid is drawn in. Defaults to the host's own zone, which is
-   * what someone planning their week actually wants — the calendar is read by
+   * what someone planning their week actually wants: the calendar is read by
    * a person, not by a scheduler.
    */
   timeZone?: string | undefined;
@@ -209,13 +209,13 @@ function EventChip({
 }
 
 /**
- * The operations calendar — one time axis over everything the org already has a
+ * The operations calendar: one time axis over everything the org already has a
  * date for.
  *
  * Nothing on this screen is a record of its own: freezes, sleep windows,
  * deadlines, commitment terms, scheduled runs and incidents all live elsewhere,
  * and the calendar is the projection nobody had. Three views over that one
- * computation — a month grid, a flat agenda, and the iCalendar subscriptions
+ * computation: a month grid, a flat agenda, and the iCalendar subscriptions
  * that put the same thing in someone's phone.
  *
  * The month it shows is *this* component's state, and it asks the host to fetch
@@ -640,7 +640,7 @@ function SubscriptionsView({
   const [kinds, setKinds] = useState<ReadonlySet<CalendarEventKind>>(new Set());
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  /** The one-time URL. Held until dismissed — there is no second chance. */
+  /** The one-time URL. Held until dismissed: there is no second chance. */
   const [mintedUrl, setMintedUrl] = useState<string | null>(null);
 
   async function create() {

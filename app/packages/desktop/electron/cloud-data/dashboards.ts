@@ -102,7 +102,7 @@ ipcMain.handle(
   },
 );
 
-// `cards` is the whole grid in its new order — resource pins, workflow pins,
+// `cards` is the whole grid in its new order: resource pins, workflow pins,
 // and widgets share one drag sequence, so the reorder can't be expressed as
 // resource ids alone.
 ipcMain.handle(
@@ -140,7 +140,7 @@ ipcMain.handle("cloud_get_pin", async (_e, { orgId, pinId }: { orgId: string; pi
 });
 
 // Restored workspace tabs point at cloud rows when an org is active, so they
-// have to be validated against the org — the local database knows nothing
+// have to be validated against the org: the local database knows nothing
 // about them.
 ipcMain.handle(
   "cloud_validate_tabs",

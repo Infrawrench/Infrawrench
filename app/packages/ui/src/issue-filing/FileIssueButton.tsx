@@ -10,7 +10,7 @@ import { useIssueFiling } from "./host.js";
 
 export interface FileIssueButtonProps {
   sourceKind: JiraSourceKind;
-  /** The finding's own id — what the link rows are keyed on. */
+  /** The finding's own id: what the link rows are keyed on. */
   sourceId: string;
   /** Everything needed to prefill the issue. Built by the calling list. */
   draft: Omit<BuildJiraIssueDraftArgs, "sourceKind">;
@@ -26,12 +26,12 @@ const badgeClass = "text-xs font-medium text-info hover:text-info-strong whitesp
  * than a button per list:
  *
  *   - already filed → a link to the issue (one badge per tracker that holds a
- *                     link — both, when the finding was filed to both), never
+ *                     link; both, when the finding was filed to both), never
  *                     a second offer for that tracker
  *   - filable       → one button, labelled by what is connected: "File in
  *                     Jira" or "File in Linear" when exactly one tracker is
- *                     available, "File an issue" — with the tracker chosen in
- *                     the modal — when both are
+ *                     available, "File an issue" (with the tracker chosen in
+ *                     the modal) when both are
  *   - otherwise     → nothing at all
  *
  * "Otherwise" covers no provider mounted, no tracker connected, and the caller

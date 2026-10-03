@@ -3,7 +3,7 @@
  *
  * The QuickJS/WASM sandbox (via @sebastianwessel/quickjs → memfs) assumes
  * Node's `Buffer` and other core modules at module-load time, so it cannot run
- * in the Chromium renderer — Vite externalizes `node:buffer` there and the
+ * in the Chromium renderer: Vite externalizes `node:buffer` there and the
  * sandbox crashes reading `Buffer.allocUnsafe` off `undefined`. We run
  * `runWorkflow` here in the Electron main process (real Node, native Buffer)
  * and bridge every WorkflowHost capability back to the renderer, where the
@@ -86,7 +86,7 @@ function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost 
   return {
     listPlugins: () => call<WorkflowPluginInfo[]>("listPlugins", []),
     // Every resource op forwards its trailing SidecarRef (undefined for all but
-    // operations inside a peer plugin) — the renderer needs it to pick which
+    // operations inside a peer plugin): the renderer needs it to pick which
     // client to build, and dropping it here would silently target the wrong one.
     listResources: (accountId, typeId, sidecar) =>
       call<ResourceInstanceLite[]>("listResources", [accountId, typeId, sidecar]),

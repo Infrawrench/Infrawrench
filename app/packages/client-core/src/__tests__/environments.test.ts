@@ -121,7 +121,7 @@ describe("orderTemplateMembers", () => {
   });
 
   it("reports a self-reference as a plain literal, not a cycle", () => {
-    // A member referencing itself is dropped from its own dependencies —
+    // A member referencing itself is dropped from its own dependencies,
     // otherwise every template with a self-named field would be unorderable.
     const members = [member("a", { x: { kind: "member-id", member: "a" } })];
     expect(memberDependencies(members[0]!)).toEqual([]);
@@ -607,7 +607,7 @@ describe("buildMemberFailureRecord", () => {
   });
 
   // Regression: the create succeeded and the *confirming write* is what threw.
-  // Recording the failure without the returned id lost a running resource —
+  // Recording the failure without the returned id lost a running resource:
   // teardown saw a member with no id and treated it as nothing to do, so the
   // resource billed indefinitely. The id must travel with the failure, in the
   // same statement, so there is no second write left to lose.
@@ -666,7 +666,7 @@ describe("attemptedPositionCeiling / classifyTeardownMember", () => {
     );
   });
 
-  // Regression: this used to be treated as handled — marked deleted without
+  // Regression: this used to be treated as handled; marked deleted without
   // ever asking the provider. A create that succeeded and then lost its
   // bookkeeping lands exactly here, so "handled" meant a resource nobody would
   // ever delete.
@@ -702,7 +702,7 @@ describe("inventoryDisposition / mayConcludeMemberDeleted", () => {
 
   // Regression: reconciliation treated "not in the live-rows query" as proof
   // the provider resource was gone and marked the member `deleted`, which is
-  // terminal — the member left lease repair and teardown permanently while the
+  // terminal; the member left lease repair and teardown permanently while the
   // resource billed forever. A missing row is the *ordinary* state for a
   // member whose upsert failed, which is the same failure that stranded it.
   it("refuses to read a missing row as anything at all", () => {
@@ -725,7 +725,7 @@ describe("instanceMayOwnLiveResources", () => {
   // Regression: three passes each hand-enumerated the statuses they cared
   // about and none of the lists was complete. A `failed` instance whose first
   // member survived a failed rollback owns a billable resource, and a
-  // `tearing-down` one whose process died mid-teardown does too — both were
+  // `tearing-down` one whose process died mid-teardown does too: both were
   // excluded from lease repair, so the resource ran past its mandatory TTL.
   it("includes the statuses the hand-written lists kept missing", () => {
     expect(instanceMayOwnLiveResources("failed")).toBe(true);
@@ -783,7 +783,7 @@ describe("memberNeedsLeaseRepair", () => {
 
   // Regression (state 6): a member whose rollback failed is `failed` while its
   // resource is alive. The repair pass filtered on `status === "created"`, so
-  // this one ran past its mandatory TTL with nothing watching it — the exact
+  // this one ran past its mandatory TTL with nothing watching it: the exact
   // defect the rollback fix was supposed to close, one layer out.
   it("repairs a failed member whose resource survived the rollback", () => {
     expect(memberNeedsLeaseRepair({ status: "failed", resourceId: "r", leaseId: null })).toBe(true);
@@ -850,7 +850,7 @@ describe("leaseShouldBeCancelled", () => {
   });
 
   // Regression: cancelling on failure removed the only retry path. The lease
-  // *is* the retry machinery — it re-attempts at expiry, defers through
+  // *is* the retry machinery: it re-attempts at expiry, defers through
   // freezes and reports when it gives up. Cancelling it turned a transient
   // provider error into a resource billing until a human retried by hand.
   it("keeps the lease when the delete failed, so the lease pass can retry", () => {
@@ -865,7 +865,7 @@ describe("classifyRecoveryCandidates", () => {
 
   // The whole point of this function: there is no `delete` action to reach.
   // Three ownership signals were tried and each turned out to be a proxy for a
-  // creation time we do not reliably have — provider `createdAt` (fabricated as
+  // creation time we do not reliably have: provider `createdAt` (fabricated as
   // `new Date()` by listers whose provider exposes none), the absence of a
   // prior `resources` row (absence of evidence, and the ordinary state for a
   // member whose bookkeeping failed), and `knownSince` (which records when we

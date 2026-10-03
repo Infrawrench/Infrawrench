@@ -158,7 +158,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
 
   /**
-   * One card per grid slot, whichever table it came from — the three kinds are
+   * One card per grid slot, whichever table it came from: the three kinds are
    * dragged as a single sequence. Cloud dashboards carry all three; local ones
    * carry resource pins and workflow pins (cost widgets are cloud-only).
    */
@@ -293,7 +293,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             .then((rows) => setReports(new Map(rows.map((r) => [r.id, r]))))
             .catch(() => {});
         }
-        // Any cost surface is only as good as the collection behind it — pull
+        // Any cost surface is only as good as the collection behind it: pull
         // the per-account state so the notice can explain an empty graph.
         if (
           (full.widgets ?? []).some(
@@ -303,7 +303,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           void loadCloudCostStatus(orgId)
             .then(setCostStatus)
             .catch(() => {
-              /* the notice is advisory — a failed status fetch stays silent */
+              /* the notice is advisory: a failed status fetch stays silent */
             });
         }
 
@@ -438,7 +438,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       setPinned(rows);
       setLoadError(null);
     } catch (err) {
-      // A failed load must not render as an empty dashboard — that reads as
+      // A failed load must not render as an empty dashboard: that reads as
       // "you have no pins" and hides broken plugins or an unreachable cloud.
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -637,7 +637,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 }
               }
             } catch {
-              // Stats are best-effort decoration for SSH-target cards — the card's
+              // Stats are best-effort decoration for SSH-target cards: the card's
               // purpose is connecting, so keep it usable without stats.
               if (!cancelled) {
                 setAccountConnected(row.account_id, true);

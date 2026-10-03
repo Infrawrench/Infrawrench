@@ -116,7 +116,7 @@ function httpRequest(req: {
 const httpHostServices = { http: { request: httpRequest } };
 
 /**
- * Renderer-side `SecretHostServices` — looks up persisted secret-field rows
+ * Renderer-side `SecretHostServices`: looks up persisted secret-field rows
  * via the SQLite IPC and decrypts them through the main process. Mirrors
  * `app/packages/server-core/src/host-services.ts` so plugin code that calls
  * `ctx.hostServices.secrets.getPlaintext(resourceId, fieldKey)` works the
@@ -159,7 +159,7 @@ export const secretHostServices: SecretHostServices = {
 /**
  * Persist a plaintext secret returned by a plugin's `createResource` (or any
  * other flow that yields plaintext). Mirrors what the web server does inline
- * after create — encrypts via the main process, then upserts into the
+ * after create: encrypts via the main process, then upserts into the
  * `secret_field_states` table the renderer can read back via
  * `secretHostServices.getPlaintext`.
  */
@@ -248,7 +248,7 @@ export async function persistOutputRef(
       iv,
     ],
   );
-  // Best-effort topology row — the provider FK may not exist locally yet.
+  // Best-effort topology row: the provider FK may not exist locally yet.
   try {
     await db.execute(
       `INSERT INTO associations (id, consumer_resource_id, consumer_field_key, provider_resource_id, provider_output_key)
@@ -260,7 +260,7 @@ export async function persistOutputRef(
       [crypto.randomUUID(), resourceId, fieldKey, ref.resourceId, ref.outputKey],
     );
   } catch {
-    /* provider resource not in local DB yet — topology row is optional */
+    /* provider resource not in local DB yet: topology row is optional */
   }
 }
 

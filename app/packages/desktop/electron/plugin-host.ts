@@ -1,5 +1,5 @@
 /**
- * Plugin node-driver host — registers all plugin IPC channels.
+ * Plugin node-driver host: registers all plugin IPC channels.
  *
  * main.ts imports this module for its side effects only.
  * It has no knowledge of specific plugins; it dispatches generically
@@ -139,7 +139,7 @@ ipcMain.handle(
     const errors: string[] = [];
     let done = 0;
     for (const key of keys) {
-      // Reject keys with parent-directory segments outright — they can never
+      // Reject keys with parent-directory segments outright: they can never
       // be a legitimate object key and only exist to escape destFolder.
       const segments = key.split("/");
       if (segments.some((s) => s === ".." || s === "")) {

@@ -57,7 +57,7 @@ import { createDesktopCostApi, requireCloudOrgId as requireOrgId } from "./cost-
  *
  * The reads come from {@link createDesktopCostApi} rather than being restated
  * here, so the Costs panel, the Cost reports page and the dashboard's cost
- * cards cannot drift apart — the mirror of web's `createWebCostsClient`.
+ * cards cannot drift apart: the mirror of web's `createWebCostsClient`.
  */
 export function createDesktopCostsClient(): CostsClient {
   return {
@@ -101,7 +101,7 @@ export function createDesktopCostsClient(): CostsClient {
       acknowledgeCloudCostAnomaly(requireOrgId(), anomalyId, explanation),
     // Desktop gets the tuning editor too: the Costs panel is the same
     // component in both hosts, and the settings are org-level cloud state
-    // either way — leaving it out would make the desktop panel quietly less
+    // either way; leaving it out would make the desktop panel quietly less
     // capable than the web one for no reason a user could work out.
     getAnomalySettings: () => loadCloudAnomalySettings(requireOrgId()),
     updateAnomalySettings: (settings: CostAnomalySettings) =>

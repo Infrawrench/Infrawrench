@@ -15,7 +15,7 @@ import {
 
 /**
  * `infra.page` defaults are applied in dispatch rather than in the prelude, so
- * every host — cloud, desktop, and anything added later — sees the same
+ * every host (cloud, desktop, and anything added later) sees the same
  * normalized spec. These lock that contract down.
  */
 

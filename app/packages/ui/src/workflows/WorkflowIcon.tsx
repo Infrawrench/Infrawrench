@@ -4,7 +4,7 @@ interface WorkflowIconProps {
 }
 
 /**
- * Workflow glyph — two nodes joined by an elbow connector, evoking a
+ * Workflow glyph: two nodes joined by an elbow connector, evoking a
  * branching automation graph. Used in sidebars and tab strips so the
  * Workflows entry reads as a first-class destination alongside dashboards.
  */

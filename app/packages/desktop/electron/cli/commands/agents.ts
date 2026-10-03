@@ -22,7 +22,7 @@ function statusCell(row: AgentRegistration): string {
 }
 
 /**
- * `infrawrench agents` — the agent credentials that can reach this org.
+ * `infrawrench agents`: the agent credentials that can reach this org.
  *
  * The same inventory the Agent Credentials settings page shows. Worth having
  * here for the same reason `hygiene` is: "what non-human things can touch our

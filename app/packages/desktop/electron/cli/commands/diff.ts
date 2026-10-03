@@ -1,4 +1,4 @@
-// `infrawrench diff -a staging -b prod` — two accounts of the same provider
+// `infrawrench diff -a staging -b prod`; two accounts of the same provider
 // compared side by side: resource types present in one and not the other,
 // per-type count deltas, and the fields on which two corresponding resources
 // disagree (instance class, engine version, a feature flag). The answer to
@@ -6,16 +6,16 @@
 // anywhere in the comparison.
 //
 // Works in both modes:
-//   - cloud (default) — GET /environment-diff, the same endpoint the web and
+//   - cloud (default): GET /environment-diff, the same endpoint the web and
 //     desktop Env diff screens use, computed over already-synced rows.
-//   - --local — electron/local-environment-diff.ts enumerates both of this
+//   - --local: electron/local-environment-diff.ts enumerates both of this
 //     machine's accounts through the plugin (the local workspace has no synced
 //     store) and runs the identical shared computation. No cloud session
 //     needed; a resource type whose list fails is excluded and reported rather
 //     than read as an absence.
 //
-// The response shape comes from `@infrawrench/client-core` — the same
-// definition the web and desktop panels render — so a server-side change
+// The response shape comes from `@infrawrench/client-core` (the same
+// definition the web and desktop panels render) so a server-side change
 // breaks the CLI's build instead of its output. The import is type-only, so
 // the CLI still ships zero new runtime dependencies.
 import {

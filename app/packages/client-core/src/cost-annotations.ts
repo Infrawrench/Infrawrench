@@ -1,5 +1,5 @@
 /**
- * Cost annotations — dated notes drawn over a cost chart.
+ * Cost annotations: dated notes drawn over a cost chart.
  *
  * A spend chart shows a step change and nothing else. Six weeks later nobody
  * remembers whether it was a migration, a launch, or a price change, and the
@@ -13,7 +13,7 @@
  *    a moment; a migration is a week. Spelling the week as seven notes is a lie
  *    about how many things happened, and spelling it as one day is a lie about
  *    when it stopped. The cost of supporting both is one nullable column and a
- *    comparison — "which buckets does [start, end] intersect" is the same set
+ *    comparison: "which buckets does [start, end] intersect" is the same set
  *    operation as "which bucket contains start", with the degenerate case
  *    falling out for free.
  * 2. **An annotation is an overlay, never data.** Nothing here is summed, and
@@ -40,7 +40,7 @@ import type { CloudFetch } from "./fetch";
 export const COST_ANNOTATION_LIMITS = {
   /**
    * A note, not a document. Long enough for "Migrated the API fleet from m5 to
-   * m7g — see RFC-114", short enough that a marker's text is readable in a
+   * m7g: see RFC-114", short enough that a marker's text is readable in a
    * popover on a phone.
    */
   maxTextLength: 500,
@@ -63,7 +63,7 @@ export const COST_ANNOTATION_LIMITS = {
  */
 export interface CostAnnotation {
   id: string;
-  /** Inclusive first day, `YYYY-MM-DD` (UTC) — the day the thing happened. */
+  /** Inclusive first day, `YYYY-MM-DD` (UTC): the day the thing happened. */
   startDate: string;
   /**
    * Inclusive last day, or null when the annotation is a moment rather than a
@@ -71,7 +71,7 @@ export interface CostAnnotation {
    */
   endDate: string | null;
   text: string;
-  /** Report this note is scoped to; **null is org-wide** — see above. */
+  /** Report this note is scoped to; **null is org-wide**: see above. */
   costReportId: string | null;
   createdByUserId: string | null;
   createdAt: string;
@@ -81,7 +81,7 @@ export interface CostAnnotation {
    * acknowledging one, and null for a hand-written note.
    *
    * The other half of {@link CostAnomalyAcknowledgement.annotationId}, resolved
-   * by the API from the same single foreign key rather than stored twice — two
+   * by the API from the same single foreign key rather than stored twice: two
    * columns for one fact is how the two disagree. It is what makes a marker on
    * a chart traceable back to the finding it closed, so "we migrated the fleet"
    * can be checked against the spike it explains.
@@ -113,7 +113,7 @@ function inclusiveDaySpan(from: string, to: string): number {
  * Why this annotation cannot be saved, or null when it can.
  *
  * Shared so the editors refuse locally exactly what the API refuses remotely,
- * with the same words — a form that accepts a note the server then rejects is
+ * with the same words: a form that accepts a note the server then rejects is
  * the failure this prevents.
  */
 export function costAnnotationInputError(input: CostAnnotationInput): string | null {
@@ -137,7 +137,7 @@ export function costAnnotationInputError(input: CostAnnotationInput): string | n
 /**
  * The bucket key a day falls in, or null when the day is not an ISO date.
  *
- * The binning itself is {@link costBucketStart} — the one derivation that has to
+ * The binning itself is {@link costBucketStart}: the one derivation that has to
  * agree with `bucketExpr` in `server-core/clickhouse/cost-readers` (Monday-start
  * weeks, first-of-month, daily keys for `cumulative` because it is a running sum
  * over them). Re-deriving it here is exactly how a marker would end up one bar
@@ -155,12 +155,12 @@ function bucketKey(day: string, binning: CostBinningId): string | null {
  * spanning annotation reaches.
  *
  * There is at most one marker per bucket **by construction**. Several notes on
- * one day — or on one month, at monthly binning, which is the common case — must
+ * one day (or on one month, at monthly binning, which is the common case) must
  * aggregate into a single marker; drawing one flag per note would overprint them
  * into an unreadable smear exactly where the interesting thing happened.
  */
 export interface CostAnnotationMarker {
-  /** An existing chart bucket — the marker's x position. */
+  /** An existing chart bucket: the marker's x position. */
   bucket: string;
   /**
    * The last chart bucket a spanning annotation in this marker reaches, or null
@@ -168,7 +168,7 @@ export interface CostAnnotationMarker {
    * chart's own last bucket, so shading never extends the axis.
    */
   endBucket: string | null;
-  /** 1-based position in bucket order — the number printed on the chart. */
+  /** 1-based position in bucket order: the number printed on the chart. */
   index: number;
   /** Every annotation on this bucket, earliest start first. */
   annotations: CostAnnotation[];
@@ -178,7 +178,7 @@ export interface CostAnnotationMarker {
  * Map annotations onto the buckets a chart actually drew.
  *
  * `buckets` is the chart's own bucket list (the pivoted rows' keys, forecast
- * buckets included) — the derivation is never repeated here, which is what keeps
+ * buckets included): the derivation is never repeated here, which is what keeps
  * a marker on the bar it names. Everything else follows three rules:
  *
  * - **Out of range is not drawn.** An annotation whose span shares no bucket
@@ -270,7 +270,7 @@ export function formatCostAnnotationDates(
   return `${start} – ${day(annotation.endDate)}`;
 }
 
-/** `"Org-wide"` or `"This report"` — the scope, said out loud in every list. */
+/** `"Org-wide"` or `"This report"`: the scope, said out loud in every list. */
 export function describeCostAnnotationScope(
   annotation: Pick<CostAnnotation, "costReportId">,
 ): string {
@@ -317,7 +317,7 @@ export function costAnomalyAnnotationInput(
  * Why this explanation cannot be saved, or null when it can.
  *
  * Delegates to {@link costAnnotationInputError} against the note that would
- * actually be created, so the composer refuses exactly what the API refuses —
+ * actually be created, so the composer refuses exactly what the API refuses,
  * including the 500-character ceiling, which is a fact about annotations rather
  * than about anomalies and should only ever be stated once.
  */
@@ -332,9 +332,9 @@ export function costAnomalyExplanationError(
  * The half-written sentence the composer opens with.
  *
  * Prefill is the difference between this feature being used and not: facing an
- * empty box, people write nothing; facing "Amazon EC2 spend up 173% — ", they
+ * empty box, people write nothing; facing "Amazon EC2 spend up 173%; ", they
  * finish the sentence. It restates what the row already knows so the *note* is
- * self-contained on a chart, where the reader has no anomaly next to it — the
+ * self-contained on a chart, where the reader has no anomaly next to it: the
  * date is not repeated, because the marker's position is the date.
  */
 export function costAnomalyExplanationPrefill(

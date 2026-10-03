@@ -3,7 +3,7 @@ interface StatusPagesIconProps {
   size?: number | undefined;
 }
 
-/** Public-status-page glyph — a published document with a healthy component. */
+/** Public-status-page glyph: a published document with a healthy component. */
 export function StatusPagesIcon({ className, size = 14 }: StatusPagesIconProps) {
   return (
     <svg

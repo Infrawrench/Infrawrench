@@ -2,7 +2,7 @@
  * The markdown representation of a docs page.
  *
  * These pages *are* markdown on disk, so this is mostly a matter of handing
- * back the source — with two adjustments that matter to a reader who is not a
+ * back the source: with two adjustments that matter to a reader who is not a
  * browser:
  *
  * - The frontmatter becomes a heading and a lede. Raw YAML at the top of a
@@ -13,7 +13,7 @@
  */
 import type { CollectionEntry } from "astro:content";
 
-/** `<insert Some description here>` on its own line — see CLAUDE.md. */
+/** `<insert Some description here>` on its own line: see CLAUDE.md. */
 const SCREENSHOT_PLACEHOLDER = /^[ \t]*<insert\b[^>]*>[ \t]*$\n?/gim;
 
 export function renderDocMarkdown(entry: CollectionEntry<"docs">): string {

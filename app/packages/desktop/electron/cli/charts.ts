@@ -1,5 +1,5 @@
 // Tiny terminal chart toolkit for the CLI's text + TUI modes. Everything is
-// plain unicode + the shared color helpers — no chart library.
+// plain unicode + the shared color helpers: no chart library.
 import { c, seriesColor, visibleWidth, formatNumber } from "./output";
 
 const SPARK_TICKS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const;

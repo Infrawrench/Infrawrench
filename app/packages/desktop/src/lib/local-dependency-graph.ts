@@ -6,8 +6,8 @@
  * links and field values that name another resource's identity). Plugin
  * metadata (logo, display names) comes from the renderer plugin loader.
  *
- * Local mode always assembles the whole graph — the detail page's Dependencies
- * tab filters it client-side — so there is no focused-query path to mirror.
+ * Local mode always assembles the whole graph (the detail page's Dependencies
+ * tab filters it client-side) so there is no focused-query path to mirror.
  */
 import {
   collectDependencyRules,
@@ -52,7 +52,7 @@ function parseBag(json: string): Record<string, unknown> {
 export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
   const db = await getDb();
 
-  // Four independent reads — nothing here feeds anything else's query, so
+  // Four independent reads: nothing here feeds anything else's query, so
   // they go out together instead of waterfalling over the IPC boundary.
   const [resourceRows, associationRows, refStateRows, accountRows] = await Promise.all([
     db.select<ResourceRow[]>(
@@ -76,7 +76,7 @@ export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
   const resourceById = new Map(resourceRows.map((r) => [r.id, r]));
   const accountNameById = new Map(accountRows.map((a) => [a.id, a.display_name]));
 
-  // Associations first — canonical topology rows; first edge per (consumer,
+  // Associations first: canonical topology rows; first edge per (consumer,
   // field, provider) wins, matching the shared model's dedupe rule.
   const edges: DependencyGraphEdge[] = [];
   const seen = new Set<string>();
@@ -97,7 +97,7 @@ export async function loadLocalDependencyGraph(): Promise<DependencyGraphData> {
     });
   }
 
-  // One load, indexed by manifest id — `getPlugin` is a linear scan over the
+  // One load, indexed by manifest id: `getPlugin` is a linear scan over the
   // same memoized list, so calling it per node re-scanned it every time.
   // Loaded before inference because the plugins' `dependsOn` declarations
   // feed it.

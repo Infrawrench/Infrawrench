@@ -6,7 +6,7 @@ import { infrafileImageRef } from "./types.js";
 
 /**
  * `Infrafile.d.ts` is assembled from template literals, so a stray backtick or
- * a mis-escaped one silently produces a file that no longer parses — the editor
+ * a mis-escaped one silently produces a file that no longer parses: the editor
  * then loses every type at once, with no build step to catch it. These parse
  * the real output.
  */

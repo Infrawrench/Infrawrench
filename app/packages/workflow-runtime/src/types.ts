@@ -25,7 +25,7 @@ export type WorkflowTrigger =
     }
   | {
       kind: "budget";
-      /** The `budgets.id` this workflow watches (cloud-only — budgets are a cloud feature). */
+      /** The `budgets.id` this workflow watches (cloud-only: budgets are a cloud feature). */
       budgetId: string;
       /**
        * Fire when spend reaches this percentage of the budget's monthly amount.
@@ -197,14 +197,14 @@ export interface PromptSpec {
   kind?: "text" | "password" | "number" | "date" | "boolean" | "select" | "code";
   /**
    * Options for `kind: "select"`. `hint` is display-only decoration beside the
-   * label (a region's "🇺🇸 Iowa, USA") — the answer is always the `value`, so
+   * label (a region's "🇺🇸 Iowa, USA"): the answer is always the `value`, so
    * `--set` stays stable while the picker stays pretty.
    */
   options?: { label: string; value: string; hint?: string }[];
   defaultValue?: string;
 }
 
-/** A provider region as `group.regions()` returns it — for a plan's `select`. */
+/** A provider region as `group.regions()` returns it, for a plan's `select`. */
 export interface WorkflowRegionOption {
   /** The value the provider expects in create fields, e.g. "us-central1". */
   id: string;
@@ -220,7 +220,7 @@ export interface WorkflowRegionOption {
  * One day of spend a workflow reports via `infra.costs.write(...)`. Mirrors
  * plugin-base's `CostRow` (the shape provider plugins return from
  * `fetchCostData`) so custom sources land in exactly the same `cost_daily`
- * table the graphs, filters, and budgets already read — plus an optional
+ * table the graphs, filters, and budgets already read, plus an optional
  * `accountId` to attribute the spend to one of the org's connected accounts.
  */
 export interface WorkflowCostRow {
@@ -259,12 +259,12 @@ export interface WorkflowCostWriteResult {
  *
  * The denominator half of a unit cost: `infra.costs.write` reports what was
  * spent, this reports how many of the thing the business does happened. The two
- * are deliberately separate calls — spend has dimensions (service, region,
+ * are deliberately separate calls: spend has dimensions (service, region,
  * tags) and a currency, a business metric has one number a day.
  *
  * **Named `businessMetrics`, not `metrics`, and that is not a style choice.**
  * `infra.metrics` is already the workflow's own declared key/value metrics, and
- * it is a Proxy whose `get` returns `null` for unknown keys — so
+ * it is a Proxy whose `get` returns `null` for unknown keys, so
  * `infra.metrics.write` would silently be `null` rather than a function, and a
  * workflow calling it would fail with "not a function" pointing at nothing.
  */
@@ -314,7 +314,7 @@ export interface PageSpec {
   cooldownMinutes?: number;
   /**
    * Also place a voice call to recipients who opted into voice. Off by
-   * default — reserve it for things worth waking someone up for.
+   * default: reserve it for things worth waking someone up for.
    */
   voice?: boolean;
 }
@@ -343,7 +343,7 @@ export interface PageResult {
  */
 export const DEFAULT_APPROVAL_TIMEOUT_MINUTES = 60;
 
-/** Ceiling for one approval wait — a day. Longer should be a second run. */
+/** Ceiling for one approval wait: a day. Longer should be a second run. */
 export const MAX_APPROVAL_TIMEOUT_MINUTES = 24 * 60;
 
 /** Longest approval title/message we carry across the bridge. */
@@ -369,7 +369,7 @@ export interface ApprovalSpec {
   timeoutMinutes?: number;
 }
 
-/** What `infra.waitForApproval(...)` resolves with — only ever an approval. */
+/** What `infra.waitForApproval(...)` resolves with, only ever an approval. */
 export interface ApprovalResult {
   approved: true;
   /** Display name (or email) of the org member who approved. */
@@ -387,7 +387,7 @@ export const MAX_FETCH_TIMEOUT_MS = 120_000;
 /** Response bytes a `fetch(...)` will buffer before failing, by default. */
 export const DEFAULT_FETCH_MAX_BYTES = 5 * 1024 * 1024;
 
-/** Ceiling for `maxBytes` — the whole body is buffered in memory on both sides. */
+/** Ceiling for `maxBytes`: the whole body is buffered in memory on both sides. */
 export const MAX_FETCH_MAX_BYTES = 10 * 1024 * 1024;
 
 /** Largest request body a workflow may send (base64 is decoded before this check). */
@@ -484,13 +484,13 @@ export const MAX_AI_MAX_TOKENS = 8192;
 
 /**
  * Longest prompt we carry across the bridge (characters). Generous because the
- * point of the capability is handing the model real material — a log tail, a
- * diff, a batch of alerts — but bounded because the whole prompt is buffered
+ * point of the capability is handing the model real material (a log tail, a
+ * diff, a batch of alerts) but bounded because the whole prompt is buffered
  * through the JSON bridge and billed as input tokens.
  */
 export const MAX_AI_PROMPT_LENGTH = 200_000;
 
-/** Longest system prompt. Framing, not payload — the payload is the prompt. */
+/** Longest system prompt. Framing, not payload: the payload is the prompt. */
 export const MAX_AI_SYSTEM_LENGTH = 10_000;
 
 /**
@@ -499,7 +499,7 @@ export const MAX_AI_SYSTEM_LENGTH = 10_000;
  * {@link WORKFLOW_AI_MODELS}, `maxTokens` clamped, blank prompt rejected).
  */
 export interface WorkflowAiSpec {
-  /** What to ask. The model sees only this and `system` — nothing of the run. */
+  /** What to ask. The model sees only this and `system`: nothing of the run. */
   prompt: string;
   /** Optional system prompt framing how the model should answer. */
   system?: string;
@@ -552,7 +552,7 @@ export interface WorkflowCreateFieldInfo {
  * the `kubernetes` plugin via its kubeconfig, and a managed database exposes
  * `postgres` / `mysql` / `redis` / `mongodb` via its connection string. Built
  * from the parent resource type's `peerIntegrations`, and surfaced on the
- * resource itself as `resource.<pluginId>.<group>` — e.g.
+ * resource itself as `resource.<pluginId>.<group>`, e.g.
  * `cluster.kubernetes.pods.list()`.
  */
 export interface WorkflowSidecarInfo {
@@ -579,7 +579,7 @@ export interface WorkflowResourceTypeInfo {
   /**
    * Peer plugins reachable through a resource of this type. Empty/absent for
    * the overwhelming majority of types; only managed clusters and managed
-   * databases carry one. Never nested — a sidecar's own types have none.
+   * databases carry one. Never nested: a sidecar's own types have none.
    */
   sidecars?: WorkflowSidecarInfo[];
   /**

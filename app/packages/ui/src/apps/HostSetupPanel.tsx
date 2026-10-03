@@ -3,7 +3,7 @@ import { T, useGT } from "gt-react";
 import type { HostPreflight, InstallPlan, RequirementId } from "@infrawrench/appstream-core";
 
 /**
- * "This host is missing what applications need" — and the button that fixes it.
+ * "This host is missing what applications need", and the button that fixes it.
  *
  * Shown in place of the launcher grid when the check comes back short. Three
  * things about the shape of it are deliberate:
@@ -15,7 +15,7 @@ import type { HostPreflight, InstallPlan, RequirementId } from "@infrawrench/app
  * **The commands are visible before the button is pressed.** This installs
  * packages as root on a machine that is not ours. The honest version of that
  * offer shows exactly what it will run, and can be copied and run by hand
- * instead — which is the only path available on a host that would prompt for a
+ * instead, which is the only path available on a host that would prompt for a
  * sudo password.
  *
  * **The result comes from a second check, not from the install.** A package
@@ -38,7 +38,7 @@ export interface HostSetupPanelProps {
    * Open the launcher anyway.
    *
    * Offered even when a required item is missing, because the check can be
-   * wrong — an unusual host may have what it needs somewhere we did not look —
+   * wrong (an unusual host may have what it needs somewhere we did not look)
    * and being told "no" by software that will not let you try is worse than a
    * session that fails.
    */
@@ -130,9 +130,9 @@ export function HostSetupPanel({
   );
   const missingRequired = missing.filter((requirement) => requirement.severity === "required");
 
-  // Recommended items are installed alongside by default — a user who came here
+  // Recommended items are installed alongside by default: a user who came here
   // to make applications work is not well served by a second round trip for
-  // the browser's GL driver — but they are visible and can be dropped.
+  // the browser's GL driver, but they are visible and can be dropped.
   const requirementsToInstall = useMemo(
     () =>
       missing
@@ -143,7 +143,7 @@ export function HostSetupPanel({
 
   const commands = plan?.commands ?? [];
 
-  // Follow the output, the same way the chat panel follows a stream — but only
+  // Follow the output, the same way the chat panel follows a stream, but only
   // while the user is already at the bottom, so scrolling back to read the line
   // that mentioned an error is not undone by the next one arriving.
   useEffect(() => {

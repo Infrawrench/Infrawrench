@@ -14,8 +14,8 @@ class StubImageData {
   ) {}
 }
 globalThis.ImageData ??= StubImageData as unknown as typeof ImageData;
-// And no 2D context. Returning null is what the viewer already handles — it
-// paints nothing and carries on — and saves jsdom logging a page of
+// And no 2D context. Returning null is what the viewer already handles (it
+// paints nothing and carries on) and saves jsdom logging a page of
 // "not implemented" for every frame.
 HTMLCanvasElement.prototype.getContext = () => null;
 
@@ -61,7 +61,7 @@ function mount() {
   const canvas = screen.getByRole("img");
 
   // Pointer input is measured against the frame buffer, so nothing is sent
-  // until one frame has arrived — which is true of the real thing too: there
+  // until one frame has arrived, which is true of the real thing too: there
   // is nothing to point at before the window has drawn.
   const payload = {
     codec: 0,
@@ -88,8 +88,8 @@ describe("AppWindowViewer keyboard", () => {
   });
 
   it("forwards the browser's auto-repeat as re-taps", () => {
-    // The remote side has key repeat disabled — a hold-timer over a laggy
-    // link reads a slow release as a hold and types phantom characters — so
+    // The remote side has key repeat disabled (a hold-timer over a laggy
+    // link reads a slow release as a hold and types phantom characters) so
     // the browser's own repeat is the only repeat, sent as release+press.
     const { canvas, sent } = mount();
     fireEvent.keyDown(canvas, { code: "KeyA" });
@@ -101,7 +101,7 @@ describe("AppWindowViewer keyboard", () => {
 
   it("releases a key still held when the window loses focus", () => {
     // The keyup goes to whatever has focus now, so the application would be
-    // left holding the key down — and repeating it forever.
+    // left holding the key down, and repeating it forever.
     const { canvas, sent } = mount();
     fireEvent.keyDown(canvas, { code: "KeyA" });
     fireEvent.keyDown(canvas, { code: "ShiftLeft" });
@@ -137,7 +137,7 @@ describe("AppWindowViewer clipboard", () => {
 
   it("synthesises the shortcut rather than forwarding the one that was pressed", () => {
     // Cmd+V on a Mac reaches a Linux application as Meta+V, which does
-    // nothing at all — so the paste has to be made rather than relayed.
+    // nothing at all, so the paste has to be made rather than relayed.
     const { canvas, sent } = mount();
     fireEvent.keyDown(canvas, { code: "KeyV", key: "v", metaKey: true });
     expect(sent).toEqual([]);
@@ -210,7 +210,7 @@ describe("AppWindowViewer dialogs", () => {
 
     expect(screen.getAllByRole("img")).toHaveLength(2);
     // The dialog is sized by the application, so it attaches at the size the
-    // host reported — not the tab's box, which would stretch it fullscreen.
+    // host reported, not the tab's box, which would stretch it fullscreen.
     expect(attached.find((entry) => entry.windowId === 2)).toMatchObject({
       width: 120,
       height: 80,

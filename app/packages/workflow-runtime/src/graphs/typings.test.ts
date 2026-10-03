@@ -7,7 +7,7 @@ import { generateGraphDts } from "./codegen.js";
 
 /**
  * The org-scoped graph typings are the static graph half concatenated with a
- * read-only infra half — two independently authored ambient files. These
+ * read-only infra half: two independently authored ambient files. These
  * checks catch the failure mode where an identifier collision between them
  * breaks EVERY graph typecheck at once, and pin that readOnly really strips
  * the mutating surface.

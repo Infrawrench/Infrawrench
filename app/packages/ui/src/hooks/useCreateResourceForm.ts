@@ -17,16 +17,16 @@ export interface CreateResourceCallbacks {
     sizes: Array<{ id: string; vcpus: number; memoryMb: number }>;
   }) => Promise<Record<string, number>>;
   /**
-   * Get a full cost estimate — total plus line items — for the current field
+   * Get a full cost estimate (total plus line items) for the current field
    * values. Called on a debounce as the user edits, so a host that fetches
    * over the network gets at most one request per pause, not one per
    * keystroke.
    */
   loadCostEstimate?: (fields: Record<string, string>) => Promise<CostEstimate | null>;
-  /** Submit the create form — platform handles the result via its own callback */
+  /** Submit the create form: platform handles the result via its own callback */
   create: (fields: Record<string, string>) => Promise<void>;
   /**
-   * Execute an in-form field action (e.g. mint an IAM role) — only used when
+   * Execute an in-form field action (e.g. mint an IAM role), only used when
    * the loaded `CreateResourceConfig` declares `actions` on a field. Returns
    * the new value plus an optional option entry that should be spliced into
    * the field's options list so the value can render in a select.
@@ -400,7 +400,7 @@ export function useCreateResourceForm(
       const submitFields: Record<string, string> = {};
       const cfg = configWithPricing ?? config;
       for (const f of cfg?.fields ?? []) {
-        // Transient fields (e.g. a mode toggle) are UI-only controls — never
+        // Transient fields (e.g. a mode toggle) are UI-only controls, never
         // submit them to the plugin.
         if (f.transient) continue;
         if (!evaluateShowWhen(f, fields)) continue;

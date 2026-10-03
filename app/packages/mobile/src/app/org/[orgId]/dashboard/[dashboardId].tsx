@@ -35,7 +35,7 @@ type OpenSheet =
   { kind: "add" } | { kind: AddCardChoice } | { kind: "configure"; widget: DashboardWidget } | null;
 
 /**
- * One dashboard's cards. The name goes in the header rather than the body —
+ * One dashboard's cards. The name goes in the header rather than the body:
  * the back button next to it is what makes this read as a place you drilled
  * into from the Dashboards tab, and a title inside the scroll view would
  * disappear the moment you scrolled.
@@ -295,7 +295,7 @@ export default function DashboardScreen() {
 
 /**
  * Editing a budget card edits the budget itself, so the change follows it to
- * every dashboard it sits on — and to the alerts, which outlive any card.
+ * every dashboard it sits on, and to the alerts, which outlive any card.
  */
 function ConfigureBudget({
   widget,
@@ -341,11 +341,11 @@ function ConfigureBudget({
         // read-only, but dropping it on save would silently widen the budget.
         ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
         // And for the scenario opt-in. Dropping it on save would move the
-        // budget's forecast thresholds back to the bare trend — an
+        // budget's forecast thresholds back to the bare trend: an
         // alert-changing edit nobody made.
         ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
         // Same rule: not editable from this sheet, but settable via the API
-        // and the Terraform provider — saving here must not silently move the
+        // and the Terraform provider; saving here must not silently move the
         // budget off the adjusted (billing-rule) figure it was opted into.
         ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
       }}

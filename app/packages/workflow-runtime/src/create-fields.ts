@@ -2,7 +2,7 @@
  * Distills a plugin's rich `CreateResourceConfig` (returned by
  * `PluginClient.getCreateConfig`) down to the small {@link WorkflowCreateFieldInfo}
  * shape that codegen needs to type `create({...})` with real field keys and
- * enumerable option values — instead of a generic `Record<string, string>`.
+ * enumerable option values, instead of a generic `Record<string, string>`.
  *
  * Shared here (rather than per-platform) so the web server, the poller, and the
  * Electron main process all map create fields identically.
@@ -17,7 +17,7 @@ const MAX_OPTIONS = 200;
 /**
  * The enumerable option ids for a field, when its kind carries a closed list.
  * Free-form kinds (text/number/password/hostname/datetime/code/…) and dynamic
- * pickers (ssh-key-picker, resource-picker — values are user/account specific)
+ * pickers (ssh-key-picker, resource-picker: values are user/account specific)
  * return undefined, so codegen leaves them as an open `string`.
  */
 function optionsFor(field: CreateFieldConfig): string[] | undefined {

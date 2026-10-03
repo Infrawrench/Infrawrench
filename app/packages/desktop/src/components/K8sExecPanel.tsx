@@ -41,7 +41,7 @@ export function K8sExecPanel({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Same link policy as the SSH terminal — a pod shell prints URLs too.
+    // Same link policy as the SSH terminal: a pod shell prints URLs too.
     const linkHandler = createTerminalLinkHandler({
       openExternal: (url) => void invoke("open_external_url", { url }),
     });

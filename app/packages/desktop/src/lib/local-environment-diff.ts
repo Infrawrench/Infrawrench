@@ -7,8 +7,8 @@
  *
  * Where it differs from the cloud path is the *source* of the two
  * inventories. The cloud compares rows the poller synced; local mode has no
- * such store — the desktop's `resources` table only holds what the app itself
- * created or pinned — so it enumerates both accounts through the plugin, the
+ * such store (the desktop's `resources` table only holds what the app itself
+ * created or pinned) so it enumerates both accounts through the plugin, the
  * way the account pages do. That means real provider calls, and it means a
  * resource type whose list fails is excluded rather than reported as absent:
  * "we couldn't ask" and "prod doesn't have one" are opposite answers.
@@ -110,7 +110,7 @@ export async function loadLocalEnvironmentDiff(
  * Every resource type of one account, listed through the provider.
  *
  * `listResources` leaves `resolvedOutputs` empty by contract, so a local diff
- * compares stored fields only — resolving outputs would mean a call per
+ * compares stored fields only: resolving outputs would mean a call per
  * resource on both sides.
  */
 async function listAccount(

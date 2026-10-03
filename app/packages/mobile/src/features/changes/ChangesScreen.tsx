@@ -23,7 +23,7 @@ import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts";
 import { RevertChangeSection } from "./RevertChangeSection";
 
 /**
- * The org-wide change timeline — every resource the cloud poller saw appear,
+ * The org-wide change timeline: every resource the cloud poller saw appear,
  * change, or disappear, newest first. The native counterpart of
  * `@infrawrench/ui`'s `ChangesPanel` (web and desktop); the wire contract, the
  * reader and the wording all come from `@infrawrench/client-core`, so only the
@@ -32,7 +32,7 @@ import { RevertChangeSection } from "./RevertChangeSection";
  * **Filters.** The endpoint takes `page`, `pageSize`, `kind`, `accountId`,
  * `from`, `to` and `resourceId`. Three of them are exposed here:
  *
- *  - **kind** and **account**, the two the web panel has — a phone shows five
+ *  - **kind** and **account**, the two the web panel has: a phone shows five
  *    rows at a time, so narrowing matters more here, not less.
  *  - **a time window**, as presets rather than a range. `from`/`to` are a
  *    two-date picker on web; on a phone the useful questions are "today" and
@@ -41,7 +41,7 @@ import { RevertChangeSection } from "./RevertChangeSection";
  *
  * `resourceId` is deliberately not a filter here: one resource's slice is
  * reached by opening the resource, where `ResourceChangesCard` shows it. `to`
- * has no use without a full range picker — every preset ends at "now".
+ * has no use without a full range picker: every preset ends at "now".
  *
  * Paging follows the audit log: `useInfiniteQuery` over the same
  * `{ entries, total }` envelope with a **Load more** button, plus
@@ -63,7 +63,7 @@ const WINDOW_DAYS: Partial<Record<WindowKey, number>> = { "24h": 1, "7d": 7, "30
 
 export interface ChangesScreenProps {
   /**
-   * ISO timestamp from a `resource_drift` notification — the start of the
+   * ISO timestamp from a `resource_drift` notification: the start of the
    * window the digest described. Present, the screen opens filtered to it.
    */
   since?: string | undefined;
@@ -90,7 +90,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
     return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   }, [windowKey, since, hasSince]);
 
-  // Populates the account filter. A failure leaves the filter out entirely —
+  // Populates the account filter. A failure leaves the filter out entirely:
   // it is a convenience, and the feed works without it.
   const accounts = useQuery({
     queryKey: ["accounts", orgId],
@@ -127,7 +127,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
   const total = feed.data?.pages[0]?.total ?? 0;
 
   /**
-   * Cost impact for the rows on screen — "what did this change do to the run
+   * Cost impact for the rows on screen: "what did this change do to the run
    * rate?". Deliberately its own query rather than part of the feed: a member
    * without `costs:read` still gets the feed, they just get no cost line.
    *
@@ -135,7 +135,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
    * endpoint caps a batch at `MAX_CHANGE_IMPACT_BATCH`, and this screen scrolls
    * infinitely, so the ids are chunked (`chunkChangeImpactIds`) and one query is
    * keyed per chunk. Truncating instead would leave every row past the cap with
-   * no cost line — which reads as "no cost data for this resource" and is the
+   * no cost line, which reads as "no cost data for this resource" and is the
    * silent omission the whole feature exists to avoid.
    *
    * Chunks are cut from the start of the list, so loading another page leaves
@@ -145,7 +145,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
    *
    * **A failed chunk is unresolved, not blank.** The stable keys that make
    * appending cheap are also what would make a failure stick, and blank already
-   * means "no measurable impact" here — so a transient error would quietly
+   * means "no measurable impact" here, so a transient error would quietly
    * become a confident, wrong claim about the bill. Three things prevent that:
    * these queries take the app-wide `retry` from `_layout.tsx` rather than
    * opting out of it, pull-to-refresh refetches them alongside the feed, and
@@ -293,7 +293,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
 }
 
 /**
- * One event. Tapping opens it — the phone's stand-in for the web row's "Show
+ * One event. Tapping opens it: the phone's stand-in for the web row's "Show
  * diff" link, since there is no room for a per-field diff and a summary on the
  * same line. The expanded body is the single-change detail view: the full
  * before → after list, the resource's identity, and the way through to it.
@@ -341,7 +341,7 @@ function ChangeEntryRow({
           <Text style={styles.summary} numberOfLines={1}>
             {new Date(entry.createdAt).toLocaleString()} · {summarizeChange(entry)}
           </Text>
-          {/* Null when there is nothing measured to say — never a "$0" line
+          {/* Null when there is nothing measured to say, never a "$0" line
               beside a resource that was never billable in the first place. */}
           {impact && formatChangeCostImpact(impact) && (
             <Text style={styles.costImpact} numberOfLines={1}>

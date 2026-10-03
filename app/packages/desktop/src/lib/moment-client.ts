@@ -11,7 +11,7 @@ import { invoke } from "./invoke";
  * cloud side (poller passes, workflow runner, audit writes), so local-only
  * mode has nothing to merge. Resolves the active org at call time (not at
  * client construction) so switching org under a mounted page reaches the new
- * org's window — same convention as the changes and costs clients.
+ * org's window: same convention as the changes and costs clients.
  */
 export function createDesktopMomentClient(): MomentClient {
   const requireOrg = (): string => {

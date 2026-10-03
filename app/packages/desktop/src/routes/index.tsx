@@ -53,7 +53,7 @@ function IndexPage() {
             ]);
             bumpDashboardPins();
           } catch {
-            // Already exists (e.g. from the parallel StrictMode run) — find the real id
+            // Already exists (e.g. from the parallel StrictMode run): find the real id
             const existing = await db.select<{ id: string; name: string }[]>(
               "SELECT id, name FROM dashboards WHERE is_default = 1 LIMIT 1",
             );

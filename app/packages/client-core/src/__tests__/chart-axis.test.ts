@@ -37,7 +37,7 @@ describe("niceAxis", () => {
   it("keeps ticks zero-based for a credit too small to earn one", () => {
     const { domain, ticks } = niceAxis(-0.02, 2.65);
     expect(ticks).toEqual([0, 1, 2, 3]);
-    // Snug, not a whole wasted step — but still low enough to draw the dip.
+    // Snug, not a whole wasted step, but still low enough to draw the dip.
     expect(domain[0]).toBeLessThanOrEqual(-0.02);
     expect(domain[0]).toBeGreaterThan(-0.5);
     expect(domain[1]).toBe(3);

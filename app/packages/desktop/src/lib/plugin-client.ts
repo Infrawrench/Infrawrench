@@ -18,7 +18,7 @@ export async function createPluginClient(
 }
 
 /**
- * A client for a *peer* plugin reached through a parent resource — the
+ * A client for a *peer* plugin reached through a parent resource: the
  * `kubernetes` plugin inside a managed cluster, `postgres` inside a managed
  * database. Credentials come from the parent's outputs, per the parent resource
  * type's `peerIntegrations`.

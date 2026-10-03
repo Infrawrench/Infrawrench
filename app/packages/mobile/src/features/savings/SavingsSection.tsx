@@ -7,7 +7,7 @@ import { colors, spacing } from "@/lib/theme";
 import { useOrphans } from "./useOrphans";
 
 /**
- * "Potential savings" — the native counterpart to `SavingsSection` on web and
+ * "Potential savings": the native counterpart to `SavingsSection` on web and
  * desktop. Resources a provider plugin's orphan heuristic flagged (unattached
  * volumes, unassigned IPs), grouped by account, each with the plugin's reason
  * and, where the org collects per-resource billing rows, trailing spend.
@@ -23,7 +23,7 @@ export function SavingsSection() {
   const data = orphans.data ?? null;
 
   // `costBasis: "unavailable"` is a local-desktop-mode signal the web API never
-  // emits — but it is part of the contract, and a column of blanks reads as
+  // emits, but it is part of the contract, and a column of blanks reads as
   // "this costs nothing", so honour it here too rather than assume.
   const showCost = data !== null && data.costBasis !== "unavailable";
   // Ownership is a cloud record, and `costBasis: "unavailable"` marks the one

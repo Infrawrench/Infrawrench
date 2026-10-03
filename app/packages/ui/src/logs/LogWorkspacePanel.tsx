@@ -71,8 +71,8 @@ function optionKey(option: {
  * The log workspace: tail several log-capable resources in one pane through
  * the host's per-resource log machinery, interleaved (arrival order, colored
  * per-stream labels) or split into stacked panes, with pause, a unified
- * search box applied client-side across all streams, and — on hosts with
- * cloud storage — saved queries with an optional alert-on-match flag the
+ * search box applied client-side across all streams, and (on hosts with
+ * cloud storage) saved queries with an optional alert-on-match flag the
  * poller evaluates server-side.
  */
 export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelProps) {
@@ -105,7 +105,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
   const streamsRef = useRef(streams);
   const tailRef = useRef(tailLines);
   // Layout effects run during commit, before any microtask queued by the
-  // event handlers below — so queueMicrotask(pollAll) always sees fresh refs.
+  // event handlers below, so queueMicrotask(pollAll) always sees fresh refs.
   useLayoutEffect(() => {
     streamsRef.current = streams;
   }, [streams]);
@@ -143,7 +143,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         if (!cancelled) setSaved(queries);
       })
       .catch(() => {
-        /* saved queries are an enhancement — the tail pane works without them */
+        /* saved queries are an enhancement: the tail pane works without them */
       });
     return () => {
       cancelled = true;
@@ -283,8 +283,8 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
       setStreams(
         query.resources.map((selector, i) => ({
           selector,
-          // `||` (not `??`): each fallback can be an empty string — a blank
-          // display name or an id with fewer than three `:` segments — and
+          // `||` (not `??`): each fallback can be an empty string (a blank
+          // display name or an id with fewer than three `:` segments) and
           // must fall through to the next non-empty label.
           label:
             optionByKey.get(optionKey(selector))?.displayName ||
@@ -562,7 +562,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           {streams.map((stream) => {
             const key = logStreamKey(stream.selector);
             // Sidecar streams (pods behind a managed cluster) have no detail
-            // page of their own — the chip stays a plain label.
+            // page of their own: the chip stays a plain label.
             const openable = onOpenResource && !stream.selector.parentResourceId;
             return (
               <span

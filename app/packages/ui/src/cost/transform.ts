@@ -1,7 +1,7 @@
 /**
  * Recharts-shaped data helpers for cost charts: pivot grouped series into
  * rows, align previous-period comparisons onto the current axis, and splice
- * forecast rows onto the end. No React, no fetching — unit-test target.
+ * forecast rows onto the end. No React, no fetching: unit-test target.
  *
  * The binning and formatting helpers these build on are platform-neutral and
  * live in `@infrawrench/client-core` (mobile draws the same charts with SVG);
@@ -19,7 +19,7 @@ export {
 } from "@infrawrench/client-core";
 
 export interface ChartSeriesDef {
-  /** recharts dataKey — group key made collision-safe. */
+  /** recharts dataKey: group key made collision-safe. */
   dataKey: string;
   label: string;
   currency: string;
@@ -129,7 +129,7 @@ export function spliceForecast(
  * Called after `spliceForecast`, so the rows the scenario needs already exist;
  * it only ever writes {@link SCENARIO_KEY}, never a series value, so the stacks
  * and the totals are identical whether or not a scenario is applied. Buckets
- * outside the drawn range are ignored rather than appended — the scenario
+ * outside the drawn range are ignored rather than appended: the scenario
  * covers exactly the forecast's days, so this can only fire on a mismatch, and
  * quietly widening the axis would be the wrong repair.
  */

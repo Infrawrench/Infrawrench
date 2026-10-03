@@ -11,8 +11,8 @@ import { typecheckWorkflow } from "./typecheck.js";
 import type { WorkflowPluginInfo, WorkflowResourceTypeInfo } from "./types.js";
 
 /**
- * Sidecars — the peer plugins a resource exposes (a managed cluster's
- * `kubernetes`, a managed database's `postgres`) — used to exist at every layer
+ * Sidecars: the peer plugins a resource exposes (a managed cluster's
+ * `kubernetes`, a managed database's `postgres`); used to exist at every layer
  * except the one an author writes against. A workflow could not name what runs
  * inside its own cluster, and nothing in the typings said so, so the only way to
  * find that out was to guess an accessor and watch it come back `undefined`.
@@ -175,8 +175,8 @@ describe("sidecars in the generated typings", () => {
   });
 
   it("does not offer ssh or bucket reads on something inside a cluster", () => {
-    // Both resolve against the account's own plugin — an SSH endpoint, a bucket
-    // name — which a pod borrowing a parent's credentials doesn't have.
+    // Both resolve against the account's own plugin (an SSH endpoint, a bucket
+    // name) which a pod borrowing a parent's credentials doesn't have.
     const result = typecheckWorkflow({
       source: [
         'const cluster = (await infra.accounts.gcp.getByName("Infrawrench GCP").gkeClusters.list())[0]!;',
@@ -272,7 +272,7 @@ describe("attachSidecarInfo", () => {
  * It used to cache that failure as "no capabilities", which deleted
  * `pod.logs()` from the generated typings for ten minutes and made an
  * already-working workflow stop type-checking. Worse, several parent types
- * probed the same peer concurrently, so which answer won was a race — the
+ * probed the same peer concurrently, so which answer won was a race: the
  * method appeared and disappeared between two edits a minute apart.
  */
 describe("enrichSidecarCapabilities", () => {
@@ -364,7 +364,7 @@ describe("enrichSidecarCapabilities", () => {
     });
 
     expect(peerClient).toHaveBeenCalledTimes(1);
-    // Both parents get typed — not just whichever one had the live cluster.
+    // Both parents get typed, not just whichever one had the live cluster.
     expect(logsOf(gke)).toBe(true);
     expect(logsOf(doks)).toBe(true);
   });
@@ -420,7 +420,7 @@ describe("dispatch", () => {
       parentResourceId: "acc1:gke-cluster:prod",
     });
 
-    // Ordinary calls stay ordinary — no ref, the account's own plugin.
+    // Ordinary calls stay ordinary: no ref, the account's own plugin.
     await dispatch(host, ctx, "resource.list", { accountId: "acc1", typeId: "gke-cluster" });
     expect(listResources).toHaveBeenLastCalledWith("acc1", "gke-cluster", undefined);
   });

@@ -4,7 +4,7 @@ interface CostReportsIconProps {
 }
 
 /**
- * Cost reports glyph — a document with a bar chart on it. Same 24x24 stroke
+ * Cost reports glyph: a document with a bar chart on it. Same 24x24 stroke
  * grid and 2px weight as {@link CostsIcon}, so the Reports sidebar tile reads
  * as a sibling of Costs rather than a different family of icon: the page is a
  * saved, filed version of what Costs shows live.

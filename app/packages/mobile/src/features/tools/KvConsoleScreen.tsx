@@ -12,7 +12,7 @@ import { KeyboardAvoider } from "@/components/KeyboardAvoider";
 import { colors, radii, spacing } from "@/lib/theme";
 
 /**
- * Mobile KV console — the phone counterpart of the web KvConsole panel, over
+ * Mobile KV console: the phone counterpart of the web KvConsole panel, over
  * `POST /kv/command`. Command parsing, result formatting and the per-driver
  * copy come from client-core so Redis, Memcached, Kafka and Mongo behave the
  * same here as on the desk.

@@ -11,7 +11,7 @@ export type OwnershipCandidate = import("@infrawrench/client-core").OwnerCandida
 
 /**
  * Host-injected data access for the ownership surfaces. Web wraps
- * `apiGet`/`apiPut`; desktop (cloud mode) wraps its cloud IPC — the components
+ * `apiGet`/`apiPut`; desktop (cloud mode) wraps its cloud IPC: the components
  * stay platform-agnostic (the `LeasesClient` pattern).
  *
  * `listMembers` is part of the client rather than a prop because the owner

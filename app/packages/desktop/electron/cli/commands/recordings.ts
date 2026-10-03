@@ -8,7 +8,7 @@ import type {
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import { c, printJson, println, printTable, type Column } from "../output";
 
-/** "4m 12s" — kept local so the CLI has no DOM-adjacent import. */
+/** "4m 12s": kept local so the CLI has no DOM-adjacent import. */
 function duration(ms: number | null): string {
   if (ms === null || !Number.isFinite(ms) || ms < 0) return "—";
   const total = Math.round(ms / 1000);
@@ -46,7 +46,7 @@ function statusCell(status: SessionRecordingStatus): string {
 }
 
 /**
- * `infrawrench recordings` — recorded SSH sessions for the org.
+ * `infrawrench recordings`: recorded SSH sessions for the org.
  *
  * `infrawrench recordings get <id>` writes the asciicast to stdout (or to
  * `--file`), which is the point of the subcommand existing at all: the format

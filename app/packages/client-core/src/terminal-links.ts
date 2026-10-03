@@ -3,7 +3,7 @@
  *
  * Terminal output is remote-controlled text: whatever host you are connected
  * to decides what appears in the buffer, so a "link" is untrusted input. This
- * is the single gate every platform runs it through before anything opens —
+ * is the single gate every platform runs it through before anything opens:
  * web (`window.open`), desktop (Electron `shell.openExternal`), and mobile
  * (`Linking.openURL`, re-validated on the React Native side after the tap
  * crosses the WebView bridge).
@@ -26,7 +26,7 @@ const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:"]);
  * open, or null when it must not be opened.
  *
  * Returns the parsed `href` rather than the raw match, so what opens is what
- * was validated — there is no second, differing parse downstream.
+ * was validated: there is no second, differing parse downstream.
  */
 export function normalizeTerminalLinkUrl(raw: string): string | null {
   const trimmed = raw.trim();

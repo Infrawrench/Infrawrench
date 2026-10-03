@@ -1,4 +1,4 @@
-// `infrawrench login | logout | whoami` — cloud session management. The CLI
+// `infrawrench login | logout | whoami`: cloud session management. The CLI
 // shares the desktop app's session (same encrypted token rows in SQLite), so
 // signing in from either side signs in both.
 import { shell } from "electron";

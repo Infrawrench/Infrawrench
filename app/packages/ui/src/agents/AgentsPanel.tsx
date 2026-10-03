@@ -375,7 +375,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
         : gt("Opening {name}... preparing SSH session.", { name: session.projectName }),
     );
     try {
-      // T3 Code servers open the interactive authorization terminal — the
+      // T3 Code servers open the interactive authorization terminal: the
       // rest of the session lives in T3 Code's own app, which the user
       // reaches from their browser once the server is linked.
       await openAgentSshTerminalTab({
@@ -605,7 +605,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                 </div>
                 {/* A T3 Code server has no Infrawrench-managed checkout, so
                     the repository controls don't apply to it. Left out of the
-                    tree rather than hidden with CSS — a hidden-but-focusable
+                    tree rather than hidden with CSS: a hidden-but-focusable
                     URL field is still reachable by keyboard. */}
                 {needsRepo && (
                   <div className="flex flex-col gap-2 md:flex-row">

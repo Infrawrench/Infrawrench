@@ -6,10 +6,10 @@ import { CLOUD_URL } from "../../env";
  * Single authorized proxy for the cloud-mode Settings tab.
  *
  * The shared settings sections (in @infrawrench/ui) speak the same `/api/...`
- * paths the web app fetches — ~60 endpoints across team, roles, keys,
+ * paths the web app fetches: ~60 endpoints across team, roles, keys,
  * billing, notification routing and the personal profile. Giving each its own
  * IPC channel would triple the preload allowlist for one feature, so this one
- * channel proxies them all — but only them: the method+path allowlist below
+ * channel proxies them all, but only them: the method+path allowlist below
  * is the security boundary, and anything outside the settings surface is
  * rejected before a request leaves the main process. The channel name itself
  * stays fixed, so the renderer still cannot reach an arbitrary handler.

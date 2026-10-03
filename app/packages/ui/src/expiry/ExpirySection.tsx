@@ -13,12 +13,12 @@ export interface ExpirySectionProps {
   /**
    * The computed feed, or null while the first load is in flight. Hosts fetch
    * (web: `/expiring`, desktop: IPC or the local scan) and hand the response
-   * over — this component never talks to a network.
+   * over; this component never talks to a network.
    */
   data: ExpiryListResponse | null;
   /**
    * Load or refresh failure. With `data` still present the last feed stays on
-   * screen under a banner — a failed refresh must not blank a drawn list.
+   * screen under a banner: a failed refresh must not blank a drawn list.
    */
   error?: string | null | undefined;
   onRetry?: (() => void) | undefined;
@@ -59,7 +59,7 @@ const SEVERITY_TEXT_CLASSES: Record<ExpirySeverity, string> = {
   ok: "text-on-surface-tertiary",
 };
 
-/** "in 12d" / "due today" / "expired 3d ago" — the row's countdown text. */
+/** "in 12d" / "due today" / "expired 3d ago": the row's countdown text. */
 export function formatDaysRemaining(daysRemaining: number): string {
   if (daysRemaining < 0) return t("expired {days}d ago", { days: -daysRemaining });
   if (daysRemaining === 0) return t("due today");
@@ -119,7 +119,7 @@ function buildGroups(items: ExpiryItem[], groupBy: GroupBy, soonestFirst: boolea
 
   // Items arrive pre-sorted, so insertion order already ranks kind/account
   // groups by their most urgent item. Severity groups follow the escalation
-  // order instead — "Expired" belongs on top even when empty buckets skew the
+  // order instead: "Expired" belongs on top even when empty buckets skew the
   // due-date order.
   if (groupBy === "severity") {
     return EXPIRY_SEVERITIES.flatMap((s) => {
@@ -132,7 +132,7 @@ function buildGroups(items: ExpiryItem[], groupBy: GroupBy, soonestFirst: boolea
 
 /**
  * The Expiry radar: one cross-provider countdown of everything with a clock on
- * it — TLS certs, domain registrations, tokens, key ages — computed from
+ * it (TLS certs, domain registrations, tokens, key ages) computed from
  * already-synced fields the plugins mark as expiry-bearing. Shared by the web
  * and desktop Expiring screens; the CLI prints the same feed as text.
  */
@@ -268,7 +268,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                             >
                               <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
                                 {/* The name is the navigation control, not the
-                                    row — a <tr> has no role a screen reader
+                                    row: a <tr> has no role a screen reader
                                     announces as activatable. */}
                                 {onOpenResource ? (
                                   <button

@@ -6,7 +6,7 @@
  *
  *  - **Plain text URLs** the remote program printed (`t3 connect link` and
  *    `gh auth login` both do this). Detected by `@xterm/addon-web-links`,
- *    which each platform loads — the addon does the buffer scanning and
+ *    which each platform loads: the addon does the buffer scanning and
  *    line-wrap handling; this module decides what happens on click.
  *  - **OSC 8 hyperlinks**, where the program marks a range as a link with an
  *    escape sequence. xterm handles those natively via the `linkHandler`
@@ -16,11 +16,11 @@
  * program can print any text it likes. So the scheme is allow-listed to
  * http/https before anything opens, and opening always goes to the user's
  * real browser rather than anywhere inside the app. `javascript:`, `data:`,
- * `file:` and friends are refused outright — there is no legitimate reason
+ * `file:` and friends are refused outright: there is no legitimate reason
  * for a terminal to hand one of those to the app shell.
  *
  * Typed loosely so `@infrawrench/ui` does not need a hard dependency on
- * `@xterm/xterm` — same approach as `terminal-clipboard.ts`.
+ * `@xterm/xterm`: same approach as `terminal-clipboard.ts`.
  */
 
 import { normalizeTerminalLinkUrl } from "@infrawrench/client-core";

@@ -29,7 +29,7 @@ interface DesktopBackupsPanelProps {
  * Posture and Expiring: the coverage itself could be computed locally, but the
  * recovery objectives it is measured against are org state with nowhere to
  * live in a single-machine workspace, and a Backups screen that could only
- * ever say "there is a backup" — never "recent enough" — would be the wrong
+ * ever say "there is a backup" (never "recent enough") would be the wrong
  * half of the feature. Local mode gets the Changes/Costs treatment: an
  * explicit "sign in" message rather than an empty table.
  */

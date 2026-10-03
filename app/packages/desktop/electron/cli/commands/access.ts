@@ -4,7 +4,7 @@ import type { AccessRequest } from "@infrawrench/client-core" with {
 };
 import { c, printJson, println, printTable, type Column } from "../output";
 
-/** "45m" / "2h" — kept local so the CLI pulls nothing UI-shaped. */
+/** "45m" / "2h": kept local so the CLI pulls nothing UI-shaped. */
 function duration(minutes: number): string {
   if (!Number.isFinite(minutes) || minutes <= 0) return "—";
   if (minutes < 60) return `${Math.round(minutes)}m`;
@@ -12,7 +12,7 @@ function duration(minutes: number): string {
   return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
 
-/** "in 24m" / "24m ago" — the countdown cell. */
+/** "in 24m" / "24m ago": the countdown cell. */
 function countdown(at: string | null): string {
   if (!at) return c.dim("—");
   const ms = Date.parse(at) - Date.now();
@@ -42,14 +42,14 @@ function statusCell(request: AccessRequest): string {
 }
 
 /**
- * `infrawrench access` — break-glass requests and live elevations.
+ * `infrawrench access`: break-glass requests and live elevations.
  *
  * Read-only by design. Raising a request needs a reason someone will read and
  * a permission picker that cannot drift from the server's catalog, and both of
  * those belong on a screen; deciding one is a judgement call that should
  * involve looking at what is being asked for. What the CLI is genuinely good
- * at is the question an on-call engineer actually types at 3am — "who is
- * elevated right now" — so that is what it answers.
+ * at is the question an on-call engineer actually types at 3am ("who is
+ * elevated right now") so that is what it answers.
  */
 export async function cmdAccess(ctx: CliContext, rest: string[]): Promise<void> {
   const org = await resolveOrg(ctx);

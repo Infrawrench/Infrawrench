@@ -1,5 +1,5 @@
 /**
- * Regression guard for issue #123 — "manifest editor renders YAML without
+ * Regression guard for issue #123: "manifest editor renders YAML without
  * syntax highlighting".
  *
  * The editors were never the problem. Both resource-detail hosts clear the
@@ -8,7 +8,7 @@
  * re-runs on every render. Writing a fresh `{}` there made the write a real
  * state change every time, and the page re-rendered forever. A page that never
  * stops rendering never goes idle, and Monaco tokenises its viewport from
- * `requestIdleCallback` — so every editor on the page stayed at the default
+ * `requestIdleCallback`, so every editor on the page stayed at the default
  * foreground colour (`mtk1`) even though the model, the tokenizer and the
  * theme were all correct.
  *
@@ -36,7 +36,7 @@ function useUnstableDependency(): () => void {
  * The shape of both hosts' agent-launch reset branch, reduced to the parts
  * that decide whether it terminates.
  *
- * React does not abort a passive-effect update loop — it logs "Maximum update
+ * React does not abort a passive-effect update loop: it logs "Maximum update
  * depth exceeded" and keeps going, which is exactly why the real page spun
  * forever. So the runaway case has to be bounded here or the test would hang;
  * `RENDER_LIMIT` renders is the failure signal.

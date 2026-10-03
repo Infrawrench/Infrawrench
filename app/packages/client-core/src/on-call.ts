@@ -1,9 +1,9 @@
 /**
- * On-call rotations — who to wake, rather than which channel to shout into.
+ * On-call rotations: who to wake, rather than which channel to shout into.
  *
  * Alert routing already answers "where does this go": a rule matches an alert
  * and names destinations. What it could not express is the thing every team
- * actually means — *whoever is on call*. A `on-call` destination resolves to a
+ * actually means: *whoever is on call*. A `on-call` destination resolves to a
  * person at the moment the alert fires, and its escalation walks the rotation
  * rather than a fixed list, so the handover on Monday morning does not require
  * anybody to edit a routing rule.
@@ -16,7 +16,7 @@
  * **Shift arithmetic is calendar-day arithmetic, never 24-hour arithmetic.**
  * Two weeks contain a spring-forward or a fall-back twice a year, and a
  * rotation stepped in fixed milliseconds drifts an hour each time until the
- * "09:00 Monday" handover happens at 08:00 — or, worse, until the shift
+ * "09:00 Monday" handover happens at 08:00, or, worse, until the shift
  * boundary lands on the wrong side of the handover and two people each think
  * the other is on call.
  */
@@ -38,20 +38,20 @@ export interface OnCallSchedule {
   /**
    * The calendar date (`YYYY-MM-DD`, in `timezone`) the first shift begins on,
    * at `handoffTime`. Every later boundary is derived from it, so moving this
-   * moves the whole rotation — which is what an org that wants to re-anchor a
+   * moves the whole rotation, which is what an org that wants to re-anchor a
    * schedule actually means.
    */
   startDate: string;
   /**
    * Ordered participants. Position is the rotation order, so reordering the
-   * list re-plans the future — deliberately, because that is what somebody
+   * list re-plans the future: deliberately, because that is what somebody
    * dragging a name is asking for.
    */
   participants: OnCallParticipant[];
   /**
    * Off means the schedule resolves to nobody. A destination pointing at a
    * disabled schedule falls through to the rule's other destinations rather
-   * than failing the alert — see `resolveOnCall`.
+   * than failing the alert: see `resolveOnCall`.
    */
   enabled: boolean;
   createdAt: string;
@@ -95,7 +95,7 @@ export interface OnCallShift {
   email: string | null;
   /** Whether this shift comes from the rotation or from a cover. */
   source: "rotation" | "override";
-  /** Index into `participants` — null for an override, which has no position. */
+  /** Index into `participants`: null for an override, which has no position. */
   rotationIndex: number | null;
 }
 
@@ -127,7 +127,7 @@ export interface OnCallScheduleInput {
 
 /**
  * Validate a schedule as the editor and the API both see it. One sentence, or
- * null — the editor shows it above the save button.
+ * null: the editor shows it above the save button.
  */
 export function validateOnCallSchedule(input: OnCallScheduleInput): string | null {
   const name = input.name?.trim() ?? "";
@@ -198,7 +198,7 @@ function handoffInstant(schedule: OnCallSchedule, dayKey: string): number {
  *
  * The day a shift belongs to is decided by the handover time, not by midnight:
  * at 08:00 on a Monday with a 09:00 handover, last week's shift is still
- * running. Returns null before the schedule's start date — a rotation does not
+ * running. Returns null before the schedule's start date: a rotation does not
  * retroactively cover the past.
  */
 function shiftIndexAt(
@@ -229,7 +229,7 @@ function participantAt(schedule: OnCallSchedule, index: number): OnCallParticipa
  * Returns null for a disabled schedule, a schedule with nobody in it, or an
  * instant before the rotation starts. Every caller treats null as "this
  * destination contributes nobody" and carries on with the rule's other
- * destinations — an alert that fails to deliver because a schedule was
+ * destinations: an alert that fails to deliver because a schedule was
  * misconfigured is the worst possible failure for this feature.
  */
 export function resolveOnCall(
@@ -280,7 +280,7 @@ export function resolveOnCall(
 }
 
 /**
- * The person after the one currently on call — where an escalation goes.
+ * The person after the one currently on call, where an escalation goes.
  *
  * Resolved from the *rotation*, never from an override: a cover is somebody
  * standing in for one shift, and escalating to "whoever happens to be covering
@@ -298,7 +298,7 @@ export function nextOnCall(schedule: OnCallSchedule, atMs: number): OnCallPartic
 /**
  * Upcoming shifts, for the editor's preview and the schedule page.
  *
- * Rotation shifts only — overrides are drawn over them by the caller, because
+ * Rotation shifts only: overrides are drawn over them by the caller, because
  * a preview that silently folded covers in would make it impossible to see
  * what the rotation itself does.
  */

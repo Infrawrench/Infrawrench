@@ -29,7 +29,7 @@ const inputClass =
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 /**
- * Scenario models — the org's named sets of known future cost.
+ * Scenario models: the org's named sets of known future cost.
  *
  * Lives on the Costs panel rather than in Settings, and for the same reason
  * saved filters do: a scenario model is a cost object, not a preference. It is
@@ -39,7 +39,7 @@ const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
  * describe your own spend.
  *
  * The editor names the referents before anything is saved for the same reason
- * the saved-filter editor does — and one sharper one: a referent can be a
+ * the saved-filter editor does, and one sharper one: a referent can be a
  * *budget*, and changing the assumptions under a budget changes when somebody
  * gets paged.
  */
@@ -229,7 +229,7 @@ function newAdjustment(currency: string): CostScenarioAdjustment {
  * Create/edit one scenario model.
  *
  * On edit the referents are loaded and named up front. Saving re-projects every
- * chart drawing this model on its next query — and re-judges the forecast
+ * chart drawing this model on its next query, and re-judges the forecast
  * thresholds of any budget that opted into it, which is the sentence that
  * belongs next to the Save button rather than in a changelog.
  */
@@ -265,7 +265,7 @@ function ScenarioModelEditModal({
         if (!cancelled) setReferents(rows);
       })
       .catch(() => {
-        // Advisory only — the edit still works; the caveat is just unnamed.
+        // Advisory only: the edit still works; the caveat is just unnamed.
         if (!cancelled) setReferents(null);
       });
     return () => {
@@ -283,7 +283,7 @@ function ScenarioModelEditModal({
       name: name.trim(),
       ...(description.trim() ? { description: description.trim() } : {}),
       currency: code,
-      // Amount rows always carry the model's currency — the field is not
+      // Amount rows always carry the model's currency: the field is not
       // separately editable, because a model that holds two currencies is
       // exactly what the contract refuses.
       adjustments: adjustments.map((a) => ({
@@ -439,7 +439,7 @@ function ScenarioModelEditModal({
  * One adjustment inside the editor: the row that says *what* the org already
  * knows is coming, how much of it, when, and to which slice of spend.
  *
- * Split out of the modal because the row is genuinely self-contained — it is
+ * Split out of the modal because the row is genuinely self-contained: it is
  * fully controlled, holds no state of its own, and everything it needs is the
  * adjustment plus the model's currency. The kind-change rules live here rather
  * than in the parent for the same reason: which fields a kind can carry is a
@@ -454,7 +454,7 @@ function AdjustmentRow({
   onRemove,
 }: {
   adjustment: CostScenarioAdjustment;
-  /** Position in the list — used only to name the row's controls. */
+  /** Position in the list: used only to name the row's controls. */
   index: number;
   /** The model's currency; amount rows never carry their own. */
   currency: string;
@@ -529,9 +529,9 @@ function AdjustmentRow({
               value={adjustment.percent ?? 0}
               onChange={(e) => {
                 // A cleared or half-typed field keeps what is stored. Coercing
-                // it would write an assumption nobody made — `Number("")` is a
+                // it would write an assumption nobody made: `Number("")` is a
                 // silent "no change at all", `Number("-")` is a NaN that
-                // travels into the request body — while a deliberate 0 still
+                // travels into the request body, while a deliberate 0 still
                 // parses and still saves.
                 const percent = parseNumericInputValue(e.target.value);
                 if (percent === null) return;

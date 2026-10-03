@@ -1,11 +1,11 @@
-// `infrawrench moment [timestamp]` — "what changed around 03:14?" in the
+// `infrawrench moment [timestamp]`; "what changed around 03:14?" in the
 // terminal, backed by the same /moment endpoint the web and desktop screens
 // read: one merged, chronological window across the change timeline, provider
 // incidents, cost anomalies, workflow runs, deployments, audit entries,
 // change freezes and the drift/expiry alert deliveries.
 //
 // Wire types and the merge/badge/grouping logic come from
-// `@infrawrench/client-core` — the same definitions every other surface
+// `@infrawrench/client-core`: the same definitions every other surface
 // renders with, so a server-side change breaks the CLI's build, not its
 // output.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
@@ -32,7 +32,7 @@ export async function cmdMoment(ctx: CliContext, range: RangeFlags): Promise<voi
   const org = await resolveOrg(ctx);
 
   // Positional timestamp: absent or "now" = around now. Anything Date.parse
-  // accepts works — "2026-08-03T03:14" and "2026-08-03 03:14" both do.
+  // accepts works: "2026-08-03T03:14" and "2026-08-03 03:14" both do.
   const rawAt = ctx.positionals.slice(1).join(" ").trim();
   let at: string | undefined;
   if (rawAt !== "" && rawAt.toLowerCase() !== "now") {
@@ -46,7 +46,7 @@ export async function cmdMoment(ctx: CliContext, range: RangeFlags): Promise<voi
     at = new Date(parsed).toISOString();
   }
 
-  // --window 30m|6h|1d — a ± half-width, sent to the server in minutes.
+  // --window 30m|6h|1d: a ± half-width, sent to the server in minutes.
   let windowMinutes: number | undefined;
   if (range.window !== undefined) {
     windowMinutes = Math.max(1, Math.round(parseDuration(range.window) / 60_000));

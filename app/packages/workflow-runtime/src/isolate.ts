@@ -13,7 +13,7 @@
  * `__accountsTree`, injected through the global `env` object; everything
  * ergonomic (`infra.*`) is pure JS built by the prelude on top of those.
  *
- * Callers own everything *around* the isolate — assembling the program, reading
+ * Callers own everything *around* the isolate: assembling the program, reading
  * the accounts tree, persisting the run. {@link runIsolate} owns only the parts
  * that must not be reimplemented per program kind: the execution budget, the
  * pause accounting, and the interrupt/refusal pair that makes `Stop` responsive.
@@ -26,19 +26,19 @@ import type { RunLimits, RunResult } from "./types.js";
 
 /**
  * Host RPCs whose wall-clock duration is excluded from the run's execution
- * budget: interactive prompts, SSH calls — the latter may pop a host-key
- * confirmation dialog or wait minutes for a VM to boot — and approval gates,
+ * budget: interactive prompts, SSH calls (the latter may pop a host-key
+ * confirmation dialog or wait minutes for a VM to boot) and approval gates,
  * which by design wait for a human (bounded host-side by the approval's own
  * timeout). A runaway pure-JS loop stays bounded (its CPU time still counts);
  * only genuine waits are paused.
  *
  * `fetch` is deliberately NOT here. Each call is already bounded by its own
  * timeout, and counting them keeps `while (true) await fetch(...)` inside the
- * run's budget — pausing would make that loop unkillable.
+ * run's budget: pausing would make that loop unkillable.
  *
  * `ai` IS here, despite also being a network wait: a couple of long model
  * completions would otherwise consume most of a five-minute budget doing no
- * guest work at all. Unlike a fetch loop it stays bounded without the budget —
+ * guest work at all. Unlike a fetch loop it stays bounded without the budget:
  * the cloud host enforces a per-call timeout and a hard per-run call cap, so
  * pausing cannot make a loop unkillable.
  */
@@ -54,7 +54,7 @@ export const PAUSED_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 interface IsolateEnvValues {
-  /** JSON `WorkflowPluginInfo[]` — the read-only accounts tree. */
+  /** JSON `WorkflowPluginInfo[]`: the read-only accounts tree. */
   accountsTree: string;
   /** JSON `Record<string, MetricValue>` snapshot the prelude proxies. */
   metrics: string;
@@ -71,7 +71,7 @@ export interface RunIsolateOptions {
   host?: WorkflowHost;
   /**
    * Routes `__host` RPCs instead of the workflow {@link dispatch}. Program
-   * kinds with their own (narrower) host surface — custom graphs — supply one
+   * kinds with their own (narrower) host surface (custom graphs) supply one
    * so unknown methods fail closed rather than reaching workflow powers.
    */
   dispatcher?: (method: string, args: Record<string, unknown>) => Promise<unknown>;
@@ -83,14 +83,14 @@ export interface RunIsolateOptions {
   signal?: AbortSignal;
   /**
    * Host methods excluded from the execution budget *in addition to*
-   * {@link PAUSED_METHODS} — for RPCs a particular program kind blocks on for
+   * {@link PAUSED_METHODS}, for RPCs a particular program kind blocks on for
    * minutes at a time (an image build, say) without executing guest code.
    */
   extraPausedMethods?: readonly string[];
 }
 
 /**
- * How the isolate ended. An `error` means the run failed — either the guest
+ * How the isolate ended. An `error` means the run failed: either the guest
  * threw (reported through the `__error` sentinel) or the isolate itself did.
  */
 export interface IsolateOutcome {
@@ -152,7 +152,7 @@ export async function runIsolate(opts: RunIsolateOptions): Promise<IsolateOutcom
       }
       const pause = paused.has(method);
       // The interrupt handler below is the isolate's only other exit, and
-      // QuickJS consults it on an instruction count — a loop that spends its
+      // QuickJS consults it on an instruction count: a loop that spends its
       // time *suspended* in host calls executes very few instructions, so it
       // can overrun the budget by a wide margin before the handler is asked.
       // Refusing to serve a call once the run is over (or stopped) closes that:
@@ -217,7 +217,7 @@ export async function runIsolate(opts: RunIsolateOptions): Promise<IsolateOutcom
  *
  * Metric assignments are buffered in the prelude (property writes can't be
  * async); persist the final value of every touched metric once the body
- * settles — even on failure, so partial progress is saved.
+ * settles, even on failure, so partial progress is saved.
  */
 export const FLUSH_METRICS_EPILOGUE = [
   `try {`,

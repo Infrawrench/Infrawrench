@@ -4,7 +4,7 @@ interface EnvironmentDiffIconProps {
 }
 
 /**
- * Environment-diff glyph — two stacked panes with a plus and a minus, the
+ * Environment-diff glyph: two stacked panes with a plus and a minus, the
  * side-by-side comparison the screen performs. Same 24x24 stroke grid and 2px
  * weight as ChangesIcon/ExpiryIcon so the Env diff sidebar entry sits level
  * with its neighbours.

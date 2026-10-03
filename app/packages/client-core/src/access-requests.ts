@@ -1,9 +1,9 @@
 /**
- * Break-glass access — the platform-neutral client half.
+ * Break-glass access: the platform-neutral client half.
  *
  * A member asks for specific permissions, for a specific number of minutes,
  * with a reason; someone else approves; the elevation lapses on its own. The
- * alternative most orgs reach for — making the person an admin — is how you end
+ * alternative most orgs reach for (making the person an admin) is how you end
  * up with ten admins and no record of why.
  *
  * Server contract: `/api/org/:orgId/access-requests` (web
@@ -64,7 +64,7 @@ export interface ActiveElevation {
 
 export interface AccessRequestFilters {
   status?: AccessRequestStatus;
-  /** Only the caller's own requests — "where is mine". */
+  /** Only the caller's own requests: "where is mine". */
   mine?: boolean;
   /** Only rows granting permissions right now. */
   active?: boolean;
@@ -138,7 +138,7 @@ export async function withdrawAccessRequest(
 /**
  * True when a decision failed because someone else got there first, or the
  * request had already timed out. The server's conditional UPDATE is what makes
- * two racing deciders produce exactly one decision — the loser gets this, and
+ * two racing deciders produce exactly one decision: the loser gets this, and
  * the honest response is to say so and re-list rather than retry.
  */
 export function isAccessDecisionConflict(error: unknown): boolean {
@@ -154,7 +154,7 @@ export function isAccessDecisionForbidden(error: unknown): boolean {
   return error instanceof CloudApiError && error.status === 403;
 }
 
-/** "45m" / "2h" / "8h" — the duration picker and the request row. */
+/** "45m" / "2h" / "8h": the duration picker and the request row. */
 export function formatGrantDuration(minutes: number): string {
   if (!Number.isFinite(minutes) || minutes <= 0) return "—";
   if (minutes < 60) return `${Math.round(minutes)}m`;
@@ -163,7 +163,7 @@ export function formatGrantDuration(minutes: number): string {
 }
 
 /**
- * "expires in 24m" / "expired 3m ago" — the countdown on a pending request and
+ * "expires in 24m" / "expired 3m ago": the countdown on a pending request and
  * on a live grant.
  *
  * Deliberately the same wording as the workflow approvals inbox

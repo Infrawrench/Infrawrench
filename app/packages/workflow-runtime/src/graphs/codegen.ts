@@ -1,7 +1,7 @@
 /**
  * The ambient `graph.d.ts` for custom-graph scripts. Unlike the workflow
- * `infra.d.ts` it is static — a graph's surface doesn't depend on the org's
- * connected accounts — so one string serves the Monaco editor, the headless
+ * `infra.d.ts` it is static (a graph's surface doesn't depend on the org's
+ * connected accounts) so one string serves the Monaco editor, the headless
  * typecheck, and the MCP typings tool alike. Its shape must mirror
  * `graphs/prelude.ts` exactly.
  */
@@ -9,7 +9,7 @@ export interface GenerateGraphDtsOptions {
   /**
    * Omit the graph dts's own `fetch` declaration. Used when the string is
    * combined with a generated (read-only) workflow `infra.d.ts`, which brings
-   * its own — two `declare function fetch` overloads would both resolve, and
+   * its own: two `declare function fetch` overloads would both resolve, and
    * the infra one documents the egress-proxy behavior more precisely.
    */
   omitFetch?: boolean;

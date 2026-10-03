@@ -16,7 +16,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 
 /**
  * Time-travel undo, the native way. The web and desktop surfaces open a modal;
- * a phone row is already an expanded detail, so the plan renders in place — tap
+ * a phone row is already an expanded detail, so the plan renders in place: tap
  * **Revert this change**, read what would happen field by field, then confirm.
  *
  * Everything that decides anything (which fields can go back, which already
@@ -65,7 +65,7 @@ export function RevertChangeSection({
   onReverted,
 }: {
   entry: ResourceChangeEntry;
-  /** Refetch the feed — the row's `revertedAt` and the resource both moved. */
+  /** Refetch the feed: the row's `revertedAt` and the resource both moved. */
   onReverted: () => void;
 }) {
   const { api, orgId } = useOrgApi();

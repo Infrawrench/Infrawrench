@@ -1,5 +1,5 @@
 /**
- * Generates `Infrafile.d.ts` — the ambient declarations that make an Infrafile
+ * Generates `Infrafile.d.ts`: the ambient declarations that make an Infrafile
  * autocomplete in an editor and type-check headlessly.
  *
  * It is `infra.d.ts` plus a `defineInfra` declaration. The `infra` half is
@@ -8,7 +8,7 @@
  * deploy stage can reach identically.
  *
  * `prompt` is typed away (an Infrafile asks via `select`, which is answerable
- * with `--set`) and `costs` is off — reporting spend belongs to a workflow, not
+ * with `--set`) and `costs` is off: reporting spend belongs to a workflow, not
  * a deploy.
  */
 import { generateInfraDts } from "../codegen.js";
@@ -26,7 +26,7 @@ export function generateInfrafileDts(input: GenerateInfrafileDtsInput): string {
   const infraDts = generateInfraDts({
     plugins: input.plugins,
     metrics: [],
-    // An Infrafile prompts through `select`, never `infra.prompt` — the latter
+    // An Infrafile prompts through `select`, never `infra.prompt`: the latter
     // has no key, so it could not be answered by `--set` in CI.
     interactive: false,
     triggerKind: "manual",

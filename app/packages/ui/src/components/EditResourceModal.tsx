@@ -9,7 +9,7 @@ import { ErrorNotice } from "./ErrorNotice.js";
 import { useDataString } from "../i18n/data-strings.js";
 
 export interface EditResourceModalProps {
-  /** Title shown in the modal header — typically the resource type display name (e.g. "Project"). */
+  /** Title shown in the modal header: typically the resource type display name (e.g. "Project"). */
   displayName: string;
   /**
    * Field schema for the resource. Fields with `editable === false` are omitted;
@@ -26,8 +26,8 @@ export interface EditResourceModalProps {
   onSubmit: (changedFields: Record<string, string>) => Promise<void>;
   onClose: () => void;
   /**
-   * Price a proposed set of field values. Receives only the changed keys —
-   * the host merges them over the resource's stored fields — and is called on
+   * Price a proposed set of field values. Receives only the changed keys
+   * (the host merges them over the resource's stored fields) and is called on
    * a debounce, so a host that goes over the network makes one request per
    * pause rather than one per keystroke.
    *
@@ -109,7 +109,7 @@ export function EditResourceModal({
   }, [loadCostEstimate]);
 
   // `changed` is a fresh object on every render, so the effect keys off its
-  // serialization rather than its identity — otherwise every keystroke's
+  // serialization rather than its identity, otherwise every keystroke's
   // re-render would restart the debounce even when nothing actually changed.
   const changedKey = JSON.stringify(changed);
   useEffect(() => {

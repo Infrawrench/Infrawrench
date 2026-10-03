@@ -1,5 +1,5 @@
 /**
- * The network-flow contract — one screen's worth of answers to "what is driving
+ * The network-flow contract: one screen's worth of answers to "what is driving
  * our egress bill".
  *
  * Lives here rather than in `@infrawrench/ui` for the usual reason: mobile does
@@ -64,7 +64,7 @@ export interface NetworkFlowPairView {
   destination: NetworkFlowEndpointView;
   scope: NetworkFlowScope;
   direction: "egress" | "ingress";
-  /** "resolved" | "unattributed" — a truncation row is never a pair. */
+  /** "resolved" | "unattributed": a truncation row is never a pair. */
   attribution: "resolved" | "unattributed";
   bytes: number;
   packets: number;
@@ -72,7 +72,7 @@ export interface NetworkFlowPairView {
   currency: string;
   accountId: string;
   pluginId: string;
-  /** Days in the range this pair appeared on — a spike vs a standing cost. */
+  /** Days in the range this pair appeared on: a spike vs a standing cost. */
   days: number;
 }
 
@@ -167,8 +167,8 @@ export function formatFlowBytes(bytes: number): string {
  *
  * The number the screen leads with, because a top-flows list is only a finding
  * to the extent that the flows in it account for the bytes. Unattributed and
- * truncated bytes are both *known* quantities here — nothing has been
- * apportioned — so this is a measurement rather than a confidence score.
+ * truncated bytes are both *known* quantities here (nothing has been
+ * apportioned) so this is a measurement rather than a confidence score.
  */
 export function attributionCoverage(summary: {
   bytes: number;

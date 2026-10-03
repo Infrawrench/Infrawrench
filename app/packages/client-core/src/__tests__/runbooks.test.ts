@@ -83,7 +83,7 @@ describe("isSafeRunbookUrl", () => {
   it("accepts https and nothing else", () => {
     expect(isSafeRunbookUrl("https://console.aws.amazon.com")).toBe(true);
     // A runbook link is authored by one colleague and clicked by another
-    // mid-incident — the worst possible moment to be discerning.
+    // mid-incident: the worst possible moment to be discerning.
     expect(isSafeRunbookUrl("http://internal.example.com")).toBe(false);
     expect(isSafeRunbookUrl("javascript:alert(1)")).toBe(false);
     expect(isSafeRunbookUrl("file:///etc/passwd")).toBe(false);

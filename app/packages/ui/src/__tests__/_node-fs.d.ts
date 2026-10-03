@@ -4,7 +4,7 @@
 // `@types/node`: with tsconfig's `"types": ["*"]` that package would replace
 // the DOM `setTimeout`/`clearTimeout` overloads with Node's across every file
 // in the package. Declaring the two functions used here keeps that blast
-// radius at zero. (`theme.css` cannot be pulled in with `?raw` instead —
+// radius at zero. (`theme.css` cannot be pulled in with `?raw` instead:
 // vitest stubs every `.css` request to an empty string unless CSS processing
 // is enabled for the whole suite.)
 declare module "node:fs" {

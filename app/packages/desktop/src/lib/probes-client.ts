@@ -13,7 +13,7 @@ import {
  * Probes are cloud-only: checks run in the cloud poller through the egress
  * proxy, so a desktop app in local mode has nothing to show. The active org is
  * resolved at call time rather than closed over, matching
- * `metric-alerts-client.ts` — the org can change under a mounted panel.
+ * `metric-alerts-client.ts`: the org can change under a mounted panel.
  */
 function requireOrgId(): string {
   const orgId = useUIStore.getState().activeCloudOrgId;

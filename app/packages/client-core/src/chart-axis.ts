@@ -8,7 +8,7 @@
  * helpers choose a "nice" step first and let the tick count fall out of it,
  * so a series with no negative values always sits on a zero baseline.
  *
- * No React, no chart library — unit-test target.
+ * No React, no chart library: unit-test target.
  */
 
 export interface AxisScale {
@@ -28,7 +28,7 @@ const DRIFT_RATIO = 1e-9;
 
 /**
  * Below this share of a step, a real negative gets a snug bottom rather than
- * a whole tick of its own — a US$0.02 credit should not open a US$1.00 well
+ * a whole tick of its own: a US$0.02 credit should not open a US$1.00 well
  * under an axis whose bars all start at zero.
  */
 const SNUG_STEP_RATIO = 0.5;
@@ -52,7 +52,7 @@ function round(value: number, step: number): number {
 /**
  * Zero-anchored axis over [min, max]: the domain is widened to whole steps,
  * never narrowed, and always includes zero so bar heights stay comparable.
- * `targetTicks` is a hint — the real count follows from the chosen step.
+ * `targetTicks` is a hint: the real count follows from the chosen step.
  *
  * How far below zero the domain runs is graded by how far the data does.
  * Drift is flattened to zero; a negative too small to earn a tick gets a snug

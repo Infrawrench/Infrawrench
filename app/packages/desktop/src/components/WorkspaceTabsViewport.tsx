@@ -112,7 +112,7 @@ function getRightsizingClient(): RightsizingClient {
   return rightsizingClient;
 }
 
-// Keyed by mode (org id or "local") — cloud and local clients differ in both
+// Keyed by mode (org id or "local"): cloud and local clients differ in both
 // transports and saved-query availability, and the panel remounts on switch.
 const logWorkspaceClients = new Map<string, LogWorkspaceClient>();
 function getLogWorkspaceClient(activeCloudOrgId: string | null): LogWorkspaceClient {
@@ -127,21 +127,21 @@ function getLogWorkspaceClient(activeCloudOrgId: string | null): LogWorkspaceCli
 
 // Desktop-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
 // per-kind panel components. Each open tab is rendered once and kept mounted
-// across tab switches — see WorkspaceTabsViewport for the rendering rules.
+// across tab switches: see WorkspaceTabsViewport for the rendering rules.
 export function DesktopWorkspaceTabsViewport() {
   const gt = useGT();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
   // Under hash history the query string lives inside the hash fragment, so
-  // window.location.search is always empty — read it from router state.
+  // window.location.search is always empty: read it from router state.
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   const tabsHydrated = useUIStore((s) => s.tabsHydrated);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
 
   // The URL is a "tab URL" when syncWorkspaceRouteFromPath returns a target.
   // On non-tab routes (index) we hide all tab panels so the route's
-  // <Outlet/> renders alone — tabs stay mounted in the DOM.
+  // <Outlet/> renders alone: tabs stay mounted in the DOM.
   const showActive = syncWorkspaceRouteFromPath(pathname, hash, searchStr) !== null;
 
   // Direct URL navigation (deep link, browser back/forward) needs to add the
@@ -171,7 +171,7 @@ export function DesktopWorkspaceTabsViewport() {
  * finding exactly as web does.
  *
  * Local (non-cloud) mode has no org and no cloud credentials, so it renders
- * the children bare — the filing context is then absent and every button
+ * the children bare: the filing context is then absent and every button
  * resolves to nothing, which is the correct answer rather than a control that
  * could only fail.
  *
@@ -231,7 +231,7 @@ function renderPanel(
       // Deploying from the app needs an org: a GitHub App install to read the
       // Infrafile at a branch head, and a build host to build on. Without one
       // the desktop binary is also the CLI, which runs the same three stages
-      // locally — so local mode shows what those runs did.
+      // locally, so local mode shows what those runs did.
       return activeCloudOrgId ? (
         <DeploymentsPanel
           // Keyed by org so switching org refetches repos, history and
@@ -267,7 +267,7 @@ function renderPanel(
           // Available in both modes: the orphan rules are declarative and the
           // scan runs over stored state, so local mode classifies this
           // machine's workspace (without cost annotation) rather than
-          // dropping the section. The client picks the store — see
+          // dropping the section. The client picks the store: see
           // lib/orphans-client.ts.
           orphans={getOrphansClient()}
           // Cloud-only: the percentiles live in the cloud metrics warehouse

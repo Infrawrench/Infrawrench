@@ -3,8 +3,8 @@
  * into one self-contained HTML page for the mobile terminal WebView.
  *
  * Outputs (both gitignored, regenerated before dev/typecheck):
- *   assets/generated/terminal.html     — for inspection / debugging in a browser
- *   assets/generated/terminal-html.ts  — the same HTML as an exported string,
+ *   assets/generated/terminal.html     - for inspection / debugging in a browser
+ *   assets/generated/terminal-html.ts  - the same HTML as an exported string,
  *                                        importable by Metro/TypeScript
  */
 import { build } from "esbuild";

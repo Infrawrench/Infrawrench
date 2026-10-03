@@ -1,4 +1,4 @@
-// `infrawrench cli install|uninstall|status` — manage the shell shim itself.
+// `infrawrench cli install|uninstall|status`: manage the shell shim itself.
 import {
   getShellCommandStatus,
   installShellCommand,

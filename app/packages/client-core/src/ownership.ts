@@ -1,5 +1,5 @@
 /**
- * Resource ownership — owner, purpose, and the ticket that authorized it, as
+ * Resource ownership: owner, purpose, and the ticket that authorized it, as
  * first-class fields on any resource.
  *
  * The point of the feature is attribution that other features can *use*, not
@@ -15,7 +15,7 @@
  * Owner is two fields because one cannot cover both jobs. `ownerUserId` is an
  * org member and is the only thing an alert can be routed to; `ownerLabel` is
  * free text for a team or an external, and is display-only. A resource may
- * have either, both, or neither — purpose and ticket stand on their own.
+ * have either, both, or neither: purpose and ticket stand on their own.
  *
  * This module is the shared pure half every surface uses: the wire contract
  * for `/api/org/:orgId/ownership`, the validation the editor UIs and the API
@@ -27,13 +27,13 @@ import type { ResourceOwnerAnnotation } from "@infrawrench/plugin-base";
 import type { CloudFetch } from "./fetch";
 
 /**
- * The compact owner annotation other features embed — the orphan finder, an
+ * The compact owner annotation other features embed: the orphan finder, an
  * alert body, a report row.
  *
  * Defined in plugin-base (beside `OrphanCostAnnotation`, the other host-supplied
  * annotation on a flagged resource) and re-exported here so the ownership
  * feature has one import site. The import above is `import type`, so this
- * module still erases to zero runtime dependency on plugin-base — the
+ * module still erases to zero runtime dependency on plugin-base: the
  * `orphans.ts` stance, which is what keeps zod and the provider SDKs out of the
  * mobile bundle.
  */
@@ -49,7 +49,7 @@ export interface ResourceOwnership {
   resourceTypeId: string;
   /** Resource display name, denormalized when the record was written. */
   resourceName: string;
-  /** The routable owner — an org member — or null. */
+  /** The routable owner (an org member) or null. */
   ownerUserId: string | null;
   /** Owner's display name, resolved server-side; null when unset or removed. */
   ownerName: string | null;
@@ -70,12 +70,12 @@ export interface ResourceOwnershipListResponse {
 }
 
 /**
- * Body of `PUT /api/org/:orgId/ownership` — an upsert keyed by `resourceId`.
+ * Body of `PUT /api/org/:orgId/ownership`: an upsert keyed by `resourceId`.
  *
  * There is no create/update split because ownership is a property *of the
  * resource*, not a record with its own lifecycle: the caller knows the
  * resource, not whether a row already exists. Every optional field accepts
- * `null` to clear it, and an omitted field keeps its current value — so a UI
+ * `null` to clear it, and an omitted field keeps its current value, so a UI
  * that only edits the ticket link cannot accidentally blank the purpose.
  */
 export interface ResourceOwnershipPatch {
@@ -101,7 +101,7 @@ export const OWNERSHIP_LIMITS = {
 
 /**
  * Validate an ownership patch. Returns a human-readable problem or null when
- * valid — shared verbatim by the editor UIs and the API boundary.
+ * valid: shared verbatim by the editor UIs and the API boundary.
  *
  * Only fields actually present are checked: a patch that touches nothing but
  * `purpose` must not be rejected for a ticket URL recorded before the rule
@@ -128,7 +128,7 @@ export function validateOwnershipPatch(patch: ResourceOwnershipPatch): string | 
 }
 
 /**
- * Validate a ticket link. An empty string is "cleared", not invalid — the
+ * Validate a ticket link. An empty string is "cleared", not invalid: the
  * editors bind a text input straight to this field and an empty box means the
  * user removed the link.
  *
@@ -152,7 +152,7 @@ export function validateTicketUrl(raw: string): string | null {
 }
 
 /**
- * Render a ticket URL as the short reference a table cell can hold —
+ * Render a ticket URL as the short reference a table cell can hold:
  * `https://github.com/acme/api/issues/482` → `acme/api#482`, a Linear or Jira
  * URL → its issue key. Falls back to the host so the cell is never empty.
  *
@@ -182,7 +182,7 @@ export function formatTicketRef(url: string): string {
  * Reduce a full record to the {@link OwnerSummary} other features embed, or
  * null when the record names nobody.
  *
- * A record carrying only a purpose is *not* an owner — the orphan finder must
+ * A record carrying only a purpose is *not* an owner: the orphan finder must
  * still count it as unowned, because there is nobody to send the list to.
  */
 export function toOwnerSummary(

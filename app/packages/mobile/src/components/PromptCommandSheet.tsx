@@ -9,7 +9,7 @@ import { colors, radii, spacing } from "@/lib/theme";
  * Mobile counterpart of the web PromptNoSqlCommandModal: renders a
  * `CreateFieldConfig[]` form and hands back the values keyed by field key.
  *
- * Only the field kinds a phone can honestly render are interactive — text,
+ * Only the field kinds a phone can honestly render are interactive: text,
  * password, number, multiline, and `select` (rendered as chips). Anything
  * richer (region/size/image pickers, the code editor) falls back to a plain
  * text input rather than silently dropping the field, and the description
@@ -40,7 +40,7 @@ export function PromptCommandSheet({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Hidden fields still ride along in the payload — they carry context the
+  // Hidden fields still ride along in the payload: they carry context the
   // plugin pre-filled (the resource name to delete, and so on).
   const visibleFields = fields.filter((f) => evaluateShowWhen(f, values) && !f.hidden);
   const submittedFields = fields.filter((f) => evaluateShowWhen(f, values));

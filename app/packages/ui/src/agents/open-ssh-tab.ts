@@ -4,7 +4,7 @@
  * Shared by the agents panel (which opens the tool's terminal for Codex and
  * Claude Code sessions) and the T3 Code panel (which opens the interactive
  * `t3 connect` authorization terminal). Both go through the same
- * `POST /agents/sessions/:id/open` call — the host decides what command that
+ * `POST /agents/sessions/:id/open` call: the host decides what command that
  * returns for the session's tool.
  */
 import { resourceSshTabTarget } from "../workspace-tabs.js";

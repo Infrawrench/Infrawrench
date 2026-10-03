@@ -13,7 +13,7 @@ export interface CloudMe {
 }
 
 /**
- * `init` exists so callers on a launch path can pass an abort signal — this
+ * `init` exists so callers on a launch path can pass an abort signal: this
  * call gates the app's first screen, and a request that hangs rather than
  * fails would strand it on a spinner.
  */

@@ -1,7 +1,7 @@
 /**
  * T3 Code (https://github.com/pingdotgg/t3code) agent sessions.
  *
- * T3 Code is **not an agent**. It is a control surface — a web/desktop GUI and
+ * T3 Code is **not an agent**. It is a control surface: a web/desktop GUI and
  * server that drives *provider CLIs* (Codex, Claude Code, Cursor, Grok Build,
  * OpenCode) running on the same machine. It ships none of them, so a T3 Code
  * VM still needs `codex` or `claude` installed and signed in next to it.
@@ -14,7 +14,7 @@
  *   2. the bootstrap installs Node, git, the GitHub CLI, the session's
  *      provider CLI *and* the `t3` CLI, then registers T3 Code's systemd
  *      service so the server survives logout,
- *   3. the server is authorized *interactively* — `t3 connect link` and the
+ *   3. the server is authorized *interactively*: `t3 connect link` and the
  *      provider sign-in are browser flows that cannot be scripted, so the
  *      user runs them once in a terminal,
  *   4. the session is then reachable through T3's relay from the hosted app,
@@ -25,7 +25,7 @@
  * checks out a branch for these sessions. The bootstrap only creates an empty
  * projects directory for T3 Code to clone into.
  *
- * This module is free of React/DOM/Node dependencies — it is imported by the
+ * This module is free of React/DOM/Node dependencies: it is imported by the
  * web API server as well as both renderers.
  */
 import {
@@ -50,7 +50,7 @@ export const T3_CODE_HOSTED_APP_URL = "https://app.t3.codes";
 
 /**
  * Directory the bootstrap creates for T3 Code's projects. T3 Code clones into
- * a destination the user picks, so this is only a sensible default location —
+ * a destination the user picks, so this is only a sensible default location:
  * it is never a checkout of a session repo.
  */
 export const T3_CODE_PROJECTS_DIR = "projects";
@@ -68,7 +68,7 @@ export const T3_CODE_NODE_ENGINE_RANGE = "^22.16 || ^23.11 || >=24.10";
  * systemd *user* unit T3 Code's `service install` writes (to
  * `~/.config/systemd/user/`, with `loginctl enable-linger` so it survives
  * logout). Restarting it is the only way to make a running server reconcile a
- * newly recorded `t3 connect link` — the `t3 service` subcommands all
+ * newly recorded `t3 connect link`: the `t3 service` subcommands all
  * short-circuit when the service is already installed and current.
  */
 export const T3_CODE_SYSTEMD_UNIT = "t3code.service";
@@ -119,7 +119,7 @@ export function agentSurfaceRequiresRepo(
   return !isT3CodeSurface(surface);
 }
 
-/** Setup plan for a T3 Code session — Node only, no clone, no branch. */
+/** Setup plan for a T3 Code session: Node only, no clone, no branch. */
 export function createT3CodeSetupPlan(
   tool: AgentTool,
   access: T3CodeAccess = "t3-connect",
@@ -179,7 +179,7 @@ export function buildT3CodeBootstrapCommand(input: T3CodeBootstrapCommandInput):
   const toolCommand = agentToolCommand(input.tool);
   const toolPackage = agentToolPackage(input.tool);
   // The other supported CLI. T3 Code uses it for its own auxiliary work even
-  // in a thread belonging to the session's tool — see the install below.
+  // in a thread belonging to the session's tool: see the install below.
   const companionTool: AgentTool = input.tool === "claude-code" ? "codex" : "claude-code";
   const companionCommand = agentToolCommand(companionTool);
   const companionPackage = agentToolPackage(companionTool);
@@ -285,7 +285,7 @@ touch "$MARKER"
  * Installs the GitHub CLI from its release tarball rather than a distro
  * package: `gh` is missing or stale in most cloud images' default repos, and
  * adding GitHub's apt keyring is more moving parts than one binary drop.
- * Best effort — a VM without `gh` still runs T3 Code, it just can't open pull
+ * Best effort: a VM without `gh` still runs T3 Code, it just can't open pull
  * requests, so a failure here warns instead of failing the whole setup.
  */
 const GITHUB_CLI_SNIPPET = `
@@ -326,7 +326,7 @@ install_github_cli
  * Neutralizes T3 Code's "open in browser" on a headless VM.
  *
  * T3 Code's external launcher runs the *server's* browser opener, which on
- * Linux is hard-coded to `xdg-open` — there is no env var or config to turn
+ * Linux is hard-coded to `xdg-open`; there is no env var or config to turn
  * it off (checked against upstream: `buildBrowserLaunch` in
  * `apps/server/src/process/externalLauncher.ts`, which does not honour
  * `BROWSER` either). On a VM you are driving from your laptop that is never
@@ -337,7 +337,7 @@ install_github_cli
  * The launcher spawns it detached with stdin/stdout/stderr ignored and only
  * checks that the command exists, so a no-op shim earlier on PATH turns the
  * whole thing into a clean nothing. Doing it here rather than in a patched
- * fork means it survives every `t3` self-update — the service installs exact
+ * fork means it survives every `t3` self-update: the service installs exact
  * versions from npm and would overwrite a forked build.
  *
  * Never overwrites a real `xdg-open` that is already on PATH.
@@ -377,7 +377,7 @@ export const T3_CODE_SERVICE_NICE = -20;
  * Gives the T3 Code *service* the environment it needs: PATH, and IS_SANDBOX.
  *
  * The unit T3 Code generates sets no \`Environment=PATH=\` (see
- * \`renderBootServiceUnit\` upstream — its own comment says service units
+ * \`renderBootServiceUnit\` upstream; its own comment says service units
  * cannot rely on the user's shell or PATH), so the server inherits systemd's
  * minimal default: \`/usr/local/bin:/usr/bin:/bin\` and the sbin equivalents.
  * Everything this bootstrap installs lands in \`~/.local/bin\` and the mise
@@ -390,7 +390,7 @@ export const T3_CODE_SERVICE_NICE = -20;
  *
  * \`IS_SANDBOX=1\` is the second half. T3 Code drives Claude Code through
  * \`@anthropic-ai/claude-agent-sdk\`, and its "Full access" mode is the SDK's
- * \`bypassPermissions\` — the same thing \`--dangerously-skip-permissions\` asks
+ * \`bypassPermissions\`: the same thing \`--dangerously-skip-permissions\` asks
  * for. Claude Code **refuses that as root** unless it believes it is in a
  * sandbox, and this service runs as root on a dedicated throwaway VM. Without
  * it the provider process dies at turn start and T3 surfaces the useless
@@ -406,8 +406,8 @@ export const T3_CODE_SERVICE_NICE = -20;
  *
  * A second drop-in gives the **server process** the highest CPU priority the
  * scheduler has (\`Nice=-20\`) while leaving its children at the default. That
- * split is the whole point: everything expensive on a T3 Code VM — the
- * provider CLI, its builds, its test runs — is a child of this service, and a
+ * split is the whole point: everything expensive on a T3 Code VM (the
+ * provider CLI, its builds, its test runs) is a child of this service, and a
  * plain \`Nice=\` would be inherited by all of them, which is the same as
  * giving nobody priority. Under that load the server itself is what starves,
  * and the server is the part that has to stay responsive: it holds the relay
@@ -415,13 +415,13 @@ export const T3_CODE_SERVICE_NICE = -20;
  * goes quiet and the environment looks disconnected while the box is merely
  * busy. \`CPUSchedulingResetOnFork=yes\` sets \`SCHED_RESET_ON_FORK\`, which the
  * kernel honours by resetting a negative nice value to 0 in anything the
- * process forks — the priority stops at the server. \`CPUSchedulingPolicy=\`
+ * process forks: the priority stops at the server. \`CPUSchedulingPolicy=\`
  * is set alongside it because systemd only issues the \`sched_setscheduler\`
  * call that carries the flag when a policy is configured.
  *
  * A negative nice value needs \`CAP_SYS_NICE\` (the default \`RLIMIT_NICE\`
  * gives an unprivileged user no headroom below 0), so the drop-in is written
- * only when the unit's own user is root — which it is on Infrawrench agent
+ * only when the unit's own user is root, which it is on Infrawrench agent
  * VMs, and which is also why \`IS_SANDBOX=1\` above is needed. Elsewhere it is
  * removed rather than left in place: current systemd clamps an unappliable
  * \`Nice=\` to the closest allowed value, but older versions fail the unit
@@ -430,7 +430,7 @@ export const T3_CODE_SERVICE_NICE = -20;
  *
  * Verified against systemd 255: with these three lines the main process
  * reports \`SCHED_OTHER|SCHED_RESET_ON_FORK\` and a process it forks reports
- * plain \`SCHED_OTHER\` (\`chrt -p\`), which is the flag being cleared — the
+ * plain \`SCHED_OTHER\` (\`chrt -p\`), which is the flag being cleared; the
  * same clearing that resets a negative nice to 0.
  */
 const T3_SERVICE_DROPIN_SNIPPET = `
@@ -483,7 +483,7 @@ INFRAWRENCH_UNIT_PRIORITY
 /**
  * Installs T3 Code's background service so the server starts on boot and
  * outlives the SSH session that set it up. systemd-only by T3 Code's own
- * design, and independent of T3 Connect's lifecycle — signing out of Connect
+ * design, and independent of T3 Connect's lifecycle: signing out of Connect
  * leaves the service running.
  */
 const T3_SERVICE_SNIPPET = `${T3_SERVICE_DROPIN_SNIPPET}
@@ -506,7 +506,7 @@ install_t3_service
  * T3 Code picks the clone URL itself: `selectRemoteUrl` hands git the repo's
  * `sshUrl` whenever the clone protocol is SSH, which is `gh`'s own default for
  * many users. A fresh VM has no key registered with GitHub, so that clone dies
- * `Permission denied (publickey)` — and T3 reports it as an unhelpful
+ * `Permission denied (publickey)`, and T3 reports it as an unhelpful
  * "The source control operation could not be completed", because it keeps only
  * the *length* of git's stderr, never the text.
  *
@@ -581,7 +581,7 @@ fi
 export interface T3CodeConnectCommandInput {
   /** Provider CLI to offer a sign-in step for. */
   tool: AgentTool;
-  /** Also offer to sign the GitHub CLI in (device flow — works headless). */
+  /** Also offer to sign the GitHub CLI in (device flow: works headless). */
   includeGithubLogin?: boolean;
   /**
    * How clients reach the server. `tailscale` skips T3 Connect entirely and
@@ -753,7 +753,7 @@ exec "\${SHELL:-/bin/bash}" -l
  * `t3 connect logout` records disabled intent, stops the running connector,
  * revokes the relay-side environment record, and drops the stored CLI
  * credential. It has to run **while the VM still exists**: once the machine is
- * gone the relay keeps an environment nobody can remove — there is no
+ * gone the relay keeps an environment nobody can remove; there is no
  * server-side delete for an environment whose host has vanished (upstream
  * pingdotgg/t3code#5135).
  *
@@ -783,7 +783,7 @@ export interface T3CodeConnectStatus {
   /** The relay-side environment link is provisioned. */
   linked: boolean;
   cloudUserId: string | null;
-  /** Relay deployment base URL — not a per-environment address. */
+  /** Relay deployment base URL, not a per-environment address. */
   relayUrl: string | null;
   publishAgentActivity: boolean;
 }

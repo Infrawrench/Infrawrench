@@ -9,7 +9,7 @@ import { useDataString } from "../../i18n/data-strings.js";
 
 /**
  * Fixed pixel widths per column preset. `wide` returns undefined so the column
- * absorbs the remaining space in a `table-fixed` layout — it's the only
+ * absorbs the remaining space in a `table-fixed` layout: it's the only
  * flexible column, and its content truncates rather than wrapping.
  */
 function colWidth(width: ChildTableColumn["width"]): string | undefined {
@@ -25,7 +25,7 @@ function colWidth(width: ChildTableColumn["width"]): string | undefined {
   }
 }
 
-/** Formats whose values are short and fixed — never truncated/wrapped. */
+/** Formats whose values are short and fixed, never truncated/wrapped. */
 const FIXED_FORMATS = new Set(["type-badge", "proxy-status", "ttl", "boolean-yesno"]);
 
 function rawCellValue(col: ChildTableColumn, child: ChildResource): string {
@@ -165,7 +165,7 @@ export function ChildResourceTable({
   const editMode = spec.onRowClick === "edit" && !!onEdit && !!group?.fields;
 
   // Provider-managed rows (e.g. a DNS record whose content is a Worker
-  // placeholder) are read-only — not editable.
+  // placeholder) are read-only, not editable.
   const isReadOnly = (child: ChildResource): boolean => {
     const rule = spec.readOnlyRowWhen;
     if (!rule) return false;

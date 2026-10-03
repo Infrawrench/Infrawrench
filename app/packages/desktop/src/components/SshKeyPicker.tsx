@@ -115,7 +115,7 @@ export function SshKeyPicker({
       const key = await invoke<string>("ssh_key_get_private_key", { keyId: source.id });
       onKeyResolved(key);
     } else {
-      // Cloud key — private key lives server-side, so pass an empty PEM.
+      // Cloud key: private key lives server-side, so pass an empty PEM.
       // Dispatch routes through the WS proxy based on the keySource prop.
       onKeyResolved("");
     }

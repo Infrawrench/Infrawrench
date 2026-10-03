@@ -70,7 +70,7 @@ export function DndShell({
     const resource = data?.resource as DraggableResource | undefined;
     const workflow = data?.workflow as DraggableWorkflow | undefined;
 
-    // Dashboard card reorder — both active and over are cards within the grid.
+    // Dashboard card reorder: both active and over are cards within the grid.
     // Ids are `dashboard-card:<kind>:<id>`; the host resolves them against its
     // merged card list (see `card-order.ts`).
     if (String(active.id).startsWith("dashboard-card:") && overId.startsWith("dashboard-card:")) {
@@ -86,16 +86,16 @@ export function DndShell({
       return;
     }
 
-    // Tab bar drops — delegate entirely to host
+    // Tab bar drops: delegate entirely to host
     if (overId === "global-tabs-bar" || overId.startsWith("global-tab:")) {
       onTabDrop?.(event);
       return;
     }
 
-    // Secret import drops — handled by PeerPaneView directly
+    // Secret import drops: handled by PeerPaneView directly
     if (overId.startsWith("secret-import:")) return;
 
-    // Tunnel → SSH host drops — cross-account; orchestrated by the host
+    // Tunnel → SSH host drops: cross-account; orchestrated by the host
     if (overId.startsWith("tunnel-ssh-attach:")) {
       if (!resource) return;
       const target = over.data.current?.target as DraggableResource | undefined;
@@ -104,7 +104,7 @@ export function DndShell({
       return;
     }
 
-    // Attach drops — dragging a resource onto a same-account target resource
+    // Attach drops: dragging a resource onto a same-account target resource
     if (overId.startsWith("attach-target:")) {
       if (!resource) return;
       const target = over.data.current?.target as DraggableResource | undefined;
@@ -113,7 +113,7 @@ export function DndShell({
       return;
     }
 
-    // Sidebar account/resource drops — secret import
+    // Sidebar account/resource drops: secret import
     if (overId.startsWith("sidebar-account:") || overId.startsWith("sidebar-resource:")) {
       if (!resource) return;
       const targetId = overId.startsWith("sidebar-account:")
@@ -127,7 +127,7 @@ export function DndShell({
       return;
     }
 
-    // Dashboard drops — pin a resource or a workflow
+    // Dashboard drops: pin a resource or a workflow
     let dashboardId: string | null = null;
     if (overId.startsWith("sidebar-dashboard:")) {
       dashboardId = overId.replace("sidebar-dashboard:", "");

@@ -80,7 +80,7 @@ function formatTransition(at: string, action: string, timezone: string): string 
 }
 
 /**
- * The no-code schedule editor: days of week, off/on times, timezone — and a
+ * The no-code schedule editor: days of week, off/on times, timezone, and a
  * live projected-saving quote computed server-side from the resource's
  * trailing spend before anything is saved.
  */

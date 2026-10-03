@@ -1,5 +1,5 @@
 /**
- * Expiry radar — one cross-provider countdown of everything with a clock on
+ * Expiry radar; one cross-provider countdown of everything with a clock on
  * it: TLS certs, domain registrations, API tokens, access-key age, K8s certs,
  * SSH keys, secret versions.
  *
@@ -7,10 +7,10 @@
  * already sync with `expiryFields` on the resource type definition
  * (`ExpiryFieldRule` in `@infrawrench/plugin-base`), and this module is the
  * shared pure half that turns stored rows + those declarations into the feed
- * every surface renders — the web/desktop/mobile screens, the
+ * every surface renders; the web/desktop/mobile screens, the
  * `infrawrench expiring` CLI, the `list_expiring` MCP tool and the poller's
  * expiry alerts. Rows in, items out: no plugin client, no credentials, no
- * provider API calls, ever — exactly the `orphanRule` contract.
+ * provider API calls, ever; exactly the `orphanRule` contract.
  *
  * The plugin-base import is type-only on purpose: this module must stay free
  * of a *runtime* dependency on plugin-base so the mobile bundle doesn't pull
@@ -24,11 +24,11 @@ export type { ExpiryFieldRule, ExpiryKind } from "@infrawrench/plugin-base";
 
 /**
  * How close the deadline is:
- * - `"expired"` — the date is in the past.
- * - `"critical"` — due within 7 days.
- * - `"warning"` — due within 30 days.
- * - `"upcoming"` — due within the org's lead time.
- * - `"ok"` — tracked, but further out than the lead time.
+ * - `"expired"`: the date is in the past.
+ * - `"critical"`: due within 7 days.
+ * - `"warning"`: due within 30 days.
+ * - `"upcoming"`: due within the org's lead time.
+ * - `"ok"`: tracked, but further out than the lead time.
  */
 export type ExpirySeverity = "expired" | "critical" | "warning" | "upcoming" | "ok";
 
@@ -110,7 +110,7 @@ export interface ExpiryItem {
   /** Plugin-authored caption, e.g. "Certificate expires". */
   label: string;
   /**
-   * `"expiry"` — the field held the deadline itself; `"age"` — the deadline
+   * `"expiry"`: the field held the deadline itself; `"age"`; the deadline
    * was derived from a creation/rotation date plus an age budget.
    */
   basis: "expiry" | "age";
@@ -166,7 +166,7 @@ export interface ExpiryScanAccount {
 
 /**
  * The part of a stored resource row the scan reads. Hosts map their own store
- * onto this — Postgres jsonb, SQLite TEXT bags — so the computation never
+ * onto this (Postgres jsonb, SQLite TEXT bags) so the computation never
  * learns which database it is looking at.
  */
 export interface ExpiryScanResource {
@@ -199,7 +199,7 @@ const MS_PER_DAY = 86_400_000;
  * Parse a stored field value as a point in time, epoch milliseconds.
  *
  * Accepts ISO 8601 (with or without time), RFC 2822, and unix epochs in
- * seconds or milliseconds, as either numbers or numeric strings — the formats
+ * seconds or milliseconds, as either numbers or numeric strings: the formats
  * provider listers actually store. Returns null for anything else: an
  * unparseable value must drop the item, never alarm on it. Small numbers
  * (< 1e8, i.e. before ~1973 as seconds) are rejected rather than guessed at,
@@ -239,7 +239,7 @@ export function expirySeverity(daysRemaining: number, leadDays: number): ExpiryS
  * Compute the expiry feed for a workspace: every declared deadline on every
  * stored resource, soonest first.
  *
- * Pure and deterministic — two hosts reading the same rows render the same
+ * Pure and deterministic: two hosts reading the same rows render the same
  * feed. Resources whose account is missing from `accounts` are skipped
  * (soft-deleted account, not a deadline worth alarming on), as is any field
  * value that fails to parse as a date.
@@ -352,7 +352,7 @@ export function computeExpiryFeed(
 /**
  * Merge host-injected items (resource leases) into a computed feed, keeping
  * the feed's contract intact: one sort order (due date, then display name,
- * then field key — the exact comparator `computeExpiryFeed` uses) and counts
+ * then field key; the exact comparator `computeExpiryFeed` uses) and counts
  * that cover every item. Returns a new response; neither input is mutated.
  */
 export function mergeExpiryItems(
@@ -378,13 +378,13 @@ export function mergeExpiryItems(
   return { ...feed, items, totalCount: items.length, counts };
 }
 
-/** Items at or past the org's lead time — what the poller alerts on. */
+/** Items at or past the org's lead time: what the poller alerts on. */
 export function itemsWithinLead(feed: ExpiryListResponse): ExpiryItem[] {
   return feed.items.filter((i) => i.severity !== "ok");
 }
 
 /**
- * Org-level expiry alert settings — the wire shape of
+ * Org-level expiry alert settings: the wire shape of
  * `GET|PUT /api/org/:orgId/expiring/settings` (permission `org:settings:write`).
  * Shaped like the drift alert settings: the lead time feeds both the feed's
  * `upcoming` bucket and the poller's alert pass.

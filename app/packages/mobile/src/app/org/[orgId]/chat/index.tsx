@@ -36,7 +36,7 @@ export default function ChatListScreen() {
     onError: (e) => Alert.alert("Archive failed", e instanceof Error ? e.message : "Unknown error"),
   });
 
-  // Web archives on a bare click; on a phone a mis-tap is too easy — confirm.
+  // Web archives on a bare click; on a phone a mis-tap is too easy: confirm.
   const confirmArchive = (id: string, title: string) =>
     Alert.alert("Archive chat?", title, [
       { text: "Cancel", style: "cancel" },

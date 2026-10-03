@@ -20,7 +20,7 @@ import {
 } from "./chart-primitives";
 
 /**
- * The custom-graph chart, drawn with `react-native-svg` — recharts (which web
+ * The custom-graph chart, drawn with `react-native-svg`: recharts (which web
  * and desktop use for the same spec) is DOM-only. Axis maths comes from
  * client-core's `niceAxis`, so a bar lands on the same tick as on web. Series
  * arrive validated and capped by the sandbox dispatcher.
@@ -32,7 +32,7 @@ import {
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}/;
 
 // Mirrors the web renderer's formatX (ui/src/custom-graphs/CustomGraphChart.tsx)
-// so the same render spec labels its axis identically on both platforms —
+// so the same render spec labels its axis identically on both platforms,
 // including the time-of-day suffix for datetime x values.
 function formatX(x: string | number): string {
   if (typeof x === "number") return String(x);
@@ -160,7 +160,7 @@ export function CustomGraphChart({ spec }: { spec: ChartSpec }) {
   const band = PLOT_W / buckets.length;
   const cx = (i: number) => PAD.left + band * (i + 0.5);
   // A null y is a GAP, not a zero (the contract, and what web's
-  // connectNulls={false} draws) — so a series becomes one polyline per
+  // connectNulls={false} draws), so a series becomes one polyline per
   // contiguous non-null run rather than one line joined across the holes.
   const lineSegments = (values: Array<number | null>): string[] => {
     const segments: string[] = [];
@@ -200,7 +200,7 @@ export function CustomGraphChart({ spec }: { spec: ChartSpec }) {
                     strokeWidth={2}
                   />
                 ) : (
-                  // A run of one point has no line to draw — mark it so an
+                  // A run of one point has no line to draw: mark it so an
                   // isolated reading between two gaps stays visible.
                   <Circle
                     key={`${s.label}:${si}`}

@@ -15,8 +15,8 @@ import {
 } from "@infrawrench/client-core";
 
 /**
- * Every URL on this screen originates in a plugin — a quota's `docsUrl`, the
- * manifest's `increaseUrl`, a failure's help link — and every one of them ends
+ * Every URL on this screen originates in a plugin (a quota's `docsUrl`, the
+ * manifest's `increaseUrl`, a failure's help link) and every one of them ends
  * up either in an anchor's `href` or at the host's `onOpenExternal`, which is
  * `window.open` on web and `shell.openExternal` on desktop.
  *
@@ -35,13 +35,13 @@ function quotaLinkUrl(url: string | null | undefined): string | null {
 export interface QuotasSectionProps {
   /**
    * The feed, or null while the first load is in flight. Hosts fetch (web:
-   * `/quotas`, desktop: IPC) and hand the response over — this component never
+   * `/quotas`, desktop: IPC) and hand the response over; this component never
    * talks to a network.
    */
   data: QuotaListResponse | null;
   /**
    * Load or refresh failure. With `data` still present the last feed stays on
-   * screen under a banner — a failed refresh must not blank a drawn list.
+   * screen under a banner: a failed refresh must not blank a drawn list.
    */
   error?: string | null | undefined;
   onRetry?: (() => void) | undefined;
@@ -116,7 +116,7 @@ function buildGroups(rows: QuotaRow[], groupBy: GroupBy): QuotaGroup[] {
 
   // Rows arrive pre-sorted worst-first, so insertion order already ranks
   // account/service groups by their most urgent row. Severity groups follow
-  // the escalation order instead — "At the limit" belongs on top.
+  // the escalation order instead: "At the limit" belongs on top.
   if (groupBy === "severity") {
     return QUOTA_SEVERITIES.flatMap((s) => {
       const group = groups.get(s);
@@ -132,7 +132,7 @@ function buildGroups(rows: QuotaRow[], groupBy: GroupBy): QuotaGroup[] {
  * Two details that carry the meaning:
  *
  * - The **threshold marker** is drawn on every bar, so a row's colour is never
- *   the only evidence of where the line is — a reader can see that 74% is
+ *   the only evidence of where the line is: a reader can see that 74% is
  *   close to their 80% without reading the settings page.
  * - An **over-quota** bar fills completely and says so in the figure beside
  *   it, rather than overflowing its track. The number is where over-100% is

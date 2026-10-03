@@ -18,7 +18,7 @@ import {
 /**
  * Desktop host for the shared operations calendar. Cloud only, like Backups:
  * five of its six sources are org state, and a local workspace has nowhere to
- * keep them. Local mode gets the Changes/Costs treatment — an explicit "sign
+ * keep them. Local mode gets the Changes/Costs treatment: an explicit "sign
  * in" message rather than an empty month.
  */
 export function DesktopCalendarPanel() {
@@ -129,7 +129,7 @@ export function DesktopCalendarPanel() {
       subscriptions={subscriptions}
       // The desktop does not read `/team/me`, so the editors are always offered
       // and a member without `org:settings:write` gets the server's 403 in the
-      // section's error banner — the Backups stance.
+      // section's error banner: the Backups stance.
       onCreateSubscription={createSubscription}
       onRevokeSubscription={revokeSubscription}
     />

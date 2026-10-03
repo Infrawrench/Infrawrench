@@ -76,7 +76,7 @@ function main() {
 
   // Links printed by the remote host open in the system browser. The WebView
   // cannot navigate itself there, so the tap is forwarded to React Native,
-  // which validates the scheme again before handing it to the OS — terminal
+  // which validates the scheme again before handing it to the OS: terminal
   // output is remote-controlled text.
   const linkHandler = {
     activate(_event, uri) {
@@ -95,7 +95,7 @@ function main() {
     allowTransparency: true,
     convertEol: false,
     scrollback: 10000,
-    // Mirrors `getXtermTerminalOptions` in @infrawrench/ui — this bundle
+    // Mirrors `getXtermTerminalOptions` in @infrawrench/ui: this bundle
     // cannot import it (it is a standalone WebView entry point), but the
     // terminal has to be readable by TalkBack and VoiceOver just the same.
     screenReaderMode: true,

@@ -45,7 +45,7 @@ export class SeatLimitReachedClientError extends Error {
 }
 
 /**
- * Thrown for any 402 — the organization's plan does not include the attempted
+ * Thrown for any 402: the organization's plan does not include the attempted
  * action. Callers can `catch` it to render an upgrade prompt instead of a
  * plain error message.
  */

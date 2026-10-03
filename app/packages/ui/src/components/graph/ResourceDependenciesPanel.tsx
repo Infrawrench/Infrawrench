@@ -14,7 +14,7 @@ interface ResourceDependenciesPanelProps {
 }
 
 /**
- * The per-resource "Depends on / depended on by" panel — direct neighbors in
+ * The per-resource "Depends on / depended on by" panel: direct neighbors in
  * the org's dependency graph, whether the link is a hand-wired output reference
  * or one read out of synced cloud data. Rendered by DetailView inside a
  * "Dependencies" tab on both web and desktop; the host assembles the neighbor
@@ -72,7 +72,7 @@ function NeighborList({
           {/*
             Edges are deduped by (consumer, field, provider) in
             buildDependencyGraph, and every neighbor in one list sits on the
-            same side of the edge — so node id + field key is unique here.
+            same side of the edge, so node id + field key is unique here.
           */}
           {neighbors.map((neighbor) => (
             <li key={`${neighbor.node.id}:${neighbor.fieldKey}`}>

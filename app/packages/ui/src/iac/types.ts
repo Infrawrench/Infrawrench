@@ -30,7 +30,7 @@ export interface IacStateUpload {
 
 /**
  * Host-injected data access. Web wraps `apiGet`/`apiPost`; desktop (cloud
- * mode) wraps its cloud IPC — the panel stays platform-agnostic, the same
+ * mode) wraps its cloud IPC: the panel stays platform-agnostic, the same
  * arrangement as `ChangesClient` and `OrphansClient`.
  */
 export interface IacClient {

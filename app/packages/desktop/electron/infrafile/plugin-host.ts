@@ -7,7 +7,7 @@
  * SQLite, load the plugin, and call the node drivers in `drivers.ts` rather
  * than posting to the `plugin_*` IPC channels that wrap them.
  *
- * Everything here must stay free of GUI side effects — `electron/index.ts`
+ * Everything here must stay free of GUI side effects: `electron/index.ts`
  * imports this path only for `--cli`, and importing `plugin-host.ts` (which
  * registers `ipcMain` handlers) from a CLI run would be exactly the kind of
  * cross-contamination the dynamic-import split exists to prevent.
@@ -44,7 +44,7 @@ async function getAccountCredentials(accountId: string): Promise<Record<string, 
 
 /**
  * Main-process HTTP for plugins. Unlike the renderer's, this needs no proxying
- * or CORS workarounds — it is a plain Node fetch from the user's own machine.
+ * or CORS workarounds: it is a plain Node fetch from the user's own machine.
  */
 const httpHostServices = {
   http: {
@@ -56,7 +56,7 @@ const httpHostServices = {
       caCert?: string;
     }): Promise<{ status: number; headers: Record<string, string>; body: string }> {
       // Node's fetch has no per-request CA option, so honouring this would mean
-      // a custom undici Agent. Until that exists, say so — silently ignoring it
+      // a custom undici Agent. Until that exists, say so: silently ignoring it
       // would make a self-signed endpoint fail here with a TLS error while the
       // same account works fine in the app.
       if (req.caCert) {
@@ -189,8 +189,8 @@ function buildHostServices(
 /**
  * A ready-to-use plugin client from a credential the caller already holds.
  * This is what makes an ORG account first-class from the CLI: fetch its
- * credentials over the (audited) org API and the plugin runs right here —
- * same listers, same freshness as a local account — instead of reading the
+ * credentials over the (audited) org API and the plugin runs right here
+ * (same listers, same freshness as a local account) instead of reading the
  * cloud's cached rows.
  */
 export async function createPluginClientFromCredentials(

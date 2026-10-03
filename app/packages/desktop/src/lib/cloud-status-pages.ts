@@ -1,5 +1,5 @@
 /**
- * Public status pages — cloud-mode only, like the probes they publish. One
+ * Public status pages: cloud-mode only, like the probes they publish. One
  * wrapper per allowlisted IPC channel, matching `cloud-probes.ts`.
  */
 import type {

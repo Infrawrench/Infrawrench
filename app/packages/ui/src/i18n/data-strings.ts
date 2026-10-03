@@ -1,7 +1,7 @@
 import { useGT } from "gt-react";
 
 /**
- * Translation for data-driven strings — plugin display names, resource type
+ * Translation for data-driven strings: plugin display names, resource type
  * labels and other values that arrive as data rather than as literals in the
  * component. Performs the same runtime content-hash lookup as useGT's gt(),
  * but under a name the gt CLI does not scan: the CLI rejects non-literal

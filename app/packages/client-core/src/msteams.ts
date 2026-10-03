@@ -6,7 +6,7 @@ import type { CloudFetch } from "./fetch";
  *
  * A webhook is a *destination*, not a policy. Which alerts reach it is decided
  * by the org's routing rules (`alert-routing.ts`), which reference this row by
- * id — so the twelve trigger booleans a webhook used to carry are gone.
+ * id, so the twelve trigger booleans a webhook used to carry are gone.
  *
  * Unlike Slack there is no install/OAuth step: Teams offers no app-only flow
  * for posting channel messages, so a channel is identified by the webhook URL
@@ -58,7 +58,7 @@ export async function addMsTeamsWebhook(
 
 /**
  * A webhook is only renameable now. Which alerts reach it is an `alert_rules`
- * question — see `alert-routing.ts` — so the twelve trigger booleans this patch
+ * question (see `alert-routing.ts`) so the twelve trigger booleans this patch
  * used to carry are gone rather than moved.
  */
 export async function updateMsTeamsWebhook(

@@ -100,7 +100,7 @@ function project(overrides: Partial<DnsScanResource> = {}): DnsScanResource {
   };
 }
 
-/** Both accounts connected by default — the has-data guard has its own tests. */
+/** Both accounts connected by default: the has-data guard has its own tests. */
 function scan(resources: DnsScanResource[], accounts?: DnsScanInput["accounts"]): DnsScanInput {
   return {
     plugins: [CLOUDFLARE, VERCEL],
@@ -126,7 +126,7 @@ describe("normalizeDnsHost", () => {
 
   it("leaves an IPv6 address alone rather than reading its tail as a port", () => {
     expect(normalizeDnsHost("2606:4700::6810:85e5")).toBe("2606:4700::6810:85e5");
-    // Uncompressed form has no `::` and ends in a numeric group — must not
+    // Uncompressed form has no `::` and ends in a numeric group: must not
     // strip that group as if it were a TCP port.
     expect(normalizeDnsHost("2001:db8:0:0:0:0:0:1")).toBe("2001:db8:0:0:0:0:0:1");
     expect(normalizeDnsHost("[2001:db8::1]:443")).toBe("2001:db8::1");
@@ -261,7 +261,7 @@ describe("target classification", () => {
   it("does not flag an ambiguously claimed host as dangling", () => {
     // Two resources answer to the same identity token (`hostname` is one of
     // IDENTITY_FIELD_KEYS). The host also matches the vercel namespace, but
-    // neither project's *name* is the label — without the ambiguity guard the
+    // neither project's *name* is the label: without the ambiguity guard the
     // namespace pass would promote this to a takeover finding.
     expect(
       statusOf(

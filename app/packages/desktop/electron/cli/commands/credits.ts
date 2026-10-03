@@ -50,7 +50,7 @@ function runwayCell(pot: CreditPot): string {
 }
 
 /**
- * `infrawrench credits` — prepaid balances and how long they last.
+ * `infrawrench credits`: prepaid balances and how long they last.
  *
  * Worth having in the CLI specifically because this is the number that turns
  * into an outage rather than an invoice: a prepaid pot that empties stops

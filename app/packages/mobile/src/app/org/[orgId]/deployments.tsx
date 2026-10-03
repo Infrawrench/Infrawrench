@@ -22,12 +22,12 @@ import {
 import { colors } from "@/lib/theme";
 
 /**
- * Read-only deploy history (GET /api/org/:orgId/deployments/runs — see
+ * Read-only deploy history (GET /api/org/:orgId/deployments/runs: see
  * app/packages/web/src/api/routes/deployments.ts).
  *
  * Deploying stays on web and the CLI. It is a deliberate omission rather than a
  * gap: a deploy asks questions through `select(...)`, streams build output for
- * minutes, and ships production code — none of which suits a phone.
+ * minutes, and ships production code; none of which suits a phone.
  */
 
 interface DeploymentRunRow {
@@ -132,7 +132,7 @@ export default function DeploymentsScreen() {
  * `costs:write` action on shared org state, the same line the anomaly
  * thresholds and the custom-graph editor already sit on.
  *
- * Fetched only when a run is opened — measuring is two ClickHouse reads and a
+ * Fetched only when a run is opened: measuring is two ClickHouse reads and a
  * history page has fifty runs on it.
  */
 function DeployCostImpact({ runId }: { runId: string }) {
@@ -143,8 +143,8 @@ function DeployCostImpact({ runId }: { runId: string }) {
     // Takes the app-wide `retry` from `_layout.tsx`, like the change feed's
     // impact queries: a transient blip should heal rather than needing the row
     // collapsed and re-opened. A failure here is already *visible* below
-    // ("Cost impact unavailable for this run"), which is the rule that matters
-    // — it is never mistaken for a finding that the deploy cost nothing.
+    // ("Cost impact unavailable for this run"), which is the rule that matters:
+    // it is never mistaken for a finding that the deploy cost nothing.
   });
 
   if (impact.isLoading) {

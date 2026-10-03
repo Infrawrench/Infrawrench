@@ -100,7 +100,7 @@ async function validateCloudWorkspaceTabs(
 }
 
 /**
- * The dashboard to fall back to — the org's default when signed in, the local
+ * The dashboard to fall back to: the org's default when signed in, the local
  * default otherwise. Dashboards live on whichever side is active, so this has
  * to branch on the org rather than always reading the local database.
  */
@@ -280,11 +280,11 @@ function RootLayout() {
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   // On plain routes (Changes, Expiring, Fan-out, Alerts, …) the workspace
-  // tabs are all background — the page's own title wins over the active tab.
+  // tabs are all background: the page's own title wins over the active tab.
   useWorkspaceTabDocumentTitle({ suffix: false, routeTitle: plainRouteDocumentTitle(pathname) });
   const hash = useRouterState({ select: (state) => state.location.hash });
   // Under hash history the query string lives inside the hash fragment, so
-  // window.location.search is always empty — read it from router state.
+  // window.location.search is always empty: read it from router state.
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
@@ -333,7 +333,7 @@ function RootLayout() {
     }
   }
 
-  // Global Cmd/Ctrl+K opens the spotlight (navigate) from any tab — dashboards,
+  // Global Cmd/Ctrl+K opens the spotlight (navigate) from any tab: dashboards,
   // the Workflows tab, resource detail, etc.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -351,7 +351,7 @@ function RootLayout() {
       .then((status) => {
         setCloudAuthenticated(status.authenticated);
         if (status.authenticated) {
-          // Existing sign-ins predate the welcome flow — never show it to them.
+          // Existing sign-ins predate the welcome flow, never show it to them.
           markOnboardingComplete();
           getCloudOrgs()
             .then((orgs) => {
@@ -404,7 +404,7 @@ function RootLayout() {
     if (!tabsHydrated || tabsValidated) return;
     let cancelled = false;
 
-    // Snapshot at hydration time — workspaceTabs and activeWorkspaceTabId are
+    // Snapshot at hydration time: workspaceTabs and activeWorkspaceTabId are
     // intentionally excluded from deps so this runs only once.
     const tabsSnapshot = useUIStore.getState().workspaceTabs;
     const activeIdSnapshot = useUIStore.getState().activeWorkspaceTabId;
@@ -418,7 +418,7 @@ function RootLayout() {
         : await Promise.all(tabsSnapshot.map((tab) => validateWorkspaceTab(tab)));
       if (cancelled) return;
       // Validation is slow (it can hit plugin APIs), so merge against the LIVE
-      // tab list instead of replacing it with the hydration snapshot — the
+      // tab list instead of replacing it with the hydration snapshot: the
       // user may have opened, closed, or retitled tabs in the meantime, and a
       // blind replace wipes those out.
       const snapshotById = new Map(tabsSnapshot.map((tab) => [tab.id, tab]));
@@ -428,9 +428,9 @@ function RootLayout() {
       const current = useUIStore.getState();
       const nextTabs = current.workspaceTabs.flatMap((tab): WorkspaceTab[] => {
         const snap = snapshotById.get(tab.id);
-        if (!snap) return [tab]; // opened after the snapshot — keep untouched
+        if (!snap) return [tab]; // opened after the snapshot: keep untouched
         const result = validatedById.get(tab.id);
-        if (!result) return []; // backing row is gone — drop
+        if (!result) return []; // backing row is gone: drop
         // Take the validator's refreshed title unless the tab was retitled
         // while validation ran (e.g. a chat auto-rename).
         return [tab.title === snap.title ? { ...tab, title: result.title } : tab];
@@ -444,7 +444,7 @@ function RootLayout() {
       replaceWorkspaceTabs(nextTabs, nextActiveId);
       setTabsValidated(true);
       // Validation dropped everything (stale ids, a deleted dashboard), which
-      // would leave the window on a route no open tab renders — i.e. blank.
+      // would leave the window on a route no open tab renders, i.e. blank.
       if (nextTabs.length === 0) {
         const home = await resolveDefaultDashboard(orgIdSnapshot).catch(() => null);
         if (!home || cancelled) return;
@@ -616,7 +616,7 @@ function RootLayout() {
         >
           {gt("Skip to content")}
         </a>
-        {/* macOS drag region — children must opt out individually. */}
+        {/* macOS drag region: children must opt out individually. */}
         <div
           className="h-8 flex-shrink-0 border-b border-border/50 flex items-center"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
@@ -717,7 +717,7 @@ function RootLayout() {
                 </button>
                 {/* Org settings are cloud-backed; local-only mode has no org
                     to configure, so no tile without one. Same shared sections
-                    the web renders — see DesktopSettingsPanel. */}
+                    the web renders: see DesktopSettingsPanel. */}
                 {activeOrgId && (
                   <button
                     type="button"

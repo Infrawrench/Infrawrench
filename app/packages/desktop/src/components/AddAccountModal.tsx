@@ -97,7 +97,7 @@ export function AddAccountModal({
     [orgId],
   );
 
-  // Preflight runs entirely in the renderer — plugins are bundled locally, so
+  // Preflight runs entirely in the renderer: plugins are bundled locally, so
   // no server round-trip is needed even for cloud-org accounts.
   const runPreflight = useCallback(
     async (pluginId: string, credentials: Record<string, string>, _bastionId: string | null) => {

@@ -1,11 +1,11 @@
 /**
- * "What changed around 03:14?" — the moment view contract.
+ * "What changed around 03:14?": the moment view contract.
  *
  * Wire types for `GET /api/org/{orgId}/moment`, plus the pure merge/grouping
  * logic every surface shares (web, desktop, mobile, CLI, MCP). The server
- * unions the feeds the platform already indexes — resource changes, cost
+ * unions the feeds the platform already indexes: resource changes, cost
  * anomalies, workflow runs, deployments, provider status incidents, audit
- * entries, change freezes, and the drift/expiry alert claims — into one
+ * entries, change freezes, and the drift/expiry alert claims; into one
  * chronological list of typed events for a timestamp ± window.
  *
  * The server half lives in web `services/moment.ts`. Keeping the response
@@ -31,7 +31,7 @@ export const MOMENT_FEED_IDS = [
 
 export type MomentFeedId = (typeof MOMENT_FEED_IDS)[number];
 
-/** Human names for feeds — used for "workflow runs unavailable" chips. */
+/** Human names for feeds: used for "workflow runs unavailable" chips. */
 export const MOMENT_FEED_LABELS: Record<MomentFeedId, string> = {
   changes: "Resource changes",
   statusIncidents: "Provider incidents",
@@ -80,7 +80,7 @@ export interface MomentEventLink {
   id?: string | null;
   /** Parent id where the target needs one (workflowId for a run). */
   parentId?: string | null;
-  /** Absolute external URL — provider status pages. */
+  /** Absolute external URL: provider status pages. */
   url?: string | null;
 }
 
@@ -90,13 +90,13 @@ export interface MomentEvent {
   id: string;
   feed: MomentFeedId;
   /**
-   * Fine-grained kind, `<noun>.<verb>` — e.g. `change.created`,
+   * Fine-grained kind, `<noun>.<verb>`, e.g. `change.created`,
    * `change.updated`, `change.deleted`, `incident.started`,
    * `incident.resolved`, `anomaly.spike`, `anomaly.new_source`,
    * `workflow-run.started`, `workflow-run.succeeded`, `workflow-run.failed`,
    * `workflow-run.canceled`, `deployment.started`, `deployment.finished`,
    * `deployment.failed`, `audit.<action>`, `freeze.started`, `freeze.ended`,
-   * `drift-alert.sent`, `expiry-alert.sent`. Open set — render unknown kinds
+   * `drift-alert.sent`, `expiry-alert.sent`. Open set: render unknown kinds
    * generically.
    */
   kind: string;
@@ -104,7 +104,7 @@ export interface MomentEvent {
   timestamp: string;
   /** One-line headline, e.g. `"api-prod-1 changed (size, region)"`. */
   title: string;
-  /** Optional second line — diff summary, error text, actor. */
+  /** Optional second line: diff summary, error text, actor. */
   detail?: string | null;
   severity: MomentSeverity;
   pluginId?: string | null;
@@ -118,7 +118,7 @@ export interface MomentEvent {
 }
 
 /**
- * A provider incident whose span overlaps the requested window — returned
+ * A provider incident whose span overlaps the requested window: returned
  * alongside the events so hosts can badge events that fall inside it
  * ("during DigitalOcean incident").
  */
@@ -229,7 +229,7 @@ export function incidentsCovering(
   });
 }
 
-/** `"during DigitalOcean incident"` — badge text for an event inside spans. */
+/** `"during DigitalOcean incident"`: badge text for an event inside spans. */
 export function describeIncidentBadge(spans: MomentIncidentSpan[]): string | null {
   if (spans.length === 0) return null;
   const names: string[] = [];
@@ -247,7 +247,7 @@ export interface MomentBurst {
   resourceName: string | null;
   /** Chronological members. */
   events: MomentEvent[];
-  /** Incident spans covering any member — union, for the group badge. */
+  /** Incident spans covering any member: union, for the group badge. */
   incidentIds: string[];
 }
 
@@ -346,7 +346,7 @@ export interface MomentRequest {
 /**
  * Query string for a moment request, without the leading `?`. Invalid dates
  * and non-finite windows are dropped rather than sent, mirroring
- * `changeFeedSearchParams` — a half-filled picker must not turn the server's
+ * `changeFeedSearchParams`: a half-filled picker must not turn the server's
  * `new Date(...)` into an Invalid Date comparison.
  */
 export function momentSearchParams(request: MomentRequest): string {
@@ -358,7 +358,7 @@ export function momentSearchParams(request: MomentRequest): string {
   return params.toString();
 }
 
-/** The merged window — `GET /api/org/{orgId}/moment`. */
+/** The merged window: `GET /api/org/{orgId}/moment`. */
 export async function fetchMoment(
   api: CloudFetch,
   orgId: string,

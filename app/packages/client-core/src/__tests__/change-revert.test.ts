@@ -164,7 +164,7 @@ describe("computeRevertPlan — conflict", () => {
         editableFieldKeys: ["tags"],
       }),
     );
-    // Structurally equal to `to`, so it is not a conflict — but the old value
+    // Structurally equal to `to`, so it is not a conflict, but the old value
     // is a string here, which *is* writable, so it reverts.
     expect(plan.fields[0]?.status).toBe("revertible");
   });
@@ -219,7 +219,7 @@ describe("computeRevertPlan — provider-derived outputs", () => {
       }),
     );
     expect(plan.fields[0]?.status).toBe("provider-derived");
-    // No live value is quoted for an output — there is nothing to reconcile.
+    // No live value is quoted for an output: there is nothing to reconcile.
     expect(plan.fields[0]?.current).toBeUndefined();
     expect(plan.revertibleFields).toEqual(["size"]);
     expect(buildRevertPatch(plan)).toEqual({ size: "small" });
@@ -253,7 +253,7 @@ describe("revertLooksAlreadyApplied", () => {
   /**
    * The distinction that keeps this from attributing somebody's hand-edit to
    * whoever next opens the dialog. No journal entry means no write was ever
-   * issued for this event — which is a recorded fact, not an inference from a
+   * issued for this event, which is a recorded fact, not an inference from a
    * lock that an attempt dying before its write would also have left behind.
    */
   it("does not mistake a hand-reverted resource for an interrupted attempt", () => {
@@ -264,7 +264,7 @@ describe("revertLooksAlreadyApplied", () => {
   });
 
   it("refuses when anything is still writable or ambiguous", () => {
-    // Something left to do — this is an ordinary revert, not a reconciliation.
+    // Something left to do: this is an ordinary revert, not a reconciliation.
     expect(revertLooksAlreadyApplied(planOf("already-reverted", "revertible"), true)).toBe(false);
     // A field that moved on again is evidence of nothing.
     expect(revertLooksAlreadyApplied(planOf("already-reverted", "conflict"), true)).toBe(false);

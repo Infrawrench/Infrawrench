@@ -44,14 +44,14 @@ import { colors, radii, spacing } from "@/lib/theme";
 import { releaseRecordingMode, withRecordingMode } from "./recording-session";
 
 /**
- * The mobile counterpart of the web/desktop `SpeechPanel` — the Speech tab a
+ * The mobile counterpart of the web/desktop `SpeechPanel`: the Speech tab a
  * resource picks up from `DetailViewSchema.speechPanel`. Type text and hear it
  * back, or record a clip (or pick one off the device) and read the transcript.
  *
  * Web renders this as a tab inside the resource page; on a phone it is pushed
  * as its own screen, like logs and the KV console. Everything below the wire
- * format is different from web — there is no `<audio>`, no `MediaRecorder` and
- * no Blob — so only the numbers and the wording are shared, through
+ * format is different from web (there is no `<audio>`, no `MediaRecorder` and
+ * no Blob) so only the numbers and the wording are shared, through
  * `@infrawrench/client-core`'s speech helpers.
  *
  * Audio crosses base64 inside ordinary JSON, same as every other host.
@@ -115,7 +115,7 @@ async function transcribeAudio(
 }
 
 /**
- * A failed call is usually the provider talking — a bad voice id, an exhausted
+ * A failed call is usually the provider talking: a bad voice id, an exhausted
  * quota. Dig the route's `{ error }` out of the body so the panel shows that
  * rather than "Cloud request failed: 400 https://…".
  */
@@ -125,7 +125,7 @@ function speechErrorMessage(e: unknown, fallback: string): string {
       const parsed = JSON.parse(e.body) as { error?: unknown };
       if (typeof parsed.error === "string" && parsed.error) return parsed.error;
     } catch {
-      /* not JSON — fall through to the raw message */
+      /* not JSON: fall through to the raw message */
     }
   }
   return e instanceof Error ? e.message : fallback;
@@ -259,7 +259,7 @@ function SpeechBody({
 
 interface SynthesizedClip {
   uri: string;
-  /** Cache directory holding the clip — removed when the clip is replaced. */
+  /** Cache directory holding the clip: removed when the clip is replaced. */
   dirUri: string;
   fileName: string;
   summary: string;
@@ -447,7 +447,7 @@ function TranscribeSection({
   }, []);
 
   // Providers that reject browser/phone recording containers hide the mic and
-  // keep the file picker — see `SpeechPanelCapability.disableRecording`.
+  // keep the file picker: see `SpeechPanelCapability.disableRecording`.
   const recordingBlocked = capability.disableRecording === true;
 
   const maxBytes = capability.maxAudioBytes ?? DEFAULT_MAX_AUDIO_BYTES;
@@ -478,7 +478,7 @@ function TranscribeSection({
       // iOS routes playback through the earpiece at a fraction of the volume
       // while the recording category is active, so `withRecordingMode` turns
       // it back off if the recorder fails to start and `stopRecording` turns
-      // it off once the clip is in hand — it is never left on for the life of
+      // it off once the clip is in hand: it is never left on for the life of
       // the screen.
       await withRecordingMode(setAudioModeAsync, async () => {
         await recorder.prepareToRecordAsync();
@@ -509,7 +509,7 @@ function TranscribeSection({
       setError(e instanceof Error ? e.message : "Recording failed");
     } finally {
       // Runs whether `stop()` threw, the recorder handed back no uri, or the
-      // clip attached cleanly — the session must not outlive the recording.
+      // clip attached cleanly: the session must not outlive the recording.
       await releaseRecording();
     }
   }, [attach, recorder]);
@@ -715,7 +715,7 @@ function ClipPlayer({ uri }: { uri: string }) {
       return;
     }
     // A finished player sits at the end of the clip and `play()` is a no-op
-    // there — rewind first so the button always does something.
+    // there: rewind first so the button always does something.
     if (status.didJustFinish || (status.duration > 0 && status.currentTime >= status.duration)) {
       await player.seekTo(0);
     }
@@ -799,7 +799,7 @@ function OptionPicker({
   );
 }
 
-/** Secondary button with a leading icon — the recorder's Record/Stop pair. */
+/** Secondary button with a leading icon: the recorder's Record/Stop pair. */
 function IconButton({
   label,
   icon,
@@ -836,7 +836,7 @@ async function shareClip(uri: string): Promise<void> {
   if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
 }
 
-/** Best-effort cleanup — a missing directory is the state we wanted anyway. */
+/** Best-effort cleanup: a missing directory is the state we wanted anyway. */
 function discardDirectory(uri: string | undefined): void {
   if (!uri) return;
   try {
@@ -855,8 +855,8 @@ function extensionOf(pathOrName: string): string {
 }
 
 /**
- * Providers pick the download filename, and it lands on the user's file system
- * — keep it to one path segment with a usable extension.
+ * Providers pick the download filename, and it lands on the user's file system:
+ * keep it to one path segment with a usable extension.
  */
 function safeFileName(name: string, extension: string): string {
   const cleaned = name.replace(/[/\\]+/g, "_").trim();

@@ -1,4 +1,4 @@
-// `infrawrench blast-radius <resource-id>` — what breaks if a resource is
+// `infrawrench blast-radius <resource-id>`: what breaks if a resource is
 // deleted, from the same /blast-radius endpoint the delete dialog and the
 // resource-detail tab read.
 //
@@ -68,7 +68,7 @@ export async function cmdBlastRadius(ctx: CliContext, resourceId: string | undef
     println();
   }
 
-  // Always printed, including on an otherwise empty report — a silent gap is
+  // Always printed, including on an otherwise empty report: a silent gap is
   // how "we could not look" gets read as "there is nothing there".
   if (report.unchecked.length > 0) {
     println(c.bold("Not checked"));

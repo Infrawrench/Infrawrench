@@ -10,7 +10,7 @@ import { StringListPicker } from "../components/create-resource/StringListPicker
 import { useCreateResourceForm } from "../hooks/useCreateResourceForm.js";
 
 beforeAll(() => {
-  // jsdom doesn't implement <dialog> showModal/close — stub them, the way the
+  // jsdom doesn't implement <dialog> showModal/close: stub them, the way the
   // other Modal-rendering suites do.
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
@@ -34,7 +34,7 @@ const CONFIG: CreateResourceConfig = {
 /**
  * The real thing: the shared modal driving the real form hook, the way both
  * web and desktop wire it. The prefill runs in the modal's effect, which React
- * runs *after* the picker's — so this only passes if the picker adopts a value
+ * runs *after* the picker's, so this only passes if the picker adopts a value
  * that arrives after it mounted.
  */
 function Harness({
@@ -148,7 +148,7 @@ describe("StringListPicker value sync", () => {
 
   it("keeps an in-progress edit when the parent echoes the same value back", () => {
     // The blank row a user just added serializes away, so the echoed value is
-    // unchanged — adopting it here would delete the row under their cursor.
+    // unchanged: adopting it here would delete the row under their cursor.
     const onChange = vi.fn();
     const { rerender } = render(<StringListPicker value="a" onChange={onChange} />);
     fireEvent.click(screen.getByText("+ Add"));

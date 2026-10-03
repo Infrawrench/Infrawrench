@@ -14,7 +14,7 @@ import {
 /**
  * Metric alerts are cloud-only: rules are evaluated by the cloud poller, so a
  * desktop app in local mode has nothing to show. The active org is resolved
- * at call time rather than closed over, matching `costs-client.ts` — the org
+ * at call time rather than closed over, matching `costs-client.ts`: the org
  * can change under a mounted panel when the user switches org.
  */
 function requireOrgId(): string {

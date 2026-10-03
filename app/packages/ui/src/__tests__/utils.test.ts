@@ -274,7 +274,7 @@ describe("getAccountRootType", () => {
 
   it("ignores a root that is itself a child", () => {
     // The loader test rejects this shape at build time, but a serialized flag
-    // arriving over the wire is not covered by that — an account must never
+    // arriving over the wire is not covered by that: an account must never
     // open to something nested inside something else.
     expect(getAccountRootType([{ id: "x", accountRoot: true, parentTypeId: "a" }])).toBeNull();
   });

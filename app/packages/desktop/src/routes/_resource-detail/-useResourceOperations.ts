@@ -54,7 +54,7 @@ function errorChatIterable(message: string): AsyncIterable<ChatStreamEvent> {
 
 /**
  * Everything the operations need in order to decide *where* to run. A resource
- * tab is either cloud-backed (`cloudCtxRef` set — the work happens server-side
+ * tab is either cloud-backed (`cloudCtxRef` set: the work happens server-side
  * over the cloud API) or local (`clientRef` holds a plugin client running in
  * this Electron process, with the SQL refs holding the live connection).
  */
@@ -73,8 +73,8 @@ export interface ResourceOperationsDeps {
  * browsing, manifest get/apply, describe, logs, chat, publish, artifacts and
  * the secret-version verbs.
  *
- * Every one of these is the same shape — run against the cloud API when the tab
- * is cloud-backed, otherwise against the local plugin client — so they live
+ * Every one of these is the same shape (run against the cloud API when the tab
+ * is cloud-backed, otherwise against the local plugin client) so they live
  * together here rather than in the panel component. Pulled out of
  * `resource.$accountId.$resourceId.tsx` verbatim; the hook is called
  * unconditionally from one place, so hook order is unchanged.
@@ -346,7 +346,7 @@ export function useResourceOperations(deps: ResourceOperationsDeps) {
 
   // Forward the Publish tab's send to the plugin's publishMessage. Cloud-
   // synced accounts aren't bridged yet (no `cloud_publish_message` Tauri
-  // command) — same constraint as chat, with a clear error.
+  // command): same constraint as chat, with a clear error.
   const handlePublishMessage = useCallback(
     async (payload: PublishMessagePayload): Promise<PublishMessageResult> => {
       const cloud = cloudCtxRef.current;

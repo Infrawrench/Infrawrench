@@ -1,5 +1,5 @@
 /**
- * Commitments — reserved instances, savings plans, committed-use discounts —
+ * Commitments (reserved instances, savings plans, committed-use discounts)
  * as the `GET /commitments` feed reports them (permission `costs:read`).
  *
  * Wire contract shared by web, desktop, the CLI and mobile. The types mirror
@@ -8,11 +8,11 @@
  *
  * - Null money fields mean "the provider did not report a price" (Azure's
  *   list API reports none, GCP's reports no money at all). Render "not
- *   reported" — never $0, which reads as "free".
+ *   reported", never $0, which reads as "free".
  * - Null `region` means "applies across regions" (an AWS Compute Savings
  *   Plan). Render "All regions", not a blank.
  * - Null `utilization.utilization` means "not measurable", with the reason
- *   attached. Never render it as 0% — in a table, "unknown" and "unused"
+ *   attached. Never render it as 0%: in a table, "unknown" and "unused"
  *   look identical, and one of them gets a commitment cancelled.
  * - Coverage is a range. `broadRatio` (lower bound) and `narrowRatio`
  *   (upper bound) bracket the truth; showing either alone overstates
@@ -43,7 +43,7 @@ export interface CommitmentUtilizationView {
   obligationAmount: number | null;
   deliveredAmount: number;
   activeDays: number;
-  /** Active days with cost data — the only days counted in the obligation. */
+  /** Active days with cost data: the only days counted in the obligation. */
   measuredDays: number;
   /** Active days without cost data, reported rather than counted as idle. */
   missingDays: number;
@@ -92,7 +92,7 @@ export interface CommitmentCoverageCurrency {
 }
 
 export interface CommitmentCoverageView {
-  /** False = every in-scope account excluded — unavailable, not 0%. */
+  /** False = every in-scope account excluded: unavailable, not 0%. */
   available: boolean;
   currencies: CommitmentCoverageCurrency[];
   excludedAccountIds: string[];
@@ -147,7 +147,7 @@ export interface CommitmentsFeed {
   coverage: CommitmentCoverageView;
   planner: CommitmentPlannerView;
   failures: CommitmentPollFailureView[];
-  /** Commitment-capable accounts never yet collected — named, not omitted. */
+  /** Commitment-capable accounts never yet collected: named, not omitted. */
   pendingAccountIds: string[];
   utilizationWindowDays: number;
   plannerWindowDays: number;

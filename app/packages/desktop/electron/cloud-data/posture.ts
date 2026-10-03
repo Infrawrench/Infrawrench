@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Posture checks — cloud mode. The findings are computed server-side over the
+// Posture checks: cloud mode. The findings are computed server-side over the
 // org's synced rows (`GET /posture`, the same endpoint the web Posture screen
 // and the CLI's `infrawrench posture` use). The local-mode counterpart lives
 // in the renderer (src/lib/local-posture.ts), which runs the shared
@@ -12,7 +12,7 @@ ipcMain.handle("cloud_posture", async (_e, { orgId }: { orgId: string }) => {
 });
 
 // Accepting a finding is org state, not machine state, so cloud mode records
-// it through the API — a dismissal made on this laptop has to be the same
+// it through the API: a dismissal made on this laptop has to be the same
 // dismissal the web app, the alerts and everyone else's desktop see. Local
 // mode writes its own SQLite table instead (src/lib/local-posture.ts).
 ipcMain.handle(

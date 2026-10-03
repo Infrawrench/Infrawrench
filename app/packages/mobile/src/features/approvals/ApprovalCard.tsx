@@ -11,7 +11,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 /**
  * One pending `infra.waitForApproval(...)` request on a phone.
  *
- * The native counterpart of `@infrawrench/ui`'s `ApprovalCard` — mobile can't
+ * The native counterpart of `@infrawrench/ui`'s `ApprovalCard`; mobile can't
  * load that component (it is DOM/Tailwind), so this mirrors its information
  * design instead: what is being asked, which workflow and run it blocks, how
  * the run was started, when the window closes, and the fact that letting it
@@ -28,7 +28,7 @@ export function ApprovalCard({
   approval: WorkflowApproval;
   /** Whether the viewer holds `workflows:approve`. */
   canDecide: boolean;
-  /** True while this row's decision is in flight — disables both buttons. */
+  /** True while this row's decision is in flight: disables both buttons. */
   deciding: boolean;
   /** The request the notification deep-linked to, pulled to the top. */
   highlighted?: boolean;

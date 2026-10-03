@@ -28,7 +28,7 @@ export function BastionsSection() {
 
   useEffect(() => {
     void load();
-    // Connected status is live — poll every 10s so the badge actually changes
+    // Connected status is live: poll every 10s so the badge actually changes
     // when the user starts/stops the agent in another window.
     const id = setInterval(() => void load(), 10_000);
     return () => clearInterval(id);
@@ -286,7 +286,7 @@ function CreatedBastionModal({
   const gt = useGT();
   const { cloudOrigin } = useSettingsHost();
   // Resolve a backend URL that the user's host can actually reach. We can't
-  // assume same-origin for the agent — typically the agent runs on a VM
+  // assume same-origin for the agent: typically the agent runs on a VM
   // somewhere else. The desktop host passes its cloud origin (the app shell
   // itself isn't a reachable server); web defaults to the current origin for
   // "they're running this locally" demos, and in production the user replaces

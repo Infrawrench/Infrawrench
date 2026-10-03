@@ -18,7 +18,7 @@ import { navigateToWorkspaceTarget, settingsTabTarget } from "../lib/workspace-t
 import { workflowsTabTarget } from "@infrawrench/ui";
 
 /**
- * Cloud-mode org settings — the same sections the web app renders, over the
+ * Cloud-mode org settings: the same sections the web app renders, over the
  * `cloud_settings_request` IPC proxy. Local-only mode has no org (and no
  * server to configure), so the panel asks for a cloud sign-in instead.
  */
@@ -74,7 +74,7 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
       permissionsLoading,
       refreshPermissions,
       openExternal: (url) => {
-        // Always the system browser — Stripe checkout and password-reset
+        // Always the system browser: Stripe checkout and password-reset
         // pages have no business inside the app shell.
         void invoke("open_external_url", { url });
       },

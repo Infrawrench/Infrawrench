@@ -38,8 +38,8 @@ function ghHeaders(env: GhEnv, accept: string, anonymous: boolean): HeadersInit 
 /**
  * The repository is public, so every call here works unauthenticated (at a lower
  * rate limit). A token is optional: without one we go straight out anonymously,
- * and if a configured token is rejected — expired, or the placeholder that ships
- * in .dev.vars.example — we retry anonymously rather than failing the request.
+ * and if a configured token is rejected (expired, or the placeholder that ships
+ * in .dev.vars.example) we retry anonymously rather than failing the request.
  */
 async function ghFetch(env: GhEnv, url: string, accept: string): Promise<Response> {
   const token = env.GITHUB_TOKEN?.trim();

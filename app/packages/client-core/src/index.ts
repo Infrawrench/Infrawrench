@@ -672,7 +672,7 @@ export * from "./moment";
 export * from "./orphans";
 export * from "./expiry";
 export * from "./leases";
-// One time axis over every dated thing above — freezes, sleep windows,
+// One time axis over every dated thing above: freezes, sleep windows,
 // deadlines, commitment terms, scheduled runs and incidents.
 export * from "./calendar";
 export * from "./posture";

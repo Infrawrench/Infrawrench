@@ -3,7 +3,7 @@ import { invoke } from "./invoke";
 
 /**
  * A cloud-managed organization visible to the desktop user.
- * Structurally identical to {@link OrgEntry} from the shared UI package —
+ * Structurally identical to {@link OrgEntry} from the shared UI package:
  * re-exported here so callers can import from `./cloud-api` if they prefer.
  */
 export type CloudOrg = OrgEntry;

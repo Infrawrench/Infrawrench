@@ -62,7 +62,7 @@ export interface CostGraphCardProps {
   onEdit?: (() => void) | undefined;
   /**
    * What the pencil does, for the tooltip and the accessible name. A saved
-   * report's card doesn't edit anything in place — it opens the report — and a
+   * report's card doesn't edit anything in place (it opens the report) and a
    * button that says "Edit widget" while navigating elsewhere is a lie.
    */
   editLabel?: string | undefined;
@@ -76,7 +76,7 @@ export interface CostGraphCardProps {
   /** The report's name, for the scope choice in the annotation editor. */
   annotationReportName?: string | undefined;
   /**
-   * Called with each loaded response's `conversion` block — `undefined` when
+   * Called with each loaded response's `conversion` block: `undefined` when
    * nothing was converted, which is what an org that has stated no exchange
    * rates always sees.
    *
@@ -95,7 +95,7 @@ interface LoadedState {
 }
 
 /**
- * The spend chart — what a cost card has always drawn. Not exported: callers go
+ * The spend chart: what a cost card has always drawn. Not exported: callers go
  * through {@link CostGraphCard}, which picks between this and the unit-cost
  * chart from the config.
  */
@@ -129,7 +129,7 @@ function SpendGraphCard({
 
   /**
    * Held in a ref rather than listed in the fetch effect's dependencies: a
-   * caller that passes an inline arrow — the ordinary way to write this — would
+   * caller that passes an inline arrow (the ordinary way to write this) would
    * otherwise re-run the query on every render of the page above.
    */
   const onConversionRef = useRef(onConversion);
@@ -305,7 +305,7 @@ function SpendGraphCard({
   };
 
   /**
-   * Categorical series colors — the app-wide chart theme order, assigned in
+   * Categorical series colors: the app-wide chart theme order, assigned in
    * fixed order by series rank-at-load (API returns groups ranked with "Other"
    * last). "Other" always renders in neutral gray, never a categorical hue.
    *
@@ -319,7 +319,7 @@ function SpendGraphCard({
       : (chart.colors[index % chart.colors.length] ?? OTHER_SERIES_COLOR);
 
   // The chart body is exposed as a single role="img" with a summary label
-  // only when a chart is actually rendered — loading, error, and empty
+  // only when a chart is actually rendered: loading, error, and empty
   // states keep their own text visible to assistive tech.
   const hasChartData = !loading && !error && (state?.pivot.rows.length ?? 0) > 0;
 
@@ -397,7 +397,7 @@ function SpendGraphCard({
             ? {
                 // Clicking a bar is the natural way to say "something happened
                 // here". The keyboard route to the same editor is the rail
-                // below the chart — this is the pointer shortcut, not the only
+                // below the chart: this is the pointer shortcut, not the only
                 // way in.
                 onClick: (nextState: { activeLabel?: string | number | undefined }) => {
                   const bucket = nextState?.activeLabel;
@@ -542,7 +542,7 @@ function SpendGraphCard({
             categories and carry no data of their own. Every `x` here is a
             bucket the chart drew (bucketCostAnnotations guarantees it), so the
             axis domain and the plotted values are exactly what they would be
-            with no annotations at all — `ifOverflow="hidden"` keeps that true
+            with no annotations at all: `ifOverflow="hidden"` keeps that true
             even if a bucket ever went missing between the two renders.
           */}
           {markers.map((marker) => (
@@ -613,8 +613,8 @@ function SpendGraphCard({
           </h3>
           {/*
             A ternary rather than `total && …`: this slot sits next to money, so
-            a falsy left-hand side that React can render — a `0`, an empty
-            string — would print beside the title and read as a real figure.
+            a falsy left-hand side that React can render (a `0`, an empty
+            string) would print beside the title and read as a real figure.
             `total` is the joined per-currency string and is `""` for a response
             with no totals at all, which must draw nothing rather than an empty
             amount.
@@ -729,7 +729,7 @@ function SpendGraphCard({
       </div>
 
       {/*
-        The annotation rail — deliberately outside the `role="img"` chart body,
+        The annotation rail: deliberately outside the `role="img"` chart body,
         which would hide these controls from assistive tech, and deliberately
         not a hover affordance. The numbered flags on the chart are the visual
         marker; this is how they are read and reached with a keyboard, on a
@@ -793,7 +793,7 @@ function SpendGraphCard({
                 onClick={() =>
                   setEditing({
                     annotation: null,
-                    // Default to the chart's last bucket — the thing somebody
+                    // Default to the chart's last bucket: the thing somebody
                     // is usually explaining is the most recent movement.
                     startDate: String(
                       state?.pivot.rows[state.pivot.rows.length - 1]?.["bucket"] ??
@@ -870,7 +870,7 @@ function SpendGraphCard({
 }
 
 /**
- * A cost card: spend over time, or — when the config names a business metric —
+ * A cost card: spend over time, or (when the config names a business metric)
  * cost per unit of it.
  *
  * The switch lives here, at the component boundary, rather than as a branch

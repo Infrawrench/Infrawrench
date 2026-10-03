@@ -1,12 +1,12 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Managed accounts and invoices — cloud-mode only, for the same reason as
+// Managed accounts and invoices; cloud-mode only, for the same reason as
 // everything in `costs.ts`: the spend an invoice bills for is collected
 // server-side, so a local-only workspace has nothing to bill.
 //
 // Read handlers ride the cloud's `invoices:read`; the write and issue handlers
-// ride `invoices:write` and `invoices:issue`. Nothing is decided here — the
+// ride `invoices:write` and `invoices:issue`. Nothing is decided here: the
 // server enforces all three, and a caller without the grant gets its 403 back
 // as the action's error.
 

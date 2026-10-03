@@ -23,13 +23,13 @@ interface SshTerminalProps {
   host: string;
   port: number;
   username: string;
-  /** Raw PEM — required when keySource is undefined or a local type. */
+  /** Raw PEM: required when keySource is undefined or a local type. */
   privateKey: string;
   /** Selected key source. When kind is "cloud", dispatches through the WS proxy. */
   keySource?: KeySource | null;
-  /** Required for cloud dispatch — identifies the account the WS proxy should SSH from. */
+  /** Required for cloud dispatch: identifies the account the WS proxy should SSH from. */
   accountId?: string;
-  /** Optional resource id — helps the cloud proxy resolve a default SSH config. */
+  /** Optional resource id: helps the cloud proxy resolve a default SSH config. */
   resourceId?: string;
   /** Forward the local SSH agent to the remote host (local mode only). */
   agentForward?: boolean;
@@ -60,7 +60,7 @@ export function SshTerminal({
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const containerRef = useRef<HTMLDivElement>(null);
   // Connection state mirrored into a visually hidden live region so screen
-  // readers announce it — the xterm buffer writes are not reliably read.
+  // readers announce it: the xterm buffer writes are not reliably read.
   const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export function SshTerminal({
 
     // URLs printed by the remote host (a `gh auth login` device-code page,
     // the `t3 connect link` authorization URL) open in the real browser, not
-    // in the app shell. The handler validates the scheme first — terminal
+    // in the app shell. The handler validates the scheme first: terminal
     // output is remote-controlled text.
     const linkHandler = createTerminalLinkHandler({
       openExternal: (url) => void invoke("open_external_url", { url }),

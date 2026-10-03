@@ -16,7 +16,7 @@ import {
 } from "./cloud-environments";
 
 /**
- * Desktop implementation of the shared environments client — cloud mode only.
+ * Desktop implementation of the shared environments client: cloud mode only.
  * The org is resolved at call time rather than closed over, so switching orgs
  * mid-session cannot leave a stale id in a captured closure (the
  * `probes-client` convention).

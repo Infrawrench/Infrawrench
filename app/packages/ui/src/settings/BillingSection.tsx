@@ -5,7 +5,7 @@ import { useSettingsHost } from "./host.js";
 
 /**
  * Largest quantity one purchase accepts. Mirrors `MAX_SLOTS_PER_PURCHASE` in
- * `web/src/api/routes/billing.ts`, which is the enforcing copy — this one only
+ * `web/src/api/routes/billing.ts`, which is the enforcing copy: this one only
  * keeps the input from offering a quantity the server would reject.
  */
 const MAX_SLOTS_PER_PURCHASE = 25;
@@ -92,11 +92,11 @@ export function BillingSection() {
   const prepaidSeats = capacity.seats;
   const isActive = sub?.status === "active";
   // "trialing" with no billing period is the placeholder row from a checkout
-  // that was never completed — that org is on the free plan. A trial Stripe
+  // that was never completed: that org is on the free plan. A trial Stripe
   // itself reported (the webhooks set the period) is a paid plan mid-trial.
   const isTrial = sub?.status === "trialing" && sub.currentPeriodEnd != null;
   const subscriptionPaid = !!sub && (isActive || isTrial || sub.status === "past_due");
-  // Prepaid capacity is a paid plan on its own — an org can hold slots with no
+  // Prepaid capacity is a paid plan on its own: an org can hold slots with no
   // subscription at all, and calling that "Free" would contradict both the
   // server's entitlement check and the invoice the org is holding.
   const isFree = !complimentary && !subscriptionPaid && prepaidSeats === 0;

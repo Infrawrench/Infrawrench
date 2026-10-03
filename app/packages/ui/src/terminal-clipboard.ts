@@ -1,16 +1,16 @@
 /**
  * Wires clipboard support onto an xterm.js `Terminal` instance:
  *
- *  - Copy on selection — anything the user selects with the mouse is written
+ *  - Copy on selection: anything the user selects with the mouse is written
  *    to the system clipboard.
  *  - Paste with Cmd+V (macOS) or Ctrl+Shift+V (Linux/Windows). Plain Ctrl+V
  *    is left alone so readline's quoted-insert keeps working.
- *  - Optional image paste — when the clipboard holds an image and no plain
+ *  - Optional image paste: when the clipboard holds an image and no plain
  *    text, `onPasteImage` is invoked with the raw bytes so callers can e.g.
  *    upload it to the remote host and paste the resulting path.
  *
  * Typed loosely so the `@infrawrench/ui` package does not need a hard
- * dependency on `@xterm/xterm` — callers pass their real `Terminal`.
+ * dependency on `@xterm/xterm`: callers pass their real `Terminal`.
  */
 
 export interface ClipboardTerminal {
@@ -71,7 +71,7 @@ async function handlePaste(
 
   if (onPasteImage && options?.readClipboardImage) {
     try {
-      // Text wins when both are present — readText works everywhere,
+      // Text wins when both are present: readText works everywhere,
       // including Electron where clipboard.read() does not.
       const text =
         typeof navigator !== "undefined" && navigator.clipboard?.readText
@@ -87,10 +87,10 @@ async function handlePaste(
         if (pasted) term.paste(pasted);
         return;
       }
-      // No text and no image — nothing to paste.
+      // No text and no image: nothing to paste.
       return;
     } catch {
-      // Native reader failed — fall through to the Clipboard API paths.
+      // Native reader failed: fall through to the Clipboard API paths.
     }
   }
 
@@ -112,7 +112,7 @@ async function handlePaste(
         }
       }
     } catch {
-      // clipboard.read() unavailable or denied — fall back to text paste.
+      // clipboard.read() unavailable or denied: fall back to text paste.
     }
   }
   await pasteTextFromClipboard(term);
@@ -129,7 +129,7 @@ export function attachTerminalClipboard(
     if (!selection) return;
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return;
     void navigator.clipboard.writeText(selection).catch(() => {
-      // Permission denied or no secure context — silently ignore; the user
+      // Permission denied or no secure context: silently ignore; the user
       // can still use the browser's built-in copy via context menu.
     });
   });

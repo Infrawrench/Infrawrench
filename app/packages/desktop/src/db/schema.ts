@@ -1,12 +1,12 @@
 /**
- * SQLite schema for the desktop app — same tables as the web app
+ * SQLite schema for the desktop app: same tables as the web app
  * but without organization_id (single-user, local).
  *
  * Migrations are run at startup in the Electron main process (electron/main.ts).
  */
 
 export const MIGRATIONS: string[] = [
-  // v1 — initial schema
+  // v1: initial schema
   `
   CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
@@ -96,7 +96,7 @@ export const MIGRATIONS: string[] = [
     UNIQUE(dashboard_id, resource_id)
   );
   `,
-  // v2 — SSH tunnel configs + named SSH key registry
+  // v2: SSH tunnel configs + named SSH key registry
 
   `
   CREATE TABLE IF NOT EXISTS ssh_tunnel_configs (
@@ -120,7 +120,7 @@ export const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
-  // v3 — Cloud sync state + sync columns for bidirectional sync
+  // v3: Cloud sync state + sync columns for bidirectional sync
 
   `
   CREATE TABLE IF NOT EXISTS cloud_sync_state (
@@ -148,7 +148,7 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE dashboard_pins ADD COLUMN sync_version INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE dashboard_pins ADD COLUMN deleted_at TEXT;
   `,
-  // v4 — metric pings (desktop-only native notifications when a metric leaves a range)
+  // v4: metric pings (desktop-only native notifications when a metric leaves a range)
 
   `
   CREATE TABLE IF NOT EXISTS metric_pings (
@@ -167,7 +167,7 @@ export const MIGRATIONS: string[] = [
     UNIQUE(resource_id, metric_label)
   );
   `,
-  // v5 — SSH host-key pins (TOFU). One row per (host, port); we reject the
+  // v5: SSH host-key pins (TOFU). One row per (host, port); we reject the
   // connection if the fingerprint we see at connect time does not match.
 
   `
@@ -349,7 +349,7 @@ MIGRATIONS.push(AGENT_REPO_CONFIG_MIGRATION);
 
 // How the session is driven: "terminal" (the tool's CLI attached in an SSH
 // tab) or "t3-code" (the T3 Code server drives the same CLI, and is used
-// from T3 Code's own client). Orthogonal to `tool` — T3 Code is a control
+// from T3 Code's own client). Orthogonal to `tool`: T3 Code is a control
 // surface, not an agent, so a T3 Code session still installs codex or claude.
 const AGENT_SURFACE_MIGRATION = `
 ALTER TABLE agent_sessions ADD COLUMN surface TEXT NOT NULL DEFAULT 'terminal';
@@ -358,11 +358,11 @@ ALTER TABLE agent_settings ADD COLUMN surface TEXT NOT NULL DEFAULT 'terminal';
 
 MIGRATIONS.push(AGENT_SURFACE_MIGRATION);
 
-// Accepted posture findings — "yes, that disk is unencrypted on purpose".
+// Accepted posture findings: "yes, that disk is unencrypted on purpose".
 // Keyed by (resource, rule) like the cloud's `posture_dismissals`, because a
 // finding is recomputed from stored fields on every read and has no row of
 // its own. No `dismissed_by` column: the local workspace is single-user, so
-// the author is always the person reading it. No sync_version either — this
+// the author is always the person reading it. No sync_version either: this
 // is a local decision about a local workspace, and the cloud's own dismissals
 // live in its table.
 const POSTURE_DISMISSALS_MIGRATION = `

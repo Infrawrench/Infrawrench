@@ -5,7 +5,7 @@ import type { StatusIncidentsClient } from "./types.js";
 
 export interface ProviderIncidentChangesSectionProps {
   client: StatusIncidentsClient;
-  /** Open an external URL — see ProviderIncidentBanner. */
+  /** Open an external URL: see ProviderIncidentBanner. */
   onOpenUrl?: ((url: string) => void) | undefined;
 }
 
@@ -18,7 +18,7 @@ const IMPACT_TONE: Record<string, string> = {
 
 /**
  * The Changes-page half of "is it me or is it them?": provider incidents
- * (active, or resolved within the last day) correlated with the drift feed —
+ * (active, or resolved within the last day) correlated with the drift feed;
  * "these N changes happened during an incident". Renders nothing when no
  * incident overlaps the org, so the page stays clean in the common case.
  */
@@ -36,7 +36,7 @@ export function ProviderIncidentChangesSection({
         const response = await client.listStatusIncidents();
         if (!cancelled) setIncidents(response.incidents);
       } catch {
-        // Advisory — the change feed itself is unaffected.
+        // Advisory: the change feed itself is unaffected.
       }
     })();
     return () => {

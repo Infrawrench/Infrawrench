@@ -3,7 +3,7 @@
  * and one window of one application.
  *
  * Neither resolves how to reach the host. The resource route already does that
- * for the SSH tab — a chosen key, a resolved address, an optional jumpbox — and
+ * for the SSH tab (a chosen key, a resolved address, an optional jumpbox) and
  * hands the same connection here, so there is one answer to "how do we get in"
  * rather than two that can disagree.
  */
@@ -39,13 +39,13 @@ import {
  * Which host, by value.
  *
  * The route rebuilds the config object on every render, so anything that keys
- * an effect on "the host" has to spell it out — the session would otherwise
+ * an effect on "the host" has to spell it out: the session would otherwise
  * tear itself down mid-session, and the setup check would re-probe the host on
  * every paint.
  *
  * The login is in it and the key is not: what is installed is a property of the
- * host, `privilege` is a property of the user, and which key proved that user —
- * local or cloud-held — cannot change either answer. The jump chain is in it
+ * host, `privilege` is a property of the user, and which key proved that user
+ * (local or cloud-held) cannot change either answer. The jump chain is in it
  * because a different chain can reach a different machine.
  */
 function hostIdentity(config: AppsConnectConfig | null): string | null {
@@ -105,8 +105,8 @@ function useHostSession(sessionKey: string, config: AppsConnectConfig | null) {
 }
 
 /**
- * Join a session someone else opened. A window tab has no key and no address —
- * only the resource — so it cannot start one of its own.
+ * Join a session someone else opened. A window tab has no key and no address
+ * (only the resource) so it cannot start one of its own.
  */
 function useJoinedSession(sessionKey: string) {
   const [handle, setHandle] = useState<HostAppsSession | null>(null);
@@ -133,7 +133,7 @@ function useJoinedSession(sessionKey: string) {
 export interface AppLauncherHostPanelProps {
   accountId: string;
   resourceId: string;
-  /** The host's plugin and type — each window tab is addressed at its URL. */
+  /** The host's plugin and type: each window tab is addressed at its URL. */
   pluginId?: string;
   resourceTypeId?: string;
   config: AppsConnectConfig | null;
@@ -161,8 +161,8 @@ export function AppLauncherHostPanel({
   // The session waits for the check. It has to: the thing the host is missing
   // may be the `gunzip` that unpacks the app server, in which case starting a
   // session only produces a worse version of the same message. `blocked` is
-  // false while the check is still running, so the common case — a host with
-  // everything — costs one short exec and then connects.
+  // false while the check is still running, so the common case (a host with
+  // everything) costs one short exec and then connects.
   const { handle, status } = useHostSession(
     hostSessionKey(accountId, resourceId),
     setup.blocked ? null : config,
@@ -205,7 +205,7 @@ export function AppLauncherHostPanel({
     return () => session.removeLaunchResultListener(onResult);
   }, [handle, gt]);
 
-  // Any window this host opens becomes a tab — including one an application
+  // Any window this host opens becomes a tab, including one an application
   // opens by itself, like a browser restoring its last session.
   useEffect(() => {
     if (!handle) return;
@@ -217,7 +217,7 @@ export function AppLauncherHostPanel({
       const sessionId = session.sessionId;
       if (!sessionId) return;
       // This listener also fires on every title and icon change, and the
-      // window tab keeps those in step itself — re-pinning here would yank
+      // window tab keeps those in step itself: re-pinning here would yank
       // focus to the window each time Firefox retitles on a page load.
       const already = useUIStore
         .getState()
@@ -390,7 +390,7 @@ export function AppWindowPanel({ accountId, resourceId, windowId, tabId }: AppWi
 
   if (!handle) {
     // The session lives in this window's memory, so a reload ends it. The
-    // application is still running on the host — the launcher will list it —
+    // application is still running on the host (the launcher will list it)
     // and saying so beats an empty canvas.
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">

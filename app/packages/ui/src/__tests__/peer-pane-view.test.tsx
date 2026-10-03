@@ -34,7 +34,7 @@ function pod(name: string, namespace: string): PeerPaneResource {
 /**
  * A cluster with two workload-bearing namespaces and one control-plane
  * namespace. The workload listers hide `kube-system`, so no pod here reports
- * it — which is exactly why the pane must not offer or count it.
+ * it, which is exactly why the pane must not offer or count it.
  */
 function paneData(groups?: PeerPaneResourceGroup[]): PeerPaneData {
   return {

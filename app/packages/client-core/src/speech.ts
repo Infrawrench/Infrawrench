@@ -4,7 +4,7 @@ import type { TranscribeAudioResult } from "@infrawrench/plugin-base";
  * Pure helpers behind the Speech test surface (`DetailViewSchema.speechPanel`).
  *
  * The web/desktop `SpeechPanel` and the mobile Speech screen render completely
- * different trees — one is DOM, one is React Native — but they have to agree on
+ * different trees (one is DOM, one is React Native) but they have to agree on
  * the numbers and the wording: the same size cap, the same "the limit is …"
  * sentence, the same MIME→extension map used for download filenames and for
  * naming a recorded clip. That agreement lives here rather than being copied
@@ -15,7 +15,7 @@ import type { TranscribeAudioResult } from "@infrawrench/plugin-base";
  * job to `expo-file-system` (`File.base64()` / `write(…, { encoding: "base64" })`).
  */
 
-/** Fallback cap when a plugin doesn't declare one — the smallest limit we ship against. */
+/** Fallback cap when a plugin doesn't declare one: the smallest limit we ship against. */
 export const DEFAULT_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 /** Fallback `accept` list for the upload path when the plugin doesn't narrow it. */
@@ -64,7 +64,7 @@ export function audioExtensionFor(mimeType: string): string {
  * The inverse map, for hosts that get an extension rather than a MIME type.
  * A native recorder names its output file (`.m4a`, `.3gp`) and says nothing
  * about the content type, but `TranscribeAudioPayload.mimeType` is what the
- * plugin forwards to the provider — so the extension has to be resolved to a
+ * plugin forwards to the provider, so the extension has to be resolved to a
  * real type rather than guessed at the other end.
  */
 export function audioMimeForExtension(extension: string): string {
@@ -100,7 +100,7 @@ export function audioMimeForExtension(extension: string): string {
   }
 }
 
-/** Byte count for a clip badge — KB below a megabyte, MB above it. */
+/** Byte count for a clip badge: KB below a megabyte, MB above it. */
 export function formatAudioBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -120,7 +120,7 @@ export function speechTextError(text: string, maxCharacters?: number): string | 
 }
 
 /**
- * Refuse an oversized clip client-side, before it is base64-encoded — the
+ * Refuse an oversized clip client-side, before it is base64-encoded: the
  * encode inflates it by 4/3 and the request would 413 at the ingress with
  * nothing in the logs to explain it. `label` is the clip's filename when the
  * user picked one, so the message names the offending file.

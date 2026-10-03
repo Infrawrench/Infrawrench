@@ -90,4 +90,4 @@ describe("spliceForecast", () => {
 });
 
 // binForecast, totalPerBucket, and the label/money formatters moved to
-// client-core (mobile shares them) — see client-core/src/__tests__/costs.test.ts.
+// client-core (mobile shares them): see client-core/src/__tests__/costs.test.ts.

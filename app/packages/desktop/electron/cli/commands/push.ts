@@ -1,4 +1,4 @@
-// `infrawrench page` and `infrawrench costs push` — the two push-up surfaces,
+// `infrawrench page` and `infrawrench costs push`: the two push-up surfaces,
 // from the machine that has the news.
 //
 // This is the CLI's reason to exist on a server rather than a laptop: a cron,
@@ -31,7 +31,7 @@ function requireSource(flags: PushFlags): string {
   return flags.source;
 }
 
-/** `infrawrench page <message>` — raise an alert to the org's transports. */
+/** `infrawrench page <message>`: raise an alert to the org's transports. */
 export async function cmdPage(ctx: CliContext, rest: string[], flags: PushFlags): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError("Paging goes through Infrawrench Cloud — `--local` has nobody to page.");
@@ -86,7 +86,7 @@ export async function cmdPage(ctx: CliContext, rest: string[], flags: PushFlags)
   println(`${c.green("✓")} paged ${c.dim(counts.join(", "))}`);
 }
 
-/** `infrawrench page clear` — drop a key's cooldown after a recovery. */
+/** `infrawrench page clear`: drop a key's cooldown after a recovery. */
 async function clearPage(ctx: CliContext, flags: PushFlags): Promise<void> {
   const source = requireSource(flags);
   const org = await resolveOrg(ctx);
@@ -107,7 +107,7 @@ async function clearPage(ctx: CliContext, flags: PushFlags): Promise<void> {
 }
 
 /**
- * `infrawrench costs push --source <name> [--file rows.json]` — report spend
+ * `infrawrench costs push --source <name> [--file rows.json]`: report spend
  * Infrawrench has no plugin for. Rows come from a file or stdin, so the usual
  * shape is a pipeline: `parse-invoice | infrawrench costs push --source colo`.
  */

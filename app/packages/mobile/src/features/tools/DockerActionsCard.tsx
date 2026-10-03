@@ -6,7 +6,7 @@ import { colors, spacing } from "@/lib/theme";
 
 /**
  * Start / stop / restart for a Docker container, over `POST /docker/command`.
- * Inline on the resource page rather than its own screen — three buttons and a
+ * Inline on the resource page rather than its own screen: three buttons and a
  * status line don't warrant a navigation step.
  */
 

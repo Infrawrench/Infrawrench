@@ -33,17 +33,17 @@ import type { CostApi } from "./types.js";
  *
  * A separate component from the spend card rather than a branch inside it, for
  * two reasons. The obvious one is that switching a stored config between the
- * two changes which hooks run, and React needs a remount for that — different
+ * two changes which hooks run, and React needs a remount for that: different
  * component types give it one for free. The real one is that almost nothing is
  * shared: there are no groups to stack, no top-N to fold, no forecast, and the
- * y axis is a ratio rather than money. What *is* shared — the bucket labels,
- * the money formatting, the axis maths — comes from the same helpers the spend
+ * y axis is a ratio rather than money. What *is* shared (the bucket labels,
+ * the money formatting, the axis maths) comes from the same helpers the spend
  * card uses, so a bar on one lands on the same tick as a point on the other.
  *
  * **Gaps are the whole point of this component.** A bucket with no reported
  * metric value arrives as `value: null`, is fed to recharts as `null`, and is
  * drawn with `connectNulls={false}` so the line genuinely breaks. Nothing here
- * ever coerces a gap to 0 — a chart that quietly read 0 on unreported days
+ * ever coerces a gap to 0: a chart that quietly read 0 on unreported days
  * would be believed, and it says the opposite of the truth.
  */
 export interface UnitCostCardProps {
@@ -120,7 +120,7 @@ export function UnitCostCard({
    */
   const series = response?.series ?? [];
   // One pass: format and drop the un-formattable in the same step. A series
-  // with no period value formats to the em dash and is left out entirely —
+  // with no period value formats to the em dash and is left out entirely:
   // printing it would put a dash in the headline next to a real ratio.
   const headline = series
     .flatMap((s) => {
@@ -156,7 +156,7 @@ export function UnitCostCard({
     }
 
     // One row per bucket, one column per currency series. `null` survives all
-    // the way into recharts — that is what makes the line break.
+    // the way into recharts: that is what makes the line break.
     const rowByBucket = new Map<string, ChartRow & Record<string, number | null | string>>();
     series.forEach((s, i) => {
       for (const p of s.points) {

@@ -112,7 +112,7 @@ describe("discoverSidecarLogStreams", () => {
       }),
       expect.objectContaining({ resourceId: "acc-1:k8s-pod:default:api-1" }),
     ]);
-    // Only the log-capable type is listed — k8s-namespace renders no logs tab.
+    // Only the log-capable type is listed: k8s-namespace renders no logs tab.
     const client = (await (d.getPeerClient as ReturnType<typeof vi.fn>).mock.results[0]!
       .value) as PluginClient;
     expect(client.listResources).toHaveBeenCalledTimes(1);

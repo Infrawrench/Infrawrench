@@ -14,7 +14,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 import { usePosture, usePostureDismissal } from "./usePosture";
 
 /**
- * Posture checks — the native counterpart of the web/desktop Posture screens
+ * Posture checks; the native counterpart of the web/desktop Posture screens
  * and the `infrawrench posture` CLI: plugin-declared security rules evaluated
  * over already-synced fields, grouped by severity.
  *
@@ -23,7 +23,7 @@ import { usePosture, usePostureDismissal } from "./usePosture";
  * feed itself is sorted that way and grouping preserves first-seen order.
  * Tapping a row opens the resource, which is where the fix actually lives.
  *
- * A finding can be accepted from here too, behind a confirm — but without a
+ * A finding can be accepted from here too, behind a confirm, but without a
  * note: typing a justification on a phone is a job for the desktop, and a
  * blank reason is better than a thumbed-in one. The dismissed list at the
  * bottom shows the notes left elsewhere and undoes any of them.
@@ -177,7 +177,7 @@ const SEVERITY_COLORS: Record<PostureSeverity, string> = {
   low: colors.textMuted,
 };
 
-/** "Dismissed 2 Mar 2026 by Ada — known exception, ticket INF-402". */
+/** "Dismissed 2 Mar 2026 by Ada: known exception, ticket INF-402". */
 function dismissalLine(finding: DismissedPostureFinding): string {
   const when = Number.isNaN(Date.parse(finding.dismissal.dismissedAt))
     ? finding.dismissal.dismissedAt

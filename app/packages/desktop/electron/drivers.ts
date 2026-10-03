@@ -1,7 +1,7 @@
 /**
  * Aggregates all plugin node drivers and re-exports typed maps for use in
  * the IPC handlers (main.ts). All driver interface definitions live in
- * @infrawrench/plugin-base — this file is a pure registration point.
+ * @infrawrench/plugin-base: this file is a pure registration point.
  */
 import type {
   SqlNodeDriver,

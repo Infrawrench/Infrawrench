@@ -15,7 +15,7 @@ export type {
 
 /**
  * Host-injected data access for the resource lease surfaces. Web wraps
- * `apiGet`/`apiPost`; desktop (cloud mode) wraps its cloud IPC — the
+ * `apiGet`/`apiPost`; desktop (cloud mode) wraps its cloud IPC: the
  * components stay platform-agnostic (the `SchedulesClient` pattern).
  */
 export interface LeasesClient {

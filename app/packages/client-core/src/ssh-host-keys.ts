@@ -41,7 +41,7 @@ export function isHostKeyTrustResponse(body: unknown): body is HostKeyTrustPaylo
 /**
  * Build a trust payload from an `ssh:error` WebSocket frame, or null when the
  * frame is an ordinary error. The proxy spreads the fields across the frame
- * and marks it with `code`, where the HTTP routes use `error` — this is the
+ * and marks it with `code`, where the HTTP routes use `error`: this is the
  * one place that difference is handled.
  */
 export function trustPayloadFromFrame(frame: unknown): HostKeyTrustPayload | null {

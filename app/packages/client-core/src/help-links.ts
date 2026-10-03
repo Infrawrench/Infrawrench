@@ -2,7 +2,7 @@
  * The one rule for plugin-supplied help links.
  *
  * Several collection paths let a plugin attach "here is how to fix this" to a
- * failure — `CostSetupError.helpLink`, `QuotaAccessError`, `CreditAccessError`,
+ * failure: `CostSetupError.helpLink`, `QuotaAccessError`, `CreditAccessError`,
  * `NetworkFlowSetupError`. Every one of those strings is persisted on a poll
  * row, returned unchanged by a feed, and assigned straight to an anchor's
  * `href` in the UI. A plugin is code we ship, but it is also the least
@@ -24,7 +24,7 @@
  * is read straight off the manifest at feed time and never passes through a
  * write at all, and rows written before this rule existed are still in the
  * table. So the feed re-checks what it reads and the UI re-checks what it
- * renders, and all three call the same function — a second copy of this check
+ * renders, and all three call the same function: a second copy of this check
  * is a second chance to get it wrong, and the wrong version fails open.
  */
 

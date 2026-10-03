@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Ephemeral environments — cloud-mode only. An environment is created against
+// Ephemeral environments: cloud-mode only. An environment is created against
 // org accounts, recorded in org tables and torn down by the cloud lease pass;
 // there is no local half to mirror, so unlike the environment diff this file
 // has no renderer-side counterpart.

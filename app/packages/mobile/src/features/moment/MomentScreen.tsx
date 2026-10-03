@@ -18,13 +18,13 @@ import { colors, radii, spacing } from "@/lib/theme";
 import { useMoment } from "./useMoment";
 
 /**
- * The moment view — "what changed around 03:14?". The native counterpart of
+ * The moment view: "what changed around 03:14?". The native counterpart of
  * `@infrawrench/ui`'s `MomentPanel` (web and desktop): the wire contract and
  * the merge/badge/grouping logic all come from `@infrawrench/client-core`, so
  * only the markup is written twice.
  *
  * Opened from the Changes screen ("Investigate a moment") for "around now",
- * or deep-linked with `at` + `window` — which is how anomaly, drift and
+ * or deep-linked with `at` + `window`, which is how anomaly, drift and
  * provider-incident pushes land here. There is deliberately no timestamp
  * keyboard on a phone: the timestamp comes from the link (or is "now"), and
  * the window presets do the zooming.
@@ -90,7 +90,7 @@ export function MomentScreen({ at: atParam, window: windowParam }: MomentScreenP
       case "incident":
         router.push(`/org/${orgId}/changes`);
         break;
-      // No audit-log or change-freeze screens on mobile — those events stay
+      // No audit-log or change-freeze screens on mobile: those events stay
       // in the timeline without navigation.
       default:
         break;

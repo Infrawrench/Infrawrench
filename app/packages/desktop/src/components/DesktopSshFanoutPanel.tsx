@@ -25,7 +25,7 @@ import {
 } from "@/lib/cloud-ssh-fanout";
 
 /**
- * Fan-out SSH on desktop — the same shared `SshFanoutView` web renders.
+ * Fan-out SSH on desktop: the same shared `SshFanoutView` web renders.
  * Rendered as a workspace tab (the "ssh-fanout" kind).
  *
  * Cloud mode mirrors web exactly over the `cloud_ssh_fanout_*` IPC bridge

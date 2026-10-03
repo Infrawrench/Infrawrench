@@ -14,7 +14,7 @@ export interface ResourceOwnershipPanelProps {
   resourceName: string;
 }
 
-/** The form's working copy — all four fields as strings the inputs can bind to. */
+/** The form's working copy: all four fields as strings the inputs can bind to. */
 interface Draft {
   ownerUserId: string;
   ownerLabel: string;
@@ -46,7 +46,7 @@ function draftsEqual(a: Draft, b: Draft): boolean {
  *
  * Editing is a plain form rather than a modal, because unlike a lease or a
  * schedule this is reference data people come to *read* at least as often as
- * they come to change it — and reading it behind a button is the reason
+ * they come to change it, and reading it behind a button is the reason
  * ownership metadata goes stale everywhere else.
  *
  * The owner field is two controls on purpose. The picker sets a routable
@@ -103,7 +103,7 @@ export function ResourceOwnershipPanel({
   useEffect(() => {
     let cancelled = false;
     // The member list only feeds the picker, so a failure degrades it to
-    // "no members offered" rather than breaking the panel — the free-text
+    // "no members offered" rather than breaking the panel: the free-text
     // owner, purpose and ticket all still work.
     void client
       .listMembers()

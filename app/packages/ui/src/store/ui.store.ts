@@ -15,13 +15,13 @@ export type WorkspaceTabTarget =
   | { kind: "posture" }
   | { kind: "access-review" }
   | { kind: "backups" }
-  /** The wallboard — one screen, read from across the room. */
+  /** The wallboard: one screen, read from across the room. */
   | { kind: "wallboard" }
-  /** The operations calendar — every dated record on one axis. */
+  /** The operations calendar: every dated record on one axis. */
   | { kind: "calendar" }
-  /** Runbooks — the org's written procedures and the runs against them. */
+  /** Runbooks: the org's written procedures and the runs against them. */
   | { kind: "runbooks" }
-  /** Query monitors — a read-only SQL check on a schedule. */
+  /** Query monitors: a read-only SQL check on a schedule. */
   | { kind: "query-monitors" }
   | { kind: "dns" }
   | { kind: "iac" }
@@ -91,7 +91,7 @@ export interface WorkspaceTab {
   target: WorkspaceTabTarget;
   title: string;
   /**
-   * Optional `data:` URL shown before the title — a remote application's own
+   * Optional `data:` URL shown before the title: a remote application's own
    * icon, today. Cosmetic by design: it is dropped rather than persisted when
    * oversized, because losing an icon is nothing and blowing the storage quota
    * loses the whole tab list.
@@ -273,7 +273,7 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
     case "workflows":
       return "Workflows";
     case "deployments":
-      // "Deploy" everywhere the user reads it — the sidebar tile, the panel
+      // "Deploy" everywhere the user reads it: the sidebar tile, the panel
       // heading and the docs all say Deploy; only the tab used to disagree.
       return "Deploy";
     case "settings":
@@ -414,7 +414,7 @@ function isRetiredSavingsTab(tab: WorkspaceTab): boolean {
 
 /**
  * v1: fold any open Savings tab into Costs. Without this the tab rehydrates
- * with a kind no viewport case renders — a permanently blank tab the user can
+ * with a kind no viewport case renders: a permanently blank tab the user can
  * only close.
  */
 export function migrateWorkspaceTabs(persisted: unknown, version: number): PersistedWorkspaceTabs {
@@ -425,7 +425,7 @@ export function migrateWorkspaceTabs(persisted: unknown, version: number): Persi
   if (retired.length === 0) return state;
 
   // Retarget the first one in place so it keeps its position in the strip, and
-  // drop the rest — duplicate ids would break tab selection. If Costs is
+  // drop the rest: duplicate ids would break tab selection. If Costs is
   // already open there is nothing to retarget onto.
   const hasCosts = state.workspaceTabs.some((tab) => tab.target.kind === "costs");
   const workspaceTabs = state.workspaceTabs.flatMap((tab) => {
@@ -567,11 +567,11 @@ interface UIState {
   activeDashboardId: string | null;
   setActiveDashboard: (id: string | null) => void;
 
-  /** Active cloud org ID — null means local-only mode (desktop) */
+  /** Active cloud org ID: null means local-only mode (desktop) */
   activeCloudOrgId: string | null;
   setActiveCloudOrgId: (id: string | null) => void;
 
-  /** The field key being "rerolled" — triggers AssociationPicker modal */
+  /** The field key being "rerolled": triggers AssociationPicker modal */
   rerollingField: { resourceId: string; fieldKey: string } | null;
   openReroll: (resourceId: string, fieldKey: string) => void;
   closeReroll: () => void;

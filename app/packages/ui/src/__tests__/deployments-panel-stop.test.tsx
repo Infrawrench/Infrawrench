@@ -75,7 +75,7 @@ describe("DeploymentsPanel stop button", () => {
     await waitFor(() => expect(screen.getByText("Deploy", { selector: "button" })).toBeEnabled());
     fireEvent.click(screen.getByText("Deploy", { selector: "button" }));
 
-    // Visible straight away — the transport has not even resolved its token.
+    // Visible straight away: the transport has not even resolved its token.
     const stop = await screen.findByText("Stop", { selector: "button" });
     await waitFor(() => expect(h.client.deploy).toHaveBeenCalled());
 

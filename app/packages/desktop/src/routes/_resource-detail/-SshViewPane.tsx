@@ -26,7 +26,7 @@ interface SshViewPaneProps {
    * leaves the server, so those connect through the cloud WS proxy instead.
    */
   agentKeyScope?: "app" | "cloud" | undefined;
-  /** Agent launch metadata failed to resolve — show why and fall back to quick connect. */
+  /** Agent launch metadata failed to resolve: show why and fall back to quick connect. */
   agentLaunchError?: string | undefined;
 }
 
@@ -99,7 +99,7 @@ export function SshViewPane({
     setAutoConnectError(null);
     setAutoConnectPending(true);
     let cancelled = false;
-    // An org's agent key has no private half on this machine — SshTerminal
+    // An org's agent key has no private half on this machine: SshTerminal
     // dispatches `cloud` key sources through the WS proxy, which signs with
     // the key server-side, so there is nothing to read here.
     const resolvePrivateKey =

@@ -15,8 +15,8 @@ import type {
  * Reverting a change, shared by the org feed and the per-resource Changes tab
  * on both desktop and web.
  *
- * The button decides *locally* whether a revert is even worth asking about —
- * only `updated` events with a diff, and only ones not already reverted — and
+ * The button decides *locally* whether a revert is even worth asking about
+ * (only `updated` events with a diff, and only ones not already reverted) and
  * says why when it is disabled rather than disappearing, because a missing
  * button reads as a bug. Everything past that is the server's plan: which
  * fields can go back, which already did, which moved again since, and which the

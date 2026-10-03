@@ -16,7 +16,7 @@ export interface InvoiceScopeAccount {
 }
 
 /**
- * Host-injected data access for the invoice components — the same rule the cost
+ * Host-injected data access for the invoice components; the same rule the cost
  * and cost-report clients follow: web wraps `apiFetch`, desktop wraps its
  * cloud-api helpers, and nothing in here imports a platform primitive.
  *
@@ -36,7 +36,7 @@ export interface InvoicesClient {
   listManagedAccounts(): Promise<ManagedAccount[]>;
   listInvoices(): Promise<ManagedInvoiceSummary[]>;
   getInvoice(invoiceId: string): Promise<ManagedInvoice>;
-  /** Cost centres, for the scope picker — never a free-text id field. */
+  /** Cost centres, for the scope picker, never a free-text id field. */
   listCostCentres(): Promise<CostCentre[]>;
   /** Cloud accounts, for the scope picker. */
   listAccounts(): Promise<InvoiceScopeAccount[]>;

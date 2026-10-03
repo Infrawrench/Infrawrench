@@ -5,10 +5,10 @@
  *
  * Two sources:
  *  - {@link staticResourceCapabilities} reads the resource type definition
- *    (sshEndpoint/supportsTerminal → ssh) — cheap, no client.
+ *    (sshEndpoint/supportsTerminal → ssh): cheap, no client.
  *  - {@link detailResourceCapabilities} calls the plugin's `renderDetail` on a
  *    synthetic instance of that type and reads which capability tabs the
- *    DetailViewSchema declares (`logs`, `kvBrowser`, `noSqlBrowser`, … — exactly
+ *    DetailViewSchema declares (`logs`, `kvBrowser`, `noSqlBrowser`, …: exactly
  *    what the UI shows). This is per-type accurate and needs no API call.
  */
 import type {
@@ -34,7 +34,7 @@ export function staticResourceCapabilities(
 
 /**
  * Per-type capability flags, read from the DetailViewSchema the plugin would
- * render for this resource type. Uses a synthetic (empty) instance — the tab
+ * render for this resource type. Uses a synthetic (empty) instance: the tab
  * declarations (`sqlEditor`, `kvBrowser`, …) depend on the type, not the field
  * values. Best-effort: if `renderDetail` throws on the probe, returns {}.
  */

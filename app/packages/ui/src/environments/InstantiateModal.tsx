@@ -84,7 +84,7 @@ export function InstantiateModal({
   );
 
   // Re-price on every parameter change, debounced the same 220ms the create
-  // form uses — a size or region swap is exactly when the number matters.
+  // form uses: a size or region swap is exactly when the number matters.
   useEffect(() => {
     if (!client.estimate) return;
     if (parameterProblem) return;

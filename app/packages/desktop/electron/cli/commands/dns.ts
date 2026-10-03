@@ -1,19 +1,19 @@
-// `infrawrench dns` — every DNS zone and record across your providers, with
+// `infrawrench dns`: every DNS zone and record across your providers, with
 // each record's target judged against the rest of the workspace. Dangling
 // targets (a name pointing into a provider namespace you manage that nothing
 // synced claims) print first and in red: that is the subdomain-takeover
 // signature.
 //
 // Works in both modes, because the classification is declarative and runs
-// over stored state rather than a live provider call — and it resolves no DNS
+// over stored state rather than a live provider call, and it resolves no DNS
 // in either mode:
-//   - cloud (default) — GET /dns, the same endpoint the web + desktop Domains
+//   - cloud (default): GET /dns, the same endpoint the web + desktop Domains
 //     screens render.
-//   - --local — electron/local-dns.ts runs the shared computation over this
+//   - --local: electron/local-dns.ts runs the shared computation over this
 //     machine's SQLite workspace. No credentials, no network.
 //
-// The response shape comes from `@infrawrench/client-core` — the same
-// definition every other surface uses — so a server-side change breaks the
+// The response shape comes from `@infrawrench/client-core` (the same
+// definition every other surface uses) so a server-side change breaks the
 // CLI's build instead of its output. The import is type-only, so the CLI
 // still ships zero new runtime dependencies.
 import { orgFetch, resolveOrg, type CliContext } from "../context";

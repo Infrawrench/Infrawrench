@@ -19,12 +19,12 @@ interface BlastRadiusPanelProps {
 }
 
 /**
- * The full impact report — the "Blast radius" tab on resource detail.
+ * The full impact report: the "Blast radius" tab on resource detail.
  *
  * The same report the delete dialog shows, at length: every dependant listed
  * and linked, every soft reference named, measured traffic itemized, and the
  * gaps spelled out at the bottom rather than tucked behind a tooltip. Somebody
- * reads this *before* they open the delete dialog, which is the point — the
+ * reads this *before* they open the delete dialog, which is the point: the
  * dialog is where you find out, this is where you plan.
  */
 export function BlastRadiusPanel({ client, resourceId, onOpenResource }: BlastRadiusPanelProps) {

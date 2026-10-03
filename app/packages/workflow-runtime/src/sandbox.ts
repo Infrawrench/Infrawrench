@@ -3,8 +3,8 @@
  *
  * This module owns everything specific to *a workflow*: reading the accounts
  * tree and metric snapshot, transpiling the author's TypeScript, assembling the
- * guest program, and shaping the {@link RunResult}. The isolate itself — limits,
- * the pause-aware execution budget, the interrupt handler — lives in
+ * guest program, and shaping the {@link RunResult}. The isolate itself (limits,
+ * the pause-aware execution budget, the interrupt handler) lives in
  * {@link file://./isolate.ts} and is shared with the Infrafile runner.
  */
 import { FLUSH_METRICS_EPILOGUE, REPORT_GUEST_ERROR, runIsolate, toError } from "./isolate.js";
@@ -34,14 +34,14 @@ export interface RunWorkflowOptions {
   onLog?: (entry: RunLogEntry) => void;
   /**
    * Instrument the source with per-line markers (`await __line(n)`) and route
-   * them to `host.line` — powers the editor's live highlight + breakpoints.
+   * them to `host.line`: powers the editor's live highlight + breakpoints.
    * Enable only for editor-driven manual runs, never automated triggers.
    */
   debug?: boolean;
   /** Abort the run (Stop): the interrupt handler ends execution when aborted. */
   signal?: AbortSignal;
   /**
-   * Per-operation authorization gate — see `WorkflowRunContext.authorize`.
+   * Per-operation authorization gate: see `WorkflowRunContext.authorize`.
    * Omitted by hosts with nothing to authorize against (desktop).
    */
   authorize?: (method: string) => void;

@@ -8,7 +8,7 @@ interface DashboardCardProps {
 }
 
 /**
- * Dashboard card — the canonical infrawrench card format:
+ * Dashboard card: the canonical infrawrench card format:
  *   ┌──────────────┐
  *   │   [logo svg] │
  *   │  <name>      │
@@ -42,7 +42,7 @@ export function DashboardCard({ card, pluginLogoSvg }: DashboardCardProps) {
       <div
         className="size-10 flex-shrink-0"
         // pluginLogoSvg is a static provider logo from the plugin's bundled
-        // manifest (plugin.manifest.logoSvg) — never user-controllable input.
+        // manifest (plugin.manifest.logoSvg), never user-controllable input.
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: pluginLogoSvg }}
         aria-hidden

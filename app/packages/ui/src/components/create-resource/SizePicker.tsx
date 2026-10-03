@@ -20,7 +20,7 @@ export function SizePicker({
   const scoped = useMemo(() => {
     if (!filterValue) return sizes;
     const matched = sizes.filter((s) => !s.availableFor || s.availableFor.includes(filterValue));
-    // Fall back to the full list when the filter excludes everything —
+    // Fall back to the full list when the filter excludes everything:
     // mirrors RegionPicker's defensive behaviour so a stale tagging map
     // never leaves the user with an empty picker.
     return matched.length > 0 ? matched : sizes;

@@ -10,7 +10,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 /**
  * Logs viewer with the same controls as the web Logs tab: container picker,
  * tail length, previous-instance, follow, copy and reload. Everything the
- * plugin's `getLogs` accepts is exposed — mobile used to post no parameters at
+ * plugin's `getLogs` accepts is exposed: mobile used to post no parameters at
  * all and take whatever defaults the provider chose.
  */
 
@@ -39,7 +39,7 @@ export function LogsScreen({
   const [container, setContainer] = useState<string | null>(null);
   const [tailLines, setTailLines] = useState(defaultTailLines ?? 500);
   // The default may fall outside the fixed presets (e.g. a plugin declaring
-  // 200) — include it as an extra chip rather than clamp state to the
+  // 200): include it as an extra chip rather than clamp state to the
   // nearest preset, so a chip is always shown selected for the actual value.
   const tailOptions = useMemo(() => tailLineOptions(defaultTailLines), [defaultTailLines]);
   const [previous, setPrevious] = useState(false);
@@ -47,7 +47,7 @@ export function LogsScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
-  // Guards against an earlier slow request landing after a newer one — the
+  // Guards against an earlier slow request landing after a newer one: the
   // poll interval makes overlapping fetches routine.
   const latestRequestRef = useRef(0);
 

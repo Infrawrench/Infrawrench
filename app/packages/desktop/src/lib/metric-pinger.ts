@@ -75,7 +75,7 @@ async function tick() {
 
         // Group by pluginId+resourceTypeId+resourceId so we only fetch the
         // metric series once per resource. The user explicitly asked us not
-        // to ping all metrics — we only check the metric_label that was set.
+        // to ping all metrics: we only check the metric_label that was set.
         const byResource = new Map<string, PingRow[]>();
         for (const p of accountPings) {
           const key = `${p.plugin_id}|${p.resource_type_id}|${p.resource_id}`;
@@ -110,7 +110,7 @@ async function tick() {
                 }
                 continue;
               }
-              // Out-of-range — only fire if the state changed (avoid spam every minute)
+              // Out-of-range, only fire if the state changed (avoid spam every minute)
               if (ping.last_alert_state === state) continue;
               const unit = matched?.unit ? ` ${matched.unit}` : "";
               const range =

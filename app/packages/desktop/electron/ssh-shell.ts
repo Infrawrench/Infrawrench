@@ -32,14 +32,14 @@ export interface SshShellConfig {
   agentForward?: boolean;
   /**
    * Set when `privateKey` is `CLOUD_KEY_SENTINEL`: the org key to authenticate
-   * with. Its private half stays in Infrawrench Cloud — auth goes through a
+   * with. Its private half stays in Infrawrench Cloud: auth goes through a
    * remote signing agent, so only signatures cross the cloud while the
    * connection itself stays between this machine and the host.
    */
   cloudKey?: CloudKeyRef;
   /**
    * Optional intermediate jump hops (outermost-first). When present, the host
-   * dials each in turn — chaining `forwardOut` → `sock` — and then dials the
+   * dials each in turn (chaining `forwardOut` → `sock`) and then dials the
    * `host`/`port`/`username`/`privateKey` target through the last hop.
    * Each hop's host key is verified independently against the local TOFU cache.
    */
@@ -90,7 +90,7 @@ function connectOneHop(opts: {
       ...(opts.agent ? { agent: opts.agent } : {}),
       ...(opts.agentForward ? { agentForward: true } : {}),
       // TUI apps redraw whole screen regions constantly and that text
-      // compresses extremely well — the `ssh -C` equivalent. Prefer
+      // compresses extremely well: the `ssh -C` equivalent. Prefer
       // zlib@openssh.com (compression only after auth) and fall back to
       // uncompressed when the server doesn't offer it.
       algorithms: { compress: ["zlib@openssh.com", "zlib", "none"] },
@@ -119,7 +119,7 @@ function connectOneHop(opts: {
 }
 
 /**
- * Dial the whole chain — jump hops in order, then the target — and hand back
+ * Dial the whole chain (jump hops in order, then the target) and hand back
  * the connected client plus the intermediates the caller must close with it.
  *
  * Shared with the Linux app server (`iwappd-host.ts`), which needs exactly this
@@ -135,7 +135,7 @@ export async function connectSshChain(
   // When the user picked an external agent (Pageant / 1Password) we route both
   // auth and (optionally) forwarding through it. For PEM-key auth, forwarding
   // happens via our in-process agent. Agent forwarding only applies to the
-  // final hop — intermediate hops never see the agent.
+  // final hop: intermediate hops never see the agent.
   let connectAgent: ForwardAgent = null;
   if (config.privateKey === CLOUD_KEY_SENTINEL) {
     if (!config.cloudKey) {

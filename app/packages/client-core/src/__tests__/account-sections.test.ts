@@ -98,7 +98,7 @@ describe("getVisibleAccountCategories", () => {
   it("keeps a section whose metadata matches even with no matching resources", () => {
     const cats = [
       // Query matches the section's type id ("buckets") but not the resource's
-      // display name or the plural display name — so only the metadata branch
+      // display name or the plural display name, so only the metadata branch
       // (which includes typeDef.id) keeps the section, with zero matching rows.
       cat({
         id: "buckets",

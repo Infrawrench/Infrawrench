@@ -14,8 +14,8 @@ import { useSettingsHost } from "./host.js";
  * The Jira section's sibling, with Linear's smaller surface: no site URL
  * (Linear's API lives at one fixed endpoint for every workspace) and no
  * account email (the personal API key is the whole credential). The default
- * team is a **picker fed by the API**, never free text: a team id is a UUID —
- * Linear's identifier, not the user's — and typing one by hand is a way to
+ * team is a **picker fed by the API**, never free text: a team id is a UUID
+ * (Linear's identifier, not the user's) and typing one by hand is a way to
  * discover a typo as a failed create. The picker only loads once a key is
  * saved, because Linear has nothing to tell us before then.
  */
@@ -25,7 +25,7 @@ export function LinearSection() {
   const canWrite = has("linear:write");
 
   const [integration, setIntegration] = useState<LinearIntegration | null>(null);
-  /** Blank means "keep the stored key" — the stored one is never shown. */
+  /** Blank means "keep the stored key": the stored one is never shown. */
   const [apiKey, setApiKey] = useState("");
   const [defaultTeamId, setDefaultTeamId] = useState("");
 
@@ -78,7 +78,7 @@ export function LinearSection() {
     setNotice(null);
     try {
       const saved = await api.put<LinearIntegration>(`/api/org/${orgId}/linear`, {
-        // Omit rather than send "" — the server reads an absent key as
+        // Omit rather than send "": the server reads an absent key as
         // "unchanged", which is what a blank field means here.
         ...(apiKey ? { apiKey } : {}),
         defaultTeamId: defaultTeamId || null,

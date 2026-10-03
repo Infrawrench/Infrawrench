@@ -11,7 +11,7 @@ interface Props {
   capability: PublishPanelCapability;
   /**
    * Send one message. Host wraps this around an IPC call (NDJSON-free
-   * single request/response — see actions.ts /publish-message). Plugins
+   * single request/response: see actions.ts /publish-message). Plugins
    * may throw on validation/provider errors; the panel renders the
    * thrown message in a red banner.
    */
@@ -66,7 +66,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
       if (field.optional) continue;
       const value = extras[field.key];
       if (field.kind === "key-value-list") {
-        // key-value lists are always optional in practice — pass.
+        // key-value lists are always optional in practice: pass.
         continue;
       }
       if (typeof value !== "string" || !value.trim()) {

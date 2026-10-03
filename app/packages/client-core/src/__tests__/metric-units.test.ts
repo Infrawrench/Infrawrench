@@ -15,7 +15,7 @@ describe("createMetricValueFormatter", () => {
   it("keeps every tick in the same unit instead of rescaling per value", () => {
     const format = createMetricValueFormatter("bytes", 3 * 1024 ** 3);
     // A small tick near zero must not fall back to KiB/MiB just because it's
-    // small in isolation — the whole axis reads in GiB.
+    // small in isolation: the whole axis reads in GiB.
     expect(format(1024)).toBe("0.00 GiB");
     expect(format(1.5 * 1024 ** 3)).toBe("1.50 GiB");
   });

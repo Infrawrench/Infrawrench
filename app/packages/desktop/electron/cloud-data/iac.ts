@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// IaC reconciliation (the ClickOps detector) — cloud-mode only. The inventory
+// IaC reconciliation (the ClickOps detector): cloud-mode only. The inventory
 // it classifies is the org's *synced* resources, which only exist in cloud
 // mode; a local-only desktop has nothing to reconcile a state document
 // against, so the panel says so rather than fetching.

@@ -1,5 +1,5 @@
 /**
- * Managed accounts and their invoices — the managed-service-provider half of
+ * Managed accounts and their invoices; the managed-service-provider half of
  * the cost feature: who the spend belongs to, and the document that bills them
  * for it.
  *
@@ -27,7 +27,7 @@
  *
  * ## An invoice freezes
  *
- * Cost data restates for days after the fact — a provider revises a bill, a
+ * Cost data restates for days after the fact: a provider revises a bill, a
  * late line lands, an allocation rule is corrected. A **draft** invoice
  * recomputes from live spend on every read, which is what makes it a working
  * document. Approval is the freeze: the computed lines, the totals, the
@@ -85,7 +85,7 @@ export interface ManagedAccountInput {
    * Whether the org's billing rules (markups, discounts, fixed charges,
    * reallocations) apply to this customer's invoices.
    *
-   * On by default — a managed service provider's markup is the entire reason
+   * On by default: a managed service provider's markup is the entire reason
    * the rules exist. Off means the customer is billed exactly what the
    * providers charged, which is what a pass-through contract says.
    */
@@ -171,12 +171,12 @@ export const MANAGED_INVOICE_DELIVERY_STATUS_LABELS: Record<ManagedInvoiceDelive
 
 /**
  * The record of one send attempt. Written by the server, never by a client, and
- * **separate from the invoice's figures** — delivery records where a frozen
+ * **separate from the invoice's figures**: delivery records where a frozen
  * document went, and cannot restate what it says.
  */
 export interface ManagedInvoiceDelivery {
   /**
-   * `pending` means an attempt was claimed and its outcome never written —
+   * `pending` means an attempt was claimed and its outcome never written:
    * the process died mid-send. It is deliberately *not* treated as a failure:
    * the mail may well have gone, and only a person can decide to risk a second
    * copy.
@@ -204,7 +204,7 @@ export interface ManagedInvoiceDelivery {
  * Whether an attempt put the invoice in front of at least one recipient.
  *
  * The one question that separates "retry" from "send another copy". A partial
- * delivery counts as landed — some customer contact has the invoice, and
+ * delivery counts as landed: some customer contact has the invoice, and
  * re-sending would give them a duplicate.
  */
 export function managedInvoiceDeliveryLanded(
@@ -219,8 +219,8 @@ export function managedInvoiceDeliveryLanded(
  *
  * An allow-list, not the negation of {@link managedInvoiceDeliveryLanded}, and
  * the difference is the whole point: only the two outcomes that *prove* nothing
- * reached anyone qualify. A `pending` attempt — claimed, outcome never recorded
- * — proves nothing either way, so it needs a person to decide.
+ * reached anyone qualify. A `pending` attempt (claimed, outcome never recorded)
+ * proves nothing either way, so it needs a person to decide.
  */
 export function managedInvoiceDeliveryRetryable(
   delivery: ManagedInvoiceDelivery | null | undefined,
@@ -263,7 +263,7 @@ export interface ManagedInvoiceLine {
   collected: number;
   /** What the org's billing rules added (positive) or removed (negative). */
   adjustment: number;
-  /** `collected + adjustment` — the figure that is then converted. */
+  /** `collected + adjustment`: the figure that is then converted. */
   adjusted: number;
   /**
    * The rate applied to reach {@link billed}. `1` when the line is already in
@@ -304,7 +304,7 @@ export interface ManagedInvoiceRate {
  * This is not decoration. An invoice a customer cannot reconcile is an invoice
  * a customer does not pay, so the collected figure, the rules that moved it,
  * the rates that converted it and the day those rates were read are all part of
- * the document — not a query someone could re-run later and get a different
+ * the document, not a query someone could re-run later and get a different
  * answer from.
  */
 export interface ManagedInvoiceDerivation {
@@ -312,7 +312,7 @@ export interface ManagedInvoiceDerivation {
   /** Whether the org's billing rules were applied at all. */
   applyBillingRules: boolean;
   /**
-   * The day the exchange rates were read off — always the last day of the
+   * The day the exchange rates were read off: always the last day of the
    * period. One rate for the period, not a per-day blend: "January, at the
    * 31 January rate" is a sentence a finance team can defend and reproduce.
    */
@@ -321,7 +321,7 @@ export interface ManagedInvoiceDerivation {
   /**
    * Currencies the org had stated no usable rate for on {@link rateDate}. Their
    * amounts stay in their own currency in `totals.billed`. A non-empty list
-   * blocks approval — see {@link managedInvoiceBlocker}.
+   * blocks approval: see {@link managedInvoiceBlocker}.
    */
   unconverted: string[];
   /** The enabled billing rules in force, in evaluation order, at issue time. */
@@ -362,7 +362,7 @@ export interface ManagedInvoice {
   totals: ManagedInvoiceTotals;
   derivation: ManagedInvoiceDerivation;
   /**
-   * True when the figures above were recomputed for this response — which is
+   * True when the figures above were recomputed for this response, which is
    * true for a draft and false for everything else. A client should say so:
    * "these numbers will move" and "these numbers are what we sent" are
    * different claims about the same fields.
@@ -377,7 +377,7 @@ export interface ManagedInvoice {
   /**
    * The last attempt to email this invoice to the customer, or null when none
    * has been made. Null on an invoice marked sent by a deployment with no mail
-   * provider, too — "someone said this went out" and "we delivered it" are
+   * provider, too: "someone said this went out" and "we delivered it" are
    * different claims, and this field is only ever the second one.
    */
   delivery: ManagedInvoiceDelivery | null;
@@ -398,7 +398,7 @@ export interface ManagedInvoice {
  * figures are recomputed on read, and recomputing every draft in the list would
  * turn opening the page into one ClickHouse scan per draft.
  *
- * `totals` is therefore **null for a draft** — not zero, not stale. Null is the
+ * `totals` is therefore **null for a draft**, not zero, not stale. Null is the
  * honest answer to "what does this draft come to" from a list query, and the
  * detail view answers it properly.
  */
@@ -454,7 +454,7 @@ export type ManagedInvoiceAction = "edit" | "delete" | "approve" | "send" | "voi
  * One function, used by the service to refuse and by the UI to disable, because
  * a UI that hides a button the server would have allowed is a missing feature
  * while a UI that offers one the server refuses is a bug report. The server
- * calls this too — the rule is enforced server-side, not merely presented.
+ * calls this too: the rule is enforced server-side, not merely presented.
  *
  * The transitions, in full:
  *
@@ -475,16 +475,16 @@ export type ManagedInvoiceAction = "edit" | "delete" | "approve" | "send" | "voi
  * `send` is the one action that can legitimately repeat, and the rule is drawn
  * on **whether anything landed**, not on the status:
  *
- * - nothing reached anyone (`failed`, `no_targets`) — sending again is a
+ * - nothing reached anyone (`failed`, `no_targets`): sending again is a
  *   **retry**, allowed with no ceremony, because there is no inbox to duplicate
  *   into;
- * - something reached someone (`succeeded`, `partial`) — sending again is a
+ * - something reached someone (`succeeded`, `partial`); sending again is a
  *   **second copy**, refused unless the caller passes `resend`, because a
  *   customer receiving the same invoice twice is a support ticket at best and a
  *   double payment at worst.
  *
- * A `sent` invoice with no delivery record at all — marked sent by hand, or on
- * a deployment with no mail provider — is treated as the second case: we do not
+ * A `sent` invoice with no delivery record at all (marked sent by hand, or on
+ * a deployment with no mail provider) is treated as the second case: we do not
  * know what the person who pressed the button did outside this system.
  */
 export function managedInvoiceBlocker(
@@ -579,7 +579,7 @@ export function managedInvoiceIsFrozen(status: ManagedInvoiceStatus): boolean {
 }
 
 /* ------------------------------------------------------------------ *
- * Arithmetic — pure, so the reconciliation is testable without a database
+ * Arithmetic: pure, so the reconciliation is testable without a database
  * ------------------------------------------------------------------ */
 
 /** Six places, matching `cost/currency-convert.ts`, so totals agree everywhere. */
@@ -623,7 +623,7 @@ export function sumManagedInvoiceLines(
  *
  * The one identity the whole feature rests on: an invoice a customer can walk
  * back to the spend that produced it. Checked in tests, and by the service
- * before it freezes anything — a figure that fails this must never be approved.
+ * before it freezes anything: a figure that fails this must never be approved.
  *
  * Compared with a tolerance because the amounts are already rounded to six
  * places on the way in and summing many of them accumulates a little below
@@ -645,7 +645,7 @@ export function managedInvoiceReconciles(totals: ManagedInvoiceTotals): boolean 
 /**
  * `INV-2026-0001`.
  *
- * Per organisation, per calendar year of the **period end** — not of the day
+ * Per organisation, per calendar year of the **period end**, not of the day
  * the button was pressed, so December's invoice approved on 3 January is still
  * a December number and the year's sequence does not develop a tail.
  */

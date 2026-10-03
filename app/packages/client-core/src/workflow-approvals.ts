@@ -4,7 +4,7 @@
  * A run that calls `infra.waitForApproval(...)` suspends and writes a pending
  * `workflow_approvals` row; these are the reads and writes that land the
  * decision. Server contract: `/api/org/:orgId/workflow-approvals` (web
- * `api/routes/workflow-approvals.ts`) — listing takes `workflows:read`,
+ * `api/routes/workflow-approvals.ts`); listing takes `workflows:read`,
  * approving or denying takes `workflows:approve`, which is deliberately not
  * `workflows:write`.
  *
@@ -56,7 +56,7 @@ export async function fetchWorkflowApprovals(
 
 /**
  * Land a decision. Throws a {@link CloudApiError} with status 409 when someone
- * else decided first or the request expired — see {@link isApprovalConflict}.
+ * else decided first or the request expired: see {@link isApprovalConflict}.
  */
 export async function decideWorkflowApproval(
   api: CloudFetch,
@@ -74,7 +74,7 @@ export async function decideWorkflowApproval(
 /**
  * True when a failed decision was a conflict: the request had already been
  * approved, denied or expired. The server's conditional UPDATE is what makes
- * two people racing the same request produce exactly one decision — the loser
+ * two people racing the same request produce exactly one decision: the loser
  * gets this, and the honest thing to do is say so and re-list rather than
  * retry.
  */

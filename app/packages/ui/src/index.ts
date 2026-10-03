@@ -379,7 +379,7 @@ export {
 } from "./workspace-tabs.js";
 export type { RouteNavigator } from "./workspace-tabs.js";
 
-// Dependency graph — pure model/layout in client-core (shared contract home);
+// Dependency graph: pure model/layout in client-core (shared contract home);
 // re-exported here because web and desktop import it from `ui`.
 export {
   buildDependencyGraph,
@@ -609,7 +609,7 @@ export { IacIcon } from "./components/icons/IacIcon.js";
 export { LogsIcon } from "./components/icons/LogsIcon.js";
 
 /**
- * Expiry radar — the pure contract (feed computation, wire types, settings
+ * Expiry radar: the pure contract (feed computation, wire types, settings
  * helpers) lives in `@infrawrench/client-core` so mobile and the CLI share
  * one definition; re-exported here because web and desktop import it from
  * `ui`.
@@ -640,7 +640,7 @@ export type {
 } from "@infrawrench/client-core";
 export { ExpirySection, formatDaysRemaining } from "./expiry/ExpirySection.js";
 /**
- * Quota radar — how close each account is to its provider's enforced limits.
+ * Quota radar: how close each account is to its provider's enforced limits.
  * The pure contract (trend fit, severity buckets, formatters) lives in
  * `@infrawrench/client-core` so the poller, the digest and any future CLI
  * share one definition of "over threshold"; re-exported here because web and
@@ -678,7 +678,7 @@ export type { ExpirySectionProps } from "./expiry/ExpirySection.js";
 export { ExpiryIcon } from "./components/icons/ExpiryIcon.js";
 
 /**
- * Posture checks — the pure contract (finding computation, wire types,
+ * Posture checks: the pure contract (finding computation, wire types,
  * settings helpers) lives in `@infrawrench/client-core` so mobile and the CLI
  * share one definition; re-exported here because web and desktop import it
  * from `ui`.
@@ -718,7 +718,7 @@ export { PostureSection } from "./posture/PostureSection.js";
 export type { PostureSectionProps } from "./posture/PostureSection.js";
 
 /**
- * Cross-cloud access review — the principals inside the *customer's* clouds,
+ * Cross-cloud access review: the principals inside the *customer's* clouds,
  * not Infrawrench's own team roles and not the credentials Infrawrench holds.
  * The pure contract lives in `@infrawrench/client-core`; re-exported here
  * because web and desktop import it from `ui`.
@@ -767,7 +767,7 @@ export { PostureIcon } from "./components/icons/PostureIcon.js";
 export { AccessReviewIcon } from "./components/icons/AccessReviewIcon.js";
 
 /**
- * Backup coverage — the pure contract (coverage computation, wire types,
+ * Backup coverage: the pure contract (coverage computation, wire types,
  * policy validation) lives in `@infrawrench/client-core` for the same reason
  * posture's does; re-exported here because web and desktop import it from
  * `ui`.
@@ -860,7 +860,7 @@ export {
 export { RunbooksSection } from "./runbooks/RunbooksSection.js";
 export type { RunbooksSectionProps } from "./runbooks/RunbooksSection.js";
 export { RunbookIcon } from "./components/icons/RunbookIcon.js";
-// Restore drills — the Backups screen's fourth tab. Types and the standing
+// Restore drills: the Backups screen's fourth tab. Types and the standing
 // rule come from client-core like every other section's.
 export {
   DRILL_OUTCOMES,
@@ -924,7 +924,7 @@ export type { DnsSectionProps } from "./dns/DnsSection.js";
 export { DomainsIcon } from "./components/icons/DomainsIcon.js";
 
 /**
- * Environment diff — two accounts' inventories compared. The comparison is
+ * Environment diff: two accounts' inventories compared. The comparison is
  * pure and lives in `@infrawrench/client-core` (a second caller of the
  * change-timeline differ), so the CLI runs the identical computation over its
  * own workspace; re-exported here because web and desktop import it from `ui`.
@@ -1016,13 +1016,13 @@ export {
 } from "@infrawrench/client-core";
 
 export * from "./cost/index.js";
-// Cost reports — the named, saved form of a cost graph. Separate barrel from
+// Cost reports: the named, saved form of a cost graph. Separate barrel from
 // `cost/` because the panel is its own org-level page, but it renders the very
 // same CostGraphCard/CostGraphConfigModal a dashboard cost card uses.
 export * from "./cost-reports/index.js";
 export * from "./invoices/index.js";
 
-// Org/user settings — shared sections rendered by the web settings routes and
+// Org/user settings: shared sections rendered by the web settings routes and
 // the desktop cloud-mode settings tab (see settings/host.tsx for the contract).
 export * from "./settings/index.js";
 // Session-recording playback. The player is here rather than in a host app
@@ -1035,7 +1035,7 @@ export * from "./probes/index.js";
 export * from "./incidents/index.js";
 export * from "./environments/index.js";
 export * from "./savings/index.js";
-// Issue filing (Jira and Linear) — the tracker-aware provider a host mounts
+// Issue filing (Jira and Linear): the tracker-aware provider a host mounts
 // once, and the button any findings row drops in. See issue-filing/host.tsx
 // for the batching contract; the Jira-named exports are compatibility
 // re-exports over the same components.
@@ -1119,7 +1119,7 @@ export type {
 // Named re-exports of cost/custom-graph wire types. The tsdown (tsgo) dts
 // bundler drops some `export *` type re-exports when the same name also
 // appears as an import into the declaration graph from client-core under
-// another path — desktop/web then fail to resolve them from `@infrawrench/ui`.
+// another path: desktop/web then fail to resolve them from `@infrawrench/ui`.
 export type {
   CostAccountStatus,
   CostAlert,
@@ -1158,7 +1158,7 @@ export {
   type RevertApplyResponse,
 } from "./changes/index.js";
 
-// IaC reconciliation — panel + host contract. Named for the same reason as the
+// IaC reconciliation: panel + host contract. Named for the same reason as the
 // change timeline: the wire types come straight from client-core above, and a
 // star export would redeclare them.
 export {
@@ -1171,7 +1171,7 @@ export {
   type IacStateUpload,
 } from "./iac/index.js";
 
-// Moment view ("what changed around 03:14?") — panel + host contract. The
+// Moment view ("what changed around 03:14?"): panel + host contract. The
 // wire types and pure timeline logic come straight from client-core, named
 // for the same redeclaration reason as the changes block above.
 export { MomentPanel, type MomentPanelProps, type MomentClient } from "./moment/index.js";
@@ -1229,7 +1229,7 @@ export {
   type HostSetupTransport,
 } from "./apps/index.js";
 export { useStableGT } from "./i18n/stable-gt.js";
-// Trial workspaces — the countdown an unclaimed agent trial carries until a
+// Trial workspaces: the countdown an unclaimed agent trial carries until a
 // person claims it. See server-core/trials for the lifecycle behind it.
 export {
   SshInstallModal,

@@ -1,16 +1,16 @@
-// `infrawrench oversized` — right-sizing recommendations: machines whose p95
+// `infrawrench oversized`; right-sizing recommendations: machines whose p95
 // CPU/memory over the last 14 days of stored metrics sits well under their
 // size, with the cheapest catalog size that still clears headroom and the
 // live-priced monthly saving.
 //
 // Cloud-only, unlike `orphans`: the percentiles live in the cloud metrics
 // warehouse and the size catalogs come from the providers with the org's
-// credentials — a local workspace has neither. Applying a recommendation is a
+// credentials; a local workspace has neither. Applying a recommendation is a
 // provider mutation (most providers want the machine stopped first), so the
 // CLI lists and the web/desktop Apply button applies.
 //
-// The response shape comes from `@infrawrench/client-core` — the same
-// definition every other surface renders — so a server-side change breaks the
+// The response shape comes from `@infrawrench/client-core` (the same
+// definition every other surface renders) so a server-side change breaks the
 // CLI's build instead of its output. The import is type-only, so the CLI
 // still ships zero new runtime dependencies.
 import { orgFetch, resolveOrg, type CliContext } from "../context";

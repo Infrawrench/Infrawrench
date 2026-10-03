@@ -52,7 +52,7 @@ describe("collapseIdenticalNodes", () => {
 
   it("keeps a sibling that is wired differently", () => {
     const { nodes, edges } = autoModeVpc(5);
-    // One subnet has a VM in it — it is no longer interchangeable.
+    // One subnet has a VM in it: it is no longer interchangeable.
     nodes.push(node("vm", { resourceTypeId: "gce-instance", displayName: "web-1" }));
     edges.push(edge("vm", "subnet-3", "subnetwork"));
 

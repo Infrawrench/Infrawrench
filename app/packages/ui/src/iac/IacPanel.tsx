@@ -79,7 +79,7 @@ function SummaryTile({
 }
 
 /**
- * **Infrastructure as Code** — the ClickOps detector.
+ * **Infrastructure as Code**: the ClickOps detector.
  *
  * Upload the Terraform state your organization already has, and every synced
  * resource is classified as managed, drifted, or unmanaged. The unmanaged ones
@@ -87,7 +87,7 @@ function SummaryTile({
  * into `import` blocks here.
  *
  * One of four Terraform-named things in Infrawrench and the only one that
- * reads state *in* — see the feature docs. Cloud-only by nature: the inventory
+ * reads state *in*: see the feature docs. Cloud-only by nature: the inventory
  * it classifies is the org's synced resources.
  */
 export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }: IacPanelProps) {

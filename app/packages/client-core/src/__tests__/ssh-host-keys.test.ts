@@ -54,7 +54,7 @@ describe("trustPayloadFromFrame", () => {
 
   it("returns null when the frame is marked but incomplete", () => {
     // A frame that claims the code but lacks the fingerprint can't be
-    // rendered — treating it as a prompt would ask the operator to trust
+    // rendered: treating it as a prompt would ask the operator to trust
     // nothing at all.
     expect(
       trustPayloadFromFrame({

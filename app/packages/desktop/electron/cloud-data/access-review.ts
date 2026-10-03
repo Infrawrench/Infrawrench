@@ -1,13 +1,13 @@
 import { ipcMain } from "electron";
 import { cloudFetch, cloudFetchText } from "./shared";
 
-// Cross-cloud access review — cloud mode only. The review is computed
+// Cross-cloud access review: cloud mode only. The review is computed
 // server-side over the org's synced rows (`GET /access-review`), the same
 // endpoint the web screen uses.
 //
 // There is deliberately no local-mode counterpart, unlike Posture and
-// Expiring. Two of the five rules need state only the cloud has — the resource
-// ownership records and the shared dismissal store — and a local review that
+// Expiring. Two of the five rules need state only the cloud has (the resource
+// ownership records and the shared dismissal store) and a local review that
 // silently answered "unowned" for every principal would be reporting on the
 // desktop app rather than on the customer's clouds.
 
@@ -20,7 +20,7 @@ ipcMain.handle(
 );
 
 // Accepting a finding is org state, not machine state, so it is recorded
-// through the API — a dismissal made on this laptop has to be the same
+// through the API: a dismissal made on this laptop has to be the same
 // dismissal the web app, the alerts and everyone else's desktop see.
 ipcMain.handle(
   "cloud_access_review_dismiss",

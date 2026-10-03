@@ -115,7 +115,7 @@ export async function cloudFetch<T>(
 
 /**
  * `cloudFetch` for endpoints that return plain text (the custom-graph typings
- * d.ts) — same auth/refresh handling, no JSON parse.
+ * d.ts): same auth/refresh handling, no JSON parse.
  */
 export async function cloudFetchText(
   orgId: string,

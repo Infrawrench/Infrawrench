@@ -4,7 +4,7 @@ interface WallboardIconProps {
 }
 
 /**
- * Wallboard glyph — a screen on a stand with two tiles on it. Same 24x24 stroke
+ * Wallboard glyph: a screen on a stand with two tiles on it. Same 24x24 stroke
  * grid and 2px weight as BackupsIcon/PostureIcon so the Wallboard sidebar entry
  * sits level with its neighbours.
  */

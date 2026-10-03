@@ -6,7 +6,7 @@
  * them. Each tick finds enabled cron workflows, runs the ones whose `next_run_at`
  * is due (non-interactively, trigger_source "cron"), and reschedules them from
  * the cron expression. It also reports the enabled-cron count to the main
- * process (`set_crons_active`) so — like active metric pings — the app stays
+ * process (`set_crons_active`) so (like active metric pings) the app stays
  * alive in the background after the window is closed and keeps firing them.
  */
 import { nextCronOccurrence } from "@infrawrench/client-core";
@@ -63,7 +63,7 @@ async function tick(): Promise<void> {
       try {
         t = JSON.parse(r.trigger) as CronTrigger;
       } catch {
-        /* malformed trigger — skip */
+        /* malformed trigger: skip */
       }
       return t.kind === "cron" && t.expression
         ? [{ row: r, expression: t.expression, timezone: t.timezone }]

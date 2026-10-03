@@ -25,7 +25,7 @@ import type { CustomGraphChart as ChartSpec } from "./types.js";
 /**
  * Renders one script-produced chart spec with recharts. Series arrive already
  * validated and capped by the sandbox dispatcher, so this component only has
- * to draw — no clamping, no sanitizing.
+ * to draw: no clamping, no sanitizing.
  */
 
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}/;

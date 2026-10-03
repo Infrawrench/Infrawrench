@@ -17,7 +17,7 @@ interface DesktopExpiryPanelProps {
  * Desktop host for the shared Expiry radar. Cloud mode fetches the org feed
  * from the web API; local mode runs the same shared computation over the
  * local SQLite workspace and the locally loaded plugins' `expiryFields`
- * declarations. Same wiring as DesktopGraphPanel — a failed *refresh* must
+ * declarations. Same wiring as DesktopGraphPanel: a failed *refresh* must
  * not blank a feed that is already drawn.
  */
 export function DesktopExpiryPanel({ openResource }: DesktopExpiryPanelProps) {

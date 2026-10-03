@@ -2,8 +2,8 @@
  * Runs an Infrafile: read from a repo root, executed as one isolate whose
  * stages the host drives.
  *
- * The shape mirrors `runWorkflow` deliberately — same isolate, same prelude,
- * same host RPC — so everything an author knows about writing a workflow
+ * The shape mirrors `runWorkflow` deliberately (same isolate, same prelude,
+ * same host RPC) so everything an author knows about writing a workflow
  * transfers. What differs is the epilogue: instead of one flat body, the guest
  * calls `plan()`, `dockerfile()` and `deploy()` in turn, checking in with the
  * host between each. That check-in is what lets the *Docker build happen outside
@@ -40,7 +40,7 @@ import type {
 export const INFRAFILE_NAME = "Infrafile";
 
 /**
- * An image build is not guest execution — it is minutes of waiting on a daemon.
+ * An image build is not guest execution: it is minutes of waiting on a daemon.
  * Excluding it from the budget is the same reasoning that keeps `ssh.exec` out
  * (see `PAUSED_METHODS`): the run's timeout exists to bound runaway *code*.
  */
@@ -49,7 +49,7 @@ const INFRAFILE_PAUSED_METHODS = [
   "infrafile.push",
   "infrafile.copyTo",
   "infrafile.run",
-  // `select` waits on a person reading their options — the same reasoning that
+  // `select` waits on a person reading their options: the same reasoning that
   // keeps the generic `prompt` out of the budget. Without this, taking a moment
   // to choose a build host can fail an otherwise-fine deploy.
   "infrafile.select",
@@ -61,8 +61,8 @@ export interface RunInfrafileOptions {
   host: InfrafileHost;
   /**
    * Which environment to run. Must be one the file declares. Omit it and a
-   * file that declares exactly one env uses that one — so the common
-   * single-environment project needs no flag — while a file with several fails
+   * file that declares exactly one env uses that one (so the common
+   * single-environment project needs no flag) while a file with several fails
    * naming them, rather than guessing which one you meant to ship to.
    */
   env?: string;
@@ -82,7 +82,7 @@ export interface RunInfrafileOptions {
   /**
    * The env's last successful deploy's recorded plan, when the caller has one
    * (the CLI reads its deploy history, the web the run row). Passed to
-   * `destroy()` as `plan` — recorded JSON, so plain data rather than handles.
+   * `destroy()` as `plan`: recorded JSON, so plain data rather than handles.
    */
   destroyPlan?: unknown;
   /**
@@ -121,7 +121,7 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
   };
 
   // Resolved inside chooseEnv, which is the first moment the declared envs are
-  // known — the file has to be evaluated before we can validate against them.
+  // known: the file has to be evaluated before we can validate against them.
   let env = opts.env ?? "";
 
   const sink: InfrafileRunSink = {
@@ -155,7 +155,7 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
         };
       }
       if (opts.rollback) {
-        // Nothing to plan or build — the artifact already exists.
+        // Nothing to plan or build: the artifact already exists.
         log(
           "info",
           `Rolling back to ${opts.rollback.image}` +
@@ -165,7 +165,7 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
         return { env, git: opts.git, rollback: opts.rollback };
       }
       setStage("plan");
-      // planOnly rides on this return — the earliest host round-trip — because
+      // planOnly rides on this return (the earliest host round-trip) because
       // plan() itself needs the flag; the `infrafile.plan` RPC answers too late.
       return { env, git: opts.git, ...(opts.planOnly ? { planOnly: true } : {}) };
     },
@@ -238,7 +238,7 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
   };
 
   // The build result has to reach the run result, and the only place it exists
-  // is the host's return value — so wrap the host's build op to capture it.
+  // is the host's return value, so wrap the host's build op to capture it.
   // Returning from the build is also the moment the deploy stage begins, which
   // is what makes a deploy failure report `deploy` rather than `build`.
   const host: InfrafileHost = opts.host.infrafileBuild
@@ -273,7 +273,7 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
     ctx,
     env: {
       accountsTree: JSON.stringify(tree),
-      // An Infrafile has no declared metrics — `infra.metrics` stays an empty
+      // An Infrafile has no declared metrics: `infra.metrics` stays an empty
       // (but working) surface rather than being absent and throwing.
       metrics: "{}",
       // Deployment credentials use the Infrafile env/run surfaces. Workflow
@@ -293,8 +293,8 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
  * Assemble the guest program: the same header and workflow prelude a workflow
  * gets, then `defineInfra`, then the user's file, then the stage driver.
  *
- * The user's file is evaluated for its *side effect* — registering the
- * definition — so it sits at the top level rather than inside a task wrapper.
+ * The user's file is evaluated for its *side effect*: registering the
+ * definition, so it sits at the top level rather than inside a task wrapper.
  * The whole thing is wrapped so a throw anywhere reaches the `__error` sentinel.
  */
 function buildProgram(userJs: string): string {

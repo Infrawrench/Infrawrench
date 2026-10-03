@@ -62,11 +62,11 @@ export function TeamSection() {
         await api.post(`/api/org/${orgId}/team/invitations`, body);
       } catch (e) {
         if (!(e instanceof SeatLimitReachedClientError)) throw e;
-        // The paid plan is full — every member and pending invite holds a
+        // The paid plan is full: every member and pending invite holds a
         // seat. Confirm buying one more, then retry with the opt-in flag.
         const { seatCount } = e.payload;
         // Capacity that is entirely prepaid slots has no monthly seat to add,
-        // so there is nothing to retry — the org has to buy another slot first.
+        // so there is nothing to retry: the org has to buy another slot first.
         if (e.payload.canAddSeat === false) {
           setError(
             gt(

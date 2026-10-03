@@ -12,7 +12,7 @@ import {
 
 /**
  * Status pages are cloud-only, like the probes they publish. The active org is
- * resolved at call time rather than closed over, matching `probes-client.ts` —
+ * resolved at call time rather than closed over, matching `probes-client.ts`:
  * the org can change under a mounted panel.
  */
 function requireOrgId(): string {
@@ -24,7 +24,7 @@ function requireOrgId(): string {
 export function createDesktopStatusPagesClient(): StatusPagesClient {
   return {
     // Desktop is not served from the cloud app, so the public URL it shows has
-    // to be the *cloud's* origin — not `window.location`, which is a file: or
+    // to be the *cloud's* origin, not `window.location`, which is a file: or
     // localhost URL here and would produce a link that goes nowhere.
     appOrigin: CLOUD_URL,
     listStatusPages: async () => (await listCloudStatusPages(requireOrgId())).pages,

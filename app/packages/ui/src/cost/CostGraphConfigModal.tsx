@@ -36,7 +36,7 @@ export { DEFAULT_COST_GRAPH_CONFIG } from "./config.js";
  *
  * Offering it unconditionally would be a lie by omission. Without a provider
  * that reports an amortized number, every row falls back to its cash amount and
- * the two options draw the identical graph — a user who switched and saw
+ * the two options draw the identical graph: a user who switched and saw
  * nothing change would reasonably conclude the feature is broken rather than
  * that their providers don't report it.
  *
@@ -109,7 +109,7 @@ export function CostBasisField({
 }
 
 /**
- * Why the basis select is disabled — one sentence, same words everywhere.
+ * Why the basis select is disabled: one sentence, same words everywhere.
  *
  * msg() rather than t(): this is module scope, where t() is forbidden (it has
  * no request/render context to resolve against). Render it through
@@ -153,7 +153,7 @@ export function CostGraphConfigModal({
   const basis = useCostBasisChoice(api, initialConfig.costBasis === "amortized");
   /**
    * The org's business metrics, for the unit-cost picker. `null` while loading
-   * or when the host hasn't wired the endpoint — in both cases the picker is
+   * or when the host hasn't wired the endpoint: in both cases the picker is
    * left out rather than offered empty, which would read as "you have none".
    */
   const [metrics, setMetrics] = useState<BusinessMetric[] | null>(null);
@@ -538,7 +538,7 @@ export function CostGraphConfigModal({
 
           {/* The scenario picker. Only offered alongside the forecast, because
               a scenario adjusts the projected region and there is nothing to
-              adjust without one — and clearing the forecast clears the model
+              adjust without one, and clearing the forecast clears the model
               rather than storing a selection that would never be drawn. */}
           <ScenarioModelPicker
             api={api}
@@ -582,7 +582,7 @@ export function CostGraphConfigModal({
  * than "you have not made one yet", and the Costs panel is where models are
  * made.
  *
- * Disabled — and cleared — when the forecast is off. Storing a model on a graph
+ * Disabled (and cleared) when the forecast is off. Storing a model on a graph
  * that draws no projection would be a setting with no effect, and a setting
  * with no effect is a setting somebody will later swear was applied.
  */

@@ -90,7 +90,7 @@ export function CreateResourceModal({
 
   useEffect(() => {
     // Cloud-only and best-effort: the org tag policy lives server-side, and
-    // the modal's notice/prefill is advisory — the API enforces on create.
+    // the modal's notice/prefill is advisory; the API enforces on create.
     if (!activeCloudOrgId) {
       setRequiredTags(undefined);
       return;
@@ -298,7 +298,7 @@ export function CreateResourceModal({
         // created on first bucket-create) into the saved account row
         // before persisting the resource. If this fails the resource
         // still got created upstream, but subsequent ops that rely on
-        // these creds will error until the user re-runs — surface as a
+        // these creds will error until the user re-runs: surface as a
         // warning rather than swallowing.
         if (credentialUpdates && Object.keys(credentialUpdates).length > 0) {
           try {
@@ -374,7 +374,7 @@ export function CreateResourceModal({
   // Hold `callbacks` in a ref so `loadResources` stays referentially stable
   // across rerenders. Without this, every fresh `onCreated` arrow from a
   // parent regenerates `callbacks`, which regenerates `loadResources`, which
-  // fires ResourcePickerResolver's effect — the resource picker flickers and
+  // fires ResourcePickerResolver's effect: the resource picker flickers and
   // refetches on every parent render.
   const callbacksRef = useRef(callbacks);
   useEffect(() => {

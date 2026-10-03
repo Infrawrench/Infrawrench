@@ -4,7 +4,7 @@ interface FanoutIconProps {
 }
 
 /**
- * Fan-out SSH nav icon — one root node with elbow connectors branching to
+ * Fan-out SSH nav icon; one root node with elbow connectors branching to
  * three hosts: "one command, many hosts". Elbow connectors rather than the
  * diagonal share shape so it doesn't read as a twin of GraphIcon. Same 24x24
  * stroke grid and 2px weight as the rest of the sidebar family.

@@ -1,5 +1,5 @@
 /**
- * Incident mode — cloud-mode only. One wrapper per allowlisted IPC channel,
+ * Incident mode: cloud-mode only. One wrapper per allowlisted IPC channel,
  * matching `cloud-probes.ts`.
  *
  * The declared kind of incident, not a provider status incident.

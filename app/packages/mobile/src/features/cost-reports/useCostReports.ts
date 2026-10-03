@@ -7,7 +7,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
  *
  * One list fetch serves both the list screen and the detail screen (which
  * selects out of it) and, on a dashboard, resolves every `cost_report` card's
- * `reportId` — the same "fetch the list, not one per card" rule the budget
+ * `reportId`: the same "fetch the list, not one per card" rule the budget
  * widgets follow.
  */
 export function useCostReports(enabled = true) {
@@ -24,7 +24,7 @@ export function useCostReports(enabled = true) {
  *
  * Read-only on purpose, like the reports themselves: creating, renaming,
  * nesting and deleting folders is Reports-page furniture that stays on web and
- * desktop — a phone reads the filing, it doesn't refile.
+ * desktop; a phone reads the filing, it doesn't refile.
  */
 export function useCostReportFolders(enabled = true) {
   const { api, orgId } = useOrgApi();
@@ -35,7 +35,7 @@ export function useCostReportFolders(enabled = true) {
   });
 }
 
-/** The same list, keyed by id — what a dashboard's report cards look up. */
+/** The same list, keyed by id: what a dashboard's report cards look up. */
 export function useCostReportsById(enabled = true) {
   const { api, orgId } = useOrgApi();
   return useQuery({

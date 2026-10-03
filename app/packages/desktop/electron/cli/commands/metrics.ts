@@ -1,4 +1,4 @@
-// `infrawrench metrics <resource-id>` — metric series rendered as terminal
+// `infrawrench metrics <resource-id>`: metric series rendered as terminal
 // charts. Cloud resources answer from the metric store when they have pinned
 // history and fall back to a live provider fetch server-side; local resources
 // fetch live through the plugin in-process.
@@ -30,7 +30,7 @@ export async function cmdMetrics(
 ): Promise<void> {
   if (!resourceId) throw new CliError("Usage: infrawrench metrics <resource-id> [--last 6h]");
 
-  // {accountId}:{resourceTypeId}:{externalId} — the account resolves the plugin.
+  // {accountId}:{resourceTypeId}:{externalId}: the account resolves the plugin.
   const [accountId, resourceTypeId] = resourceId.split(":");
   if (!accountId || !resourceTypeId) {
     throw new CliError(

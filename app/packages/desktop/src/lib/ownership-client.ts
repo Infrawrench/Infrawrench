@@ -10,7 +10,7 @@ import {
 /**
  * Ownership is cloud-only: it is an org record about an org's resources, and a
  * local workspace has neither. The active org is resolved at call time rather
- * than closed over, matching `probes-client.ts` — the org can change under a
+ * than closed over, matching `probes-client.ts`: the org can change under a
  * mounted panel.
  */
 function requireOrgId(): string {

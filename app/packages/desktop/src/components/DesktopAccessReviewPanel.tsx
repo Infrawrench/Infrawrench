@@ -33,8 +33,8 @@ function download(filename: string, mediaType: string, body: string): void {
 /**
  * Desktop host for the shared access review. **Cloud mode only**, unlike
  * Posture and Expiring: two of the review's five rules read state that only
- * exists in the cloud — the resource-ownership records and the shared
- * dismissal store — and a local review that answered "unowned" for every
+ * exists in the cloud (the resource-ownership records and the shared
+ * dismissal store) and a local review that answered "unowned" for every
  * principal would be describing the desktop app rather than the customer's
  * clouds. The sidebar tile is gated the same way (see SidebarDashboards).
  */
@@ -69,7 +69,7 @@ export function DesktopAccessReviewPanel({ openResource }: DesktopAccessReviewPa
   );
 
   /**
-   * Revoke through the existing invoke-action IPC — the same path the resource
+   * Revoke through the existing invoke-action IPC: the same path the resource
    * detail view's action buttons take, with the same server-side permission
    * check, change-freeze gate and audit row. The review never calls a provider
    * itself; it only knows which action the plugin declared.
@@ -156,7 +156,7 @@ export function DesktopAccessReviewPanel({ openResource }: DesktopAccessReviewPa
       onStaleDaysChange={setStaleDays}
       onOpenResource={openResource}
       // The server rejects a caller without `resources:write`, so the buttons
-      // are always offered here and the error surfaces inline — the desktop
+      // are always offered here and the error surfaces inline: the desktop
       // has no cheap permission read outside the org layout.
       onDismiss={dismiss}
       onRestore={restore}

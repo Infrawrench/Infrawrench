@@ -88,7 +88,7 @@ export default function AccountResources() {
   // Account-root plugins (UploadThing) hold exactly one instance of their root
   // type, and that instance *is* the account. Web and desktop swap the account
   // page's body for the resource's detail view; the phone has one screen per
-  // route, so the equivalent is to redirect — same destination, and Back still
+  // route, so the equivalent is to redirect: same destination, and Back still
   // lands on the accounts list rather than on a page holding a single row.
   const accountRoot = useMemo(() => {
     const rootTypeId = getAccountRootType(detail.data?.resourceTypes ?? [])?.id;
@@ -98,7 +98,7 @@ export default function AccountResources() {
 
   if (resources.isLoading) return <LoadingView />;
   // The type list is the only thing that says whether this account has a root,
-  // and it is fetched alongside the rows rather than before them — so rendering
+  // and it is fetched alongside the rows rather than before them, so rendering
   // the inventory while it is still in flight would flash a screen we are about
   // to redirect away from. Wait for it. On error we carry on: the fallback type
   // list below (ids as titles) is better than a dead end, and an account that
@@ -113,7 +113,7 @@ export default function AccountResources() {
     );
   }
 
-  // Only redirect once a root row actually exists — before the first sync
+  // Only redirect once a root row actually exists: before the first sync
   // lands there is nothing to redirect to, and the inventory is the right
   // fallback rather than a detail screen for an id we do not have.
   if (accountRoot) {

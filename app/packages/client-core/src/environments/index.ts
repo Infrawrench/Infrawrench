@@ -1,11 +1,11 @@
 /**
- * Ephemeral environments — capture a set of existing resources as a
+ * Ephemeral environments: capture a set of existing resources as a
  * parameterised template, stamp copies of it out on demand, and have each copy
  * delete itself when its TTL runs out.
  *
  * This module is the shared pure half: the wire contract for
  * `/api/org/:orgId/environments`, the template document model, and every piece
- * of judgement that decides what an instantiation actually does — dependency
+ * of judgement that decides what an instantiation actually does; dependency
  * ordering, parameter substitution, output-reference rewriting and name
  * prefixing. None of it touches a database, a provider API or a plugin, which
  * is what lets the same functions run in the API handler, the editor UI and the

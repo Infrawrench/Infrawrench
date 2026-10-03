@@ -4,7 +4,7 @@ import { markdownHeaders } from "../../lib/content-negotiation";
 import { renderDocMarkdown } from "../../lib/markdown/docs";
 
 /**
- * `/docs/<slug>.md` — every documentation page as markdown.
+ * `/docs/<slug>.md`: every documentation page as markdown.
  *
  * Prerendered alongside the HTML, so this costs a file per page at build and
  * nothing at request time. It exists because the HTML twin is static and

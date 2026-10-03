@@ -127,7 +127,7 @@ describe("collectDependentsWithDepth", () => {
   });
 
   it("takes the shortest path when a dependant is reachable two ways", () => {
-    // web depends on db directly *and* through api — the direct hop wins, so
+    // web depends on db directly *and* through api: the direct hop wins, so
     // it is reported as a direct dependant rather than a transitive one.
     const model = buildDependencyGraph(nodes, [...edges, edge("web", "db", "dbUrl")]);
     expect(collectDependentsWithDepth(model, "db").get("web")).toBe(1);
@@ -190,7 +190,7 @@ describe("isolated nodes", () => {
       [edge("api", "db")],
     );
     expect(model.nodes.map((n) => n.id).sort()).toEqual(["api", "db"]);
-    // Still resolvable by id — the index is for lookup, not iteration.
+    // Still resolvable by id: the index is for lookup, not iteration.
     expect(model.nodesById.get("orphan")?.id).toBe("orphan");
   });
 

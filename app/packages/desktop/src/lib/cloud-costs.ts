@@ -1,5 +1,5 @@
 /**
- * Cloud cost graphs, budgets, and dashboard widgets. Cloud-mode only — cost
+ * Cloud cost graphs, budgets, and dashboard widgets. Cloud-mode only: cost
  * data has no local-SQLite equivalent (it lives in the cloud ClickHouse
  * store), so these are never called when activeCloudOrgId is unset.
  */
@@ -85,7 +85,7 @@ export async function listCloudCostAnomalies(orgId: string, days = 30): Promise<
 }
 
 /**
- * Explain a detected anomaly — records the sentence on the finding and puts it
+ * Explain a detected anomaly: records the sentence on the finding and puts it
  * on every cost chart covering the day as an annotation (`costs:write`).
  */
 export async function acknowledgeCloudCostAnomaly(
@@ -139,7 +139,7 @@ export async function loadCloudShowback(
   });
 }
 
-/** The org's billing rules, read-only — see `CostsClient.listBillingRules`. */
+/** The org's billing rules, read-only: see `CostsClient.listBillingRules`. */
 export async function loadCloudBillingRules(orgId: string): Promise<BillingRule[]> {
   return invoke("cloud_billing_rules", { orgId });
 }
@@ -199,7 +199,7 @@ export async function deleteCloudBudget(orgId: string, budgetId: string): Promis
 }
 
 /* ------------------------------------------------------------------ *
- * Change-based cost alerts — configured relative change on a scope.
+ * Change-based cost alerts: configured relative change on a scope.
  * ------------------------------------------------------------------ */
 
 export async function listCloudCostAlerts(orgId: string): Promise<CostAlert[]> {
@@ -258,7 +258,7 @@ export async function deleteCloudWidget(orgId: string, widgetId: string): Promis
 }
 
 /* ------------------------------------------------------------------ *
- * Cost reports — the named, saved form of a cost graph.
+ * Cost reports: the named, saved form of a cost graph.
  * ------------------------------------------------------------------ */
 
 export async function listCloudCostReports(orgId: string): Promise<CostReport[]> {
@@ -289,7 +289,7 @@ export async function deleteCloudCostReport(orgId: string, reportId: string): Pr
 }
 
 /* ------------------------------------------------------------------ *
- * Cost annotations — dated notes drawn over cost charts. Org-wide unless
+ * Cost annotations: dated notes drawn over cost charts. Org-wide unless
  * scoped to a report, which is why these are not report sub-calls.
  * ------------------------------------------------------------------ */
 
@@ -327,7 +327,7 @@ export async function deleteCloudCostAnnotation(
 }
 
 /* ------------------------------------------------------------------ *
- * Cost-report folders — the tree the Reports list groups by.
+ * Cost-report folders: the tree the Reports list groups by.
  * ------------------------------------------------------------------ */
 
 export async function listCloudCostReportFolders(orgId: string): Promise<CostReportFolder[]> {
@@ -354,7 +354,7 @@ export async function deleteCloudCostReportFolder(orgId: string, folderId: strin
 }
 
 /* ------------------------------------------------------------------ *
- * Report delivery schedules — scheduled sends of a saved report to
+ * Report delivery schedules: scheduled sends of a saved report to
  * Slack/Teams/email. Cloud-only like everything else here.
  * ------------------------------------------------------------------ */
 
@@ -409,7 +409,7 @@ export async function sendCloudReportNotificationNow(
 }
 
 /* ------------------------------------------------------------------ *
- * Saved cost filters — named filter sets applied by reference. Cloud-mode
+ * Saved cost filters: named filter sets applied by reference. Cloud-mode
  * only, and resolved server-side at query time like every other surface.
  * ------------------------------------------------------------------ */
 
@@ -452,7 +452,7 @@ export async function listCloudSavedCostFilterReferents(
 }
 
 /* ------------------------------------------------------------------ *
- * Scenario models — named sets of known future cost overlaid on a forecast.
+ * Scenario models: named sets of known future cost overlaid on a forecast.
  * Cloud-mode only, and resolved server-side at query time like saved filters.
  * ------------------------------------------------------------------ */
 
@@ -493,7 +493,7 @@ export async function listCloudCostScenarioReferents(
 
 /* ------------------------------------------------------------------ *
  * Business metrics and unit costs. Cloud-mode only like the rest of this
- * module — the numerator lives in the cloud's cost store, so there is no
+ * module: the numerator lives in the cloud's cost store, so there is no
  * local-SQLite equivalent to fall back to.
  * ------------------------------------------------------------------ */
 

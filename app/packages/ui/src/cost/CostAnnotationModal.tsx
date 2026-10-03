@@ -13,7 +13,7 @@ export interface CostAnnotationModalProps {
   /** The note being edited, or null to create one. */
   annotation: CostAnnotation | null;
   /**
-   * The day a new note starts on — the bucket the user clicked, or today. Only
+   * The day a new note starts on: the bucket the user clicked, or today. Only
    * used when creating; an edit always starts from the stored dates.
    */
   defaultStartDate: string;
@@ -38,8 +38,8 @@ export interface CostAnnotationModalProps {
  * there empty invites people to fill it in with the same day, which stores the
  * same fact two ways.
  *
- * Validation is {@link costAnnotationInputError} — the same function the API
- * runs — so the form refuses exactly what the server would refuse, in the same
+ * Validation is {@link costAnnotationInputError}: the same function the API
+ * runs, so the form refuses exactly what the server would refuse, in the same
  * words, before the round trip.
  */
 export function CostAnnotationModal({

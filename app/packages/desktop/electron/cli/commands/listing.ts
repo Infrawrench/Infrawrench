@@ -1,4 +1,4 @@
-// `infrawrench orgs | accounts | resources | resource` — the read commands
+// `infrawrench orgs | accounts | resources | resource`: the read commands
 // over cloud orgs and the local workspace.
 import {
   CliError,
@@ -139,10 +139,10 @@ export async function cmdResources(ctx: CliContext, typeFilter?: string): Promis
   let errors: Array<{ typeId: string; message: string }> = [];
   if (orgId) {
     // Re-sync from the provider first so the listing matches what exists
-    // *now*, the way the desktop account page does — the poller's cache can
+    // *now*, the way the desktop account page does: the poller's cache can
     // lag or be missing types. A failed sync still prints the cached rows.
-    // The sync blocks until the whole provider crawl finishes — minutes on a
-    // big account — so say what the silence is on an interactive terminal
+    // The sync blocks until the whole provider crawl finishes (minutes on a
+    // big account) so say what the silence is on an interactive terminal
     // (stderr, so `--json | jq` stays clean).
     const showProgress = process.stderr.isTTY === true;
     if (showProgress) {

@@ -1,9 +1,9 @@
 /**
- * Query monitors — a SQL query on a schedule, with a threshold and an alert.
+ * Query monitors: a SQL query on a schedule, with a threshold and an alert.
  *
  * Metric alerts watch what the *provider* reports: CPU, connections, queue
  * depth. Nothing watched what the data itself says, which is where a whole
- * class of incidents lives — the orders table stopped growing, the dead-letter
+ * class of incidents lives: the orders table stopped growing, the dead-letter
  * queue has 4,000 rows in it, yesterday's ETL wrote nought. Those are visible in
  * one query and in no metric.
  *
@@ -26,7 +26,7 @@ export type QueryMonitorOperator = "gt" | "gte" | "lt" | "lte" | "eq" | "neq";
  *
  * `unknown` is a first-class state, not an absence. A monitor whose query
  * failed has *not* told you the data is fine, and rendering that as `ok` is how
- * a broken monitor becomes indistinguishable from a healthy one — the failure
+ * a broken monitor becomes indistinguishable from a healthy one: the failure
  * mode this whole feature exists to prevent.
  */
 export type QueryMonitorState = "ok" | "breaching" | "unknown";
@@ -85,7 +85,7 @@ export interface QueryMonitorInput {
   enabled?: boolean;
 }
 
-/** A SQL-capable resource inside an account — a database that is a resource
+/** A SQL-capable resource inside an account: a database that is a resource
  * (ClickHouse service, D1, Turso, Databricks warehouse, BigQuery dataset)
  * rather than the account's own connection. */
 export interface QueryMonitorTargetResource {
@@ -133,7 +133,7 @@ export const QUERY_MONITOR_OPERATOR_LABELS: Record<QueryMonitorOperator, string>
  *
  * A monitor executes **unattended, on a schedule, with the account's
  * credentials, forever**. That is a categorically different risk from the SQL
- * editor, where a person types a statement and watches it run — so the editor's
+ * editor, where a person types a statement and watches it run, so the editor's
  * permission model is not enough here, and the guard is a property of the
  * *stored* query rather than of the person who saved it.
  *
@@ -160,7 +160,7 @@ export function normalizeMonitorSql(sql: string): string {
  * Is this query safe to run unattended?
  *
  * Returns the reason it is not, or null. Two checks: the statement must begin
- * with a read-only keyword, and it must be a **single** statement — because
+ * with a read-only keyword, and it must be a **single** statement, because
  * `SELECT 1; DROP TABLE users` begins with `select` and the leading-keyword
  * check alone would wave it through.
  *
@@ -325,7 +325,7 @@ export function foldMonitorRun(options: {
 /**
  * Reduce a query result to the number the threshold is compared against.
  *
- * Returns null rather than throwing when there is nothing comparable — the
+ * Returns null rather than throwing when there is nothing comparable: the
  * caller turns that into `unknown`, which is the honest state for "the query
  * ran but said nothing I can measure".
  */
@@ -339,8 +339,8 @@ export function readMonitorValue(
   const firstValue = Object.values(first)[0];
   if (typeof firstValue === "number") return Number.isFinite(firstValue) ? firstValue : null;
   // Drivers return counts as strings often enough (bigint columns, in
-  // particular) that refusing them would make `SELECT count(*)` — the most
-  // obvious monitor anybody writes — not work.
+  // particular) that refusing them would make `SELECT count(*)` (the most
+  // obvious monitor anybody writes) not work.
   if (typeof firstValue === "string" && firstValue.trim() !== "") {
     const parsed = Number(firstValue);
     return Number.isFinite(parsed) ? parsed : null;

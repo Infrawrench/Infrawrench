@@ -31,8 +31,8 @@ const TRACKER_LABELS: Record<IssueTracker, string> = { jira: "Jira", linear: "Li
 /**
  * File one finding as an issue, in whichever tracker the org has connected.
  *
- * One modal rather than one per tracker because the finding-side half — the
- * summary, the description, the labels — is identical; only the destination
+ * One modal rather than one per tracker because the finding-side half (the
+ * summary, the description, the labels) is identical; only the destination
  * fields differ. Jira wants a project and an issue type, Linear wants a team,
  * and all of those are **pickers loaded from the tracker**, defaulting to
  * whatever the org set in Settings: they are the tracker's identifiers, not
@@ -40,7 +40,7 @@ const TRACKER_LABELS: Record<IssueTracker, string> = { jira: "Jira", linear: "Li
  * like our bug.
  *
  * Unlike the ambient reads in the provider, everything here surfaces its
- * failure — the user pressed a button and is waiting, and a swallowed error
+ * failure: the user pressed a button and is waiting, and a swallowed error
  * would tell them their work is tracked when no issue exists.
  */
 export function FileIssueModal({

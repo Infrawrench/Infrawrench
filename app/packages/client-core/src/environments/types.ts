@@ -13,11 +13,11 @@
  *
  * The three non-literal kinds are the whole reason a template is more than a
  * list of resources:
- * - `parameter` — the field the user chose to vary (region, size, a name).
- * - `output` — another member's resolved **output** (a connection string, an
+ * - `parameter`: the field the user chose to vary (region, size, a name).
+ * - `output`: another member's resolved **output** (a connection string, an
  *   IP). This is the captured half of an output reference: an instantiated
  *   database's connection string flows into the app that consumes it.
- * - `member-id` — another member's provider-side id. Covers the containment
+ * - `member-id`: another member's provider-side id. Covers the containment
  *   and identity edges a provider expresses as a bare id (a subnet's VPC, a
  *   record's zone) without the host having to know which is which.
  */
@@ -42,7 +42,7 @@ export interface EnvironmentTemplateMember {
   /**
    * The create-form field that carries the resource's name, when the plugin
    * has one. Detected at capture by matching the captured value against the
-   * source's display name — never by guessing at key spellings — and it is
+   * source's display name (never by guessing at key spellings) and it is
    * what the instance name prefix is applied to.
    */
   nameFieldKey?: string;
@@ -105,7 +105,7 @@ export interface CaptureSourceResource {
   parentResourceId?: string | null;
   fields: Record<string, string>;
   /**
-   * Output references already recorded against this resource's fields — the
+   * Output references already recorded against this resource's fields: the
    * `secret_field_states` / `associations` rows the create path writes. A
    * reference whose target is also being captured becomes an `output` field
    * value; one that points outside the selection stays a literal, because the
@@ -115,7 +115,7 @@ export interface CaptureSourceResource {
 }
 
 /**
- * The create-form field metadata a capture works from — a projection of the
+ * The create-form field metadata a capture works from: a projection of the
  * plugin's own `CreateFieldConfig`, narrowed to what the template needs.
  */
 export interface CaptureCreateField {
@@ -137,7 +137,7 @@ export interface CaptureDraftMember extends EnvironmentTemplateMember {
       kind: string;
       required: boolean;
       options?: { id: string; label: string }[];
-      /** False for fields already pinned to a reference — varying them is meaningless. */
+      /** False for fields already pinned to a reference: varying them is meaningless. */
       parameterisable: boolean;
     }
   >;
@@ -152,7 +152,7 @@ export interface CaptureDraft {
    * moves every member that has one.
    */
   suggestedParameters: EnvironmentParameter[];
-  /** Resources that could not be captured, and why — never silently dropped. */
+  /** Resources that could not be captured, and why, never silently dropped. */
   skipped: { resourceId: string; displayName: string; reason: string }[];
 }
 
@@ -162,13 +162,13 @@ export interface CaptureDraft {
 
 /**
  * Lifecycle of an instance row.
- * - `creating` — members are being created right now.
- * - `active` — every member was created.
- * - `partial` — a create failed part-way. The members that *did* get created
+ * - `creating`: members are being created right now.
+ * - `active`: every member was created.
+ * - `partial`: a create failed part-way. The members that *did* get created
  *   are recorded and can be torn down; this status exists so they can never
  *   become orphaned cloud resources with no row pointing at them.
- * - `tearing-down` / `deleted` — teardown in flight / finished.
- * - `failed` — nothing usable was created.
+ * - `tearing-down` / `deleted`: teardown in flight / finished.
+ * - `failed`: nothing usable was created.
  */
 export type EnvironmentInstanceStatus =
   "creating" | "active" | "partial" | "tearing-down" | "deleted" | "failed";
@@ -181,7 +181,7 @@ export interface EnvironmentInstanceMember {
   pluginId: string;
   resourceTypeId: string;
   accountId: string;
-  /** Null until the create returns — and after a create that failed. */
+  /** Null until the create returns, and after a create that failed. */
   resourceId: string | null;
   externalId: string | null;
   displayName: string;
@@ -239,7 +239,7 @@ export interface EnvironmentCostEstimate {
   /** Sum of the priced members. Null when nothing could be priced. */
   monthlyAmount: number | null;
   currency: string | null;
-  /** True when at least one member could not be priced — "at least $X/mo". */
+  /** True when at least one member could not be priced: "at least $X/mo". */
   partial: boolean;
   /** Members whose cost is unknown; reported, never rounded to zero. */
   unpricedCount: number;
@@ -260,7 +260,7 @@ export const ENVIRONMENT_LIMITS = {
   maxMembers: 50,
   maxParameters: 20,
   maxTemplatesPerOrg: 100,
-  /** Live (non-terminal) instances per org — a governance rail on spend. */
+  /** Live (non-terminal) instances per org: a governance rail on spend. */
   maxLiveInstancesPerOrg: 50,
   maxNameLength: 60,
   maxNoteLength: 500,

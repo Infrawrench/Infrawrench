@@ -7,7 +7,7 @@
  * who is on the hook for approving: they want "what is waiting on me", not
  * "what is waiting on this workflow".
  *
- * Reading is gated on `workflows:read` and deciding on `workflows:approve` —
+ * Reading is gated on `workflows:read` and deciding on `workflows:approve`:
  * both here for the UI and, authoritatively, on the routes themselves.
  */
 import { T, useGT } from "gt-react";

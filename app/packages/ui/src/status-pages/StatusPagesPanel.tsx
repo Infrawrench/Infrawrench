@@ -22,7 +22,7 @@ export interface StatusPagesPanelProps {
  * The panel's job beyond CRUD is to make the *exposure* legible: whether a page
  * is live, exactly what URL it is live at, and a one-click way to revoke that
  * URL. Everything published is a probe the org already runs, so the risk here
- * is never "what does this measure" — it is "who can see it".
+ * is never "what does this measure": it is "who can see it".
  */
 export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps) {
   const gt = useGT();

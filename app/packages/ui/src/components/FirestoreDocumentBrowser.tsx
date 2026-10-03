@@ -7,7 +7,7 @@ export interface FirestoreDocumentBrowserProps {
   databaseLabel: string;
   connected?: boolean;
   /**
-   * When true, the collection sidebar is hidden entirely — used by drivers
+   * When true, the collection sidebar is hidden entirely: used by drivers
    * (DynamoDB) whose underlying resource is a single fixed collection, so the
    * sidebar would only ever show one un-removable entry.
    */
@@ -428,7 +428,7 @@ function firestoreDocPath(fullName: string): string {
   return fullName.slice(idx + "/documents/".length);
 }
 
-/** The document's display id — the last segment of its `_name` resource path. */
+/** The document's display id: the last segment of its `_name` resource path. */
 function firestoreDocId(doc: Record<string, unknown>): string {
   const fullName = typeof doc["_name"] === "string" ? doc["_name"] : "";
   return fullName.split("/").pop() ?? "";

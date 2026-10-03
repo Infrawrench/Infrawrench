@@ -99,7 +99,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   const [preflightDeclaration, setPreflightDeclaration] = useState<
     import("@infrawrench/client-core").PreflightDeclaration | null
   >(null);
-  // Whether the account's plugin declares preflight at all — set by the load
+  // Whether the account's plugin declares preflight at all: set by the load
   // effects (which already resolve the plugin) and gates the
   // "Check credentials" button so it never renders for unsupported plugins.
   const [preflightSupported, setPreflightSupported] = useState(false);
@@ -386,7 +386,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
             setInitialLoading(false);
           }
 
-          // Single DB read — the poller keeps it fresh.
+          // Single DB read: the poller keeps it fresh.
           listCloudAccountResources(orgId, accountId)
             .then((rows) => {
               if (cancelled) return;
@@ -731,7 +731,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   }
 
   /**
-   * Runs preflight in the renderer with the account's stored credentials —
+   * Runs preflight in the renderer with the account's stored credentials:
    * local accounts read from sqlite, cloud accounts through the cloud IPC.
    * Same in-process plugin-client path the rest of this route uses.
    */
@@ -774,7 +774,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     setLoadVersion((v) => v + 1);
     // Resource detail tabs and the sidebar bind credentials at mount-time, so
     // a save here doesn't auto-propagate. Force open tabs to re-fetch and
-    // rebuild their plugin clients with the new credentials — otherwise the
+    // rebuild their plugin clients with the new credentials, otherwise the
     // user's next click into a peer pane still uses the old (broken) token.
     dispatchRefreshResource();
     dispatchResourcesChanged({ accountId });
@@ -788,15 +788,15 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
 
   // Both load paths publish the category list (with empty `resources`) and
   // clear `initialLoading` as soon as the *type list* is known, well before
-  // the rows land. For a normal account that's the point — sections render
+  // the rows land. For a normal account that's the point: sections render
   // with their own spinners. For an account-root plugin it would paint the
   // inventory we're about to throw away, so the page visibly flashes a list
   // of empty sections before snapping to the app. Hold the spinner instead:
   // the type list already tells us a root is coming, only its id is missing.
   //
   // Scoped to `loading` so it can't latch. A failed listing clears the flag
-  // with no rows, which falls through to the inventory — where the error
-  // belongs — and a background refresh never re-raises it.
+  // with no rows, which falls through to the inventory (where the error
+  // belongs) and a background refresh never re-raises it.
   const awaitingAccountRoot =
     !!accountRootCategory && !accountRootResource && accountRootCategory.loading;
 
@@ -808,7 +808,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
 
   if (initialLoading || awaitingAccountRoot) {
     // While awaiting a root we already know ResourcePanel is what renders
-    // next, so borrow its exact loading treatment — otherwise the handoff
+    // next, so borrow its exact loading treatment, otherwise the handoff
     // swaps one spinner for a differently-styled one, which reads as a second
     // load rather than a continuous one.
     return (
@@ -828,7 +828,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   }
 
   // Account-root plugins (UploadThing) hold exactly one instance of their root
-  // type, and that instance *is* the account — so the account opens straight
+  // type, and that instance *is* the account, so the account opens straight
   // to its detail view rather than to an inventory whose only content is a
   // section holding one pill. Tab, route, and sidebar selection stay the
   // account's; only the body is swapped.

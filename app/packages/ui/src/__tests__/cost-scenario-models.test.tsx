@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 beforeAll(() => {
-  // jsdom doesn't implement <dialog> showModal/close — stub them, the way
+  // jsdom doesn't implement <dialog> showModal/close: stub them, the way
   // issue-filing.test.tsx does. The editor renders through Modal.
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
@@ -22,8 +22,8 @@ import type { CostsClient } from "../cost/types.js";
 
 /**
  * Scenario amounts and percentages are numbers a person types, and the two
- * states an `<input type="number">` produces mid-edit — cleared, and half-typed
- * — are exactly the two that must never be stored. `Number("")` is `0`, so a
+ * states an `<input type="number">` produces mid-edit (cleared, and half-typed)
+ * are exactly the two that must never be stored. `Number("")` is `0`, so a
  * field cleared to be retyped would silently persist "adjust spend by nothing";
  * `Number("-")` is `NaN`, which travels into the request body. Both mean "keep
  * what is there and wait for the rest of the keystrokes"; a deliberately typed
@@ -123,7 +123,7 @@ describe("ScenarioModelEditModal numeric fields", () => {
 
     fireEvent.click(save);
 
-    // The zero was stored, not swallowed — which is why the form can say what
+    // The zero was stored, not swallowed, which is why the form can say what
     // is wrong with it instead of saving an adjustment that does nothing.
     expect(await screen.findByText(/is for nothing/)).toBeInTheDocument();
     expect(updateScenarioModel).not.toHaveBeenCalled();

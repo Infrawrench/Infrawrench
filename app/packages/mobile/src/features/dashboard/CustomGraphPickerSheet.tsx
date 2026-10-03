@@ -6,7 +6,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /**
  * Add an existing custom graph to this dashboard. Creating or editing one
- * needs a code editor, so authoring stays on web/desktop/MCP — the phone
+ * needs a code editor, so authoring stays on web/desktop/MCP: the phone
  * picks from what the org already has.
  */
 export function CustomGraphPickerSheet({

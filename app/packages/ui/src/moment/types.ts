@@ -7,7 +7,7 @@ import type { MomentRequest, MomentResponse } from "@infrawrench/client-core";
 
 /**
  * Host-injected data access for the moment view. Web wraps `apiGet`; desktop
- * (cloud mode) wraps its cloud IPC — the panel stays platform-agnostic, the
+ * (cloud mode) wraps its cloud IPC: the panel stays platform-agnostic, the
  * same arrangement as `ChangesClient`.
  */
 export interface MomentClient {

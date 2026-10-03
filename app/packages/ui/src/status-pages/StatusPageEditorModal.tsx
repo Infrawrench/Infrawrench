@@ -36,7 +36,7 @@ interface DraftComponent extends StatusPageComponentInput {
  * Publishing is deliberately **not** in this modal. Making a page reachable by
  * anyone with the link is a different kind of decision from renaming a
  * component, and burying it among six other fields is how it gets flipped by
- * accident — the panel exposes it as its own explicit toggle instead.
+ * accident: the panel exposes it as its own explicit toggle instead.
  */
 export function StatusPageEditorModal({
   page,

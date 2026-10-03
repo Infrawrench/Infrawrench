@@ -6,7 +6,7 @@ import type { BuildRequest, BuildResult, InfrafileGitContext, RunInImageRequest 
 
 /**
  * The Infrafile prelude and stage driver are source strings, so nothing
- * type-checks them — these run real isolates to prove the stages actually
+ * type-checks them: these run real isolates to prove the stages actually
  * execute in order, that the plan's values reach the later stages, and that the
  * reserved keys are read the way the docs claim.
  */
@@ -361,7 +361,7 @@ describe("runInfrafile", () => {
     expect(result.status).toBe("failure");
     expect(result.error?.message).toContain("kubectl apply failed");
     // The stage reported must be the one that actually failed, not the last
-    // one that succeeded — otherwise a deploy bug sends you reading build logs.
+    // one that succeeded, otherwise a deploy bug sends you reading build logs.
     expect(result.reachedStage).toBe("deploy");
   });
 
@@ -449,7 +449,7 @@ describe("run() inside the built image", () => {
 
     expect(result.status).toBe("failure");
     expect(result.error?.message).toContain("exited with code 1");
-    // The tail of stderr must reach the author — otherwise the only signal is
+    // The tail of stderr must reach the author, otherwise the only signal is
     // an exit code and the real reason is buried in the log.
     expect(result.error?.message).toContain("Authentication error");
   });
@@ -865,7 +865,7 @@ describe("ask() — free-form questions", () => {
       host,
     );
     expect(result.error).toBeUndefined();
-    // Types, not strings — a number is a number and a boolean is a boolean.
+    // Types, not strings: a number is a number and a boolean is a boolean.
     expect(result.plan).toEqual({ name: "api", replicas: 3, when: "2026-08-01", confirm: true });
   });
 
@@ -1141,7 +1141,7 @@ describe("sidecar importYaml", () => {
 });
 
 describe("read-only plan", () => {
-  // Same shape as the ledger's creatingHost, plus a call counter — the point
+  // Same shape as the ledger's creatingHost, plus a call counter: the point
   // of every dry-run assertion is that this counter stays at zero.
   const countingHost = (): { host: InfrafileHost; calls: { created: number } } => {
     const calls = { created: 0 };
@@ -1218,7 +1218,7 @@ describe("read-only plan", () => {
 
   it("resolves a synthetic resource's outputs to the placeholder", async () => {
     // hostFor() has no resolveOutput, so reaching the host here would fail the
-    // run — a passing test proves the placeholder short-circuited it.
+    // run: a passing test proves the placeholder short-circuited it.
     const { host } = countingHost();
     const result = await run(
       `

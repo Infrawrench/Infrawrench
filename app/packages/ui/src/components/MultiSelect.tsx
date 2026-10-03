@@ -26,7 +26,7 @@ export interface MultiSelectProps {
   /** Shown in the closed control when nothing is selected. */
   placeholder?: string;
   status?: MultiSelectStatus | undefined;
-  /** Called when the panel opens — a good moment to retry a failed load. */
+  /** Called when the panel opens: a good moment to retry a failed load. */
   onOpen?: (() => void) | undefined;
   className?: string;
 }
@@ -106,7 +106,7 @@ export function MultiSelect({
     if (!open) return;
     const row = listRef.current?.querySelector(`[data-index="${activeIndex}"]`);
     // Guarded rather than called blind: jsdom has no scrollIntoView, and this
-    // is a nicety — it must never take the component down with it.
+    // is a nicety; it must never take the component down with it.
     if (row && typeof row.scrollIntoView === "function") {
       row.scrollIntoView({ block: "nearest" });
     }
@@ -261,7 +261,7 @@ export function MultiSelect({
             An `aria-activedescendant` listbox: focus never leaves the combobox
             input above, which owns the whole keyboard path (Arrow/Home/End to
             move `activeIndex`, Enter to toggle, Escape to close). The options
-            are therefore deliberately not tab stops — `tabIndex={-1}` makes
+            are therefore deliberately not tab stops: `tabIndex={-1}` makes
             them programmatically focusable so assistive tech can reach the
             active one, and the `onClick` is the mouse half of the same
             pattern, not the only way in. Do not "fix" it by hanging an

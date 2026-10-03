@@ -55,7 +55,7 @@ function LastRunBadge({ schedule }: { schedule: SleepSchedule }) {
 /**
  * "Sleep schedules" section of the Costs panel: every off-at/on-at window in
  * the org, with the next transition, the last run's outcome (freeze skips and
- * failures included — never silent), the projected monthly saving, and
+ * failures included, never silent), the projected monthly saving, and
  * pause/edit/delete controls. Schedules are created from the resource detail
  * page's Schedule tab, where the resource is already in front of the user.
  */

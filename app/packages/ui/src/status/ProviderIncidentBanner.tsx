@@ -19,7 +19,7 @@ export interface ProviderIncidentBannerProps {
  * The "is it me or is it them?" banner: shown across the app whenever an
  * active provider status-page incident overlaps resources the org holds.
  * Renders nothing when there is nothing to say, so hosts mount it
- * unconditionally in the shell — same contract as web's ChangeFreezeBanner.
+ * unconditionally in the shell: same contract as web's ChangeFreezeBanner.
  *
  * Fails closed and quiet: a fetch error renders nothing rather than an error
  * banner. The feature is advisory; it must never add noise of its own.
@@ -34,7 +34,7 @@ export function ProviderIncidentBanner({ client, onOpenUrl }: ProviderIncidentBa
       const response = await client.listStatusIncidents();
       setIncidents(response.incidents);
     } catch {
-      // Advisory surface — stay silent on failure.
+      // Advisory surface: stay silent on failure.
     }
   }, [client]);
 

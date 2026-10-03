@@ -15,7 +15,7 @@ import { KeyboardAvoider } from "@/components/KeyboardAvoider";
 import { colors, radii, spacing } from "@/lib/theme";
 
 /**
- * MongoDB document browser — the phone counterpart of the web
+ * MongoDB document browser: the phone counterpart of the web
  * MongoDocumentBrowser. Collections across the top, a JSON filter, paged
  * documents that expand to full JSON, and insert / edit / delete. Every call
  * is a positional `executeNoSqlCommand` through `POST /kv/command`; the

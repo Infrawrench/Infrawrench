@@ -6,13 +6,13 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
 const EFFICIENCY_ALERTS_SHOWN = 20;
 
 /**
- * The three efficiency alerts — commitment expiry, idle commitments, unit-cost
- * regression — in one feed (`GET /costs/efficiency-alerts`), newest first.
+ * The three efficiency alerts (commitment expiry, idle commitments, unit-cost
+ * regression) in one feed (`GET /costs/efficiency-alerts`), newest first.
  *
  * Read-only on mobile, like every other cost surface here: the thresholds are
  * an org-wide policy decision with nine knobs and a phone is not where anyone
  * will set them. What a phone *is* good for is the case these alerts exist
- * for — the push arrives, and the thing it was about is readable here days
+ * for: the push arrives, and the thing it was about is readable here days
  * later when the reader finally has a minute.
  */
 export function useEfficiencyAlerts(limit = EFFICIENCY_ALERTS_SHOWN) {

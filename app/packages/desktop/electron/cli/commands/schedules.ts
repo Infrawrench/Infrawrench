@@ -12,7 +12,7 @@ function windowSummary(s: SleepSchedule): string {
 /**
  * Local copy of client-core's `formatDaysOfWeek`: `cli/format.ts`-adjacent
  * modules stay import-light so the CJS CLI entry doesn't drag ESM resolution
- * quirks in (see the dynamic-import note in KNOWLEDGE's CLI section) — but a
+ * quirks in (see the dynamic-import note in KNOWLEDGE's CLI section), but a
  * type-only client-core import is fine, which is why the wire types above are
  * `with { "resolution-mode": "import" }`.
  */
@@ -42,7 +42,7 @@ function lastSummary(s: SleepSchedule): string {
 }
 
 /**
- * `infrawrench schedules` — every sleep/wake schedule in the org with its
+ * `infrawrench schedules`: every sleep/wake schedule in the org with its
  * window, next transition, last outcome and projected monthly saving.
  */
 export async function cmdSchedules(ctx: CliContext): Promise<void> {

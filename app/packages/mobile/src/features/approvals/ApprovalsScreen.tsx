@@ -17,7 +17,7 @@ import { colors, spacing } from "@/lib/theme";
 import { ApprovalCard } from "./ApprovalCard";
 
 /**
- * Org-wide approvals inbox — every run in the org suspended on
+ * Org-wide approvals inbox: every run in the org suspended on
  * `infra.waitForApproval(...)`, and the place a `workflow_approval` push lands.
  *
  * Deciding here starts (or fails) a workflow run against real infrastructure
@@ -30,7 +30,7 @@ import { ApprovalCard } from "./ApprovalCard";
  * and deciding needs `workflows:approve`, so a reader sees what is waiting with
  * no buttons on it. The server enforces both regardless.
  *
- * Requests expire on a timer, so the list is polled rather than fetched once —
+ * Requests expire on a timer, so the list is polled rather than fetched once:
  * a card that has gone stale would otherwise sit there offering a decision the
  * waiting run would ignore.
  */
@@ -72,7 +72,7 @@ export default function ApprovalsScreen() {
     },
     onError: (error) => {
       // A conflict means someone else landed a decision first, or the window
-      // closed while this screen was open. Never retry it — say so and re-list.
+      // closed while this screen was open. Never retry it: say so and re-list.
       if (isApprovalConflict(error)) {
         Alert.alert(
           "Already decided",
@@ -145,7 +145,7 @@ export default function ApprovalsScreen() {
   }
 
   const approvals = list.data ?? [];
-  // The deep-linked request first — it is why the screen was opened.
+  // The deep-linked request first: it is why the screen was opened.
   const ordered = focusedId
     ? [...approvals].sort((a, b) => (a.id === focusedId ? -1 : b.id === focusedId ? 1 : 0))
     : approvals;

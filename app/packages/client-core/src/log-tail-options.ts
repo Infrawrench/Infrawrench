@@ -6,7 +6,7 @@
  * state seeded from `capability.defaultTailLines`. When a plugin's default
  * wasn't one of the presets (DigitalOcean managed databases request 200,
  * which isn't in `[100, 500, 1000, 5000]`), the control displayed the first
- * preset while state — and the actual fetch — held the real default: a
+ * preset while state (and the actual fetch) held the real default: a
  * control showing a value that isn't selected.
  *
  * The fix is to splice the capability default into the option list rather

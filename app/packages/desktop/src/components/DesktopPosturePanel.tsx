@@ -25,7 +25,7 @@ interface DesktopPosturePanelProps {
  * Desktop host for the shared posture checks. Cloud mode fetches the org
  * findings from the web API; local mode runs the same shared computation over
  * the local SQLite workspace and the locally loaded plugins' `postureChecks`
- * declarations. Same wiring as DesktopExpiryPanel — a failed *refresh* must
+ * declarations. Same wiring as DesktopExpiryPanel: a failed *refresh* must
  * not blank findings that are already drawn.
  */
 export function DesktopPosturePanel({ openResource }: DesktopPosturePanelProps) {

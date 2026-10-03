@@ -4,7 +4,7 @@ import type { CreateFieldConfig, SshInstallAccount } from "@infrawrench/plugin-b
 export type AgentTool = "codex" | "claude-code";
 
 /**
- * What the session's main tab shows — orthogonal to which agent runs.
+ * What the session's main tab shows: orthogonal to which agent runs.
  *
  * - `terminal`: the tool's CLI, attached in an SSH terminal (the original
  *   behaviour, and still the default).
@@ -12,7 +12,7 @@ export type AgentTool = "codex" | "claude-code";
  *   on the VM and *drives* the tool's CLI, so the main tab is its embedded
  *   app. T3 Code is a control surface, not an agent: it ships no model access
  *   of its own and still needs `codex` or `claude` installed and signed in
- *   next to it — which is why `tool` still applies. See `t3-code.ts`.
+ *   next to it, which is why `tool` still applies. See `t3-code.ts`.
  */
 export type AgentSurface = "terminal" | "t3-code";
 
@@ -160,7 +160,7 @@ export interface AgentSshTarget {
 /**
  * Resolved SSH launch metadata (managed key + launch command/cwd) for an agent
  * session's terminal tab. Both hosts rehydrate this when a deep link or
- * restored tab only carries `agentSession` — see `web/src/lib/agent-launch.ts`
+ * restored tab only carries `agentSession`: see `web/src/lib/agent-launch.ts`
  * and desktop's ResourcePanel agent-launch resolution.
  */
 export interface AgentLaunchDefaults {
@@ -175,7 +175,7 @@ export interface AgentLaunchDefaults {
  *
  * Both hosts clear these defaults from an effect whose dependency list contains
  * `gt` (per the project's i18n rule), and `useGT()` does not return a
- * referentially stable function — so that effect re-runs on *every* render.
+ * referentially stable function, so that effect re-runs on *every* render.
  * Writing a fresh `{}` there is therefore a self-sustaining render loop:
  * new object → state change → render → new `gt` → effect → new object → …
  *
@@ -218,7 +218,7 @@ export interface AgentClient {
 }
 
 /**
- * Full `openSession` response per the contract above — the server also returns
+ * Full `openSession` response per the contract above: the server also returns
  * the managed key (`sshKeyId`/`sshKeyName`) alongside `command`/`cwd`. Derived
  * here, once, so the web and desktop clients cannot drift from the interface.
  */

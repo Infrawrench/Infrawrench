@@ -11,11 +11,11 @@ import type { WorkflowApprovalRow } from "./types.js";
 
 export interface ApprovalCardProps {
   approval: WorkflowApprovalRow;
-  /** True while this row's decision is in flight — disables both buttons. */
+  /** True while this row's decision is in flight: disables both buttons. */
   deciding?: boolean;
   /**
    * False hides Approve/Deny entirely (the viewer can read approvals but not
-   * decide them — `workflows:read` without `workflows:approve`).
+   * decide them: `workflows:read` without `workflows:approve`).
    */
   canDecide?: boolean;
   onDecide?: (id: string, decision: "approve" | "deny") => void;

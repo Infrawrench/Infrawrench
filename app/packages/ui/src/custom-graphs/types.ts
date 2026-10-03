@@ -38,14 +38,14 @@ export interface CustomGraphCheckResult {
 
 /**
  * Host-injected data access for the custom-graph components. Web wraps
- * `apiFetch`; desktop (cloud mode) wraps its cloud-api helpers — the
+ * `apiFetch`; desktop (cloud mode) wraps its cloud-api helpers: the
  * components stay platform-agnostic.
  */
 export interface CustomGraphsClient {
   list(): Promise<CustomGraphSummary[]>;
   get(graphId: string): Promise<CustomGraphDetail>;
   render(graphId: string, request: CustomGraphRenderRequest): Promise<CustomGraphRenderResult>;
-  /** Absent on read-only hosts — editors hide their affordances. */
+  /** Absent on read-only hosts: editors hide their affordances. */
   create?(body: {
     name: string;
     description?: string;

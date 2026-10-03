@@ -3,7 +3,7 @@
  * against the desktop SQLite: the same shared `computeExpiryFeed` from
  * client-core (imported through `@infrawrench/ui`, the renderer convention),
  * run over this workspace's stored accounts and resources plus the
- * `expiryFields` declarations of the locally loaded plugins. Credential-free —
+ * `expiryFields` declarations of the locally loaded plugins. Credential-free:
  * classification is a property of stored state, so it works with the network
  * off. The CLI's `--local` twin lives in electron/local-expiring.ts, which has
  * no renderer to call into.

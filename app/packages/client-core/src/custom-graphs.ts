@@ -7,18 +7,18 @@
  * A custom graph is org-authored JavaScript/TypeScript run in the server-side
  * QuickJS sandbox (the workflow isolate). The script declares its own controls
  * (selects, checkboxes, buttons, inputs), queries org cost data, reads
- * resource metrics, fetches external APIs, keeps its own key/value data — and
+ * resource metrics, fetches external APIs, keeps its own key/value data, and
  * finishes by describing what to draw. Clients never execute graph code; they
  * render the returned spec and post control changes back for a re-run.
  *
  * Types live here rather than in `@infrawrench/ui` because mobile renders the
- * same widgets and doesn't depend on that package — `ui/src/custom-graphs/
+ * same widgets and doesn't depend on that package: `ui/src/custom-graphs/
  * config.ts` keeps the zod schemas (the API and the sandbox boundary validate
  * against them) and re-exports these types, exactly like the cost contract.
  */
 
 /* ------------------------------------------------------------------ *
- * Controls — the script declares them each run; clients render them in
+ * Controls: the script declares them each run; clients render them in
  * declaration order and post the values back on the next render.
  * ------------------------------------------------------------------ */
 
@@ -67,7 +67,7 @@ export type CustomGraphControlKind = CustomGraphControl["kind"];
 export type CustomGraphControlState = Record<string, string | number | boolean>;
 
 /* ------------------------------------------------------------------ *
- * Chart spec — what a run says to draw.
+ * Chart spec: what a run says to draw.
  * ------------------------------------------------------------------ */
 
 export const CUSTOM_GRAPH_CHART_TYPES = [
@@ -135,7 +135,7 @@ export type CustomGraphChart =
     };
 
 /* ------------------------------------------------------------------ *
- * Render envelope — the whole result of one sandbox run.
+ * Render envelope: the whole result of one sandbox run.
  * ------------------------------------------------------------------ */
 
 /** Floor for script-requested refresh, enforced server-side. */
@@ -205,7 +205,7 @@ export interface CustomGraphSummary {
 export interface CustomGraphDetail extends CustomGraphSummary {
   source: string;
   /**
-   * Who last wrote `source` — the user whose role permissions the script's
+   * Who last wrote `source`: the user whose role permissions the script's
    * `infra.*` access runs as at render time. Null disables infra access.
    */
   sourceAuthorUserId?: string | null;

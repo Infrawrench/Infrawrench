@@ -47,7 +47,7 @@ function uniqueKey(base: string, taken: Set<string>): string {
  * a captured field that is not a create field is dropped (it is derived or
  * read-only, and feeding it back would fail), and a create field the source
  * has no value for is left out (its default applies). That is the whole reason
- * this is provider-agnostic — no per-provider table decides what is
+ * this is provider-agnostic: no per-provider table decides what is
  * reproducible, the plugin's create form does.
  *
  * References are preserved in two ways, in confidence order: a recorded output
@@ -55,7 +55,7 @@ function uniqueKey(base: string, taken: Set<string>): string {
  * otherwise a field whose literal value is exactly another selected resource's
  * external id becomes a `member-id` value. Containment (`parentResourceId`)
  * becomes `parentMember`. Anything pointing outside the selection stays a
- * literal — the environment does not own it.
+ * literal: the environment does not own it.
  */
 export function buildCaptureDraft(input: {
   resources: CaptureSourceResource[];

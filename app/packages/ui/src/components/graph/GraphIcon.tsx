@@ -4,7 +4,7 @@ interface GraphIconProps {
 }
 
 /**
- * Dependency-graph glyph — three linked nodes. Same 24x24 stroke grid and 2px
+ * Dependency-graph glyph: three linked nodes. Same 24x24 stroke grid and 2px
  * weight as WorkflowIcon/CostsIcon so the sidebar tiles read as one family.
  */
 export function GraphIcon({ className, size = 14 }: GraphIconProps) {

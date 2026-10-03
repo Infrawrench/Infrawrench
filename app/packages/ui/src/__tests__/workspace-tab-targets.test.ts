@@ -232,7 +232,7 @@ describe("navigateToWorkspaceTarget", () => {
  * The single-tab-with-remembered-state pattern, as used by Deploy and
  * Settings: one tab id regardless of the state field, but the field IS
  * compared, so the route sync records it and reactivating the tab restores it.
- * Getting either half wrong is silent — a tab per report, or a report that
+ * Getting either half wrong is silent: a tab per report, or a report that
  * vanishes on reload.
  */
 describe("cost-reports tab identity", () => {
@@ -323,7 +323,7 @@ describe("tab icons", () => {
   });
 
   it("survives a title change", () => {
-    // A remote window retitles constantly — every document it opens — and the
+    // A remote window retitles constantly (every document it opens) and the
     // icon must not blink out each time.
     const id = openTab();
     useUIStore.getState().setWorkspaceTabIcon(id, "data:image/png;base64,AAA");

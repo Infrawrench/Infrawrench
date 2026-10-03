@@ -9,7 +9,7 @@ const EXCLUDED = new Set(["/404"]);
 /**
  * Marketing pages are discovered from the filesystem rather than listed by hand,
  * so a new `src/pages/*.astro` lands in the sitemap without anyone remembering
- * this file. `import.meta.glob` without `eager` only yields the keys — nothing is
+ * this file. `import.meta.glob` without `eager` only yields the keys: nothing is
  * imported. Dynamic routes are skipped here and enumerated from their content
  * collection instead.
  */

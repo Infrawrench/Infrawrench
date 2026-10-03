@@ -163,7 +163,7 @@ describe("computeAppendedLines", () => {
   });
 
   it("prefers the largest overlap when lines repeat", () => {
-    // prev tail "b, a" overlaps next head "b, a" (2 lines) — not just "a" (1).
+    // prev tail "b, a" overlaps next head "b, a" (2 lines), not just "a" (1).
     expect(computeAppendedLines(["a", "b", "a"], ["b", "a", "c"])).toEqual(["c"]);
   });
 });

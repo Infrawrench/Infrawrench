@@ -12,8 +12,8 @@ import {
 /**
  * Regressions for three review findings, each of which was a real bug:
  *
- * 1. A close that failed left the artefact in `created`, so the retry path —
- *    which selects on status — could never see it. The incident sat resolved
+ * 1. A close that failed left the artefact in `created`, so the retry path
+ *    (which selects on status) could never see it. The incident sat resolved
  *    with a live change freeze and nothing in the product able to lift it.
  * 2. Retrying a failed status-page notice passed an empty component list, so
  *    the republished notice covered the whole page instead of the components
@@ -84,7 +84,7 @@ describe("a close that failed is retryable (finding 1)", () => {
       ]),
     );
     expect(plan.reclose.map((a) => a.kind)).toEqual(["freeze"]);
-    // Re-creating would open a SECOND freeze — worse than the failure it fixes.
+    // Re-creating would open a SECOND freeze: worse than the failure it fixes.
     expect(plan.recreate).toEqual([]);
   });
 
@@ -131,7 +131,7 @@ describe("a close that failed is retryable (finding 1)", () => {
     const entry = entries.find((e) => e.kind === "artifact.close_failed");
     expect(entry).toBeDefined();
     expect(entry!.severity).toBe("critical");
-    // "still open" is the bit an operator needs — the freeze is still blocking.
+    // "still open" is the bit an operator needs: the freeze is still blocking.
     expect(entry!.title).toContain("still open");
     expect(entry!.detail).toBe("Could not lift: upstream 500");
   });
@@ -174,7 +174,7 @@ describe("a status-page retry keeps its original scope (finding 2)", () => {
 
 describe("stripControlCharacters (finding 3)", () => {
   // Every control character is written as an escape so this file stays plain
-  // text — a test for control-character handling that embeds raw control bytes
+  // text: a test for control-character handling that embeds raw control bytes
   // is a file no reviewer can read and most tools call binary.
   const ESC = "\u001b";
 

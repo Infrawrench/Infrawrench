@@ -1,7 +1,7 @@
 /**
  * The shared-console wire contract, shared by every client that could speak it.
  *
- * Only web implements it today (see the deferral note in KNOWLEDGE.md — the
+ * Only web implements it today (see the deferral note in KNOWLEDGE.md: the
  * desktop terminal is a local ssh2 connection for local accounts and never
  * passes through the proxy that does the fanning-out, and a phone is not a
  * device you take the keyboard on). The types live here anyway, because the
@@ -30,7 +30,7 @@ export interface SharedConsoleParticipant {
 
 export interface SharedConsoleSummary {
   id: string;
-  /** Load-balancer affinity hint. Never authorisation — see the API docs. */
+  /** Load-balancer affinity hint. Never authorisation: see the API docs. */
   routingKey: string;
   ownerUserId: string | null;
   ownerName: string | null;
@@ -104,7 +104,7 @@ export interface PtySize {
  *
  * Minted client-side, before the socket opens, because it has to be in the
  * upgrade URL and the server has not seen the session yet. It is a routing
- * key and nothing else — 128 bits so two concurrent sessions never collide
+ * key and nothing else: 128 bits so two concurrent sessions never collide
  * onto the same hash bucket by accident, not because guessing it would gain
  * anybody anything.
  */
@@ -124,8 +124,8 @@ export function mintRoutingKey(): string {
  * This is the letterboxing rule. A shared pty has exactly one geometry and it
  * is the driver's; everyone else renders that geometry scaled down to fit,
  * with bars around it, rather than reflowing to their own window. Reflowing
- * would show the observer a screen the driver is not looking at — which for a
- * full-screen editor or a `top` is not a cosmetic difference — and resizing
+ * would show the observer a screen the driver is not looking at (which for a
+ * full-screen editor or a `top` is not a cosmetic difference) and resizing
  * the pty to suit them would let anybody watching shrink the terminal of the
  * person actually fixing production.
  *
@@ -141,7 +141,7 @@ export function letterboxScale(
   return Math.min(1, viewport.width / ptyPixels.width, viewport.height / ptyPixels.height);
 }
 
-/** "in 12 min" / "in 48s" / "expired" — the invite countdown. */
+/** "in 12 min" / "in 48s" / "expired": the invite countdown. */
 export function formatInviteExpiry(expiresAt: string | null, now = Date.now()): string {
   if (!expiresAt) return "no open invite";
   const ms = new Date(expiresAt).getTime() - now;

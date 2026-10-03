@@ -1,5 +1,5 @@
 /**
- * Billing rules — the org's own adjustments to collected spend.
+ * Billing rules: the org's own adjustments to collected spend.
  *
  * `cost_daily` holds what the provider charged. What an organization *reports
  * internally* is routinely something else: a platform team recovers shared
@@ -12,7 +12,7 @@
  *
  * 1. **Adjustments are applied at query time and never written into
  *    `cost_daily`.** Collected spend stays exactly what the provider reported,
- *    because that is the audit trail — the row you reconcile against an
+ *    because that is the audit trail: the row you reconcile against an
  *    invoice. Once it is overwritten there is no way back, and no rule edit can
  *    ever restate history because history was never touched.
  * 2. **The unadjusted number stays visible.** Every adjusted answer carries the
@@ -22,13 +22,13 @@
  *
  * ## The ordering model, stated once
  *
- * Rules evaluate in ascending `priority`, ties broken by `createdAt` then `id`
- * — total and deterministic, the same convention `orderAllocationRules` uses
+ * Rules evaluate in ascending `priority`, ties broken by `createdAt` then `id`:
+ * total and deterministic, the same convention `orderAllocationRules` uses
  * for allocation. Within that single order the three kinds compose differently,
  * and that difference *is* the model:
  *
  * - **Percentage rules all apply.** Every enabled percentage rule whose match
- *   holds multiplies the row. Two 10% markups give ×1.21, not ×1.20 — markups
+ *   holds multiplies the row. Two 10% markups give ×1.21, not ×1.20: markups
  *   genuinely compose, and collapsing them to one would silently under-recover.
  *   Multiplication commutes, so priority does not change the arithmetic; the
  *   order still exists so the audit list reads the same way twice.
@@ -89,8 +89,8 @@ export type BillingRuleTargetKind = (typeof BILLING_RULE_TARGET_KINDS)[number];
 /**
  * What a rule matches against a cost row.
  *
- * Deliberately the same vocabulary {@link AllocationRuleMatch} already uses —
- * tag key/value, account, provider, service — plus `chargeType`. Every set
+ * Deliberately the same vocabulary {@link AllocationRuleMatch} already uses
+ * (tag key/value, account, provider, service) plus `chargeType`. Every set
  * field must match (AND); a rule with no fields is a catch-all. `tagKey` alone
  * means "the row carries this tag at all"; with `tagValue` the value must be
  * equal.
@@ -126,7 +126,7 @@ export interface BillingRuleAdjustment {
   kind: BillingRuleKind;
   /**
    * `percentage` only. Signed: `+15` is a 15% markup, `-10` a 10% discount.
-   * Bounded below at -100 — a discount larger than the cost would turn spend
+   * Bounded below at -100: a discount larger than the cost would turn spend
    * into income, which is not a thing a cost report can mean.
    */
   percent?: number | null | undefined;
@@ -137,7 +137,7 @@ export interface BillingRuleAdjustment {
   /** `fixed` only. Whether `amount` recurs daily or monthly. */
   period?: BillingRuleFixedPeriod | null | undefined;
   /**
-   * `reallocation` (required) and `fixed` (optional — where the flat charge is
+   * `reallocation` (required) and `fixed` (optional, where the flat charge is
    * booked). Absent on a fixed rule means the charge is org-level and lands in
    * the unallocated bucket rather than being invented onto a centre.
    */
@@ -185,7 +185,7 @@ export const BILLING_RULE_LIMITS = {
   minPercent: -100,
   /** +1000% is an eleven-fold markup. Past that it is a typo. */
   maxPercent: 1000,
-  /** ±$1bn per period — far above any real overhead, far below overflow. */
+  /** ±$1bn per period: far above any real overhead, far below overflow. */
   maxFixedAmount: 1_000_000_000,
 } as const;
 
@@ -199,7 +199,7 @@ export const DEFAULT_BILLING_RULE_INPUT: BillingRuleInput = {
 };
 
 /* ------------------------------------------------------------------ *
- * Validation — one sentence, shared by the editor and the API.
+ * Validation: one sentence, shared by the editor and the API.
  * ------------------------------------------------------------------ */
 
 /**
@@ -283,7 +283,7 @@ export function billingRuleInputError(input: BillingRuleInput): string | null {
 
 /**
  * Drop empty strings and kind-inapplicable fields so "unset" has exactly one
- * representation — the same normalisation `normalizeMatch` performs for
+ * representation: the same normalisation `normalizeMatch` performs for
  * allocation rules, extended over the adjustment.
  *
  * Normalising *before* validating is deliberate: a user typing `usd` into a
@@ -327,7 +327,7 @@ export function normalizeBillingRuleInput(input: BillingRuleInput): BillingRuleI
 }
 
 /* ------------------------------------------------------------------ *
- * Ordering and compilation — pure, and the single source of the model.
+ * Ordering and compilation: pure, and the single source of the model.
  * ------------------------------------------------------------------ */
 
 /**
@@ -440,7 +440,7 @@ export function compileBillingRules(rules: readonly BillingRule[]): CompiledBill
 }
 
 /* ------------------------------------------------------------------ *
- * Fixed amounts — arithmetic over the range, never a query.
+ * Fixed amounts: arithmetic over the range, never a query.
  * ------------------------------------------------------------------ */
 
 function daysInMonth(year: number, monthIndex: number): number {
@@ -453,12 +453,12 @@ function daysInMonth(year: number, monthIndex: number): number {
  * A daily rule contributes its amount once per day. A monthly rule contributes
  * its amount for each whole calendar month and a **pro-rated** share of each
  * partial one: `amount × daysOfThatMonthInRange / daysInThatMonth`. Pro-rating
- * is the only honest reading — a $3,000/month overhead shown in full on a
+ * is the only honest reading: a $3,000/month overhead shown in full on a
  * ten-day chart is a number that reconciles against nothing, and shown as zero
  * it silently disappears.
  *
  * Pure arithmetic over two dates: no scan, no query, no dependence on whether
- * any cost row exists. That is what a fixed charge *is* — it is owed whether or
+ * any cost row exists. That is what a fixed charge *is*: it is owed whether or
  * not the provider billed anything that month.
  */
 export function fixedRuleAmountForRange(
@@ -518,7 +518,7 @@ export interface CostAdjustmentRule {
   id: string;
   name: string;
   kind: BillingRuleKind;
-  /** A one-line human summary — "+15% on tag team=platform". */
+  /** A one-line human summary: "+15% on tag team=platform". */
   summary: string;
 }
 
@@ -526,8 +526,8 @@ export interface CostAdjustmentRule {
  * What an adjusted answer did, attached to every response that was asked for
  * one.
  *
- * Present whenever the caller set `adjusted`, **even when the org has no rules**
- * — its absence must mean "these are the collected numbers" and nothing else.
+ * Present whenever the caller set `adjusted`, **even when the org has no rules**:
+ * its absence must mean "these are the collected numbers" and nothing else.
  * An empty `rules` array with `rawTotals` equal to the totals is the honest
  * answer to "adjust this" in an org that has not written any adjustments.
  */
@@ -557,10 +557,10 @@ export interface CostAdjustmentSummary {
 }
 
 /* ------------------------------------------------------------------ *
- * Presentation — shared so every surface says the same thing.
+ * Presentation: shared so every surface says the same thing.
  * ------------------------------------------------------------------ */
 
-/** A one-line description of what a rule matches — "tag team=platform on aws". */
+/** A one-line description of what a rule matches: "tag team=platform on aws". */
 export function describeBillingRuleMatch(match: BillingRuleMatch): string {
   const parts: string[] = [];
   if (match.tagKey) {
@@ -577,7 +577,7 @@ export function describeBillingRuleMatch(match: BillingRuleMatch): string {
   return parts.length > 0 ? parts.join(" and ") : "all spend";
 }
 
-/** A one-line description of what a rule does — "+15%", "move to cost centre X". */
+/** A one-line description of what a rule does: "+15%", "move to cost centre X". */
 export function describeBillingRuleAdjustment(adjustment: BillingRuleAdjustment): string {
   switch (adjustment.kind) {
     case "percentage": {
@@ -595,7 +595,7 @@ export function describeBillingRuleAdjustment(adjustment: BillingRuleAdjustment)
   }
 }
 
-/** "Platform overhead: +15% on tag team=platform" — the caption everywhere. */
+/** "Platform overhead: +15% on tag team=platform"; the caption everywhere. */
 export function describeBillingRule(rule: {
   match: BillingRuleMatch;
   adjustment: BillingRuleAdjustment;

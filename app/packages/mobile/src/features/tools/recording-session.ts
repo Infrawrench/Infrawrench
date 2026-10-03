@@ -4,14 +4,14 @@
  *
  * While `allowsRecording` is on, iOS switches the route to the earpiece and
  * plays everything back at a fraction of the volume. That is fine for the few
- * seconds a recording lasts and ruinous afterwards — a leaked session makes
+ * seconds a recording lasts and ruinous afterwards: a leaked session makes
  * every clip the Speech tab synthesizes later sound broken, with nothing on
  * screen to explain why. So every path that turns the session on has to come
  * back through `releaseRecordingMode`: a clean stop, a failed start, a failed
  * stop, or leaving the screen mid-recording.
  *
  * `setAudioMode` is injected rather than imported so this module stays free of
- * `expo-audio` — the screen passes `setAudioModeAsync`.
+ * `expo-audio`: the screen passes `setAudioModeAsync`.
  */
 
 export type SetAudioMode = (mode: {
@@ -30,7 +30,7 @@ export async function releaseRecordingMode(setAudioMode: SetAudioMode): Promise<
   try {
     await setAudioMode({ allowsRecording: false, playsInSilentMode: true });
   } catch {
-    // Best effort — see above.
+    // Best effort: see above.
   }
 }
 
@@ -40,7 +40,7 @@ export async function releaseRecordingMode(setAudioMode: SetAudioMode): Promise<
  *
  * The bug this exists to prevent: enabling the session and then letting
  * `prepareToRecordAsync()` or `record()` fail leaves it on with nothing
- * recording. The error still propagates — the caller decides what to show.
+ * recording. The error still propagates: the caller decides what to show.
  */
 export async function withRecordingMode(
   setAudioMode: SetAudioMode,

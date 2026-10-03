@@ -10,7 +10,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
  * Unit-cost reads for the Costs tab: the org's business metrics and, for each,
  * the trailing 30 days of cost per unit.
  *
- * Read-only on mobile, and deliberately so — declaring what the business
+ * Read-only on mobile, and deliberately so: declaring what the business
  * counts, what one of it is called and which spend it divides is a
  * finance-governance act on the same footing as stating an exchange rate or
  * setting the tag policy (`costs:write`, org-wide consequences, and an editor

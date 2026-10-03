@@ -3,7 +3,7 @@ import { cloudFetch } from "./shared";
 import { getAccessToken, forceRefreshAccessToken } from "../cloud-auth";
 import { CLOUD_URL } from "../../env";
 
-// Org-level AI chat — cloud-mode only. CRUD proxies through cloudFetch; the
+// Org-level AI chat: cloud-mode only. CRUD proxies through cloudFetch; the
 // turn stream is a Bearer-authenticated SSE fetch parsed here in main, with
 // each event forwarded to the renderer on `cloud_chat_stream_<streamId>`.
 

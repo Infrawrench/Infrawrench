@@ -6,7 +6,7 @@ import type { CostApi } from "../cost/types.js";
 
 /**
  * The card's headline total is money, and the slot it sits in is next to the
- * title. Anything falsy-but-renderable landing there — a `0`, an empty amount —
+ * title. Anything falsy-but-renderable landing there (a `0`, an empty amount)
  * reads as a real figure to whoever screenshots the card, so the slot has to
  * draw the total or draw nothing at all.
  */
@@ -36,7 +36,7 @@ describe("CostGraphCard headline total", () => {
     const api = makeApi({ series: [], currencies: [], totals: {} });
     render(<CostGraphCard title="Spend" config={CONFIG} api={api} />);
 
-    // Wait for the query to settle — before that there is trivially no total.
+    // Wait for the query to settle: before that there is trivially no total.
     expect(await screen.findByText("No cost data for this period yet")).toBeInTheDocument();
 
     const heading = screen.getByRole("heading", { name: "Spend" });

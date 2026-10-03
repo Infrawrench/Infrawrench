@@ -1,5 +1,5 @@
 /**
- * Types for the Infrafile — a project's build-and-deploy description.
+ * Types for the Infrafile: a project's build-and-deploy description.
  *
  * An Infrafile is a single file at a repository's root that calls one global,
  * `defineInfra({...})`, declaring the environments the project supports plus
@@ -8,7 +8,7 @@
  * (from disk by the CLI, from git by the web app).
  *
  * The stages run inside one QuickJS isolate, driven across stage boundaries by
- * the host — see {@link file://./run.ts}.
+ * the host: see {@link file://./run.ts}.
  */
 import type { RunLogEntry, RunResult } from "../types.js";
 
@@ -16,7 +16,7 @@ import type { RunLogEntry, RunResult } from "../types.js";
 export type InfrafileStage = "plan" | "dockerfile" | "build" | "deploy" | "destroy";
 
 /**
- * Where an image is built. Either the local Docker daemon (the CLI's default —
+ * Where an image is built. Either the local Docker daemon (the CLI's default:
  * warm cache, no VM needed) or an SSH-reachable resource the plan picked.
  *
  * The isolate returns a resource as a plain object: `JSON.stringify` drops the
@@ -42,7 +42,7 @@ export interface RegistryCredentials {
 
 /**
  * What the isolate hands the host to build an image. The `dockerfile` is the
- * rendered output of stage 2 — the Infrafile itself never crosses this boundary.
+ * rendered output of stage 2: the Infrafile itself never crosses this boundary.
  */
 export interface BuildRequest {
   env: string;
@@ -54,7 +54,7 @@ export interface BuildRequest {
   tag?: string;
   /**
    * Target platform (`linux/amd64`), passed to `docker build --platform`.
-   * Without it the image inherits the BUILDER's platform — an Apple Silicon
+   * Without it the image inherits the BUILDER's platform: an Apple Silicon
    * laptop produces arm64 manifests that amd64 cluster nodes refuse with
    * "no match for platform in manifest". `FROM --platform` pins alone don't
    * fix the manifest, only the base images.
@@ -84,7 +84,7 @@ export type InfrafileAskKind = "text" | "number" | "date" | "boolean" | "passwor
  * both an operator at a terminal and an unattended deploy.
  *
  * Validation is deliberately host-side rather than in the UI, because the
- * `--set` path never reaches a UI — a CI answer of `replicas=lots` has to fail
+ * `--set` path never reaches a UI: a CI answer of `replicas=lots` has to fail
  * as loudly as a typed one would, not arrive as NaN.
  */
 export interface InfrafileAskSpec {
@@ -109,7 +109,7 @@ export const RUN_WORKDIR = "/workspace";
  * A command to execute inside the built image.
  *
  * This is what makes an Infrafile useful for targets that aren't containers.
- * A Cloudflare Worker, a static site, a Lambda zip — none of them want the
+ * A Cloudflare Worker, a static site, a Lambda zip: none of them want the
  * image *deployed*; they want a reproducible environment to be built and
  * published *from*. So the Dockerfile installs the toolchain, and the deploy
  * stage runs `npx wrangler deploy` inside it with the project mounted.
@@ -129,7 +129,7 @@ export interface RunInImageRequest {
    * shell line).
    *
    * This is set explicitly rather than left to the image because a container's
-   * arguments are appended to whatever `ENTRYPOINT` the Dockerfile declared —
+   * arguments are appended to whatever `ENTRYPOINT` the Dockerfile declared:
    * an image with `ENTRYPOINT ["npm"]` would otherwise turn a command into
    * `npm sh -lc "..."`. Pass the binary you want, or `""` to clear the image's
    * entrypoint and exec `command` directly.
@@ -138,7 +138,7 @@ export interface RunInImageRequest {
   /** Working directory inside the container. Defaults to {@link RUN_WORKDIR}. */
   workdir?: string;
   /**
-   * Mount the project source at {@link RUN_WORKDIR}. On by default — a build
+   * Mount the project source at {@link RUN_WORKDIR}. On by default: a build
    * environment with no source in it is rarely what anyone means. Turn it off
    * for an image that already carries everything it needs.
    */
@@ -162,7 +162,7 @@ export interface RunInImageResult {
  *
  * A rollback deliberately does **not** rebuild. It replays `deploy()` with the
  * plan and image a past run recorded, skipping `plan()`, `dockerfile()` and the
- * build entirely — the point of rolling back is to get the exact bytes that
+ * build entirely: the point of rolling back is to get the exact bytes that
  * were known good, not to reconstruct something that ought to resemble them.
  *
  * The consequence worth knowing: `plan` arrives as the recorded JSON, so any
@@ -184,7 +184,7 @@ export interface InfrafileRollback {
  * The pull request a preview deploy belongs to.
  *
  * A preview environment is one declared env (`"preview"`) deployed many times,
- * once per PR — rather than a dynamic env name, which would make `envs`
+ * once per PR, rather than a dynamic env name, which would make `envs`
  * unvalidatable. The Infrafile namespaces by reading this: a hostname, a
  * Kubernetes namespace, a Worker route.
  */
@@ -200,7 +200,7 @@ export interface InfrafileGitContext {
   branch: string;
   /** Present only on a preview deploy. */
   pullRequest?: InfrafilePullRequest;
-  /** `owner/name` when known — always set on web, best-effort from the remote on CLI. */
+  /** `owner/name` when known: always set on web, best-effort from the remote on CLI. */
   repo?: string;
   /** True when the CLI is deploying a working tree with uncommitted changes. */
   dirty?: boolean;
@@ -221,7 +221,7 @@ export interface InfrafileRunContext {
 /**
  * A resource an Infrafile run created via `infra.accounts.*.create(...)`.
  *
- * Recorded so a run's record can say what it provisioned — and so a rollback
+ * Recorded so a run's record can say what it provisioned, and so a rollback
  * asked to also undo provisioning (`--delete-created`) knows exactly what to
  * delete, rather than guessing from a diff of listings. `resourceId` is the
  * Infrawrench id (`delete` takes it directly); `externalId` is the provider's,
@@ -257,10 +257,10 @@ export interface InfrafilePlannedChange {
   action: "create" | "update" | "delete";
   accountId: string;
   resourceTypeId: string;
-  /** Present for update/delete — the real resource id targeted. */
+  /** Present for update/delete: the real resource id targeted. */
   resourceId?: string;
   displayName: string;
-  /** Present for create/update — the fields that would be applied. */
+  /** Present for create/update: the fields that would be applied. */
   fields?: Record<string, string>;
   sidecar?: { pluginId: string; parentResourceId: string };
 }
@@ -285,7 +285,7 @@ export interface InfrafileRunResult extends RunResult {
 }
 
 /**
- * Host capabilities an Infrafile run needs on top of {@link WorkflowHost} — the
+ * Host capabilities an Infrafile run needs on top of {@link WorkflowHost}: the
  * parts that are real work and differ per platform. Every method is optional so
  * a host that cannot do a thing fails with the existing `WorkflowCapabilityError`
  * rather than silently no-opping.
@@ -335,9 +335,9 @@ export interface InfrafileRunSink {
   chooseEnv(envs: string[]): {
     env: string;
     git: InfrafileGitContext;
-    /** Present on a rollback — the stage driver then skips straight to deploy. */
+    /** Present on a rollback: the stage driver then skips straight to deploy. */
     rollback?: InfrafileRollback;
-    /** Present on a teardown — the driver then calls `destroy()` and nothing else. */
+    /** Present on a teardown: the driver then calls `destroy()` and nothing else. */
     destroy?: boolean;
     /**
      * Teardown only: the env's last successful deploy's recorded plan, when the
@@ -346,8 +346,8 @@ export interface InfrafileRunSink {
      */
     plan?: unknown;
     /**
-     * Present on a `--plan` run. Carried in this RPC's return — rather than the
-     * later `infrafile.plan` one — because `plan()` itself needs the flag, and
+     * Present on a `--plan` run. Carried in this RPC's return (rather than the
+     * later `infrafile.plan` one) because `plan()` itself needs the flag, and
      * this is the only host round-trip that completes before it runs.
      */
     planOnly?: boolean;
@@ -360,7 +360,7 @@ export interface InfrafileRunSink {
   recordCreated(resource: InfrafileCreatedResource): void;
   /**
    * Record a write a dry run intercepted. Returns the change's 0-based index,
-   * which dispatch bakes into the synthetic resource id it hands back — so each
+   * which dispatch bakes into the synthetic resource id it hands back, so each
    * planned resource stays distinguishable within the run.
    */
   recordPlanned(change: InfrafilePlannedChange): number;
@@ -377,8 +377,8 @@ export type { RunLogEntry };
 /**
  * The image reference a build produces.
  *
- * Shared by every driver on purpose. Each used to derive its own — the local
- * one from the context directory's name, the others from a hardcoded "app" —
+ * Shared by every driver on purpose. Each used to derive its own (the local
+ * one from the context directory's name, the others from a hardcoded "app")
  * so the *same* Infrafile produced `minimal:production` from the CLI and
  * `app:production-a1b2c3d` from the web app. A `deploy()` that names its image
  * in a manifest then worked from one origin and not the other.
@@ -388,8 +388,8 @@ export type { RunLogEntry };
  * repeated deploys of one environment stay distinguishable.
  *
  * A `tag` containing "/" is a FULL image reference and is used verbatim.
- * Registries whose image path is more than `host/name` — Artifact Registry's
- * `host/project/repo/image` — cannot be derived from a bare registry host, so
+ * Registries whose image path is more than `host/name` (Artifact Registry's
+ * `host/project/repo/image`) cannot be derived from a bare registry host, so
  * the plan names the whole thing:
  *
  *   tag: `${region}-docker.pkg.dev/${project}/${repo}/app:${env}-${sha}`

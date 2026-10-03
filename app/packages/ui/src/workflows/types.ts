@@ -7,7 +7,7 @@ import type { WorkflowApprovalStatus as WireWorkflowApprovalStatus } from "@infr
  * means the user dismissed the prompt.
  *
  * Declared here rather than imported from `@infrawrench/workflow-runtime`
- * because this package must not depend on the sandbox — its main entry pulls in
+ * because this package must not depend on the sandbox: its main entry pulls in
  * QuickJS, and keeping that out of the browser bundle is load-bearing.
  */
 export type MetricValue = number | string | boolean | null;
@@ -43,7 +43,7 @@ export interface WorkflowSecretSummary {
 /**
  * Loose shape of a workflow metric def as persisted (jsonb/text column) and
  * read back by dashboard pins. Older rows may carry `unit: null` and `type`
- * is unvalidated on this read path — see {@link WorkflowMetricDef} for the
+ * is unvalidated on this read path: see {@link WorkflowMetricDef} for the
  * strict editor-side shape.
  */
 export interface StoredWorkflowMetricDef {
@@ -84,7 +84,7 @@ export interface BudgetOption {
 }
 
 /**
- * Budget surface passed into the panel (web only — budgets are a cloud
+ * Budget surface passed into the panel (web only: budgets are a cloud
  * feature, so the desktop/local client leaves this out and the Budget trigger
  * option stays hidden).
  */
@@ -108,7 +108,7 @@ export interface WorkflowSummary {
   webhookToken?: string | null;
   /**
    * Whether a git-webhook signing secret is configured. The secret itself is
-   * write-only — the API never returns it, so this boolean is all a client
+   * write-only: the API never returns it, so this boolean is all a client
    * sees after saving one.
    */
   hasWebhookSecret?: boolean;
@@ -127,7 +127,7 @@ export interface WorkflowRunLog {
 
 /**
  * Outcome of a single run as returned by `run()`. This is the sandbox's
- * `RunResult` shape (status/logs/output/error/duration) — not a persisted
+ * `RunResult` shape (status/logs/output/error/duration), not a persisted
  * run row: it has no id/triggerSource, and its timestamps (when present)
  * are epoch numbers rather than ISO strings, so they are deliberately
  * omitted here. Fetch `listRuns()` for the full row.
@@ -182,7 +182,7 @@ export type WorkflowApprovalStatus = WireWorkflowApprovalStatus;
 export interface ApprovalsClient {
   /** Approval requests across the org, newest first. Filter by status. */
   list(status?: WorkflowApprovalStatus): Promise<WorkflowApprovalRow[]>;
-  /** Land a decision. Rejects on conflict (409) — already decided or expired. */
+  /** Land a decision. Rejects on conflict (409): already decided or expired. */
   decide(approvalId: string, decision: "approve" | "deny"): Promise<WorkflowApprovalRow>;
 }
 
@@ -280,7 +280,7 @@ export interface WorkflowClient {
   /** Permanently remove a reusable secret after UI confirmation. */
   deleteSecret(id: string): Promise<void>;
   /**
-   * Pending approval requests for one workflow's runs. Optional — approvals
+   * Pending approval requests for one workflow's runs. Optional: approvals
    * are cloud-only, so the desktop/local client omits both methods and the
    * panel hides the approvals card.
    */

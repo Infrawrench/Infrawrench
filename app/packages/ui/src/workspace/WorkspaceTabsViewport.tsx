@@ -10,7 +10,7 @@ interface WorkspaceTabsViewportProps {
    * When false, every tab renders hidden (display: none). Pass `false` when
    * the URL points at a non-tab route (settings, onboarding) so the viewport
    * doesn't draw on top of the route's <Outlet />. Tabs stay mounted either
-   * way — SSH sessions etc. survive the route switch.
+   * way: SSH sessions etc. survive the route switch.
    */
   showActive?: boolean;
   /**
@@ -31,7 +31,7 @@ interface WorkspaceTabsViewportProps {
    * viewport, so the visible settings content can never be inside a panel the
    * viewport owns. That host element spreads `workspaceTabPanelProps(tab.id)`
    * and the viewport renders nothing for the tab, leaving exactly one
-   * `role="tabpanel"` with that id — the one the user can see.
+   * `role="tabpanel"` with that id: the one the user can see.
    *
    * Return true **only while the host's element is mounted**. A tab this
    * returns true for with nothing rendering its panel is the dangling
@@ -53,7 +53,7 @@ interface WorkspaceTabsViewportProps {
  * in `GlobalTabBar` points at with `aria-controls`; both sides derive the ids
  * from the tab id (see `tab-dom-ids.ts`). `display: none` keeps the inactive
  * panels out of the accessibility tree, so a screen reader sees exactly one
- * panel — the selected tab's — while the DOM keeps them all alive. A tab
+ * panel (the selected tab's) while the DOM keeps them all alive. A tab
  * whose content the host renders elsewhere is skipped entirely; see
  * `panelRenderedByHost`.
  */
@@ -69,7 +69,7 @@ export function WorkspaceTabsViewport({
   return (
     <>
       {tabs.map((tab) => {
-        // The host is rendering this tab's panel itself — rendering one here
+        // The host is rendering this tab's panel itself: rendering one here
         // too would duplicate the id and hide the copy the user can see.
         if (panelRenderedByHost?.(tab)) return null;
         const mounted = shouldMountTab?.(tab) ?? true;

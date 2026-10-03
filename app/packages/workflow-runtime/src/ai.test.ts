@@ -17,7 +17,7 @@ import {
 
 /**
  * `infra.ai` defaults and bounds are applied in dispatch rather than in the
- * prelude, so every host — the cloud today, anything added later — sees the
+ * prelude, so every host (the cloud today, anything added later) sees the
  * same normalized spec. These lock that contract down.
  */
 

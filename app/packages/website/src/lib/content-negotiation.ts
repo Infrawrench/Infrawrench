@@ -3,7 +3,7 @@
  *
  * The audience is an agent that found infrawrench.com and would rather read
  * prose than parse a Tailwind DOM. Rather than making it guess at a URL
- * convention, the same URLs answer in markdown when asked — with `.md` twins
+ * convention, the same URLs answer in markdown when asked: with `.md` twins
  * and `/llms.txt` as the discoverable fallback for the pages that are
  * prerendered and never reach this code.
  */
@@ -34,7 +34,7 @@ function parseAccept(header: string): AcceptEntry[] {
         const [key, value] = param.split("=");
         if (key?.trim().toLowerCase() !== "q") continue;
         const parsed = Number.parseFloat(value ?? "");
-        // A malformed q is not a reason to drop the entry — RFC 9110 says
+        // A malformed q is not a reason to drop the entry: RFC 9110 says
         // treat it as 1, and an agent that mistypes a weight still meant to
         // ask for the type.
         q = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), 1) : 1;
@@ -51,7 +51,7 @@ const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
  * True when the caller would rather have markdown than HTML.
  *
  * Comparative, and deliberately so. A browser sends
- * `text/html,application/xhtml+xml,application/xml;q=0.9,*​/*;q=0.8` — the
+ * `text/html,application/xhtml+xml,application/xml;q=0.9,*​/*;q=0.8`: the
  * wildcard matches markdown, so "does it accept markdown" is true for every
  * browser alive and would serve plain text to the whole web. The question that
  * gives the right answer is "does it accept markdown *more* than HTML", and a
@@ -59,12 +59,12 @@ const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
  *
  * On equal quality, position decides, because that is how the clients that
  * matter here actually express a preference. Claude Code's fetch sends
- * `Accept: text/markdown, text/html, *​/*` — markdown named first, no weights
+ * `Accept: text/markdown, text/html, *​/*`: markdown named first, no weights
  * anywhere. RFC 9110 §12.5.1 makes `q` the normative mechanism and leaves ties
  * to the server, so ranking HTML first was conformant; it also meant the one
  * document written for agents was unreachable by the fetch an agent actually
  * makes, which is the opposite of the point. Where the caller expresses no
- * order — a tie it never created — nothing changes, because a browser does not
+ * order (a tie it never created) nothing changes, because a browser does not
  * name markdown at all and loses on `markdown === 0`.
  *
  * `text/plain` counts. Terminal clients (`curl -H 'Accept: text/plain'`, some

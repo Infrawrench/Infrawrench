@@ -1,9 +1,9 @@
-// `infrawrench declared-incidents` — incidents your organization declared, with
+// `infrawrench declared-incidents`: incidents your organization declared, with
 // `infrawrench declared-incidents <id|title>` for one incident's assembled
 // timeline.
 //
 // **The long name is the point.** `infrawrench incidents` was already taken, by
-// the provider status-page correlation ("is it me or is it them?") — somebody
+// the provider status-page correlation ("is it me or is it them?"): somebody
 // else's outage, scraped from their feed. That is a different object that
 // happens to share an English word, and quietly stealing the short name would
 // break a shipped command and leave two features answering to it. So this one
@@ -14,8 +14,8 @@
 // pages), so a local workspace has nothing to list. The CLI reads; declaring
 // and resolving live on the web/desktop Incidents tab and on the phone.
 //
-// The response shapes come from `@infrawrench/client-core` — the same
-// definitions every other surface renders — so a server-side change breaks the
+// The response shapes come from `@infrawrench/client-core` (the same
+// definitions every other surface renders) so a server-side change breaks the
 // CLI's build instead of its output. The imports are type-only, so the CLI
 // still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";

@@ -1,7 +1,7 @@
 import type { CloudFetch } from "./fetch";
 
 /**
- * Weekly infrastructure digest — org-level settings. Server contract:
+ * Weekly infrastructure digest: org-level settings. Server contract:
  * org-scoped `/api/org/:orgId/digest/*` routes (see web `api/routes/digest.ts`).
  *
  * The digest is a weekly summary of the last complete Monday-to-Sunday week's
@@ -18,13 +18,13 @@ export type DigestSendDay = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 /**
  * What the most recent delivery attempt did.
  *
- * - `succeeded` — every destination took it.
- * - `partial` — some destinations took it and some failed. Deliberately *not*
+ * - `succeeded`: every destination took it.
+ * - `partial`: some destinations took it and some failed. Deliberately *not*
  *   retried: a retry would post the digest twice where it already landed.
- * - `failed` — nothing landed. Retried a bounded number of times with backoff,
+ * - `failed`: nothing landed. Retried a bounded number of times with backoff,
  *   then parked until next week.
- * - `no_targets` — the digest is on but nothing is routed to receive it.
- * - `pending` — an attempt is in flight.
+ * - `no_targets`: the digest is on but nothing is routed to receive it.
+ * - `pending`: an attempt is in flight.
  */
 export type DigestStatus = "pending" | "succeeded" | "partial" | "failed" | "no_targets";
 

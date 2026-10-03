@@ -23,7 +23,7 @@ interface Props {
 
 /**
  * Org-level AI chat, proxied through the cloud web API. Only available when
- * the desktop is signed in to Infrawrench Cloud with an active org — in
+ * the desktop is signed in to Infrawrench Cloud with an active org: in
  * local-only mode there is no server-side agent to talk to.
  */
 export function CloudChatPanel({ conversationId }: Props) {

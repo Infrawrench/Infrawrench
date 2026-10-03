@@ -3,7 +3,7 @@
  *
  * Generated from the same `featureSections` / `providerGroups` data the HTML
  * renders, so the two cannot drift into saying different things about the
- * product. Only the framing is hand-written — and it is written for a reader
+ * product. Only the framing is hand-written, and it is written for a reader
  * that arrived without a browser.
  *
  * The agent section leads rather than trails. A page whose whole purpose is to

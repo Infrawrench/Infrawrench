@@ -3,7 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 export interface SortableDashboardCardProps {
   /**
-   * Card identity within the grid — build it with `dashboardCardId(kind, id)`
+   * Card identity within the grid: build it with `dashboardCardId(kind, id)`
    * so resource pins, workflow pins, and widgets share one sortable sequence.
    */
   id: string;

@@ -7,7 +7,7 @@ export interface CostReportWidgetCardProps {
   /**
    * The report this card points at, resolved by the host from the org's report
    * list. Undefined while the list is still loading, or when the report is
-   * genuinely gone — the card says so rather than drawing an empty chart.
+   * genuinely gone: the card says so rather than drawing an empty chart.
    */
   report: CostReport | undefined;
   config: CostReportWidgetConfig;
@@ -25,8 +25,8 @@ export interface CostReportWidgetCardProps {
  * to the report's page, which is where the edit belongs and where the list of
  * everywhere else it appears is visible.
  *
- * A missing report should be impossible — deleting one soft-deletes its cards
- * (services/cost-reports.ts) — so the unavailable state is a genuine
+ * A missing report should be impossible: deleting one soft-deletes its cards
+ * (services/cost-reports.ts), so the unavailable state is a genuine
  * inconsistency and is worded as one rather than as a normal empty state.
  */
 export function CostReportWidgetCard({

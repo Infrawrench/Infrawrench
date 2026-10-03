@@ -5,12 +5,12 @@
  * that shape all of it for a chart.
  *
  * It lives here rather than in `@infrawrench/ui` because mobile doesn't depend
- * on that package — `ui/src/cost/config.ts` keeps the zod schemas (the API
+ * on that package: `ui/src/cost/config.ts` keeps the zod schemas (the API
  * validates against them) and re-exports these types, so web, desktop, mobile,
  * and the CLI all describe the same bytes.
  *
  * Collection runs daily in the background and backs off on failure, so a
- * misconfigured provider otherwise reads as a permanently empty graph — the
+ * misconfigured provider otherwise reads as a permanently empty graph: the
  * status types carry the reason (and the provider page that fixes it) out to
  * every surface.
  */
@@ -44,7 +44,7 @@ export interface CostAccountStatus {
   periodNative: boolean;
   /**
    * The finer-grained dimensions this account's plugin can break spend down
-   * by — straight off its cost capability, so the picker can't offer a
+   * by: straight off its cost capability, so the picker can't offer a
    * dimension the provider has never heard of.
    */
   dimensions: CostCapabilityDeclaration["dimensions"];
@@ -56,7 +56,7 @@ export interface CostAccountStatus {
   chargeTypes: boolean;
   /**
    * Whether this account's plugin reports amortized amounts. The amortized view
-   * is offered only when at least one connected account says yes — otherwise it
+   * is offered only when at least one connected account says yes, otherwise it
    * is the cash numbers under a different name, and a user who switched to it
    * would reasonably conclude the feature is broken.
    */
@@ -89,8 +89,8 @@ export function failingCostAccounts(statuses: CostAccountStatus[]): CostAccountS
  *
  * Collection can succeed and return nothing: a Cloud Billing BigQuery export
  * enabled hours ago is correctly configured but emits no rows until Google's
- * pipeline catches up. Every stored field on such an account looks healthy —
- * no error, a recent poll — so the only evidence is the absent coverage, and
+ * pipeline catches up. Every stored field on such an account looks healthy
+ * (no error, a recent poll) so the only evidence is the absent coverage, and
  * without saying so the surface is a blank graph that reads as a bug.
  *
  * `costLastPolledAt` gates it so an account that has never run yet stays
@@ -105,8 +105,8 @@ export function emptyCostAccounts(statuses: CostAccountStatus[]): CostAccountSta
 /**
  * Accounts whose spend Infrawrench computed rather than collected.
  *
- * These are not a fault — a provider with no billing API can only be priced
- * from its inventory and a rate card — but the resulting number is not the
+ * These are not a fault (a provider with no billing API can only be priced
+ * from its inventory and a rate card) but the resulting number is not the
  * invoice, and the ways it differs are systematic: anything deleted mid-period
  * is missing, every rate is list rather than negotiated, and credits, tax and
  * refunds have nothing to attach to. A total that silently mixes computed and
@@ -121,7 +121,7 @@ export function estimatedCostAccounts(statuses: CostAccountStatus[]): CostAccoun
 }
 
 /* ------------------------------------------------------------------ *
- * Widget configuration — what a dashboard stores for a cost card.
+ * Widget configuration: what a dashboard stores for a cost card.
  * ------------------------------------------------------------------ */
 
 export const COST_DIMENSIONS = [
@@ -147,7 +147,7 @@ export type CostDimensionId = (typeof COST_DIMENSIONS)[number];
  * it is what those rows were always assumed to be.
  *
  * `commitment_covered_usage` is consumption a reservation or savings plan
- * covered — still consumption, so it sits next to `usage` rather than next to
+ * covered: still consumption, so it sits next to `usage` rather than next to
  * `commitment_discount`. It is separated out because it is what commitment
  * coverage is measured from: most providers can say *that* an hour was covered
  * without saying *which* commitment covered it.
@@ -182,9 +182,9 @@ export const COST_CHARGE_TYPE_LABELS: Record<CostChargeType, string> = {
 /**
  * Which number a cost query sums.
  *
- * - `cash` — what the provider charged on the day it charged it. This is the
+ * - `cash`: what the provider charged on the day it charged it. This is the
  *   bank statement, and it is what every query did before amortization existed.
- * - `amortized` — commitment fees spread across the term they buy, so a year of
+ * - `amortized`: commitment fees spread across the term they buy, so a year of
  *   capacity bought on one day is counted on the days it covers.
  *
  * Neither is wrong; they answer different questions. Cash answers "what left
@@ -260,7 +260,7 @@ export interface CostGraphConfig {
    * the trend rather than instead of it.
    *
    * Only meaningful alongside `showForecast`, and `costQueryForConfig` drops it
-   * when the forecast is off — a scenario with nothing to adjust is not a
+   * when the forecast is off: a scenario with nothing to adjust is not a
    * silent no-op, it is a request the server refuses.
    *
    * Absent on every config written before scenarios existed, which is exactly
@@ -268,15 +268,15 @@ export interface CostGraphConfig {
    */
   scenarioModelId?: string | undefined;
   /**
-   * Which number to sum. Absent is `cash` — the basis every graph authored
+   * Which number to sum. Absent is `cash`: the basis every graph authored
    * before amortization existed was drawn on, so an old widget keeps showing
    * exactly what it showed.
    */
   costBasis?: CostBasis | undefined;
   /**
    * Draw **cost per unit of a business metric** instead of cost, by dividing
-   * this graph's spend by the metric's daily values. Absent — and it is absent
-   * on every config written before unit costs existed — the graph is exactly
+   * this graph's spend by the metric's daily values. Absent (and it is absent
+   * on every config written before unit costs existed) the graph is exactly
    * the spend graph it has always been.
    *
    * A mode on the existing config rather than a second widget kind, because
@@ -300,7 +300,7 @@ export interface CostGraphConfig {
    */
   unitCostMode?: UnitCostGraphMode | undefined;
   /**
-   * Draw the org's billing rules applied — markups, discounts, reallocations.
+   * Draw the org's billing rules applied: markups, discounts, reallocations.
    *
    * Absent (and it is absent on every config written before billing rules
    * existed) draws collected spend, which is what those cards have always
@@ -318,7 +318,7 @@ export interface CostGraphConfig {
  */
 export type UnitCostGraphMode = "unit_cost" | "margin";
 
-/** A budget widget is a dashboard view onto a budgets row — alerts outlive it. */
+/** A budget widget is a dashboard view onto a budgets row: alerts outlive it. */
 export interface BudgetWidgetConfig {
   version: 1;
   budgetId: string;
@@ -343,7 +343,7 @@ export interface BudgetInput {
    * A saved cost filter applied by reference, AND-composed with `filters` when
    * the budget is evaluated. Absent means none; a PUT that omits it clears it
    * (budget updates are full replaces). A budget whose reference fails to
-   * resolve errors its evaluation rather than silently measuring all spend —
+   * resolve errors its evaluation rather than silently measuring all spend:
    * un-scoping a budget could fire or suppress alerts.
    */
   savedFilterId?: string | undefined;
@@ -351,13 +351,13 @@ export interface BudgetInput {
   /**
    * Opt this budget's **forecast** thresholds into a scenario model.
    *
-   * Absent — and it is absent on every budget that existed before scenarios,
-   * and on every budget nobody deliberately opts in — forecast thresholds keep
+   * Absent, and it is absent on every budget that existed before scenarios,
+   * and on every budget nobody deliberately opts in: forecast thresholds keep
    * measuring the bare trend, exactly as they always have. That default is the
    * point: a hypothetical somebody typed into a scenario must not change when
    * real people get paged. Opting in is a deliberate act on this budget, it is
    * shown on the budget card and named in the alert body, and `actual`
-   * thresholds are never affected at all — those measure money already spent,
+   * thresholds are never affected at all: those measure money already spent,
    * which no scenario can touch.
    *
    * A PUT that omits it clears it; budget updates are full replaces.
@@ -373,14 +373,14 @@ export interface BudgetInput {
    */
   costBasis?: CostBasis | undefined;
   /**
-   * Measure this budget against **billing-rule-adjusted** spend — the internal
-   * figure — instead of what the providers charged.
+   * Measure this budget against **billing-rule-adjusted** spend (the internal
+   * figure) instead of what the providers charged.
    *
    * Absent (false) on every budget until somebody says otherwise, for the same
    * reason `scenarioModelId` is: a markup is org policy and a budget threshold
    * pages a real person, so one settings row must not be able to move every
    * on-call rota in the org. Unlike a scenario this affects `actual` thresholds
-   * too — an opted-in budget is measuring the internal number, and
+   * too: an opted-in budget is measuring the internal number, and
    * month-to-date internal spend is as marked up as the forecast is.
    *
    * The alert body says the figure is adjusted and names the collected one; a
@@ -396,7 +396,7 @@ export interface CostDimensionOption {
 }
 
 /* ------------------------------------------------------------------ *
- * Editor defaults and labels — every host that can author a cost card
+ * Editor defaults and labels: every host that can author a cost card
  * offers the same starting point and calls each option the same thing.
  * ------------------------------------------------------------------ */
 
@@ -517,7 +517,7 @@ export interface BudgetWithStatus {
   /** That model's name, so a card can say which assumptions are in the number. */
   scenarioModelName?: string | null | undefined;
   /**
-   * True when every figure on this row has the org's billing rules applied —
+   * True when every figure on this row has the org's billing rules applied:
    * the internal number rather than the collected one. False (the default) on
    * every budget nobody opted in.
    */
@@ -541,7 +541,7 @@ export interface BudgetWithStatus {
    */
   forecastCents: number | null;
   /**
-   * The scenario-adjusted month forecast — set only for a budget that opted
+   * The scenario-adjusted month forecast: set only for a budget that opted
    * into a model, and the number its forecast thresholds are actually judged
    * against. Null (or absent) means the thresholds used `forecastCents`.
    */
@@ -554,8 +554,8 @@ export interface BudgetWithStatus {
   }>;
   /**
    * The dashboards carrying a card for this budget. A budget exists
-   * independently of any dashboard — it keeps evaluating and alerting with no
-   * card anywhere — so the Costs panel is its home and this is where it also
+   * independently of any dashboard (it keeps evaluating and alerting with no
+   * card anywhere) so the Costs panel is its home and this is where it also
    * happens to be shown.
    */
   placements: BudgetPlacement[];
@@ -569,10 +569,10 @@ export interface BudgetPlacement {
 }
 
 /* ------------------------------------------------------------------ *
- * Query contract — POST /costs/query.
+ * Query contract: POST /costs/query.
  * ------------------------------------------------------------------ */
 
-/** The cost query the API accepts — a graph config resolved to concrete dates. */
+/** The cost query the API accepts: a graph config resolved to concrete dates. */
 export interface CostQueryRequest {
   /** Inclusive, YYYY-MM-DD. */
   from: string;
@@ -583,19 +583,19 @@ export interface CostQueryRequest {
   filters: CostFilter[];
   /**
    * The same filter written in the cost query language
-   * (`cost-query-language.ts`) — `provider = 'aws' AND tag['env'] != 'dev'`.
+   * (`cost-query-language.ts`): `provider = 'aws' AND tag['env'] != 'dev'`.
    *
    * An *alternative* spelling of `filters`, never an addition to it: the server
    * compiles this to `CostFilter[]` and runs exactly the query the structured
    * form would have run. Sending both a query and a non-empty `filters` is an
-   * error rather than a precedence rule — a caller that sets two filters and
+   * error rather than a precedence rule: a caller that sets two filters and
    * silently gets one of them is the failure this is designed to avoid.
    */
   query?: string | undefined;
   /**
    * A saved cost filter (`saved-cost-filters.ts`) resolved **server-side** and
    * AND-composed with whichever inline spelling is present (`filters` or
-   * `query`). Unlike those two it is not an alternative but a composition —
+   * `query`). Unlike those two it is not an alternative but a composition:
    * "the saved 'prod only' scope, further narrowed to this service" is the
    * intended use. An id that fails to resolve is an error, never a silent
    * fall-through to unfiltered spend.
@@ -608,7 +608,7 @@ export interface CostQueryRequest {
    * Apply a scenario model to the forecast, returning the adjusted projection
    * in `CostQueryResponse.scenario` **alongside** the untouched `forecast`.
    *
-   * Requires `forecast: true` — sending a scenario with no forecast is a 400,
+   * Requires `forecast: true`: sending a scenario with no forecast is a 400,
    * not a no-op. A caller who asked for assumptions to be applied and silently
    * got none back is the failure this feature is built to avoid.
    */
@@ -616,7 +616,7 @@ export interface CostQueryRequest {
   /** Which number to sum; absent is `cash`. */
   costBasis?: CostBasis | undefined;
   /**
-   * Restrict to these charge types. Absent is all of them — including the
+   * Restrict to these charge types. Absent is all of them, including the
    * credits and refunds that make a total net rather than gross.
    */
   chargeTypes?: CostChargeType[] | undefined;
@@ -624,7 +624,7 @@ export interface CostQueryRequest {
    * Convert every currency the org holds a rate for into this one, so a
    * mixed-currency org gets a single number.
    *
-   * **Absent is the default and means no conversion at all** — the response is
+   * **Absent is the default and means no conversion at all**: the response is
    * byte-identical to what a server that never heard of this field returns.
    * Present, it is opt-in twice over: the org must also have stated the rates,
    * because Infrawrench never fetches live FX. A currency the org has no rate
@@ -633,12 +633,12 @@ export interface CostQueryRequest {
    */
   displayCurrency?: string | undefined;
   /**
-   * Apply the org's [billing rules](./billing-rules.ts) — markups, discounts,
-   * reallocations — to this answer.
+   * Apply the org's [billing rules](./billing-rules.ts) (markups, discounts,
+   * reallocations) to this answer.
    *
    * **Absent (the default) is raw collected spend**, byte-identical to what a
    * server that never heard of billing rules returns. Every unattended reader
-   * — budgets, anomaly detection, change alerts, the digest, cost exports —
+   * (budgets, anomaly detection, change alerts, the digest, cost exports)
    * leaves it absent, because the safe default for anything that can page a
    * human is the number the provider actually billed.
    *
@@ -683,7 +683,7 @@ export interface CostConvertedCurrency {
   currency: string;
   /**
    * Every rate applied across the queried range, newest `effectiveFrom` first.
-   * More than one entry means the range spans a rate change — the amounts are
+   * More than one entry means the range spans a rate change: the amounts are
    * a sum of days converted at different rates, which is the point of storing
    * an effective date at all, and which a caveat line should say out loud.
    */
@@ -702,7 +702,7 @@ export interface CostConversion {
   displayCurrency: string;
   /**
    * Currencies folded into `displayCurrency`. Never includes the display
-   * currency itself — spend already in it is passed through untouched, not
+   * currency itself: spend already in it is passed through untouched, not
    * multiplied by a rate of 1.
    */
   converted: CostConvertedCurrency[];
@@ -722,7 +722,7 @@ export interface CostQueryResponse {
   /** Projected daily totals beyond the last observed day, when requested. */
   forecast?: CostSeriesPoint[];
   /**
-   * The same projection with a scenario model applied — set only when the
+   * The same projection with a scenario model applied: set only when the
    * request named one.
    *
    * Deliberately a *second* field rather than a replacement for `forecast`.
@@ -731,14 +731,14 @@ export interface CostQueryResponse {
    * the trend with a hypothetical would be worse than no projection at all.
    */
   scenario?: CostScenarioProjection;
-  /** Distinct currencies present — length > 1 means mixed-currency display. */
+  /** Distinct currencies present: length > 1 means mixed-currency display. */
   currencies: string[];
   /** Period total per currency. */
   totals: Record<string, number>;
   previousTotals?: Record<string, number>;
   /**
    * Set when amounts above were converted. Absent means they are exactly as
-   * collected — the two states must stay distinguishable, because a converted
+   * collected: the two states must stay distinguishable, because a converted
    * total that does not say so is worse than two unconverted totals.
    */
   conversion?: CostConversion;
@@ -758,7 +758,7 @@ export interface CostQueryResponse {
 export const OTHER_GROUP_KEY = "__other__";
 
 /* ------------------------------------------------------------------ *
- * Pure helpers — shared so every surface bins and labels alike.
+ * Pure helpers: shared so every surface bins and labels alike.
  * ------------------------------------------------------------------ */
 
 /**
@@ -808,7 +808,7 @@ export function costQueryForConfig(config: CostGraphConfig, today = new Date()):
     groupBy: config.groupBy,
     ...(config.groupByTagKey ? { groupByTagKey: config.groupByTagKey } : {}),
     filters: config.filters,
-    // Passed by reference so the server resolves it at query time — the whole
+    // Passed by reference so the server resolves it at query time: the whole
     // point of a saved filter is that the config never holds a copy.
     ...(config.savedFilterId ? { savedFilterId: config.savedFilterId } : {}),
     topN: config.topN,
@@ -846,8 +846,8 @@ export function totalPerBucket(series: CostQuerySeries[]): CostSeriesPoint[] {
 /**
  * The bucket a UTC day falls into, for a given binning.
  *
- * Must agree exactly with `bucketExpr` in `server-core/clickhouse/cost-readers`
- * — weekly is Monday-start to match `toStartOfWeek(day, 1)`, monthly is the
+ * Must agree exactly with `bucketExpr` in `server-core/clickhouse/cost-readers`:
+ * weekly is Monday-start to match `toStartOfWeek(day, 1)`, monthly is the
  * first of the month. Anything that has to line a client-side series up against
  * a server-aggregated one (the forecast splice, the unit-cost denominator)
  * calls this rather than re-deriving it, because a client that bucketed Sundays

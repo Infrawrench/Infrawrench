@@ -1,9 +1,9 @@
-// `infrawrench config export|plan|apply` — the organization's dashboards,
+// `infrawrench config export|plan|apply`: the organization's dashboards,
 // workflows, custom graphs, budgets, alert rules and policies as one JSON
 // document you can keep in git.
 //
 // The verb pair is the point: `config export > infrawrench.json`, commit it,
-// review the diff like any other change, and `config apply` it back — into the
+// review the diff like any other change, and `config apply` it back; into the
 // same org for disaster recovery, or into a fresh one to seed a staging or
 // demo environment. `config plan` is the dry run and writes nothing, so it is
 // the thing to run in CI on a pull request.
@@ -11,8 +11,8 @@
 // Cloud-only, like `alerts` and `probes`: the configuration this manages lives
 // in the cloud org, and a local desktop workspace has none of it.
 //
-// The document and plan shapes come from `@infrawrench/client-core` — the same
-// definitions the server and the settings UI use — so a server-side change
+// The document and plan shapes come from `@infrawrench/client-core` (the same
+// definitions the server and the settings UI use) so a server-side change
 // breaks the CLI's build instead of its output. The imports are type-only, so
 // the CLI still ships zero new runtime dependencies.
 import { readFileSync, writeFileSync } from "node:fs";
@@ -29,7 +29,7 @@ import type {
 import { c, printJson, println } from "../output";
 import { confirm } from "../prompt";
 
-/** Order the plan renders sections in — the order they are applied. */
+/** Order the plan renders sections in: the order they are applied. */
 const SECTION_LABELS: Record<OrgConfigSection, string> = {
   budgets: "budgets",
   customGraphs: "custom graphs",
@@ -106,7 +106,7 @@ async function cmdConfigExport(ctx: CliContext, flags: ConfigFlags): Promise<voi
   }
 
   // No path: the document goes to stdout, so it can be piped or redirected.
-  // Deliberately raw even in text mode — this output IS the artifact.
+  // Deliberately raw even in text mode: this output IS the artifact.
   process.stdout.write(text);
 }
 
@@ -248,7 +248,7 @@ function readDocument(flags: ConfigFlags): unknown {
   return narrowSections(parsed as Record<string, unknown>, flags.sections);
 }
 
-/** Read all of stdin synchronously — fd 0 to EOF. */
+/** Read all of stdin synchronously: fd 0 to EOF. */
 function readFileSyncStdin(): string {
   try {
     return readFileSync(0, "utf8");
@@ -261,7 +261,7 @@ function readFileSyncStdin(): string {
  * Drop every section `--sections` doesn't name.
  *
  * Client-side rather than a server parameter because a section the document
- * doesn't carry is already left alone — narrowing here means one committed file
+ * doesn't carry is already left alone: narrowing here means one committed file
  * can be applied a section at a time, which is how you roll a change out
  * gradually without maintaining several files.
  */

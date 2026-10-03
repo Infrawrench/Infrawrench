@@ -7,12 +7,12 @@ import { listLocalDeploys, type LocalDeployRun } from "../lib/deploy-history";
 /**
  * The Deploy tab in local mode: what `infrawrench deploy` did on this machine.
  *
- * Deploying *from here* needs an org — a GitHub App to read the Infrafile at a
+ * Deploying *from here* needs an org: a GitHub App to read the Infrafile at a
  * branch head, and a build host to build on. Locally the CLI is the thing that
  * deploys, because it already has what a local deploy needs: the working tree
  * on disk and your own Docker daemon. So this half is a record rather than a
  * console, and it exists because a local deploy previously left no trace the
- * app could show at all — the answer was "go read your terminal scrollback".
+ * app could show at all: the answer was "go read your terminal scrollback".
  *
  * Cloud mode renders the shared DeploymentsPanel instead.
  */
@@ -202,7 +202,7 @@ function RunRow({
 }
 
 /**
- * Only a stage the runtime actually declares is shown as one — the field is a
+ * Only a stage the runtime actually declares is shown as one: the field is a
  * plain string in the record, and printing an unknown value as "at <junk>"
  * would read as a stage that exists.
  */

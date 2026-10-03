@@ -7,7 +7,7 @@ import { safe, setColorEnabled, c, visibleWidth } from "../cli/output";
  *
  * An org member can put whatever they like in an incident title, summary or
  * note. Another member runs `infrawrench declared-incidents` and the CLI writes
- * that text to their terminal — which *executes* control sequences rather than
+ * that text to their terminal, which *executes* control sequences rather than
  * displaying them. Crafted content could clear the screen, move the cursor back
  * over output that was already printed and rewrite it, or set the window title.
  *

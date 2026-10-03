@@ -1,5 +1,5 @@
 /**
- * Sidecar log-stream discovery — the shared half of finding tailable streams
+ * Sidecar log-stream discovery: the shared half of finding tailable streams
  * that live *behind* a peer integration rather than in the resource table.
  *
  * A managed Kubernetes cluster's pods are never stored rows: they surface
@@ -8,7 +8,7 @@
  * the kubernetes plugin fully supports `getLogs`. This module walks stored
  * parent resources, builds each peer plugin's client through the host's own
  * resolution path, and lists the peer resources whose rendered detail declares
- * the `logs` capability — the same per-instance contract the native scan uses,
+ * the `logs` capability: the same per-instance contract the native scan uses,
  * never a hardcoded provider list.
  *
  * Pure orchestration: data access (stored rows, peer-client construction) is
@@ -16,7 +16,7 @@
  * (in-renderer clients) share the walk, the capability cache, and the
  * fail-soft rules.
  */
-// Type-only on purpose — client-core keeps zero runtime dependency on
+// Type-only on purpose: client-core keeps zero runtime dependency on
 // plugin-base (the mobile bundle never pulls the manifest machinery in).
 import type {
   PeerPluginIntegration,
@@ -28,10 +28,10 @@ import type {
 export interface SidecarLogParent {
   accountId: string;
   accountName: string;
-  /** Stored row id — becomes `parentResourceId` on emitted streams. */
+  /** Stored row id: becomes `parentResourceId` on emitted streams. */
   resourceId: string;
   displayName: string;
-  /** The parent row's stored fields — drive the integrations' visibility gates. */
+  /** The parent row's stored fields: drive the integrations' visibility gates. */
   fields: Record<string, string | number | boolean>;
   /** The parent resource type's declared peer integrations. */
   integrations: PeerPluginIntegration[];
@@ -58,7 +58,7 @@ export interface SidecarLogDiscoveryDeps {
   getPeerClient(parent: SidecarLogParent, pluginId: string): Promise<PluginClient | null>;
   /** The peer plugin's resource type ids, from its loaded definition. */
   peerResourceTypeIds(pluginId: string): Promise<string[]>;
-  /** Discovery is best-effort but never silent — failures land here. */
+  /** Discovery is best-effort but never silent: failures land here. */
   warn(message: string): void;
   /** Stop emitting once this many streams have been collected. */
   maxResults: number;
@@ -70,7 +70,7 @@ export interface SidecarLogDiscoveryDeps {
 
 /**
  * Apply a peer integration's declarative visibility gates (`requiresFields` /
- * `showWhen`) against a parent's stored fields — the same rules the detail
+ * `showWhen`) against a parent's stored fields: the same rules the detail
  * view uses to decide which peer tabs appear.
  */
 export function peerIntegrationVisible(
@@ -113,7 +113,7 @@ interface PeerLogCapsEntry {
   /**
    * Peer resource type ids whose rendered detail declares `logs`; `[]` means
    * the plugin is known log-incapable (no `getLogs`, or no log-capable types)
-   * and its parents are skipped without building a client. Kept once learned —
+   * and its parents are skipped without building a client. Kept once learned:
    * a peer build reaches a live provider, so a later failure says nothing
    * about what the plugin can do (the sidecar-capabilities rule).
    */
@@ -132,7 +132,7 @@ interface PeerLogCapsEntry {
 const peerLogCapsCache = new Map<string, PeerLogCapsEntry>();
 
 /**
- * Build-failure backoff, keyed per (parent, plugin) — NOT per plugin: peer
+ * Build-failure backoff, keyed per (parent, plugin); NOT per plugin: peer
  * credentials come from the parent's outputs, so one cluster's kubeconfig
  * fetch failing says nothing about the org's other clusters, and a shared
  * backoff would hide their streams for no reason.
@@ -145,7 +145,7 @@ export function __resetPeerLogCapabilityCache(): void {
   peerBuildFailures.clear();
 }
 
-/** `renderDetail` probe on a synthetic instance — does this type declare logs? */
+/** `renderDetail` probe on a synthetic instance: does this type declare logs? */
 function typeDeclaresLogs(
   client: PluginClient,
   pluginId: string,

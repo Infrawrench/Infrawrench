@@ -22,7 +22,7 @@ const NODE_WIDTH = 190;
 const NODE_HEIGHT = 54;
 
 /**
- * Line style per provenance — the legend in the header explains these. Declared
+ * Line style per provenance: the legend in the header explains these. Declared
  * edges are solid like output references: the plugin stated the relationship,
  * so it is as certain as one the user wired, and only the guessed kinds earn a
  * broken line.
@@ -39,15 +39,15 @@ function isExplicit(edge: DependencyGraphEdge): boolean {
 }
 
 /**
- * The org-wide dependency-graph topology, hand-rolled as plain SVG — no graph
+ * The org-wide dependency-graph topology, hand-rolled as plain SVG: no graph
  * library. Layout comes from the shared layered algorithm in
  * `@infrawrench/client-core`; arrows point from a consumer to the provider it
  * depends on. Clicking a node highlights its blast radius (the node plus every
- * transitive dependent); clicking it again — or the "Open resource" button —
+ * transitive dependent); clicking it again (or the "Open resource" button)
  * navigates to the resource. Shared by web and desktop.
  *
- * Edges arrive from two sources — hand-wired output references and links read
- * out of synced cloud data — drawn solid and dashed respectively. The toggle
+ * Edges arrive from two sources (hand-wired output references and links read
+ * out of synced cloud data) drawn solid and dashed respectively. The toggle
  * hides the inferred ones, which is how you check what is actually wired
  * through the app versus what the provider already had.
  */
@@ -243,7 +243,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
       )}
 
       {/*
-        Canvas. `role="group"`, not `role="img"` — the nodes are focusable
+        Canvas. `role="group"`, not `role="img"`: the nodes are focusable
         buttons, and `img` would prune the whole subtree out of the
         accessibility tree. Escape clears the selection while focus is on a
         node; the transparent backdrop rect below does the same for the mouse.

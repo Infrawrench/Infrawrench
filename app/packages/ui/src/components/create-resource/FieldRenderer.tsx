@@ -30,7 +30,7 @@ export interface SshKeyPickerCallbacks {
   loadKeys: () => Promise<SshKeyEntry[]>;
   generateKey: (name: string) => Promise<SshKeyEntry & { privateKey?: string }>;
   deleteKey: (id: string) => Promise<void>;
-  /** The current user's ID — used to determine which keys are deletable */
+  /** The current user's ID: used to determine which keys are deletable */
   currentUserId?: string;
   /** System-level keys (e.g. from ~/.ssh on desktop). Omit on web. */
   systemKeys?: SystemSshKey[];
@@ -70,7 +70,7 @@ export interface FieldActionCallbacks {
   /** Latest error message for an action on this field, if any */
   errorByKey: Record<string, string | null>;
   /**
-   * Per-field refresh counter — bumped on each successful action. Lets the
+   * Per-field refresh counter: bumped on each successful action. Lets the
    * resource picker re-fetch after an inline-create action mints a new
    * resource so the newly-minted resource shows up immediately.
    */
@@ -153,7 +153,7 @@ export function FieldRenderer({
       </div>
     ) : null;
   // The "code" kind takes over the side pane in split-pane mode and renders
-  // edge-to-edge — its container styling differs from regular fields.
+  // edge-to-edge: its container styling differs from regular fields.
   if (field.kind === "code") {
     return (
       <div className="flex flex-col h-full min-h-0">
@@ -469,7 +469,7 @@ function ResourcePickerResolver({
   referenceMode: boolean;
 }) {
   const gt = useGT();
-  // Re-run only when the *content* of `sources` changes — the array literal
+  // Re-run only when the *content* of `sources` changes: the array literal
   // is recreated every render in some callers, which would otherwise cause
   // an infinite reload loop.
   const sourcesKey = JSON.stringify(sources);
@@ -553,7 +553,7 @@ function ResourcePickerResolver({
 /**
  * Inline mini-form attached to a `FieldAction` that declares `formFields`.
  * Collapsed until the user toggles it open. On submit, the panel's values are
- * passed to the host as `actionFields` — kept separate from the outer create
+ * passed to the host as `actionFields`: kept separate from the outer create
  * form so the two namespaces can't collide (a "name" field on the action
  * doesn't clobber a "name" field on the resource being created).
  */
@@ -699,7 +699,7 @@ function HostnameField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // No domain to anchor to — behave as a normal text input.
+  // No domain to anchor to: behave as a normal text input.
   if (!suffix) {
     return (
       <input

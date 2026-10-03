@@ -5,7 +5,7 @@
  * eject-to-Terraform writes HCL describing the user's cloud resources; org
  * config as code moves a whole org as one JSON document; the Terraform
  * *provider* manages Infrawrench's own configuration. This module is the
- * fourth — **IaC reconciliation** — and it reads a state document the user
+ * fourth (**IaC reconciliation**) and it reads a state document the user
  * already has in order to say which synced resources Terraform owns.
  *
  * Two input shapes are accepted and version-checked rather than assumed:
@@ -16,7 +16,7 @@
  *    resources live at `values.root_module` and recursively in
  *    `values.root_module.child_modules[]`.
  *
- * Everything here is pure, and every failure is a `TerraformStateParseError` —
+ * Everything here is pure, and every failure is a `TerraformStateParseError`:
  * a statement about the document rather than about us. That matters at the
  * boundary: callers translate a parse failure into a 400, and anything that
  * escapes as some other error class becomes a 500, which tells a user holding
@@ -35,7 +35,7 @@
  * | `maxAttributeDepth`        | on every node, depth-first, so it trips in O(d)   |
  * | `maxAttributeNodes`        | on every node, bounding measurement outright      |
  *
- * Nothing measures a whole structure and then asks whether it was too big —
+ * Nothing measures a whole structure and then asks whether it was too big:
  * that ordering is what made a deeply nested attribute a stack overflow rather
  * than a rejection.
  */
@@ -55,7 +55,7 @@ export const IAC_STATE_LIMITS = {
    *
    * The other bounds are about *volume*; this one is about *shape*, and a
    * small document can carry a very deep one. Without it, measuring a deeply
-   * nested attribute is what overflows the stack — the failure is a
+   * nested attribute is what overflows the stack: the failure is a
    * `RangeError` from the runtime rather than a statement about the document,
    * which is exactly the wrong thing to tell a user holding a file they will
    * otherwise retry unchanged. 64 is far past anything real Terraform state
@@ -81,7 +81,7 @@ export const IAC_REDACTED = "«redacted»";
 /**
  * Placeholder written in place of a structure too large to keep. Distinct from
  * {@link IAC_REDACTED} so a reader can tell "this was a secret" from "this was
- * a 40 KB policy document" — both are values we did not store, but only one of
+ * a 40 KB policy document": both are values we did not store, but only one of
  * them is a thing to be careful with.
  */
 export const IAC_OMITTED = "«omitted: too large»";
@@ -128,7 +128,7 @@ export interface IacStateResourceEntry {
    */
   attributes: Record<string, unknown>;
   /**
-   * Attribute keys whose value was **not stored** — sensitive or oversized.
+   * Attribute keys whose value was **not stored**: sensitive or oversized.
    *
    * This is the list reconciliation filters the drift diff by, and that is the
    * whole reason it exists: comparing a placeholder against a live value
@@ -192,14 +192,14 @@ function collectIdentifiers(attributes: Record<string, unknown>): string[] {
  *
  * `JSON.stringify` did this job and was the one unbounded primitive left in
  * the parser: it recurses, so a size-compliant document carrying a deeply
- * nested attribute overflowed the stack and threw a `RangeError` — a runtime
+ * nested attribute overflowed the stack and threw a `RangeError`; a runtime
  * failure where the truthful answer is "this document is not acceptable".
  * An explicit stack has no such ceiling, and short-circuiting on the first
  * violated bound means the work is bounded by the limits rather than by the
  * input.
  *
  * Depth is checked on every popped node and the traversal is depth-first, so a
- * chain deep enough to matter is reached in as many steps as it is deep —
+ * chain deep enough to matter is reached in as many steps as it is deep:
  * always well inside the node budget. That is what makes the outcome
  * deterministic rather than a function of traversal order.
  */
@@ -271,7 +271,7 @@ function clampValue(value: unknown, where: string): { value: unknown; omitted: b
 
 interface SanitizeOutcome {
   attributes: Record<string, unknown>;
-  /** Sensitive **and** oversized keys — everything excluded from the diff. */
+  /** Sensitive **and** oversized keys: everything excluded from the diff. */
   redactedAttributeKeys: string[];
   /** Of those, the ones dropped for being sensitive. */
   sensitiveCount: number;
@@ -320,7 +320,7 @@ function sanitizeAttributes(
 /**
  * `sensitive_attributes` in a tfstate is a list of cty paths, each a list of
  * steps like `{"type":"get_attr","value":"password"}`. Only the first step can
- * name a top-level attribute, which is the granularity we store at — a nested
+ * name a top-level attribute, which is the granularity we store at: a nested
  * sensitive leaf redacts its whole top-level attribute rather than being
  * surgically removed, because half-redacted structures invite mistakes.
  */
@@ -400,7 +400,7 @@ interface Accumulator {
 /**
  * The two counts are taken from the sanitizer rather than derived from
  * `entry.redactedAttributeKeys.length`, because that list deliberately mixes
- * sensitive and oversized keys — they behave identically for the diff but they
+ * sensitive and oversized keys: they behave identically for the diff but they
  * are not the same thing to report to a user.
  */
 function push(
@@ -585,7 +585,7 @@ function checkShowJsonVersion(raw: unknown): string {
 export function parseTerraformStateDocument(input: string | unknown): ParsedTerraformState {
   let doc: unknown;
   if (typeof input === "string") {
-    // Byte length, not code units — a multi-byte document must not slip past.
+    // Byte length, not code units: a multi-byte document must not slip past.
     const bytes =
       typeof TextEncoder === "function" ? new TextEncoder().encode(input).length : input.length;
     if (bytes > IAC_STATE_LIMITS.maxDocumentBytes) {

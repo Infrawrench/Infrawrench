@@ -29,7 +29,7 @@ interface DesktopRunbooksPanelProps {
  * Desktop host for the shared runbooks screen. Cloud only: a runbook is a
  * shared document and a run is a record of who did what, so both are org state
  * a single-machine workspace has nowhere to keep. Local mode gets the
- * Changes/Costs treatment — an explicit "sign in" message.
+ * Changes/Costs treatment: an explicit "sign in" message.
  */
 export function DesktopRunbooksPanel({ openWorkflow }: DesktopRunbooksPanelProps) {
   const gt = useGT();
@@ -171,7 +171,7 @@ export function DesktopRunbooksPanel({ openWorkflow }: DesktopRunbooksPanelProps
       workflowOptions={workflows}
       // The desktop does not read `/team/me`, so the editors are always offered
       // and a member without `org:settings:write` gets the server's 403 in the
-      // section's error banner — the Backups stance.
+      // section's error banner: the Backups stance.
       onCreate={create}
       onUpdate={update}
       onDelete={remove}

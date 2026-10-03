@@ -17,16 +17,16 @@ import { useCostReportFolders, useCostReports } from "@/features/cost-reports/us
 import { colors } from "@/lib/theme";
 
 /**
- * The org's saved cost reports — named cost graphs, listed so one can be
+ * The org's saved cost reports: named cost graphs, listed so one can be
  * opened and read on a phone.
  *
  * Read-only, deliberately, the way mobile treats budgets: authoring a report
  * means picking a chart type, a binning, a group-by and a filter set, which is
- * a desktop job. The same goes for folders — the list groups by the folders
+ * a desktop job. The same goes for folders: the list groups by the folders
  * web and desktop maintain (section per folder, named by its full path, empty
  * folders omitted), but creating, renaming, nesting or deleting one stays
- * there too. Everything that makes a report worth having on a phone — the
- * numbers, and which dashboards depend on it — is here.
+ * there too. Everything that makes a report worth having on a phone (the
+ * numbers, and which dashboards depend on it) is here.
  */
 export default function CostReportsRoute() {
   const router = useRouter();

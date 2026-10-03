@@ -15,7 +15,7 @@ ipcMain.handle(
 );
 
 /**
- * The impact report for one resource — cloud-mode only, since it reads the
+ * The impact report for one resource: cloud-mode only, since it reads the
  * org's dependency graph, flow warehouse and org objects. The renderer wires
  * the panel and the delete-dialog summary only when signed in.
  */

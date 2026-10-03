@@ -1,9 +1,9 @@
 /**
- * Cloud-credit burndown — the platform-neutral client half.
+ * Cloud-credit burndown: the platform-neutral client half.
  *
  * A provider that bills in arrears sends an invoice you can argue with. A
  * prepaid pot that empties simply stops answering: running out of inference
- * credit is an outage, not a bill. And a balance on its own is not actionable —
+ * credit is an outage, not a bill. And a balance on its own is not actionable:
  * "you have $42" tells you nothing, while "$42, six days left at your current
  * burn" is a decision.
  *
@@ -33,7 +33,7 @@ export interface CreditPot {
   observedAt: string;
   /**
    * Spend per day over the observed span. **Null means "not enough history to
-   * say"** — never 0, which would read as "nothing is being spent".
+   * say"**, never 0, which would read as "nothing is being spent".
    */
   burnPerDay: number | null;
   burnSpanDays: number;
@@ -63,7 +63,7 @@ export interface CreditPollFailure {
 export interface CreditBurndown {
   pots: CreditPot[];
   failures: CreditPollFailure[];
-  /** Credit-capable accounts never yet collected — named rather than omitted. */
+  /** Credit-capable accounts never yet collected: named rather than omitted. */
   pendingAccountIds: string[];
   burnWindowDays: number;
 }
@@ -76,7 +76,7 @@ export async function fetchCreditBurndown(
 }
 
 /**
- * "6 days" / "3 weeks" / "4 months" — the runway cell.
+ * "6 days" / "3 weeks" / "4 months": the runway cell.
  *
  * Coarsens as the number grows, because the precision is not there: a runway
  * of "213 days" implies a burn rate measured to a precision a 30-day window
@@ -94,7 +94,7 @@ export function formatRunway(pot: Pick<CreditPot, "runwayDays" | "neverEmpties">
   return "over 2 years";
 }
 
-/** "$12.40/day" — the burn cell; honest about not knowing. */
+/** "$12.40/day": the burn cell; honest about not knowing. */
 export function formatBurn(pot: Pick<CreditPot, "burnPerDay" | "currency">): string {
   if (pot.burnPerDay === null) return "—";
   return `${formatCreditAmount(pot.burnPerDay, pot.currency)}/day`;

@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// "Oversized" right-sizing recommendations — cloud-mode only, like schedules:
+// "Oversized" right-sizing recommendations: cloud-mode only, like schedules:
 // the 14-day percentiles live in the cloud metrics warehouse and the size
 // catalogs need the org's account credentials, neither of which exists
 // locally. Applying a recommendation reuses the existing

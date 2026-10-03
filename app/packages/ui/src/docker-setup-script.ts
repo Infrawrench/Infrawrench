@@ -1,5 +1,5 @@
 /**
- * Headless orchestration for "Setup Docker on VM" — runs the same shell
+ * Headless orchestration for "Setup Docker on VM": runs the same shell
  * commands on the desktop (via local SSH IPC, or cloud SSH WS proxy) and
  * the web (via the cloud SSH WS API). The caller supplies the transport
  * (`exec`), a `sudo` predicate, a progress callback, and the target host
@@ -7,7 +7,7 @@
  * install/configure sequence only has to be made in one place.
  *
  * The function intentionally only returns when Docker is installed and
- * listening on TCP 127.0.0.1:2375 — wiring the result into an
+ * listening on TCP 127.0.0.1:2375: wiring the result into an
  * Infrawrench account is the caller's job (the web variant POSTs to the
  * cloud SSH-tunnel API; the desktop variant writes to local SQLite).
  */

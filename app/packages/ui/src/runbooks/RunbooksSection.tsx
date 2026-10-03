@@ -23,7 +23,7 @@ export interface RunbooksSectionProps {
   onRetry?: (() => void) | undefined;
   /**
    * Workflows the editor offers on a `workflow` step. Empty or omitted and the
-   * step kind is still offered but the picker says there are none — better than
+   * step kind is still offered but the picker says there are none: better than
    * hiding the kind, which would read as "runbooks cannot run workflows".
    */
   workflowOptions?: ReadonlyArray<{ id: string; name: string }> | undefined;
@@ -602,7 +602,7 @@ function RunbookEditor({
 }
 
 /**
- * Runbooks — the checklist somebody wrote at 03:00, made runnable.
+ * Runbooks: the checklist somebody wrote at 03:00, made runnable.
  *
  * Two views over one idea: the procedures the org has written down, and the
  * runs performed against them. A run is a snapshot, so the history says what

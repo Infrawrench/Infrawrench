@@ -2,23 +2,23 @@
  * Alert routing: the trigger registry, the rule contract, and the pure matcher.
  *
  * This module exists to kill a specific shape. Alert delivery used to be a
- * boolean-per-trigger-per-channel matrix — a column on `push_preferences`, one
+ * boolean-per-trigger-per-channel matrix: a column on `push_preferences`, one
  * on `slack_channels`, one on `msteams_webhooks`, and a `TRIGGER_COLUMN` map in
- * each of the three transports — so adding a trigger meant six coordinated
+ * each of the three transports, so adding a trigger meant six coordinated
  * edits and a migration, and the only question a channel could answer was
  * "everything of this kind, yes or no". Routing rules make the trigger a
  * *value* rather than a *column*: adding one is an entry in
  * {@link ALERT_TRIGGERS} below and nothing else.
  *
  * It lives in `client-core` rather than `server-core` for the reason every
- * other shared contract here does — the settings UI, the mobile app and the CLI
+ * other shared contract here does: the settings UI, the mobile app and the CLI
  * all need the labels, and the settings editor needs the matcher itself to show
  * "this rule would have caught 3 of your last 20 alerts" without a round trip.
  * `@infrawrench/ui` re-exports it; `server-core/src/alerts/` imports it and adds
  * the database and the transports.
  *
  * Everything here is pure. No imports, no clock of its own (callers pass
- * `now`), no randomness — the same inputs always route the same way, which is
+ * `now`), no randomness: the same inputs always route the same way, which is
  * what makes the rules testable and the preview honest.
  */
 
@@ -29,7 +29,7 @@
  * `severity` condition and for the quiet-hours override: a rule can sleep
  * through `info` and `warning` and still wake someone for `critical`.
  *
- * Ordered — see {@link SEVERITY_RANK}. Three levels rather than five because
+ * Ordered: see {@link SEVERITY_RANK}. Three levels rather than five because
  * the callers can actually distinguish three: "something changed", "something
  * is wrong", "someone must act now".
  */
@@ -54,7 +54,7 @@ export const ALERT_SEVERITIES = Object.keys(SEVERITY_RANK) as AlertSeverity[];
  * Narrow unknown JSON to a severity.
  *
  * Worth a guard rather than a cast because an unrecognised value does not fail
- * loudly anywhere downstream — `SEVERITY_RANK[bad]` is `undefined`, and every
+ * loudly anywhere downstream: `SEVERITY_RANK[bad]` is `undefined`, and every
  * `>=` comparison against `undefined` is false, so a typo'd `urgentOverride`
  * quietly holds *every* alert including the ones it was written to let through.
  */
@@ -66,7 +66,7 @@ export function isAlertSeverity(value: unknown): value is AlertSeverity {
  * One kind of thing that can raise an alert.
  *
  * **This list is the whole registry.** Adding a trigger is this entry plus the
- * `routeAlert` call at the place that raises it — no schema change, no column
+ * `routeAlert` call at the place that raises it: no schema change, no column
  * map, no per-transport edit. That is the point of the rules table.
  *
  * - `pushDefaultMuted` is the shipped per-user default for a member who has
@@ -119,7 +119,7 @@ export const ALERT_TRIGGERS = [
   {
     // The third cost family: budgets are an absolute monthly total you chose,
     // anomalies are unconfigured statistical outliers, and this is a
-    // *configured relative change* — "this scope moved more than X% (or $Y)
+    // *configured relative change*; "this scope moved more than X% (or $Y)
     // versus the prior period" on a cadence the user picked.
     id: "costChangeAlerts",
     label: "Cost changes",
@@ -130,7 +130,7 @@ export const ALERT_TRIGGERS = [
   },
   {
     // Commitment lapse. Not an anomaly (nothing statistical about a calendar),
-    // not a change alert (the spend has not moved *yet* — that is the point):
+    // not a change alert (the spend has not moved *yet*: that is the point):
     // a reservation or savings plan is about to run out and the usage it was
     // covering reverts to on-demand the hour after it does.
     id: "commitmentExpiryAlerts",
@@ -142,7 +142,7 @@ export const ALERT_TRIGGERS = [
   },
   {
     // The opposite failure to expiry: the commitment is alive and nobody is
-    // using it. `info` rather than `warning` because nothing is breaking —
+    // using it. `info` rather than `warning` because nothing is breaking:
     // this is money already spent, reported once a month per commitment, and
     // an org that sleeps through `info` should keep sleeping through it.
     id: "commitmentIdleAlerts",
@@ -231,7 +231,7 @@ export const ALERT_TRIGGERS = [
   {
     // The deadline family's third member, beside expiry and commitment lapse:
     // a limit you will hit rather than a date you will pass. `warning` and not
-    // `critical` because the alert fires at a *threshold* — 80% by default —
+    // `critical` because the alert fires at a *threshold*: 80% by default,
     // which is by construction a state you have hours or days to act on. The
     // quota that is already exhausted rides the same message, and the title
     // leads with it.
@@ -303,7 +303,7 @@ export const DEFAULT_MUTED_TRIGGERS: AlertTrigger[] = ALERT_TRIGGERS.filter(
   (t) => t.pushDefaultMuted,
 ).map((t) => t.id);
 
-/** Triggers a phone can receive at all — everything but the weekly digest. */
+/** Triggers a phone can receive at all: everything but the weekly digest. */
 export const PUSHABLE_TRIGGERS: AlertTrigger[] = ALERT_TRIGGERS.filter((t) => !t.channelOnly).map(
   (t) => t.id,
 );
@@ -316,7 +316,7 @@ export const PUSHABLE_TRIGGERS: AlertTrigger[] = ALERT_TRIGGERS.filter((t) => !t
  * on a fact the alert does not carry never matches.
  *
  * That last rule is deliberate and it is the one worth remembering. `accountId
- * in [prod]` does **not** match an alert with no account — because "an alert
+ * in [prod]` does **not** match an alert with no account, because "an alert
  * about no particular account" is not "an alert about prod", and silently
  * treating it as one would route org-wide pages into a per-account channel.
  * Rules that want the org-wide ones say so by leaving the account condition off.
@@ -338,7 +338,7 @@ export interface AlertFacts {
   amountCents?: number;
   currency?: string;
   /**
-   * The alert's natural grouping key — an anomaly's service name, a probe's
+   * The alert's natural grouping key: an anomaly's service name, a probe's
    * name, a metric rule's name. What a `key` condition matches against.
    */
   key?: string;
@@ -377,7 +377,7 @@ export type AlertCondition =
  * Where a matched alert goes. One destination is one place, so a rule's
  * destination list reads as a list of places rather than a set of flags.
  *
- * `push` is the org's phones, still filtered by each member's own mutes — an
+ * `push` is the org's phones, still filtered by each member's own mutes: an
  * org rule decides *whether the org is told*, a member decides *whether their
  * phone rings*. Collapsing those two into the routing table would mean an admin
  * could un-mute someone else's 3am notifications, which is not a knob anyone
@@ -394,7 +394,7 @@ export type AlertDestination =
    * whoever is on call" needs no edit on Monday morning. It resolves to a push
    * to one person; a schedule that resolves to nobody (disabled, empty, not yet
    * started, or a failed read) contributes nobody and the rule's **other**
-   * destinations still deliver — an alert lost to a misconfigured rotation
+   * destinations still deliver: an alert lost to a misconfigured rotation
    * would be the worst outcome this feature could have.
    */
   | { kind: "on-call"; scheduleId: string };
@@ -425,7 +425,7 @@ export function destinationKey(d: AlertDestination): string {
  *
  * Windows are half-open `[start, end)` in local minutes-of-day and may wrap
  * past midnight (22:00 → 08:00 is `startMinute: 1320, endMinute: 480`). A
- * window with `start === end` is empty, not all-day — "quiet from 9 to 9" is
+ * window with `start === end` is empty, not all-day: "quiet from 9 to 9" is
  * far more likely to be a mis-set form than a request for total silence, and
  * total silence is what disabling the rule is for.
  */
@@ -455,7 +455,7 @@ export interface QuietHours {
 /**
  * "If nobody acknowledges this within N minutes, tell these people too."
  *
- * Escalation never replaces the original delivery — it adds a second one. The
+ * Escalation never replaces the original delivery: it adds a second one. The
  * acknowledge action is a button on the Slack message; anything else the org
  * gets told through (Teams, push) still fires, it just cannot ack.
  */
@@ -482,7 +482,7 @@ export interface AlertRule {
    * `false` (the default, and what the editor calls "Stop here") makes the list
    * first-match-wins, which is what "anomalies over $500 → #incidents, else →
    * #infra-noise" needs: the general rule sits below the specific one and only
-   * sees what the specific one didn't take. `true` makes the rule a tee — an
+   * sees what the specific one didn't take. `true` makes the rule a tee: an
    * audit channel that copies everything without shadowing the rules under it.
    */
   continueOnMatch: boolean;
@@ -514,7 +514,7 @@ function lower(s: string | undefined): string {
 }
 
 function inList(value: string | undefined, values: string[]): boolean {
-  // A fact the alert does not carry never matches a membership test — see the
+  // A fact the alert does not carry never matches a membership test: see the
   // note on AlertFacts. `notIn` inverts the same rule, so an alert with no
   // account is *excluded* by `accountId notIn [x]` too. Both directions of a
   // condition on an absent fact fail, which keeps "this rule is about accounts"
@@ -615,7 +615,7 @@ export interface RoutedLeg {
 
 export interface RoutingDecision {
   legs: RoutedLeg[];
-  /** Rule ids that matched, in evaluation order — for the "why" in the log. */
+  /** Rule ids that matched, in evaluation order, for the "why" in the log. */
   matchedRuleIds: string[];
   /** True when the list was exhausted without a single match. */
   unrouted: boolean;
@@ -657,7 +657,7 @@ export function routeAlertRules(
       });
     }
 
-    // A matched rule stops the walk even when it has no destinations — an
+    // A matched rule stops the walk even when it has no destinations: an
     // enabled, destination-less rule is how you say "swallow these", and it has
     // to shadow the broader rules below it or it would do nothing at all.
     if (!rule.continueOnMatch) break;
@@ -675,7 +675,7 @@ export function routeAlertRules(
  * `Intl.DateTimeFormat` with an explicit `timeZone` is the only zone maths in
  * the product that does not need a dependency, and it handles DST because it
  * asks the platform's tz database rather than doing offset arithmetic. An
- * invalid zone throws — callers treat that as "no quiet hours" rather than
+ * invalid zone throws: callers treat that as "no quiet hours" rather than
  * dropping the alert, because a typo'd timezone must not silence a pager.
  */
 export function localClock(timezone: string, instant: Date): { weekday: number; minute: number } {
@@ -738,8 +738,8 @@ export function isWithinQuietHours(quiet: QuietHours, instant: Date): boolean {
 /**
  * Narrow unknown JSON to a quiet-hours window.
  *
- * The stored column outlives the build that wrote it — a rule saved by a newer
- * version, or hand-edited in psql — and the arithmetic below assumes numbers
+ * The stored column outlives the build that wrote it (a rule saved by a newer
+ * version, or hand-edited in psql) and the arithmetic below assumes numbers
  * and an array. A malformed object would make `windowCovers` throw on
  * `days.includes` or leave `delta` as `NaN` and produce an Invalid Date, both
  * inside the fan-out of an unrelated alert. Reading it back through this guard
@@ -810,7 +810,7 @@ export function quietHoursEnd(quiet: QuietHours, instant: Date): Date | null {
 
 /**
  * The instant a leg held by `quiet` should be released, or `null` when it
- * should go out now — either because the window is closed or because the alert
+ * should go out now: either because the window is closed or because the alert
  * is urgent enough to ignore it.
  */
 export function quietHoldUntil(quiet: QuietHours, severity: AlertSeverity, now: Date): Date | null {
@@ -827,7 +827,7 @@ export function quietHoldUntil(quiet: QuietHours, severity: AlertSeverity, now: 
  * everywhere, which is exactly what the boolean matrix did when every box was
  * ticked. Synthesized in memory rather than inserted, the same way
  * `org_digest_settings` and `org_cost_anomaly_settings` treat a missing row as
- * the shipped defaults — so connecting a Slack channel keeps working on day one
+ * the shipped defaults, so connecting a Slack channel keeps working on day one
  * without anyone opening the rules editor.
  *
  * Drift is the exception, as it always was: it is excluded here and reachable
@@ -903,7 +903,7 @@ export function validateAlertRule(rule: {
     // Null means "hold everything", which is the documented default. Anything
     // else must be a real severity: an unrecognised value ranks below every
     // real one, so it would hold every alert including the pages the override
-    // exists to let through — the exact opposite of what was asked for, and
+    // exists to let through; the exact opposite of what was asked for, and
     // silently.
     if (q.urgentOverride != null && !isAlertSeverity(q.urgentOverride)) {
       return `Quiet-hours override must be one of ${ALERT_SEVERITIES.join(", ")}`;
@@ -932,7 +932,7 @@ export function validateAlertRule(rule: {
 
 // --- Wire types for the rules API ---
 
-/** `GET /api/org/:orgId/alert-rules` — rules plus what the editor needs to name destinations. */
+/** `GET /api/org/:orgId/alert-rules`: rules plus what the editor needs to name destinations. */
 export interface AlertRulesResponse {
   rules: AlertRule[];
   /** True when `rules` is the synthesized default rather than stored rows. */
@@ -943,7 +943,7 @@ export interface AlertRulesResponse {
   /**
    * The org's on-call rotations, so the editor can offer "whoever is on call"
    * as a destination and render an existing one by name. Only live rotations
-   * are listed — offering a disabled one would let the editor build a rule that
+   * are listed: offering a disabled one would let the editor build a rule that
    * routes nowhere, the same reason a disconnected Slack install is filtered
    * out of `slackChannels`.
    */
@@ -963,7 +963,7 @@ export type AlertRuleInput = Omit<AlertRule, "id"> & { id?: string };
 export type AlertDeliveryState =
   "held" | "awaiting_ack" | "sent" | "acknowledged" | "escalated" | "expired";
 
-/** `GET /api/org/:orgId/alert-deliveries` — the held/awaiting-ack queue. */
+/** `GET /api/org/:orgId/alert-deliveries`: the held/awaiting-ack queue. */
 export interface AlertDeliveryRecord {
   id: string;
   trigger: AlertTrigger;

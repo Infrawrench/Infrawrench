@@ -1,5 +1,5 @@
 /**
- * Cost per change / cost per deploy — the shared contract.
+ * Cost per change / cost per deploy: the shared contract.
  *
  * "What did this change cost?" is answered by comparing a resource's *per-day*
  * spend over a window before the change against the window after it, and
@@ -12,7 +12,7 @@
  * - **The charge-type basis is named, never assumed.** `costBasis` is on the
  *   request *and* echoed on the response, and the UI prints it. Cash and
  *   amortized answer different questions and mixing them silently is the
- *   failure mode this feature would die of — an amortized "after" against a
+ *   failure mode this feature would die of: an amortized "after" against a
  *   cash "before" reads as a saving that nobody made.
  * - **A null is never a zero.** A resource we hold no cost data for reports
  *   `status: "unknown"`, not `$0.00/day`. Distinguishing "this change cost
@@ -43,7 +43,7 @@ export const DEFAULT_CHANGE_IMPACT_WINDOW_DAYS = 7;
 export const MIN_CHANGE_IMPACT_WINDOW_DAYS = 2;
 /**
  * Above this the "before" window stops describing the state the change
- * replaced — a month back is a different estate.
+ * replaced: a month back is a different estate.
  */
 export const MAX_CHANGE_IMPACT_WINDOW_DAYS = 30;
 
@@ -62,7 +62,7 @@ export type ChangeCostImpactConfidence = "high" | "medium" | "low" | "none";
 
 /**
  * Why a result reads the way it does. Every non-`measured` status carries at
- * least one, and `measured` carries the ones that lowered its confidence — a
+ * least one, and `measured` carries the ones that lowered its confidence: a
  * caller should never have to guess whether "unknown" means "not billable" or
  * "we have not collected that far back".
  */
@@ -115,7 +115,7 @@ export interface ChangeCostImpact {
   costBasis: CostBasis;
   /** What the caller asked for. */
   windowDays: number;
-  /** What the data supported — equal to or smaller than `windowDays`. */
+  /** What the data supported: equal to or smaller than `windowDays`. */
   effectiveWindowDays: number;
   /** The UTC day the change landed on. Excluded from both windows. */
   eventDay: string;
@@ -149,7 +149,7 @@ export interface DeploymentCostImpact {
   costBasis: CostBasis;
   windowDays: number;
   /**
-   * The run's **start** day, UTC — the day every resource's windows are
+   * The run's **start** day, UTC: the day every resource's windows are
    * anchored on. A long build's cost consequences begin when the resources
    * appear, not when the last step logged.
    */
@@ -160,14 +160,14 @@ export interface DeploymentCostImpact {
    */
   resources: DeploymentCostImpactResource[];
   /**
-   * Summed `deltaPerDay` per currency across the *measured* rows only —
+   * Summed `deltaPerDay` per currency across the *measured* rows only:
    * an unknown row contributes nothing rather than zero, and
    * `unknownResources` says how many were left out.
    */
   total: Array<{ currency: string; deltaPerDay: number }>;
   /** Rows whose status was not `measured`; excluded from `total`. */
   unknownResources: number;
-  /** Weakest confidence among the measured rows — a chain is its weakest link. */
+  /** Weakest confidence among the measured rows: a chain is its weakest link. */
   confidence: ChangeCostImpactConfidence;
 }
 
@@ -206,7 +206,7 @@ export function clampChangeImpactWindowDays(days: number | undefined): number {
  * Split ids into request-sized batches, **covering every one of them**.
  *
  * The endpoint caps a request at {@link MAX_CHANGE_IMPACT_BATCH}, which is one
- * page of the web feed — so a paginated caller needs no batching at all. An
+ * page of the web feed, so a paginated caller needs no batching at all. An
  * infinite-scrolling one does, and the tempting `ids.slice(0, MAX)` is the bug
  * this function exists to make impossible: past the cap every further row goes
  * out with no cost line, which is indistinguishable from "this resource has no
@@ -240,7 +240,7 @@ export interface ChangeImpactLookup {
   /**
    * Ids whose batch **failed**. These must render as unresolved, never blank.
    *
-   * Blank already means something on this surface — "no measurable impact" —
+   * Blank already means something on this surface ("no measurable impact")
    * so a failed lookup that renders blank converts a transient network error
    * into a confident, wrong claim about the bill. That is the same silent
    * omission {@link chunkChangeImpactIds} exists to prevent, one layer down,
@@ -254,7 +254,7 @@ export interface ChangeImpactLookup {
  *
  * Derived from the **current** results every time rather than accumulated, so a
  * chunk that fails and is then refetched successfully stops being unresolved on
- * its own — no latch to clear, and no way for a stale failure to outlive the
+ * its own: no latch to clear, and no way for a stale failure to outlive the
  * recovery.
  */
 export function collectChangeImpactResults(
@@ -327,7 +327,7 @@ export function changeCostImpactReasonLabel(reason: ChangeCostImpactReason): str
 /**
  * The one-line rendering every surface uses.
  *
- * Returns null when there is nothing worth a line — the caller renders
+ * Returns null when there is nothing worth a line: the caller renders
  * nothing rather than a row saying "unknown" beside every security group that
  * was never billable in the first place. Pass `verbose` to get the explanation
  * instead of null, which is what a detail view wants.

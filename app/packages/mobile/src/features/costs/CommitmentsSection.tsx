@@ -10,15 +10,15 @@ import { colors, spacing } from "@/lib/theme";
 import { useCommitments } from "./useCommitments";
 
 /**
- * Native counterpart to `CommitmentsSection` on web and desktop — read-only,
+ * Native counterpart to `CommitmentsSection` on web and desktop; read-only,
  * like budgets here: reservations, savings plans and committed-use discounts
  * with coverage, utilization and the planner's recommendations. Purchasing
- * decisions stay on web/desktop (and ultimately in the provider's console —
+ * decisions stay on web/desktop (and ultimately in the provider's console:
  * nothing anywhere auto-purchases).
  *
  * The rendering rules travel with the contract: null money prints "price not
  * reported" (never $0), null region prints "All regions", null utilization
- * prints its reason (never 0% — "unknown" and "unused" must not look alike).
+ * prints its reason (never 0%; "unknown" and "unused" must not look alike).
  */
 export function CommitmentsSection() {
   const feed = useCommitments();

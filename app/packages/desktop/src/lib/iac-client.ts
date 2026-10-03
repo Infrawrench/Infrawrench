@@ -16,7 +16,7 @@ import { listCloudAccounts } from "./cloud-accounts";
  * IaC reconciliation is cloud-only: it classifies the org's *synced*
  * inventory, which local-only mode does not have. Resolves the active org at
  * call time (not at construction) so switching org under a mounted page
- * reaches the new org — same convention as the changes and costs clients.
+ * reaches the new org: same convention as the changes and costs clients.
  */
 export function createDesktopIacClient(): IacClient {
   const requireOrg = (): string => {

@@ -119,9 +119,9 @@ async function pushChanges(token: string): Promise<void> {
  *
  * The desktop has two modes and only one of them has local data to reconcile:
  *
- *  - **Local workspace** — its own SQLite store. `pushChanges` sends that
+ *  - **Local workspace**: its own SQLite store. `pushChanges` sends that
  *    upward so work started locally can be adopted by a cloud organization.
- *  - **Cloud workspace** — a thin client. `electron/cloud-data/*` proxies every
+ *  - **Cloud workspace**: a thin client. `electron/cloud-data/*` proxies every
  *    read to the web API, and `src/lib/ssh-dispatch.ts` routes cloud-key SSH
  *    through the WS proxy so private keys never leave the server. There is no
  *    local mirror to update, so there is nothing to pull into.
@@ -130,12 +130,12 @@ async function pushChanges(token: string): Promise<void> {
  * unnecessary, it is not expressible against this schema: `accounts.
  * encrypted_credentials` is `NOT NULL` and `resources.account_id` is
  * `NOT NULL REFERENCES accounts(id)`, with associations and pins hanging off
- * resources — so a credential-free mirror cannot be written at all, and a
+ * resources, so a credential-free mirror cannot be written at all, and a
  * credential-bearing one would put provider secrets on every device and make
  * the desktop a second caller of provider APIs outside the poller's per-plugin
  * rate limits (`packages/poller/src/poll-account.ts`).
  *
- * The server's `/api/v1/sync/pull` still exists and is still correct — it is
+ * The server's `/api/v1/sync/pull` still exists and is still correct: it is
  * simply not something this client consumes. Reviving a local mirror means
  * answering the credential question first, not writing upserts.
  */

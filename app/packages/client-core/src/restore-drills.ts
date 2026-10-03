@@ -1,16 +1,16 @@
 /**
- * Restore drills — the half of a backup nobody tests.
+ * Restore drills: the half of a backup nobody tests.
  *
  * Backup coverage answers "is there a backup, and how old is it". It cannot
  * answer the question that actually matters on the day: *does it restore, and
  * how long does it take?* Those are different questions, and the second one is
- * routinely answered wrongly — by a snapshot that restores into a region with
+ * routinely answered wrongly; by a snapshot that restores into a region with
  * no capacity, a dump taken from a replica that was already broken, an
  * encrypted volume whose key was rotated.
  *
  * A drill is a **record that somebody tried**, not an automated restore. That
  * distinction is the whole design. Restoring a customer's database on a
- * schedule, unattended, is not a feature this product will ever have — it costs
+ * schedule, unattended, is not a feature this product will ever have: it costs
  * real money, it can collide with production, and there is no generic way to
  * verify a restored system is correct. What the product *can* do is make the
  * exercise scheduled, recorded, and visible when it lapses, which is the part
@@ -28,7 +28,7 @@ export type DrillOutcome =
   | "restored-unverified"
   /** The restore was attempted and did not work. */
   | "failed"
-  /** It could not be attempted at all — no capacity, no key, no time. */
+  /** It could not be attempted at all: no capacity, no key, no time. */
   | "blocked";
 
 export const DRILL_OUTCOMES: readonly DrillOutcome[] = [
@@ -63,13 +63,13 @@ export interface RestoreDrill {
   outcome: DrillOutcome;
   /**
    * Measured wall-clock minutes from starting the restore to having something
-   * usable. Null when the drill did not get that far — a `blocked` drill has no
+   * usable. Null when the drill did not get that far: a `blocked` drill has no
    * RTO, and inventing one would be the most dangerous number on the page.
    */
   rtoMinutes: number | null;
   /**
    * Which backup was restored, in whatever form the operator has it: a snapshot
-   * id, an S3 key, a date. Free text on purpose — the identifiers differ per
+   * id, an S3 key, a date. Free text on purpose: the identifiers differ per
    * provider and the value of writing it down does not.
    */
   restoredFrom: string | null;
@@ -146,7 +146,7 @@ export function validateRestoreDrill(input: RestoreDrillInput): string | null {
       return "A drill taking more than a week is a migration, not a drill.";
     }
     if (input.outcome === "blocked") {
-      // A blocked drill never started, so a duration is meaningless — and a
+      // A blocked drill never started, so a duration is meaningless, and a
       // meaningless RTO on this page is the most dangerous number on it.
       return "A blocked drill has no restore time — it never got that far.";
     }
@@ -170,7 +170,7 @@ export function validateRestoreDrill(input: RestoreDrillInput): string | null {
  *
  * `drills` may be in any order; the newest of each relevant kind is selected
  * here rather than assumed, because a drill *recorded* late for a date in the
- * past is the normal case — people write these up on Monday.
+ * past is the normal case: people write these up on Monday.
  */
 export function drillStanding(
   drills: readonly RestoreDrill[],
@@ -221,7 +221,7 @@ export function drillStanding(
   }
 
   if (!lastVerified) {
-    // Drills exist but none of them verified anything — `restored-unverified`
+    // Drills exist but none of them verified anything: `restored-unverified`
     // only. That is "never" for the purposes of evidence, and the list shows
     // the attempt beside it.
     return { ...base, standing: "never", daysUntilStale: null };
@@ -237,7 +237,7 @@ export function drillStanding(
 }
 
 export interface DrillSummary {
-  /** Resources that could be drilled — those with a backup to restore. */
+  /** Resources that could be drilled: those with a backup to restore. */
   eligibleCount: number;
   verifiedCount: number;
   staleCount: number;
@@ -245,7 +245,7 @@ export interface DrillSummary {
   neverCount: number;
   /**
    * Slowest measured RTO among currently-verified resources. Null when nothing
-   * is verified — which is different from zero, and the difference matters.
+   * is verified, which is different from zero, and the difference matters.
    */
   worstRtoMinutes: number | null;
   /** Median measured RTO, for the "typically" line. Null when nothing is verified. */
@@ -292,7 +292,7 @@ export function summarizeDrills(rows: readonly DrillCoverageRow[]): DrillSummary
   };
 }
 
-/** "3h 20m", "45m", "2d 4h" — an RTO is read by a person, not a chart. */
+/** "3h 20m", "45m", "2d 4h": an RTO is read by a person, not a chart. */
 export function formatRto(minutes: number | null): string {
   if (minutes == null) return "—";
   if (minutes < 60) return `${Math.round(minutes)}m`;

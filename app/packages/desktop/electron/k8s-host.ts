@@ -56,7 +56,7 @@ ipcMain.handle(
       const isHttps = parsed.protocol === "https:";
       const port = parsed.port || (isHttps ? "443" : "80");
 
-      // SSRF defense — see k8s-endpoints.ts for the allowlist trust model.
+      // SSRF defense: see k8s-endpoints.ts for the allowlist trust model.
       if (!isK8sApiEndpointAllowed(parsed.hostname, port)) {
         reject(
           new Error(

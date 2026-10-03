@@ -9,7 +9,7 @@ export interface GlobalTabBarProps {
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
   onNew: () => void;
-  /** Optional wrapper around each tab item — used by desktop for drag-drop refs. */
+  /** Optional wrapper around each tab item: used by desktop for drag-drop refs. */
   renderTabWrapper?: (tab: WorkspaceTab, children: React.ReactNode) => React.ReactNode;
   /** Extra className for the root container (e.g. drag-drop highlight ring). */
   className?: string | undefined;

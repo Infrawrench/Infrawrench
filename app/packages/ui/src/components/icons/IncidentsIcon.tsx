@@ -4,7 +4,7 @@ interface IncidentsIconProps {
 }
 
 /**
- * Incident-mode glyph — a siren/beacon: a dome on a base with a light above it.
+ * Incident-mode glyph; a siren/beacon: a dome on a base with a light above it.
  * Same 24x24 stroke grid and 2px weight as ProbesIcon/ChangesIcon so the
  * sidebar entry sits level with its neighbours. (Lucide's "siren".)
  *

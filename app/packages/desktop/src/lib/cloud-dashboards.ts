@@ -51,7 +51,7 @@ interface CloudEnrichedPin extends CloudDashboardPin {
    * Server returns these as already-parsed JSON objects (the `jsonb` Postgres
    * columns deserialize through `cloudFetch`). The desktop side previously
    * declared `string` here and the consumer in `DashboardView.tsx` defensively
-   * coerced either case — kept that coercion but the canonical wire shape is
+   * coerced either case: kept that coercion but the canonical wire shape is
    * a parsed object.
    */
   fieldsJson: Record<string, unknown>;

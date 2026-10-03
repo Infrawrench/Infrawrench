@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 beforeAll(() => {
-  // jsdom doesn't implement <dialog> showModal/close — stub them, the way
+  // jsdom doesn't implement <dialog> showModal/close: stub them, the way
   // issue-filing.test.tsx does. The explain composer renders through Modal.
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
@@ -104,7 +104,7 @@ describe("CostAnomaliesSection", () => {
   });
 
   it("renders a row from an older server that sent no hints field at all", async () => {
-    // `hints` is optional on the wire — a desktop build a release ahead of its
+    // `hints` is optional on the wire: a desktop build a release ahead of its
     // cloud server must not crash the section.
     render(<CostAnomaliesSection client={makeClient([anomaly()])} />);
     expect(await screen.findByText("+173%")).toBeTruthy();

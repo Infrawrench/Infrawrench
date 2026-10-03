@@ -33,7 +33,7 @@ import { colors } from "@/lib/theme";
  *
  * `accountId` and `parentResourceId` ride in the query string. Child and peer
  * resources aren't always rows in our database, so the server can't always
- * resolve their account from the id alone — and a peer resource's client can
+ * resolve their account from the id alone, and a peer resource's client can
  * only be built from its parent.
  */
 
@@ -82,7 +82,7 @@ export default function ResourceDetailScreen() {
     parentResourceId?: string;
     /**
      * Heading to show instead of the resource's own display name. Set by the
-     * account screen when it redirects here for an account-root resource —
+     * account screen when it redirects here for an account-root resource:
      * the account *is* this resource, so its name names the thing.
      */
     title?: string;
@@ -124,7 +124,7 @@ export default function ResourceDetailScreen() {
   // `hiddenChildTypeIds` says another surface on this page is already the
   // listing for these types, so a second copy would be a duplicate. Web and
   // desktop honour it in `DetailView`; mobile renders its own child rows and
-  // has to apply it too — without this, opening an UploadThing app lists every
+  // has to apply it too: without this, opening an UploadThing app lists every
   // file in the app as a "Related resources" row, and that listing is uncapped.
   const visibleChildResources = useMemo(() => {
     const hidden = new Set(data?.detailSchema.hiddenChildTypeIds ?? []);
@@ -180,7 +180,7 @@ export default function ResourceDetailScreen() {
   const schemaSections: SchemaNode[] =
     (data.detailSchema as { sections?: SchemaNode[] }).sections ?? [];
 
-  /** Query string shared by every tool screen — identifies the resource. */
+  /** Query string shared by every tool screen: identifies the resource. */
   const toolParams = (extra: Record<string, string> = {}) => {
     const search = new URLSearchParams({
       accountId: data.accountId,
@@ -220,7 +220,7 @@ export default function ResourceDetailScreen() {
   const speech = data.detailSchema.speechPanel;
 
   // A pod's shell runs through its cluster, so exec is only offered when we
-  // arrived with the parent in hand — same condition web uses.
+  // arrived with the parent in hand: same condition web uses.
   const canExec = pluginId === "kubernetes" && resourceTypeId === "k8s-pod" && !!parentResourceId;
   const execHref = () => {
     const fields = data.resourceFields ?? {};

@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Backup coverage — cloud only, deliberately. The coverage is computed
+// Backup coverage: cloud only, deliberately. The coverage is computed
 // server-side over the org's synced rows (`GET /backups`, the same endpoint
 // the web Backups screen uses), and unlike posture there is no local-mode
 // counterpart: recovery objectives are org state, and a local workspace has
@@ -12,7 +12,7 @@ ipcMain.handle("cloud_backups", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/backups");
 });
 
-// Restore drills — the Backups screen's fourth tab. Cloud only for the same
+// Restore drills: the Backups screen's fourth tab. Cloud only for the same
 // reason the rest of the screen is: a drill is evidence the whole team reads.
 ipcMain.handle("cloud_restore_drills", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/backups/drills");

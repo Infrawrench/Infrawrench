@@ -1,6 +1,6 @@
 /**
- * Form-field logic shared by every host that renders a `CreateFieldConfig[]`
- * — the create-resource modal, the prompt-nosql-command form, peer-pane
+ * Form-field logic shared by every host that renders a `CreateFieldConfig[]`:
+ * the create-resource modal, the prompt-nosql-command form, peer-pane
  * guidance CTAs. Pure: visibility rules and initial values, no widgets.
  */
 
@@ -23,7 +23,7 @@ function evaluateShowWhenCondition(
   if (cond.fieldValue !== undefined) {
     return current === cond.fieldValue;
   }
-  // Only a `fieldValuesNot` constraint (or an empty condition) — the negative
+  // Only a `fieldValuesNot` constraint (or an empty condition): the negative
   // check above already decided it; here it passed.
   return true;
 }

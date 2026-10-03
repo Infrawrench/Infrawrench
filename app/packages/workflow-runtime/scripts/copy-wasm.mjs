@@ -13,7 +13,7 @@
  * Usage (from a service package dir): node ../workflow-runtime/scripts/copy-wasm.mjs dist
  *
  * Resolution happens from this package, which declares the wasm variant as a
- * direct dependency — service packages don't (and shouldn't) depend on it.
+ * direct dependency; service packages don't (and shouldn't) depend on it.
  */
 import { createRequire } from "node:module";
 import { copyFileSync, mkdirSync } from "node:fs";

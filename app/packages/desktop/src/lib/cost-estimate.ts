@@ -5,7 +5,7 @@
  * `cloud_get_cost_estimate` IPC channel to the web API, which runs the same
  * plugin method server-side. Both merge the caller's field overrides over the
  * resource's stored fields, so the resource detail page (no overrides) and
- * the edit modal (only the changed keys) share one code path — which is what
+ * the edit modal (only the changed keys) share one code path, which is what
  * keeps the standing figure and the "+$340/month" delta consistent with each
  * other.
  */

@@ -18,12 +18,12 @@ export interface PostureSectionProps {
   /**
    * The computed findings, or null while the first load is in flight. Hosts
    * fetch (web: `/posture`, desktop: IPC or the local scan) and hand the
-   * response over — this component never talks to a network.
+   * response over; this component never talks to a network.
    */
   data: PostureListResponse | null;
   /**
    * Load or refresh failure. With `data` still present the last findings stay
-   * on screen under a banner — a failed refresh must not blank a drawn list.
+   * on screen under a banner: a failed refresh must not blank a drawn list.
    */
   error?: string | null | undefined;
   onRetry?: (() => void) | undefined;
@@ -31,7 +31,7 @@ export interface PostureSectionProps {
   onOpenResource?: ((finding: PostureFinding) => void) | undefined;
   /**
    * Accept a finding, with the operator's optional note. Omitted, the section
-   * is read-only — which is what a host without the permission passes, and
+   * is read-only, which is what a host without the permission passes, and
    * what local mode passed before it had a dismissal store.
    *
    * Rejecting the promise leaves the row in place and shows the message; the
@@ -100,7 +100,7 @@ function buildGroups(
   return [...groups.values()];
 }
 
-/** `"2 Mar 2026"` — a dismissal's age is what matters, not its minute. */
+/** `"2 Mar 2026"`: a dismissal's age is what matters, not its minute. */
 function formatDismissedAt(iso: string): string {
   const parsed = Date.parse(iso);
   if (Number.isNaN(parsed)) return iso;
@@ -114,7 +114,7 @@ function formatDismissedAt(iso: string): string {
 /**
  * The resource name doubles as the row's "open" control. A `<tr>` can be given
  * `tabIndex`, but there is no row role a screen reader announces as
- * activatable — and a whole-row click target has to be un-done with
+ * activatable, and a whole-row click target has to be un-done with
  * `stopPropagation` on every sibling action (Dismiss, Restore, File issue).
  * One real `<button>` in the first cell is both the accessible answer and the
  * simpler one.
@@ -275,7 +275,7 @@ function ActiveFindingRow({
       <td className="px-3 py-2.5 whitespace-nowrap align-top text-right">
         <FileIssueButton
           sourceKind="posture_finding"
-          // A posture finding has no id of its own — it is the pairing of a
+          // A posture finding has no id of its own: it is the pairing of a
           // rule with a resource, which is also what the row is keyed on.
           sourceId={`${finding.resourceId}:${finding.ruleId}`}
           draft={{
@@ -360,8 +360,8 @@ function DismissedFindingRow({
 
 /**
  * Posture checks: plugin-declared security rules evaluated over
- * already-synced resource fields — public buckets, world-open ingress,
- * unencrypted disks, stale credentials — ranked by severity. Shared by the
+ * already-synced resource fields (public buckets, world-open ingress,
+ * unencrypted disks, stale credentials) ranked by severity. Shared by the
  * web and desktop Posture screens; the CLI prints the same findings as text.
  *
  * Findings can be accepted ("that bucket is public on purpose"), which moves
@@ -384,7 +384,7 @@ export function PostureSection({
   /** Key of the finding whose reason box is open, if any. */
   const [dismissing, setDismissing] = useState<string | null>(null);
   const [reason, setReason] = useState("");
-  /** Keys with a dismiss/restore call in flight — their buttons stay disabled. */
+  /** Keys with a dismiss/restore call in flight: their buttons stay disabled. */
   const [pending, setPending] = useState<readonly string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showDismissed, setShowDismissed] = useState(false);

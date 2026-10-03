@@ -14,7 +14,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 import { ANOMALY_WINDOW_DAYS, useCostAnomalies } from "./useCostAnomalies";
 
 /**
- * Native counterpart to `CostAnomaliesSection` on web and desktop — the last
+ * Native counterpart to `CostAnomaliesSection` on web and desktop: the last
  * 30 days of detected spend anomalies, on the Costs tab.
  *
  * This is where a `cost_anomaly` push lands (`pushDataToPath` routes it to
@@ -23,7 +23,7 @@ import { ANOMALY_WINDOW_DAYS, useCostAnomalies } from "./useCostAnomalies";
  *
  * Explaining a finding is **read-only here**: the composer, the annotation it
  * creates and the org-wide scope choice all live on web and desktop, where the
- * charts it draws on are. What mobile owes a reader is the answer — an
+ * charts it draws on are. What mobile owes a reader is the answer: an
  * explained anomaly says so, and says what somebody established it was, so the
  * person who gets the push at 7am is not left working out a spike that was
  * settled yesterday.
@@ -31,7 +31,7 @@ import { ANOMALY_WINDOW_DAYS, useCostAnomalies } from "./useCostAnomalies";
  * A row is one of two findings and they read differently: a **spike** is spend
  * far above the key's own trailing baseline, so it shows the baseline and the
  * percentage it cleared it by; a **new spend source** has no baseline at all,
- * so it shows a badge, `none`, and `new`. Never a percentage — see
+ * so it shows a badge, `none`, and `new`. Never a percentage: see
  * `costAnomalyDeltaPercent`, which the three surfaces share precisely because
  * that rule is easy to get subtly wrong.
  */
@@ -80,7 +80,7 @@ export function CostAnomaliesSection() {
   );
 }
 
-/** "Jul 28" in UTC — the day the anomaly is about, not the local rendering of it. */
+/** "Jul 28" in UTC: the day the anomaly is about, not the local rendering of it. */
 function formatDay(day: string): string {
   const d = new Date(`${day}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return day;
@@ -90,7 +90,7 @@ function formatDay(day: string): string {
 function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
   const isNew = anomaly.kind === "new_source";
   const delta = costAnomalyDeltaPercent(anomaly);
-  // Optional on the wire — an app a release ahead of its server still renders.
+  // Optional on the wire: an app a release ahead of its server still renders.
   const hints = anomaly.hints ?? [];
 
   const { linksFor } = useIssueLinks();
@@ -130,7 +130,7 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             ? "No prior spend in the trailing 28 days"
             : `Baseline ${formatMoney(anomaly.baselineCents / 100, anomaly.currency)}/day`}
         </Text>
-        {/* Read-only on purpose — see the component note. */}
+        {/* Read-only on purpose: see the component note. */}
         {anomaly.acknowledgement && (
           <Text style={styles.explanation} numberOfLines={3}>
             {anomaly.acknowledgement.explanation}
@@ -141,7 +141,7 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             · {hint}
           </Text>
         ))}
-        {/* Filed → the issue key/identifier, which opens the tracker — one
+        {/* Filed → the issue key/identifier, which opens the tracker: one
             badge per tracker holding a link (both, if both do). Not filed but
             filable → the offer, labelled by what is connected. Neither →
             nothing, rather than a control that can only fail. Same three

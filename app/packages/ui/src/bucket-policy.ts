@@ -30,7 +30,7 @@ export interface BucketPolicyStatement {
 }
 
 /**
- * Policy principal — either the string `"*"` (everyone), or a typed bag of
+ * Policy principal: either the string `"*"` (everyone), or a typed bag of
  * `{AWS: ...}` / `{Service: ...}` / `{Federated: ...}` / `{CanonicalUser: ...}`
  * each of which can carry a single ARN or an array of ARNs.
  */
@@ -95,7 +95,7 @@ export function parsePolicy(raw: string): ParsedPolicy {
 }
 
 export function serializePolicy(doc: BucketPolicyDoc): string {
-  // Drop empty Statement arrays — an empty policy round-trips to "" and the
+  // Drop empty Statement arrays: an empty policy round-trips to "" and the
   // host treats that as DeleteBucketPolicy, which is usually what users want.
   if (!doc.Statement || doc.Statement.length === 0) return "";
   return JSON.stringify(doc, null, 2);

@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 beforeAll(() => {
-  // jsdom doesn't implement <dialog> showModal/close — same stub the other
+  // jsdom doesn't implement <dialog> showModal/close: same stub the other
   // Modal-based section tests install.
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
@@ -22,8 +22,8 @@ import { SettingsHostProvider, type SettingsHostValue } from "../settings/host.j
 /**
  * The Create API Key dialog is the only way to mint a key, so what it offers is
  * the ceiling on what any key in the org can do. It used to offer eleven scopes
- * out of a catalog of sixty-four, which left the cost surface — the Terraform
- * provider's whole reason for holding a key — unselectable however the docs
+ * out of a catalog of sixty-four, which left the cost surface (the Terraform
+ * provider's whole reason for holding a key) unselectable however the docs
  * described it. These tests are about the dialog producing the scopes, not
  * about the list's contents (`api-key-scopes.test.ts` covers those).
  */

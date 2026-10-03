@@ -12,14 +12,14 @@ import { useProbes } from "./useProbes";
 import { useStatusPages } from "./useStatusPages";
 
 /**
- * Synthetic probes — the native counterpart of the web/desktop Probes tab and
+ * Synthetic probes; the native counterpart of the web/desktop Probes tab and
  * the `infrawrench probes` CLI: every uptime/latency check with its status
  * dot, trailing-24h uptime and last latency.
  *
  * Read-only by design (a deliberate omission, like the billing screens):
  * probes are created and edited on web/desktop, where the endpoint-suggestion
- * picker lives. This screen answers the push notification's question — "is it
- * still down?" — without an editor in the way.
+ * picker lives. This screen answers the push notification's question ("is it
+ * still down?") without an editor in the way.
  */
 export function ProbesScreen() {
   const probes = useProbes();
@@ -84,7 +84,7 @@ export function ProbesScreen() {
 
 /**
  * One status page, read-only: what it is called, whether it is live, and a tap
- * to open it in the browser. Publishing stays on web/desktop — the deliberate
+ * to open it in the browser. Publishing stays on web/desktop: the deliberate
  * omission this screen already makes for probes.
  */
 function StatusPageRow({ page }: { page: StatusPage }) {

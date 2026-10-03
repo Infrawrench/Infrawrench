@@ -1,5 +1,5 @@
 /**
- * Cloud deploy IPC — the org-scoped `/deployments` routes, proxied for the
+ * Cloud deploy IPC: the org-scoped `/deployments` routes, proxied for the
  * renderer's cloud DeploymentClient.
  *
  * Everything that answers in one shot lives here. The full deploy does not: it
@@ -46,7 +46,7 @@ ipcMain.handle("cloud_deploy_runs", async (_e, { orgId, env }: { orgId: string; 
 
 /**
  * What a deploy did to the run rate, per resource it provisioned. Recomputed
- * server-side on every call — nothing here caches it, because provider cost
+ * server-side on every call: nothing here caches it, because provider cost
  * arrives late and a cached answer would be a stale one.
  */
 ipcMain.handle(

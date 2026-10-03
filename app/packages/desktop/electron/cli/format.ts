@@ -1,6 +1,6 @@
 // Pure presentation helpers shared by the newer read commands. Kept out of the
-// command modules — those reach the network through `./context`, which drags in
-// Electron and every plugin — so the tree walk and the number formatting can be
+// command modules (those reach the network through `./context`, which drags in
+// Electron and every plugin) so the tree walk and the number formatting can be
 // unit-tested on their own. Imports nothing but `./output`.
 import { c } from "./output";
 
@@ -10,7 +10,7 @@ import { c } from "./output";
 
 export interface TreeChild {
   id: string;
-  /** Caption printed after the node's label — how the link reads. */
+  /** Caption printed after the node's label: how the link reads. */
   caption: string;
 }
 
@@ -18,7 +18,7 @@ export interface RenderTreeOptions {
   /** Depth cap; a branch that deep is a fan-out nobody reads in a terminal. */
   maxDepth?: number;
   /**
-   * Ids already considered visited when the walk starts — normally just the
+   * Ids already considered visited when the walk starts: normally just the
    * root, so a link straight back to it is marked rather than followed.
    */
   seen?: Set<string>;
@@ -71,8 +71,8 @@ export function renderTree(
  * ------------------------------------------------------------------ */
 
 /**
- * "+173%" over baseline. Null when there is no baseline to be up from — a key
- * with no trailing spend reads as "new" rather than as an infinite jump — and
+ * "+173%" over baseline. Null when there is no baseline to be up from (a key
+ * with no trailing spend reads as "new" rather than as an infinite jump) and
  * null for a new-spend-source row whatever its baseline rounds to, since a
  * near-zero window rounds to a cent and would print a meaningless six-figure
  * percentage. Same rule as the web/desktop Anomalies section.
@@ -100,7 +100,7 @@ export function anomalyDeltaPercent(
  * so accepting a name is the point; the ordering exists so a report literally
  * named like another's prefix still wins its own exact match. An ambiguous
  * substring returns `null` with the candidates rather than silently picking
- * the first — running the wrong cost report is a quiet, plausible-looking
+ * the first: running the wrong cost report is a quiet, plausible-looking
  * wrong answer.
  */
 export function matchCostReport<T extends { id: string; name: string }>(
@@ -122,7 +122,7 @@ export function matchCostReport<T extends { id: string; name: string }>(
  * Change timeline
  * ------------------------------------------------------------------ */
 
-/** `2026-07-30 14:05` in UTC — sortable, and stable across machines. */
+/** `2026-07-30 14:05` in UTC: sortable, and stable across machines. */
 export function formatChangeTime(iso: string): string {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return iso;
@@ -134,7 +134,7 @@ export function formatChangeTime(iso: string): string {
  * ------------------------------------------------------------------ */
 
 /**
- * `"CPU % > 90 for 15m"` — one line for a rule's condition. A local twin of
+ * `"CPU % > 90 for 15m"`: one line for a rule's condition. A local twin of
  * client-core's `describeMetricAlertCondition`: the CLI can only take
  * type-only imports from client-core (CJS→ESM), so the formatting lives here
  * where it is unit-testable without Electron.
@@ -167,12 +167,12 @@ export function formatMetricAlertSelector(rule: {
  *
  * Pure and here rather than in the command so `cli-format.test.ts` can reach
  * it, and because the gap rule is the one piece of this feature that must be
- * identical everywhere: `null` prints as "—", never as "0" or "0.00". A CLI
+ * identical everywhere: `null` prints as "; ", never as "0" or "0.00". A CLI
  * that printed a zero for an unmeasured period would be believed exactly as
  * readily as a chart that drew one.
  *
  * Unit costs are routinely sub-cent (cost per API request), so this keeps
- * significant digits rather than rounding a real number to `0.00` — which is
+ * significant digits rather than rounding a real number to `0.00`, which is
  * the same lie by a different route.
  */
 export function formatUnitCostRatio(value: number | null, mode: "unit_cost" | "margin"): string {
@@ -196,7 +196,7 @@ export function unitCostRatioLabel(
 }
 
 /**
- * A billing rule as one line — "+15% on tag team=platform", "1000 USD/month →
+ * A billing rule as one line: "+15% on tag team=platform", "1000 USD/month →
  * cost centre <id>", "move to account <id> on service AmazonEKS".
  *
  * Duplicated here rather than imported from `describeBillingRule` in
@@ -204,7 +204,7 @@ export function unitCostRatioLabel(
  * the CLI is CJS and client-core is ESM, so a *runtime* import would be a
  * `await import(...)` in a formatter that has to stay synchronous and pure.
  * Pure and here means `cli-format.test.ts` can reach it, which is the only way
- * any of this rendering gets tested at all — command modules drag in Electron
+ * any of this rendering gets tested at all: command modules drag in Electron
  * through `../context` and cannot be unit tested.
  *
  * The structural type is deliberately minimal: it is exactly what this function
@@ -261,7 +261,7 @@ export function formatBillingRule(rule: {
 }
 
 /**
- * The one-line status an invoice row shows — the status word plus, for a frozen
+ * The one-line status an invoice row shows: the status word plus, for a frozen
  * invoice, when it was frozen.
  *
  * Pure so it can be tested without the cloud. The distinction it draws is the
@@ -294,8 +294,8 @@ export function formatInvoiceStatus(invoice: {
  * An invoice's billed total as one string, or "not computed" for a draft in a
  * list response.
  *
- * `null` totals are deliberate on the wire — a draft's figures are recomputed
- * on read and the list endpoint does not recompute — so this must never fall
+ * `null` totals are deliberate on the wire (a draft's figures are recomputed
+ * on read and the list endpoint does not recompute) so this must never fall
  * back to `0.00`, which is a number a reader would act on.
  */
 export function formatInvoiceTotal(

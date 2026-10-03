@@ -1,14 +1,14 @@
 import { msg } from "gt-react";
 
 /**
- * The settings section registry — one entry per page, in sidebar order.
+ * The settings section registry: one entry per page, in sidebar order.
  * `key` is the URL segment on web (`/org/:orgId/settings/<key>`, "" for
  * General) and the workspace-tab `section` on both platforms.
  */
 export interface SettingsSectionDef {
   key: string;
   /**
-   * gt-encoded via `msg()` — render it through `useMessages()` (both navs do),
+   * gt-encoded via `msg()`: render it through `useMessages()` (both navs do),
    * never raw, or the encoded suffix shows up in the UI. `decodeMsg()` gets
    * the plain English back outside React.
    */

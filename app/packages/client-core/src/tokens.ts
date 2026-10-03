@@ -4,7 +4,7 @@
  * so the same logic runs on mobile (Expo SecureStore + expo/fetch), and can
  * later back the desktop/web clients too.
  *
- * PKCE challenge generation is intentionally NOT here — platform auth
+ * PKCE challenge generation is intentionally NOT here: platform auth
  * libraries (e.g. expo-auth-session) generate the verifier/challenge pair
  * themselves; this module takes over at the code-exchange step.
  */
@@ -31,12 +31,12 @@ export interface TokenManagerOptions {
   workosApiUrl: string;
   /** Bound fetch implementation; pass `expo/fetch`'s fetch on mobile. */
   fetch?: typeof fetch;
-  /** Called on hard auth failures (revoked refresh token) — route to sign-in. */
+  /** Called on hard auth failures (revoked refresh token): route to sign-in. */
   onAuthError?: (code: string, message: string) => void;
   /**
    * Abort a WorkOS token request after this long. Defaults to 15s.
    *
-   * These calls sit on the app's launch path — a host that accepts the
+   * These calls sit on the app's launch path: a host that accepts the
    * connection and then never answers (captive portal, dead VPN, a server
    * that is up but wedged) would otherwise leave the promise pending
    * forever, and a launch screen waiting on it spins with no error and no
@@ -57,7 +57,7 @@ const STORAGE_KEYS = {
 const B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /**
- * Decode a base64url string to UTF-8 without Buffer or atob — pure JS so it
+ * Decode a base64url string to UTF-8 without Buffer or atob: pure JS so it
  * runs identically on Node, browsers, and React Native (Hermes).
  */
 function base64UrlDecode(input: string): string {
@@ -163,7 +163,7 @@ export class TokenManager {
 
   /**
    * Refresh the token pair. WorkOS rotates refresh tokens on each use, so
-   * concurrent refreshes race and all but one get `invalid_grant` —
+   * concurrent refreshes race and all but one get `invalid_grant`:
    * single-flight gates them.
    */
   refreshAccessToken(): Promise<boolean> {
@@ -190,7 +190,7 @@ export class TokenManager {
         }),
       });
     } catch {
-      // Network error, or we gave up waiting — keep tokens so a later attempt
+      // Network error, or we gave up waiting: keep tokens so a later attempt
       // can succeed.
       return false;
     }

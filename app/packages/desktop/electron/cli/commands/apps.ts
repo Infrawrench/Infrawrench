@@ -1,15 +1,15 @@
-// `infrawrench apps <resource-id>` — what graphical applications are installed
+// `infrawrench apps <resource-id>`: what graphical applications are installed
 // on a Linux host, and how to open one.
 //
 // Listing needs no session and no compositor: the app server is staged in the
 // host's RAM, asked for its desktop entries, and deleted again in one SSH exec,
 // leaving nothing behind. Launching one needs a canvas, which a terminal does
 // not have, so `--launch` hands the resource and the application to the desktop
-// app through an `infrawrench://apps` deep link — the same shape the RDP
+// app through an `infrawrench://apps` deep link: the same shape the RDP
 // command uses.
 //
 // `--check` and `--install` are the same host setup check the launcher shows,
-// for the case where the answer is wanted before anyone opens a tab — and for
+// for the case where the answer is wanted before anyone opens a tab, and for
 // the shell script that wants to prepare a fleet of hosts, which is why
 // `--check --json` exists and exits non-zero on a host that is not ready.
 import { shell } from "electron";

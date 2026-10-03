@@ -4,7 +4,7 @@ import type { IacStateFormat } from "./state";
 import type { UnderivableTerraformType } from "./type-map";
 
 /**
- * Wire contract for **IaC reconciliation** — the ClickOps detector.
+ * Wire contract for **IaC reconciliation**: the ClickOps detector.
  *
  * Four features in this repo have "Terraform" in the name; this is the one
  * that reads a state document the org already has and classifies synced
@@ -54,7 +54,7 @@ export interface IacStateSummary {
 }
 
 /**
- * "Who made this by hand, and when" — the drift-feed and ownership join that
+ * "Who made this by hand, and when": the drift-feed and ownership join that
  * turns a list of unmanaged resources into a list of conversations.
  */
 export interface IacResourceAttribution {
@@ -81,7 +81,7 @@ export interface IacReconciliationResponse {
   };
   /**
    * Plugin resource types whose Terraform type could not be derived from the
-   * export mapper. Reported rather than guessed — see `type-map.ts`.
+   * export mapper. Reported rather than guessed: see `type-map.ts`.
    */
   underivable: UnderivableTerraformType[];
 }

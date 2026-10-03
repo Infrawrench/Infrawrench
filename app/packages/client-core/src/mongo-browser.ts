@@ -4,7 +4,7 @@
  * itself is rendered per host (web, mobile); only this part is shared.
  *
  * Commands go through `POST /kv/command`, which forwards to the mongodb KV
- * driver — every argument is positional, hence these builders.
+ * driver: every argument is positional, hence these builders.
  */
 
 export const MONGO_PAGE_SIZE = 25;
@@ -65,7 +65,7 @@ export const mongoCommands = {
   }),
 };
 
-/** Render a BSON-ish value as a short string — `{ $oid }` wrappers collapse to the id. */
+/** Render a BSON-ish value as a short string: `{ $oid }` wrappers collapse to the id. */
 export function formatMongoValue(val: unknown): string {
   if (val === null) return "null";
   if (val === undefined) return "undefined";
@@ -97,7 +97,7 @@ export function formatMongoPreview(val: unknown): string {
 }
 
 /**
- * Strip `_id` and re-serialize — the shape `replaceOne` wants, since Mongo
+ * Strip `_id` and re-serialize: the shape `replaceOne` wants, since Mongo
  * rejects a replacement that carries the immutable id.
  */
 export function stripMongoId(docJson: string): string {

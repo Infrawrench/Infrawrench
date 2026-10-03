@@ -13,12 +13,12 @@ export interface DnsSectionProps {
   /**
    * The computed inventory, or null while the first load is in flight. Hosts
    * fetch (web: `/dns`, desktop: IPC or the local scan) and hand the response
-   * over — this component never talks to a network.
+   * over; this component never talks to a network.
    */
   data: DnsInventoryResponse | null;
   /**
    * Load or refresh failure. With `data` still present the last inventory
-   * stays on screen under a banner — a failed refresh must not blank a drawn
+   * stays on screen under a banner: a failed refresh must not blank a drawn
    * list.
    */
   error?: string | null | undefined;

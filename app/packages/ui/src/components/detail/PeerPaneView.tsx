@@ -169,7 +169,7 @@ export function PeerPaneView({
   const guidance = pane.schema.guidance;
   // Guidance was originally a whole-pane replacement (the host's "this peer is
   // unreachable" state, which always comes with zero groups). A peer can also
-  // use it to caveat data it *did* return — Kubernetes cost allocation
+  // use it to caveat data it *did* return: Kubernetes cost allocation
   // explaining that node prices are derived, or missing. In that case it has
   // to render as a banner above the groups; replacing them would hide the
   // workloads to explain a footnote about them.
@@ -328,7 +328,7 @@ export function PeerPaneView({
         // The workload listers hide the control-plane namespaces
         // (`SYSTEM_NAMESPACES` in the kubernetes plugin), so `kube-system` and
         // friends never appear in `namespaces` and are not offered here or in
-        // the <select> above — picking one would empty the pane. Their cost is
+        // the <select> above: picking one would empty the pane. Their cost is
         // a separate surface and is deliberately still counted there.
         //
         // The count in the header is taken from this list rather than from
@@ -502,14 +502,14 @@ export function PeerPaneView({
 /**
  * The namespace filter pills.
  *
- * Each pill carries the namespace's `subtitle` — the phase plus, when cost
+ * Each pill carries the namespace's `subtitle`: the phase plus, when cost
  * allocation resolved, the daily cost and the tighter of the two efficiency
  * figures (`Active · ~$4.20/day · 18% CPU`). That is the same secondary line
  * `PeerResourcePill` puts under a workload's name, so the two grids read the
  * same way; a pill without a subtitle is still a single line.
  *
- * Callers pass only the namespaces the pane can filter to — see the comment at
- * the call site — so there is no system/user split to make here.
+ * Callers pass only the namespaces the pane can filter to (see the comment at
+ * the call site) so there is no system/user split to make here.
  */
 function NamespaceGrid({
   items,
@@ -534,7 +534,7 @@ function NamespaceGrid({
             onClick={() => onSelect(ns.displayName)}
             aria-pressed={isActive}
             // `max-w-full` keeps a long subtitle from pushing the pill past the
-            // pane at narrow widths — it wraps onto its own row and truncates
+            // pane at narrow widths: it wraps onto its own row and truncates
             // instead. `min-w-0` is what lets the truncation happen at all.
             className={`flex min-w-0 max-w-full flex-col items-start gap-0.5 rounded-lg px-2.5 py-1 text-left transition-colors ${
               isActive

@@ -5,7 +5,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
 /**
  * The org's sleep/wake schedules (`GET /schedules`). Server-side and cheap:
  * the list is rows plus a savings annotation over already-collected billing
- * data — no provider API calls.
+ * data: no provider API calls.
  */
 export function useSchedules() {
   const { api, orgId } = useOrgApi();
@@ -15,7 +15,7 @@ export function useSchedules() {
   });
 }
 
-/** Pause/resume one schedule — the one mutation the phone offers. */
+/** Pause/resume one schedule: the one mutation the phone offers. */
 export function useSchedulePause() {
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();

@@ -17,7 +17,7 @@ import { useCostAnnotations } from "@/features/cost-reports/useCostAnnotations";
 /**
  * A cost-graph widget on mobile: the same `/costs/query` the web and desktop
  * cards run, the same headline total and period delta, rendered with the
- * native {@link CostChart}. Read-only — the widget is configured on web or
+ * native {@link CostChart}. Read-only: the widget is configured on web or
  * desktop, and this honours whatever it says.
  */
 export function CostGraphCard({
@@ -93,7 +93,7 @@ export function CostGraphCard({
         An applied scenario is stated on the card, not left to the legend. A
         phone screenshot pasted into a thread has to carry the fact that part of
         its line is an assumption and whose it is. Mobile is read-only here by
-        design — models are authored on web or desktop — but a card that draws
+        design (models are authored on web or desktop) but a card that draws
         one must say so as loudly as the card that made it.
       */}
       {response?.scenario && (

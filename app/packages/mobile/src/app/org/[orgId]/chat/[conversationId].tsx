@@ -41,7 +41,7 @@ export default function ConversationScreen() {
   /** Seconds remaining of a client-side sleep the agent requested. */
   const [sleeping, setSleeping] = useState<number | null>(null);
   /**
-   * tool_use ids of sleeps still counting down — their persisted "Slept N
+   * tool_use ids of sleeps still counting down: their persisted "Slept N
    * seconds" markers stay hidden until the wait has actually happened.
    */
   const [activeSleepIds, setActiveSleepIds] = useState<ReadonlySet<string>>(new Set());
@@ -73,7 +73,7 @@ export default function ConversationScreen() {
         client.getSpend(),
       ]);
       // Swap persisted data in and clear the streaming buffer in the same
-      // synchronous block so React batches them — clearing a render later
+      // synchronous block so React batches them: clearing a render later
       // flashes the turn's text twice (persisted + still-buffered).
       queryClient.setQueryData(detailKey, data);
       queryClient.setQueryData(spendKey, s);
@@ -157,7 +157,7 @@ export default function ConversationScreen() {
       void queryClient.invalidateQueries({ queryKey: ["chat-conversations", orgId] });
 
       if (sleepSeconds > 0) {
-        // Client-side sleep: count down, then hand back to the server — but
+        // Client-side sleep: count down, then hand back to the server, but
         // only when nothing else is still awaiting approval (a sleep can land
         // in the same batch as a destructive tool).
         sleepingRef.current = true;
@@ -196,7 +196,7 @@ export default function ConversationScreen() {
       const current =
         queryClient.getQueryData<Awaited<ReturnType<typeof client.getConversation>>>(detailKey);
       if (!current || model === current.conversation.model) return;
-      // Optimistic — the picker shouldn't snap back while the PATCH is in flight.
+      // Optimistic: the picker shouldn't snap back while the PATCH is in flight.
       queryClient.setQueryData(detailKey, {
         ...current,
         conversation: { ...current.conversation, model },
@@ -220,7 +220,7 @@ export default function ConversationScreen() {
       try {
         await client.resolvePendingAction(conversationId, pending.id, action);
         await reload();
-        // A sleep from the same tool batch is still counting down — it will
+        // A sleep from the same tool batch is still counting down: it will
         // do its own resolved-check and resume when it finishes.
         if (sleepingRef.current) return;
         const fresh = await client.getConversation(conversationId);
@@ -577,7 +577,7 @@ function BlockView({
 }) {
   // Approve executes the tool synchronously server-side (a workflow run can
   // take minutes), so the buttons must lock and the label must say the action
-  // is underway — otherwise the card looks hung and invites a second tap.
+  // is underway, otherwise the card looks hung and invites a second tap.
   const [resolving, setResolving] = useState<"approve" | "reject" | null>(null);
 
   async function resolve(target: ChatPendingAction, action: "approve" | "reject"): Promise<void> {
@@ -597,7 +597,7 @@ function BlockView({
     // tool_result blocks render inside their tool card; nothing standalone.
     return null;
   }
-  // Sleep is not a real tool call — render it as a quiet marker, matching the
+  // Sleep is not a real tool call: render it as a quiet marker, matching the
   // live "Sleeping N seconds…" indicator. While the countdown is still
   // running, show nothing here (the live indicator covers it): the past tense
   // would be a lie.
@@ -648,7 +648,7 @@ function BlockView({
           ? styles.toolStatusDone
           : styles.toolStatusMuted;
   const resultText = pending?.result ?? result?.text;
-  // While awaiting approval the input must be visible — the user is deciding
+  // While awaiting approval the input must be visible: the user is deciding
   // whether to run it. Otherwise collapsed until tapped.
   const showDetails = expanded || status === "pending";
 

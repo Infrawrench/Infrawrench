@@ -3,7 +3,7 @@
  *
  * A key's scopes are permission strings from the same catalog roles are built
  * from (`server-core/permissions/catalog.ts`), and the server enforces them by
- * intersecting the key's scopes with the owner's current role — a scope the key
+ * intersecting the key's scopes with the owner's current role: a scope the key
  * does not hold is a 403, not a warning. That makes this list load-bearing
  * rather than cosmetic: **a permission absent from here is a capability no key
  * minted through the UI can ever hold.**
@@ -14,7 +14,7 @@
  * key) and simultaneously impossible to select. The list is now the whole
  * catalog minus {@link API_KEY_UNOFFERED_SCOPES}, and
  * `web/src/api/__tests__/api-key-scope-catalog.test.ts` fails the build if the
- * two ever stop adding up — the drift is the bug, so the guard is a test rather
+ * two ever stop adding up: the drift is the bug, so the guard is a test rather
  * than a comment.
  *
  * Deliberately React-free and exported as its own entry point so the server
@@ -26,7 +26,7 @@ export interface ApiKeyScope {
   value: string;
   /**
    * Shown next to the checkbox. Rendered through `useDataString()`, not
-   * `gt()` — these reach the component as data, and the gt CLI rejects
+   * `gt()`: these reach the component as data, and the gt CLI rejects
    * non-literal arguments to the names it scans.
    */
   label: string;
@@ -140,7 +140,7 @@ export const AVAILABLE_SCOPES: readonly ApiKeyScope[] = API_KEY_SCOPE_GROUPS.fla
  * Every one of them gates only routes that `API_KEY_DENY_RULES`
  * (`web/src/auth/api-key-route-policy.ts`) closes to API keys outright, so a
  * key carrying it would be refused anyway. Offering it would be a promise the
- * server does not keep — the checkbox would look like the difference between a
+ * server does not keep: the checkbox would look like the difference between a
  * 200 and a 403 when it is not.
  *
  * The reasons are the deny rules' reasons, restated for someone reading the
@@ -166,7 +166,7 @@ export const API_KEY_UNOFFERED_SCOPES: Readonly<Record<string, string>> = {
  * `sync:read` / `sync:write` are renamed to `resources:read` /
  * `resources:write` the next time a key carrying them authenticates
  * (`web/src/auth/api-auth.ts`), so a key minted with them today stores a scope
- * that silently becomes a different one — and the dialog offered them above the
+ * that silently becomes a different one, and the dialog offered them above the
  * `resources:*` pair they turn into.
  */
 export const DEPRECATED_API_KEY_SCOPES: readonly string[] = ["sync:read", "sync:write"];

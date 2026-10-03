@@ -10,7 +10,7 @@ import {
 import { formatErrorMessage } from "../utils.js";
 
 /**
- * Fan-out SSH — shared web/desktop surface for running one command across a
+ * Fan-out SSH: shared web/desktop surface for running one command across a
  * selected set of SSH-capable hosts, with results collapsed into groups of
  * identical output and outliers diffed against the majority.
  *

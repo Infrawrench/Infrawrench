@@ -3,8 +3,8 @@
  *
  * The cloud path (`GET /api/org/:orgId/expiring`) computes the feed
  * server-side over an organization's synced rows. This is the same
- * computation — client-core's `computeExpiryFeed`, over the same declarative
- * `expiryFields` rules — run against the desktop's local SQLite workspace, so
+ * computation (client-core's `computeExpiryFeed`, over the same declarative
+ * `expiryFields` rules) run against the desktop's local SQLite workspace, so
  * `infrawrench expiring --local` works signed out. It reads the workspace and
  * loads plugin *metadata* only: no plugin client is constructed, no account
  * credentials are decrypted, and no provider is contacted.

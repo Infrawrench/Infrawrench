@@ -13,8 +13,8 @@ describe("containedRect", () => {
   });
 
   it("centres a picture too tall for the box", () => {
-    // Every resize spends a round trip here — the buffer is still the old
-    // shape while the box is already the new one — and an application that
+    // Every resize spends a round trip here (the buffer is still the old
+    // shape while the box is already the new one) and an application that
     // refuses a size stays here.
     expect(containedRect(100, 100, 400, 200)).toEqual({
       left: 100,

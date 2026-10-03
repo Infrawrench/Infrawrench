@@ -16,20 +16,20 @@ import { Card, EmptyView, ErrorView, LoadingView, Screen, SectionTitle } from "@
 import { colors, spacing } from "@/lib/theme";
 
 /**
- * One resource's neighbourhood as two indented trees plus its blast radius —
+ * One resource's neighbourhood as two indented trees plus its blast radius:
  * the phone's answer to the org-wide graph canvas.
  *
  * **Why no canvas.** A pan-and-zoom node graph is the wrong object on a 6-inch
  * screen: the whole point of the web view is seeing many nodes at once, which
  * is exactly what a phone cannot do, and drawing one would mean a gesture-driven
  * viewport and a new rendering dependency for a view nobody would use standing
- * up. The question a phone is actually asked — "I got paged about this thing,
- * what does it touch and what breaks with it" — is answered better by a list.
+ * up. The question a phone is actually asked ("I got paged about this thing,
+ * what does it touch and what breaks with it") is answered better by a list.
  * The CLI reached the same conclusion with its ASCII trees, and this is the
  * same information design with taps instead of glyphs.
  *
  * **Why the org-wide fetch.** A blast radius is transitive, and the endpoint's
- * `?resourceId=` answer is one hop deep, so it cannot produce one — the same
+ * `?resourceId=` answer is one hop deep, so it cannot produce one: the same
  * trade the CLI's `graph --resource` makes. That is why this is a screen you
  * open deliberately rather than a section on the resource page: the direct
  * neighbours there come from the cheap focused query.
@@ -141,7 +141,7 @@ export function DependenciesScreen({ resourceId }: DependenciesScreenProps) {
  *
  * Local rather than shared: the CLI's `renderTree` produces ANSI strings and
  * this needs rows to lay out as views, so the two have nothing to share beyond
- * the walk itself — which is the model's own adjacency maps, already shared.
+ * the walk itself, which is the model's own adjacency maps, already shared.
  * ------------------------------------------------------------------ */
 
 interface TreeRow {

@@ -40,7 +40,7 @@ describe("CustomGraphCard", () => {
    * mount effect, so anything unstable in `run`'s own dependency list turns one
    * card into an unbounded stream of render requests: the response sets state,
    * the re-render rebuilds `run`, the effect re-fires. `gt` from gt-react's
-   * `useGT()` was exactly that — a fresh identity every render — which is why
+   * `useGT()` was exactly that (a fresh identity every render) which is why
    * the card sat on "refreshing…" forever at ~270 POSTs a second.
    */
   it("renders the graph once per mount, not once per re-render", async () => {

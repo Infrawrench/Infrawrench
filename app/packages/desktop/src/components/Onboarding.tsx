@@ -30,7 +30,7 @@ interface OnboardingProps {
   onSignedIn: (orgs: CloudOrg[]) => void;
   /** The user picked an organization (or null for local-only mode). */
   onSelectOrg: (orgId: string | null) => void;
-  /** The flow is finished — mark it complete and unmount. */
+  /** The flow is finished: mark it complete and unmount. */
   onDone: () => void;
 }
 
@@ -80,7 +80,7 @@ function PerkIcon({ d }: { d: string }) {
 
 /**
  * First-run welcome screen. Pitches what signing in to Infrawrench Cloud adds
- * on top of local mode, runs the browser OAuth flow, and — once signed in —
+ * on top of local mode, runs the browser OAuth flow, and (once signed in)
  * lets the user pick which organization to start in. Skippable at every step:
  * the app is fully usable locally without an account.
  */

@@ -14,7 +14,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
  *
  * What mobile must not do is *hide* the reference. The opt-in changes which
  * forecast thresholds fire, so an editor that silently omitted it would let a
- * save quietly move a budget back to the bare trend — and nobody would learn
+ * save quietly move a budget back to the bare trend, and nobody would learn
  * that until a page did not arrive.
  */
 export function ScenarioChip({ scenarioModelId }: { scenarioModelId: string | undefined }) {

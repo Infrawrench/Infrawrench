@@ -15,7 +15,7 @@ interface ConfirmDeleteModalProps {
   onClose: () => void;
   /**
    * Optional impact summary rendered between the warning and the confirmation
-   * box — the resource surfaces pass `<BlastRadiusSummary/>`.
+   * box: the resource surfaces pass `<BlastRadiusSummary/>`.
    *
    * It is a slot rather than data because it must be able to arrive *late*:
    * the dialog opens immediately and the summary fills in underneath, and

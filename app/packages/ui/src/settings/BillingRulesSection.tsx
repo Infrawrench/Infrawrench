@@ -38,16 +38,16 @@ function labelFor(options: CostDimensionOption[], value: string): string {
  *
  * ## Why this is in Settings and not on the Costs panel
  *
- * The repo's own placement rule is that a *cost object* — a saved filter, a
- * scenario model — belongs on the Costs panel, because it describes the org's
+ * The repo's own placement rule is that a *cost object*: a saved filter, a
+ * scenario model; belongs on the Costs panel, because it describes the org's
  * own spend, while Settings is where you configure Infrawrench. A billing rule
  * looks like the former and behaves like the latter: it is not another view of
  * spend, it silently changes what every other view says. A markup written here
  * moves the Costs panel, an opted-in budget's thresholds, and the chargeback
  * statement finance sends another department.
  *
- * So it sits beside Cost Centres, Currency and Tag Policy — the three other
- * pages where one person's edit restates numbers everybody else reads — and
+ * So it sits beside Cost Centres, Currency and Tag Policy (the three other
+ * pages where one person's edit restates numbers everybody else reads) and
  * behind the same permission stating an exchange rate needs.
  *
  * Reading is `costs:read`, because a rule is part of the explanation for a

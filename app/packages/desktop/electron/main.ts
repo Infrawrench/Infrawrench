@@ -37,14 +37,14 @@ import {
 // final ticks can try to compress a close packet through already-destroyed
 // zlib writers, throwing inside ssh2's own tick callbacks where no caller
 // try/catch can reach. We defer connection teardown to avoid it (see
-// ssh-shell.ts), but swallow the specific error as a last resort — it is
+// ssh-shell.ts), but swallow the specific error as a last resort: it is
 // strictly a post-session cleanup artifact and never affects live traffic.
 process.on("uncaughtException", (err) => {
   if (err instanceof Error && err.message === "Invalid Zlib instance") {
     console.warn("[ssh] ignored ssh2 compression teardown race:", err.stack?.split("\n")[1]);
     return;
   }
-  // Registering any listener suppresses Electron's default crash dialog —
+  // Registering any listener suppresses Electron's default crash dialog:
   // reproduce it for every other error so real crashes stay loud.
   console.error("Uncaught exception:", err);
   dialog.showErrorBox(
@@ -69,7 +69,7 @@ import "./workflow-secrets";
 import { teardownAllPfCloudSessions } from "./k8s-pf-cloud";
 import { reportTelemetry } from "./telemetry";
 
-// Disable Chromium's built-in overscroll history navigation — we handle
+// Disable Chromium's built-in overscroll history navigation: we handle
 // swipe-to-navigate ourselves in the renderer via wheel events.
 app.commandLine.appendSwitch("overscroll-history-navigation", "0");
 
@@ -101,7 +101,7 @@ function broadcastToWindows(channel: string, payload: unknown) {
 }
 
 /**
- * Updater failures are otherwise invisible — the renderer only ever sees a
+ * Updater failures are otherwise invisible: the renderer only ever sees a
  * prompt that never resolves. Translate the ones a user can act on.
  */
 function describeUpdateError(err: unknown): string {
@@ -131,7 +131,7 @@ function startAutoUpdater() {
     // macOS hands the install to Squirrel.Mac, which fetches the downloaded zip
     // back off electron-updater's own localhost proxy and stages it before
     // anything is installable. electron-updater fires `update-downloaded` when
-    // *its* download lands — before Squirrel has even started — and until
+    // *its* download lands (before Squirrel has even started) and until
     // staging finishes `quitAndInstall()` is a silent no-op that neither quits
     // nor errors. Prompting on that event hands the user a "Restart now" button
     // that does nothing, and if staging never succeeds (a full disk is enough)
@@ -173,7 +173,7 @@ function startAutoUpdater() {
       console.warn("[updater]", err);
       // Check/download failures retry on their own and aren't worth a modal.
       // Once a version is downloaded, a failure means staging or installing
-      // broke — the user is either waiting on a prompt that will never arrive
+      // broke: the user is either waiting on a prompt that will never arrive
       // or staring at one that can't complete, so say what went wrong.
       if (!downloadedVersion) return;
       broadcastToWindows("update_error", {
@@ -214,8 +214,8 @@ function createWindow() {
   });
 
   // The renderer only ever shows our own bundle. Anything trying to navigate
-  // it elsewhere — an injected link, a redirect from an embedded response, a
-  // window.open — is either a bug or an attempt to load untrusted content into
+  // it elsewhere (an injected link, a redirect from an embedded response, a
+  // window.open) is either a bug or an attempt to load untrusted content into
   // a window that holds the user's cloud session and preload bridge. Send
   // external URLs to the system browser and refuse in-window navigation.
   const isInternalUrl = (url: string): boolean => {
@@ -260,7 +260,7 @@ function createWindow() {
 app.whenReady().then(() => {
   // Allow cross-origin DELETE/PUT/PATCH from the renderer to external APIs
   // (GCP, DO, etc.). Only inject headers when the server hasn't already sent
-  // them — adding a second Access-Control-Allow-Origin breaks CORS entirely.
+  // them: adding a second Access-Control-Allow-Origin breaks CORS entirely.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...details.responseHeaders };
     const hasACAO = Object.keys(headers).some(
@@ -269,8 +269,8 @@ app.whenReady().then(() => {
 
     // Always relax the allowed request-header list. Some providers (e.g.
     // Cloudflare) DO return their own CORS headers, but with an allow-list that
-    // omits the headers their SDK injects — Cloudflare's `api-version` and the
-    // Stainless `x-stainless-*` telemetry headers — so the browser blocks the
+    // omits the headers their SDK injects (Cloudflare's `api-version` and the
+    // Stainless `x-stainless-*` telemetry headers) so the browser blocks the
     // preflight even though ACAO is present. Replace any upstream value (delete
     // case-insensitively first to avoid emitting a duplicate header).
     //
@@ -287,7 +287,7 @@ app.whenReady().then(() => {
     if (!hasACAO) {
       headers["Access-Control-Allow-Origin"] = ["*"];
       headers["Access-Control-Allow-Methods"] = ["DELETE, GET, HEAD, OPTIONS, POST, PUT, PATCH"];
-      // OPTIONS preflight must return 200 OK — GCP compute and similar reject
+      // OPTIONS preflight must return 200 OK: GCP compute and similar reject
       // cross-origin requests with 403, which the browser refuses even when
       // CORS headers are present.
       if (details.method === "OPTIONS") {
@@ -301,13 +301,13 @@ app.whenReady().then(() => {
   // Note on microphone access for the Speech tab: no Electron permission
   // handler is registered on purpose. `media` requests already reach the OS
   // under Electron's default behaviour, and installing a handler here would
-  // change the answer for every *other* permission at the same time — this
+  // change the answer for every *other* permission at the same time: this
   // renderer already relies on that default (see the clipboard-read fallback
   // in SshTerminal.tsx). What macOS actually needs is declarative and lives
   // outside this file: NSMicrophoneUsageDescription in package.json's
   // `mac.extendInfo`, and com.apple.security.device.audio-input in
-  // build/info.plist. Miss those and a packaged build is denied capture — or
-  // killed outright — while `pnpm dev` keeps working, because the prebuilt
+  // build/info.plist. Miss those and a packaged build is denied capture (or
+  // killed outright) while `pnpm dev` keeps working, because the prebuilt
   // Electron.app ships its own microphone usage string.
 
   createWindow();
@@ -527,7 +527,7 @@ ipcMain.handle("ssh_key_get_public_key", async (_e, raw: unknown) => {
     getEncryptionKey(),
     buildAad("sshKey", keyId, "privateKey"),
   );
-  // Desktop app keys persist only the private half — derive the OpenSSH public
+  // Desktop app keys persist only the private half: derive the OpenSSH public
   // key from it on demand.
   const parsed = (await getSsh2Utils()).parseKey(privateKey);
   if (parsed instanceof Error) {
@@ -640,7 +640,7 @@ wireDbGetter();
 // gated by the typed preload bridge plus db-guard's validateSql/validateParams
 // (no multi-statements, no ATTACH/DETACH/PRAGMA/VACUUM/LOAD_EXTENSION, capped
 // sizes, primitive params only). A compromised renderer can still mutate any
-// user-owned table — the surface is narrowed, not eliminated.
+// user-owned table: the surface is narrowed, not eliminated.
 ipcMain.handle("db_select", async (_e, { sql, params }: { sql: string; params?: unknown[] }) => {
   validateSql(sql);
   const safeParams = validateParams(params);
@@ -670,24 +670,24 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
   return { rowsAffected, lastInsertId: 0 };
 });
 
-// `infrawrench` shell command (CLI shim) management — see shell-command.ts.
+// `infrawrench` shell command (CLI shim) management: see shell-command.ts.
 ipcMain.handle("cli_shell_command_status", () => getShellCommandStatus());
 ipcMain.handle("cli_install_shell_command", () => installShellCommand());
 ipcMain.handle("cli_uninstall_shell_command", () => uninstallShellCommand());
 
-// What `infrawrench deploy` did on this machine — see deploy-history.ts for why
+// What `infrawrench deploy` did on this machine: see deploy-history.ts for why
 // it is a file rather than a table. Read-only from the renderer: only the CLI
 // ever deploys locally, so only the CLI writes.
 ipcMain.handle("local_deploy_history", () => readLocalDeploys());
 
 // Potential savings without an org: the same orphan scan the cloud runs over
-// synced rows, run over the local workspace. Credential-free — see
+// synced rows, run over the local workspace. Credential-free: see
 // electron/local-orphans.ts. The cloud counterpart is `cloud_orphans_list`.
 ipcMain.handle("local_orphans_list", () => listLocalOrphans());
 
 // Native clipboard image read. The renderer cannot use
-// navigator.clipboard.read() — Electron fails its permission check and the
-// promise rejects — so terminal image paste goes through the main process.
+// navigator.clipboard.read() (Electron fails its permission check and the
+// promise rejects) so terminal image paste goes through the main process.
 ipcMain.handle("clipboard_read_image", () => {
   const image = clipboard.readImage();
   if (image.isEmpty()) return null;

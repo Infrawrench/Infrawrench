@@ -1,5 +1,5 @@
 /**
- * Org config as code — the one JSON document that carries an organization's
+ * Org config as code: the one JSON document that carries an organization's
  * dashboards, workflows, custom graphs, budgets, alert rules and policies, and
  * the plan/apply contract for putting it back.
  *
@@ -10,8 +10,8 @@
  * (`web/src/services/org-config.ts`), which asserts against these types the way
  * `@infrawrench/ui/cost/config` asserts against `costs.ts`.
  *
- * **Keys, not ids.** Every entity in the document is addressed by a `key` — a
- * slug derived from its name — never by a database id. That is what makes one
+ * **Keys, not ids.** Every entity in the document is addressed by a `key` (a
+ * slug derived from its name) never by a database id. That is what makes one
  * document apply to a staging org, a fresh disaster-recovery org, and the org
  * it came from. Cross-references (a budget widget pointing at a budget, a
  * workflow with a budget trigger) are rewritten to keys on export and resolved
@@ -61,7 +61,7 @@ export const ORG_CONFIG_SECTION_LABELS: Record<OrgConfigSection, string> = {
  * The permission each section's writes require, on top of `config:write`.
  *
  * Apply checks both, so `config:write` cannot be used to reach past a role that
- * deliberately withholds (say) `workflows:write` — a document is only allowed to
+ * deliberately withholds (say) `workflows:write`: a document is only allowed to
  * touch the sections its caller could have edited by hand.
  */
 export const ORG_CONFIG_SECTION_WRITE_PERMISSIONS: Record<OrgConfigSection, string> = {
@@ -94,7 +94,7 @@ export const ORG_CONFIG_SECTION_READ_PERMISSIONS: Record<OrgConfigSection, strin
 /**
  * A workflow trigger as the document carries it. Mirrors the persisted
  * `workflows.trigger` jsonb except that a budget trigger names its budget by
- * document key rather than by row id — the one field that could not survive a
+ * document key rather than by row id: the one field that could not survive a
  * move between organizations.
  */
 export type OrgConfigWorkflowTrigger =
@@ -254,7 +254,7 @@ export interface OrgConfigCostCentre {
   rules: OrgConfigAllocationRule[];
 }
 
-/** Everything under `alertSettings` — the org-wide notification tuning. */
+/** Everything under `alertSettings`: the org-wide notification tuning. */
 export interface OrgConfigAlertSettings {
   costAnomaly?:
     | {
@@ -291,7 +291,7 @@ export interface OrgConfigAlertSettings {
 }
 
 /**
- * Alert settings with every group present — what a *read* of the org returns,
+ * Alert settings with every group present: what a *read* of the org returns,
  * since each group falls back to the shipped defaults when its row is missing.
  * The document's own type keeps them optional; only the export is total.
  */
@@ -306,7 +306,7 @@ export type OrgConfigAlertSettingsResolved = {
  */
 export interface OrgConfigDocument {
   version: number;
-  /** Provenance. Informational — ignored on apply. */
+  /** Provenance. Informational: ignored on apply. */
   exportedAt?: string | undefined;
   exportedFrom?: { organizationId: string; organizationName: string } | undefined;
   budgets?: OrgConfigBudget[] | undefined;
@@ -325,9 +325,9 @@ export interface OrgConfigDocument {
 /**
  * How an apply treats entities the document does not mention.
  *
- * - `merge` (default) — create and update what the document names, leave
+ * - `merge` (default): create and update what the document names, leave
  *   everything else alone. Safe to run against a live org.
- * - `replace` — additionally delete entities in the sections the document
+ * - `replace`: additionally delete entities in the sections the document
  *   *does* carry that it does not name. This is what makes a staging org a
  *   faithful copy, and it is why `--prune` is opt-in with a confirmation.
  */
@@ -346,7 +346,7 @@ export interface OrgConfigChange {
 }
 
 /**
- * Something the document asked for that the target org could not satisfy — a
+ * Something the document asked for that the target org could not satisfy: a
  * resource pin for a resource nobody synced, a workflow's budget trigger naming
  * a budget the document does not define, a `replace` that would have deleted
  * the default dashboard. Never fatal on its own: the card, trigger or deletion
@@ -368,7 +368,7 @@ export interface OrgConfigPlan {
   counts: Record<OrgConfigAction, number>;
 }
 
-/** The result of an apply — the plan that was executed. */
+/** The result of an apply: the plan that was executed. */
 export interface OrgConfigApplyResult extends OrgConfigPlan {
   applied: boolean;
 }
@@ -392,7 +392,7 @@ export function orgConfigPlanIsNoop(plan: OrgConfigPlan): boolean {
 
 /* --------------------------------- keys ----------------------------------- */
 
-/** Longest a derived key may be — long enough to stay readable in a diff. */
+/** Longest a derived key may be: long enough to stay readable in a diff. */
 export const ORG_CONFIG_KEY_MAX_LENGTH = 80;
 
 /**

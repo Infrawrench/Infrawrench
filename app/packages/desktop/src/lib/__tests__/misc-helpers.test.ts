@@ -19,7 +19,7 @@ describe("cloud-ws getCloudWsUrl", () => {
     const url = await getCloudWsUrl();
     expect(url).toBe("ws://localhost:3000");
     expect(invoke).toHaveBeenCalledWith("cloud_get_url");
-    // second call uses cache — invoke not called again
+    // second call uses cache: invoke not called again
     const url2 = await getCloudWsUrl();
     expect(url2).toBe("ws://localhost:3000");
     expect(invoke).toHaveBeenCalledTimes(1);

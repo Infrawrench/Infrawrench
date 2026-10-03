@@ -124,12 +124,12 @@ export default defineConfig(({ command }) => ({
           // the `apps` CLI command. Every workspace package the main process
           // imports has to be bundled: electron-builder's `files` drops
           // `node_modules/@infrawrench/**` from the asar, so an externalized
-          // one throws "Cannot find module" the moment the app starts — with
+          // one throws "Cannot find module" the moment the app starts; with
           // no window, just a lit dock icon.
           "@infrawrench/appstream-host",
           // The wire half, pulled in transitively by `appstream-host`. A
           // transitive import is externalized on the same rule as a direct
-          // one, so it needs naming here too — missing it shipped 1.24.0 with
+          // one, so it needs naming here too: missing it shipped 1.24.0 with
           // a main process that threw before it ever created a window.
           "@infrawrench/appstream-core",
           // The shared SSH agents and tunnel core, imported by `ssh-shell-agent.ts`,
@@ -228,7 +228,7 @@ export default defineConfig(({ command }) => ({
       // `@netlify/api/lib/open_api.js` uses `createRequire` to load the
       // OpenAPI JSON spec, which fails in the renderer build because
       // `node:module` isn't available. Rewrite that one file to import the
-      // JSON directly — Vite resolves JSON imports natively.
+      // JSON directly: Vite resolves JSON imports natively.
       {
         name: "netlify-open-api-shim",
         enforce: "pre",

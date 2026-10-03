@@ -6,7 +6,7 @@ import { SettingsHostProvider, type SettingsHostValue } from "../settings/host.j
 
 /**
  * A key acts as its owner, so an entry that shows only the owner cannot tell
- * you whether a person or a token was at the other end — the question you ask
+ * you whether a person or a token was at the other end: the question you ask
  * first when a credential leaks. These tests pin that the key's own identity
  * reaches the screen, that a key whose row is gone still reads as something,
  * and that the log can be narrowed to one credential.
@@ -120,7 +120,7 @@ describe("AuditLogSection actor column", () => {
 
     expect(await screen.findByText("ci-deploy")).toBeTruthy();
     expect(screen.getByText("iwk_abc12345…")).toBeTruthy();
-    // The owner is kept — a key acts as its owner — but as the secondary line.
+    // The owner is kept (a key acts as its owner) but as the secondary line.
     expect(screen.getByText("Owned by Alice")).toBeTruthy();
     // And it is visibly a key, not a person.
     expect(screen.getByText("API key")).toBeTruthy();
@@ -187,7 +187,7 @@ describe("AuditLogSection API key filter", () => {
   /**
    * Reading audit entries and listing the org's keys are separate permissions.
    * Without the second one there is no dropdown to start from, so the chip has
-   * to carry the filter — including the way back out of it.
+   * to carry the filter, including the way back out of it.
    */
   it("without apikeys:read, the chip still filters and the filter can be cleared", async () => {
     const requests = renderSection(

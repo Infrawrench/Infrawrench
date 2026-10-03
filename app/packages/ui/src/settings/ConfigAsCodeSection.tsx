@@ -15,13 +15,13 @@ import {
 import { useSettingsHost } from "./host.js";
 
 /**
- * Config as code — export the organization's configuration as one JSON
+ * Config as code: export the organization's configuration as one JSON
  * document, and apply one back.
  *
  * The same three server verbs the `infrawrench config` CLI drives, so the two
  * surfaces cannot disagree: export produces a file to commit, plan previews
  * what applying one would change, apply runs it in a single transaction. The
- * preview is not optional here — importing a document is the most destructive
+ * preview is not optional here: importing a document is the most destructive
  * thing this settings area can do, and nobody should be able to do it without
  * having seen the list first.
  */

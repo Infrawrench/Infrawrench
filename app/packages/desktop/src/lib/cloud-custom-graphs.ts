@@ -1,5 +1,5 @@
 /**
- * Cloud custom graphs. Cloud-mode only — the script runs in the web server's
+ * Cloud custom graphs. Cloud-mode only: the script runs in the web server's
  * sandbox against org data, so local mode never shows these. Typings come
  * from the server: the `graph.*` half is static but the appended read-only
  * `infra.*` half reflects the org's connected accounts.

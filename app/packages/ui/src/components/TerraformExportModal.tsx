@@ -5,7 +5,7 @@ import { Modal } from "./Modal.js";
 import { formatErrorMessage } from "../utils.js";
 
 export interface TerraformExportModalProps {
-  /** What is being exported — resource or account display name. */
+  /** What is being exported: resource or account display name. */
   subjectDisplayName: string;
   /** Fetch the generated Terraform export from the host. Called on open. */
   generate: () => Promise<TerraformExportOutcome>;
@@ -14,7 +14,7 @@ export interface TerraformExportModalProps {
   filename?: string;
   /**
    * Optional host-provided download handler. Defaults to the browser's
-   * anchor-click pattern — supply on desktop to use a native save dialog.
+   * anchor-click pattern: supply on desktop to use a native save dialog.
    */
   onDownload?: (file: { filename: string; mimeType: string; content: string }) => void;
 }

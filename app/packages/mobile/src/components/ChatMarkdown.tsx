@@ -3,7 +3,7 @@ import { Linking, StyleSheet, Text, View } from "react-native";
 import { colors, radii, spacing } from "@/lib/theme";
 
 /**
- * Markdown renderer for assistant chat messages — the native counterpart of
+ * Markdown renderer for assistant chat messages: the native counterpart of
  * ui's ChatMarkdown (which is react-markdown and DOM-only). Hand-rolled for
  * the subset the model actually emits: headings, bullet/numbered lists,
  * blockquotes, fenced code, and inline bold / italic / code / links. Anything

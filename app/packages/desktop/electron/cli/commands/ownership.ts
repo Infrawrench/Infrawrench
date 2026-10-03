@@ -1,4 +1,4 @@
-// `infrawrench ownership` — who owns each resource, what it is for, and the
+// `infrawrench ownership`: who owns each resource, what it is for, and the
 // ticket that authorized it.
 //
 // Cloud-only: ownership names an org member, and a local workspace has neither
@@ -7,11 +7,11 @@
 // rather than a string you can typo.
 //
 // The listing is sorted so the *un*claimed resources are what you see first
-// when you pass a query — "who owns this?" is usually asked because nobody
+// when you pass a query: "who owns this?" is usually asked because nobody
 // seems to.
 //
-// The response shapes come from `@infrawrench/client-core` — the same
-// definitions every other surface renders — so a server-side change breaks the
+// The response shapes come from `@infrawrench/client-core` (the same
+// definitions every other surface renders) so a server-side change breaks the
 // CLI's build instead of its output. The imports are type-only, so the CLI
 // still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
@@ -25,7 +25,7 @@ function ownerCell(record: ResourceOwnership): string {
   const member = record.ownerName ?? record.ownerEmail;
   if (record.ownerUserId && member) return member;
   // A free-text owner is marked, because the difference that matters is
-  // whether an alert can reach it — not how it reads.
+  // whether an alert can reach it, not how it reads.
   if (record.ownerLabel) return `${record.ownerLabel} ${c.dim("(team)")}`;
   return c.dim("unowned");
 }

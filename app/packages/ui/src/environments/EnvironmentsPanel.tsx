@@ -229,7 +229,7 @@ function TemplateItem({
  * The org's TTL ceilings, with an editor when the client can write them.
  *
  * The inputs are text drafts rather than the settings numbers themselves so a
- * cleared field stays cleared instead of coercing to 0 — the parent remounts
+ * cleared field stays cleared instead of coercing to 0: the parent remounts
  * this (via `key`) when saved or freshly-loaded settings arrive, which is what
  * resets the drafts without an adjustment effect.
  */

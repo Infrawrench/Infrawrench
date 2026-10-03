@@ -54,7 +54,7 @@ ipcMain.handle("ssh_open_tunnel", (_e, config: SshTunnelConfig) => openTunnel(co
 ipcMain.handle("ssh_get_active_tunnels", () => getActiveTunnels());
 
 // `ssh_exec_command` runs arbitrary command strings over SSH. Callers
-// (DockerSetupModal, SshEnvDeployModal) need multi-step provisioning — install
+// (DockerSetupModal, SshEnvDeployModal) need multi-step provisioning: install
 // Docker, write systemd units, deploy .env files. Replace with narrower typed
 // operations when possible.
 ipcMain.handle(
@@ -248,7 +248,7 @@ ipcMain.handle(
 
 ipcMain.handle(
   "sftp_upload",
-  // No dialog-blessed-path check — the renderer hands over a Buffer, not a local path.
+  // No dialog-blessed-path check: the renderer hands over a Buffer, not a local path.
   (_e, { config, remotePath, data }: { config: SftpConfig; remotePath: string; data: Buffer }) =>
     sftpUpload(config, remotePath, data),
 );
@@ -334,7 +334,7 @@ ipcMain.handle("ssh_check_pageant", () => isPageantRunning());
 ipcMain.handle("ssh_check_1password", () => is1PasswordAgentRunning());
 
 /**
- * Wire shape for `ssh_list_1password_keys` IPC — the same `AgentSshKey` the
+ * Wire shape for `ssh_list_1password_keys` IPC: the same `AgentSshKey` the
  * renderer's `SshKeyPicker` consumes, imported rather than mirrored so the two
  * sides cannot drift. The renderer treats `keyType` as optional; this process
  * always resolves the algorithm, so it is required here.

@@ -108,7 +108,7 @@ describe("LogsView", () => {
 
   it("shows a capability default outside the fixed presets as a selected option (#113)", async () => {
     // DigitalOcean managed databases declare defaultTailLines: 200, which
-    // isn't one of [100, 500, 1000, 5000] — the select must offer and select
+    // isn't one of [100, 500, 1000, 5000]; the select must offer and select
     // 200 rather than silently display "Last 100" while requesting 200.
     const onGetLogs = vi.fn().mockResolvedValue(logsResult());
     render(

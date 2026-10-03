@@ -71,7 +71,7 @@ describe("validateRestoreDrill", () => {
   });
 
   it("refuses a restore time on a blocked drill", () => {
-    // It never started, so a duration is meaningless — and a meaningless RTO
+    // It never started, so a duration is meaningless, and a meaningless RTO
     // is the most dangerous number on this page.
     expect(validateRestoreDrill({ ...base, outcome: "blocked", rtoMinutes: 10 })).toContain(
       "never got that far",

@@ -1,5 +1,5 @@
 /**
- * Zod schemas for metric alert rules — what the web API validates request
+ * Zod schemas for metric alert rules: what the web API validates request
  * bodies against, and what the rule editor builds.
  *
  * The *types* those schemas describe live in `@infrawrench/client-core` so

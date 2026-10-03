@@ -1,16 +1,16 @@
-// `infrawrench status-pages` — the org's public status pages, what each one
+// `infrawrench status-pages`: the org's public status pages, what each one
 // publishes, and the URL it is live at.
 //
 // Cloud-only, like the probes they publish: the checks run in the cloud poller
 // and the page is served by the cloud web app, so a local workspace has
-// nothing to list. The CLI lists; creating and editing pages — and the
-// publish decision in particular — lives on the web/desktop Probes tab.
+// nothing to list. The CLI lists; creating and editing pages (and the
+// publish decision in particular) lives on the web/desktop Probes tab.
 //
 // Listing it here is the point, though: the one thing worth being able to ask
 // from a terminal is "what of our monitoring is currently public, and where?".
 //
-// The response shapes come from `@infrawrench/client-core` — the same
-// definitions every other surface renders — so a server-side change breaks the
+// The response shapes come from `@infrawrench/client-core` (the same
+// definitions every other surface renders) so a server-side change breaks the
 // CLI's build instead of its output. The imports are type-only, so the CLI
 // still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";

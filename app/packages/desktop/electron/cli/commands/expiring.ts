@@ -1,15 +1,15 @@
-// `infrawrench expiring` — the cross-provider expiry radar: certificates,
+// `infrawrench expiring`; the cross-provider expiry radar: certificates,
 // domains, tokens and keys approaching their deadlines, soonest first.
 //
 // Works in both modes, because the classification is declarative and runs over
 // stored state rather than a live provider call:
-//   - cloud (default) — GET /expiring, the same endpoint the web + desktop
+//   - cloud (default): GET /expiring, the same endpoint the web + desktop
 //     Expiring screens render.
-//   - --local — electron/local-expiring.ts runs the shared computation over
+//   - --local: electron/local-expiring.ts runs the shared computation over
 //     this machine's SQLite workspace. No credentials, no network.
 //
-// The response shape comes from `@infrawrench/client-core` — the same
-// definition every other surface uses — so a server-side change breaks the
+// The response shape comes from `@infrawrench/client-core` (the same
+// definition every other surface uses) so a server-side change breaks the
 // CLI's build instead of its output. The import is type-only, so the CLI
 // still ships zero new runtime dependencies.
 import { orgFetch, resolveOrg, type CliContext } from "../context";

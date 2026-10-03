@@ -24,8 +24,8 @@ export function TeamsMark({ className }: { className?: string }) {
  * Microsoft Teams channel routing.
  *
  * There is no "Add to Teams" button here, and that is not an omission. Teams
- * has no app-only OAuth flow for posting channel messages — Graph requires a
- * signed-in user — so the supported path is a webhook URL the user creates in
+ * has no app-only OAuth flow for posting channel messages (Graph requires a
+ * signed-in user) so the supported path is a webhook URL the user creates in
  * the channel. That makes this section a paste-a-URL form rather than a picker,
  * and the disclosure below carries the steps to get one.
  */

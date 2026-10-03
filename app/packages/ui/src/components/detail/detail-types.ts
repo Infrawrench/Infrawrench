@@ -6,7 +6,7 @@ export interface PeerPaneData {
   credentials: Record<string, string>;
   schema: PeerPaneSchema;
   /**
-   * True when the pane is a stub awaiting lazy fetch — the schema is empty and
+   * True when the pane is a stub awaiting lazy fetch: the schema is empty and
    * shouldn't be rendered. Host sets this to false once the real schema arrives.
    */
   loading?: boolean;
@@ -21,7 +21,7 @@ export interface ChildResource {
   accountId: string;
   status?: StatusDotNode | undefined;
   subtitle?: string | undefined;
-  /** Non-secret field values — populated when the detail renders a child table. */
+  /** Non-secret field values: populated when the detail renders a child table. */
   fields?: Record<string, unknown> | undefined;
 }
 
@@ -32,7 +32,7 @@ export interface ChildResourceGroup {
   pluralDisplayName: string;
   supportsCreate: boolean;
   resources: ChildResource[];
-  /** Field schema for the child type — populates the inline edit form. */
+  /** Field schema for the child type: populates the inline edit form. */
   fields?: FieldDefinition[] | undefined;
 }
 

@@ -3,9 +3,9 @@
  *
  * Nodes are resources; a directed edge consumer → provider means "consumer
  * depends on provider" (the consumer holds an output reference to one of the
- * provider's outputs). The raw edge rows come from the host — the
+ * provider's outputs). The raw edge rows come from the host; the
  * `associations` topology table plus `secret_field_states` output-ref rows on
- * the server, the same tables in desktop's local SQLite — and this module is
+ * the server, the same tables in desktop's local SQLite, and this module is
  * the shared pure half: dedupe/index the graph, walk it (blast radius,
  * neighbors), and lay it out for the hand-rolled SVG view.
  *
@@ -16,7 +16,7 @@
  * `fetchDependencyGraph` at the bottom is the one function that talks to a
  * server: Bearer hosts (mobile) read the endpoint through it, while web goes
  * through `apiGet` and desktop through its cloud IPC. It is a plain call, not
- * module state — importing this file still does nothing.
+ * module state: importing this file still does nothing.
  */
 
 import type { CloudFetch } from "./fetch";
@@ -37,7 +37,7 @@ export interface DependencyGraphNode {
 
 /**
  * Where an edge came from. `output-ref` is a reference someone wired by hand;
- * the rest are read back out of synced cloud data by `inferDependencyEdges` —
+ * the rest are read back out of synced cloud data by `inferDependencyEdges`:
  * `declared` from a plugin's own `dependsOn` rule, `containment` from the sync
  * path's parent/child link, `field-match` from a field value that happens to
  * name another resource. Absent means `output-ref` (the only kind that existed
@@ -46,7 +46,7 @@ export interface DependencyGraphNode {
 export type DependencyEdgeKind = "output-ref" | "declared" | "containment" | "field-match";
 
 export interface DependencyGraphEdge {
-  /** The resource holding the reference — it depends on the provider. */
+  /** The resource holding the reference: it depends on the provider. */
   consumerResourceId: string;
   /** The field on the consumer the reference fills. */
   consumerFieldKey: string;
@@ -76,13 +76,13 @@ export interface DependencyGraphData {
 
 /**
  * How an edge reads in the UI. Containment has no field/output pair worth
- * showing — the interesting fact is that one resource lives inside the other.
+ * showing: the interesting fact is that one resource lives inside the other.
  */
 /**
  * Read `GET /api/org/{orgId}/dependency-graph`.
  *
  * With `resourceId` the server answers with that resource's **direct**
- * neighbourhood only — cheap enough to run on every resource-detail mount, but
+ * neighbourhood only: cheap enough to run on every resource-detail mount, but
  * one hop deep, so a model built from it can produce the Dependencies lists and
  * nothing transitive. Anything that needs a blast radius has to ask for the
  * org-wide graph and walk it locally, which is exactly what the CLI's `graph
@@ -115,13 +115,13 @@ export function dependencyEdgeLabel(edge: {
 export interface DependencyGraphModel {
   /**
    * Nodes with at least one valid edge, in input order. Isolated nodes are
-   * dropped — this is the set to render.
+   * dropped: this is the set to render.
    */
   nodes: DependencyGraphNode[];
   /** Deduped edges whose two endpoints both exist in `nodesById`. */
   edges: DependencyGraphEdge[];
   /**
-   * Every input node by id, isolated ones included — an index for lookup, not
+   * Every input node by id, isolated ones included: an index for lookup, not
    * for iteration. Iterate `nodes`.
    */
   nodesById: Map<string, DependencyGraphNode>;
@@ -133,7 +133,7 @@ export interface DependencyGraphModel {
 
 /**
  * Index the raw node/edge lists into an adjacency model. Edges are deduped by
- * (consumer, field, provider) — the associations table and the secret-state
+ * (consumer, field, provider): the associations table and the secret-state
  * output-ref rows describe the same reference, so both sources arriving for one
  * field must collapse to one edge. The provider is part of the key because a
  * single field can legitimately name several resources: plugins flatten lists
@@ -213,7 +213,7 @@ export interface ResourceDependencies {
   dependedOnBy: DependencyNeighbor[];
 }
 
-/** Direct neighbors of one resource — the "Depends on / depended on by" panel. */
+/** Direct neighbors of one resource: the "Depends on / depended on by" panel. */
 export function directDependencies(
   model: DependencyGraphModel,
   resourceId: string,
@@ -248,7 +248,7 @@ export function directDependencies(
 }
 
 /**
- * Transitive consumers of a resource — its blast radius. If the given
+ * Transitive consumers of a resource: its blast radius. If the given
  * resource breaks, everything in the returned set is at risk. The set
  * includes the starting resource itself (a node is always in its own blast
  * radius), so it can be used directly as a highlight set.
@@ -258,7 +258,7 @@ export function collectDependents(model: DependencyGraphModel, resourceId: strin
 }
 
 /**
- * Transitive providers of a resource — everything it directly or indirectly
+ * Transitive providers of a resource: everything it directly or indirectly
  * depends on. Includes the starting resource itself.
  */
 export function collectDependencies(model: DependencyGraphModel, resourceId: string): Set<string> {
@@ -267,7 +267,7 @@ export function collectDependencies(model: DependencyGraphModel, resourceId: str
 
 /**
  * The blast radius, with each dependant's **shortest** hop count from the
- * start — 0 for the start itself, 1 for a direct dependant, 2+ for a
+ * start: 0 for the start itself, 1 for a direct dependant, 2+ for a
  * transitive one.
  *
  * This is the one traversal in the module: {@link collectDependents} and
@@ -342,7 +342,7 @@ export interface DependencyGraphLayout {
  * layer and consumers to the right of everything they depend on, so
  * dependency arrows always point left. Within a layer, a couple of
  * barycenter sweeps against the previous layer keep edge crossings down.
- * Cycles (possible in principle — nothing in the store forbids A→B→A) are
+ * Cycles (possible in principle: nothing in the store forbids A→B→A) are
  * broken by ignoring back edges during the depth pass.
  */
 export function layoutDependencyGraph(
@@ -362,7 +362,7 @@ export function layoutDependencyGraph(
   const depthOf = (id: string): number => {
     const memo = depths.get(id);
     if (memo !== undefined) return memo;
-    if (inProgress.has(id)) return 0; // back edge — break the cycle
+    if (inProgress.has(id)) return 0; // back edge: break the cycle
     inProgress.add(id);
     let depth = 0;
     for (const edge of model.dependsOn.get(id) ?? []) {
@@ -375,7 +375,7 @@ export function layoutDependencyGraph(
 
   // Normalize so the shallowest node sits in layer 0. When every node is on a
   // cycle, the back-edge guard hands out 0 only to the node the walk broke on
-  // — which then gets a real depth once its own recursion unwinds — so no node
+  // (which then gets a real depth once its own recursion unwinds) so no node
   // ends up at 0 and layer 0 renders as a blank column. Subtracting the
   // minimum is a no-op for any graph that has a genuine root.
   let minDepth = Infinity;

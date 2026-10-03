@@ -4,7 +4,7 @@ interface CostsIconProps {
 }
 
 /**
- * Costs glyph — a rising bar chart. Same 24x24 stroke grid and 2px weight as
+ * Costs glyph: a rising bar chart. Same 24x24 stroke grid and 2px weight as
  * {@link WorkflowIcon}, so the Costs sidebar entry sits level with Workflows
  * rather than looking like a different family of icon.
  */

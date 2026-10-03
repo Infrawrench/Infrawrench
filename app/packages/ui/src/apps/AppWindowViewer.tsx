@@ -24,7 +24,7 @@ import {
  *
  * The canvas is sized in *buffer* pixels and scaled down by CSS, so a retina
  * display gets a window rendered at its own resolution rather than an upscaled
- * one — which is also why every pointer coordinate goes through
+ * one, which is also why every pointer coordinate goes through
  * `pointerPosition` rather than being sent as-is.
  */
 export interface AppWindowViewerProps {
@@ -57,7 +57,7 @@ function zstdDecompress(input: Uint8Array, expectedBytes: number): Uint8Array {
 /**
  * Paint a lossy frame: one JPEG per damaged rectangle, decoded by the browser.
  *
- * Drawn straight onto the canvas — decoding to a pixel array first would mean
+ * Drawn straight onto the canvas: decoding to a pixel array first would mean
  * a second full copy of every frame, and the browser's own path is the reason
  * this tier costs the client nothing. The buffer is then read back so the two
  * stay in step: the *next* frame may be lossless, and a lossless frame may be
@@ -142,7 +142,7 @@ export function AppWindowViewer({
    * Turns browser key events into what a US-keymapped host will accept.
    *
    * Stateful because a press may go out as a different key than the one the
-   * user hit — a UK `@` is US Shift+2 — and the release has to match.
+   * user hit (a UK `@` is US Shift+2) and the release has to match.
    */
   const keys = useRef(new KeyTranslator());
   const [painted, setPainted] = useState(false);
@@ -161,15 +161,15 @@ export function AppWindowViewer({
   });
   /**
    * Windows the host reported as dialogs of this one. Each renders as an
-   * overlay inside this viewer — a dialog belongs within its parent's bounds,
-   * never in a tab of its own — and a dialog's own dialogs recurse.
+   * overlay inside this viewer (a dialog belongs within its parent's bounds,
+   * never in a tab of its own) and a dialog's own dialogs recurse.
    */
   const [childWindows, setChildWindows] = useState<number[]>([]);
 
   // The session's mixed audio, shared with every other window tab on it. Held
   // for exactly as long as a viewer is mounted: the last one to leave tells
   // the host to stop sending PCM nobody would play. A dialog overlay skips
-  // this — its parent viewer is mounted for as long as it is.
+  // this: its parent viewer is mounted for as long as it is.
   useEffect(() => {
     if (dialog) return;
     const player = acquireSessionAudio(session);
@@ -210,8 +210,8 @@ export function AppWindowViewer({
       if (!canvas) return;
 
       if (dialog) {
-        // The frames are the truth about a dialog's size — the application may
-        // grow it after opening — and the box follows them.
+        // The frames are the truth about a dialog's size (the application may
+        // grow it after opening) and the box follows them.
         setDialogSize((previous) =>
           previous && previous.width === payload.width && previous.height === payload.height
             ? previous
@@ -243,7 +243,7 @@ export function AppWindowViewer({
           applyPayload(payload, buffer.pixels, buffer.width, buffer.height, zstdDecompress);
           // Only the region the frame touched. Handing the whole canvas to
           // `putImageData` uploads every pixel of the window for a frame that
-          // changed one line of a terminal — which on a HiDPI window is
+          // changed one line of a terminal, which on a HiDPI window is
           // megabytes, at whatever rate the application redraws.
           const dirty = dirtyBounds(payload);
           if (dirty) {
@@ -251,8 +251,8 @@ export function AppWindowViewer({
           }
         }
       } catch (cause) {
-        // A frame we cannot decode is not fatal — the next keyframe repairs
-        // the window — but silently painting nothing looks like a hang.
+        // A frame we cannot decode is not fatal (the next keyframe repairs
+        // the window) but silently painting nothing looks like a hang.
         setError(cause instanceof Error ? cause.message : String(cause));
         return;
       }
@@ -284,7 +284,7 @@ export function AppWindowViewer({
   // Attach on mount, detach on unmount: a tab in the background costs no
   // bandwidth, and the application keeps running either way. A window fills
   // the tab, so it attaches at the tab's size; a dialog is sized by the
-  // application, so it attaches at the size the host already reported —
+  // application, so it attaches at the size the host already reported:
   // asking it to fill the tab would stretch a Save-as box across the screen.
   useEffect(() => {
     let width: number;
@@ -350,7 +350,7 @@ export function AppWindowViewer({
    * The order matters and the shortcut is synthesised rather than forwarded:
    * the application asks the compositor for the selection the moment it sees
    * the key, so the text has to be published first. Synthesising also makes
-   * `Cmd+V` work — a Mac user's paste reaches the host as Meta+V, which no
+   * `Cmd+V` work: a Mac user's paste reaches the host as Meta+V, which no
    * Linux application does anything with.
    */
   const onPaste = useCallback(
@@ -383,8 +383,8 @@ export function AppWindowViewer({
       if (!canvas || !buffer) return;
       const rect = canvas.getBoundingClientRect();
       // `object-contain` letterboxes: when the buffer's aspect ratio differs
-      // from the box — which it does for the whole round trip of every resize,
-      // and permanently if the application refuses a size — the picture is
+      // from the box, which it does for the whole round trip of every resize,
+      // and permanently if the application refuses a size; the picture is
       // centred inside the element with bars beside it. Measuring against the
       // element rather than the picture then puts the pointer somewhere the
       // user is not looking.
@@ -407,11 +407,11 @@ export function AppWindowViewer({
       // Paste is the one shortcut the browser has to keep: intercepting it
       // would mean reading the clipboard ourselves, which needs a permission
       // prompt, where letting it through produces a `paste` event carrying the
-      // text for free. The keystroke is not forwarded — `onPaste` synthesises
+      // text for free. The keystroke is not forwarded: `onPaste` synthesises
       // one the application will recognise once the text is on its way.
       if (isPasteShortcut(event)) return;
       // The remote application owns every other key while focused, including
-      // the browser's own shortcuts — otherwise Ctrl-W closes the tab instead
+      // the browser's own shortcuts, otherwise Ctrl-W closes the tab instead
       // of the document. Auto-repeat keydowns are forwarded too: the remote
       // side has repeat disabled (a hold-timer plus network latency types
       // phantom characters), so the browser's repeat is the only repeat.
@@ -431,7 +431,7 @@ export function AppWindowViewer({
     if (events.length > 0) session.sendInput(windowId, events);
   }, [session, windowId, now]);
 
-  // A key held when the canvas loses focus never gets its keyup — the browser
+  // A key held when the canvas loses focus never gets its keyup: the browser
   // sends that to whatever has focus now. The application is left holding the
   // key down, which for a modifier is a stuck keyboard: every later click and
   // keystroke arrives as a chord.
@@ -504,7 +504,7 @@ export function AppWindowViewer({
         onWheel={(event) => {
           // Through `sendPointer`, so the scroll carries the cursor's position:
           // a compositor delivers an axis event to whatever the pointer is
-          // over, and a wheel with no motion behind it has nowhere to go —
+          // over, and a wheel with no motion behind it has nowhere to go,
           // which is why scrolling did nothing until the mouse had moved.
           const { dx, dy } = axisFromWheel(event);
           sendPointer(event, [{ kind: "pointerAxis", timeMs: now(), dx, dy }]);
@@ -542,7 +542,7 @@ export function AppWindowViewer({
 
       {/* Dialogs the host parented to this window, shown within its bounds.
           The scrim keeps clicks meant for the dialog from landing on the
-          window underneath — which is what the application's own modality
+          window underneath, which is what the application's own modality
           would ignore anyway. Recursion covers a dialog's dialogs. */}
       {childWindows.map((childId) => (
         <div

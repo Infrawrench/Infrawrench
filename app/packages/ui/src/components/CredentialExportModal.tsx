@@ -12,8 +12,8 @@ export interface CredentialExportModalProps {
   generate: (formatId: string) => Promise<CredentialExport>;
   onClose: () => void;
   /**
-   * Optional host-provided download handler. Defaults to the browser's anchor-click pattern
-   * — supply on desktop if you want to route the save through a native dialog.
+   * Optional host-provided download handler. Defaults to the browser's anchor-click pattern:
+   * supply on desktop if you want to route the save through a native dialog.
    */
   onDownload?: (file: { filename: string; mimeType: string; content: string }) => void;
 }

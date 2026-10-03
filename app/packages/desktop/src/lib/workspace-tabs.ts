@@ -223,7 +223,7 @@ export function getWorkspaceNavigateArgs(
       };
     // A window belongs to a resource, so it lives at that resource's route
     // with the window identified in the query rather than at a route of its
-    // own — there is nothing at a window URL without a live session anyway.
+    // own: there is nothing at a window URL without a live session anyway.
     case "linux-app":
       return {
         to: "/resource/$accountId/$resourceId",
@@ -296,7 +296,7 @@ export function navigateToWorkspaceTarget(
  *
  * The router JSON-encodes search values, so a value it wrote from a string
  * comes back quoted (`window=%224%22`) while one written from a number does
- * not. We write numbers, and this reads either — a bare `Number()` on the
+ * not. We write numbers, and this reads either: a bare `Number()` on the
  * quoted form is NaN, which silently demotes a window URL to its resource.
  */
 function searchInt(value: string | null): number {
@@ -308,7 +308,7 @@ export function syncWorkspaceRouteFromPath(
   hash?: string,
   // The router's search string (ParsedLocation.searchStr). The desktop app
   // runs on createHashHistory, so the real URL is `…#/path?query#view` and
-  // window.location.search is always empty — callers must pass the search
+  // window.location.search is always empty: callers must pass the search
   // string from router state instead of relying on window.location.
   search?: string,
 ): WorkspaceTabTarget | null {
@@ -466,7 +466,7 @@ export function syncWorkspaceRouteFromPath(
 }
 
 /**
- * Document title for *plain* routes — pages that render outside the
+ * Document title for *plain* routes: pages that render outside the
  * workspace-tab system, where `syncWorkspaceRouteFromPath` returns null and
  * the active tab's title would therefore go stale in the window title.
  * Labels match the sidebar tiles the pages are opened from. Returns null on

@@ -179,14 +179,14 @@ export interface ResourceTypeSummary {
   parentTypeId: string | undefined;
   supportsCreate: boolean;
   attachTargets?: AttachTarget[];
-  /** True when this type declares an sshEndpoint — a valid SSH-tunnel drop target. */
+  /** True when this type declares an sshEndpoint: a valid SSH-tunnel drop target. */
   isSshHost?: boolean;
   /** True when this type can be dragged onto SSH hosts to set up a tunnel. */
   sshTunnelAttachSource?: boolean;
   /** Child type that opts into its own top-level sidebar section. */
   showInSidebar?: boolean;
   /**
-   * True when this type is the plugin's singleton account root — the account
+   * True when this type is the plugin's singleton account root: the account
    * page renders its detail view instead of an inventory. See
    * `ResourceTypeDefinition.accountRoot`.
    */
@@ -194,7 +194,7 @@ export interface ResourceTypeSummary {
 }
 
 /**
- * `GET /api/org/:orgId/accounts/:id/detail` — account metadata plus the list
+ * `GET /api/org/:orgId/accounts/:id/detail`: account metadata plus the list
  * of resource types this plugin exposes. Used to render the per-account page.
  */
 export interface AccountDetail {
@@ -282,8 +282,8 @@ export interface SubscriptionStatus {
  * One prepaid capacity-slot purchase, as listed in {@link CapacityStatus}.
  *
  * A purchase, not a seat: `quantity` slots bought together share one term, so a
- * row is the unit that expires. Lapsed and refunded purchases stay in the list —
- * it is purchase history — so read capacity from {@link CapacityStatus.seats}
+ * row is the unit that expires. Lapsed and refunded purchases stay in the list
+ * (it is purchase history) so read capacity from {@link CapacityStatus.seats}
  * rather than summing these.
  */
 export interface CapacitySlot {
@@ -303,7 +303,7 @@ export interface CapacitySlot {
  * Prepaid seat capacity, nested in {@link BillingStatus}.
  *
  * Capacity slots are seats bought outright for a fixed term instead of rented
- * monthly, so `seats` here is *additional* to `subscription.seatCount` — an
+ * monthly, so `seats` here is *additional* to `subscription.seatCount`: an
  * org's real capacity is the two added together, and an org can hold slots with
  * no subscription at all.
  */
@@ -324,7 +324,7 @@ export interface CapacityStatus {
  *
  * Note the envelope: the subscription is *nested*, and `complimentary` orgs
  * have every paid perk with `subscription === null`. Reading the response as a
- * bare subscription silently renders blanks for a paying org — and now also
+ * bare subscription silently renders blanks for a paying org, and now also
  * misses an org that is paid entirely through `capacity.seats`.
  */
 export interface BillingStatus {

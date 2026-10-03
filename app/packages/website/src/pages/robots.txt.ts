@@ -7,11 +7,11 @@ export const GET: APIRoute = ({ site }) => {
     throw new Error("`site` must be set in astro.config.mjs to build robots.txt");
   }
 
-  // `/api/` is the releases proxy and update feed — machine endpoints, not content.
+  // `/api/` is the releases proxy and update feed: machine endpoints, not content.
   //
   // The `llms.txt` line is a comment because it is not part of the robots
   // grammar and an unknown directive is a parse risk for something. A comment
-  // is read by the audience that matters here — anything reading robots.txt to
+  // is read by the audience that matters here: anything reading robots.txt to
   // decide how to approach the site is already reading the file, and this is
   // the cheapest place to say "there is a markdown index".
   const body = `User-agent: *

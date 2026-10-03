@@ -13,7 +13,7 @@ import { colors } from "@/lib/theme";
  * The resource's standing monthly cost estimate, mirroring the chip web and
  * desktop put in the detail header (`POST /resources/cost-estimate`). Phones
  * have no header room for a disclosure, so the breakdown is simply a card
- * with the line items already open — the same information, laid out for the
+ * with the line items already open: the same information, laid out for the
  * one-column screen.
  *
  * Best-effort, like the Changes and Dependencies cards beside it: most

@@ -7,7 +7,7 @@ import type { WorkflowRunLog, WorkflowRunResult, WorkflowRunRow } from "./types.
 /**
  * How many rows the history shows before the "show all" toggle. The server
  * caps `GET /workflows/:id/runs` at 50 rows and offers no paging (the desktop
- * local client caps at 50 too), so the full list is always bounded — this is
+ * local client caps at 50 too), so the full list is always bounded: this is
  * purely so a busy workflow doesn't bury the editor under fifty rows.
  */
 const COLLAPSED_ROW_COUNT = 10;
@@ -92,7 +92,7 @@ export function parseRunTimestamp(value: string | null | undefined): number | nu
   return Number.isNaN(ms) ? null : ms;
 }
 
-/** When the run started — `startedAt` if the runner recorded one, else the row's creation. */
+/** When the run started: `startedAt` if the runner recorded one, else the row's creation. */
 function runStartedMs(run: WorkflowRunRow): number | null {
   return parseRunTimestamp(run.startedAt) ?? parseRunTimestamp(run.createdAt);
 }
@@ -163,7 +163,7 @@ export interface RunOutcome {
   output?: unknown;
 }
 
-/** Logs, then the error, then the declared output — a finished run's whole story. */
+/** Logs, then the error, then the declared output: a finished run's whole story. */
 export function RunOutcomeBody({ run }: { run: RunOutcome }) {
   const gt = useGT();
   const logs = run.logs ?? [];
@@ -236,7 +236,7 @@ export interface WorkflowRunHistoryProps {
  * how long it took and what started it, newest first, each row expanding to
  * the logs, error and output the run recorded.
  *
- * The rows come straight from `listRuns()` — the API returns each run's logs
+ * The rows come straight from `listRuns()`: the API returns each run's logs
  * with the row, so expanding costs no extra request. Reconciling with the live
  * panel is why `currentRunId` exists: after an editor run lands, its row is the
  * one `RunResultPanel` is already displaying, so it is flagged instead of

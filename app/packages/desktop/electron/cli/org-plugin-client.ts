@@ -2,13 +2,13 @@
  * A plugin client for one ORG (cloud) account, backed entirely by the org's
  * HTTP API. The counterpart of `infrafile/plugin-host.ts`: that one decrypts
  * local credentials and calls the provider directly, this one never sees a
- * credential — the server holds them, and every operation is an `orgFetch`
+ * credential; the server holds them, and every operation is an `orgFetch`
  * against a route the web app already exposes.
  *
  * The surface implemented here is exactly what `buildWorkflowHost` dispatches
  * to (list/get/outputs/create/update/delete). Capabilities with no org route
  * from the CLI (sql, kv, storage, logs, manifests, …) throw a clear error
- * rather than silently no-op — the resource may well support them in the web
+ * rather than silently no-op: the resource may well support them in the web
  * app, and the message should say where to go.
  */
 import type {
@@ -29,7 +29,7 @@ import { c, printErr } from "./output";
 
 /**
  * Preferred path for an org account: fetch its credentials over the org API
- * (audited server-side, needs `secrets:read`) and run the plugin RIGHT HERE —
+ * (audited server-side, needs `secrets:read`) and run the plugin RIGHT HERE;
  * the same listers and creates a local account gets, live against the
  * provider, including resource types the cloud deployment may not know yet.
  *
@@ -75,7 +75,7 @@ const SYNC_WAIT_MS = 60_000;
 /**
  * One best-effort sync per account per process. The poller keeps the org's
  * cache warm on its own schedule, but a deploy about to act on the rows wants
- * them fresh — while never *failing* (or stalling forever) because of it.
+ * them fresh, while never *failing* (or stalling forever) because of it.
  */
 const syncWaits = new Map<string, Promise<void>>();
 
@@ -194,13 +194,13 @@ function createOrgPluginClient(orgId: string, accountId: string, pluginId: strin
     },
 
     async resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string> {
-      // The cached row first — sync merges every output the provider's lister
+      // The cached row first: sync merges every output the provider's lister
       // has ever populated, so most keys are already here.
       const cached = (await rowsForType(typeId)).find((r) => r.id === resourceId);
       const cachedValue = cached?.outputs[outputKey];
       if (cachedValue != null && cachedValue !== "") return outputString(cachedValue);
 
-      // Not cached — re-list just this type live through the server, which
+      // Not cached: re-list just this type live through the server, which
       // also refreshes the org's rows as a side effect.
       const fresh = await orgFetch<SyncTypeRow[]>(
         orgId,

@@ -1,5 +1,5 @@
 // Typed preload bridge. The renderer can only invoke channels in INVOKE_CHANNELS
-// and only listen to events in EVENT_LITERALS / EVENT_PREFIXES — there is no
+// and only listen to events in EVENT_LITERALS / EVENT_PREFIXES: there is no
 // path for a compromised renderer to pass an arbitrary channel name through.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
@@ -12,7 +12,7 @@ const INVOKE_CHANNELS = [
   "show_open_dialog",
   "open_external_url",
   "update_install_now",
-  // credential helpers — each channel binds plaintext to a specific row + field via AAD
+  // credential helpers: each channel binds plaintext to a specific row + field via AAD
   "account_get_credentials",
   "account_save_credentials",
   "account_create",
@@ -27,7 +27,7 @@ const INVOKE_CHANNELS = [
   // sql.js local desktop DB (renderer-bundled SQL strings only)
   "db_select",
   "db_execute",
-  // workflows — the QuickJS sandbox runs in main; host capabilities are served
+  // workflows: the QuickJS sandbox runs in main; host capabilities are served
   // back from the renderer (see electron/workflow-host.ts + lib/workflow-runner)
   "workflow_run",
   "workflow_stop",
@@ -225,7 +225,7 @@ const INVOKE_CHANNELS = [
   "cloud_changes_cost_impacts",
   "cloud_cost_impact_annotate",
   "cloud_status_incidents",
-  // IaC reconciliation — uploaded Terraform state and the managed/unmanaged
+  // IaC reconciliation: uploaded Terraform state and the managed/unmanaged
   // classification it produces.
   "cloud_iac_states",
   "cloud_iac_upload_state",
@@ -233,7 +233,7 @@ const INVOKE_CHANNELS = [
   "cloud_iac_reconcile",
   "cloud_iac_import_plan",
   "cloud_iac_resource_status",
-  // Agents mode against an org — the local pipeline has its own (non-cloud)
+  // Agents mode against an org: the local pipeline has its own (non-cloud)
   // channels; these drive the org's sessions through the web API instead.
   "cloud_agents_accounts",
   "cloud_agents_get_settings",
@@ -243,7 +243,7 @@ const INVOKE_CHANNELS = [
   "cloud_agents_open_session",
   "cloud_agents_reconcile_session",
   "cloud_agents_delete_session",
-  // Settings tab proxy — one channel for the whole settings API surface; the
+  // Settings tab proxy: one channel for the whole settings API surface; the
   // main-process handler enforces a method+path allowlist (cloud-data/settings.ts).
   "cloud_settings_request",
   "cloud_moment",

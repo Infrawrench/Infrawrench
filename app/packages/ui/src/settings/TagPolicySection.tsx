@@ -373,7 +373,7 @@ function AllocationSection({
     const neighbour = rules[index + direction];
     if (!neighbour || index < 0) return;
     try {
-      // Single transactional swap on the server — two independent PUTs could
+      // Single transactional swap on the server: two independent PUTs could
       // leave both rules on the same priority if one failed mid-flight.
       const next = await api.post<AllocationRule[]>(`/api/org/${orgId}/cost-centres/rules/swap`, {
         aId: rule.id,

@@ -20,7 +20,7 @@ export default function Index() {
 
   if (state === "loading") {
     // Restoring the session is bounded by request timeouts now, but a spinner
-    // with no exit is the worst failure mode a launch screen can have — if we
+    // with no exit is the worst failure mode a launch screen can have, if we
     // are somehow still here, say so and offer the door.
     return (
       <View style={styles.container}>

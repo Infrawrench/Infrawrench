@@ -105,7 +105,7 @@ export const Route = createFileRoute("/resource/$accountId/$resourceId")({
     ...(typeof search["sshKeyId"] === "string" ? { sshKeyId: search["sshKeyId"] } : {}),
     ...(typeof search["sshKeyName"] === "string" ? { sshKeyName: search["sshKeyName"] } : {}),
     // A window of a remote application, addressed at its host's URL. This list
-    // is a whitelist — anything absent from it is dropped from the URL on
+    // is a whitelist: anything absent from it is dropped from the URL on
     // navigation, which left `#window` with no window to identify and sent the
     // tab to the resource detail instead. `window` arrives as a number: the
     // router's default search parser reads each value as JSON.
@@ -123,7 +123,7 @@ interface ResourcePanelProps {
   peerPlugin?: string | undefined;
   peerType?: string | undefined;
   peerParent?: string | undefined;
-  /** "" | "ssh" | "sftp" — drives the view selection. */
+  /** "" | "ssh" | "sftp": drives the view selection. */
   view: string;
   agentSessionId?: string | undefined;
   sshKeyId?: string | undefined;
@@ -132,7 +132,7 @@ interface ResourcePanelProps {
   initialCwd?: string | undefined;
   /**
    * Title to show instead of the resource's own display name, for panels
-   * standing in for something else — an account-root resource rendered as its
+   * standing in for something else: an account-root resource rendered as its
    * account's page. Applies to the header and the workspace tab together, so
    * the two can't disagree.
    */
@@ -233,8 +233,8 @@ export function ResourcePanel({
   const [showExportCredential, setShowExportCredential] = useState(false);
   const [resourceTypeLabel, setResourceTypeLabel] = useState<string>(gt("Resource"));
 
-  // One estimator for both surfaces that quote a monthly figure — the detail
-  // header's standing estimate and the edit modal's change delta — so the two
+  // One estimator for both surfaces that quote a monthly figure (the detail
+  // header's standing estimate and the edit modal's change delta) so the two
   // are always the same plugin call over the same fields.
   const loadCostEstimate = useMemo(
     () =>
@@ -272,7 +272,7 @@ export function ResourcePanel({
   const navigate = useNavigate();
   // Rehydrate launch metadata ONLY for agent tabs (agentSessionId present)
   // that are missing pieces of it (e.g. restored after a restart). Plain SSH
-  // tabs must never look up agent sessions — a VM that once hosted an agent
+  // tabs must never look up agent sessions: a VM that once hosted an agent
   // session would otherwise silently attach the agent's screen.
   const agentLaunchLookupKey =
     isSshView && agentSessionId && !(sshKeyId && sshKeyName && initialCommand && initialCwd)
@@ -396,7 +396,7 @@ export function ResourcePanel({
 
   useEffect(() => {
     if (!agentLaunchLookupKey || !agentSessionId) {
-      // Shared constant, not a fresh `{}` — see NO_AGENT_LAUNCH_DEFAULTS. A new
+      // Shared constant, not a fresh `{}`: see NO_AGENT_LAUNCH_DEFAULTS. A new
       // object here loops the page forever as soon as any dependency of this
       // effect becomes referentially unstable, which is what broke Monaco
       // highlighting on web (issue #123).
@@ -411,7 +411,7 @@ export function ResourcePanel({
 
     async function resolveAgentLaunchDefaults() {
       // Cloud sessions live in the org, not this machine's SQLite, and the
-      // server owns the launch command and the managed org key — the same
+      // server owns the launch command and the managed org key: the same
       // `POST /agents/sessions/:id/open` web rehydrates from. Reading the
       // local table here would report "session no longer exists" for every
       // agent tab opened against an org.
@@ -434,7 +434,7 @@ export function ResourcePanel({
       }
 
       const db = await getDb();
-      // Look up the exact session this tab was opened for — never "the
+      // Look up the exact session this tab was opened for, never "the
       // latest session on this VM", which could belong to another tab.
       const rows = await db.select<AgentLaunchSession[]>(
         `SELECT id, tool, workspace_name, project_name, repo
@@ -513,7 +513,7 @@ export function ResourcePanel({
     peerPanesRef.current = peerPanes;
   }, [peerPanes]);
 
-  // Background refresh — auto every 30 s and on manual "Refresh" action
+  // Background refresh: auto every 30 s and on manual "Refresh" action
   useEffect(() => {
     function bgRefresh() {
       if (loadingRef.current) return; // skip if a navigation is already in flight
@@ -560,7 +560,7 @@ export function ResourcePanel({
     async function handler(e: Event) {
       const detail = (e as CustomEvent<InvokePluginActionDetail>).detail;
       if (!detail) return;
-      // Scope to this panel — the workspace mounts every open tab, so an
+      // Scope to this panel: the workspace mounts every open tab, so an
       // unscoped action would run once per mounted panel (against the wrong
       // resource for non-matching panels).
       if (detail.resourceId && detail.resourceId !== decodedResourceId) return;
@@ -684,7 +684,7 @@ export function ResourcePanel({
           const resources = await client.listResources(source.resourceTypeId, acctId);
           for (const resource of resources) {
             try {
-              // Prefer the value the lister already populated — avoids an N+1
+              // Prefer the value the lister already populated: avoids an N+1
               // re-list when resolveOutput would just re-fetch the same data.
               const preResolved = resource.resolvedOutputs[source.outputKey];
               const outputValue =
@@ -726,7 +726,7 @@ export function ResourcePanel({
       if (!detail) return;
       // The workspace keeps every open tab's panel mounted, so this global
       // event reaches all of them. Only the panel whose resource matches
-      // should react — otherwise N panels each open their own modal.
+      // should react, otherwise N panels each open their own modal.
       if (detail.resourceId && detail.resourceId !== decodedResourceId) return;
       setPromptModal(detail);
     }
@@ -1292,14 +1292,14 @@ export function ResourcePanel({
             initialCwd={effectiveInitialCwd}
             autoConnectReady={agentAutoConnectReady}
             // An agent tab opened while an org is active is one of the org's
-            // sessions, so its key is the org's — see SshViewPane.
+            // sessions, so its key is the org's: see SshViewPane.
             agentKeyScope={activeCloudOrgId ? "cloud" : "app"}
             agentLaunchError={agentLaunchError ?? undefined}
           />
         )}
       </div>
 
-      {/* SSH bottom bar — connection info + disconnect */}
+      {/* SSH bottom bar: connection info + disconnect */}
       {isSshView && (hasTerminal || quickSshConnection) && (
         <SshConnectionBar
           sshConfig={sshConfig}
@@ -1309,7 +1309,7 @@ export function ResourcePanel({
         />
       )}
 
-      {/* Non-SSH bottom panels — hidden when in SSH view */}
+      {/* Non-SSH bottom panels: hidden when in SSH view */}
       {!isSshView && !isSftpView && (canDelete || canEdit || credentialFormats.length > 0) && (
         <ResourceFooterBar
           canDelete={canDelete}
@@ -1363,7 +1363,7 @@ export function ResourcePanel({
           // Re-hydrate after a successful command so side effects land in the
           // view. Critical for "Make connection user": the minted credential
           // is persisted during the command, and only a refresh re-runs the
-          // peer pane's resolveOutput to pick it up — without this the pane
+          // peer pane's resolveOutput to pick it up; without this the pane
           // stays stuck on the same "no password" guidance forever.
           dispatchRefreshResource();
         }}

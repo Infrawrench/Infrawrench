@@ -4,7 +4,7 @@ interface MetricAlertIconProps {
 }
 
 /**
- * Metric-alerts glyph — a bell over an activity pulse. Same 24x24 stroke grid
+ * Metric-alerts glyph: a bell over an activity pulse. Same 24x24 stroke grid
  * and 2px weight as ChangesIcon/ExpiryIcon so the sidebar entry sits level
  * with its neighbours. (Lucide's "bell-ring"-style bell, simplified.)
  */

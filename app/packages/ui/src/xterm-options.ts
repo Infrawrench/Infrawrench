@@ -16,7 +16,7 @@ import { getTerminalTheme } from "./terminal-theme.js";
 export interface XtermTerminalOptionOverrides {
   /**
    * Coding-agent tabs (Claude Code, Codex) manage their own scrolling
-   * in-app, so xterm's scrollback buffer — and the scrollbar it draws — are
+   * in-app, so xterm's scrollback buffer (and the scrollbar it draws) are
    * pure noise there. 0 disables scrollback entirely.
    */
   scrollback?: number;
@@ -53,7 +53,7 @@ export function getXtermTerminalOptions(overrides?: XtermTerminalOptionOverrides
     convertEol: false,
     scrollback: overrides?.scrollback ?? 10000,
     // Without this xterm renders only to its canvas/DOM row layer and the
-    // session is invisible to NVDA, VoiceOver and Orca — which, in an app
+    // session is invisible to NVDA, VoiceOver and Orca, which, in an app
     // whose primary surface is SSH and `kubectl exec`, means the product
     // does not work at all for a screen reader user.
     //
@@ -68,7 +68,7 @@ export function getXtermTerminalOptions(overrides?: XtermTerminalOptionOverrides
     // `MAX_ROWS_TO_READ = 20` lines, after which xterm announces
     // "too much output" instead, so a `yes` flood cannot turn into unbounded
     // announcement work. A preference would also have to default to off,
-    // which is the present defect restated — a screen reader user cannot
+    // which is the present defect restated: a screen reader user cannot
     // discover a setting in a UI they cannot read.
     screenReaderMode: true,
   };
@@ -82,7 +82,7 @@ export type TerminalDescription =
   | {
       kind: "ssh";
       /**
-       * Omitted when the caller does not know the destination — a web session
+       * Omitted when the caller does not know the destination: a web session
        * opened without `sshHost` connects to whatever the plugin's
        * `getSshConfig()` reads out of the account credentials, server-side.
        */
@@ -124,7 +124,7 @@ export function getTerminalAccessibleName(target: TerminalDescription): string {
     }
     case "k9s":
       // No namespace means the `--namespace` flag is simply not passed, so k9s
-      // opens on whatever the kubeconfig context defaults to — which is not
+      // opens on whatever the kubeconfig context defaults to, which is not
       // necessarily every namespace, so this must not say that it is.
       return target.namespace ? `k9s terminal, namespace ${target.namespace}` : "k9s terminal";
     case "playback":
@@ -144,7 +144,7 @@ export function getTerminalAccessibleName(target: TerminalDescription): string {
  * The recording player is the deliberate exception. It sets `disableStdin`,
  * so there are no keystrokes to pass through, and forcing focus mode there
  * would take away the arrow-key navigation that is the only way to read a
- * replay — `role="group"` keeps the buffer browsable.
+ * replay: `role="group"` keeps the buffer browsable.
  */
 export function getTerminalContainerProps(target: TerminalDescription): {
   role: "application" | "group";
@@ -159,7 +159,7 @@ export function getTerminalContainerProps(target: TerminalDescription): {
 /**
  * Hide the xterm viewport's scrollbar inside `container`. Used for
  * coding-agent tabs where scrollback is disabled and the tool scrolls
- * in-app — without this an empty scrollbar gutter still renders.
+ * in-app: without this an empty scrollbar gutter still renders.
  * Call after `terminal.open(container)`.
  */
 export function hideXtermScrollbar(container: HTMLElement): void {

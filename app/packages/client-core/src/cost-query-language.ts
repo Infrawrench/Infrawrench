@@ -1,5 +1,5 @@
 /**
- * The cost query language — a small SQL-like text form for the *existing*
+ * The cost query language: a small SQL-like text form for the *existing*
  * cost filter.
  *
  * `CostFilter[]` is a good shape for a row editor and a poor shape for
@@ -15,14 +15,14 @@
  * 1. **It is a front-end, not a query engine.** Anything the structured filter
  *    cannot express is a parse error here, never a new branch downstream.
  *    There is exactly one execution path (`clickhouse/cost-readers.ts`), one
- *    set of bound parameters, and therefore one security surface — the text
+ *    set of bound parameters, and therefore one security surface: the text
  *    never reaches SQL, only the compiled `CostFilter[]` does, and its values
  *    go through the same `{name:Array(String)}` binding they always did.
  * 2. **It round-trips.** `parseCostQuery(formatCostQuery(f))` deep-equals `f`
  *    for every filter list the API would accept.
  * 3. **Errors carry an offset.** A query language with vague errors is worse
  *    than the JSON blob it replaces, so every failure knows where it happened,
- *    what was expected there, and — for a misspelled dimension — what the real
+ *    what was expected there, and (for a misspelled dimension) what the real
  *    names are.
  *
  * Pure and dependency-free (no DOM, no Node APIs) so web, desktop, mobile, the
@@ -40,7 +40,7 @@ import { COST_DIMENSIONS, type CostDimensionId, type CostFilter } from "./costs"
  *
  * `offset`/`length` describe a span in the *original* source, so a UI can
  * underline it and a terminal can put a caret under it. `expected` names what
- * would have been valid at that point — the dimension names when one is
+ * would have been valid at that point: the dimension names when one is
  * misspelled, the operators when one is unsupported.
  */
 export class CostQueryParseError extends Error {
@@ -68,7 +68,7 @@ export class CostQueryParseError extends Error {
   }
 
   /**
-   * The message with the query and a caret under the offending span — what the
+   * The message with the query and a caret under the offending span: what the
    * CLI prints and what an API error body can carry verbatim.
    */
   annotated(): string {
@@ -84,7 +84,7 @@ export class CostQueryParseError extends Error {
  * Only one filter is genuinely inexpressible: a `tag` filter with no key,
  * because the language has nowhere to put the missing key. Rather than invent a
  * placeholder that would parse back into a *different* filter, rendering fails
- * loudly — the editors that can hold a half-finished row are the ones that get
+ * loudly: the editors that can hold a half-finished row are the ones that get
  * this, and they can say "finish the row" instead of silently dropping it.
  */
 export class CostQueryFormatError extends Error {
@@ -143,7 +143,7 @@ function readString(source: string, start: number): Token {
   while (i < source.length) {
     const ch = source[i]!;
     if (ch === quote) {
-      // A doubled quote is a literal quote — SQL's own escape.
+      // A doubled quote is a literal quote: SQL's own escape.
       if (source[i + 1] === quote) {
         value += quote;
         i += 2;
@@ -254,7 +254,7 @@ function tokenize(source: string): Token[] {
  * "Did you mean…" for a misspelled dimension
  * ------------------------------------------------------------------ */
 
-/** Levenshtein distance, bounded by nothing clever — the inputs are tiny. */
+/** Levenshtein distance, bounded by nothing clever: the inputs are tiny. */
 function editDistance(a: string, b: string): number {
   const rows = a.length + 1;
   const cols = b.length + 1;
@@ -286,7 +286,7 @@ function suggestDimension(name: string): CostDimensionId | null {
 }
 
 /* ------------------------------------------------------------------ *
- * Parser — recursive descent over the token list
+ * Parser: recursive descent over the token list
  * ------------------------------------------------------------------ */
 
 /**
@@ -348,7 +348,7 @@ class Parser {
 
   /**
    * The error for a token, ready to `throw`. Returned rather than thrown so
-   * every call site reads `throw this.fail(...)` — the control flow is visible
+   * every call site reads `throw this.fail(...)`: the control flow is visible
    * at the call site instead of depending on a `never` return type.
    */
   private fail(
@@ -552,8 +552,8 @@ class Parser {
 /**
  * Compile a query into the structured filter it is a front-end for.
  *
- * An empty (or whitespace-only) query is `[]` — no filter, the same as an empty
- * row editor — rather than an error, so a text box a user has cleared behaves
+ * An empty (or whitespace-only) query is `[]` (no filter, the same as an empty
+ * row editor) rather than an error, so a text box a user has cleared behaves
  * the way a text box a user has cleared should.
  *
  * @throws {CostQueryParseError} with an offset, a message, and the valid
@@ -574,7 +574,7 @@ export function isValidCostQuery(source: string): boolean {
 }
 
 /* ------------------------------------------------------------------ *
- * Rendering — the other half of the round trip
+ * Rendering: the other half of the round trip
  * ------------------------------------------------------------------ */
 
 /**
@@ -582,7 +582,7 @@ export function isValidCostQuery(source: string): boolean {
  *
  * The backslash is escaped first, so a value that already contains one cannot
  * combine with a following quote's escape to mean something else. Newlines and
- * tabs are escaped too — not for correctness (the tokenizer keeps literal
+ * tabs are escaped too, not for correctness (the tokenizer keeps literal
  * whitespace inside a string) but so a rendered query is always one line.
  */
 function quote(value: string): string {
@@ -602,7 +602,7 @@ function quote(value: string): string {
  * exactly, and `formatCostQuery(parseCostQuery(text))` is a normalised form of
  * `text`.
  *
- * Filters with no values are skipped — an empty `values` is what a freshly
+ * Filters with no values are skipped: an empty `values` is what a freshly
  * added editor row looks like, it expresses nothing, and the editors already
  * drop those before saving. A `tag` filter with no key is the one thing that
  * cannot be rendered at all, and throws.

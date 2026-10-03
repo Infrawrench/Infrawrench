@@ -34,7 +34,7 @@ const STATUS_LABELS: Record<AccessRequestStatus, string> = {
  *
  * The page is deliberately one screen rather than two. The person who asks and
  * the person who decides are different people, but they are looking at the same
- * queue — splitting it would mean an approver has to go somewhere else to see
+ * queue: splitting it would mean an approver has to go somewhere else to see
  * what they granted last week, which is exactly the review nobody then does.
  */
 export function AccessRequestsSection() {
@@ -333,7 +333,7 @@ function RequestRow({
         )}
         {request.status === "pending" && canRequest && (
           // The requester's own escape hatch. The server checks ownership, so
-          // showing it to everyone would just produce a 404 — but it also
+          // showing it to everyone would just produce a 404, but it also
           // costs nothing to show, and hiding it would need the caller's id
           // threaded through the settings host for no real gain.
           <button

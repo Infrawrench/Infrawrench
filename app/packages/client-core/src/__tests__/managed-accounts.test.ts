@@ -46,7 +46,7 @@ function line(over: Partial<ManagedInvoiceLine> = {}): ManagedInvoiceLine {
 /**
  * `managedInvoiceBlocker` is the single statement of the state machine, used by
  * the service to refuse and by the UI to disable. If the two ever disagreed,
- * one of them would be lying to a user about what is possible — so both call
+ * one of them would be lying to a user about what is possible, so both call
  * this, and this is what is pinned.
  */
 describe("managedInvoiceBlocker", () => {
@@ -78,7 +78,7 @@ describe("managedInvoiceBlocker", () => {
 
   /**
    * Sending twice is the one repeat this state machine allows, and the line is
-   * drawn on whether anything landed — not on the status, and not on whether
+   * drawn on whether anything landed, not on the status, and not on whether
    * the transport reported an error. The mail provider has no idempotency key,
    * so "some of them got it" and "none of them did" are genuinely different
    * situations for the customer's inbox.

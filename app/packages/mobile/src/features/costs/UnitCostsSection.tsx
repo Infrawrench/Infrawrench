@@ -59,7 +59,7 @@ function GapAwareSparkline({ values, color }: { values: Array<number | null>; co
  * things the business does costs, over the trailing 30 days.
  *
  * Read-only. Creating a metric, scoping it and reporting its values are
- * deliberate omissions on the phone (see `useUnitCosts.ts`) — the same stance
+ * deliberate omissions on the phone (see `useUnitCosts.ts`): the same stance
  * mobile takes on tag policy, exchange rates and anomaly tuning. What is *not*
  * omitted is the honesty: a period nobody reported is drawn as a break in the
  * line and named in the caveat under it, never as a zero.
@@ -70,7 +70,7 @@ export function UnitCostsSection() {
   const series = useUnitCostSeries(metrics);
 
   // An org with no business metrics stays quiet rather than advertising an
-  // empty report — the same rule the tag governance section follows.
+  // empty report: the same rule the tag governance section follows.
   if (!metricsQuery.isLoading && !metricsQuery.isError && metrics.length === 0) return null;
 
   return (

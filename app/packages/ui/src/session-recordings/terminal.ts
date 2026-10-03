@@ -13,7 +13,7 @@
 export interface PlaybackTerminal {
   /** Write raw terminal bytes (already decoded to a string). */
   write(data: string): void;
-  /** Wipe the screen and scrollback — the first half of every seek. */
+  /** Wipe the screen and scrollback: the first half of every seek. */
   reset(): void;
   /** Apply an `"r"` (resize) event from the cast. */
   resize(cols: number, rows: number): void;
@@ -27,7 +27,7 @@ export interface PlaybackTerminal {
  * The player calls this once per mounted recording and disposes it on unmount.
  * `cols`/`rows` come from the cast header, so playback starts at the geometry
  * the session was actually recorded at rather than whatever the viewport
- * happens to be — a session recorded at 200 columns must not reflow into 80,
+ * happens to be: a session recorded at 200 columns must not reflow into 80,
  * because reflowed output is not what the operator saw.
  */
 export type MountPlaybackTerminal = (

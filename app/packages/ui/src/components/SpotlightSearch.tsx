@@ -68,7 +68,7 @@ export function SpotlightSearch({
 
   // Open as a native modal dialog: the top layer, focus containment, Escape
   // (the cancel event), and focus restoration on close() are all handled by
-  // the browser. Land initial focus on the input explicitly — showModal()'s
+  // the browser. Land initial focus on the input explicitly: showModal()'s
   // own focusing steps are the fallback.
   useEffect(() => {
     const dialog = dialogRef.current;

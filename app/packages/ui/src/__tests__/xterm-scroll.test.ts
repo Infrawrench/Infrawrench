@@ -66,7 +66,7 @@ describe("attachAltBufferScrollHandler", () => {
 
   it("does nothing while the app has mouse tracking enabled", () => {
     // xterm already converts wheel events to mouse reports the app scrolls
-    // with — synthesizing keys on top would double-scroll or walk history.
+    // with: synthesizing keys on top would double-scroll or walk history.
     const { term, element } = makeTerm("alternate", true, "any");
     const sendInput = vi.fn();
     attachAltBufferScrollHandler(term, sendInput);

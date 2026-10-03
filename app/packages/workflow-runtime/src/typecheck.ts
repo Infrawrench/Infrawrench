@@ -5,7 +5,7 @@
  * The Monaco editor already type-checks interactively in the browser, but
  * non-interactive authors (the MCP / chat `write_workflow` tool, scripts, the
  * HTTP API) have no editor. This runs the same check headlessly so a workflow
- * can be rejected — with real diagnostics — before it is ever saved.
+ * can be rejected (with real diagnostics) before it is ever saved.
  *
  * The compiler options mirror {@link file://../../ui/src/workflows/WorkflowEditorView.tsx}
  * exactly (target ESNext, `lib: ["es2020"]`, non-strict) so the diagnostics an
@@ -43,7 +43,7 @@ export interface TypecheckResult {
   hasErrors: boolean;
   /**
    * True when the TypeScript standard library could not be located, so only
-   * syntax was checked. Callers should surface this — a clean result is much
+   * syntax was checked. Callers should surface this: a clean result is much
    * weaker than a full check.
    */
   degraded: boolean;
@@ -63,8 +63,8 @@ let cachedLibDir: string | null | undefined;
 
 /**
  * Where to look for `lib.*.d.ts`, in order. Bundled services (esbuild) lose the
- * ability to resolve the TypeScript package at runtime — lib files are data,
- * not code — so `scripts/copy-ts-libs.mjs` drops them next to the bundle and
+ * ability to resolve the TypeScript package at runtime (lib files are data,
+ * not code) so `scripts/copy-ts-libs.mjs` drops them next to the bundle and
  * candidate #2 (sibling `ts-libs/`) finds them there.
  *
  * Note: `@typescript/typescript6` re-exports `typescript@^6` via
@@ -79,12 +79,12 @@ function libDirCandidates(): string[] {
   try {
     out.push(join(dirname(fileURLToPath(import.meta.url)), "ts-libs"));
   } catch {
-    /* import.meta.url unavailable (CJS interop) — skip */
+    /* import.meta.url unavailable (CJS interop): skip */
   }
   try {
     out.push(dirname(ts.getDefaultLibFilePath({})));
   } catch {
-    /* ts.sys unavailable — skip */
+    /* ts.sys unavailable: skip */
   }
   return out;
 }
@@ -120,7 +120,7 @@ function categoryOf(category: ts.DiagnosticCategory): WorkflowDiagnostic["catego
  */
 export function typecheckWorkflow(opts: TypecheckWorkflowOptions): TypecheckResult {
   // An override that doesn't actually hold the libs degrades the same way a
-  // missing install does — never silently pass off a lib-less check as a real one.
+  // missing install does, never silently pass off a lib-less check as a real one.
   const override = opts.libDir;
   const libDir = override ? (hasStandardLib(override) ? override : null) : resolveTsLibDir();
   const limit = opts.limit ?? 50;

@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Quota radar — cloud mode only. Collection runs in the cloud poller (it is
+// Quota radar: cloud mode only. Collection runs in the cloud poller (it is
 // credentialed, rate-limited and, on AWS, metered), and the feed is computed
 // server-side over the collected readings (`GET /quotas`, the same endpoint the
 // web Quotas screen uses). There is deliberately no local-mode counterpart:

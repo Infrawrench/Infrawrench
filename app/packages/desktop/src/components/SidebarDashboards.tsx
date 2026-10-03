@@ -85,7 +85,7 @@ export function SidebarDashboards() {
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   const [chatSessions, setChatSessions] = useState<ConversationSummary[]>([]);
 
-  // Chat sessions — cloud-mode only (the chat agent runs in the web backend).
+  // Chat sessions: cloud-mode only (the chat agent runs in the web backend).
   const loadChats = useCallback(async () => {
     if (!activeCloudOrgId) {
       setChatSessions([]);
@@ -94,7 +94,7 @@ export function SidebarDashboards() {
     try {
       const sessions = await getDesktopChatClient(activeCloudOrgId).listConversations();
       setChatSessions(sessions);
-      // Keep chat workspace tab titles in sync with conversation titles —
+      // Keep chat workspace tab titles in sync with conversation titles:
       // conversations auto-rename after the first message, and restored tabs
       // carry whatever title they had when the app last closed.
       const titleById = new Map(sessions.map((c) => [c.id, c.title]));
@@ -207,8 +207,8 @@ export function SidebarDashboards() {
 
   // Deploy is here in both modes: with an org it is the full deploy screen,
   // and without one it is the history of what `infrawrench deploy` did on this
-  // machine. Costs and Changes have no local half — spend is collected
-  // server-side, change events are recorded by the cloud poller — so the tool
+  // machine. Costs and Changes have no local half (spend is collected
+  // server-side, change events are recorded by the cloud poller) so the tool
   // count differs between local and org mode; the Tools launcher lists
   // whatever it gets.
   const navTools: SidebarToolDef[] = [
@@ -268,7 +268,7 @@ export function SidebarDashboards() {
           },
           // Cloud-only for the same reason as Costs: rules are evaluated by
           // the cloud poller against the cloud metric store. Not a workspace
-          // tab — same as web, a plain route.
+          // tab: same as web, a plain route.
           {
             key: "metric-alerts",
             label: gt("Alerts"),
@@ -277,7 +277,7 @@ export function SidebarDashboards() {
           },
           // Cloud-only for the same reason as Costs: change events are recorded
           // by the cloud poller, and there is no poller in local-only mode.
-          // Not a workspace tab — same as web, a plain route.
+          // Not a workspace tab: same as web, a plain route.
           {
             key: "changes",
             label: gt("Changes"),
@@ -353,7 +353,7 @@ export function SidebarDashboards() {
           },
         ]
       : []),
-    // Graph has a local half — output references live in the local SQLite —
+    // Graph has a local half (output references live in the local SQLite)
     // so unlike Costs the tile shows in both modes.
     {
       key: "graph",
@@ -362,16 +362,16 @@ export function SidebarDashboards() {
       onClick: () =>
         void navigateToWorkspaceTarget(navigate, graphTabTarget(), { label: gt("Graph") }),
     },
-    // Expiring also has a local half — the feed is computed from stored state
+    // Expiring also has a local half: the feed is computed from stored state
     // and the locally loaded plugins' expiry declarations. Not a workspace
-    // tab — same as web and Changes, a plain route.
+    // tab: same as web and Changes, a plain route.
     {
       key: "expiring",
       label: gt("Expiring"),
       icon: <ExpiryIcon />,
       onClick: () => void navigate({ to: "/expiring" }),
     },
-    // Posture also has a local half — findings are computed from stored state
+    // Posture also has a local half: findings are computed from stored state
     // and the locally loaded plugins' posture declarations. A plain route,
     // same as Expiring.
     {
@@ -380,7 +380,7 @@ export function SidebarDashboards() {
       icon: <PostureIcon />,
       onClick: () => void navigate({ to: "/posture" }),
     },
-    // Backups is cloud only — the coverage could be computed locally, but the
+    // Backups is cloud only: the coverage could be computed locally, but the
     // recovery objectives it is judged against are org state with nowhere to
     // live in a single-machine workspace. A workspace-tab kind so the strip
     // stays in sync with the active panel.
@@ -420,7 +420,7 @@ export function SidebarDashboards() {
     },
     // Query monitors are cloud only: the schedule is run by the poller, so a
     // monitor that only existed on one laptop would only run while that laptop
-    // was open — which is the opposite of what a monitor is for.
+    // was open, which is the opposite of what a monitor is for.
     {
       key: "query-monitors",
       label: gt("Query monitors"),
@@ -430,7 +430,7 @@ export function SidebarDashboards() {
           label: gt("Query monitors"),
         }),
     },
-    // Domains also has a local half — the inventory is computed from stored
+    // Domains also has a local half: the inventory is computed from stored
     // state and the locally loaded plugins' DNS declarations. A workspace-tab
     // kind (same as Logs), so the strip stays in sync with the active panel.
     {
@@ -440,7 +440,7 @@ export function SidebarDashboards() {
       onClick: () =>
         void navigateToWorkspaceTarget(navigate, dnsTabTarget(), { label: gt("Domains") }),
     },
-    // Env diff also has a local half — local mode enumerates both accounts
+    // Env diff also has a local half: local mode enumerates both accounts
     // through the plugin, since the local workspace has no synced store to
     // read. Workspace-tab kind so a/b selection survives restart.
     {
@@ -452,8 +452,8 @@ export function SidebarDashboards() {
           label: gt("Env diff"),
         }),
     },
-    // Fan-out SSH has a local half — local SSH accounts exec through the
-    // machine's own ssh machinery — so, like Graph, it shows in both modes.
+    // Fan-out SSH has a local half (local SSH accounts exec through the
+    // machine's own ssh machinery) so, like Graph, it shows in both modes.
     // A plain route, same as web.
     {
       key: "ssh-fanout",
@@ -461,8 +461,8 @@ export function SidebarDashboards() {
       icon: <FanoutIcon />,
       onClick: () => void navigate({ to: "/ssh-fanout" }),
     },
-    // Logs also has a local half — the in-renderer plugin clients fetch tails
-    // directly — so like Graph the tile shows in both modes (saved queries
+    // Logs also has a local half (the in-renderer plugin clients fetch tails
+    // directly) so like Graph the tile shows in both modes (saved queries
     // and alerting are the cloud-only part, hidden by the panel locally).
     {
       key: "logs",
@@ -565,7 +565,7 @@ export function SidebarDashboards() {
         </div>
       )}
 
-      {/* Chat sessions — only when signed in to cloud with an active org */}
+      {/* Chat sessions, only when signed in to cloud with an active org */}
       {activeCloudOrgId && (
         <div className="mb-2">
           <div className="flex items-center justify-between px-3 py-1">

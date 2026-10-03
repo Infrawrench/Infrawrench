@@ -1,5 +1,5 @@
 /**
- * Metric threshold alert rules — cloud-mode only (rules are evaluated by the
+ * Metric threshold alert rules: cloud-mode only (rules are evaluated by the
  * cloud poller against the cloud metric store). One wrapper per allowlisted
  * IPC channel, matching `cloud-costs.ts`.
  */

@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Public status pages — cloud-mode only, like the probes they publish: the
+// Public status pages; cloud-mode only, like the probes they publish: the
 // checks run in the cloud poller and the page is served by the cloud web app,
 // so there is nothing a local workspace could publish.
 

@@ -14,7 +14,7 @@ import { SpeechScreen } from "@/features/tools/SpeechScreen";
  * the resource page; there's no room for that here, so each is pushed as its
  * own screen.
  *
- * Every parameter rides in the query string — resource ids contain characters
+ * Every parameter rides in the query string: resource ids contain characters
  * that any packed path segment would collide with.
  */
 export default function ToolRoute() {

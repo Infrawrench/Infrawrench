@@ -6,7 +6,7 @@
  * reach other tenants' pods and the node's metadata credentials. Desktop has no
  * such problem and no such proxy: the workflow is code the user wrote, running
  * on the user's own machine, with the user's own network. Reaching a box on
- * their LAN is a feature here, not an escape — so the request is made directly
+ * their LAN is a feature here, not an escape, so the request is made directly
  * and no address is blocked.
  *
  * It runs in main rather than the renderer for the same reason SSH does: the
@@ -15,7 +15,7 @@
  * asked for. Node's fetch has neither.
  *
  * Unlike every other host capability, this one is served *here* rather than
- * bridged back to the renderer (see workflow-host.ts) — the request needs
+ * bridged back to the renderer (see workflow-host.ts): the request needs
  * nothing the renderer owns (no plugin client, no DB, no prompt UI), so a round
  * trip would only add latency.
  */

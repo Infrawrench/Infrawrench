@@ -76,7 +76,7 @@ export function AccountResourceSections<
       return;
     }
 
-    // Active section no longer visible — fall back to default
+    // Active section no longer visible: fall back to default
     setActiveSectionId(pickDefaultAccountSectionId(visibleCategories));
   }, [activeSectionId, visibleCategories]);
 

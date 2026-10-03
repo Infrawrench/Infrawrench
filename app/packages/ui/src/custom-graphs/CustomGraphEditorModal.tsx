@@ -23,7 +23,7 @@ export interface CustomGraphEditorModalProps {
 /**
  * Script editor for a custom graph: Monaco with the ambient `graph.d.ts`, a
  * type-check-on-save gate (mirroring write_custom_graph), and a live preview
- * pane that runs the SAVED script — the preview is exactly what the dashboard
+ * pane that runs the SAVED script; the preview is exactly what the dashboard
  * card will do, controls included.
  */
 export function CustomGraphEditorModal({

@@ -134,7 +134,7 @@ export function SpotlightSearch({
       }
 
       // Workflows are navigation targets only (you don't pin/connect them from
-      // here — that's drag-to-dashboard), so index them solely in navigate mode.
+      // here: that's drag-to-dashboard), so index them solely in navigate mode.
       if (mode === "navigate") {
         try {
           const wfRows = await db.select<{ id: string; name: string; trigger: string }[]>(

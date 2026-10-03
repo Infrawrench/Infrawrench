@@ -33,7 +33,7 @@ import { createDesktopCostApi, requireCloudOrgId as requireOrgId } from "./cost-
  * schedules.
  *
  * The reads come from {@link createDesktopCostApi} rather than being restated
- * here — the report editor is the same `CostGraphConfigModal` the dashboard and
+ * here: the report editor is the same `CostGraphConfigModal` the dashboard and
  * the Costs panel open, so it must be handed the same loaders or its scenario,
  * saved-filter and unit-cost pickers quietly disappear.
  */
@@ -65,7 +65,7 @@ export function createDesktopCostReportsClient(): CostReportsClient {
       });
     },
     removeReportPlacement: (widgetId: string) => deleteCloudWidget(requireOrgId(), widgetId),
-    // Delivery schedules — same server permissions as web (reads costs:read,
+    // Delivery schedules: same server permissions as web (reads costs:read,
     // writes org:settings:write); a 403 surfaces as the action's error.
     listReportNotifications: (reportId: string) =>
       listCloudReportNotifications(requireOrgId(), reportId),

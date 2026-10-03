@@ -20,8 +20,8 @@ import {
 /**
  * Desktop host for the shared query-monitors screen. Cloud only, and not
  * merely because the rows are org state: the schedule is run by the poller, so
- * a monitor that lived on one laptop would only run while that laptop was open
- * — which is the opposite of what a monitor is for.
+ * a monitor that lived on one laptop would only run while that laptop was open,
+ * which is the opposite of what a monitor is for.
  */
 export function DesktopQueryMonitorsPanel() {
   const gt = useGT();
@@ -137,7 +137,7 @@ export function DesktopQueryMonitorsPanel() {
       targetOptions={targets}
       // The desktop does not read `/team/me`, so the editors are always offered
       // and a member without `resources:execute` gets the server's 403 in the
-      // section's error banner — the Backups stance.
+      // section's error banner: the Backups stance.
       onCreate={create}
       onUpdate={update}
       onDelete={remove}

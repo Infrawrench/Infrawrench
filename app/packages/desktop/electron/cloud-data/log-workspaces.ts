@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Log workspace saved queries + log-capable resource discovery — cloud-mode
+// Log workspace saved queries + log-capable resource discovery: cloud-mode
 // only. The rows live server-side and the cloud poller evaluates the alert
 // pass; local mode builds the same picker from the local resource table and
 // the in-renderer plugin clients (see src/lib/log-workspace-client.ts), so

@@ -17,13 +17,13 @@ import { useDataString } from "../i18n/data-strings.js";
 export interface AccessReviewSectionProps {
   /**
    * The computed review, or null while the first load is in flight. Hosts
-   * fetch (web: `/access-review`, desktop: IPC) and hand the response over —
+   * fetch (web: `/access-review`, desktop: IPC) and hand the response over;
    * this component never talks to a network.
    */
   data: AccessReviewResponse | null;
   /**
    * Load or refresh failure. With `data` still present the last review stays
-   * on screen under a banner — a failed refresh must not blank a drawn list.
+   * on screen under a banner: a failed refresh must not blank a drawn list.
    */
   error?: string | null | undefined;
   onRetry?: (() => void) | undefined;
@@ -34,7 +34,7 @@ export interface AccessReviewSectionProps {
   onOpenResource?: ((principal: AccessPrincipal) => void) | undefined;
   /**
    * Accept a finding, with the operator's optional note. Omitted, the section
-   * is read-only — which is what a host without `resources:write` passes.
+   * is read-only, which is what a host without `resources:write` passes.
    */
   onDismiss?: ((finding: AccessFinding, reason: string) => Promise<void>) | undefined;
   /** Undo a dismissal. Omitted, dismissed findings are listed but not undoable. */
@@ -71,7 +71,7 @@ const ACTIVITY_CLASSES: Record<AccessPrincipal["activity"], string> = {
 };
 
 /**
- * What a principal's activity cell says. "Unknown" is printed, never blank — a
+ * What a principal's activity cell says. "Unknown" is printed, never blank: a
  * blank cell reads as "not looked up", which is the impression this column
  * exists to avoid giving.
  */
@@ -118,7 +118,7 @@ function buildGroups(
   return [...groups.values()];
 }
 
-/** `"2 Mar 2026"` — a dismissal's age is what matters, not its minute. */
+/** `"2 Mar 2026"`: a dismissal's age is what matters, not its minute. */
 function formatDismissedAt(iso: string): string {
   const parsed = Date.parse(iso);
   if (Number.isNaN(parsed)) return iso;
@@ -130,7 +130,7 @@ function formatDismissedAt(iso: string): string {
 }
 
 /**
- * Enter/Space on a row opens its resource — but only when the row itself has
+ * Enter/Space on a row opens its resource, but only when the row itself has
  * focus, so the Dismiss and Revoke buttons inside it keep their own
  * activation.
  */
@@ -294,7 +294,7 @@ function ActiveFindingRow({
         onKeyDown={(e) => e.stopPropagation()}
       >
         {/* Revoke only appears where the resource type declares a revoke
-            action — everywhere else the provider offers nothing Infrawrench
+            action: everywhere else the provider offers nothing Infrawrench
             can invoke, and a button that opened the provider's console would
             be a different promise. */}
         {onRevoke && (
@@ -477,8 +477,8 @@ function PrincipalTable({
 
 /**
  * Cross-cloud access review: every principal your connected accounts have
- * synced — IAM users and roles, service accounts, app registrations, groups,
- * role bindings and long-lived keys — with the findings that have evidence
+ * synced (IAM users and roles, service accounts, app registrations, groups,
+ * role bindings and long-lived keys) with the findings that have evidence
  * against them.
  *
  * This is about the principals inside **your** clouds. It is not your
@@ -487,7 +487,7 @@ function PrincipalTable({
  * page says so, because those three are otherwise easy to confuse.
  *
  * Findings can be accepted ("that break-glass role is admin on purpose"),
- * which moves them into the dismissed list and out of the security alerts —
+ * which moves them into the dismissed list and out of the security alerts:
  * visibly and reversibly, because a silenced access warning that leaves no
  * trace is worse than a noisy one.
  */
@@ -510,7 +510,7 @@ export function AccessReviewSection({
   /** Key of the finding whose reason box is open, if any. */
   const [dismissing, setDismissing] = useState<string | null>(null);
   const [reason, setReason] = useState("");
-  /** Keys with a call in flight — their buttons stay disabled. */
+  /** Keys with a call in flight: their buttons stay disabled. */
   const [pending, setPending] = useState<readonly string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showDismissed, setShowDismissed] = useState(false);

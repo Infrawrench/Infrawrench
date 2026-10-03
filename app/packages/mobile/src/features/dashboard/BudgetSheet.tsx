@@ -18,7 +18,7 @@ import { ScenarioChip } from "./ScenarioChip";
 import { SavedFilterChip } from "./SavedFilterChip";
 
 /**
- * Author a budget — the native counterpart of web's `BudgetConfigModal`, over
+ * Author a budget: the native counterpart of web's `BudgetConfigModal`, over
  * the same `BudgetInput` the API validates.
  *
  * A budget outlives the card that shows it: creating one from a dashboard also

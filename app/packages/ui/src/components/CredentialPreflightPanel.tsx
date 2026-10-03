@@ -102,7 +102,7 @@ function ExternalLink({
  * Fully generic: everything provider-specific (permission strings, probe
  * behaviour, template format) comes from the plugin through the declaration
  * and the two injected async callbacks, so this renders identically for any
- * plugin that opts in — and isn't rendered at all for plugins that don't.
+ * plugin that opts in, and isn't rendered at all for plugins that don't.
  */
 export function CredentialPreflightPanel({
   declaration,
@@ -169,7 +169,7 @@ export function CredentialPreflightPanel({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard denied — the document stays selectable below.
+      // Clipboard denied: the document stays selectable below.
     }
   }
 
@@ -287,7 +287,7 @@ export function CredentialPreflightPanel({
                             void generate(next);
                           } else {
                             // Unchecking everything invalidates any in-flight
-                            // generate — a late resolution must not resurrect
+                            // generate: a late resolution must not resurrect
                             // a template for a now-empty selection.
                             generateSeq.current++;
                             setTemplate(null);

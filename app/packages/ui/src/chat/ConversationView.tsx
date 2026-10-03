@@ -93,7 +93,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
       // All state updates in one synchronous block so React batches them into
       // a single render. Clearing the streaming buffer in a later microtask
       // than setMessages briefly showed the turn's text twice (persisted +
-      // still-buffered) — a flash of duplicated text at the end of each turn.
+      // still-buffered): a flash of duplicated text at the end of each turn.
       dispatch({
         update: (current) => ({
           conversation: data.conversation,
@@ -113,7 +113,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
             : {}),
         }),
       });
-      // Keep any workspace tab pointing at this conversation titled after it —
+      // Keep any workspace tab pointing at this conversation titled after it:
       // conversations auto-rename after the first message. Done here (not in a
       // sidebar component) so it works even when the sidebar is collapsed. On
       // hosts without workspace tabs (web chat routes) this is a no-op.
@@ -217,7 +217,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
             // Not necessarily the end of the loop: after auto-run tools the
             // server feeds the results back to the model and streams another
             // assistant message. Swap the in-flight buffer for the persisted
-            // messages (atomically — see reload) and keep reading; the stream
+            // messages (atomically: see reload) and keep reading; the stream
             // closes when the model really is done.
             await reload({ clearStreamingBuffer: true });
           } else if (ev.type === "spend_blocked") {
@@ -267,12 +267,12 @@ export function ConversationView({ client, conversationId }: Props): React.React
       // clearStreamingBuffer: the optimistic user bubble is swapped for the
       // persisted message in the same render.
       await reload({ clearStreamingBuffer: true });
-      // A completed turn can rename the conversation and bumps updatedAt —
+      // A completed turn can rename the conversation and bumps updatedAt:
       // let session lists pick that up.
       emitChatConversationsChanged();
 
       if (sleepSeconds > 0) {
-        // Client-side sleep: count down, then hand back to the server — but
+        // Client-side sleep: count down, then hand back to the server, but
         // only when nothing else is still awaiting approval (a sleep can land
         // in the same batch as a destructive tool).
         sleepingRef.current = true;
@@ -307,7 +307,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
 
   async function handleModelChange(model: string): Promise<void> {
     if (!conversation || model === conversation.model) return;
-    // Optimistic — the select shouldn't snap back while the PATCH is in flight.
+    // Optimistic: the select shouldn't snap back while the PATCH is in flight.
     dispatch({ patch: { conversation: { ...conversation, model } } });
     try {
       await client.setConversationModel(conversationId, model);
@@ -326,7 +326,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
   }
 
   const resumeIfResolved = useCallback(async () => {
-    // A sleep from the same tool batch is still counting down — it will do
+    // A sleep from the same tool batch is still counting down: it will do
     // its own resolved-check and resume when it finishes.
     if (sleepingRef.current) return;
     const data = await client.getConversation(conversationId);
@@ -569,7 +569,7 @@ function MessageBubble({
   );
 
   // DM layout: the user's messages are right-aligned bubbles, the assistant
-  // replies flow plainly on the left — no per-message role labels.
+  // replies flow plainly on the left; no per-message role labels.
   if (!isAssistant) {
     const text = message.content
       .filter((b): b is Extract<ChatContentBlock, { type: "text" }> => b.type === "text")
@@ -631,7 +631,7 @@ function BlockView({
   const gt = useGT();
   // Approve executes the tool synchronously server-side (a workflow run can
   // take minutes), so the buttons must lock and the label must say the action
-  // is underway — otherwise the card looks hung and invites a second click.
+  // is underway, otherwise the card looks hung and invites a second click.
   const [resolving, setResolving] = useState<"approve" | "reject" | null>(null);
 
   async function resolve(action: "approve" | "reject"): Promise<void> {
@@ -649,7 +649,7 @@ function BlockView({
     return <ChatMarkdown text={block.text} />;
   }
   if (block.type === "tool_use") {
-    // Sleep is not a real tool call — render it as a quiet marker, matching
+    // Sleep is not a real tool call: render it as a quiet marker, matching
     // the live "Sleeping N seconds…" indicator. While the countdown is still
     // running, show nothing here (the live indicator covers it): the past
     // tense would be a lie.
@@ -730,7 +730,7 @@ function BlockView({
         )}
         <details
           className="border-t border-border px-3 py-1.5"
-          // While awaiting approval the input must be visible — the user is
+          // While awaiting approval the input must be visible: the user is
           // deciding whether to run it. Otherwise collapsed by default.
           {...(status === "pending" ? { open: true } : {})}
         >

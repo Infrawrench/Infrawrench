@@ -1,5 +1,5 @@
 /**
- * Metric threshold alert rules — "CPU > 90% for 15 minutes on these
+ * Metric threshold alert rules: "CPU > 90% for 15 minutes on these
  * resources → alert".
  *
  * This module is the shared contract every surface uses: the wire shapes for
@@ -21,7 +21,7 @@ export const METRIC_ALERT_COMPARATORS: readonly MetricAlertComparator[] = [">", 
 /**
  * Bounds the API enforces and the forms echo inline. `forMinutes` is floored
  * at 5 because samples are per-minute rollups written on the resource poll
- * cadence — a shorter window has too few samples to claim "held for the whole
+ * cadence: a shorter window has too few samples to claim "held for the whole
  * window". The ceiling is 24h: the evaluator reads the 1m rollup, whose TTL
  * is 30 days, but a day is where "threshold alert" stops and "report" begins.
  */
@@ -103,7 +103,7 @@ export interface MetricSeriesKeyOption {
   resourceCount: number;
 }
 
-/** What `GET /metric-alerts/selector-preview` returns — the "who does this cover?" check. */
+/** What `GET /metric-alerts/selector-preview` returns: the "who does this cover?" check. */
 export interface MetricAlertSelectorPreview {
   matchingResourceCount: number;
   /** Up to 10 matching display names, for the form's live preview. */
@@ -111,7 +111,7 @@ export interface MetricAlertSelectorPreview {
 }
 
 /**
- * What the org's resources actually offer to select on — the pickers are fed
+ * What the org's resources actually offer to select on: the pickers are fed
  * from this rather than a full plugin catalog, so the form never offers a
  * plugin or tag the org has no resources for.
  */
@@ -134,7 +134,7 @@ export const DEFAULT_METRIC_ALERT_INPUT: MetricAlertRuleInput = {
   enabled: true,
 };
 
-/** `"CPU % > 90 for 15m"` — the one-line condition, shared by UI and CLI. */
+/** `"CPU % > 90 for 15m"`: the one-line condition, shared by UI and CLI. */
 export function describeMetricAlertCondition(
   rule: Pick<MetricAlertRuleInput, "metricKey" | "comparator" | "threshold" | "forMinutes">,
 ): string {

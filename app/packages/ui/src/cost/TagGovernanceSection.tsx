@@ -23,8 +23,8 @@ function formatTotals(totals: Record<string, number>): string {
 /**
  * Tag governance on the Costs panel: per-account compliance with the org's
  * tag policy, spend not carrying the required keys, and the showback split by
- * cost centre. Read-only here — the policy, centres, and rules are edited in
- * org settings (web) — so the section renders for every host that wires the
+ * cost centre. Read-only here: the policy, centres, and rules are edited in
+ * org settings (web), so the section renders for every host that wires the
  * three read calls, desktop included.
  */
 export function TagGovernanceSection({ client }: { client: CostsClient }) {
@@ -201,8 +201,8 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
           </div>
           <ul className="flex flex-col gap-1.5">
             {showback.centres.map((centre) => {
-              // A parent shows the subtree total — "what does Engineering
-              // cost" is the number people came for — with its own directly
+              // A parent shows the subtree total ("what does Engineering
+              // cost" is the number people came for) with its own directly
               // allocated spend beside it, so "of which the division itself"
               // is legible instead of hidden inside the rollup. A leaf has one
               // number and prints one.

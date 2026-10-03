@@ -68,7 +68,7 @@ describe("fitQuotaSlope", () => {
   });
 
   // A freshly backfilled account looks exactly like this. Not an error, but
-  // not a slope either — and dividing by a zero time span produces Infinity
+  // not a slope either, and dividing by a zero time span produces Infinity
   // days, which renders as a confident prediction.
   it("returns null when every reading shares an instant", () => {
     const at = new Date(T0).toISOString();
@@ -138,7 +138,7 @@ describe("computeQuotaTrend", () => {
     expect(trend.daysToExhaustion).toBeNull();
   });
 
-  // Null is "not enough history", which is rendered as such — never as "no
+  // Null is "not enough history", which is rendered as such, never as "no
   // risk", because they are opposite claims and only one is true.
   it("reports null perDay, not zero, with too little history", () => {
     const trend = computeQuotaTrend(ramp(2, 0.2, 0.05), 0.25);

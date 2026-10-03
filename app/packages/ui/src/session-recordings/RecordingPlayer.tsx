@@ -24,7 +24,7 @@ const PLAYBACK_SPEEDS = [0.5, 1, 2, 4] as const;
  * batch instead of replaying in slow motion.
  *
  * **Seeking is a replay, not a jump.** A terminal's screen at time t is the
- * product of every byte before t — there is no keyframe to seek to — so moving
+ * product of every byte before t (there is no keyframe to seek to) so moving
  * the scrubber resets the terminal and rewrites all output up to the target
  * with the delays removed. That is what `castOutputThrough` returns, and it is
  * why scrubbing is instant regardless of how far back you drag.
@@ -94,7 +94,7 @@ export function RecordingPlayer({
       if (!terminal) return;
       terminal.reset();
       // The last resize before the target is the geometry the session was at,
-      // so apply it before the replay rather than letting the events do it —
+      // so apply it before the replay rather than letting the events do it:
       // replaying resizes mid-stream would reflow output that was written at
       // the older size.
       for (let i = eventIndexRef.current - 1; i >= 0; i--) {
@@ -168,7 +168,7 @@ export function RecordingPlayer({
   const atEnd = position >= duration && duration > 0;
 
   const togglePlay = useCallback(() => {
-    // Pressing play at the end restarts rather than doing nothing — the
+    // Pressing play at the end restarts rather than doing nothing: the
     // alternative is a dead button on every finished recording.
     if (atEnd) seekTo(0);
     setPlaying((p) => !p);

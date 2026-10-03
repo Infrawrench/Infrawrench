@@ -17,12 +17,12 @@ describe("sanitizeGitConfigForAgentVm", () => {
     expect(out).toContain("# Synced from the local ~/.gitconfig by Infrawrench.");
   });
 
-  // These rewrites used to be kept deliberately — they are user config, and
+  // These rewrites used to be kept deliberately: they are user config, and
   // keeping them looked harmless. They are not: a developer who rewrites
   // https://github.com/ to SSH locally does so because their own machine has
   // a key registered with GitHub. The VM has none, so every HTTPS clone
-  // silently becomes an SSH one and dies with "Permission denied (publickey)"
-  // — even for public repositories, which need no authentication at all, and
+  // silently becomes an SSH one and dies with "Permission denied (publickey)",
+  // even for public repositories, which need no authentication at all, and
   // blaming a URL the user never typed.
   it("drops URL rewrites that point at SSH, in both spellings git accepts", () => {
     const input = [

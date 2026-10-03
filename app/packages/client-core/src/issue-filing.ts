@@ -1,5 +1,5 @@
 /**
- * Cross-tracker issue filing — the shapes shared by every surface that offers
+ * Cross-tracker issue filing: the shapes shared by every surface that offers
  * "file this finding as an issue" for whichever trackers the org connected.
  *
  * The per-tracker halves live in `./jira` and `./linear`; this module owns

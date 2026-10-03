@@ -41,7 +41,7 @@ import {
 import { colors, radii, spacing } from "@/lib/theme";
 
 /**
- * Personal account settings — the mobile mirror of the web app's
+ * Personal account settings: the mobile mirror of the web app's
  * Settings → General. Same `/api/profile` contract, same capabilities:
  * name, password reset, TOTP two-factor, and active sessions.
  */
@@ -130,7 +130,7 @@ export default function AccountScreen() {
     },
     onError: async (e) => {
       failed("Verification failed")(e);
-      // The challenge is spent whether or not the code matched — swap in a
+      // The challenge is spent whether or not the code matched: swap in a
       // fresh one so a retry isn't rejected for the wrong reason.
       if (!enrollment) return;
       const challengeId = await challengeAuthFactor(api, enrollment.factorId).catch(() => null);
@@ -430,7 +430,7 @@ export default function AccountScreen() {
 
 /**
  * Deleting the account, which App Store guideline 5.1.1(v) requires any app
- * that can create one to offer — in the app, not as a link to the website.
+ * that can create one to offer: in the app, not as a link to the website.
  *
  * The preview is loaded before the button is usable so the consequences are on
  * screen first: which organizations go with the account, and which have to be

@@ -8,7 +8,7 @@ import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tab
 import { invoke } from "@/lib/invoke";
 
 /**
- * The org change timeline on desktop — the same panel web renders, over the
+ * The org change timeline on desktop: the same panel web renders, over the
  * `cloud_changes_list` IPC. Rendered as a workspace tab (the "changes" kind).
  *
  * Cloud-only: the feed is recorded by the cloud poller. The guard below keeps

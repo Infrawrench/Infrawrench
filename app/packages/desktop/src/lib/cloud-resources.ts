@@ -2,7 +2,7 @@ import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
 // From client-core, where it is defined, rather than through the `@infrawrench/ui`
 // barrel that re-exports it: this is the only *value* the cloud API modules take
 // from `ui`, and importing it from there pulls the whole component library into
-// every module graph that touches `cloud-api` — including a node-environment
+// every module graph that touches `cloud-api`, including a node-environment
 // test that renders nothing.
 import { CALENDAR_EVENT_KINDS } from "@infrawrench/client-core";
 import type {
@@ -36,7 +36,7 @@ import { invoke } from "./invoke";
 
 /**
  * The org dependency graph. Pass `resourceId` to get only that resource's
- * direct neighbourhood — the Dependencies tab wants nothing else, and the
+ * direct neighbourhood: the Dependencies tab wants nothing else, and the
  * whole-org answer is expensive to build and to ship.
  */
 export async function fetchCloudDependencyGraph(
@@ -47,7 +47,7 @@ export async function fetchCloudDependencyGraph(
 }
 
 /**
- * One resource's impact report — what breaks if it is deleted.
+ * One resource's impact report: what breaks if it is deleted.
  *
  * Cloud-only on purpose, and there is no local-mode counterpart: the report is
  * mostly about org objects a local workspace does not have (dashboards,
@@ -80,7 +80,7 @@ export async function fetchCloudPosture(orgId: string): Promise<PostureListRespo
 }
 
 /**
- * Accept a posture finding for the org. Recorded server-side — a dismissal is
+ * Accept a posture finding for the org. Recorded server-side: a dismissal is
  * a decision about the organization's exposure, not about this machine, so
  * every surface sees the same one. Local mode's counterpart is
  * `dismissLocalPostureFinding` in lib/local-posture.ts.
@@ -104,7 +104,7 @@ export async function restoreCloudPostureFinding(
 }
 
 /**
- * The org's access review — every principal inside the customer's connected
+ * The org's access review: every principal inside the customer's connected
  * clouds, computed server-side over synced rows. Cloud-only: two of its five
  * rules need the ownership records and the dismissal store, which local mode
  * has neither of.
@@ -289,7 +289,7 @@ export async function closeCloudRunbookRun(
 }
 
 /**
- * Restore-drill standings — the Backups screen's fourth tab. A third read
+ * Restore-drill standings: the Backups screen's fourth tab. A third read
  * rather than part of the coverage payload: the standings are computed *over*
  * the coverage, and folding them in would make the coverage endpoint pay for
  * them on every surface that only wants gaps.
@@ -486,7 +486,7 @@ export async function getCloudCreatePricing(
 /**
  * Monthly cost estimate for a configuration. Pass `fields` to price a
  * proposed create, `resourceId` to price an existing resource, or both to
- * price a proposed edit — the server merges `fields` over the resource's
+ * price a proposed edit: the server merges `fields` over the resource's
  * stored fields, so only the changed keys have to be sent.
  */
 export async function getCloudCostEstimate(
@@ -655,7 +655,7 @@ export async function getCloudLogs(
 
 /**
  * `POST /resources/:pluginId/:typeId/metrics`. The route answers with a
- * `{ series }` envelope, not a bare array — callers validate the payload, so
+ * `{ series }` envelope, not a bare array: callers validate the payload, so
  * the series itself stays `unknown`.
  */
 export async function fetchCloudMetrics(

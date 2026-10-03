@@ -3,12 +3,12 @@
  * every surface that draws one: recharts on web/desktop (`MetricChart`),
  * `react-native-svg` on mobile.
  *
- * Byte-valued series (`bytes`, `bytes/s` — the only two unit strings plugin
+ * Byte-valued series (`bytes`, `bytes/s`; the only two unit strings plugin
  * metric definitions emit for byte quantities, per a repo-wide grep of every
  * `unit:` declaration) print raw numbers like "17179869184bytes" that blow
  * out a narrow Y-axis gutter: DigitalOcean droplet memory, filesystem and
- * bandwidth charts. Humanize them into a single binary-scaled unit —
- * KiB/MiB/GiB/TiB/PiB — chosen once from the largest magnitude on the axis,
+ * bandwidth charts. Humanize them into a single binary-scaled unit
+ * (KiB/MiB/GiB/TiB/PiB) chosen once from the largest magnitude on the axis,
  * so every tick, the tooltip, and the aria-label summary agree on one scale
  * instead of each picking its own from its own value.
  *
@@ -16,7 +16,7 @@
  * connections…) is already short and is left as `${value}${unit}`, matching
  * the formatting these charts used before this module existed.
  *
- * No React, no chart library — unit-test target.
+ * No React, no chart library: unit-test target.
  */
 
 const BINARY_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
@@ -33,7 +33,7 @@ function byteRateSuffix(unit: string): string | null {
 /**
  * Picks how many decimals read well at a given magnitude: more precision for
  * small scaled values (0.42 GiB), none once the number is already wide
- * (512 GiB) — mirrors the rounding `niceAxis` ticks already carry for other
+ * (512 GiB); mirrors the rounding `niceAxis` ticks already carry for other
  * units.
  */
 function scaledDecimals(scaled: number, exponent: number): number {
@@ -47,7 +47,7 @@ function scaledDecimals(scaled: number, exponent: number): number {
 /**
  * Builds a formatter for one metric axis/series. `maxAbsValue` should be the
  * largest magnitude that will actually be plotted (e.g. the axis domain's
- * top) — the byte scale is chosen once from it, then reused for every value
+ * top): the byte scale is chosen once from it, then reused for every value
  * passed through the returned formatter, so ticks stay comparable instead of
  * each rescaling independently.
  */

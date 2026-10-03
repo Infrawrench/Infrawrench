@@ -194,12 +194,12 @@ export function DetailViewContainer({
   const navigate = useNavigate();
   const noSqlBrowser = schema?.noSqlBrowser;
 
-  // Sleep/wake schedule tab — cloud mode only (the cloud poller executes the
+  // Sleep/wake schedule tab: cloud mode only (the cloud poller executes the
   // transitions), and only for types whose plugin declares a lifecycle
   // start/stop pair. Discovered from the local plugin definition, never from
   // provider names.
   const [schedulable, setSchedulable] = useState(false);
-  // Depend on the two identifying strings rather than the resource object —
+  // Depend on the two identifying strings rather than the resource object:
   // a refetched (new-identity) resource of the same type must not re-run the
   // plugin load.
   const resourcePluginId = resource?.pluginId;
@@ -222,7 +222,7 @@ export function DetailViewContainer({
     };
   }, [activeCloudOrgId, resourcePluginId, resourceTypeId]);
 
-  // Direct neighbors in the output-reference dependency graph — drives the
+  // Direct neighbors in the output-reference dependency graph: drives the
   // "Dependencies" tab. Best-effort: on failure the tab simply doesn't show.
   const [dependencies, setDependencies] = useState<ResourceDependencies | null>(null);
   useEffect(() => {
@@ -407,7 +407,7 @@ export function DetailViewContainer({
           : {})}
         {...(activeCloudOrgId
           ? {
-              // Lease tab — cloud mode only, like schedules (the rows live
+              // Lease tab; cloud mode only, like schedules (the rows live
               // server-side and the cloud poller runs the auto-delete pass),
               // but for every resource type: any resource can carry a TTL.
               renderLeaseTab: () => (
@@ -424,7 +424,7 @@ export function DetailViewContainer({
           : {})}
         {...(activeCloudOrgId
           ? {
-              // Ownership tab — cloud mode only, like leases: the record lives
+              // Ownership tab; cloud mode only, like leases: the record lives
               // server-side and names an org member. Ungated by type, since
               // any resource can have an owner.
               renderOwnershipTab: () => (
@@ -434,7 +434,7 @@ export function DetailViewContainer({
                   resourceName={resource?.displayName ?? decodedResourceId}
                 />
               ),
-              // Blast radius — cloud only for the same reason, and ungated by
+              // Blast radius; cloud only for the same reason, and ungated by
               // type: "nothing depends on this" is worth knowing everywhere.
               renderBlastRadiusTab: () => (
                 <BlastRadiusPanel

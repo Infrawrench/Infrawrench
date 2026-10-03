@@ -1,5 +1,5 @@
 /**
- * The session audio player against a fake Web Audio clock — jsdom has no
+ * The session audio player against a fake Web Audio clock: jsdom has no
  * `AudioContext`, which is exactly why the player takes one structurally.
  */
 

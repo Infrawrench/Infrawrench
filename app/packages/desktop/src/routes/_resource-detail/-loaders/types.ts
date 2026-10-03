@@ -31,7 +31,7 @@ export interface LoaderRefs {
   };
   /**
    * Set in peer-pane mode to a closure that delegates a reroll request back
-   * to the parent — maps the child's credentialKey to the parent output key
+   * to the parent: maps the child's credentialKey to the parent output key
    * via the integration's credentialMappings and calls `parentClient.rerollOutput`.
    * Cleared on every navigation; null in non-peer mode.
    */
@@ -81,13 +81,13 @@ export interface LoaderParams {
   setters: LoaderSetters;
   setAccountConnected: (accountId: string, connected: boolean) => void;
   /** Id of the workspace tab the loader is feeding. Used to update the
-   * correct tab's title — with keep-alive, multiple tabs are mounted
+   * correct tab's title: with keep-alive, multiple tabs are mounted
    * simultaneously and `activeWorkspaceTabId` would target the wrong one. */
   tabId: string | null;
   /**
    * Title to use instead of the resource's own display name.
    *
-   * Set when the panel is standing in for something else — today, an
+   * Set when the panel is standing in for something else: today, an
    * account-root resource rendered as its account's page. The account *is*
    * that resource, so the name the user gave the account is the name of the
    * thing, and an opaque provider id would be a worse label than the one they

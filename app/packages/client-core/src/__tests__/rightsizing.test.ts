@@ -202,7 +202,7 @@ describe("computeSizeRecommendation", () => {
       utilisation: idle,
       sizeFamilyPattern: "^([a-z]+)",
     });
-    // cax11 is already the smallest arm size — nothing to shrink to.
+    // cax11 is already the smallest arm size: nothing to shrink to.
     expect(rec).toBeNull();
   });
 

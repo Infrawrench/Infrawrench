@@ -12,7 +12,7 @@
  * always-on host, so they are only offered for an org's workflows.
  *
  * This is the LOCAL client. With an org selected the Workflows tab uses
- * ./cloud-workflows instead — see DesktopWorkflowsPanel for the switch.
+ * ./cloud-workflows instead: see DesktopWorkflowsPanel for the switch.
  */
 import {
   attachSidecarInfo,
@@ -168,7 +168,7 @@ async function getLocalCreateFields(
   } catch (err) {
     // Best-effort by contract (see docstring), but a transient provider error
     // must not be cached as "this type has no create fields" for the whole
-    // TTL — log it and let the next call retry.
+    // TTL: log it and let the next call retry.
     console.warn(`[workflow-client] create config for ${key} failed:`, err);
     return null;
   }
@@ -221,7 +221,7 @@ async function enrichLocalPlugin(entry: WorkflowPluginInfo, firstAccountId: stri
   );
 }
 
-/** A value that already looks like an OpenSSH public key — leave it alone. */
+/** A value that already looks like an OpenSSH public key: leave it alone. */
 const PUBLIC_KEY_RE = /^(ssh-|ecdsa-|sk-ssh-|sk-ecdsa-)/;
 
 /**
@@ -260,7 +260,7 @@ async function listLocalSshKeyNames(): Promise<string[]> {
  * key, searching the same sources the picker offers. Returns null if not found.
  */
 async function resolveLocalSshPublicKey(nameOrId: string): Promise<string | null> {
-  // Saved app key (by id or name) — derive the public key from the stored private.
+  // Saved app key (by id or name): derive the public key from the stored private.
   try {
     const db = await getDb();
     const rows = await db.select<{ id: string }[]>(
@@ -271,7 +271,7 @@ async function resolveLocalSshPublicKey(nameOrId: string): Promise<string | null
   } catch {
     /* fall through */
   }
-  // 1Password agent — public key is returned directly.
+  // 1Password agent: public key is returned directly.
   try {
     const onepw = await invoke<{ name: string; publicKey: string }[]>("ssh_list_1password_keys");
     const match = onepw.find((k) => k.name === nameOrId);
@@ -279,7 +279,7 @@ async function resolveLocalSshPublicKey(nameOrId: string): Promise<string | null
   } catch {
     /* fall through */
   }
-  // Cloud key (by name or id) — public key lives server-side.
+  // Cloud key (by name or id): public key lives server-side.
   const orgId = useUIStore.getState().activeCloudOrgId;
   if (orgId) {
     try {
@@ -293,7 +293,7 @@ async function resolveLocalSshPublicKey(nameOrId: string): Promise<string | null
       /* fall through */
     }
   }
-  // System ~/.ssh key — read the matching .pub file.
+  // System ~/.ssh key: read the matching .pub file.
   try {
     const pub = await invoke<string>("ssh_read_system_key", { name: `${nameOrId}.pub` });
     if (pub?.trim()) return pub.trim();
@@ -381,7 +381,7 @@ async function listLocalPlugins(
 
   // The peer plugins each resource type exposes (a cluster's `kubernetes`, a
   // managed database's `postgres`), so `cluster.kubernetes.pods` exists at
-  // runtime as well as in the typings. Reads loaded definitions — no API calls.
+  // runtime as well as in the typings. Reads loaded definitions: no API calls.
   await Promise.all(
     Array.from(byPlugin.values()).map(async (entry) => {
       const lp = await getPlugin(entry.pluginId);
@@ -428,11 +428,11 @@ async function pluginIdForAccount(accountId: string): Promise<string> {
  * Deliver `infra.page(...)` locally as a native OS notification.
  *
  * The cloud fans a page out to Twilio, mobile push, Slack, and Microsoft
- * Teams; desktop has no recipients to fan out to — and no server to hold a
- * Slack app's client secret or an org's Teams webhook URLs — so the machine
+ * Teams; desktop has no recipients to fan out to (and no server to hold a
+ * Slack app's client secret or an org's Teams webhook URLs) so the machine
  * running the workflow is the pager. The per-key
- * cooldown still applies — that is what makes a cron that finds the same
- * problem every tick notify once instead of every tick — and it lives in the
+ * cooldown still applies (that is what makes a cron that finds the same
+ * problem every tick notify once instead of every tick) and it lives in the
  * local `workflow_pages` table so it survives restarts. Single process, so a
  * read-then-write is enough; the cloud needs a conditional upsert because two
  * poller replicas can race the same workflow.
@@ -498,7 +498,7 @@ type DesktopSshConfig = {
   privateKey: string;
 };
 
-/** Resolve where a resource lives for SSH (host/port/user) — no private key needed. */
+/** Resolve where a resource lives for SSH (host/port/user): no private key needed. */
 async function resolveSshTarget(params: {
   accountId: string;
   typeId: string;
@@ -529,7 +529,7 @@ async function resolveSshTarget(params: {
     );
   }
   // The host lives in the resource's resolvedOutputs (e.g. a droplet's ipv4),
-  // read live via getResource — NOT resolveOutput, which most plugins don't
+  // read live via getResource: NOT resolveOutput, which most plugins don't
   // implement for these keys (DO throws). Falls back to a same-named field.
   const instance = await client.getResource(params.typeId, params.resourceId, params.accountId);
   const host =
@@ -651,7 +651,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
           id,
         ],
       );
-      // Trigger changes invalidate the schedule — let the cron runner recompute it.
+      // Trigger changes invalidate the schedule: let the cron runner recompute it.
       if (body.trigger !== undefined) {
         await db.execute("UPDATE workflows SET next_run_at = NULL WHERE id = $1", [id]);
       }
@@ -673,7 +673,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
     async getTypings(id: string, opts?: { enrich?: boolean }) {
       const wf = await loadRow(id);
       // Default = static plugin defs + accounts (fast first paint). Enrichment
-      // + key listing are best-effort — never let them fail the whole typings
+      // + key listing are best-effort: never let them fail the whole typings
       // response (which would drop the editor back to `infra: any`).
       const pluginsPromise = opts?.enrich
         ? listLocalPlugins({ enrichCreateFields: true }).catch(() => listLocalPlugins())
@@ -704,10 +704,10 @@ export function createDesktopWorkflowClient(): WorkflowClient {
         // Local workflows have no cost store (costs are cloud-only), so
         // `infra.costs` types as unavailable rather than failing at run time.
         costs: false,
-        // Approvals are org-level records with notifications — cloud-only too.
+        // Approvals are org-level records with notifications: cloud-only too.
         approvals: false,
         // AI calls are made server-side with the deployment's API key and
-        // metered per org — nothing local can do that, so cloud-only as well.
+        // metered per org: nothing local can do that, so cloud-only as well.
         ai: false,
         sshKeyNames,
       });
@@ -909,7 +909,7 @@ export async function runWorkflowById(
     prompt: askUser,
 
     // NOTE: no `fetch` here. Unlike every other capability, outbound HTTP is
-    // served by electron main itself (electron/workflow-fetch.ts) — it needs
+    // served by electron main itself (electron/workflow-fetch.ts): it needs
     // nothing the renderer owns, and main's Node fetch has no CORS.
 
     // Alerts surface as native OS notifications on desktop (no Twilio/push
@@ -971,7 +971,7 @@ export async function runWorkflowById(
     sshProbe: async (params) => {
       // Resolve the host inside the loop: a just-created VM may not have an IP
       // yet, so keep re-resolving until it's available, then hand the TCP probe
-      // (with the remaining time) to electron main — rather than failing once.
+      // (with the remaining time) to electron main, rather than failing once.
       const interval = 4_000;
       const deadline = Date.now() + (params.timeoutMs ?? 180_000);
       while (Date.now() < deadline) {

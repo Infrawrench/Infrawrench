@@ -4,7 +4,7 @@ import type { CostConversion } from "@infrawrench/client-core";
 export interface CostConversionNoticeProps {
   /**
    * The `conversion` block from a cost response. Undefined means nothing was
-   * converted — the component renders nothing, which is what every org that has
+   * converted: the component renders nothing, which is what every org that has
    * not opted in sees.
    */
   conversion?: CostConversion | undefined;

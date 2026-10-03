@@ -5,7 +5,7 @@ import type { LogsCapability, LogsFetchParams, LogsFetchResult } from "@infrawre
 
 interface Props {
   capability: LogsCapability;
-  /** Fetch a chunk of logs from the plugin — polled by this view when follow is on. */
+  /** Fetch a chunk of logs from the plugin: polled by this view when follow is on. */
   onGetLogs: (params: LogsFetchParams) => Promise<LogsFetchResult>;
 }
 
@@ -18,7 +18,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
   const [container, setContainer] = useState<string | null>(null);
   const [tailLines, setTailLines] = useState<number>(capability.defaultTailLines ?? 500);
   // The default may fall outside the fixed presets (e.g. a plugin declaring
-  // 200) — include it as an extra option rather than clamp state to the
+  // 200): include it as an extra option rather than clamp state to the
   // nearest preset, so the control always shows the value actually requested.
   const tailOptions = useMemo(
     () => tailLineOptions(capability.defaultTailLines),

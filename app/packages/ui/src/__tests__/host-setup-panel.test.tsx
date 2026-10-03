@@ -265,7 +265,7 @@ describe("useHostSetup", () => {
     });
 
     expect(result.current.error).toBe("Could not install: dejavu-fonts");
-    // Still short, so still in the way — reported honestly rather than as done.
+    // Still short, so still in the way: reported honestly rather than as done.
     expect(result.current.blocked).toBe(true);
   });
 

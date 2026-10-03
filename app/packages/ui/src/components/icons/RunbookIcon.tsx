@@ -4,7 +4,7 @@ interface RunbookIconProps {
 }
 
 /**
- * Runbook glyph — a document with a checked list on it. Same 24x24 stroke grid
+ * Runbook glyph: a document with a checked list on it. Same 24x24 stroke grid
  * and 2px weight as BackupsIcon/PostureIcon so the Runbooks sidebar entry sits
  * level with its neighbours.
  */

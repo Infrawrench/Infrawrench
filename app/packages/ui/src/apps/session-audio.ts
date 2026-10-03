@@ -2,7 +2,7 @@
  * Playback for a session's audio stream.
  *
  * One player per `AppSession`, shared by however many window tabs are open on
- * it — the host mixes every application into a single stream, so a second
+ * it: the host mixes every application into a single stream, so a second
  * player would mean hearing everything twice. Viewers acquire and release;
  * while nothing holds the player, the host is told to stop sending, because
  * PCM nobody plays is bandwidth spent on nothing.
@@ -18,7 +18,7 @@ import {
 
 /**
  * The corner of the Web Audio API this player uses, typed structurally so a
- * test can hand in a fake — jsdom has no `AudioContext` at all.
+ * test can hand in a fake: jsdom has no `AudioContext` at all.
  */
 export interface AudioContextLike {
   readonly currentTime: number;

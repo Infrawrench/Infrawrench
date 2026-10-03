@@ -23,8 +23,8 @@ type GTFunction = ReturnType<typeof useGT>;
  * delegate, so `[stableGt]` is inert as a dependency while every call still
  * runs through the current locale's resolver.
  *
- * **Use it where `gt()` is called lazily** — inside async closures, event
- * handlers, `catch` blocks, transport clients — i.e. anywhere the dependency
+ * **Use it where `gt()` is called lazily**: inside async closures, event
+ * handlers, `catch` blocks, transport clients, i.e. anywhere the dependency
  * array is about the *closure*, not about the translated text.
  *
  * **Keep plain `useGT()` where `gt()` is called eagerly** to produce a value

@@ -16,7 +16,7 @@ import { listCloudAccounts } from "./cloud-accounts";
  * Invoices are cloud-only for the same reason cost reports are: the spend they
  * bill for is collected server-side, so a desktop app in local mode has nothing
  * to invoice. Every call resolves the active org at call time rather than
- * closing over it — the org can change under a mounted panel.
+ * closing over it: the org can change under a mounted panel.
  *
  * `invoiceExportUrl` is deliberately **not** implemented here, so the Download
  * CSV button does not render on desktop. The cloud endpoint needs a Bearer

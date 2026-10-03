@@ -25,7 +25,7 @@ export interface InstantiationPlan {
   outputsNeeded: Record<string, string[]>;
 }
 
-/** Build the ordered plan. Throws nothing — callers validate first. */
+/** Build the ordered plan. Throws nothing: callers validate first. */
 export function buildInstantiationPlan(members: EnvironmentTemplateMember[]): InstantiationPlan {
   const { ordered } = orderTemplateMembers(members);
   const outputsNeeded: Record<string, string[]> = {};
@@ -60,7 +60,7 @@ export type ResolveFieldsResult =
  * Everything a provider would reject is caught here rather than mid-apply: an
  * unresolved parameter, a reference to a member that has not been created, an
  * output the source did not produce. A missing value is **never** substituted
- * with an empty string — that is how you create a resource in the wrong region
+ * with an empty string: that is how you create a resource in the wrong region
  * and find out from the bill.
  */
 export function resolveMemberFields(
@@ -123,7 +123,7 @@ export function resolveMemberFields(
  * The display name a member's resource is expected to end up with.
  *
  * Teardown needs this to find a resource whose creation **succeeded but was
- * never confirmed** — a create that returned right before the confirming write
+ * never confirmed**: a create that returned right before the confirming write
  * failed. It resolves the name field the same way `resolveMemberFields` does
  * (literal or parameter; both are known before the run starts, unlike output
  * references) and falls back to the captured name when the plugin has no name

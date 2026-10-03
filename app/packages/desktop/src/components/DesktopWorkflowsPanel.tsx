@@ -33,11 +33,11 @@ import { navigateToWorkspaceTarget, workflowsTabTarget } from "@/lib/workspace-t
  *
  * Cloud mode also unlocks the two trigger sources that need a server: git
  * triggers (a GitHub App watching a repo) and budget triggers (evaluated by the
- * poller's cost pass). Local mode leaves both off — there is nothing always-on
+ * poller's cost pass). Local mode leaves both off: there is nothing always-on
  * to watch a repo, and budgets are a cloud feature.
  */
 
-// One local client for the whole session — the local client runs workflows
+// One local client for the whole session: the local client runs workflows
 // in-renderer, so a stable instance keeps run state tidy.
 let localClient: WorkflowClient | null = null;
 function getLocalClient(): WorkflowClient {
@@ -135,7 +135,7 @@ export function DesktopWorkflowsPanel({ workflowId }: { workflowId?: string | un
     void refreshBudgets();
   }, [refreshGit, refreshBudgets]);
 
-  // Re-check on focus — e.g. after installing the GitHub App in the browser.
+  // Re-check on focus, e.g. after installing the GitHub App in the browser.
   useEffect(() => {
     const onFocus = () => void refreshGit();
     window.addEventListener("focus", onFocus);
@@ -146,7 +146,7 @@ export function DesktopWorkflowsPanel({ workflowId }: { workflowId?: string | un
     if (!activeCloudOrgId) return;
     void getCloudGithubInstallUrl(activeCloudOrgId)
       .then((url) => {
-        // The install flow is a GitHub web page — hand it to the system
+        // The install flow is a GitHub web page: hand it to the system
         // browser rather than a renderer window (that's where the user's
         // GitHub session lives).
         if (url) void invoke("open_external_url", { url });
@@ -163,7 +163,7 @@ export function DesktopWorkflowsPanel({ workflowId }: { workflowId?: string | un
   // own: the desktop app has no settings-route tree to hang it off, and an
   // approval that nobody lands blocks a run, so it should be hard to miss. It
   // collapses to nothing when there is nothing pending. Permission gating is
-  // the server's — the desktop renderer does not resolve the viewer's role, so
+  // the server's: the desktop renderer does not resolve the viewer's role, so
   // a decision by someone without `workflows:approve` comes back 403.
   return (
     <div className="h-full flex flex-col min-h-0">

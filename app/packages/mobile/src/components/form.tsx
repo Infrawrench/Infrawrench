@@ -14,7 +14,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 
 /**
  * The form vocabulary shared by every sheet that writes something back to the
- * cloud — the bottom sheet itself, a labelled text input, and the chip pickers
+ * cloud: the bottom sheet itself, a labelled text input, and the chip pickers
  * that stand in for the `<select>` web uses.
  *
  * A phone has no room for a dropdown that lists eight range presets, and the
@@ -125,7 +125,7 @@ export function TextField({
   maxLength?: number | undefined;
   autoFocus?: boolean;
   onSubmitEditing?: (() => void) | undefined;
-  /** Grow into a paragraph box — issue descriptions, notes. */
+  /** Grow into a paragraph box: issue descriptions, notes. */
   multiline?: boolean;
   /** Visible rows when `multiline`. Ignored otherwise. */
   numberOfLines?: number;
@@ -196,7 +196,7 @@ export function ChipSelect<T extends string>({
   label: string;
   hint?: string | undefined;
   options: ReadonlyArray<ChipOption<T>>;
-  /** `null` when nothing in this list is chosen — no chip reads as selected. */
+  /** `null` when nothing in this list is chosen: no chip reads as selected. */
   value: T | null;
   onChange: (value: T) => void;
 }) {
@@ -248,7 +248,7 @@ export function ChipMultiSelect({
   );
 }
 
-/** A boolean rendered as a single chip — checkboxes are hard to hit on a phone. */
+/** A boolean rendered as a single chip: checkboxes are hard to hit on a phone. */
 export function ToggleChip({
   label,
   value,
@@ -262,7 +262,7 @@ export function ToggleChip({
 }
 
 /**
- * A field input the caller lays out itself — a threshold percent sitting beside
+ * A field input the caller lays out itself: a threshold percent sitting beside
  * its type chips, or a tag key beside a dimension.
  */
 export function BareInput({

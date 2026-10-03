@@ -4,7 +4,7 @@ interface ExpiryIconProps {
 }
 
 /**
- * Expiry-radar glyph — an hourglass. Same 24x24 stroke grid and 2px weight as
+ * Expiry-radar glyph: an hourglass. Same 24x24 stroke grid and 2px weight as
  * ChangesIcon/WorkflowIcon so the Expiring sidebar entry sits level with its
  * neighbours.
  */

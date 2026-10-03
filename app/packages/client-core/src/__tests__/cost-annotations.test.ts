@@ -131,7 +131,7 @@ describe("bucketCostAnnotations", () => {
     const notes = [annotation({ id: "week", startDate: "2026-07-14", endDate: "2026-07-16" })];
 
     expect(bucketCostAnnotations(notes, daily, "daily")[0]?.endBucket).toBe("2026-07-16");
-    // The same three days are one bar at monthly binning — nothing to shade.
+    // The same three days are one bar at monthly binning: nothing to shade.
     expect(
       bucketCostAnnotations(notes, ["2026-07-01", "2026-08-01"], "monthly")[0]?.endBucket,
     ).toBeNull();

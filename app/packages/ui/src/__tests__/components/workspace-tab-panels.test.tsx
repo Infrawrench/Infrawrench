@@ -101,7 +101,7 @@ describe("workspace tab / panel wiring", () => {
 
 // Web's Settings tab: it sits in the strip and reads as selected, but its
 // content is rendered by the settings router subtree into __root's <Outlet/>,
-// a sibling of the viewport — so the viewport hides every panel it owns
+// a sibling of the viewport, so the viewport hides every panel it owns
 // (showActive=false) and the visible content is outside all of them.
 describe("a tab whose panel the host renders (web Settings)", () => {
   const settingsTab: WorkspaceTab = {
@@ -157,7 +157,7 @@ describe("a tab whose panel the host renders (web Settings)", () => {
 
   it("renders the panel itself again once the host stops hosting it", () => {
     // Navigating off /settings unmounts the layout route while the tab stays
-    // in the strip — the viewport has to take the panel back or the tab
+    // in the strip: the viewport has to take the panel back or the tab
     // controls nothing.
     renderShell({ panelRenderedByHost: () => false });
     expectEveryTabToResolve();

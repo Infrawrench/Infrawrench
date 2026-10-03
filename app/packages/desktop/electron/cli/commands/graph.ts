@@ -1,4 +1,4 @@
-// `infrawrench graph` — the org's cross-provider dependency graph as an ASCII
+// `infrawrench graph`: the org's cross-provider dependency graph as an ASCII
 // tree, backed by the same /dependency-graph endpoint the web and desktop
 // Graph tabs draw.
 //
@@ -31,7 +31,7 @@ export async function cmdGraph(ctx: CliContext, range: RangeFlags): Promise<void
 
   // Always the org-wide graph, even when focusing. A blast radius is
   // transitive, and the endpoint's `?resourceId=` answer is one hop deep by
-  // design — it exists so the resource-detail page doesn't pull the whole
+  // design: it exists so the resource-detail page doesn't pull the whole
   // topology on every mount, and a one-shot command has no such loop to guard.
   const data = await orgFetch<DependencyGraphData>(org.id, "/dependency-graph");
 
@@ -66,7 +66,7 @@ export async function cmdGraph(ctx: CliContext, range: RangeFlags): Promise<void
       resource: focus,
       // Direct neighbours, exactly as the Dependencies tab lists them.
       ...directDependencies(model, focusId),
-      // Transitive consumers, minus the resource itself — what breaks with it.
+      // Transitive consumers, minus the resource itself: what breaks with it.
       blastRadius: [...dependents].filter((id) => id !== focusId),
       nodes: model.nodes.filter((n) => keep.has(n.id)),
       edges: model.edges.filter(
@@ -95,7 +95,7 @@ function edgeCaption(edge: DependencyGraphEdge): string {
   return `${edge.consumerFieldKey} ← ${edge.providerOutputKey}`;
 }
 
-/** What `id` depends on — arrows point at providers. */
+/** What `id` depends on: arrows point at providers. */
 function providersOf(model: DependencyGraphModel): (id: string) => TreeChild[] {
   return (id) =>
     (model.dependsOn.get(id) ?? []).map((e) => ({
@@ -104,7 +104,7 @@ function providersOf(model: DependencyGraphModel): (id: string) => TreeChild[] {
     }));
 }
 
-/** What depends on `id` — the blast-radius direction. */
+/** What depends on `id`: the blast-radius direction. */
 function consumersOf(model: DependencyGraphModel): (id: string) => TreeChild[] {
   return (id) =>
     (model.dependedOnBy.get(id) ?? []).map((e) => ({
@@ -130,8 +130,8 @@ function printTruncationNotice(): void {
 }
 
 /**
- * The whole org as a forest. Roots are the resources nothing depends on — the
- * outermost consumers — so reading down a branch walks toward the things
+ * The whole org as a forest. Roots are the resources nothing depends on (the
+ * outermost consumers) so reading down a branch walks toward the things
  * everything else is built on.
  */
 function printWholeGraph(model: DependencyGraphModel, orgName: string, truncated: boolean): void {
@@ -178,7 +178,7 @@ function printWholeGraph(model: DependencyGraphModel, orgName: string, truncated
   );
 }
 
-/** One resource's neighbourhood — the terminal's Dependencies tab. */
+/** One resource's neighbourhood: the terminal's Dependencies tab. */
 function printFocused(
   model: DependencyGraphModel,
   focus: DependencyGraphNode,

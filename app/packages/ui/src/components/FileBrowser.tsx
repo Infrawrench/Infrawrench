@@ -29,7 +29,7 @@ export interface FileBrowserProps {
   onMakeFolder?: (bucket: string, key: string) => Promise<void>;
   onDelete?: (bucket: string, key: string, isDirectory?: boolean) => Promise<void>;
   /** Called with a flat list of object keys. Host shows destination picker and writes to disk. */
-  /** `basePath` is the current prefix being browsed — hosts strip it to preserve folder structure. */
+  /** `basePath` is the current prefix being browsed: hosts strip it to preserve folder structure. */
   onBatchDownload?: (keys: string[], basePath: string) => Promise<void>;
   /** Format error messages. Defaults to String(). */
   formatError?: (error: unknown) => string;

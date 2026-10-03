@@ -14,7 +14,7 @@ import type { MetricAlertsClient } from "../../metric-alerts/types.js";
 import type { SchedulesClient } from "../../schedules/types.js";
 
 beforeAll(() => {
-  // jsdom doesn't implement <dialog> showModal/close — stub them.
+  // jsdom doesn't implement <dialog> showModal/close: stub them.
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
       this.open = true;

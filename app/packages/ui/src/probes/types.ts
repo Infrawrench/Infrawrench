@@ -10,7 +10,7 @@ import type {
 
 /**
  * What a host must provide for the probes panel. The write methods are
- * optional — their absence renders the panel read-only, the same capability
+ * optional: their absence renders the panel read-only, the same capability
  * gating `MetricAlertsClient` uses.
  */
 export interface ProbesClient {

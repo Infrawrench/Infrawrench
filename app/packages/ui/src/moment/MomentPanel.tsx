@@ -17,7 +17,7 @@ import type { MomentClient } from "./types.js";
 export interface MomentPanelProps {
   /**
    * Org-scoped data access. Hosts mount the panel with `key={orgId}` so an
-   * org switch remounts it — that is what clears the previous org's events.
+   * org switch remounts it: that is what clears the previous org's events.
    */
   client: MomentClient;
   /** Deep-linked centre timestamp (ISO). Absent = "around now". */
@@ -26,7 +26,7 @@ export interface MomentPanelProps {
   initialWindowMinutes?: number | undefined;
   /**
    * Reports the query whenever it changes so hosts can mirror it into the
-   * URL — that is what makes a moment shareable. `at` is null for
+   * URL: that is what makes a moment shareable. `at` is null for
    * "around now".
    */
   onQueryChange?: ((query: { at: string | null; windowMinutes: number }) => void) | undefined;
@@ -66,7 +66,7 @@ function spansById(ids: string[], incidents: MomentIncidentSpan[]): MomentIncide
 }
 
 /**
- * "What changed around 03:14?" — one merged, chronological narrative of
+ * "What changed around 03:14?": one merged, chronological narrative of
  * everything the platform knows happened in a window, unioned across the
  * feeds that already exist. Cloud-only by nature (every feed is recorded
  * server-side); hosts guard the entry point.
@@ -83,7 +83,7 @@ export function MomentPanel({
   const gtData = useDataString();
   // "" = around now. Kept in the input's local format so typing stays sane.
   const [atInput, setAtInput] = useState(() => (initialAt ? isoToLocalInput(initialAt) : ""));
-  // Guard the host-supplied initial window like MomentScreen does — only a
+  // Guard the host-supplied initial window like MomentScreen does, only a
   // finite positive number is usable; anything else gets the default.
   const [windowMinutes, setWindowMinutes] = useState(
     typeof initialWindowMinutes === "number" &&

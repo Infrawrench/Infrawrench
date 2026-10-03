@@ -204,7 +204,7 @@ describe("computeBackupCoverage", () => {
 
   it("names the policy that supplies each objective, not just the RPO winner", () => {
     // The regression this guards: one `policy` variable held whichever policy
-    // won the RPO race, so a retention finding cited an unrelated policy — and
+    // won the RPO race, so a retention finding cited an unrelated policy, and
     // the reader would have gone to edit the wrong one. The two strictest
     // demands routinely come from different policies, which is exactly the
     // "everything, 24h" plus "prod databases, 30 days" setup below.
@@ -291,7 +291,7 @@ describe("computeBackupCoverage", () => {
       scan([res({ id: "vol-1" })], [policy({ resourceTypeIds: ["droplet"] })]),
       { now: NOW },
     );
-    // Still unprotected, but not under a policy — so medium, not high.
+    // Still unprotected, but not under a policy, so medium, not high.
     expect(feed.findings[0]?.severity).toBe("medium");
     expect(feed.findings[0]?.policyId).toBeNull();
   });
@@ -355,7 +355,7 @@ describe("computeBackupCoverage", () => {
     it("does not swallow a real gap on a type with no automated-backup signal", () => {
       // The other side of the same fix. A type declaring only `protectedBy` is
       // saying snapshots are the only protection it has, so no snapshot is a
-      // confirmed gap — over-correcting to "unknown" here would silently empty
+      // confirmed gap: over-correcting to "unknown" here would silently empty
       // the feature for volumes, servers, branches and databases.
       const feed = computeBackupCoverage(scan([res({ id: "vol-1" })]), { now: NOW });
       expect(feed.resources[0]?.state).toBe("unprotected");

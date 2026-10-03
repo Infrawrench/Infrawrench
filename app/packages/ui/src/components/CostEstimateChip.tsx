@@ -10,7 +10,7 @@ import { formatMonthlyEstimate } from "@infrawrench/client-core";
  *
  * The badge is a disclosure rather than a bare number. A single total invites
  * "where did that come from" and the answer has to be in the UI, not in the
- * provider's calculator — so the line items the plugin returned are one click
+ * provider's calculator, so the line items the plugin returned are one click
  * away, and a partial estimate says "at least" instead of quietly quoting a
  * floor as if it were the whole bill.
  */
@@ -63,7 +63,7 @@ export interface CostEstimateChipProps {
   /**
    * The formatted total to show on the face of the chip. Hosts pass their own
    * label because the create form can quote a size-picker price when the
-   * plugin has no `estimateCost` — a number with no breakdown behind it.
+   * plugin has no `estimateCost`: a number with no breakdown behind it.
    */
   label: string;
   /** The itemized estimate, when the plugin supplied one. */

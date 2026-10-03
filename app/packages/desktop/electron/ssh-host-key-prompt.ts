@@ -1,5 +1,5 @@
 /**
- * Interactive SSH host-key prompt — sends a `ssh_host_key_prompt` event to
+ * Interactive SSH host-key prompt: sends a `ssh_host_key_prompt` event to
  * the renderer and awaits the user's accept/deny decision via the
  * `ssh_host_key_decide` IPC channel.
  *

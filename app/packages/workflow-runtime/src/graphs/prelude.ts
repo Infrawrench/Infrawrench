@@ -4,7 +4,7 @@
  *
  * Controls are deliberately synchronous: their *values* are known at run start
  * (the client sent them in `__event`), so `graph.controls.select(...)` just
- * records the declaration locally and returns the resolved value — no RPC, no
+ * records the declaration locally and returns the resolved value; no RPC, no
  * `await`. The declarations ride along with the final `graph.render` RPC,
  * which the epilogue sends after the body settles. Only real data access
  * (costs, metrics, data store, fetch) awaits the host.

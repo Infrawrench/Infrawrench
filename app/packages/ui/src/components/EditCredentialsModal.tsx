@@ -7,7 +7,7 @@ import { useDataString } from "../i18n/data-strings.js";
 import type { PluginInfo } from "./AddAccountModal.js";
 
 interface EditCredentialsModalProps {
-  /** Plugin manifest fragment — same shape used by AddAccountModal. */
+  /** Plugin manifest fragment: same shape used by AddAccountModal. */
   plugin: PluginInfo;
   /** Account display name shown in the header. */
   accountDisplayName: string;
@@ -25,7 +25,7 @@ interface EditCredentialsModalProps {
 }
 
 /**
- * Update an existing account's credentials — e.g. rotate an API token after
+ * Update an existing account's credentials, e.g. rotate an API token after
  * regenerating it upstream, or upgrade the scope on a DigitalOcean PAT.
  *
  * Sensitive fields are rendered empty with a "leave blank to keep current

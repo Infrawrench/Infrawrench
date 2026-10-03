@@ -15,8 +15,8 @@
   --color-surface-inset: #f9fafb;
 
   /* ── Text (on-surface) ──
-     Every value here clears WCAG AA (4.5:1) against all four surfaces —
-     surface, raised, overlay and sunken — not just the lightest one.
+     Every value here clears WCAG AA (4.5:1) against all four surfaces
+     (surface, raised, overlay and sunken) not just the lightest one.
      #6b7280 used to serve tertiary/muted/faint and only cleared AA on
      surface (4.83) and raised (4.63); it was 4.39 on overlay and 3.90 on
      sunken. `theme-contrast.test.ts` enforces the four-surface rule. */
@@ -40,7 +40,7 @@
   --color-accent-on-muted: #1e40af;
   /* Text sitting on a solid accent fill (primary buttons). Light mode's
      accent is dark enough for white; dark mode's accent is a light blue, so
-     the label flips dark — `theme-contrast.test.ts` holds both above AA. */
+     the label flips dark: `theme-contrast.test.ts` holds both above AA. */
   --color-on-accent: #ffffff;
 
   /* ── Status ──
@@ -48,7 +48,7 @@
      palette class (text-red-400, text-amber-500, …): a palette class is the
      same colour in both schemes, so it can only be legible in one of them.
      Every value below clears WCAG AA (4.5:1) on all four surfaces in both
-     schemes — see `__tests__/theme-contrast.test.ts`.
+     schemes: see `__tests__/theme-contrast.test.ts`.
 
      The `-strong` variants are the higher-emphasis step (hover, or a label
      sitting on a tinted chip): darker than the base in light mode, lighter

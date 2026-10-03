@@ -70,12 +70,12 @@ function signed(delta: number): string {
 }
 
 /**
- * Environment diff: two accounts of the same provider compared side by side —
+ * Environment diff: two accounts of the same provider compared side by side;
  * resource types present in one and not the other, per-type count deltas, and
  * the fields on which two corresponding resources disagree.
  *
  * Shared by the web and desktop Env diff screens; `infrawrench diff` prints
- * the same comparison as text. The panel never talks to a network — the host
+ * the same comparison as text. The panel never talks to a network: the host
  * injects a client (see `EnvironmentDiffClient`).
  */
 export function EnvironmentDiffSection({
@@ -100,7 +100,7 @@ export function EnvironmentDiffSection({
 
   // Single-instance tab: browser back, a shared link, or route sync can retarget
   // `initialA`/`initialB` while this panel stays mounted. useState only seeds
-  // once, so adopt prop changes here. Do not call onSelectionChange — the host
+  // once, so adopt prop changes here. Do not call onSelectionChange: the host
   // already owns this pair (it is the source of the props).
   useEffect(() => {
     setA(initialA ?? "");
@@ -123,7 +123,7 @@ export function EnvironmentDiffSection({
     };
   }, [client]);
 
-  // Side B can only be an account of side A's provider — a Droplet has no
+  // Side B can only be an account of side A's provider: a Droplet has no
   // counterpart in an AWS account, so the server refuses the pair outright.
   const pluginOfA = accounts?.find((x) => x.id === a)?.pluginId;
   const optionsB = useMemo(

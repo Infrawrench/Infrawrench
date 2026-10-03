@@ -4,7 +4,7 @@ interface PostureIconProps {
 }
 
 /**
- * Posture-checks glyph — a shield with a check. Same 24x24 stroke grid and
+ * Posture-checks glyph: a shield with a check. Same 24x24 stroke grid and
  * 2px weight as ExpiryIcon/ChangesIcon so the Posture sidebar entry sits
  * level with its neighbours.
  */

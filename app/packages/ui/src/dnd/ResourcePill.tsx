@@ -13,7 +13,7 @@ export interface ResourcePillProps {
   onPin?: (() => void) | undefined;
   /**
    * Right-click handler for the pill's main button (desktop's SSH / metrics
-   * context menu). Also reachable by keyboard — the ContextMenu key or
+   * context menu). Also reachable by keyboard: the ContextMenu key or
    * Shift+F10 opens it anchored to the pill.
    */
   onContextMenu?:

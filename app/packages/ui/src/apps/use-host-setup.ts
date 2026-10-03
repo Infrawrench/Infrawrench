@@ -2,8 +2,8 @@
  * The state machine behind `HostSetupPanel`: check, install, check again.
  *
  * Shared rather than written twice because only the two calls differ between
- * platforms — the desktop reaches the host through IPC, the web app through its
- * server — and everything around them (when to block the session, what happens
+ * platforms (the desktop reaches the host through IPC, the web app through its
+ * server) and everything around them (when to block the session, what happens
  * to the log across a re-check, what "done" means) is the same and is where the
  * subtleties are.
  *
@@ -57,11 +57,11 @@ export interface HostSetupState {
  * The identity of the transport object deliberately does not trigger anything.
  * Both callers build theirs inline from a config the router rebuilds every
  * render, and keying the check on that object would re-probe the host on every
- * paint — a loop that spends someone else's SSH connections. `hostKey` is the
+ * paint: a loop that spends someone else's SSH connections. `hostKey` is the
  * host's identity as the caller understands it (key, login, address), which is
  * the thing a re-check should actually follow.
  *
- * A null `transport` — no key chosen yet, no address resolved — checks nothing.
+ * A null `transport` (no key chosen yet, no address resolved) checks nothing.
  */
 export function useHostSetup(
   transport: HostSetupTransport | null,
@@ -98,7 +98,7 @@ export function useHostSetup(
         setPlan(result.plan);
       },
       (cause: unknown) => {
-        // A check that cannot run is not a host that is missing everything —
+        // A check that cannot run is not a host that is missing everything:
         // it is usually the SSH connection. Blocking the launcher on it would
         // replace a real error with a misleading checklist, so this is recorded
         // and the session is allowed to go ahead and produce the real message.

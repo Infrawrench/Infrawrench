@@ -9,7 +9,7 @@ import {
 // @kubernetes/client-node (ESM-only, so it can't be required at module load).
 // That cold import lands inside whichever test calls it first, and under a
 // fully parallel `turbo test` run it can exceed the default 5s per-test
-// timeout — an intermittent failure of only the kubeconfig tests, only under
+// timeout: an intermittent failure of only the kubeconfig tests, only under
 // load. Warm it once here instead, the way plugin-loader.test.ts warms the
 // plugin registry.
 beforeAll(async () => {

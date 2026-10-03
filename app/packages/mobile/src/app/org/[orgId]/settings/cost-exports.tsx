@@ -6,7 +6,7 @@ import { Card, EmptyView, ErrorView, LoadingView, Row, Screen } from "@/componen
 import { colors, spacing } from "@/lib/theme";
 
 /**
- * Scheduled cost exports — **read-only on mobile, deliberately**.
+ * Scheduled cost exports: **read-only on mobile, deliberately**.
  *
  * The half of this feature that belongs on a phone is "is the nightly dump to
  * the warehouse still working": a failed export is invisible until somebody

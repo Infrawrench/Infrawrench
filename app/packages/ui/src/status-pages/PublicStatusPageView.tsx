@@ -17,7 +17,7 @@ export interface PublicStatusPageViewProps {
 
 /**
  * Colour for a component state. Deliberately paired with a text label
- * everywhere it appears — a status page read by a colour-blind visitor, or
+ * everywhere it appears: a status page read by a colour-blind visitor, or
  * screenshotted in greyscale into a ticket, must still say what it means.
  */
 function stateColor(state: StatusComponentState): string {
@@ -51,7 +51,7 @@ function pageAccent(state: StatusPageState): { bar: string; text: string } {
  *
  * A `null` day is grey, not green: the page has no evidence for it, and a
  * status page that renders "no data" as "fine" is worse than one that renders
- * nothing. The thresholds below are the usual reading — a day with any
+ * nothing. The thresholds below are the usual reading: a day with any
  * meaningful downtime is not a green day.
  */
 function dayColor(day: StatusHistoryDay): string {
@@ -138,7 +138,7 @@ function formatNoticeTime(iso: string): string {
  * The public status page, as visitors see it.
  *
  * It lives in `@infrawrench/ui` rather than in the web app so the editor can
- * render a true preview from the same component — a preview drawn by different
+ * render a true preview from the same component: a preview drawn by different
  * code is a preview that eventually lies.
  *
  * Everything rendered here comes from the public payload, which carries no org
@@ -174,8 +174,8 @@ export function PublicStatusPageView({ page }: PublicStatusPageViewProps) {
       {/*
         Notices sit above the components, because a sentence from a human is
         what a visitor came for and the coloured dots are what they will read
-        second. Everything about a notice that could identify the org — the
-        declared incident's id, who wrote it — is absent from the payload, so
+        second. Everything about a notice that could identify the org (the
+        declared incident's id, who wrote it) is absent from the payload, so
         there is nothing here to accidentally render.
       */}
       {(page.notices ?? []).length > 0 && (

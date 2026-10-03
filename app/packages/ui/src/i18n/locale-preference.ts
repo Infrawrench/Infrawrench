@@ -21,7 +21,7 @@ export function setStoredLocale(locale: string): void {
   try {
     localStorage.setItem(LOCALE_STORAGE_KEY, locale);
   } catch {
-    // Storage denied (private mode) — on web the cookie gt-react writes
+    // Storage denied (private mode): on web the cookie gt-react writes
     // still persists the choice; on desktop it lasts for the session.
   }
 }

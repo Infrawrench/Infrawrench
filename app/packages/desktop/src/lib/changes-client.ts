@@ -16,7 +16,7 @@ import { listCloudAccounts } from "./cloud-accounts";
  * The change timeline is cloud-only: the events are recorded by the cloud
  * poller as it re-syncs accounts, and local-only mode has no poller. Resolves
  * the active org at call time (not at client construction) so switching org
- * under a mounted Changes page reaches the new org's feed — same convention as
+ * under a mounted Changes page reaches the new org's feed: same convention as
  * the costs and orphans clients.
  */
 export function createDesktopChangesClient(): ChangesClient {
@@ -61,7 +61,7 @@ export function createDesktopChangesClient(): ChangesClient {
 
 /**
  * Time-travel undo over the two cloud IPC channels. Takes the org resolver
- * rather than an id for the same reason the feed does — an org switch under a
+ * rather than an id for the same reason the feed does: an org switch under a
  * mounted panel must reach the new org.
  */
 function createDesktopChangeRevertClient(requireOrg: () => string): ChangeRevertClient {

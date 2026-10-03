@@ -4,7 +4,7 @@ import { QuotasSection, useUIStore, type QuotaListResponse } from "@infrawrench/
 import { invoke } from "@/lib/invoke";
 
 /**
- * The quota radar on desktop — the same screen web renders. Rendered as a
+ * The quota radar on desktop: the same screen web renders. Rendered as a
  * workspace tab (the "quotas" kind).
  *
  * Cloud-only, and unlike the Expiring tab there is no local-mode fallback:

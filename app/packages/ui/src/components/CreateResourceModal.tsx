@@ -25,7 +25,7 @@ export interface CreateResourceModalProps {
    * The org tag policy's required tags, when the host knows them. If the
    * plugin's create form declares a `tags`/`labels` field, the modal shows a
    * policy notice and pre-fills the field with `key=` stubs so the required
-   * keys are in front of the user. The server is the real gate — it rejects
+   * keys are in front of the user. The server is the real gate: it rejects
    * non-compliant creates with a 422 when enforcement is on.
    */
   requiredTags?: RequiredTag[] | undefined;
@@ -52,7 +52,7 @@ export function CreateResourceModal({
   );
 
   // Pre-fill an empty comma-list tag field with `key=` stubs. Only for the
-  // kinds whose value is a comma-separated list — a structured editor
+  // kinds whose value is a comma-separated list: a structured editor
   // (key-value-list) keeps its own shape and just gets the notice.
   const { setField } = form;
   const tagFieldKey =

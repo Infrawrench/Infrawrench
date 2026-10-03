@@ -8,7 +8,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 
 /**
  * Key-value namespace browser (Cloudflare Workers KV and friends) over the
- * `/kv-browser/*` routes — list with a prefix filter and cursor paging, reveal
+ * `/kv-browser/*` routes: list with a prefix filter and cursor paging, reveal
  * a value, write it back, or delete the key.
  */
 

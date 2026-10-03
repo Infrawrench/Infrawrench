@@ -2,8 +2,8 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
 
 /**
  * Expo app config. The `infrawrench` scheme is shared with the desktop app on
- * purpose: desktop registers it on macOS/Windows/Linux, mobile on iOS/Android
- * — the platforms never overlap, and cross-surface links stay uniform. The
+ * purpose: desktop registers it on macOS/Windows/Linux, mobile on iOS/Android;
+ * the platforms never overlap, and cross-surface links stay uniform. The
  * OAuth redirect URI `infrawrench://auth/callback` must be registered on the
  * WorkOS client (distinct from desktop's `infrawrench://callback`).
  */
@@ -41,20 +41,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // matching capability onto the Apple provisioning profile, and anything
     // computed in a modifier is invisible to it.
     //
-    // Critical Alerts — the one level above time-sensitive, and the level
+    // Critical Alerts; the one level above time-sensitive, and the level
     // workflow pages want: it bypasses the ringer switch too, and the user
     // cannot pre-emptively silence it per app. Deliberately NOT declared:
     //
     //   1. `com.apple.developer.usernotifications.critical-alerts` is granted
     //      case by case by Apple, via developer.apple.com/contact/request/
-    //      notifications-critical-alerts-entitlement — unlike time-sensitive
+    //      notifications-critical-alerts-entitlement: unlike time-sensitive
     //      above, we cannot grant it to ourselves.
     //   2. Declaring an entitlement the provisioning profile lacks fails the
     //      Xcode build outright, so adding this line before approval lands
     //      breaks every iOS build.
     //
     // Once approved, the rollout is: add the key here, enable the capability on
-    // the App ID (`--non-interactive` CI builds do not sync it — see
+    // the App ID (`--non-interactive` CI builds do not sync it; see
     // KNOWLEDGE.md), flip `CRITICAL_ALERTS` in env.ts so the app asks for the
     // permission, then set PUSH_CRITICAL_ALERTS=1 so the server sends the level.
     entitlements: {
@@ -83,7 +83,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // string is not optional: without NSMicrophoneUsageDescription the OS kills
     // the app the first time it touches the microphone, and the plugin is the
     // only thing that writes it (plus RECORD_AUDIO on Android). Adding this
-    // module means a new dev-client/EAS build — it cannot be picked up over the
+    // module means a new dev-client/EAS build: it cannot be picked up over the
     // air by an already-installed client.
     [
       "expo-audio",
@@ -100,7 +100,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     eas: {
       // Required for getExpoPushTokenAsync. Hardcoded rather than env-only: the
       // project id is public (it ships in the app manifest), and EAS Build sets
-      // EAS_BUILD_PROJECT_ID — never EAS_PROJECT_ID — so an env-only value is
+      // EAS_BUILD_PROJECT_ID (never EAS_PROJECT_ID) so an env-only value is
       // empty on remote builds and push registration silently no-ops. The
       // override exists so a fork can point at its own EAS project.
       projectId: process.env.EAS_PROJECT_ID ?? "70615e11-f9fc-42a1-9a92-ffc906a049d2",

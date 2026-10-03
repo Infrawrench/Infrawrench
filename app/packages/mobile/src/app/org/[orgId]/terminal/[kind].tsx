@@ -19,14 +19,14 @@ import { colors, spacing } from "@/lib/theme";
 /**
  * Full-screen interactive session, routed as `/org/:orgId/terminal/:kind` where
  * kind is "ssh" | "sql" | "k8s-exec". Everything the session needs rides in the
- * query string rather than a packed path segment — resource ids routinely
+ * query string rather than a packed path segment: resource ids routinely
  * contain the characters any delimiter would use, and `encodeURIComponent`
  * leaves most of them untouched.
  *
  * SSH sessions also carry `sshHost` / `sshUsername` when the resource type
  * declares an `sshEndpoint` (droplets, EC2, Hetzner servers …). Those resources
  * have no plugin-native SSH credentials, so we gate the pty on a quick-connect
- * step that picks an org SSH key — see SshQuickConnect.
+ * step that picks an org SSH key: see SshQuickConnect.
  */
 
 export default function TerminalScreen() {
@@ -74,7 +74,7 @@ export default function TerminalScreen() {
     );
   }
   if (kind === "k8s-exec") {
-    // `resourceId` is the cluster the pod lives in — the server resolves its
+    // `resourceId` is the cluster the pod lives in: the server resolves its
     // kubeconfig through the peer integration named by `peerPluginId`.
     if (!resourceId || !peerPluginId || !podName) {
       return (
@@ -178,7 +178,7 @@ function K8sExecSession({
 
 /**
  * A pty over the WS gateway. Both protocols speak the same four frames under
- * their own prefix — `:data`, `:connected`, `:closed`, `:error` — so SSH and
+ * their own prefix (`:data`, `:connected`, `:closed`, `:error`) so SSH and
  * `kubectl exec` share this component; only the opening frame differs.
  */
 function PtyTerminal({
@@ -205,7 +205,7 @@ function PtyTerminal({
 
   useEffect(() => {
     // Re-entry (api/orgId change, or a reconnect after trusting a host key)
-    // builds a fresh session — reset the handshake state so the new socket
+    // builds a fresh session: reset the handshake state so the new socket
     // sends its own open frame.
     setWsConnected(false);
     setConnecting(true);
@@ -230,7 +230,7 @@ function PtyTerminal({
         case `${protocol}:error`: {
           const message =
             "error" in frame && typeof frame.error === "string" ? frame.error : undefined;
-          // An untrusted or changed host key isn't a failure yet — it's a
+          // An untrusted or changed host key isn't a failure yet: it's a
           // question. Ask it, and reconnect if the operator pins the key.
           const trust = trustPayloadFromFrame(frame);
           if (trust) {
@@ -256,7 +256,7 @@ function PtyTerminal({
     const offClose = session.onClose(() => {
       if (disposed) return;
       setConnecting(false);
-      // A dead pty can't resume — surface the close instead of reconnecting.
+      // A dead pty can't resume: surface the close instead of reconnecting.
       // The exception is the host-key handshake: the proxy drops the socket
       // right after refusing, and that overlay is already on screen.
       setOverlay((current) => current ?? { title: "Connection closed" });

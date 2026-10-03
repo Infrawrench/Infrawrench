@@ -1,7 +1,7 @@
 /**
  * Desktop renderer side of the workflow execution bridge.
  *
- * The QuickJS/WASM sandbox runs in the Electron main process — it needs Node's
+ * The QuickJS/WASM sandbox runs in the Electron main process: it needs Node's
  * `Buffer`, which Chromium doesn't have (see electron/workflow-host.ts). This
  * module keeps the *real* WorkflowHost here in the renderer, where plugin
  * clients, the local SQLite DB, and the prompt UI live, and answers the

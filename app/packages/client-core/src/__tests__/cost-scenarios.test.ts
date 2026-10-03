@@ -15,7 +15,7 @@ import type { CostFilter } from "../costs";
  * The scenario composition engine. Four properties are load-bearing and every
  * one of them is pinned here:
  *
- * 1. a scenario only ever touches the days it was handed — history cannot move;
+ * 1. a scenario only ever touches the days it was handed: history cannot move;
  * 2. the baseline it was computed from is returned untouched to the caller;
  * 3. overlapping adjustments compose in the defined order (rate changes against
  *    the trend first, absolute amounts added afterwards); and
@@ -56,7 +56,7 @@ describe("applyCostScenario", () => {
     });
 
     expect(result.points.map((p) => p.bucket)).toEqual(["2026-09-01", "2026-09-02", "2026-09-03"]);
-    // The baseline array the caller owns is the untouched trend — the response
+    // The baseline array the caller owns is the untouched trend: the response
     // carries both, so "what did the trend say before the scenario" is always
     // answerable.
     expect(input).toEqual(baseline);
@@ -71,7 +71,7 @@ describe("applyCostScenario", () => {
       adjustments: [adjustment({ kind: "recurring", period: "daily", startDate: "2026-06-01" })],
       baseline,
     });
-    // Every projected day is in the window, so all three move — and none of the
+    // Every projected day is in the window, so all three move, and none of the
     // observed days exist here to move at all.
     expect(result.points.map((p) => p.amount)).toEqual([1100, 1100, 1100]);
   });
@@ -130,7 +130,7 @@ describe("applyCostScenario", () => {
     it("applies rate changes to the trend, then adds absolute amounts", () => {
       // −50% and a $1,000 one-off on the same day. Rates first means
       // 100 × 0.5 + 1000 = 1050. Amounts first would give (100 + 1000) × 0.5 =
-      // 550 — silently halving a number the user typed in full.
+      // 550: silently halving a number the user typed in full.
       const result = applyCostScenario({
         model,
         adjustments: [
@@ -152,7 +152,7 @@ describe("applyCostScenario", () => {
 
     it("composes two overlapping rate changes additively, order-independently", () => {
       // Both are measured against the same untouched trend, so +10% and −20%
-      // is −10% (90), not ×1.1×0.8 (88) — and swapping them cannot matter.
+      // is −10% (90), not ×1.1×0.8 (88), and swapping them cannot matter.
       const rates: CostScenarioAdjustment[] = [
         adjustment({
           id: "up",
@@ -206,7 +206,7 @@ describe("applyCostScenario", () => {
 
     it("measures a scoped rate change against its own sub-baseline only", () => {
       // The chart totals 100/day; AWS is 40 of it. −50% on AWS takes 20 off,
-      // never 50 — the other 60 is out of scope and must not move.
+      // never 50: the other 60 is out of scope and must not move.
       const scoped = new Map<string, ScenarioDayPoint[]>([
         [costScenarioScopeKey(awsScope), baseline.map((p) => ({ day: p.day, amount: 40 }))],
       ]);

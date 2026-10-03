@@ -1,5 +1,5 @@
 /**
- * Environment diff — two accounts' inventories compared side by side.
+ * Environment diff: two accounts' inventories compared side by side.
  *
  * The question this answers is "why does staging work and prod doesn't":
  * which resource types exist in one account and not the other, how the counts
@@ -61,7 +61,7 @@ export interface EnvironmentDiffResourceRef {
 /** One pairing slot: a matched pair, or a resource with no counterpart. */
 export interface EnvironmentDiffEntry {
   /**
-   * The pairing key both sides matched on — the resource type plus the
+   * The pairing key both sides matched on: the resource type plus the
    * environment-stripped name. Stable across runs, so a UI can key rows on it.
    */
   key: string;
@@ -79,7 +79,7 @@ export interface EnvironmentDiffEntry {
   suppressedCount: number;
 }
 
-/** Per-resource-type roll-up — the "present in one and not the other" answer. */
+/** Per-resource-type roll-up: the "present in one and not the other" answer. */
 export interface EnvironmentDiffTypeSummary {
   resourceTypeId: string;
   resourceTypeName: string;
@@ -94,7 +94,7 @@ export interface EnvironmentDiffTypeSummary {
   changed: number;
   /** Matched pairs with no visible divergence. */
   identical: number;
-  /** True when the type exists on exactly one side — the loudest signal here. */
+  /** True when the type exists on exactly one side: the loudest signal here. */
   missingFrom: "a" | "b" | null;
 }
 
@@ -129,7 +129,7 @@ export interface EnvironmentDiffUnavailableType {
 export interface EnvironmentDiffResponse {
   a: EnvironmentDiffSideSummary;
   b: EnvironmentDiffSideSummary;
-  /** Both accounts' plugin — comparing across providers is refused upstream. */
+  /** Both accounts' plugin: comparing across providers is refused upstream. */
   pluginId: string;
   pluginName: string;
   /** Every type present on either side, most-divergent first. */
@@ -139,7 +139,7 @@ export interface EnvironmentDiffResponse {
   totals: EnvironmentDiffTotals;
   /**
    * Resource types that could not be listed on at least one side. They are
-   * excluded from the comparison rather than reported as missing — "we
+   * excluded from the comparison rather than reported as missing: "we
    * couldn't ask" and "prod doesn't have one" are opposite answers.
    *
    * Only hosts that list live populate this (the desktop's local mode, and
@@ -158,7 +158,7 @@ export interface EnvironmentDiffResponse {
 
 /**
  * The part of a stored resource row the diff reads. Hosts map their own store
- * onto this — Postgres jsonb, SQLite TEXT bags — so the computation never
+ * onto this (Postgres jsonb, SQLite TEXT bags) so the computation never
  * learns which database it is looking at.
  */
 export interface EnvironmentDiffResource {
@@ -180,7 +180,7 @@ export interface EnvironmentDiffSide {
 }
 
 export interface EnvironmentDiffInput {
-  /** The baseline — the environment that works, by convention. */
+  /** The baseline: the environment that works, by convention. */
   a: EnvironmentDiffSide;
   /** The environment being explained. */
   b: EnvironmentDiffSide;
@@ -207,7 +207,7 @@ export interface EnvironmentDiffInput {
 }
 
 /* ------------------------------------------------------------------ *
- * Name normalization — how two resources are recognized as counterparts
+ * Name normalization: how two resources are recognized as counterparts
  * ------------------------------------------------------------------ */
 
 /**
@@ -358,7 +358,7 @@ function fieldWords(field: string): string[] {
  *
  * Three rules, all provider-agnostic:
  *
- * 1. The field's last word names an identifier, a link or a network address —
+ * 1. The field's last word names an identifier, a link or a network address:
  *    every prod resource has a different one by construction.
  * 2. Both values are timestamps (ISO strings either side, or numbers under a
  *    key like `createdAt`). A creation time differing says nothing.
@@ -366,8 +366,8 @@ function fieldWords(field: string): string[] {
  *    (`vpcId`, `imageId`) are mostly caught by rule 1; this catches the ones
  *    spelled without an `id` suffix.
  *
- * Everything else — instance class, engine version, replica count, a boolean
- * flag — is exactly what the diff exists to show, so the filter never guesses
+ * Everything else (instance class, engine version, replica count, a boolean
+ * flag) is exactly what the diff exists to show, so the filter never guesses
  * at "probably fine". `--all` / the UI toggle turns it off entirely.
  */
 export function isIdentityChange(
@@ -410,7 +410,7 @@ function bag(value: unknown): Record<string, unknown> {
 }
 
 interface Slot {
-  /** `${resourceTypeId}\0${normalizedName}#${ordinal}` — the synthetic diff id. */
+  /** `${resourceTypeId}\0${normalizedName}#${ordinal}`: the synthetic diff id. */
   id: string;
   key: string;
   resource: EnvironmentDiffResource;
@@ -419,7 +419,7 @@ interface Slot {
 /**
  * Bucket one side's resources into pairing slots.
  *
- * Several resources can normalize to the same key — three volumes all called
+ * Several resources can normalize to the same key: three volumes all called
  * `data`, or a name made entirely of environment words. They are ordered
  * deterministically (display name, then provider id, then resource id) and
  * given ordinals, so the two sides pair up to the overlap and the leftovers
@@ -491,7 +491,7 @@ export function computeEnvironmentDiff(input: EnvironmentDiffInput): Environment
   const tokens = environmentTokens(a.accountName, b.accountName);
   const slotsA = buildSlots(a, tokens);
   const slotsB = buildSlots(b, tokens);
-  // Slot ids are unique within a side and *shared* across sides — that is the
+  // Slot ids are unique within a side and *shared* across sides: that is the
   // whole trick, and why each side needs its own lookup.
   const aById = new Map(slotsA.map((slot) => [slot.id, slot]));
   const bById = new Map(slotsB.map((slot) => [slot.id, slot]));
@@ -515,7 +515,7 @@ export function computeEnvironmentDiff(input: EnvironmentDiffInput): Environment
   });
 
   // Side A plays "prior", side B plays "fetched", and every type on side A is
-  // deletable — an A-only resource is a real answer here, never the transient
+  // deletable: an A-only resource is a real answer here, never the transient
   // list failure the parameter guards against during a sync.
   const events = computeResourceChangeEvents({
     prior: slotsA.map(toPrior),
@@ -555,7 +555,7 @@ export function computeEnvironmentDiff(input: EnvironmentDiffInput): Environment
     }
 
     // `displayName` always differs for a matched pair whose names carried the
-    // environment word — that is what pairing normalized away — so it can
+    // environment word (that is what pairing normalized away) so it can
     // never be informative here and isn't counted as suppressed either.
     const candidates = event.diff.filter((d) => d.field !== "displayName");
     const visible = input.includeIdentityFields
@@ -584,7 +584,7 @@ export function computeEnvironmentDiff(input: EnvironmentDiffInput): Environment
   );
 
   /* Per-type roll-up. Built from the slot lists (not the events) so identical
-   * pairs — the ones the differ is silent about — are counted too. */
+   * pairs (the ones the differ is silent about) are counted too. */
   const summaries = new Map<string, EnvironmentDiffTypeSummary>();
   const summaryFor = (resourceTypeId: string): EnvironmentDiffTypeSummary => {
     let s = summaries.get(resourceTypeId);

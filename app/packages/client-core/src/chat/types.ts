@@ -15,7 +15,7 @@ import type { AskQuestionAnswer } from "./ask-question";
 /**
  * Which provider minted a block's opaque signature. A conversation's model can
  * be changed mid-thread (PATCH /conversations/:id), so history routinely mixes
- * providers — and a thought signature is only valid to the provider that
+ * providers, and a thought signature is only valid to the provider that
  * issued it. Blocks written before this field existed are Anthropic's, which is
  * why `undefined` means Anthropic rather than "unknown".
  */
@@ -27,8 +27,8 @@ export type ChatContentBlock =
       text: string;
       /**
        * Gemini only. Gemini 3 can attach a thought signature to a plain text
-       * part — a reply may carry reasoning tokens and a signature with no
-       * separate thought part at all — and it has to come back on the next
+       * part (a reply may carry reasoning tokens and a signature with no
+       * separate thought part at all) and it has to come back on the next
        * request for the reasoning context to survive the turn. Stripped before
        * the block reaches any other provider; renderers ignore it.
        */
@@ -206,7 +206,7 @@ export interface ChatStreamingToolUse {
 }
 
 /**
- * View state a surface accumulates while a turn streams — the reduction of
+ * View state a surface accumulates while a turn streams: the reduction of
  * {@link ChatTurnEvent}s every chat host performs. Declared here so the web,
  * desktop and mobile reducers agree on what a turn in flight looks like.
  */

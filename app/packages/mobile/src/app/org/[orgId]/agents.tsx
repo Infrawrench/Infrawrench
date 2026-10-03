@@ -14,7 +14,7 @@ import {
 import { colors } from "@/lib/theme";
 
 /**
- * Read-only coding-agent sessions list (GET /api/org/:orgId/agents/sessions —
+ * Read-only coding-agent sessions list (GET /api/org/:orgId/agents/sessions:
  * see app/packages/web/src/api/routes/agents.ts rowToSession). Creating,
  * opening, and deleting sessions stays on web/desktop.
  */
@@ -55,7 +55,7 @@ function toolLabel(tool: string): string {
 
 /**
  * A T3 Code server has no Infrawrench-managed checkout, so its branch name is
- * a placeholder — showing it would read as a branch the user can go find.
+ * a placeholder: showing it would read as a branch the user can go find.
  */
 function sessionSubtitle(session: AgentSession): string {
   const created = new Date(session.createdAt).toLocaleString();

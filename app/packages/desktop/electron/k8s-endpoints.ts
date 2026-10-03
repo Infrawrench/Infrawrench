@@ -10,7 +10,7 @@
  * first.
  *
  * Trust model: an endpoint is registered only when the MAIN process itself
- * learns it from a kubeconfig in the user's credential store — the encrypted
+ * learns it from a kubeconfig in the user's credential store; the encrypted
  * accounts table that only main can decrypt (see the account_* handlers in
  * main.ts). Adding a cluster there is a deliberate user action through the
  * credential UI, so its API endpoints (e.g. a minikube at 127.0.0.1 or a
@@ -61,7 +61,7 @@ export function isK8sApiEndpointAllowed(hostname: string, port: number | string)
  * and allowlist every cluster API endpoint it names. Uses the same
  * `@kubernetes/client-node` parser as the k8s node driver, so anything the
  * driver can talk to gets registered. A malformed kubeconfig registers
- * nothing — the caller persists credentials regardless, and validation
+ * nothing: the caller persists credentials regardless, and validation
  * errors surface when the plugin actually connects.
  */
 export async function registerKubeconfigClusterEndpoints(

@@ -21,13 +21,13 @@ import {
 const TRACKER_LABELS: Record<IssueTracker, string> = { jira: "Jira", linear: "Linear" };
 
 /**
- * File a finding as an issue — the native counterpart of web's
+ * File a finding as an issue: the native counterpart of web's
  * `FileIssueModal`, over the same `POST /jira/issues` / `POST /linear/issues`
  * contracts.
  *
  * With both trackers available the sheet opens with a tracker chip choice;
  * with exactly one it goes straight to that tracker's form. The destination
- * fields — Jira's project and issue type, Linear's team — are chip pickers
+ * fields (Jira's project and issue type, Linear's team) are chip pickers
  * fed by the API, defaulting to the org's saved defaults; there is no way to
  * type a project key or a team id here, the same as on web. The summary and
  * description are editable because a phone is exactly where somebody adds
@@ -45,7 +45,7 @@ export function FileIssueSheet({
   sourceKind: JiraSourceKind;
   sourceId: string;
   draft: Omit<BuildJiraIssueDraftArgs, "sourceKind">;
-  /** Trackers to offer — from `useFilableTrackers`. */
+  /** Trackers to offer: from `useFilableTrackers`. */
   trackers: readonly IssueTracker[];
   onClose: () => void;
 }) {
@@ -63,7 +63,7 @@ export function FileIssueSheet({
   // default can still apply. Seeding these from `integration.data` instead
   // would silently discard those defaults: this sheet stays mounted and is
   // toggled with `visible`, so its initializers run at the parent's first
-  // render — long before the integration query resolves. (The web modal does
+  // render; long before the integration query resolves. (The web modal does
   // not have this problem: its button only renders once the integration has
   // loaded, so by the time it mounts the defaults are already there.)
   const [projectChoice, setProjectChoice] = useState<string | null>(null);

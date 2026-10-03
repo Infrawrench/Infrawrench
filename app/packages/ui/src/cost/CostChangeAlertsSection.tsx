@@ -49,7 +49,7 @@ function formatWhen(iso: string): string {
   });
 }
 
-/** "week of Aug 3–Aug 9" / "Aug 9" — the current window, compactly. */
+/** "week of Aug 3–Aug 9" / "Aug 9": the current window, compactly. */
 function windowLabel(event: CostAlertEvent): string {
   if (event.windowFrom === event.windowTo) return formatDay(event.windowTo);
   return `${formatDay(event.windowFrom)}–${formatDay(event.windowTo)}`;
@@ -82,7 +82,7 @@ function describeScope(
   return parts.join(" · ");
 }
 
-/** "≥ 25% and ≥ $100 up" — the firing condition, compactly. */
+/** "≥ 25% and ≥ $100 up": the firing condition, compactly. */
 function describeThreshold(alert: CostAlert, gt: ReturnType<typeof useGT>): string {
   const parts: string[] = [];
   if (alert.thresholdPercent !== null) {
@@ -113,7 +113,7 @@ export interface CostChangeAlertsSectionProps {
 }
 
 /**
- * Change-based cost alerts — "tell me when spend on this scope moves more
+ * Change-based cost alerts: "tell me when spend on this scope moves more
  * than X% (or $Y) versus the prior period". The third alert family on this
  * panel, deliberately distinct from the two around it: budgets (above) watch
  * an absolute monthly total, anomaly detection (also above) watches
@@ -150,7 +150,7 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
       } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
-      // The events feed is decoration on the section, not its point — a
+      // The events feed is decoration on the section, not its point: a
       // failure there degrades to "no recent events" rather than an error.
       try {
         const rows = (await client.listCostAlertEvents?.({ limit: EVENTS_SHOWN })) ?? [];

@@ -21,7 +21,7 @@ export interface PromptHostProps {
  *
  * Both hosts need this. Electron's `window.prompt` is a no-op, and the
  * browser's is a single-line string box that silently discards `kind` and
- * `options` — so a `select` rendered through it would offer no options at all,
+ * `options`, so a `select` rendered through it would offer no options at all,
  * which is precisely the interaction an Infrafile's `select(...)` depends on.
  */
 export function PromptHost({ title }: PromptHostProps) {

@@ -4,7 +4,7 @@ import type { CloudFetch } from "./fetch";
  * Jira issue tracking for findings. Server contract: org-scoped
  * `/api/org/:orgId/jira/*` routes (see web `api/routes/jira.ts`).
  *
- * Infrawrench detects things a human has to act on — cost anomalies, orphaned
+ * Infrawrench detects things a human has to act on: cost anomalies, orphaned
  * and oversized resources, posture findings, expiring credentials, failed
  * probes. Any of them can be filed as a Jira issue, and the resulting link is
  * kept so a list can show "already filed as OPS-412" rather than offering the
@@ -15,7 +15,7 @@ import type { CloudFetch } from "./fetch";
  *
  * This module is the shared contract: web and desktop reach it through
  * `@infrawrench/ui`, mobile calls these functions directly. Anything both
- * surfaces need — the source-kind union, the link index, the draft builder —
+ * surfaces need (the source-kind union, the link index, the draft builder)
  * belongs here rather than in either UI package.
  */
 
@@ -54,7 +54,7 @@ export function jiraSourceKindLabel(kind: JiraSourceKind): string {
 
 /**
  * The org's Jira connection, as the API returns it. The API token is never
- * present — {@link tokenHint} stands in for it.
+ * present: {@link tokenHint} stands in for it.
  */
 export interface JiraIntegration {
   /** Normalized site origin, e.g. `https://acme.atlassian.net`. */
@@ -169,7 +169,7 @@ export async function verifyJiraCredentials(
   });
 }
 
-/** Projects for the project picker — nobody should have to type a project key. */
+/** Projects for the project picker: nobody should have to type a project key. */
 export async function fetchJiraProjects(api: CloudFetch, orgId: string): Promise<JiraProject[]> {
   return (await api.org<JiraProject[]>(orgId, "/jira/projects")) ?? [];
 }
@@ -202,7 +202,7 @@ export async function createJiraIssue(
 /**
  * Links for a set of findings, in one request.
  *
- * A list view calls this once before rendering rather than once per row — with
+ * A list view calls this once before rendering rather than once per row: with
  * a hundred anomalies on screen the per-row shape would be a hundred requests
  * to render six badges.
  */
@@ -227,7 +227,7 @@ export function jiraLinkKey(sourceKind: JiraSourceKind, sourceId: string): strin
 
 /**
  * Index links for O(1) per-row lookup. Where a finding has been filed more than
- * once, the newest wins — the API returns newest-first, so the first entry for a
+ * once, the newest wins: the API returns newest-first, so the first entry for a
  * key is kept and later ones ignored.
  */
 export function indexJiraLinks(links: readonly JiraIssueLink[]): Map<string, JiraIssueLink> {
@@ -261,7 +261,7 @@ export interface BuildJiraIssueDraftArgs {
  * Build the summary/description/labels a file-issue modal opens prefilled with.
  *
  * Shared rather than duplicated per surface: web, desktop, and mobile must file
- * issues that read identically, and the description is plain text here — the
+ * issues that read identically, and the description is plain text here; the
  * server converts it to Atlassian Document Format, because ADF is a JSON
  * document shape no client should be assembling by hand.
  */

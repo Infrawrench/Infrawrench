@@ -46,8 +46,8 @@ export default function OrgLayout() {
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
-        // Six tabs share the bar, and at the stock 10pt "Dashboards" — the
-        // longest label — ellipsizes to "Dashboa…" on a 375pt screen: each tab
+        // Six tabs share the bar, and at the stock 10pt "Dashboards" (the
+        // longest label) ellipsizes to "Dashboa…" on a 375pt screen: each tab
         // gets ~62pt and the item's own 5pt padding is not ours to reclaim
         // (`tabBarItemStyle` dresses the outer pressable, not the inner row).
         // A point smaller fits every label with room to spare.
@@ -120,7 +120,7 @@ export default function OrgLayout() {
           title: "Dashboard",
           // A screen pushed over a tab gets no back affordance of its own, and
           // the tab bar's Dashboards button would land on the list without
-          // reading as "back" — so draw one.
+          // reading as "back", so draw one.
           headerLeft: () => (
             <Pressable
               accessibilityRole="button"

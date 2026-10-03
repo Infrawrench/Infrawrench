@@ -55,7 +55,7 @@ describe("formatChangeCostImpact", () => {
 
   it("renders nothing at all for an unmeasurable impact in compact mode", () => {
     // The alternative is a row of "unknown" beside every security group that
-    // was never billable — noise that trains people to ignore the column.
+    // was never billable: noise that trains people to ignore the column.
     const unknown = measured({ status: "unknown", series: [], reasons: ["no_cost_data"] });
     expect(formatChangeCostImpact(unknown)).toBeNull();
   });
@@ -93,7 +93,7 @@ describe("formatSignedPerDay", () => {
   it("signs the direction and formats money through the shared formatter", () => {
     expect(formatSignedPerDay(12.5, "USD")).toBe("+$12.50/day");
     expect(formatSignedPerDay(12.37, "USD")).toBe("+$12.37/day");
-    // U+2212, not a hyphen — it aligns with digits in a column of these.
+    // U+2212, not a hyphen: it aligns with digits in a column of these.
     expect(formatSignedPerDay(-3, "USD")).toBe("−$3/day");
     expect(formatSignedPerDay(0, "USD")).toBe("$0/day");
   });
@@ -138,7 +138,7 @@ describe("chunkChangeImpactIds", () => {
   it("covers every id past the batch cap instead of truncating to one request", () => {
     // The regression: an infinite-scrolling feed used to send
     // `ids.slice(0, MAX_CHANGE_IMPACT_BATCH)`, so every row past the cap came
-    // back with no impact — indistinguishable on screen from "this resource has
+    // back with no impact; indistinguishable on screen from "this resource has
     // no cost data". Silently omitting a measurable impact is the one failure
     // this feature exists to avoid, so the ids are chunked, never cut.
     const three = ids(MAX_CHANGE_IMPACT_BATCH * 3);
@@ -179,7 +179,7 @@ describe("collectChangeImpactResults", () => {
     // The regression: a failed lookup used to render exactly like a successful
     // one that found nothing. Blank already means "no measurable impact" on
     // this surface, so a transient network error silently became a confident,
-    // wrong claim about the bill — on a row that otherwise looks fine.
+    // wrong claim about the bill: on a row that otherwise looks fine.
     const chunks = [
       ["a", "b"],
       ["c", "d"],

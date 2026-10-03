@@ -4,7 +4,7 @@ interface DeployIconProps {
 }
 
 /**
- * Deploy glyph — a rocket (lucide's, matching WorkflowIcon and CostsIcon,
+ * Deploy glyph: a rocket (lucide's, matching WorkflowIcon and CostsIcon,
  * which use the same 24×24 stroke idiom). Replaces the `^` caret placeholder,
  * which read as "collapse" rather than "ship".
  */

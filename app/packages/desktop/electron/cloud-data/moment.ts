@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// The moment view ("what changed around 03:14?") — cloud-mode only: every
+// The moment view ("what changed around 03:14?"); cloud-mode only: every
 // feed in the union (changes, incidents, anomalies, runs, deployments,
 // audit, freezes, alert claims) is recorded server-side, so the desktop
 // reads the merged window from the API rather than assembling it locally.

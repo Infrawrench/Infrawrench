@@ -16,8 +16,8 @@ interface AccountOption {
  * decides *what* and *how often*.
  *
  * The section exists because drift is the one alert whose volume is set by the
- * infrastructure rather than by an exceptional event — a sync pass can record
- * hundreds of changes — so the filter is not a nicety, it is the difference
+ * infrastructure rather than by an exceptional event (a sync pass can record
+ * hundreds of changes) so the filter is not a nicety, it is the difference
  * between a digest and a muted integration.
  */
 export function DriftAlertsSection({ orgId }: { orgId: string }) {
@@ -35,7 +35,7 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
         const s = await api.get<DriftAlertSettings>(`/api/org/${orgId}/changes/alert-settings`);
         if (!cancelled) setSettings(s);
       } catch {
-        // Non-admins get a 403 — hide the section rather than show an error.
+        // Non-admins get a 403: hide the section rather than show an error.
         if (!cancelled) setForbidden(true);
         return;
       }

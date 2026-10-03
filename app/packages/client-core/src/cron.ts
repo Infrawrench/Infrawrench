@@ -6,7 +6,7 @@
  * preview). One implementation means the preview a user sees is computed by
  * exactly the same code that later fires the run.
  *
- * Supported syntax — standard 5-field cron (minute hour day-of-month month
+ * Supported syntax; standard 5-field cron (minute hour day-of-month month
  * day-of-week): `*`, lists (`1,15,30`), ranges (`9-17`), steps (`*&#47;5`,
  * `9-17/2`, `3/4`), 3-letter month/weekday names (`JAN`, `MON`), and `7` as
  * Sunday. Vixie/POSIX day matching: when both day-of-month and day-of-week are
@@ -18,7 +18,7 @@
  * the way cron daemons handle it: wall times skipped by spring-forward don't
  * fire, and during fall-back's repeated hour the earlier instant is chosen.
  *
- * Deliberately dependency-free and pure — no Date.now() reads, no I/O.
+ * Deliberately dependency-free and pure: no Date.now() reads, no I/O.
  */
 
 /** One parsed 5-field expression. Values are wall-clock components. */
@@ -203,7 +203,7 @@ const formatterCache = new Map<string, Intl.DateTimeFormat>();
 /**
  * Cap on distinct cached zone spellings. `Intl` accepts case variants, aliases,
  * and offset strings, so one real zone has many spellings and the keys come
- * from user-supplied trigger timezones — an unbounded map would be a slow leak
+ * from user-supplied trigger timezones: an unbounded map would be a slow leak
  * in the long-lived poller and web processes. Well past the ~350 real IANA
  * names, so a legitimate deployment never clears.
  */
@@ -223,7 +223,7 @@ function formatterFor(zone: string): Intl.DateTimeFormat {
     minute: "2-digit",
     second: "2-digit",
   });
-  // Variants of one zone resolve to a single canonical name — share one
+  // Variants of one zone resolve to a single canonical name: share one
   // formatter across all of them rather than building a heavy `Intl` object per
   // spelling.
   const canonical = dtf.resolvedOptions().timeZone;
@@ -415,7 +415,7 @@ export function nextCronOccurrence(
 
     const wallMs = Date.UTC(cursor.year, cursor.month - 1, cursor.day, cursor.hour, cursor.minute);
     const utc = zone ? wallToUtc(zone, wallMs) : wallMs;
-    // `null`: the wall time falls in a DST gap and never happens — skip it,
+    // `null`: the wall time falls in a DST gap and never happens; skip it,
     // like cron daemons do. `<= fromMs` can occur around fall-back; keep
     // searching forward.
     if (utc === null || utc <= fromMs) {

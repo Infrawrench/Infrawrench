@@ -62,8 +62,8 @@ interface WorkflowsPanelProps {
 
 /**
  * What the server knows about the selected workflow. These four values are
- * always replaced as a set — cleared on selection, reloaded after a save or a
- * run — so one action keeps them consistent instead of four setState calls.
+ * always replaced as a set (cleared on selection, reloaded after a save or a
+ * run) so one action keeps them consistent instead of four setState calls.
  */
 interface WorkflowDetail {
   dts: string;
@@ -90,7 +90,7 @@ function detailReducer(state: WorkflowDetail, action: WorkflowDetailAction): Wor
   switch (action.kind) {
     // A newly picked workflow keeps the old typings until the fresh ones land
     // (the editor would flash an untyped `infra` otherwise), but its approvals
-    // and run history belong to the previous workflow and must go immediately —
+    // and run history belong to the previous workflow and must go immediately:
     // the history is a list of that other workflow's runs, not a placeholder.
     case "cleared":
       return { ...state, approvals: [], runs: [] };
@@ -191,7 +191,7 @@ export function WorkflowsPanel({
   const [error, setError] = useState<string | null>(null);
   const [secrets, setSecrets] = useState<WorkflowSecretSummary[]>([]);
   const [secretsLoading, setSecretsLoading] = useState(true);
-  // The selected workflow's server state — typings, run history, metrics, and
+  // The selected workflow's server state: typings, run history, metrics, and
   // the pending infra.waitForApproval(...) requests for its runs (approvals are
   // cloud only; the desktop client omits the approval methods).
   const [detail, dispatchDetail] = useReducer(detailReducer, EMPTY_DETAIL);
@@ -276,7 +276,7 @@ export function WorkflowsPanel({
           approvals: await client.listPendingApprovals(workflowId),
         });
       } catch {
-        // Approvals are decoration on the run view — never surface a poll
+        // Approvals are decoration on the run view, never surface a poll
         // failure over whatever the user is actually doing.
       }
     },
@@ -336,7 +336,7 @@ export function WorkflowsPanel({
             : current,
         );
         dispatchDetail({ kind: "loaded", dts: typings, runs: runRows, metrics: metricRows });
-        // After the static surface is on screen — never before, or a fast
+        // After the static surface is on screen, never before, or a fast
         // enrich can land and then get clobbered by the `loaded` dispatch.
         scheduleEnrichTypings(id);
       } catch (e) {
@@ -468,7 +468,7 @@ export function WorkflowsPanel({
   // The accounts portion of the typings comes from the host (getTypings); the
   // metrics portion is overlaid live from the draft so `infra.metrics.<key>`
   // reflects edits in the metrics section immediately, before saving.
-  // Depend on the metric defs alone, not the whole draft — `draft.source`
+  // Depend on the metric defs alone, not the whole draft: `draft.source`
   // changes on every keystroke and re-overlaying the typings each time is
   // wasted work.
   const metricDefs = draft?.metricDefs;
@@ -705,7 +705,7 @@ export function WorkflowsPanel({
 
 /**
  * A workflow row in the panel list. Draggable onto a dashboard (sidebar tab or
- * the dashboard surface) to pin its metrics — see DndShell
+ * the dashboard surface) to pin its metrics: see DndShell
  * `onPinWorkflowToDashboard`. Clicking (no drag past the sensor threshold)
  * selects it for editing.
  */
@@ -750,7 +750,7 @@ function WorkflowListRow({
  * within a few seconds; denying (or letting the timeout pass) fails it.
  *
  * The rows themselves are {@link ApprovalCard}, shared with the org-wide
- * approvals inbox — the workflow is already obvious from context here, so it
+ * approvals inbox: the workflow is already obvious from context here, so it
  * is the one thing this surface leaves off.
  */
 function PendingApprovalsPanel({

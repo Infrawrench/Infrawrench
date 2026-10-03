@@ -1,18 +1,18 @@
-// `infrawrench orphans` — likely-wasted resources (unattached volumes,
+// `infrawrench orphans`: likely-wasted resources (unattached volumes,
 // unassigned IPs) with the plugin's reason for flagging each one.
 //
 // Works in both modes, because the classification is declarative and runs over
 // stored state rather than a live provider call:
-//   - cloud (default) — GET /orphans, the same endpoint the web + desktop Costs
+//   - cloud (default): GET /orphans, the same endpoint the web + desktop Costs
 //     panels' Potential savings section uses, with trailing per-resource spend
 //     where the org collects it.
-//   - --local — electron/local-orphans.ts scans this machine's SQLite
+//   - --local: electron/local-orphans.ts scans this machine's SQLite
 //     workspace. No credentials, no network. Spend is collected by the cloud,
 //     so local rows carry no cost and the column is dropped rather than
 //     printed as zero.
 //
-// The response shape comes from `@infrawrench/plugin-base` — the same
-// definition the web and desktop savings sections use — so a server-side change
+// The response shape comes from `@infrawrench/plugin-base` (the same
+// definition the web and desktop savings sections use) so a server-side change
 // breaks the CLI's build instead of its output. The import is type-only, so
 // the CLI still ships zero new runtime dependencies.
 import { orgFetch, resolveOrg, type CliContext } from "../context";
@@ -40,7 +40,7 @@ export async function cmdOrphans(ctx: CliContext): Promise<void> {
   // has. Saying "$0.00" for every local row would be a lie; drop the column.
   const showCost = response.costBasis !== "unavailable";
   // Ownership is a cloud record too. A local scan reports everything
-  // unattributed because it knows of no owners — which is not the same claim
+  // unattributed because it knows of no owners, which is not the same claim
   // as "nobody owns these", so the column comes off rather than printing
   // "unowned" against every row.
   const showOwner = showCost;

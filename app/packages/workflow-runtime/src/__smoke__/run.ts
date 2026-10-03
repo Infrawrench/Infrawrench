@@ -1,5 +1,5 @@
 /**
- * Standalone runtime smoke test for the workflow sandbox. Not a unit test —
+ * Standalone runtime smoke test for the workflow sandbox. Not a unit test:
  * run with `tsx src/__smoke__/run.ts` to validate the async host bridge,
  * prelude, metrics, logging, prompt-gating, and codegen against a fake host.
  */

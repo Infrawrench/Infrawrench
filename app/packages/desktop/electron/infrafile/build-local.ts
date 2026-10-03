@@ -4,7 +4,7 @@
  * cache and needs no VM, which is what makes iterating on an Infrafile quick.
  *
  * It shells out to the `docker` binary rather than using the docker plugin's
- * dockerode driver — the driver has no build or push op, and the binary is what
+ * dockerode driver: the driver has no build or push op, and the binary is what
  * every developer already has configured (contexts, credential helpers, buildx).
  * Per CLAUDE.md the CLI takes no new runtime dependencies, so this is
  * `node:child_process` and nothing else.
@@ -26,7 +26,7 @@ import type {
 const RUN_WORKDIR = "/workspace";
 
 export interface LocalBuildOptions {
-  /** Build context — the repo root the Infrafile was found in. */
+  /** Build context: the repo root the Infrafile was found in. */
   contextDir: string;
   /** `owner/name` when the repo has a remote, so the image matches a web deploy. */
   projectName?: string;
@@ -114,10 +114,10 @@ export async function buildLocally(
   try {
     await writeFile(dockerfilePath, request.dockerfile, "utf8");
 
-    // Without an explicit platform the manifest inherits the BUILDER's — an
+    // Without an explicit platform the manifest inherits the BUILDER's: an
     // arm64 laptop then ships images amd64 nodes refuse ("no match for
     // platform in manifest"). A push means the image is destined for another
-    // machine, and the overwhelming default elsewhere is amd64 — so assume it
+    // machine, and the overwhelming default elsewhere is amd64, so assume it
     // rather than let the mismatch surface as ImagePullBackOff minutes later.
     // plan.platform overrides; a build that stays local keeps the host's.
     let platform = request.platform;
@@ -154,7 +154,7 @@ export async function buildLocally(
       });
       digest = out.trim() || undefined;
     } catch {
-      // A missing digest is cosmetic — the image exists either way.
+      // A missing digest is cosmetic: the image exists either way.
     }
 
     return digest ? { image, digest } : { image };
@@ -220,7 +220,7 @@ export async function runInImage(
       args.push("sh", "-lc", request.command);
     }
 
-    // Log the command but never the environment — these are credentials.
+    // Log the command but never the environment: these are credentials.
     opts.log(`$ ${request.command}`);
     return await new Promise<RunInImageResult>((resolve, reject) => {
       const child = spawn("docker", args, {

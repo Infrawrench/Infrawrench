@@ -2,30 +2,30 @@
  * Dependency inference from synced cloud data.
  *
  * The dependency graph used to be built purely from output references, which
- * only exist once someone wires one by hand — so for most orgs the canvas was
+ * only exist once someone wires one by hand, so for most orgs the canvas was
  * empty even though the topology was already sitting in the synced resource
  * rows. Every poll writes each resource's `fields` bag, its `externalId` and
  * its `parentResourceId`, and providers put the wiring right there: an EC2
  * instance's `vpcId` is a VPC's external id, a DNS record's content is a
  * droplet's public IP, a GenAI agent's `projectId` is a project's uuid.
  *
- * This module reads that data back out. The host stays provider-agnostic — it
+ * This module reads that data back out. The host stays provider-agnostic: it
  * never learns what a "vpcId" is. Three mechanisms, in descending order of
  * confidence:
  *
- * 1. **Declared** — a plugin's `dependsOn` rules on a resource type say which
+ * 1. **Declared**: a plugin's `dependsOn` rules on a resource type say which
  *    field points at which type. The plugin knows its own provider, so a
  *    declaration beats anything the host could work out.
- * 2. **Containment** — `parentResourceId` is already an explicit link written
+ * 2. **Containment**: `parentResourceId` is already an explicit link written
  *    by the sync path (cluster → deployment, project → database).
- * 3. **Identifier match** — index every resource by the values that identify it
+ * 3. **Identifier match**: index every resource by the values that identify it
  *    (external id, name, uuid, arn, endpoint, IP…), then look up each
  *    resource's field values in that index. An exact hit is an edge.
  *
  * Matching is exact, never substring: `"vpc-0a1b"` inside a connection string
  * is not a reference we can attribute to a field, and prefix matching turns
  * short names into a mess. The noise controls that keep the *guessed* half
- * honest are documented on the constants below — ambiguous tokens are dropped
+ * honest are documented on the constants below: ambiguous tokens are dropped
  * entirely, weak tokens only match inside one account, and descriptive fields
  * (status, region, …) never source a match. Declared rules skip those guards,
  * because a rule that names a target type has already resolved the ambiguity
@@ -48,13 +48,13 @@ export interface InferenceResource {
   parentResourceId?: string | null;
   /** The non-secret `fields` bag as stored by the poller. */
   fields?: Record<string, unknown> | null;
-  /** Resolved outputs — read for identity only, never as a reference source. */
+  /** Resolved outputs: read for identity only, never as a reference source. */
   outputs?: Record<string, unknown> | null;
 }
 
 /**
  * Plugin-declared rules, keyed by `dependencyRuleKey(pluginId, resourceTypeId)`.
- * Hosts build this from the loaded plugins' resource types — see
+ * Hosts build this from the loaded plugins' resource types: see
  * `collectDependencyRules`.
  */
 export type DependencyRuleSet = Record<string, ResourceDependencyRule[]>;
@@ -98,7 +98,7 @@ export interface InferDependencyEdgesOptions {
    * still scanned, so ambiguity detection stays intact.
    */
   focusResourceId?: string;
-  /** Cap on returned edges. Default 4000 — beyond that the canvas is unusable. */
+  /** Cap on returned edges. Default 4000: beyond that the canvas is unusable. */
   maxEdges?: number;
 }
 
@@ -110,12 +110,12 @@ export interface InferredDependencyEdges {
 
 /**
  * Field keys whose value identifies the resource itself. Used to build the
- * lookup index — a resource is findable by any of these, not just its external
+ * lookup index: a resource is findable by any of these, not just its external
  * id, because plugins reference each other by name and address as often as by
  * id (a target group is referenced by name, a DNS record points at an IP).
  *
  * Exported because the DNS surface (`./dns`) answers the same question of the
- * same rows — "does anything in this workspace answer to this value?" — and a
+ * same rows ("does anything in this workspace answer to this value?") and a
  * second, drifting definition of identity would make a record read as owned on
  * the canvas and dangling on the Domains view.
  */
@@ -147,7 +147,7 @@ export const IDENTITY_FIELD_KEYS: ReadonlySet<string> = new Set([
  * Consumer field keys that never source a reference. These carry provider
  * vocabulary (`region: "nyc3"`, `status: "active"`) that can collide with a
  * resource name and produce an edge nobody asked for. Anything not listed here
- * is fair game — `zone`, `network`, `cluster` and friends really are pointers.
+ * is fair game: `zone`, `network`, `cluster` and friends really are pointers.
  */
 const NON_REFERENCE_FIELD_KEYS = new Set([
   "status",
@@ -175,7 +175,7 @@ const NON_REFERENCE_FIELD_KEYS = new Set([
   "displayname",
 ]);
 
-/** Shortest token allowed to match at all — below this, collisions dominate. */
+/** Shortest token allowed to match at all: below this, collisions dominate. */
 const MIN_TOKEN_LENGTH = 3;
 
 /**
@@ -188,8 +188,8 @@ const MIN_STRONG_TOKEN_LENGTH = 7;
 
 /**
  * Does this token look machine-generated rather than human-chosen? Digits plus
- * a separator covers what providers actually mint — uuids, `vpc-0a1b2c3d`,
- * arns, IPv4 addresses, hostnames — while rejecting words like `production`.
+ * a separator covers what providers actually mint (uuids, `vpc-0a1b2c3d`,
+ * arns, IPv4 addresses, hostnames) while rejecting words like `production`.
  */
 function isStrongToken(token: string): boolean {
   if (token.length < MIN_STRONG_TOKEN_LENGTH) return false;
@@ -209,7 +209,7 @@ function normalize(value: string): string {
 function candidateTokens(value: unknown, minNumericLength = MIN_STRONG_TOKEN_LENGTH): string[] {
   if (typeof value === "number") {
     // Numeric ids (DO droplet ids and the like) are real, but short numbers are
-    // ports, counts and sizes — those must not match anything unless a rule
+    // ports, counts and sizes: those must not match anything unless a rule
     // asked for this field by name, in which case the caller lowers the floor.
     const asText = String(value);
     return asText.length >= minNumericLength && Number.isInteger(value) ? [asText] : [];
@@ -231,7 +231,7 @@ interface IndexEntry {
   pluginId: string | undefined;
   resourceTypeId: string | undefined;
   /**
-   * Every identity this resource answers to the token under — `externalId`,
+   * Every identity this resource answers to the token under: `externalId`,
    * `name`, `endpoint`… A resource can hold the same value under several keys,
    * and a rule may name any one of them as its `targetKey`.
    */
@@ -241,7 +241,7 @@ interface IndexEntry {
 /**
  * How many claimants of one token are kept **per resource type**. Beyond a
  * couple, same-typed claimants only prove the token is ambiguous for that type
- * — which two already establish — so the rest are dropped as duplicates of a
+ * (which two already establish) so the rest are dropped as duplicates of a
  * conclusion we've reached.
  *
  * Capping per type rather than per token is load-bearing. GCP auto-mode VPCs
@@ -261,8 +261,8 @@ const MAX_TOKEN_CLAIMS = 64;
  * "default" are poison, and a wrong edge is worse than a missing one); a
  * declared rule can pick its target out of the list by type.
  *
- * Note the caps never reduce a list to one entry — with at least two claimants,
- * at least two survive — so trimming can't fabricate the uniqueness the
+ * Note the caps never reduce a list to one entry (with at least two claimants,
+ * at least two survive) so trimming can't fabricate the uniqueness the
  * heuristic pass requires.
  */
 function buildIdentityIndex(
@@ -274,7 +274,7 @@ function buildIdentityIndex(
   /**
    * One entry per (token, resource), listing **every** key that resource
    * answers to the token under. Keeping only the first key looks harmless
-   * — `externalId` wins, and it is the default `targetKey` — but it silently
+   * (`externalId` wins, and it is the default `targetKey`) but it silently
    * disables any rule matching on a key whose value equals the external id
    * (`targetKey: "name"` against a type where `externalId === name`, which is
    * true of `azure-resource-group` and `aws/target-group`). Merging instead
@@ -328,13 +328,13 @@ function buildIdentityIndex(
 }
 
 /**
- * Target keys named by rules that aren't identity keys by default — those have
+ * Target keys named by rules that aren't identity keys by default: those have
  * to be indexed too, or a rule pointing at `clusterName` would never match.
  *
  * Scoped to the plugin (and type, when the rule names one) the rule actually
  * targets. A flat set would make one plugin's choice everyone's problem: a
  * Docker rule matching images on `tags` would turn every `tags` field in the
- * app — DigitalOcean's, Mistral's — into an identity, so unrelated resources
+ * app (DigitalOcean's, Mistral's) into an identity, so unrelated resources
  * would become findable by tag value in the guessing pass.
  */
 interface ExtraIdentityKeys {
@@ -354,7 +354,7 @@ function extraIdentityKeysFrom(rules: DependencyRuleSet): ExtraIdentityKeys {
   };
 
   for (const [ruleKey, ruleList] of Object.entries(rules)) {
-    // The rule set is keyed by the *consumer* — its plugin is also the default
+    // The rule set is keyed by the *consumer*: its plugin is also the default
     // target plugin, since most references stay inside one provider.
     const consumerPluginId = ruleKey.slice(0, ruleKey.indexOf(":"));
     for (const rule of ruleList) {
@@ -372,7 +372,7 @@ function extraIdentityKeysFrom(rules: DependencyRuleSet): ExtraIdentityKeys {
   return { anyType, byType };
 }
 
-/** Is `lowerKey` an identity key for this resource — globally, or by a rule that targets it? */
+/** Is `lowerKey` an identity key for this resource: globally, or by a rule that targets it? */
 function isIdentityKey(
   lowerKey: string,
   resource: InferenceResource,
@@ -390,7 +390,7 @@ function isIdentityKey(
 }
 
 /**
- * Build a rule's `matchTemplate` into the values to look up — `"{a}/{b}"` with
+ * Build a rule's `matchTemplate` into the values to look up: `"{a}/{b}"` with
  * this resource's own field values substituted in.
  *
  * A placeholder that is missing, empty or non-scalar aborts the whole
@@ -398,7 +398,7 @@ function isIdentityKey(
  * match, it is a different string that could collide with something real.
  *
  * One placeholder may hold a comma-joined list, in which case the template is
- * expanded per element — `"{namespace}/{configMaps}"` over `"a, b"` yields
+ * expanded per element: `"{namespace}/{configMaps}"` over `"a, b"` yields
  * `["prod/a", "prod/b"]`. Composing first and splitting afterwards (which is
  * what the plain field path does) would qualify only the first element and
  * leave a bare `b` to match something unrelated. Two list-valued placeholders
@@ -448,7 +448,7 @@ function composeMatchValues(
 /**
  * Resolve one declared rule against the index. The rule's constraints do the
  * disambiguating: type, plugin and the identity key it says to match on. If
- * more than one resource still fits, prefer one in the consumer's own account —
+ * more than one resource still fits, prefer one in the consumer's own account,
  * and if that doesn't settle it, emit nothing rather than pick.
  */
 function resolveDeclaredTarget(
@@ -481,7 +481,7 @@ function resolveDeclaredTarget(
  *
  * Edges are deduped per (consumer, provider): one arrow per relationship, even
  * when three fields all point at the same VPC. The passes run in confidence
- * order — declared, then containment, then guessed — so the better-sourced edge
+ * order (declared, then containment, then guessed) so the better-sourced edge
  * wins the pair, and the ordering is stable, which means the cap truncates
  * predictably rather than shuffling the graph between polls.
  */
@@ -496,7 +496,7 @@ export function inferDependencyEdges(
   const index = buildIdentityIndex(resources, extraIdentityKeysFrom(rules));
 
   // Pairs already explained by an output reference, plus the pairs this pass
-  // has emitted — both live in one set so the dedupe is a single lookup.
+  // has emitted: both live in one set so the dedupe is a single lookup.
   const seenPairs = new Set<string>();
   for (const edge of options.existingEdges ?? []) {
     seenPairs.add(`${edge.consumerResourceId} ${edge.providerResourceId}`);
@@ -525,7 +525,7 @@ export function inferDependencyEdges(
   // a match against some other type would be a worse answer than no answer.
   const declaredFields = new Set<string>();
 
-  // Declared rules first — the plugin knows its own provider, so its answer
+  // Declared rules first: the plugin knows its own provider, so its answer
   // outranks both the parent link and anything the index would guess.
   for (const resource of resources) {
     if (!resource.pluginId || !resource.resourceTypeId) continue;
@@ -534,7 +534,7 @@ export function inferDependencyEdges(
     for (const rule of ruleList) {
       if (rule.from !== "outputs") declaredFields.add(`${resource.id}|${rule.fieldKey}`);
       const bag = rule.from === "outputs" ? resource.outputs : resource.fields;
-      // Composed values are already per-element and must not be re-split — a
+      // Composed values are already per-element and must not be re-split: a
       // composite key can legitimately contain a comma. Floor of 1 on the plain
       // path: the rule named this field, so a two-character namespace or a
       // short numeric id is exactly what it meant.
@@ -605,18 +605,18 @@ export function inferDependencyEdges(
 }
 
 /**
- * Every token worth prefiltering a *focused* query on — the values that could
+ * Every token worth prefiltering a *focused* query on: the values that could
  * link this resource to another in either direction, longest first.
  *
  * Both directions come from one function because both are rule-dependent, and
  * splitting them invited the host to ask for half the answer. It covers:
  *
- * - **Identity** — what another resource's field must contain to point here:
+ * - **Identity**: what another resource's field must contain to point here:
  *   the external id, the built-in identity keys, and any key a rule names as
  *   its `targetKey` for this resource's type. Missing that last group is why an
  *   IAM role's dependents were invisible: consumers store a `roleArn`, which is
  *   an identity of the role but not one of the built-in keys.
- * - **Reference** — what this resource points at: its non-descriptive fields,
+ * - **Reference**: what this resource points at: its non-descriptive fields,
  *   the fields (or outputs) its own rules name, and the values its
  *   `matchTemplate` rules compose.
  *
@@ -643,8 +643,8 @@ export function focusPrefilterTokens(
    * short numeric id); the generic sweep below is read by the guessing pass at
    * the default floor, which is what keeps `port: 5432` and `ttl: 300` out. On
    * a sequential-scan path those would each add a broad, unanchored predicate
-   * — `[",:]\s*5432` matches the port field of every Postgres-family resource
-   * in the org — and on a sparse resource they survive the length-ordered
+   * (`[",:]\s*5432` matches the port field of every Postgres-family resource
+   * in the org) and on a sparse resource they survive the length-ordered
    * budget and balloon the candidate set the focused path exists to keep small.
    */
   const add = (value: unknown, minNumericLength?: number) => {

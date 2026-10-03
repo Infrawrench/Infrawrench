@@ -25,7 +25,7 @@ function pct(value: number): string {
 
 /**
  * The committed column: hourly spend commitment, upfront price, committed
- * units — or "not reported", which is a different fact from $0. Azure's list
+ * units, or "not reported", which is a different fact from $0. Azure's list
  * API reports no price at all, GCP's reports no money of any kind, and
  * rendering either as free is how a wrong number lands in a finance review.
  */
@@ -43,7 +43,7 @@ function committedCell(h: CommitmentHolding): string {
 }
 
 /**
- * The utilization cell. Null is never printed as 0% — in a table those are
+ * The utilization cell. Null is never printed as 0%: in a table those are
  * indistinguishable, and one of them sends somebody to cancel a healthy plan.
  */
 function utilizationCell(h: CommitmentHolding): string {
@@ -85,7 +85,7 @@ function stateCell(h: CommitmentHolding): string {
   }
 }
 
-/** "up to $X/yr" or "$X–$Y/yr", per the row's savingBasis — never a bare $X. */
+/** "up to $X/yr" or "$X–$Y/yr", per the row's savingBasis, never a bare $X. */
 function savingCell(r: CommitmentRecommendationView): string {
   if (r.savingBasis === "range" && r.estimatedAnnualSavingMin !== undefined) {
     return `${amount(r.estimatedAnnualSavingMin, r.currency)}–${amount(r.estimatedAnnualSavingMax, r.currency)}/yr`;
@@ -94,7 +94,7 @@ function savingCell(r: CommitmentRecommendationView): string {
 }
 
 /**
- * `infrawrench commitments` — reservations, savings plans and committed-use
+ * `infrawrench commitments`: reservations, savings plans and committed-use
  * discounts, with coverage, utilization and the savings planner.
  *
  * Worth a CLI surface because the two failure modes it guards against are
@@ -139,7 +139,7 @@ export async function cmdCommitments(ctx: CliContext): Promise<void> {
     )}`,
   );
 
-  // Coverage as a range on one line per currency — the low end counts spend
+  // Coverage as a range on one line per currency: the low end counts spend
   // that can never be committed against, the high end only cells where a
   // commitment demonstrably landed. One number would overstate certainty.
   if (feed.coverage.available) {

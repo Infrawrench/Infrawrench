@@ -6,7 +6,7 @@ import type { BlastRadiusClient } from "./types.js";
 export interface BlastRadiusState {
   report: BlastRadiusReport | null;
   loading: boolean;
-  /** Set when the fetch itself failed — distinct from a report with gaps. */
+  /** Set when the fetch itself failed: distinct from a report with gaps. */
   error: string | null;
 }
 
@@ -20,7 +20,7 @@ export interface BlastRadiusState {
  * confirm.
  *
  * A failure sets `error` and leaves `report` null. That is a third state, not
- * an empty report — "we could not check" and "nothing depends on it" are the
+ * an empty report: "we could not check" and "nothing depends on it" are the
  * two answers this feature exists to keep apart, and collapsing a failed fetch
  * into a clean result is the one bug that would make it dangerous.
  */

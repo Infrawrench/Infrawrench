@@ -56,7 +56,7 @@ function stubMediaRecorder() {
 describe("SpeechPanel — text to speech", () => {
   it("passes the selected voice and model to the plugin and plays the result", async () => {
     const onSynthesize = vi.fn().mockResolvedValue({
-      // "ID3" — three bytes is enough to prove the base64 round-trip.
+      // "ID3": three bytes is enough to prove the base64 round-trip.
       audioBase64: "SUQz",
       mimeType: "audio/mpeg",
       summary: "42 characters billed",
@@ -168,7 +168,7 @@ describe("SpeechPanel — speech to text", () => {
   });
 
   it("hides only the recorder when the plugin sets disableRecording", () => {
-    // For providers that reject WebM/MP4 — the containers MediaRecorder emits —
+    // For providers that reject WebM/MP4 (the containers MediaRecorder emits)
     // so the recorder is a guaranteed failure while uploading still works.
     stubMediaRecorder();
 
@@ -199,7 +199,7 @@ describe("SpeechPanel — speech to text", () => {
 
     expect(screen.queryByRole("button", { name: /Record/ })).not.toBeInTheDocument();
     expect(screen.getByText(/does not accept browser recordings/)).toBeInTheDocument();
-    // Not the MediaRecorder-missing message — MediaRecorder is present here.
+    // Not the MediaRecorder-missing message: MediaRecorder is present here.
     expect(screen.queryByText(/needs a browser with MediaRecorder/)).not.toBeInTheDocument();
   });
 

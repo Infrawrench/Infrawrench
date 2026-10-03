@@ -41,8 +41,8 @@ function formatDay(day: string): string {
  *   would only ever let somebody put the marker on the wrong bar.
  * - **No scope.** It is org-wide, which is the whole point: "we migrated the
  *   fleet" explains that day's step on every chart that draws it.
- * - **No blank page.** The box opens with what the row already knows —
- *   "Amazon EC2 spend +173% — " — and the hints detection collected are one
+ * - **No blank page.** The box opens with what the row already knows
+ *   ("Amazon EC2 spend +173%) ", and the hints detection collected are one
  *   click away, because the difference between this being used and not is
  *   whether finishing a sentence is easier than composing one.
  *
@@ -76,7 +76,7 @@ export function CostAnomalyExplainModal({
   const isNew = anomaly.kind === "new_source";
   const hints = anomaly.hints ?? [];
   const problem = costAnomalyExplanationError(anomaly, text);
-  // The note already exists and is only being reworded — worth saying, because
+  // The note already exists and is only being reworded: worth saying, because
   // the reader is otherwise entitled to expect a second marker.
   const rewording = existing !== null;
 

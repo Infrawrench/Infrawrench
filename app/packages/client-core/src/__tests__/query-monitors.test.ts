@@ -125,8 +125,8 @@ describe("readMonitorValue", () => {
   });
 
   it("accepts a numeric string, because bigint counts arrive as strings", () => {
-    // Refusing them would make `SELECT count(*)` — the most obvious monitor
-    // anybody writes — not work on Postgres.
+    // Refusing them would make `SELECT count(*)` (the most obvious monitor
+    // anybody writes) not work on Postgres.
     expect(readMonitorValue([{ count: "42" }], "scalar")).toBe(42);
   });
 

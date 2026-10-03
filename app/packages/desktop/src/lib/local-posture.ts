@@ -4,7 +4,7 @@
  * `computePostureFindings` from client-core (imported through
  * `@infrawrench/ui`, the renderer convention), run over this workspace's
  * stored accounts and resources plus the `postureChecks` declarations of the
- * locally loaded plugins. Credential-free — classification is a property of
+ * locally loaded plugins. Credential-free: classification is a property of
  * stored state, so it works with the network off. The CLI's `--local` twin
  * lives in electron/local-posture.ts, which has no renderer to call into.
  *
@@ -33,7 +33,7 @@ interface DismissalRow {
 }
 
 /**
- * The local workspace is single-user, so a dismissal has no author to name —
+ * The local workspace is single-user, so a dismissal has no author to name:
  * `dismissedBy` is null and the shared section simply omits the "by …" half.
  */
 function toDismissal(row: DismissalRow): PostureDismissal {
@@ -68,8 +68,8 @@ export async function loadLocalPosture(): Promise<PostureListResponse> {
  * like the cloud route: dismissing twice rewrites the note.
  *
  * The timestamps are written explicitly rather than left to the column
- * default, because SQLite's `datetime('now')` produces `"YYYY-MM-DD HH:MM:SS"`
- * — which the shared section would render as a local-time instant and sort
+ * default, because SQLite's `datetime('now')` produces `"YYYY-MM-DD HH:MM:SS"`,
+ * which the shared section would render as a local-time instant and sort
  * against ISO strings from the cloud path.
  */
 export async function dismissLocalPostureFinding(

@@ -1,9 +1,9 @@
 /**
- * Sleep/wake schedules — "off at 19:00, on at 08:00, Mon–Fri" windows for
+ * Sleep/wake schedules: "off at 19:00, on at 08:00, Mon–Fri" windows for
  * non-prod resources whose plugin declares a lifecycle start/stop action pair.
  *
  * This module is the shared pure half every surface uses: the wall-clock →
- * UTC transition math (DST-safe, `Intl` only — no runtime deps), the weekly
+ * UTC transition math (DST-safe, `Intl` only; no runtime deps), the weekly
  * off-hours fraction the savings quote is built from, and the wire contract +
  * Bearer fetch helpers for `/api/org/:orgId/schedules`. The server-side
  * executor (`server-core/src/schedules/`) imports the same
@@ -105,7 +105,7 @@ export interface SchedulePreview {
 }
 
 export const SCHEDULE_LIMITS = {
-  /** Hard cap on schedules per org — a governance rail, not a product tier. */
+  /** Hard cap on schedules per org: a governance rail, not a product tier. */
   maxPerOrg: 200,
 } as const;
 
@@ -137,7 +137,7 @@ export function isValidTimeZone(timeZone: string): boolean {
 
 /**
  * Validate the timing half of a schedule. Returns a human-readable problem or
- * null when valid — shared verbatim by the editor UIs and the API boundary so
+ * null when valid: shared verbatim by the editor UIs and the API boundary so
  * both reject the same inputs with the same words.
  */
 export function validateScheduleTiming(timing: SleepScheduleTiming): string | null {
@@ -278,8 +278,8 @@ export interface TransitionOptions {
 /**
  * The schedule's upcoming transitions, soonest first.
  *
- * Enumerates calendar dates in the schedule's zone (never fixed 24-hour steps
- * — DST days are 23 or 25 hours long) and emits a stop at `stopTime` and a
+ * Enumerates calendar dates in the schedule's zone (never fixed 24-hour steps:
+ * DST days are 23 or 25 hours long) and emits a stop at `stopTime` and a
  * start at `startTime` on each selected day. Weekends fall out naturally: the
  * last selected day's stop is followed by the next selected day's start.
  * Returns `[]` when the timing is invalid rather than guessing.
@@ -331,8 +331,8 @@ export function computeUpcomingTransitions(
  * This is what the executor runs and what its idempotency key is built from:
  * a due schedule's "due transition" is recomputed from the timing rather than
  * carried through the claim, so a poller that was down for a while executes
- * only the latest missed transition — the one that decides the resource's
- * current desired state — instead of replaying history.
+ * only the latest missed transition (the one that decides the resource's
+ * current desired state) instead of replaying history.
  */
 export function computeMostRecentTransition(
   timing: SleepScheduleTiming,
@@ -427,7 +427,7 @@ export function weeklyOffFraction(timing: SleepScheduleTiming): number {
 
 /**
  * Normalize a trailing `cost_daily` window to a monthly figure and apply the
- * off-hours fraction. Null when the window held no data — a missing bill must
+ * off-hours fraction. Null when the window held no data: a missing bill must
  * quote nothing, never `$0.00` (the orphan-finder rule).
  */
 export function projectedMonthlySaving(
@@ -439,7 +439,7 @@ export function projectedMonthlySaving(
   return (windowTotal / windowDays) * AVERAGE_DAYS_PER_MONTH * offFraction;
 }
 
-/** `weeklyOffFraction` as hours per week — what the editor UIs print. */
+/** `weeklyOffFraction` as hours per week: what the editor UIs print. */
 export function hoursOffPerWeek(timing: SleepScheduleTiming): number {
   return weeklyOffFraction(timing) * 7 * 24;
 }
@@ -469,7 +469,7 @@ export async function createSchedule(
   });
 }
 
-/** Update a schedule — timing edits and the pause toggle (`resources:write`). */
+/** Update a schedule: timing edits and the pause toggle (`resources:write`). */
 export async function updateSchedule(
   api: CloudFetch,
   orgId: string,

@@ -23,7 +23,7 @@ import { useSettingsHost } from "./host.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
 
 /**
- * Scheduled cost exports — a recurring dump of the org's raw cost rows into a
+ * Scheduled cost exports: a recurring dump of the org's raw cost rows into a
  * warehouse or object store.
  *
  * Three things this page has to get across, because getting them wrong is
@@ -31,7 +31,7 @@ import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.j
  *
  *  - **Failures are loud.** A nightly export that stopped working three weeks
  *    ago is worse than never having had one, so `lastStatus`/`lastError` are on
- *    every row, in red, with the destination's own wording — the same way cost
+ *    every row, in red, with the destination's own wording: the same way cost
  *    collection failures surface on the Costs panel.
  *  - **Restatements are explained where the knob is**, not only in the docs.
  *    Somebody setting this up for a finance system needs to know on the spot
@@ -379,7 +379,7 @@ function CostExportEditor({
     try {
       const body: CostExportInput = {
         ...form,
-        // Omit rather than send "" — the server reads an absent credential as
+        // Omit rather than send "": the server reads an absent credential as
         // "keep the stored one", which is what a blank field means here.
         ...(isS3 && accessKeyId ? { accessKeyId } : {}),
         ...(isS3 && secretAccessKey ? { secretAccessKey } : {}),
@@ -593,7 +593,7 @@ function CostExportEditor({
 }
 
 /**
- * "Which columns survive into the output" — the dimension toggles and the tag
+ * "Which columns survive into the output": the dimension toggles and the tag
  * key list, the only part of the editor that touches `query` and nothing else.
  *
  * The half-typed tag key lives here rather than in the editor: it is a draft
@@ -703,7 +703,7 @@ function ColumnPicker({
 /**
  * Everything about writing to an S3-compatible bucket, including the
  * write-only credential pair. One implementation covers AWS S3, R2, Spaces,
- * Scaleway, B2 and MinIO — see `CostExportS3Destination`.
+ * Scaleway, B2 and MinIO: see `CostExportS3Destination`.
  */
 function S3DestinationFields({
   destination,

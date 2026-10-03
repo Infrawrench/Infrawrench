@@ -79,7 +79,7 @@ interface PlotSeries {
 /**
  * A series' hue is its rank. The overlays deliberately do not come through
  * here: they use the named `FORECAST_COLOR` / `SCENARIO_COLOR` from the shared
- * palette, and the scenario wears a *different* hue from the trend on purpose —
+ * palette, and the scenario wears a *different* hue from the trend on purpose;
  * the two lines are different claims, one what the data extrapolates to and the
  * other what somebody says they know is coming, and a reader has to be able to
  * tell them apart at a glance on a phone.
@@ -103,7 +103,7 @@ export function CostChart({ response, chartType, binning, currency, annotations 
     : [];
 
   // The scenario covers exactly the forecast's days, so it never widens the
-  // axis on its own — but it is unioned in anyway so a server/client mismatch
+  // axis on its own, but it is unioned in anyway so a server/client mismatch
   // cannot silently drop points off the right-hand edge.
   const scenarioPoints = response.scenario
     ? binForecast(
@@ -141,7 +141,7 @@ export function CostChart({ response, chartType, binning, currency, annotations 
 
   const stacked = chartType === "stacked_bar" || chartType === "area";
 
-  // The previous period lands positionally — bucket #n onto bucket #n — the
+  // The previous period lands positionally (bucket #n onto bucket #n) the
   // same overlay rule the web card uses.
   const previousTotals = response.comparison ? totalPerBucket(response.comparison) : null;
   const comparison = previousTotals
@@ -160,7 +160,7 @@ export function CostChart({ response, chartType, binning, currency, annotations 
     }
   }
 
-  // A second overlay beside the trend, never in place of it — the same rule
+  // A second overlay beside the trend, never in place of it: the same rule
   // the web card follows, and the reason both are returned by the API.
   const scenario =
     scenarioPoints.length > 0 ? new Array<number | null>(buckets.length).fill(null) : null;
@@ -185,7 +185,7 @@ export function CostChart({ response, chartType, binning, currency, annotations 
 
   const y = (value: number) => PAD.top + PLOT_H - ((value - lo) / (hi - lo || 1)) * PLOT_H;
   const bandWidth = PLOT_W / buckets.length;
-  /** Center of bucket i — where lines, areas, and bar groups anchor. */
+  /** Center of bucket i, where lines, areas, and bar groups anchor. */
   const cx = (i: number) => PAD.left + bandWidth * (i + 0.5);
   const polyline = (values: Array<number | null>): string =>
     values
@@ -195,7 +195,7 @@ export function CostChart({ response, chartType, binning, currency, annotations 
 
   /**
    * Annotation markers, mapped onto the buckets this chart actually drew by the
-   * shared `bucketCostAnnotations` — the same function the web card uses, so a
+   * shared `bucketCostAnnotations`: the same function the web card uses, so a
    * note lands on the same bar on a phone as on the dashboard it was written
    * from. Nothing here touches `series`, `axis`, or `buckets`: annotations are
    * an overlay, and the bars are identical with or without them.
@@ -360,7 +360,7 @@ function Lines({
       {series.map((s) => (
         <G key={s.label}>
           <Polyline points={polyline(s.values)} fill="none" stroke={s.color} strokeWidth={2} />
-          {/* A single-bucket range has no line to draw — mark the point. */}
+          {/* A single-bucket range has no line to draw: mark the point. */}
           {s.values.length === 1 && <Circle cx={cx(0)} cy={y(s.values[0]!)} r={3} fill={s.color} />}
         </G>
       ))}
@@ -452,7 +452,7 @@ function Legend({
 /**
  * The notes behind the numbered flags, one row per marker.
  *
- * A phone has no hover, so the marker cannot be the only place the text lives —
+ * A phone has no hover, so the marker cannot be the only place the text lives:
  * the same reason the legend here carries each series' total instead of a
  * tooltip. Tapping a row expands every note on that bucket; several notes on
  * one bar are one row, matching the single flag drawn above.

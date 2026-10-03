@@ -19,7 +19,7 @@ import type { CostReportsClient } from "./types.js";
 
 /**
  * The Delivery section on a report's detail page: this report's scheduled
- * sends to Slack, Teams and email — list, create, edit, delete, "Send now",
+ * sends to Slack, Teams and email; list, create, edit, delete, "Send now",
  * with the last attempt's status and error beside each schedule so a broken
  * delivery is visible exactly where it was configured.
  *

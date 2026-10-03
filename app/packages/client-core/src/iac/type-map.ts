@@ -11,8 +11,8 @@ import type { ResourceInstance, TerraformExportCapability } from "@infrawrench/p
  * they emit. A plugin that gains export support gains reconciliation with it,
  * and the two directions cannot drift apart.
  *
- * Where the reverse cannot be derived — a mapper that returns `null` or throws
- * for every probe because it needs a field shape a probe can't fake — the
+ * Where the reverse cannot be derived (a mapper that returns `null` or throws
+ * for every probe because it needs a field shape a probe can't fake) the
  * pair is reported in {@link TerraformTypeMapDerivation.underivable} with a
  * reason, and the UI says so rather than guessing. Matching still works for
  * those types in the inventory→state direction, because there we have the real

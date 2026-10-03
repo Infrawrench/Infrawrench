@@ -3,7 +3,7 @@ import { ChipSelect } from "@/components/form";
 import { useCostStatus } from "./useCostStatus";
 
 /**
- * The cash/amortized choice, as chips — mobile's counterpart of web's "Cost
+ * The cash/amortized choice, as chips: mobile's counterpart of web's "Cost
  * basis" select, over the same `CostBasis` the API validates.
  *
  * Rendered only when some connected account's plugin reports amortized cost.

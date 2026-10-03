@@ -17,11 +17,11 @@ import { CustomGraphChart } from "./CustomGraphChart";
 /**
  * A custom-graph widget: runs the script server-side (POST /custom-graphs/
  * :id/render) and draws the returned spec natively. Selects render as chip
- * rows and checkboxes as toggle chips — the same "no modal inside a phone
+ * rows and checkboxes as toggle chips: the same "no modal inside a phone
  * screen" rule as the cost editors. The script's refreshSeconds becomes the
  * query's refetch interval.
  *
- * Authoring stays on web/desktop/MCP — a phone is where a graph is read, not
+ * Authoring stays on web/desktop/MCP: a phone is where a graph is read, not
  * where its script is written.
  */
 export function CustomGraphCard({
@@ -37,7 +37,7 @@ export function CustomGraphCard({
   // A button press re-runs with the button id exactly once.
   const pressedRef = useRef<string | undefined>(undefined);
   // graph.event.kind for the NEXT run: "manual" for the first, "interaction"
-  // set by control changes and presses — and once a run has happened, any run
+  // set by control changes and presses, and once a run has happened, any run
   // nobody initiated (the refetchInterval tick) reports "refresh".
   const triggerRef = useRef<"manual" | "refresh" | "interaction">("manual");
 
@@ -181,7 +181,7 @@ export function CustomGraphCard({
 }
 
 /**
- * Text/number control with an explicit Apply — a render per keystroke would
+ * Text/number control with an explicit Apply: a render per keystroke would
  * hammer the sandbox, and `BareInput` is controlled with no submit event.
  */
 function InputControl({

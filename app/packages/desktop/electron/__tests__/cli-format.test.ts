@@ -63,7 +63,7 @@ describe("renderTree", () => {
     const lines = renderTree("root", adjacency({ root: ["known", "missing"] }), (id) =>
       id === "missing" ? null : id,
     );
-    // "known" is no longer last in the child list, so it keeps the ├─ glyph —
+    // "known" is no longer last in the child list, so it keeps the ├─ glyph:
     // the branch is dropped, not re-numbered.
     expect(lines).toEqual(["├─ known  via known"]);
   });
@@ -203,7 +203,7 @@ describe("formatUnitCostRatio", () => {
   it("prints a gap as an em dash, never as zero", () => {
     // The single most important assertion in this file. A CLI that printed
     // "0.00" for a period nobody reported would be believed exactly as readily
-    // as a chart that drew a zero — and it says the opposite of the truth.
+    // as a chart that drew a zero, and it says the opposite of the truth.
     expect(formatUnitCostRatio(null, "unit_cost")).toBe("—");
     expect(formatUnitCostRatio(null, "margin")).toBe("—");
   });

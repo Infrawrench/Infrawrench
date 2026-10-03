@@ -1,10 +1,10 @@
 /**
- * Cloud workflow IPC — the org-scoped `/workflows` routes, proxied for the
+ * Cloud workflow IPC: the org-scoped `/workflows` routes, proxied for the
  * renderer's cloud WorkflowClient.
  *
  * Desktop workflows normally live in local SQLite (see the renderer's
  * `lib/workflow-client.ts`), but with an org selected the Workflows tab shows
- * the org's workflows instead — the same swap accounts, dashboards, and costs
+ * the org's workflows instead: the same swap accounts, dashboards, and costs
  * already make. Everything here is transport: the isolate runs server-side for
  * cloud workflows, so there is no host to bridge.
  *

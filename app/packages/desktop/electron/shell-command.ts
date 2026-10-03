@@ -79,7 +79,7 @@ export interface InstallResult {
 
 /**
  * Write the shim. POSIX: prefer /usr/local/bin, fall back to ~/.local/bin
- * (created if missing) when /usr/local/bin isn't writable — no privilege
+ * (created if missing) when /usr/local/bin isn't writable; no privilege
  * escalation, ever. Windows: userData\bin plus a user-level PATH append.
  */
 export async function installShellCommand(): Promise<InstallResult> {

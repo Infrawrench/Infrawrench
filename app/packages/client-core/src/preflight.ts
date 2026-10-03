@@ -5,7 +5,7 @@
  * two into renderable rows.
  *
  * It lives here rather than in `@infrawrench/ui` for the same reason the cost
- * contract does — mobile doesn't depend on that package. The declaration types
+ * contract does: mobile doesn't depend on that package. The declaration types
  * come straight from `@infrawrench/plugin-base` so a plugin-side change fails
  * this build instead of drifting silently.
  */
@@ -30,7 +30,7 @@ export type {
 export interface PreflightCheck {
   capabilityId: string;
   status: "ok" | "missing" | "unknown";
-  /** Permissions the probe found absent — only meaningful when `missing`. */
+  /** Permissions the probe found absent, only meaningful when `missing`. */
   missingPermissions: PreflightPermission[];
   message: string | null;
   /** Provider console page that fixes it, when the plugin knows one. */
@@ -40,7 +40,7 @@ export interface PreflightCheck {
 /** Everything a preflight run reports back (`POST .../preflight`). */
 export interface PreflightReport {
   pluginId: string;
-  /** False when the plugin declares no preflight — the UI hides the feature. */
+  /** False when the plugin declares no preflight: the UI hides the feature. */
   supported: boolean;
   /** Provider-side identity the credential resolved to, when known. */
   identity: string | null;
@@ -55,7 +55,7 @@ export interface PreflightChecklistRow {
   /**
    * For `missing` rows: the permissions to list. When the probe couldn't say
    * which specific permissions failed, this falls back to everything the
-   * capability declared — the user still sees what to grant.
+   * capability declared: the user still sees what to grant.
    */
   missingPermissions: PreflightPermission[];
   message: string | null;
@@ -132,7 +132,7 @@ export function summarizePreflight(rows: PreflightChecklistRow[]): PreflightSumm
 
 /**
  * The capability ids a policy-template picker should start with: everything
- * declared. The user narrows from there — least privilege is about what they
+ * declared. The user narrows from there: least privilege is about what they
  * deselect, and starting full mirrors what the plugin can actually use.
  */
 export function defaultTemplateCapabilityIds(declaration: PreflightDeclaration): string[] {
@@ -173,7 +173,7 @@ function sanitizeHelpLink(raw: unknown): { label: string; url: string } | null {
  *     a capability the probe skipped → `unknown` checks, so a partial or
  *     absent probe still renders a complete checklist.
  *
- * Strings are bounded and help links are only ever safe https anchors — the
+ * Strings are bounded and help links are only ever safe https anchors; the
  * same discipline `describeCostFailure` applies to cost-collection errors
  * (plugins are semi-trusted: bundled, but versioned separately).
  */

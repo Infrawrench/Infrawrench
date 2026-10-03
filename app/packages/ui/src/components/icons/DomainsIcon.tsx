@@ -4,7 +4,7 @@ interface DomainsIconProps {
 }
 
 /**
- * Domains glyph — a globe with meridians. Same 24x24 stroke grid and 2px
+ * Domains glyph: a globe with meridians. Same 24x24 stroke grid and 2px
  * weight as PostureIcon/ExpiryIcon so the Domains sidebar entry sits level
  * with its neighbours.
  */

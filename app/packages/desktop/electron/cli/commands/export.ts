@@ -1,7 +1,7 @@
-// `infrawrench export --format terraform` — eject an account's inventory as
+// `infrawrench export --format terraform`: eject an account's inventory as
 // Terraform HCL. Mapping runs from the same stored/enumerated state the
 // `resources` command shows, through each plugin's declared terraformExport
-// capability and the shared plugin-base HCL serializer — identical output to
+// capability and the shared plugin-base HCL serializer: identical output to
 // the web app's "Export to Terraform" action.
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
@@ -64,7 +64,7 @@ export async function cmdExport(ctx: CliContext, format: string | undefined): Pr
     rows = await listCloudResources(orgId, account.id);
   } else {
     const listing = await listLocalResources(account, {});
-    // Types the provider refused would silently vanish from the export —
+    // Types the provider refused would silently vanish from the export:
     // report them on stderr so `--json`/redirected stdout stay clean.
     for (const e of listing.errors) printErr(c.yellow(`${e.typeId}: ${e.message}`));
     rows = listing.rows;

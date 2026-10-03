@@ -6,7 +6,7 @@
  * here so the setup markers written on the VM always match what the launch
  * command polls for.
  *
- * This module is intentionally free of React/DOM/Node dependencies — it is
+ * This module is intentionally free of React/DOM/Node dependencies: it is
  * imported by the web API server as well as the desktop renderer.
  */
 import type { AgentRuntimePlan, AgentSetupPlan, AgentTool } from "./types.js";
@@ -28,7 +28,7 @@ export const AGENT_SETUP_FAILED_LOG_PREFIX = "Setup failed:";
  *
  * The setup pipelines match these against a *failed* command's output. A
  * bootstrap that printed one of them provisioned the VM correctly, so a
- * non-zero exit afterwards — a dropped channel, a shell quirk on the way out —
+ * non-zero exit afterwards (a dropped channel, a shell quirk on the way out)
  * must not mark the session failed and send the user back to a broken-looking
  * "Retry setup" for a machine that is actually ready.
  */
@@ -53,7 +53,7 @@ export interface AgentLaunchCommandInput {
   /**
    * When set, the launch script also waits for
    * `$HOME/.infrawrench-agent/launch-ready/<token>` before attaching. An
-   * empty/absent token skips the marker wait — used when setup has already
+   * empty/absent token skips the marker wait: used when setup has already
    * completed and re-syncing would be redundant (or destructive).
    */
   launchReadyToken?: string;
@@ -65,7 +65,7 @@ export interface AgentBootstrapCommandInput {
   workspaceName: string;
   /** Branch the agent works on inside the remote workspace. */
   branchName: string;
-  /** Session repo — a clone URL or a local folder path. */
+  /** Session repo: a clone URL or a local folder path. */
   repo: string;
   /**
    * Credentialed URL used only for the clone/fetch inside this bootstrap run
@@ -86,7 +86,7 @@ export interface AgentBootstrapCommandInput {
 
 /**
  * Runs the repo's optional `.infrawrench/agent-setup.sh` inside the
- * workspace with the mise runtimes on PATH and the session env sourced —
+ * workspace with the mise runtimes on PATH and the session env sourced:
  * after runtimes/package managers are installed, before the user connects.
  * Expects `$PROJECT_DIR` (and log_step) to be defined by the surrounding
  * script. Failures fail the setup so they surface with Retry available.
@@ -106,7 +106,7 @@ fi
 
 /**
  * Standalone command that runs the repo's `.infrawrench/agent-setup.sh` on
- * the VM — the desktop client executes this after the workspace sync and
+ * the VM: the desktop client executes this after the workspace sync and
  * bootstrap have both finished (the two race, so the script can't run
  * inside either). No-op when the repo has no script.
  */
@@ -167,7 +167,7 @@ export function agentToolAuthStatusCommand(tool: AgentTool): string {
  * bootstrap (`t3-code.ts`) prepares its VM with exactly the same, already
  * field-proven code: the same background apt install with retries, the same
  * mise wiring, the same npm-prefix/launcher repair dance. They are shell
- * fragments, not standalone scripts — each documents the variables and
+ * fragments, not standalone scripts: each documents the variables and
  * functions the surrounding script must provide.
  * ------------------------------------------------------------------------ */
 
@@ -176,7 +176,7 @@ export function agentToolAuthStatusCommand(tool: AgentTool): string {
  *
  * `runAgentSetupCommandWithRetry` re-runs this whole command whenever the SSH
  * channel drops (handshake timeout, auth race on a freshly-booted VM), but
- * nothing kills the previous run — the remote `timeout 600s bash -lc …` keeps
+ * nothing kills the previous run: the remote `timeout 600s bash -lc …` keeps
  * going with its stdout going nowhere. Two bootstraps then race, and
  * concurrent `npm install -g` into the same prefix corrupts the tree: both
  * installs die (ENOENT/ENOTEMPTY) and npm leaves a launcher symlink pointing
@@ -369,12 +369,12 @@ link_tool_command() {
  *
  * `script-deps` is a comma-separated list of *transitive* packages whose
  * install scripts must also be allow-listed. npm's allow-list names packages
- * individually — it does not cover dependencies and has no wildcard — so a CLI
+ * individually (it does not cover dependencies and has no wildcard) so a CLI
  * with a native addon needs its addon named here or npm 12 will block the
  * build and ship a CLI that fails at runtime instead of at install time.
  *
  * The three functions it defines read `$TOOL_COMMAND`/`$TOOL_PACKAGE`, which
- * `install_cli_command` assigns from its arguments — so the surrounding
+ * `install_cli_command` assigns from its arguments, so the surrounding
  * script must not rely on those globals after calling it.
  *
  * Requires: `log_step`, `ensure_npm_global_prefix`, `link_tool_command`.

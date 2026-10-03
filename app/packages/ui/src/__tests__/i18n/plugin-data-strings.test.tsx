@@ -30,7 +30,7 @@ function Probe({ label }: { label: string }) {
 describe("plugin data string translation", () => {
   it("keeps the runtime hash scheme aligned with CLI extraction", () => {
     // dc33c5008fcab30f is hashSource({ source: "S3 Bucket", dataFormat: "ICU" })
-    // from generaltranslation/id — the hash the gt CLI writes into the
+    // from generaltranslation/id; the hash the gt CLI writes into the
     // catalogs for a msg() source. If a gt upgrade changes either side's
     // scheme, every committed plugin-string translation silently stops
     // resolving; this pin turns that into a loud failure.

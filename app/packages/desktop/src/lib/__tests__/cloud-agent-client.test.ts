@@ -87,7 +87,7 @@ describe("createCloudAgentClient", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  // Local sessions can be a folder on this machine; cloud sessions cannot —
+  // Local sessions can be a folder on this machine; cloud sessions cannot:
   // the server-side pipeline has no access to it.
   it("offers no local-folder picker", () => {
     expect(createCloudAgentClient().pickLocalRepoPath).toBeUndefined();

@@ -18,7 +18,7 @@ import { colors, spacing } from "@/lib/theme";
 import { AccessRequestCard } from "./AccessRequestCard";
 
 /**
- * Break-glass requests on a phone — and the reason this is the mobile surface
+ * Break-glass requests on a phone, and the reason this is the mobile surface
  * that most earns its place. A colleague blocked mid-incident, asking for a
  * permission they do not have, is the definition of something you approve from
  * wherever you are; making them wait for you to reach a laptop defeats the
@@ -63,7 +63,7 @@ export default function AccessRequestsScreen() {
   const decide = useMutation({
     mutationFn: ({ request, decision }: { request: AccessRequest; decision: "approve" | "deny" }) =>
       // A live grant's only action is ending it early, which is a revoke
-      // rather than a decision — the request was already decided.
+      // rather than a decision: the request was already decided.
       request.active
         ? revokeAccessGrant(api, orgId, request.id)
         : decideAccessRequest(api, orgId, request.id, decision),

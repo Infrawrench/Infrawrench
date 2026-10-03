@@ -15,7 +15,7 @@ import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./type
  * Unowned is rendered as a real value rather than a blank cell, because it is
  * the finding: a resource nobody has claimed is the one this list can do least
  * about. A free-text owner is shown in the same place but without the ticket
- * link's implication of a person to page — `isLabel` is what distinguishes
+ * link's implication of a person to page: `isLabel` is what distinguishes
  * "Sam Reyes" from "Platform team", and only the former gets alerts.
  */
 function OwnerCell({ owner }: { owner: ResourceOwnerAnnotation | null }) {
@@ -55,7 +55,7 @@ function OwnerCell({ owner }: { owner: ResourceOwnerAnnotation | null }) {
 export interface SavingsSectionProps {
   /**
    * Org-scoped data access. The Costs panel that hosts this section is mounted
-   * with `key={orgId}`, so an org switch remounts it — that is what clears the
+   * with `key={orgId}`, so an org switch remounts it: that is what clears the
    * previous org's rows, rather than an effect resetting every state value by
    * hand.
    */
@@ -70,7 +70,7 @@ export interface SavingsSectionProps {
 
 /**
  * "Potential savings" section of the Costs panel: resources the plugins' orphan
- * heuristics flagged as likely wasted — unattached volumes, unassigned IPs —
+ * heuristics flagged as likely wasted (unattached volumes, unassigned IPs)
  * grouped by account, each with the plugin's reason and, where the org collects
  * per-resource cost rows, trailing spend.
  *
@@ -108,7 +108,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
   // drop it instead and say why below the list.
   const showCost = data !== null && data.costBasis !== "unavailable";
   // Ownership is a cloud record too. Local mode reports every row unowned
-  // because it has no ownership data — which is not the same claim, so the
+  // because it has no ownership data, which is not the same claim, so the
   // column comes off there rather than labelling everything "Unowned".
   const showOwner = data !== null && data.costBasis !== "unavailable";
 
@@ -183,7 +183,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                     className="border-b border-border last:border-b-0 hover:bg-surface-raised"
                   >
                     <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
-                      {/* The name is the navigation control, not the row — a
+                      {/* The name is the navigation control, not the row: a
                           <tr> has no role a screen reader announces as
                           activatable. */}
                       {onOpenResource ? (

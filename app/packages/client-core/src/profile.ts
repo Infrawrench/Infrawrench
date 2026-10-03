@@ -1,7 +1,7 @@
 import { CloudApiError, type CloudFetch } from "./fetch";
 
 /**
- * The signed-in user's own account — name, two-factor factors, and active
+ * The signed-in user's own account: name, two-factor factors, and active
  * sessions. Server contract: user-scoped `/api/profile` routes (see web
  * `api/routes/profile.ts`), which wrap WorkOS user management.
  *
@@ -171,7 +171,7 @@ export interface OwnershipBlocker extends OrganizationRef {
 }
 
 export interface AccountDeletionPreview {
-  /** Deleted with the account — the user is their only member. */
+  /** Deleted with the account: the user is their only member. */
   organizationsToDelete: OrganizationRef[];
   /** These survive; the user's membership is removed. */
   organizationsToLeave: OrganizationRef[];
@@ -197,7 +197,7 @@ export async function fetchAccountDeletionPreview(
  * one failure the user can act on, and {@link isReauthenticationRequired} for
  * the step-up 403 this route shares with the rest of the sensitive ones.
  *
- * The caller is responsible for signing out afterwards — every session is
+ * The caller is responsible for signing out afterwards: every session is
  * revoked server-side, so anything still holding a token is already dead.
  */
 export async function deleteAccount(api: CloudFetch): Promise<{ organizationsDeleted: number }> {
@@ -234,7 +234,7 @@ export const REAUTHENTICATION_REQUIRED = "reauthentication_required";
 /**
  * True when a rejection is the server asking the user to sign in again before
  * the action is allowed (see `auth/step-up.ts`). Callers should route the user
- * back through sign-in rather than surfacing the raw error — the request is
+ * back through sign-in rather than surfacing the raw error: the request is
  * well-formed and will succeed once the session is fresh.
  */
 export function isReauthenticationRequired(error: unknown): boolean {

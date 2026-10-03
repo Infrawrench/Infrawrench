@@ -297,7 +297,7 @@ describe("openSshShell (cloud mode) — write buffering", () => {
 
   // The regression: agent tabs write their launch command the instant the
   // handle resolves. The socket is still CONNECTING then, and the proxy only
-  // registers its ssh:data listener inside conn.shell() — so an unbuffered
+  // registers its ssh:data listener inside conn.shell(), so an unbuffered
   // write is dropped twice over and the user lands on a bare shell prompt.
   it("holds writes until ssh:connected, then flushes them in order", async () => {
     const { handle, ws } = await openCloud();

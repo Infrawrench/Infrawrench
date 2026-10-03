@@ -1,17 +1,17 @@
 /**
- * Saved cost filters — a named, reusable `CostFilter[]`.
+ * Saved cost filters: a named, reusable `CostFilter[]`.
  *
  * The same filter ("prod only", "team platform's accounts") otherwise gets
  * rebuilt by hand in every cost graph, report and budget. A saved filter makes
  * it one object: configs reference it **by id**, and the server resolves the
- * id at query time — so editing "prod only" once changes every graph, report
+ * id at query time, so editing "prod only" once changes every graph, report
  * and budget that references it. Nothing ever copies the rows at pick time;
  * copying would fossilise the filter and defeat the object.
  *
  * Two consequences of resolve-at-query-time are contractual, not incidental:
  *
  * - A referenced filter that fails to resolve (deleted through a race, corrupt)
- *   is an **error, never a fallback to unfiltered** — an unfiltered total
+ *   is an **error, never a fallback to unfiltered**: an unfiltered total
  *   silently standing in for "prod only" is the one failure this feature must
  *   never produce, because it would un-scope a budget and could fire or
  *   suppress its alerts.
@@ -19,7 +19,7 @@
  *   body listing the referents), for the same reason from the other side.
  *
  * The stored form is the structured `CostFilter[]`; the query-language text
- * (`cost-query-language.ts`) is derived from it and always derivable — input
+ * (`cost-query-language.ts`) is derived from it and always derivable: input
  * validation refuses the one filter shape the language cannot express (a tag
  * filter with no key). The API accepts either spelling on write, exactly like
  * `POST /costs/query`: `filters` or `query`, never both.
@@ -47,7 +47,7 @@ export const SAVED_COST_FILTER_LIMITS = {
  * `filters` and `query` are two spellings of the same thing, mirroring
  * `CostQueryRequest`: send one or the other. Sending both (a query alongside a
  * non-empty `filters`) is rejected rather than resolved by a precedence rule,
- * and an *empty* filter is rejected outright — a saved filter that matches
+ * and an *empty* filter is rejected outright: a saved filter that matches
  * everything is indistinguishable from no filter, and applying it would only
  * ever be a mistake wearing a name.
  */
@@ -57,7 +57,7 @@ export interface SavedCostFilterInput {
   description?: string | undefined;
   /** The structured filter. May be empty only when `query` is sent instead. */
   filters: CostFilter[];
-  /** The same filter in cost query language text — an alternative to `filters`. */
+  /** The same filter in cost query language text: an alternative to `filters`. */
   query?: string | undefined;
 }
 
@@ -82,7 +82,7 @@ export interface SavedCostFilter {
 export type SavedCostFilterReferentKind = "budget" | "cost_report" | "cost_graph_widget";
 
 /**
- * One object still pointing at a saved filter — what a refused DELETE lists,
+ * One object still pointing at a saved filter: what a refused DELETE lists,
  * and what `GET /saved-cost-filters/:id/referents` answers with.
  */
 export interface SavedCostFilterReferent {
@@ -91,7 +91,7 @@ export interface SavedCostFilterReferent {
   id: string;
   /** Budget name, report name, or the widget's title. */
   name: string;
-  /** Set for `cost_graph_widget` referents — where the card lives. */
+  /** Set for `cost_graph_widget` referents, where the card lives. */
   dashboardId?: string | undefined;
   dashboardName?: string | undefined;
 }
@@ -101,7 +101,7 @@ export interface SavedCostFilterReferent {
  *
  * The rules, shared by every write path (HTTP route, and any future tool):
  *
- * - `query` and a non-empty `filters` together are an error — same stance as
+ * - `query` and a non-empty `filters` together are an error; same stance as
  *   `POST /costs/query`, and for the same reason: two filters were expressed
  *   and silently running one of them answers a different question.
  * - The result must be non-empty. An empty saved filter matches everything;
@@ -149,7 +149,7 @@ export function resolveSavedCostFilterInput(input: SavedCostFilterInput): CostFi
   return filters;
 }
 
-/** "Budget \"prod\", report \"AWS spend\"" — how a refusal names referents. */
+/** "Budget \"prod\", report \"AWS spend\"": how a refusal names referents. */
 export function describeSavedCostFilterReferents(referents: SavedCostFilterReferent[]): string {
   const label: Record<SavedCostFilterReferentKind, string> = {
     budget: "budget",
@@ -165,7 +165,7 @@ export function describeSavedCostFilterReferents(referents: SavedCostFilterRefer
 }
 
 /* ------------------------------------------------------------------ *
- * Fetch helpers — used by mobile (the web and desktop hosts go through
+ * Fetch helpers: used by mobile (the web and desktop hosts go through
  * their own transports, like the rest of the cost surface).
  * ------------------------------------------------------------------ */
 
@@ -178,7 +178,7 @@ export async function listSavedCostFilters(
 }
 
 /**
- * One saved filter by id, or null when the server says it doesn't exist —
+ * One saved filter by id, or null when the server says it doesn't exist,
  * which a caller must surface as "this reference is broken", never render as
  * "no filter".
  */

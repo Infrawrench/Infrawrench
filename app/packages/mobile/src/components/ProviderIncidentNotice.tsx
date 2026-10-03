@@ -11,11 +11,11 @@ import { colors, radii, spacing } from "@/lib/theme";
 const POLL_INTERVAL_MS = 60_000;
 
 /**
- * Native counterpart to the web/desktop `ProviderIncidentBanner` — the
+ * Native counterpart to the web/desktop `ProviderIncidentBanner`: the
  * "is it me or is it them?" surface. Shows active provider status-page
  * incidents that overlap resources the org holds; renders nothing otherwise,
  * so screens mount it unconditionally. With `showResolvedCorrelation` it
- * also lists recently-resolved incidents that overlapped recorded changes —
+ * also lists recently-resolved incidents that overlapped recorded changes:
  * the Changes screen's correlation section.
  */
 export function ProviderIncidentNotice({

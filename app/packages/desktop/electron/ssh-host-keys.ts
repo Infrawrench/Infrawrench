@@ -123,7 +123,7 @@ export async function verifyOrPinHostKeyInteractive(
     return { ok: true, fingerprint: fp };
   }
 
-  // Mismatch — prompt with both fingerprints so the user can compare.
+  // Mismatch: prompt with both fingerprints so the user can compare.
   const accepted = await promptHostKeyDecision({
     host,
     port,

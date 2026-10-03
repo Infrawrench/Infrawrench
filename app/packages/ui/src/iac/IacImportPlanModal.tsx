@@ -19,7 +19,7 @@ export interface IacImportPlanModalProps {
  * matching resource stanzas for resources somebody made by hand.
  *
  * Deliberately a sibling of `TerraformExportModal` rather than a variant of
- * it — that modal exports one resource or one account's inventory, this one
+ * it: that modal exports one resource or one account's inventory, this one
  * adopts a selection into an existing configuration, and the copy differs
  * because the next action differs (`terraform plan` here, not `terraform
  * import` by hand).

@@ -7,14 +7,14 @@ import { createDesktopIncidentsClient } from "@/lib/incidents-client";
 import { incidentsTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
 
 /**
- * Incident mode on desktop — the same screen web renders. Rendered as a
+ * Incident mode on desktop: the same screen web renders. Rendered as a
  * workspace tab (the "incidents" kind).
  *
  * Cloud-only: an incident is org-scoped and declaring one composes cloud
  * features (change freezes, alert routing, status pages), so without an org the
  * tab explains rather than fetching.
  *
- * Navigating is what records which incident the tab is on — the Settings/Deploy
+ * Navigating is what records which incident the tab is on: the Settings/Deploy
  * convention, and what makes reactivating the tab land back on the incident
  * somebody was reading rather than on the list.
  */

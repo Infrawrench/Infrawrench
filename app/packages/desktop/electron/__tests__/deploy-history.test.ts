@@ -81,7 +81,7 @@ describe("deploy-history", () => {
 
   it("never throws out of a deploy when the history cannot be written", () => {
     // A *file* where a directory is needed: mkdir/append fail immediately on
-    // every platform, even running as root. Never use a /proc path for this —
+    // every platform, even running as root. Never use a /proc path for this:
     // on Linux, Node's recursive mkdirSync busy-loops forever on procfs
     // instead of throwing, which hung the whole CI suite.
     const blocker = path.join(h.userData, "blocker");

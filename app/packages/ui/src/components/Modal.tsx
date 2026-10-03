@@ -4,7 +4,7 @@ interface ModalProps {
   /**
    * Dismissal: called for a backdrop click and for Escape.
    *
-   * Omit it for a dialog that may only be left through its own controls — a
+   * Omit it for a dialog that may only be left through its own controls: a
    * first-run flow, say, where "dismissed" isn't a state the app can be in.
    * Without it the backdrop is inert and Escape is swallowed, which is still a
    * real modal (focus trapped, page behind it inert) rather than an overlay
@@ -56,7 +56,7 @@ export function Modal({ onClose, children, className, ariaLabel, fullScreen }: M
     // dispatches `click` at the nearest common ancestor of its pointerdown and
     // pointerup targets, so a drag or text selection that starts on a field
     // inside the panel and releases past the panel's edge lands its click on
-    // the <dialog> — indistinguishable, by target, from a real backdrop click,
+    // the <dialog>: indistinguishable, by target, from a real backdrop click,
     // and dismissing there discards whatever the user had just typed. Require
     // *both* ends of the interaction to be on the backdrop instead.
     const sideOf = (e: Event): PointerSide => (e.target === dialog ? "backdrop" : "content");
@@ -83,7 +83,7 @@ export function Modal({ onClose, children, className, ariaLabel, fullScreen }: M
       pointerStart.current = null;
       pointerEnd.current = null;
       if (startedInContent || endedInContent) return;
-      // Both null — no pointer interaction was observed, so the target is all
+      // Both null: no pointer interaction was observed, so the target is all
       // there is to go on. That covers a synthetic `.click()`, and a
       // pointerdown that never got its pointerup can only leave a stale value
       // that the next pointerdown overwrites.

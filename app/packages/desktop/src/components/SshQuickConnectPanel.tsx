@@ -12,7 +12,7 @@ interface SshQuickConnectPanelProps {
   preferredAppKeyId?: string | undefined;
   preferredAppKeyName?: string | undefined;
   /**
-   * Preselect an org-managed key instead of an app key — used by agent tabs
+   * Preselect an org-managed key instead of an app key: used by agent tabs
    * for cloud sessions, whose VM trusts the org's `infrawrench-agent` key.
    */
   preferredCloudKeyId?: string | undefined;
@@ -157,7 +157,7 @@ export function SshQuickConnectPanel({
     } else if (selectedKey.type === "app") {
       key = await invoke<string>("ssh_key_get_private_key", { keyId: selectedKey.id });
     } else {
-      // Cloud key — private key stays server-side; SshTerminal uses keySource to dispatch.
+      // Cloud key: private key stays server-side; SshTerminal uses keySource to dispatch.
       key = "";
     }
     onConnect({ username, privateKey: key, keySource: selectedKey });

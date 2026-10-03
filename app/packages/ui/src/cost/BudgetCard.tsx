@@ -12,7 +12,7 @@ export interface BudgetCardProps {
  * Budget progress card: month-to-date actual vs the budget amount, a
  * forecast marker, threshold ticks, and an alert badge when a threshold has
  * fired this month. Status colors are reserved for state (on-track /
- * approaching / over) — never used as series colors.
+ * approaching / over), never used as series colors.
  */
 export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
   const gt = useGT();
@@ -22,7 +22,7 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
    * The number the budget's forecast thresholds are actually judged against.
    *
    * For a budget that opted into a scenario model that is the adjusted figure,
-   * not the bare trend — a marker that showed the trend while the alert fired
+   * not the bare trend: a marker that showed the trend while the alert fired
    * on something else would be the single most confusing thing this card could
    * do. `scenarioForecastCents` is null for every budget that did not opt in,
    * so this reads as the trend exactly as it always has.
@@ -188,7 +188,7 @@ export interface BudgetWidgetCardProps {
 /**
  * A budget widget's slot in the dashboard grid. Budget rows load separately
  * from the widgets that reference them, so the placeholder holds the card's
- * position — and its drag handle — until the row arrives.
+ * position (and its drag handle) until the row arrives.
  */
 export function BudgetWidgetCard({ budget, onEdit, onRemove }: BudgetWidgetCardProps) {
   const gt = useGT();

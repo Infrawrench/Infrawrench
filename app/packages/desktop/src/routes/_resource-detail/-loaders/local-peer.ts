@@ -104,7 +104,7 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
       }
       sqlReady = true;
     } catch {
-      // Introspection failed — still enable the editor; the user's first query will surface the real error.
+      // Introspection failed: still enable the editor; the user's first query will surface the real error.
       sqlReady = true;
     }
   }

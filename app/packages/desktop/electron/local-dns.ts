@@ -3,8 +3,8 @@
  *
  * The cloud path (`GET /api/org/:orgId/dns`) computes the inventory
  * server-side over an organization's synced rows. This is the same
- * computation — client-core's `computeDnsInventory`, over the same declarative
- * `dnsRole` / `dnsServiceHosts` rules — run against the desktop's local SQLite
+ * computation (client-core's `computeDnsInventory`, over the same declarative
+ * `dnsRole` / `dnsServiceHosts` rules) run against the desktop's local SQLite
  * workspace, so `infrawrench dns --local` works signed out. It reads the
  * workspace and loads plugin *metadata* only: no plugin client is constructed,
  * no account credentials are decrypted, no provider is contacted, and no DNS
@@ -52,7 +52,7 @@ function parseBag(json: string | null): unknown {
 /**
  * The rows both local scans read. Carries the plugins' full resource-type
  * definitions rather than either scan's narrowed view, so one query feeds
- * `computeDnsInventory` and `computePostureFindings` alike — the posture pass
+ * `computeDnsInventory` and `computePostureFindings` alike: the posture pass
  * takes the DNS inventory as an input, and reading the rows twice would let
  * the two disagree about what is synced.
  */

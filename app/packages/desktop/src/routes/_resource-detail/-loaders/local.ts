@@ -185,7 +185,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
   if (!isCancelled()) {
     setters.setHasStorageToken(!!client.getStorageAccessToken);
     // `supportsDelete: false` means the provider has no delete API for this
-    // type at all — the client may still expose `deleteResource` for its other
+    // type at all: the client may still expose `deleteResource` for its other
     // types. Checking only the method (as this did) offered a Delete button
     // that dispatched into a throw. The cloud path already gates on both; see
     // `web/src/api/routes/resource-detail.ts`.
@@ -224,10 +224,10 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       }
       sqlOk = true;
     } catch {
-      /* ignore — console will show the error on first command */
+      /* ignore: console will show the error on first command */
     }
   } else if (client.executeQuery) {
-    // REST-based query providers (e.g. BigQuery) — no node SQL driver needed.
+    // REST-based query providers (e.g. BigQuery): no node SQL driver needed.
     try {
       const tables = (await client.introspectResource?.(decodedResourceId, accountId)) ?? [];
       const tablesJson = JSON.stringify(tables);
@@ -241,7 +241,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
         setAccountConnected(accountId, true);
       }
     } catch {
-      /* table listing is non-critical — query still works */
+      /* table listing is non-critical: query still works */
     }
   } else if (hostServices && cs) {
     try {
@@ -355,7 +355,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
             setAccountConnected(accountId, true);
           }
         } catch {
-          // Introspection failed — still enable SQL editor without table metadata
+          // Introspection failed: still enable SQL editor without table metadata
           sqlOk = true;
           if (!isCancelled()) {
             setters.setPgConnected(true);

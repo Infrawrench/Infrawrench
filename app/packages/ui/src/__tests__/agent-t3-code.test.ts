@@ -64,7 +64,7 @@ describe("createT3CodeSetupPlan", () => {
 
 describe("buildT3CodeBootstrapCommand", () => {
   it("installs the t3 CLI alongside the session's agent CLI", () => {
-    // T3 Code is a control surface, not an agent — a VM with only `t3` on it
+    // T3 Code is a control surface, not an agent: a VM with only `t3` on it
     // can open projects but can never start a session.
     const claude = scriptBody(buildT3CodeBootstrapCommand({ tool: "claude-code" }));
     expect(claude).toContain("install_cli_command t3 t3 'T3 Code'");
@@ -78,7 +78,7 @@ describe("buildT3CodeBootstrapCommand", () => {
   });
 
   // Regression: T3 Code reaches for a provider other than the session's own
-  // for auxiliary work — generating a thread title runs `codex exec` even in a
+  // for auxiliary work; generating a thread title runs `codex exec` even in a
   // Claude Code thread. With only the session's CLI installed that dies
   // `spawn codex ENOENT` and surfaces as an opaque runtime error.
   it("installs both provider CLIs, session tool first", () => {
@@ -125,7 +125,7 @@ describe("buildT3CodeBootstrapCommand", () => {
   // Regression: the setup client retries the whole command when the SSH
   // channel drops, but the previous run keeps going on the VM. Two concurrent
   // `npm install -g` into the same prefix corrupt each other and leave a
-  // launcher symlink pointing at a rolled-back package — the "launcher exists
+  // launcher symlink pointing at a rolled-back package: the "launcher exists
   // but is unusable" / "t3 did not install into PATH" failure. The lock must
   // come before the marker check so the loser exits via "already complete"
   // rather than redoing the install.
@@ -171,7 +171,7 @@ describe("buildT3CodeBootstrapCommand", () => {
     for (const compiler of ["build-essential", "gcc-c++", "build-base"]) {
       expect(AGENT_SYSTEM_PACKAGES_SNIPPET).toContain(compiler);
     }
-    // Every install line — apt, dnf, apk — must carry it, so count the
+    // Every install line (apt, dnf, apk) must carry it, so count the
     // package-manager invocations rather than mentions (comments say it too).
     const installLines = AGENT_SYSTEM_PACKAGES_SNIPPET.split("\n")
       .map((line) => line.trim())
@@ -184,7 +184,7 @@ describe("buildT3CodeBootstrapCommand", () => {
 
   // T3 Code's "open in browser" runs on the server, which here is a headless
   // VM. Upstream hard-codes `xdg-open` on Linux with no env var to disable
-  // it, so the off-switch is a no-op shim rather than a patched fork — a fork
+  // it, so the off-switch is a no-op shim rather than a patched fork: a fork
   // would be overwritten by the service's own npm self-update.
   it("neutralizes server-side open-in-browser without clobbering a real xdg-open", () => {
     const script = scriptBody(buildT3CodeBootstrapCommand({ tool: "codex" }));
@@ -225,7 +225,7 @@ describe("buildT3CodeBootstrapCommand", () => {
     // Its own drop-in file, ordered after the PATH one.
     expect(script).toContain("20-infrawrench-priority.conf");
     // A negative nice needs CAP_SYS_NICE, so on a non-root VM the drop-in
-    // could not raise the server above its children anyway — and older systemd
+    // could not raise the server above its children anyway, and older systemd
     // fails the unit rather than clamping. Leave no priority drop-in there.
     expect(script).toMatch(/if \[ "\$\(id -u\)" = "0" \]; then/);
     expect(script).toContain('rm -f "$dropin_dir/20-infrawrench-priority.conf"');
@@ -248,7 +248,7 @@ describe("buildT3CodeConnectCommand", () => {
     expect(script).toContain("t3 connect status");
   });
 
-  // Regression: `t3 connect link` only records intent — the relay link is
+  // Regression: `t3 connect link` only records intent; the relay link is
   // provisioned by the next server *start*. `t3 service install`/`update`
   // both return early on "already installed and current" without touching
   // the unit, so using either leaves the link stuck on "pending server
@@ -260,7 +260,7 @@ describe("buildT3CodeConnectCommand", () => {
   });
 
   // Regression: T3 Code's unit sets no PATH, so the *server* inherits
-  // systemd's minimal default and cannot see anything in ~/.local/bin — gh
+  // systemd's minimal default and cannot see anything in ~/.local/bin; gh
   // (and git's `gh auth git-credential` helper) or the provider CLI. The
   // symptom is source control failing on the server while the setup terminal
   // reports everything signed in. Repaired here too, so an already-running VM
@@ -304,7 +304,7 @@ describe("buildT3CodeConnectCommand", () => {
   });
 
   // Regression: T3 Code chooses the clone URL itself and hands git the repo's
-  // sshUrl whenever the clone protocol is SSH — gh's own default for many
+  // sshUrl whenever the clone protocol is SSH; gh's own default for many
   // users. A fresh VM has no key registered with GitHub, so that clone dies
   // `Permission denied (publickey)`, reported as the generic "could not be
   // completed" because T3 keeps only the LENGTH of git's stderr.
@@ -400,7 +400,7 @@ describe("parseT3CodeConnectStatus", () => {
 describe("buildT3CodeLogoutCommand", () => {
   // The relay keeps an environment record that only the host can revoke. Once
   // the VM is destroyed there is no way to remove it (pingdotgg/t3code#5135),
-  // so delete has to revoke first — and must never be blocked by doing so.
+  // so delete has to revoke first, and must never be blocked by doing so.
   it("revokes the link and cannot fail the delete that runs it", () => {
     const script = scriptBody(buildT3CodeLogoutCommand());
     expect(script).toContain("t3 connect logout");

@@ -15,8 +15,8 @@ export interface RouteNavigator {
      * Numbers are allowed because the router JSON-encodes each search value:
      * a number is written plainly (`window=4`), while the *string* "4" is
      * written as `%224%22` and comes back out of a raw query string with its
-     * quotes attached. Anything read back with `URLSearchParams` — which is
-     * how both apps recover a tab target from a URL — wants the plain form.
+     * quotes attached. Anything read back with `URLSearchParams` (which is
+     * how both apps recover a tab target from a URL) wants the plain form.
      */
     search?: Record<string, string | number>;
     replace?: boolean;
@@ -53,7 +53,7 @@ export function postureTabTarget(): WorkspaceTabTarget {
 }
 
 /**
- * The cross-cloud access review — the principals inside the customer's clouds.
+ * The cross-cloud access review: the principals inside the customer's clouds.
  * A single-instance tab like Posture: the staleness window is a control on the
  * page, not part of the tab's identity.
  */
@@ -61,7 +61,7 @@ export function accessReviewTabTarget(): WorkspaceTabTarget {
   return { kind: "access-review" };
 }
 
-/** Backup & restore coverage — "what is your actual RPO?". */
+/** Backup & restore coverage: "what is your actual RPO?". */
 export function backupsTabTarget(): WorkspaceTabTarget {
   return { kind: "backups" };
 }
@@ -104,7 +104,7 @@ export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }
 
-/** Infrastructure as Code — the IaC reconciliation page (the ClickOps detector). */
+/** Infrastructure as Code: the IaC reconciliation page (the ClickOps detector). */
 export function iacTabTarget(): WorkspaceTabTarget {
   return { kind: "iac" };
 }
@@ -119,7 +119,7 @@ export function environmentDiffTabTarget(a?: string, b?: string): WorkspaceTabTa
 }
 
 /**
- * The Environments page — ephemeral-environment templates and the live
+ * The Environments page: ephemeral-environment templates and the live
  * instances stamped out of them, with their TTL countdowns. One tab: the page
  * is the surface, and a template or instance is something you open within it.
  */
@@ -149,7 +149,7 @@ export function quotasTabTarget(): WorkspaceTabTarget {
 }
 
 /**
- * Incident mode. One tab, optionally remembering which incident it was on —
+ * Incident mode. One tab, optionally remembering which incident it was on:
  * during an incident people flip between the timeline and everything else, and
  * a tab per incident would bury the tab strip exactly when it is least
  * convenient to tidy.
@@ -176,7 +176,7 @@ export function costsTabTarget(): WorkspaceTabTarget {
 
 /**
  * The Cost reports page. With a `reportId` it opens that report's detail view;
- * without one it opens the list. One tab either way — the id is remembered
+ * without one it opens the list. One tab either way: the id is remembered
  * state, not a second tab (see `getWorkspaceTabId`).
  */
 export function costReportsTabTarget(reportId?: string): WorkspaceTabTarget {
@@ -184,7 +184,7 @@ export function costReportsTabTarget(reportId?: string): WorkspaceTabTarget {
 }
 
 /**
- * The Invoices page — managed accounts and the invoices raised against them.
+ * The Invoices page: managed accounts and the invoices raised against them.
  * With an `invoiceId` it opens that invoice; without one it opens the list.
  * One tab either way, like Cost reports.
  */
@@ -263,7 +263,7 @@ export function resourceSftpTabTarget(
 }
 
 /**
- * The app launcher for a host — what is installed, and what is running. One
+ * The app launcher for a host: what is installed, and what is running. One
  * tab per resource, like SSH and SFTP: the launcher belongs to the machine.
  */
 export function resourceAppsTabTarget(
@@ -294,7 +294,7 @@ export function linuxAppTabTarget(options: {
   sessionId: string;
   windowId: number;
   appId?: string;
-  /** The host resource's plugin and type — the window's URL is built from them. */
+  /** The host resource's plugin and type: the window's URL is built from them. */
   pluginId?: string;
   resourceTypeId?: string;
 }): WorkspaceTabTarget {

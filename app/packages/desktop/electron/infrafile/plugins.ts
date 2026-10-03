@@ -28,7 +28,7 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
   for (const load of PLUGIN_MODULES) {
     try {
       const mod = await load();
-      // A plugin that fails to import must not take the whole deploy with it —
+      // A plugin that fails to import must not take the whole deploy with it:
       // the one the user actually needs may well have loaded fine.
       if (!disabled.has(mod.plugin.manifest.id)) loaded.push({ plugin: mod.plugin });
     } catch (err) {

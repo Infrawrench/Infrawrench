@@ -120,7 +120,7 @@ export async function estimateEnvironmentCost(
 }
 
 /**
- * Stamp out a copy (`resources:write` **and** `resources:delete` — every
+ * Stamp out a copy (`resources:write` **and** `resources:delete`: every
  * instance carries a standing auto-delete, which is the permission the leases
  * API gates that on).
  */

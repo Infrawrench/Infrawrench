@@ -494,7 +494,7 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("never reads window.location.search (empty under hash history)", () => {
     // Regression guard: under hash history window.location.search can never
-    // contain the router's search params — reading it silently drops agent
+    // contain the router's search params; reading it silently drops agent
     // metadata. Even if something IS in window.location.search, it must not
     // leak into the parsed target.
     vi.stubGlobal("window", {

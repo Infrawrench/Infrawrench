@@ -97,7 +97,7 @@ function formatWindow(startsAt: string, endsAt: string): string {
  * On-call rotations.
  *
  * Sits in Settings rather than in a workspace tab because it is org
- * configuration that alert routing reads — the same shelf as Notifications,
+ * configuration that alert routing reads: the same shelf as Notifications,
  * which is where the rules that consume it live.
  *
  * The shift preview comes from the server, which computes it with the same

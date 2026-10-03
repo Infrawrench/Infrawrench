@@ -1,6 +1,6 @@
 /**
  * Peer-pane group titles arrive from the plugin with the count already written
- * into the string — `Pods (12)`, `Namespaces (5) · by cost`. The count is
+ * into the string: `Pods (12)`, `Namespaces (5) · by cost`. The count is
  * therefore not a separate field the host can re-render; it has to be found in
  * the title and rewritten whenever the host knows a different number (an
  * optimistic create/delete, or a listing the host filtered further).
@@ -15,7 +15,7 @@ const PEER_PANE_COUNT = /\((\d+)\)(?=\s*(?:·|$))/;
 
 /**
  * Rewrite the count a group title already carries. Titles without one are
- * returned unchanged — use {@link peerPaneGroupTitle} when a count must appear.
+ * returned unchanged: use {@link peerPaneGroupTitle} when a count must appear.
  */
 export function replacePeerPaneCount(title: string, count: number): string {
   return PEER_PANE_COUNT.test(title) ? title.replace(PEER_PANE_COUNT, `(${count})`) : title;
@@ -38,7 +38,7 @@ export function peerPaneGroupName(title: string): string {
   return beforeSuffix.replace(/\s*\(\d+\)\s*$/, "").trim();
 }
 
-/** The noun a "Create …" button should use — the group name, singularised. */
+/** The noun a "Create …" button should use: the group name, singularised. */
 export function peerPaneCreateLabel(title: string): string {
   return peerPaneGroupName(title).replace(/s$/i, "");
 }

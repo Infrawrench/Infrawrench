@@ -20,7 +20,7 @@ import {
 
 /**
  * The routing table is pure, so it is testable without a database, a clock or a
- * transport — which is the whole reason it lives here rather than in
+ * transport, which is the whole reason it lives here rather than in
  * `server-core`. What is worth pinning down:
  *
  *  - the "absent fact never matches" rule, in both directions, because getting
@@ -319,9 +319,9 @@ describe("quiet hours", () => {
 
   it("respects a non-UTC zone", () => {
     const berlin: QuietHours = { ...OVERNIGHT, timezone: "Europe/Berlin" };
-    // 21:30 UTC is 23:30 in Berlin in August (CEST, UTC+2) — inside the window.
+    // 21:30 UTC is 23:30 in Berlin in August (CEST, UTC+2): inside the window.
     expect(isWithinQuietHours(berlin, new Date("2026-08-06T21:30:00Z"))).toBe(true);
-    // 19:00 UTC is 21:00 Berlin — before it opens.
+    // 19:00 UTC is 21:00 Berlin: before it opens.
     expect(isWithinQuietHours(berlin, new Date("2026-08-06T19:00:00Z"))).toBe(false);
     // The release lands at 08:00 local = 06:00 UTC.
     expect(quietHoursEnd(berlin, new Date("2026-08-06T21:30:00Z"))?.toISOString()).toBe(
@@ -431,7 +431,7 @@ describe("validateAlertRule", () => {
   it("rejects a quiet-hours override that is not a real severity", () => {
     // The failure this prevents is silent and backwards: `SEVERITY_RANK[bad]`
     // is undefined, every `>=` against it is false, so a typo'd override holds
-    // *everything* — including the pages it was written to let through.
+    // *everything*, including the pages it was written to let through.
     expect(
       validateAlertRule({
         ...ok,

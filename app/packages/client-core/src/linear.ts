@@ -6,7 +6,7 @@ import type { JiraSourceKind } from "./jira";
  * `/api/org/:orgId/linear/*` routes (see web `api/routes/linear.ts`).
  *
  * The second tracker next to Jira (`jira.ts`), covering the same six finding
- * kinds. The source-kind union is shared with Jira on purpose — a finding is
+ * kinds. The source-kind union is shared with Jira on purpose: a finding is
  * the same finding whichever tracker it lands in, and the UI's link index is
  * keyed by (kind, sourceId) for both.
  *
@@ -17,12 +17,12 @@ import type { JiraSourceKind } from "./jira";
  * `@infrawrench/ui`, mobile calls these functions directly.
  */
 
-/** Same six detectors as Jira — one finding vocabulary, two trackers. */
+/** Same six detectors as Jira: one finding vocabulary, two trackers. */
 export type LinearSourceKind = JiraSourceKind;
 
 /**
  * The org's Linear connection, as the API returns it. The API key is never
- * present — {@link keyHint} stands in for it. No site URL either: Linear has
+ * present: {@link keyHint} stands in for it. No site URL either: Linear has
  * one fixed API endpoint for every workspace.
  */
 export interface LinearIntegration {
@@ -72,7 +72,7 @@ export interface CreateLinearIssueArgs {
   sourceId: string;
   teamId: string;
   title: string;
-  /** Markdown — sent to Linear as-is, unlike Jira's server-side ADF conversion. */
+  /** Markdown: sent to Linear as-is, unlike Jira's server-side ADF conversion. */
   description?: string;
   labelIds?: string[];
   projectId?: string;
@@ -124,7 +124,7 @@ export async function verifyLinearCredentials(
   });
 }
 
-/** Teams for the team picker — nobody should have to type a team id. */
+/** Teams for the team picker: nobody should have to type a team id. */
 export async function fetchLinearTeams(api: CloudFetch, orgId: string): Promise<LinearTeam[]> {
   return (await api.org<LinearTeam[]>(orgId, "/linear/teams")) ?? [];
 }
@@ -141,7 +141,7 @@ export async function createLinearIssue(
 }
 
 /**
- * Links for a set of findings, in one request — the same batch shape as
+ * Links for a set of findings, in one request; the same batch shape as
  * `fetchJiraIssueLinks`, for the same reason: one request per page, not one
  * per row.
  */
@@ -161,14 +161,14 @@ export async function fetchLinearIssueLinks(
 
 // --- Pure helpers ---
 
-/** Key a link by kind + source — the same keying `jiraLinkKey` uses. */
+/** Key a link by kind + source: the same keying `jiraLinkKey` uses. */
 export function linearLinkKey(sourceKind: LinearSourceKind, sourceId: string): string {
   return `${sourceKind}:${sourceId}`;
 }
 
 /**
  * Index links for O(1) per-row lookup. Where a finding has been filed more
- * than once, the newest wins — the API returns newest-first, so the first
+ * than once, the newest wins: the API returns newest-first, so the first
  * entry for a key is kept and later ones ignored.
  */
 export function indexLinearLinks(links: readonly LinearIssueLink[]): Map<string, LinearIssueLink> {

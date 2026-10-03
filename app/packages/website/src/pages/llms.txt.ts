@@ -4,7 +4,7 @@ import { appOrigin } from "../lib/markdown/home";
 import { docMarkdownPath } from "../lib/markdown/docs";
 
 /**
- * `/llms.txt` — the index an agent reads first.
+ * `/llms.txt`: the index an agent reads first.
  *
  * Same job `robots.txt` does for crawlers and `sitemap.xml` does for search:
  * one well-known path that says what is here and where the machine-readable

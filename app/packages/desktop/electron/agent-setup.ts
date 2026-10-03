@@ -76,7 +76,7 @@ export async function reconcileAgentBranch({
     }
   };
 
-  // Tips the remote likely shares with us — lets the VM build a small
+  // Tips the remote likely shares with us: lets the VM build a small
   // incremental bundle instead of shipping the repo's full history.
   const negatives = [
     tryLocalGit("rev-parse", "--verify", "--quiet", "HEAD"),
@@ -272,7 +272,7 @@ const agentRepoConfigSchema = z
 
 /**
  * Read and validate the repo's optional `.infrawrench/agent.json`. Invalid
- * config is surfaced as a plan warning instead of failing planning — the
+ * config is surfaced as a plan warning instead of failing planning: the
  * session still works, just without the repo's env/resources.
  */
 function readAgentRepoConfig(localRepoPath: string): {
@@ -301,7 +301,7 @@ function readAgentRepoConfig(localRepoPath: string): {
     };
   }
   // zod's .optional() infers `| undefined`, which exactOptionalPropertyTypes
-  // rejects against the shared type — the shapes are otherwise identical.
+  // rejects against the shared type: the shapes are otherwise identical.
   return { config: parsed.data as AgentRepoConfig, warnings: [] };
 }
 
@@ -747,7 +747,7 @@ export async function syncAgentFiles({
     if (stat.isDirectory()) {
       const listed = listAgentConfigFiles(source.localPath, tool);
       warnings.push(...listed.warnings);
-      // One archive upload + remote extract — uploading file-by-file opens a
+      // One archive upload + remote extract: uploading file-by-file opens a
       // fresh SSH connection per file, which takes forever for a populated
       // plugins directory (thousands of files).
       await uploadDirectoryArchive(
@@ -862,7 +862,7 @@ function agentConfigSources(
   const home = os.homedir();
   // The agent commits on the VM, so it needs the user's git identity (plus
   // aliases, URL rewrites, …). Signing/credential-helper settings are
-  // stripped — the keys and helpers they reference don't exist on the VM.
+  // stripped: the keys and helpers they reference don't exist on the VM.
   const gitConfig: AgentConfigSource = {
     label: "Git",
     localPath: path.join(home, ".gitconfig"),

@@ -4,7 +4,7 @@
  * client-core (imported through `@infrawrench/ui`, the renderer convention),
  * run over this workspace's stored accounts and resources plus the `dnsRole`
  * and `dnsServiceHosts` declarations of the locally loaded plugins.
- * Credential-free — the classification is a property of stored state, so it
+ * Credential-free: the classification is a property of stored state, so it
  * works with the network off, and no DNS is resolved either way. The CLI's
  * `--local` twin lives in electron/local-dns.ts, which has no renderer to call
  * into.
@@ -42,7 +42,7 @@ function parseBag(json: string | null): unknown {
 /**
  * The rows both local scans read. Carries the plugins' full resource-type
  * definitions rather than either scan's narrowed view, so one query feeds
- * `computeDnsInventory` and `computePostureFindings` alike — reading them
+ * `computeDnsInventory` and `computePostureFindings` alike: reading them
  * twice would let the two disagree about what is synced, and the posture pass
  * takes the DNS inventory as an input.
  */

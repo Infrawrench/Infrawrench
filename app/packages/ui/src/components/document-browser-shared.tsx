@@ -6,8 +6,8 @@ import { formatErrorMessage } from "../utils.js";
 /**
  * The pieces the Mongo and Firestore document browsers render identically.
  *
- * Both browsers are the same shell — a collection sidebar, an insert editor,
- * an expandable row per document with inline JSON editing — differing only in
+ * Both browsers are the same shell (a collection sidebar, an insert editor,
+ * an expandable row per document with inline JSON editing) differing only in
  * the command protocol behind `onCommand` and in how a document names itself
  * (`_id` vs the Firestore `_name` path). What differs stays in each browser;
  * what is shared lives here, unexported from the package index because it is
@@ -16,8 +16,8 @@ import { formatErrorMessage } from "../utils.js";
 
 /**
  * One collection in the sidebar, with its inline drop/delete confirmation.
- * `verb` is the provider's own word for removal — "Drop" for Mongo, "Delete"
- * for Firestore — used for the confirmation prompt and both button labels.
+ * `verb` is the provider's own word for removal ("Drop" for Mongo, "Delete"
+ * for Firestore) used for the confirmation prompt and both button labels.
  */
 export function CollectionListItem({
   name,

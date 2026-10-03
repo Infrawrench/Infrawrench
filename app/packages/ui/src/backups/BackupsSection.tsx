@@ -28,7 +28,7 @@ import {
 export interface BackupsSectionProps {
   /**
    * The computed coverage, or null while the first load is in flight. Hosts
-   * fetch (web: `/backups`, desktop: cloud IPC) and hand the response over —
+   * fetch (web: `/backups`, desktop: cloud IPC) and hand the response over;
    * this component never talks to a network.
    */
   data: BackupCoverageResponse | null;
@@ -36,7 +36,7 @@ export interface BackupsSectionProps {
   policies: BackupPolicy[] | null;
   /**
    * Load or refresh failure. With `data` still present the last coverage
-   * stays on screen under a banner — a failed refresh must not blank a drawn
+   * stays on screen under a banner: a failed refresh must not blank a drawn
    * list.
    */
   error?: string | null | undefined;
@@ -128,7 +128,7 @@ function formatGb(gb: number): string {
 }
 
 /**
- * Enter/Space on a row opens its resource — but only when the row itself has
+ * Enter/Space on a row opens its resource, but only when the row itself has
  * focus, so the buttons nested inside keep their own activation (the
  * PostureSection rule).
  */
@@ -143,7 +143,7 @@ function rowKeyHandler(open: () => void) {
 
 /**
  * The headline: worst RPO, how many resources are unprotected, and what the
- * orphans cost. Deliberately leads with the RPO — it is the number the feature
+ * orphans cost. Deliberately leads with the RPO: it is the number the feature
  * exists to answer, and "you have 400 snapshots" never was.
  */
 function SummaryCards({ data }: { data: BackupCoverageResponse }) {
@@ -376,14 +376,14 @@ function describeDemands(gt: Gt, policy: BackupPolicy): string {
 }
 
 /**
- * Backup & restore coverage — "what is your actual RPO?".
+ * Backup & restore coverage: "what is your actual RPO?".
  *
  * Three views over one computation: the gaps (worst first), the full coverage
  * table (every stateful resource and what protects it), and the org's recovery
  * objectives. Shared by the web and desktop Backups screens.
  *
- * Everything here is derived from already-synced inventory — no provider API
- * calls — which is why the coverage can be recomputed on every read rather than
+ * Everything here is derived from already-synced inventory (no provider API
+ * calls) which is why the coverage can be recomputed on every read rather than
  * stored, and why "unattributable" is a first-class answer alongside "orphaned":
  * telling someone a snapshot protects nothing when we simply could not tell is
  * an invitation to delete a live backup.

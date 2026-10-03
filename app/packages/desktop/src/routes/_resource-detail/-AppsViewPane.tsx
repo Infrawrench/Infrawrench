@@ -12,14 +12,14 @@ import type { QuickSshConnection, SshConfig } from "./-types";
  * The Apps view of a resource: pick a key the same way the SSH tab does, then
  * show the host's launcher.
  *
- * The key choice is deliberately the same flow rather than a second one —
+ * The key choice is deliberately the same flow rather than a second one:
  * running an application on a host is the same act of access as opening a
  * shell on it, and it should ask for the same thing in the same way.
  */
 export interface AppsViewPaneProps {
   accountId: string;
   decodedResourceId: string;
-  /** The host's plugin and type — each window tab is addressed at its URL. */
+  /** The host's plugin and type: each window tab is addressed at its URL. */
   pluginId?: string | undefined;
   resourceTypeId?: string | undefined;
   sshConfig: SshConfig | null;

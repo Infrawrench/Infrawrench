@@ -2,7 +2,7 @@
  * Runs a custom-graph script: the same QuickJS isolate as workflows, a
  * different (much narrower) host surface, and a validated render spec as the
  * product. The graph dispatcher below is deliberately separate from the
- * workflow `dispatch` — a graph must never gain workflow powers by accident,
+ * workflow `dispatch`: a graph must never gain workflow powers by accident,
  * so unknown methods fail closed instead of falling through to the wider
  * router.
  *
@@ -74,7 +74,7 @@ import {
 
 /**
  * The `infra.*` methods a graph may reach, mapped to the action class its
- * host must authorize. Grabbing data plus SSH — nothing that provisions,
+ * host must authorize. Grabbing data plus SSH: nothing that provisions,
  * mutates, or deletes. Everything absent from this map fails closed in the
  * dispatcher's default arm, so `resource.create`, `applyManifest`,
  * `account.importYaml`, `resource.publish`, `kv.put`, `sftp.*`, `costs.write`,
@@ -105,7 +105,7 @@ const INFRA_METHODS: Readonly<Record<string, GraphInfraAction>> = {
 const CONTROL_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const DATA_KEY_RE = /^[A-Za-z0-9_.:-]+$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-/** Hex or a bare color keyword — never arbitrary CSS. */
+/** Hex or a bare color keyword, never arbitrary CSS. */
 const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{1,24})$/;
 
 // Built from the canonical client-core enums so a new dimension or binning
@@ -629,7 +629,7 @@ export async function runGraph(opts: RunGraphOptions): Promise<GraphRunResult> {
         }
         // The platform decides WHO this access runs as (author permissions).
         infra.authorize(action);
-        // Stream polls are excluded from the call budget — a single tailed
+        // Stream polls are excluded from the call budget: a single tailed
         // command would otherwise burn it in seconds.
         if (method !== "ssh.streamRead" && method !== "ssh.streamClose") countInfra();
         let forwarded = args;
@@ -739,7 +739,7 @@ function buildProgram(userJs: string): string {
     `const __event = env.__event;`,
     // The workflow prelude supplies `infra.accounts` (reads + ssh reach the
     // graph dispatcher's whitelist; everything else fails closed there). The
-    // graph prelude runs after it, so its fetch/console assignments win —
+    // graph prelude runs after it, so its fetch/console assignments win:
     // they are the same implementations either way.
     PRELUDE,
     GRAPH_PRELUDE,

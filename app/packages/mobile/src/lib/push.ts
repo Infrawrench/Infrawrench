@@ -15,7 +15,7 @@ import { CRITICAL_ALERTS } from "../../env";
  * Push registration lifecycle. Registration runs after sign-in (and again on
  * token rotation); the stored device id lets sign-out remove exactly this
  * device server-side. Notification `data` payloads deep-link via
- * `pushDataToPath` — the client mirror of server-core's PushData contract.
+ * `pushDataToPath`: the client mirror of server-core's PushData contract.
  */
 
 const DEVICE_ID_KEY = "cloud_push_device_id";
@@ -39,12 +39,12 @@ let warnedNoProjectId = false;
 /**
  * iOS grants only the options present in the app's *first* authorization
  * prompt and never asks again, so `allowCriticalAlerts` has to ride along with
- * the initial request — it cannot be added once the user has answered.
+ * the initial request: it cannot be added once the user has answered.
  *
  * A build whose entitlements don't include critical alerts can't be granted it;
  * rather than rely on that being a silent no-op, fall back to the plain request
  * so a rejected option can't cost us ordinary notifications as well. Naming the
- * other three options is required once `ios` is passed — omitting them would
+ * other three options is required once `ios` is passed: omitting them would
  * request *less* than the argument-free call does.
  */
 async function requestPermissions(): Promise<Notifications.NotificationPermissionsStatus> {
@@ -69,7 +69,7 @@ export async function registerForPush(api: CloudFetch): Promise<boolean> {
   if (!Device.isDevice) return false; // simulators have no push tokens
 
   // `expoConfig` is absent in some build contexts (bare/standalone), where the
-  // id comes through `easConfig` instead — check both before giving up.
+  // id comes through `easConfig` instead: check both before giving up.
   const projectId: string | undefined =
     (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ||
     Constants.easConfig?.projectId ||
@@ -86,7 +86,7 @@ export async function registerForPush(api: CloudFetch): Promise<boolean> {
   }
 
   // getExpoPushTokenAsync re-emits the device token, which would re-trigger
-  // watchPushTokenRotation's listener mid-registration — guard against that.
+  // watchPushTokenRotation's listener mid-registration: guard against that.
   if (registering) return false;
   registering = true;
   try {
@@ -146,7 +146,7 @@ export function watchPushTokenRotation(api: CloudFetch): () => void {
 export async function unregisterCurrentDevice(api: CloudFetch): Promise<void> {
   const deviceId = await SecureStore.getItemAsync(DEVICE_ID_KEY);
   if (!deviceId) return;
-  // Server first — if the call fails the device id survives for a retry.
+  // Server first, if the call fails the device id survives for a retry.
   await unregisterPushDevice(api, deviceId);
   await SecureStore.deleteItemAsync(DEVICE_ID_KEY);
   await SecureStore.deleteItemAsync(LAST_TOKEN_KEY);
@@ -156,7 +156,7 @@ export async function unregisterCurrentDevice(api: CloudFetch): Promise<void> {
  * The union this app routes on. `expiry_alert` is landing in client-core's
  * `PushNotificationData` in the same release as this handler; until it does,
  * the variant is declared here. On the wire it carries `organizationId` where
- * every other variant carries `orgId` — `parsePushData` normalises that.
+ * every other variant carries `orgId`: `parsePushData` normalises that.
  */
 export type MobilePushData = PushNotificationData | { type: "expiry_alert"; orgId: string };
 
@@ -165,7 +165,7 @@ export type MobilePushData = PushNotificationData | { type: "expiry_alert"; orgI
  * the failing account; workflow pages land on the workflow that raised them
  * (its run list is the first thing you want); budget breaches land on the
  * Costs tab, which lists every budget in the org whether or not a dashboard
- * shows it — the alert has to open something that contains the budget it is
+ * shows it: the alert has to open something that contains the budget it is
  * about, and the Dashboards tab is a list of dashboards, not of budgets.
  * Expiry alerts land on the Expiring screen, the feed the alert summarised.
  * Tests and API pages land on the org root.
@@ -176,12 +176,12 @@ export function pushDataToPath(data: MobilePushData): string {
       return `/org/${data.orgId}/accounts/${data.accountId}`;
     case "workflow_page":
       return `/org/${data.orgId}/workflows/${data.workflowId}`;
-    // Approvals land on the inbox, which is the screen with the buttons on it —
+    // Approvals land on the inbox, which is the screen with the buttons on it:
     // the workflow's run list can only show that a run is stuck. The id rides
     // along so the inbox can surface this request first.
     case "workflow_approval":
       return `/org/${data.orgId}/settings/approvals?approvalId=${encodeURIComponent(data.approvalId)}`;
-    // Break-glass lands on the screen with the buttons on it — a colleague
+    // Break-glass lands on the screen with the buttons on it: a colleague
     // blocked mid-incident is exactly what you decide from a phone.
     case "access_request":
       return `/org/${data.orgId}/settings/access-requests?requestId=${encodeURIComponent(data.requestId)}`;
@@ -199,26 +199,26 @@ export function pushDataToPath(data: MobilePushData): string {
     // The three efficiency alerts are all "here is a standing condition, go
     // look at it when you can" rather than "what just happened", so they open
     // the Costs tab where the commitments, unit-costs and efficiency-alert
-    // sections all live — never the moment view, which centres on an instant
+    // sections all live, never the moment view, which centres on an instant
     // these alerts do not have.
     case "commitment_expiry":
     case "commitment_idle":
     case "unit_cost_regression":
       return `/org/${data.orgId}/costs`;
     // A cost anomaly is a "what happened just now?" alert, so it opens the
-    // moment view centred on the tap — the anomaly event, plus whatever else
+    // moment view centred on the tap: the anomaly event, plus whatever else
     // (deploys, incidents, drift) coincided with it. The Costs tab is one tap
     // away via the anomaly row's deep link.
     case "cost_anomaly":
       return `/org/${data.orgId}/moment`;
-    // A metric alert is the same "what happened just now?" shape — the moment
+    // A metric alert is the same "what happened just now?" shape: the moment
     // view shows what coincided with the breach (mobile has no rule editor;
     // rules are managed on web/desktop).
     case "metric_alert":
       return `/org/${data.orgId}/moment`;
     // A drift digest describes the window `since → now`, so it opens the
     // moment view centred on that window's midpoint with a half-width that
-    // covers it — the digest's changes merged with everything else that
+    // covers it: the digest's changes merged with everything else that
     // happened around them. (This supersedes the old Changes-screen `since`
     // filter target; the screen still honours the param for old links.)
     case "resource_drift": {
@@ -250,11 +250,11 @@ export function pushDataToPath(data: MobilePushData): string {
     case "log_match":
       return `/org/${data.orgId}/log-workspaces/${data.queryId}`;
     // A probe alert names one endpoint; the probes list shows its status dot,
-    // latency and history (mobile has no probe editor — web/desktop own that).
+    // latency and history (mobile has no probe editor: web/desktop own that).
     case "probe_alert":
       return `/org/${data.orgId}/probes`;
     // A declared incident names exactly one thing to look at, and its screen
-    // carries the timeline and the note box — which is the whole reason to open
+    // carries the timeline and the note box, which is the whole reason to open
     // a phone at 03:14.
     case "incident":
       return `/org/${data.orgId}/incidents/${data.incidentId}`;
@@ -268,7 +268,7 @@ export function pushDataToPath(data: MobilePushData): string {
 /**
  * Validate a notification `data` blob against the server's `PushData` contract.
  *
- * This is a trust boundary — the payload arrives from the OS notification
+ * This is a trust boundary: the payload arrives from the OS notification
  * centre, so it starts as `unknown` and every field is checked before it is
  * used. Each arm rebuilds the variant from validated pieces rather than
  * asserting the whole object, so an unrecognised `type`, a missing routing key,
@@ -407,7 +407,7 @@ export function parsePushData(raw: unknown): MobilePushData | null {
         changeCount,
         since,
         // Absent whenever the window spanned more than one account, which is
-        // the common case — the feed then opens unfiltered by account.
+        // the common case: the feed then opens unfiltered by account.
         ...(typeof accountId === "string" ? { accountId } : {}),
       };
     }

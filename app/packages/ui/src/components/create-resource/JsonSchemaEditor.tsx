@@ -7,10 +7,10 @@ import { useSerializedRows } from "./useSerializedRows.js";
  * JSON-Schema object string (`{"type":"object","properties":{…},"required":[…]}`),
  * or an empty string when no named properties exist (so optional fields stay
  * unset). Drops into any string-valued `CreateFieldConfig` via `kind:
- * "json-schema"` — no Monaco, no raw-text editing.
+ * "json-schema"`: no Monaco, no raw-text editing.
  *
  * Scope: top-level object properties with primitive / array / object types.
- * Deep nesting isn't modelled here — for an array/object the type is declared
+ * Deep nesting isn't modelled here, for an array/object the type is declared
  * but its items/sub-properties aren't (valid JSON Schema, just unconstrained).
  */
 
@@ -18,7 +18,7 @@ const PROPERTY_TYPES = ["string", "integer", "number", "boolean", "array", "obje
 type PropertyType = (typeof PROPERTY_TYPES)[number];
 
 interface PropertyRow {
-  /** Stable per-row id for React keys — rows are editable and removable. */
+  /** Stable per-row id for React keys: rows are editable and removable. */
   id: string;
   name: string;
   type: PropertyType;
@@ -38,7 +38,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
     onChange,
     parse: parseSchema,
     serialize: serializeSchema,
-    // An empty schema is genuinely no rows — the editor prints its own hint.
+    // An empty schema is genuinely no rows: the editor prints its own hint.
     blankRows: () => [],
   });
 

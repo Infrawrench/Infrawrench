@@ -36,7 +36,7 @@ interface WorkflowRun {
   triggerSource: string;
   durationMs: number | null;
   createdAt: string;
-  /** The runs endpoint returns each run's logs with the row — no second fetch. */
+  /** The runs endpoint returns each run's logs with the row: no second fetch. */
   logs?: WorkflowRunLog[] | null;
   error?: { message: string } | null;
   output?: unknown;
@@ -74,7 +74,7 @@ function triggerLabel(source: string): string {
   }
 }
 
-/** "820 ms" / "3.4s" / "2m 05s" — same thresholds as the web run history. */
+/** "820 ms" / "3.4s" / "2m 05s": same thresholds as the web run history. */
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;

@@ -7,7 +7,7 @@ import {
 } from "@infrawrench/client-core";
 
 export interface CostCollectionNoticeProps {
-  /** Rows from GET /costs/status — the component picks out the ones to explain. */
+  /** Rows from GET /costs/status: the component picks out the ones to explain. */
   statuses: CostAccountStatus[];
   /**
    * Desktop routes external links through the shell instead of the renderer.
@@ -17,7 +17,7 @@ export interface CostCollectionNoticeProps {
 }
 
 /**
- * Explains why cost data is missing — or where it came from.
+ * Explains why cost data is missing, or where it came from.
  *
  * Three states get their own notice, because each otherwise renders as a graph
  * with nothing to act on, or worse, a graph that looks fine and isn't:

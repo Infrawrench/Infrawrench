@@ -9,7 +9,7 @@ import { createDesktopIncidentsClient } from "@/lib/incidents-client";
 import { incidentsTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
 
 /**
- * Metric threshold alert rules on desktop — the same screen web renders.
+ * Metric threshold alert rules on desktop: the same screen web renders.
  * Rendered as a workspace tab (the "metric-alerts" kind). Cloud-only: rules
  * are evaluated by the cloud poller, so without an org the tab explains
  * rather than fetching.

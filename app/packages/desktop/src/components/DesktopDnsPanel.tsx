@@ -19,7 +19,7 @@ interface DesktopDnsPanelProps {
  * Desktop host for the shared Domains surface. Cloud mode fetches the org
  * inventory from the web API; local mode runs the same shared computation over
  * the local SQLite workspace and the locally loaded plugins' `dnsRole` /
- * `dnsServiceHosts` declarations. Same wiring as DesktopPosturePanel — a
+ * `dnsServiceHosts` declarations. Same wiring as DesktopPosturePanel: a
  * failed *refresh* must not blank an inventory that is already drawn.
  */
 export function DesktopDnsPanel({ openRecord, openZone }: DesktopDnsPanelProps) {

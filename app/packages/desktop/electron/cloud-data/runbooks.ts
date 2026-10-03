@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Runbooks — cloud only, deliberately. A runbook is a shared document and a run
+// Runbooks: cloud only, deliberately. A runbook is a shared document and a run
 // is a record of who did what: both are org state, and a single-machine
 // workspace has nowhere to keep either. The panel says so rather than offering
 // a checklist nobody else can see.

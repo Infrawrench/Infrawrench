@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Sleep/wake schedules — cloud-mode only. The rows live server-side and the
+// Sleep/wake schedules: cloud-mode only. The rows live server-side and the
 // cloud poller executes the transitions; local mode has no scheduler, so
 // there is no local counterpart (same stance as the change timeline).
 

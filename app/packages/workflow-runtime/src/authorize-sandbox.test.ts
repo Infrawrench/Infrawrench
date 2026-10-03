@@ -10,7 +10,7 @@ import type { WorkflowHost } from "./host.js";
  * Worth the cost of a real run because the thing being asserted is placement:
  * the gate has to sit ahead of every branch in `dispatch`, so that a refusal
  * means the host method was never reached. A unit test of the predicate proves
- * the policy; only this proves the plumbing — and "the check ran but the delete
+ * the policy; only this proves the plumbing, and "the check ran but the delete
  * happened anyway" is precisely the failure that would not show up anywhere
  * else.
  */
@@ -133,7 +133,7 @@ describe("authorize in the isolate", () => {
   });
 
   it("runs ungated when no authorize is supplied", async () => {
-    // The desktop host passes none — a workflow there runs as the one local
+    // The desktop host passes none: a workflow there runs as the one local
     // user, and adding a gate would mean inventing a role system for a
     // single-user app.
     const deleteResource = vi.fn(async () => {});

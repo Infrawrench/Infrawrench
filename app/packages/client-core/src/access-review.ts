@@ -1,25 +1,25 @@
 /**
- * Cross-cloud access review — the principals that live *inside the customer's
+ * Cross-cloud access review; the principals that live *inside the customer's
  * clouds*: IAM users and roles, GCP service accounts, Azure app registrations
  * and managed identities, directory users and groups, role bindings, and the
  * long-lived API keys providers hand out.
  *
  * Three adjacent things this is deliberately **not**:
  *
- * - Infrawrench's own team roles and permissions — who can use Infrawrench.
- * - Credential hygiene — the API keys, SSH keys and unused member permissions
+ * - Infrawrench's own team roles and permissions: who can use Infrawrench.
+ * - Credential hygiene: the API keys, SSH keys and unused member permissions
  *   *Infrawrench itself* holds, computed from Postgres we own.
- * - Posture checks — per-resource exposure rules over any resource type.
+ * - Posture checks: per-resource exposure rules over any resource type.
  *
  * Plugins mark principal types with `principalRole`
  * (`PrincipalRoleDeclaration` in `@infrawrench/plugin-base`) and this module is
  * the shared pure half that turns stored rows + those declarations into the
  * review every surface renders. Rows in, findings out: no plugin client, no
- * credentials, no provider API calls, ever — the `orphanRule` / expiry-radar /
+ * credentials, no provider API calls, ever; the `orphanRule` / expiry-radar /
  * posture contract.
  *
- * Findings have no identity of their own — they are recomputed from scratch on
- * every read — so an operator's decision to accept one is stored against
+ * Findings have no identity of their own (they are recomputed from scratch on
+ * every read) so an operator's decision to accept one is stored against
  * `(resourceId, ruleId)` and applied here, at the end of the computation. A
  * dismissed finding is still evaluated; it is only *partitioned* out of the
  * list, so accepting a risk stays reviewable and reversible rather than being
@@ -84,7 +84,7 @@ export const PRINCIPAL_ROLE_LABELS: Record<PrincipalRole, string> = {
 };
 
 /**
- * The rules the review can raise. Stable strings — they are half of a
+ * The rules the review can raise. Stable strings: they are half of a
  * dismissal's key, so renaming one silently un-dismisses every decision made
  * against it.
  *
@@ -165,7 +165,7 @@ export interface AccessPrincipal {
   admin: boolean | null;
   /**
    * MFA state: true/false only where the type declares an `mfaKey`, null
-   * everywhere else — "we do not sync that" is not "MFA is off".
+   * everywhere else; "we do not sync that" is not "MFA is off".
    */
   mfa: boolean | null;
   /** The principal this one hangs off (a key's owner, a binding's subject). */
@@ -181,7 +181,7 @@ export interface AccessPrincipal {
 
 /** One rule raised against one principal. A principal can carry several. */
 export interface AccessFinding {
-  /** Infrawrench resource id — the first half of a dismissal's key. */
+  /** Infrawrench resource id: the first half of a dismissal's key. */
   resourceId: string;
   ruleId: AccessReviewRuleId;
   /** Short rule title, e.g. "Unused for 90+ days". */
@@ -194,7 +194,7 @@ export interface AccessFinding {
 }
 
 /**
- * An operator's decision to accept one finding on one principal — the break-glass
+ * An operator's decision to accept one finding on one principal: the break-glass
  * role really is meant to be admin, the shared key really is rotated out of band.
  *
  * Keyed by `(resourceId, ruleId)` rather than by a finding row, because a
@@ -207,7 +207,7 @@ export interface AccessReviewDismissal {
   ruleId: string;
   /** ISO instant the dismissal was recorded. */
   dismissedAt: string;
-  /** Who accepted it — display name or email; null when unknown. */
+  /** Who accepted it: display name or email; null when unknown. */
   dismissedBy: string | null;
   /** The operator's note, when they left one. */
   reason: string | null;
@@ -273,7 +273,7 @@ export interface AccessScanAccount {
 
 /**
  * The part of a stored resource row the scan reads. Hosts map their own store
- * onto this — Postgres jsonb, SQLite TEXT bags — so the computation never
+ * onto this (Postgres jsonb, SQLite TEXT bags) so the computation never
  * learns which database it is looking at.
  */
 export interface AccessScanResource {
@@ -292,14 +292,14 @@ export interface AccessScanInput {
   accounts: readonly AccessScanAccount[];
   resources: readonly AccessScanResource[];
   /**
-   * Who owns each resource, keyed by resource id — the resource-ownership
+   * Who owns each resource, keyed by resource id: the resource-ownership
    * join. Omitted means "no owner records", which produces an unowned finding
    * for every principal; hosts that have no ownership store should pass an
    * empty map and suppress the rule instead (see `includeUnowned`).
    */
   owners?: ReadonlyMap<string, ResourceOwnerAnnotation> | undefined;
   /**
-   * Accepted findings, keyed by `(resourceId, ruleId)`. Omitted means none —
+   * Accepted findings, keyed by `(resourceId, ruleId)`. Omitted means none;
    * the safe direction: unknown dismissals show the finding rather than hide
    * it.
    */
@@ -324,7 +324,7 @@ export interface AccessScanOptions {
   expiry?: ExpiryListResponse;
   /**
    * Whether to raise the "no recorded owner" rule. Hosts with no ownership
-   * store pass `false` — flagging every principal as unowned when the concept
+   * store pass `false`: flagging every principal as unowned when the concept
    * does not exist would be a lie, not a finding. Defaults to true.
    */
   includeUnowned?: boolean;
@@ -344,7 +344,7 @@ const FALSE_WORDS = new Set(["false", "0", "no", "disabled", "off"]);
 
 /**
  * Read a declared boolean-ish field. Returns null for absent and for strings
- * outside the known word lists — an unrecognised value must not be read as
+ * outside the known word lists: an unrecognised value must not be read as
  * `false` and turned into an accusation.
  */
 function readFlag(raw: unknown): boolean | null {
@@ -369,13 +369,13 @@ function readText(raw: unknown): string | null {
  * Whether a principal's admin indicator says "administrative".
  *
  * With `adminValues` the whole stored value is compared case-insensitively
- * against the list — not a substring match. That is the `sourceRanges equals
+ * against the list, not a substring match. That is the `sourceRanges equals
  * "0.0.0.0/0"` stance the posture rules already take: matching a fragment of a
  * comma-joined list would call a role with `widgets:read` administrative
  * because some other entry happened to contain `admin`. Without
  * `adminValues` the field is read as a boolean.
  *
- * Returns null when the type declares no indicator — "we do not know", which
+ * Returns null when the type declares no indicator: "we do not know", which
  * never becomes a finding.
  */
 function readAdmin(
@@ -554,13 +554,13 @@ function plural(n: number, one: string): string {
 /**
  * The rules, in one place, each raised only when it has evidence.
  *
- * - **stale** — a *known* last use older than the window. Never raised on
+ * - **stale**: a *known* last use older than the window. Never raised on
  *   `unknown`.
- * - **admin** — the declared indicator matched. Never raised where the type
+ * - **admin**: the declared indicator matched. Never raised where the type
  *   declares none.
- * - **rotation** — taken from the expiry radar, not recomputed here.
- * - **unowned** — no ownership record names anybody.
- * - **noMfa** — the declared `mfaKey` read false. Never raised on null.
+ * - **rotation**: taken from the expiry radar, not recomputed here.
+ * - **unowned**: no ownership record names anybody.
+ * - **noMfa**: the declared `mfaKey` read false. Never raised on null.
  */
 function findingsFor(
   principal: AccessPrincipal,
@@ -647,7 +647,7 @@ function findingsFor(
  *
  * Only `basis: "age"` items count: those are the radar's `from: "created"`
  * rules, i.e. "this credential has been alive too long". An absolute
- * `expiresAt` is a different fact — the credential stops working on its own —
+ * `expiresAt` is a different fact (the credential stops working on its own)
  * and the radar already alerts on it; repeating it here would double-report
  * every expiring token as an access-review finding.
  */
@@ -671,12 +671,12 @@ function rotationDueByResource(
  * Compute the access review for a workspace: every declared principal, plus
  * every rule that has evidence against it.
  *
- * Pure and deterministic — two hosts reading the same rows render the same
+ * Pure and deterministic: two hosts reading the same rows render the same
  * review. Findings sort by severity rank, then account, then principal name,
  * then rule id, so the order is stable across refreshes.
  *
  * Dismissed findings are computed exactly like the rest and then *partitioned
- * out* — they leave `findings`/`counts`/`byRule`/`totalCount` (so nothing the
+ * out*: they leave `findings`/`counts`/`byRule`/`totalCount` (so nothing the
  * org has accepted can page anyone) and reappear in `dismissed` with the note
  * and author attached (so accepting a risk is reviewable, not a delete). The
  * `principals` list is **not** filtered: an inventory that hid a principal
@@ -713,7 +713,7 @@ export function computeAccessReview(
     a.ruleId.localeCompare(b.ruleId);
 
   findings.sort(bySeverity);
-  // Most recently dismissed first — the list is read to undo a decision, and
+  // Most recently dismissed first: the list is read to undo a decision, and
   // the decision most likely to be wrong is the one just made.
   dismissed.sort(
     (a, b) => b.dismissal.dismissedAt.localeCompare(a.dismissal.dismissedAt) || bySeverity(a, b),
@@ -748,7 +748,7 @@ export function computeAccessReview(
 }
 
 /**
- * The findings worth paging about — critical and high only, exactly as the
+ * The findings worth paging about: critical and high only, exactly as the
  * posture feed decides. Medium and low are review work; they belong on the
  * screen and in the digest, not in somebody's evening.
  */
@@ -789,7 +789,7 @@ const CSV_COLUMNS: readonly (readonly [string, (f: AccessFinding) => string])[] 
 ];
 
 /**
- * RFC 4180 quoting. Everything is quoted rather than only what needs it — the
+ * RFC 4180 quoting. Everything is quoted rather than only what needs it: the
  * evidence file goes to an auditor who may open it in anything, and a
  * conditionally-quoted column is where a stray provider comma turns into a
  * shifted row.

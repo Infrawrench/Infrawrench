@@ -214,7 +214,7 @@ describe("computeExpiryFeed", () => {
           resource({
             id: "never-rotated",
             resourceTypeId: "secrets-manager-secret",
-            // lastRotatedDate empty (AWS null) — age from createdDate instead.
+            // lastRotatedDate empty (AWS null): age from createdDate instead.
             fields: { lastRotatedDate: "", createdDate: iso(-100) },
           }),
         ],

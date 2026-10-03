@@ -88,7 +88,7 @@ describe("computePostureFindings conditions", () => {
     expect(matched(r, { public: false })).toBe(false);
     expect(matched(r, { public: "false" })).toBe(false);
     expect(matched(r, { public: 0 })).toBe(false);
-    // Unknown strings are not true-like — never alarm on data we can't read.
+    // Unknown strings are not true-like, never alarm on data we can't read.
     expect(matched(r, { public: "banana" })).toBe(false);
     expect(matched(r, {})).toBe(false);
   });
@@ -242,7 +242,7 @@ describe("computePostureFindings aggregation", () => {
         fields: { firewallIds: "" },
       },
       {
-        // Account soft-deleted (missing from accounts) — skipped entirely.
+        // Account soft-deleted (missing from accounts): skipped entirely.
         id: "r-4",
         pluginId: "aws",
         resourceTypeId: "bucket",
@@ -252,7 +252,7 @@ describe("computePostureFindings aggregation", () => {
         fields: { public: true },
       },
       {
-        // Type without rules — skipped.
+        // Type without rules: skipped.
         id: "r-5",
         pluginId: "aws",
         resourceTypeId: "queue",
@@ -402,8 +402,8 @@ describe("computePostureFindings aggregation", () => {
 
 describe("postureFindingKey", () => {
   it("cannot be collided by punctuation in either half", () => {
-    // Both halves routinely contain slashes, colons and hyphens — GCP ids are
-    // slash-paths — so a printable delimiter would be forgeable.
+    // Both halves routinely contain slashes, colons and hyphens (GCP ids are
+    // slash-paths) so a printable delimiter would be forgeable.
     expect(postureFindingKey({ resourceId: "a", ruleId: "b:c" })).not.toBe(
       postureFindingKey({ resourceId: "a:b", ruleId: "c" }),
     );

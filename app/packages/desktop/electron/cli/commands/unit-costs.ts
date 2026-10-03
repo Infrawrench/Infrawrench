@@ -1,5 +1,5 @@
 /**
- * `infrawrench unit-costs` — business metrics and what a unit of the business
+ * `infrawrench unit-costs`: business metrics and what a unit of the business
  * actually costs.
  *
  * Deliberately not `infrawrench metrics`: that verb already means "chart a
@@ -7,7 +7,7 @@
  * `unit-costs` names the question this command answers, and hyphenated
  * top-level verbs are already the house style (`status-pages`, `ssh-fanout`).
  *
- * With no argument it lists the org's metrics and how well each is being fed —
+ * With no argument it lists the org's metrics and how well each is being fed:
  * a metric nobody is reporting produces a chart made entirely of gaps, and that
  * failure is silent everywhere else. With a metric key it draws the ratio.
  *
@@ -62,7 +62,7 @@ function coverageLabel(metric: BusinessMetric): string {
   return missing > 0 ? `${reportedDays}d (${missing} missing)` : `${reportedDays}d`;
 }
 
-/** `infrawrench unit-costs` — the org's business metrics. */
+/** `infrawrench unit-costs`: the org's business metrics. */
 export async function cmdBusinessMetrics(ctx: CliContext): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
@@ -121,7 +121,7 @@ export async function cmdBusinessMetrics(ctx: CliContext): Promise<void> {
   );
 }
 
-/** `infrawrench unit-costs <metric>` — the ratio over time. */
+/** `infrawrench unit-costs <metric>`: the ratio over time. */
 export async function cmdUnitCosts(
   ctx: CliContext,
   metric: string,
@@ -157,7 +157,7 @@ export async function cmdUnitCosts(
     ...(basis ? { costBasis: basis } : {}),
     ...(displayCurrency ? { displayCurrency } : {}),
   };
-  // Set only when asked, so a `false` never reaches the wire — "absent means
+  // Set only when asked, so a `false` never reaches the wire: "absent means
   // unit cost" is the contract, and sending the default would make every
   // request differ from the one an older client sends for no behavioural reason.
   if (margin) request.mode = "margin";
@@ -169,7 +169,7 @@ export async function cmdUnitCosts(
   );
 
   if (ctx.flags.output === "json") {
-    // The resolved inputs first, then the response — but the response's own
+    // The resolved inputs first, then the response, but the response's own
     // `metric` and `binning` are the authoritative ones (the server resolved a
     // key into the full metric), so they are spread last and the echoed
     // request keys are named distinctly.
@@ -239,7 +239,7 @@ export async function cmdUnitCosts(
 
   for (const series of response.series) {
     const label = unitCostRatioLabel(mode, series.currency, response.metric.unit);
-    // The sparkline can only draw numbers, so gaps are dropped from it — which
+    // The sparkline can only draw numbers, so gaps are dropped from it, which
     // is why the table below it is the authoritative rendering and prints every
     // bucket, gap included.
     const drawn = series.points.map((p) => p.value).filter((v): v is number => v !== null);

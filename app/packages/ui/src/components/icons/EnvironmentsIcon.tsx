@@ -4,7 +4,7 @@ interface EnvironmentsIconProps {
 }
 
 /**
- * Ephemeral-environments glyph — a box with an hourglass beside it: a stack
+ * Ephemeral-environments glyph; a box with an hourglass beside it: a stack
  * you stamp out, and the clock that takes it away. Same 24x24 stroke grid and
  * 2px weight as ProbesIcon/ExpiryIcon so the sidebar entry sits level with its
  * neighbours. (Lucide's "package" body with an "hourglass" mark.)

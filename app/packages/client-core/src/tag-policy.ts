@@ -1,12 +1,12 @@
 /**
- * Org tag policy, tag compliance, and cost-centre allocation — the pure
+ * Org tag policy, tag compliance, and cost-centre allocation: the pure
  * contract shared by web, desktop, mobile, the CLI, and the server (the
  * ClickHouse readers and the create-time enforcement both import from here,
  * exactly the way the cost query vocabulary in `costs.ts` is shared).
  *
  * A tag policy is a list of required tag keys, each optionally restricted to a
- * set of allowed values. Resources are generic records — the host never knows
- * provider shapes — so "does this resource carry a tag" is answered by a
+ * set of allowed values. Resources are generic records (the host never knows
+ * provider shapes) so "does this resource carry a tag" is answered by a
  * documented convention: a field named `tags` or `labels` (case-insensitive)
  * in one of the shapes providers actually use (a string map, a JSON-encoded
  * map, a `k=v` list). Plugins that surface tags under those keys get policy
@@ -28,7 +28,7 @@ export interface TagPolicy {
    * When true, resource creation through the app is rejected (HTTP 422,
    * code `tag_policy_unmet`) if the submitted fields carry a tag map that is
    * missing a required tag. Types whose create form has no tag field are
-   * exempt — a policy cannot demand what a provider cannot store.
+   * exempt: a policy cannot demand what a provider cannot store.
    */
   enforceOnCreate: boolean;
 }
@@ -133,7 +133,7 @@ function tagsFromUnknown(value: unknown): Record<string, string> | null {
 /**
  * Extract the tag map from a generic stored record (a resource's fields, or a
  * create form's submitted values). Returns `null` when the record carries no
- * tag-shaped field at all — "cannot be tagged" — as opposed to `{}` for a tag
+ * tag-shaped field at all ("cannot be tagged") as opposed to `{}` for a tag
  * field that is present but empty ("taggable, untagged").
  */
 export function extractRecordTags(
@@ -240,8 +240,8 @@ export interface CostCentre {
   description: string | null;
   /**
    * The centre this one sits under; null is a top-level centre. Nesting is a
-   * reporting structure — "what does Engineering cost" is the subtree, not one
-   * bucket — and changes nothing about matching: allocation still resolves
+   * reporting structure ("what does Engineering cost" is the subtree, not one
+   * bucket) and changes nothing about matching: allocation still resolves
    * every cost row to exactly one centre. An org that never sets a parent is a
    * flat list of roots and reports exactly as it did before this field existed.
    */
@@ -275,7 +275,7 @@ export function costCentreDepths(centres: readonly CostCentre[]): Map<string, nu
     const centre = byId.get(id);
     const parentId = centre?.parentId ?? null;
     // A parent that is missing (deleted, cross-org) or part of a cycle makes
-    // this centre a root rather than an unreachable node — spend never hides.
+    // this centre a root rather than an unreachable node: spend never hides.
     const depth =
       parentId === null || parentId === id || !byId.has(parentId) || seen.has(parentId)
         ? 0
@@ -292,15 +292,15 @@ export function costCentreDepths(centres: readonly CostCentre[]): Map<string, nu
 export interface CostCentrePathRow {
   id: string;
   name: string;
-  /** "Engineering → Platform" — unambiguous where indentation alone is not. */
+  /** "Engineering → Platform": unambiguous where indentation alone is not. */
   path: string;
   /** 0 for a root. */
   depth: number;
 }
 
 /**
- * The org's centres in depth-first order — each immediately followed by its
- * children, siblings name-sorted — with the full path to each.
+ * The org's centres in depth-first order (each immediately followed by its
+ * children, siblings name-sorted) with the full path to each.
  *
  * One implementation for the settings tree, the move picker and the rule
  * editor's centre dropdown, so "Platform" under Engineering never reads as the
@@ -338,7 +338,7 @@ export function costCentrePaths(centres: readonly CostCentre[]): CostCentrePathR
   return rows;
 }
 
-/** Levels in the subtree rooted at `centreId`, counting itself — a leaf is 1. */
+/** Levels in the subtree rooted at `centreId`, counting itself: a leaf is 1. */
 function costCentreSubtreeHeight(centres: readonly CostCentre[], centreId: string): number {
   const children = new Map<string, string[]>();
   for (const c of centres) {
@@ -359,13 +359,13 @@ function costCentreSubtreeHeight(centres: readonly CostCentre[], centreId: strin
 
 /**
  * Why placing `subjectId` (null when creating a new centre) under
- * `newParentId` is not allowed — or null when it is.
+ * `newParentId` is not allowed, or null when it is.
  *
  * This is the rule the server enforces with a 400 on POST/PUT
  * /cost-centres, shared here so the move picker greys out exactly the targets
  * the server would reject:
  *
- * - the parent must exist (in the caller's org — the server only ever passes
+ * - the parent must exist (in the caller's org: the server only ever passes
  *   the org's own centres in);
  * - a centre cannot be moved inside itself or one of its descendants, the only
  *   way `parent_id` could ever form a cycle;
@@ -438,7 +438,7 @@ export interface AllocationRuleInput {
 export const ALLOCATION_RULE_LIMITS = { maxRules: 200 } as const;
 
 /**
- * The org's rules in evaluation order — the order the showback reader compiles
+ * The org's rules in evaluation order: the order the showback reader compiles
  * into its single `multiIf`, and the order the settings UI must display so
  * "first match wins" means what the list shows.
  *
@@ -512,7 +512,7 @@ export interface ShowbackReportCentre {
   totals: Record<string, number>;
   /**
    * Currency → this centre's `totals` plus every descendant's. Equal to
-   * `totals` for a leaf, and for every centre in an org that never nests —
+   * `totals` for a leaf, and for every centre in an org that never nests,
    * which is what makes an existing flat report byte-identical apart from the
    * added fields. "Engineering, of which Platform" needs both numbers, so both
    * are reported rather than only the sum.
@@ -538,7 +538,7 @@ export interface ShowbackReport {
   /**
    * Set when the amounts above were converted into the org's display currency.
    * Absent means they are exactly as collected. See `CostConversion` in
-   * `./costs` — a chargeback number that silently mixed currencies would be
+   * `./costs`: a chargeback number that silently mixed currencies would be
    * billed to a team that could not reconcile it.
    */
   conversion?: CostConversion;
@@ -566,8 +566,8 @@ function addTotals(into: Record<string, number>, from: Record<string, number>): 
  * The query resolves each cost row to exactly one centre id; the rollup here is
  * pure arithmetic on top of that, which is what keeps the report to one scan of
  * `cost_daily` no matter how deep the tree is. Every defined centre appears,
- * even at zero — a centre missing from a chargeback report reads as data loss,
- * not an empty bucket — and unmatched spend keeps its own first-class row.
+ * even at zero (a centre missing from a chargeback report reads as data loss,
+ * not an empty bucket) and unmatched spend keeps its own first-class row.
  *
  * Malformed trees degrade rather than vanish: a centre whose parent is missing,
  * self-referencing, or part of a cycle is emitted as a root, so no amount can
@@ -599,7 +599,7 @@ export function buildShowbackCentres(
   const out: ShowbackReportCentre[] = [];
   const emitted = new Set<string>();
 
-  // Post-order for the subtree sums, pre-order for the emitted rows — one walk
+  // Post-order for the subtree sums, pre-order for the emitted rows; one walk
   // does both: push the row, recurse, then fold the children's sums back in.
   const walk = (centre: CostCentre, depth: number): Record<string, number> => {
     emitted.add(centre.id);
@@ -622,7 +622,7 @@ export function buildShowbackCentres(
   };
 
   for (const root of roots) walk(root, 0);
-  // Anything left is inside a cycle — surface it as a root rather than lose it.
+  // Anything left is inside a cycle: surface it as a root rather than lose it.
   for (const centre of byName) if (!emitted.has(centre.id)) walk(centre, 0);
 
   if (unallocatedTotals && Object.keys(unallocatedTotals).length > 0) {
@@ -646,7 +646,7 @@ export function buildShowbackCentres(
  * `null` is overloaded in `ShowbackReportCentre`: it marks both "no parent"
  * (`parentId`) and "the synthetic Unallocated row" (`costCentreId`). Naively
  * testing `other.parentId === centre.costCentreId` lets those meanings
- * collide — every root's `parentId` is `null`, so the Unallocated row (whose
+ * collide: every root's `parentId` is `null`, so the Unallocated row (whose
  * own `costCentreId` is also `null`) reads every root as its child. Requiring
  * `centre.costCentreId` to be non-null first closes that hole and, as a side
  * effect, makes Unallocated correctly report no children at all: its total

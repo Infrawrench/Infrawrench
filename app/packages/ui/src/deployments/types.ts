@@ -112,8 +112,8 @@ export interface DeployStartOptions {
 }
 
 /**
- * Transport contract. Only the web implements it today — the CLI runs the same
- * stages locally rather than through an API — but keeping the panel behind an
+ * Transport contract. Only the web implements it today (the CLI runs the same
+ * stages locally rather than through an API) but keeping the panel behind an
  * interface is what let workflows grow a second (desktop) client later.
  */
 export interface DeploymentClient {
@@ -128,7 +128,7 @@ export interface DeploymentClient {
   ): Promise<{ runId: string; result: DeployRunResult }>;
   listRuns(env?: string): Promise<DeploymentRunRow[]>;
   /**
-   * Ship a past run's artifact again. Builds nothing — see the Infrafile docs
+   * Ship a past run's artifact again. Builds nothing: see the Infrafile docs
    * for why a rollback replays rather than reconstructs.
    */
   rollback(runId: string): Promise<{ runId: string; result: DeployRunResult }>;
@@ -144,7 +144,7 @@ export interface DeploymentClient {
   annotateCostImpact?(runId: string): Promise<void>;
   listTriggers(): Promise<DeployTrigger[]>;
   createTrigger(input: DeployTriggerInput): Promise<DeployTrigger>;
-  /** Only `enabled` is editable — the rest is identity, so recreate instead. */
+  /** Only `enabled` is editable: the rest is identity, so recreate instead. */
   updateTrigger(id: string, input: { enabled: boolean }): Promise<DeployTrigger>;
   deleteTrigger(id: string): Promise<void>;
 }

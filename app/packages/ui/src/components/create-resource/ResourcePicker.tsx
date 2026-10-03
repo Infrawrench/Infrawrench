@@ -52,7 +52,7 @@ export function ResourcePicker({
     }
   };
 
-  // In reference mode the form value is an encoded ref — match the selected row
+  // In reference mode the form value is an encoded ref: match the selected row
   // by its resource id. Otherwise match by the literal output value.
   const refValue = referenceMode ? parseOutputRef(value) : null;
   const selectedResource = referenceMode

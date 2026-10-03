@@ -13,8 +13,8 @@ export interface CaptureTemplateModalProps {
 
 /**
  * Capture a template in two steps, because the second one needs the first
- * one's answer: pick what to look at, then — over the draft the server built
- * from each plugin's own create-field metadata — choose which fields the
+ * one's answer: pick what to look at, then (over the draft the server built
+ * from each plugin's own create-field metadata) choose which fields the
  * template should let you vary.
  *
  * The preview is deliberately a separate round-trip that persists nothing. It

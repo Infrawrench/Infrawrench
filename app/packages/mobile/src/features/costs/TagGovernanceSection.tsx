@@ -20,7 +20,7 @@ function formatTotals(totals: Record<string, number>): string {
 /**
  * Native counterpart to the tag governance section on web and desktop:
  * per-account compliance with the org tag policy and the share of spend
- * missing a required tag key. Read-only — the policy and allocation rules
+ * missing a required tag key. Read-only: the policy and allocation rules
  * are edited in the web app's org settings, the same deliberate omission as
  * anomaly threshold tuning.
  */
@@ -62,7 +62,7 @@ export function TagGovernanceSection() {
         </>
       )}
 
-      {/* Hidden entirely for an org with a centre tree but no tag policy —
+      {/* Hidden entirely for an org with a centre tree but no tag policy:
           an empty compliance card is worse than no card. */}
       {(hasPolicy || compliance.isLoading || compliance.isError) && (
         <>
@@ -123,8 +123,8 @@ export function TagGovernanceSection() {
 }
 
 /**
- * One row of the showback tree. A parent shows its subtree total — the number
- * "what does Engineering cost" is asking for — with its own directly-allocated
+ * One row of the showback tree. A parent shows its subtree total (the number
+ * "what does Engineering cost" is asking for) with its own directly-allocated
  * spend underneath; a leaf shows the one number it has. Indentation is the only
  * tree affordance: the phone is read-only here.
  */

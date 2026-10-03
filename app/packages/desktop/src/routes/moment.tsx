@@ -23,7 +23,7 @@ export const Route = createFileRoute("/moment")({
 });
 
 /**
- * The moment view on desktop — the same panel web renders, over the
+ * The moment view on desktop: the same panel web renders, over the
  * `cloud_moment` IPC. A plain route rather than a workspace tab, for the same
  * reasons as Changes: no per-instance state worth keeping mounted, and the
  * page is cloud-only so a restored tab could outlive its org. The guard below
@@ -90,7 +90,7 @@ function MomentPage() {
         void navigate({ to: "/changes" });
         break;
       // Desktop has no audit-log or change-freeze screens (org settings are
-      // web-only) — those events stay in the timeline without navigation.
+      // web-only): those events stay in the timeline without navigation.
       default:
         break;
     }

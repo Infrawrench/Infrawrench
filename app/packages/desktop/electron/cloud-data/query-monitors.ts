@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Query monitors — cloud only, and not merely because the rows are org state:
+// Query monitors: cloud only, and not merely because the rows are org state:
 // the schedule is run by the cloud poller, so a monitor created on one laptop
 // would only run while that laptop was open. The panel says so.
 

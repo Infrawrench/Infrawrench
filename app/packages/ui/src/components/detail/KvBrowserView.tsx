@@ -21,7 +21,7 @@ interface Props {
 /**
  * Returns true when a string contains the kind of control characters / NULs
  * that suggest the underlying value isn't actually UTF-8 text. We don't try
- * to be a binary editor — when this fires we surface a banner and disable
+ * to be a binary editor, when this fires we surface a banner and disable
  * the save button so users don't accidentally corrupt the value.
  */
 function looksBinary(value: string): boolean {
@@ -72,7 +72,7 @@ export function KvBrowserView({
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Latest list-call token — used to ignore late responses when the user
+  // Latest list-call token: used to ignore late responses when the user
   // re-filters mid-flight (otherwise stale results overwrite fresh ones).
   const listTokenRef = useRef(0);
 
@@ -196,7 +196,7 @@ export function KvBrowserView({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header — namespace label + filter + add button */}
+      {/* Header: namespace label + filter + add button */}
       <div className="shrink-0 px-4 py-3 border-b border-border flex gap-2 items-center">
         {capability.namespaceLabel && (
           <span
@@ -252,7 +252,7 @@ export function KvBrowserView({
       )}
 
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Left column — key list */}
+        {/* Left column: key list */}
         <div className="w-72 shrink-0 border-r border-border flex flex-col overflow-hidden">
           <div className="flex-1 overflow-auto">
             {!initialized && loading ? (
@@ -311,7 +311,7 @@ export function KvBrowserView({
           )}
         </div>
 
-        {/* Right column — value editor */}
+        {/* Right column: value editor */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {!selectedKey ? (
             <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm">

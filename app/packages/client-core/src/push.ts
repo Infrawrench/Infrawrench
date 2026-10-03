@@ -21,7 +21,7 @@ export interface PushDeviceSummary {
 }
 
 /**
- * The notification `data` payload the server sends — the deep-link contract.
+ * The notification `data` payload the server sends: the deep-link contract.
  * Mirrors server-core `push/types.ts` PushData.
  */
 export type PushNotificationData =
@@ -76,7 +76,7 @@ export type PushNotificationData =
     }
   | {
       /**
-       * A commitment is about to lapse (or already has) — see server-core
+       * A commitment is about to lapse (or already has): see server-core
        * `commitments/expiry-eval.ts`.
        *
        * Target route: the Costs tab, where the commitments section lists the
@@ -93,7 +93,7 @@ export type PushNotificationData =
   | {
       /**
        * A commitment stayed under its utilization threshold for a whole
-       * window — see server-core `commitments/idle-eval.ts`.
+       * window: see server-core `commitments/idle-eval.ts`.
        *
        * Target route: the Costs tab.
        */
@@ -101,13 +101,13 @@ export type PushNotificationData =
       orgId: string;
       accountId: string;
       commitmentId: string;
-      /** The month the window ended in, "YYYY-MM" — the dedup key. */
+      /** The month the window ended in, "YYYY-MM": the dedup key. */
       periodKey: string;
     }
   | {
       /**
        * Cost per unit of a business metric rose past its threshold against
-       * the prior window — see server-core `cost/unit-cost-regression-eval.ts`.
+       * the prior window: see server-core `cost/unit-cost-regression-eval.ts`.
        *
        * Target route: the Costs tab, where the unit-costs section charts the
        * metric.
@@ -115,13 +115,13 @@ export type PushNotificationData =
       type: "unit_cost_regression";
       orgId: string;
       metricId: string;
-      /** Last day of the current window, YYYY-MM-DD (UTC) — the dedup key. */
+      /** Last day of the current window, YYYY-MM-DD (UTC): the dedup key. */
       windowTo: string;
       currency: string;
     }
   | {
       /**
-       * A metric threshold alert rule fired (or recovered) on one resource —
+       * A metric threshold alert rule fired (or recovered) on one resource:
        * "CPU > 90% for 15 minutes" (see server-core `metric-alerts/eval.ts`).
        *
        * Target route: the resource's detail view when it still exists,
@@ -145,11 +145,11 @@ export type PushNotificationData =
       /**
        * A batched digest of the change timeline: every resource that appeared,
        * changed or disappeared since the previous drift notification. Never one
-       * notification per change — the server batches a whole window into this
+       * notification per change: the server batches a whole window into this
        * single payload (see server-core `drift/alerts.ts`).
        *
        * Target route: the mobile **Changes** screen,
-       * `/org/{orgId}/changes` — scoped to `accountId` when present and, ideally,
+       * `/org/{orgId}/changes`; scoped to `accountId` when present and, ideally,
        * filtered to `createdAt > since` so the screen opens on exactly the
        * window the notification described.
        */
@@ -160,7 +160,7 @@ export type PushNotificationData =
        * larger window reports the ceiling rather than the true total.
        */
       changeCount: number;
-      /** ISO timestamp of the window start — the `from` filter for the feed. */
+      /** ISO timestamp of the window start: the `from` filter for the feed. */
       since: string;
       /** Present only when every change in the window came from one account. */
       accountId?: string;
@@ -218,7 +218,7 @@ export type PushNotificationData =
     }
   | {
       /**
-       * A daily digest of approaching deadlines on synced resources — expiring
+       * A daily digest of approaching deadlines on synced resources: expiring
        * TLS certificates, domain registrations, API tokens, keys past their
        * rotation budget (see server-core `expiry/alerts.ts`). Never one
        * notification per deadline: the server batches everything inside the
@@ -285,7 +285,7 @@ export type PushNotificationData =
     }
   | {
       /**
-       * Somebody declared, mitigated or resolved an incident — the declared
+       * Somebody declared, mitigated or resolved an incident: the declared
        * kind, not a provider status incident (that one is `provider_incident`).
        *
        * Target route: the incident's own screen, `/org/{orgId}/incidents/{id}`.

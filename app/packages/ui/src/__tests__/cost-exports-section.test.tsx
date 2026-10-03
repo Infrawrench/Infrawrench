@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 beforeAll(() => {
-  // jsdom doesn't implement <dialog> showModal/close — stub them, the way
+  // jsdom doesn't implement <dialog> showModal/close: stub them, the way
   // issue-filing.test.tsx does. The export editor renders through Modal.
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
@@ -22,7 +22,7 @@ import { SettingsHostProvider, type SettingsHostValue } from "../settings/host.j
 
 /**
  * The restatement window is a number the user types, and `Number("")` is `0`.
- * Zero is a real setting here — "never re-export a period" — so a field
+ * Zero is a real setting here ("never re-export a period") so a field
  * cleared mid-edit coercing to it would quietly turn restatement off in the
  * request body without anybody asking for that. These tests pin the guard on
  * both sides: the parse helper, and the wiring that decides what gets saved.

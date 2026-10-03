@@ -1,6 +1,6 @@
 /**
  * Cloud endpoints and OAuth client. Values mirror the desktop app's
- * `env.production.ts` — the mobile app always targets the production cloud;
+ * `env.production.ts`: the mobile app always targets the production cloud;
  * point CLOUD_URL at a dev tunnel when developing against a local server.
  */
 export const CLIENT_ID = "client_01KY8MAZ7NCYMN6K44G9FFZ5KS";
@@ -12,7 +12,7 @@ export const WORKOS_API_URL = "https://auth-api.infrawrench.com";
  * workflow pages can break through the ringer switch as well as Do Not Disturb.
  *
  * Off until Apple approves the critical-alerts entitlement and it is declared
- * in `app.config.ts` — a build without it cannot be granted the permission. Two
+ * in `app.config.ts`: a build without it cannot be granted the permission. Two
  * things make this a one-way door rather than a toggle, so flip it in the same
  * change as the entitlement:
  *

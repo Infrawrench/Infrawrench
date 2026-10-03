@@ -12,7 +12,7 @@ import { Button, Separator } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /**
- * The filter rules a cost graph or a budget scopes itself with — mobile's
+ * The filter rules a cost graph or a budget scopes itself with: mobile's
  * counterpart of web's `CostFilterRows`.
  *
  * Web renders a dimension select, an operator select, and a searchable

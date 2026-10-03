@@ -24,14 +24,14 @@ function useStatusLabels(gt: ReturnType<typeof useGT>): Record<SessionRecordingS
 }
 
 /**
- * Recorded SSH sessions — the org's policy, what it currently stores, and the
+ * Recorded SSH sessions: the org's policy, what it currently stores, and the
  * tapes themselves.
  *
  * Only cloud-mode SSH is recordable, and that is not a limitation to apologise
  * for: it is the reason the feature is cheap. Those sessions are already
  * proxied through the server, so recording tees a stream we hold rather than
  * asking anyone to install an agent. A desktop session that dials the host
- * directly never touches us and cannot be recorded by us — the section says so
+ * directly never touches us and cannot be recorded by us: the section says so
  * rather than letting an operator assume coverage they do not have.
  */
 export function SessionRecordingsSection() {
@@ -189,7 +189,7 @@ export function SessionRecordingsSection() {
               onBlur={(e) => {
                 const raw = e.target.value.trim();
                 // Empty/partial input: Number('') is 0 and Number('12.') is
-                // not an integer — neither should silently ship to the API.
+                // not an integer; neither should silently ship to the API.
                 const days = raw === "" ? NaN : Number(raw);
                 if (
                   !Number.isInteger(days) ||
@@ -353,7 +353,7 @@ function Header() {
  * Fetch and play one cast.
  *
  * The document is fetched here rather than in the list so that opening a
- * session is what costs a download — a page listing 200 recordings must not
+ * session is what costs a download: a page listing 200 recordings must not
  * pull 200 tapes. Fetched through the host's `api.get` in text form is not
  * possible (it parses JSON), so this uses `fetch` with the same credentials
  * the rest of the web host uses, and falls back to a plain download link on

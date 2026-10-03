@@ -30,7 +30,7 @@ function describeCpu(): string {
 }
 
 // Fires a single fire-and-forget telemetry ping. Any failure (network, server,
-// missing URL) is swallowed — telemetry must never affect app startup.
+// missing URL) is swallowed: telemetry must never affect app startup.
 export function reportTelemetry(): void {
   try {
     if (!TELEMETRY_URL) return;

@@ -7,15 +7,15 @@
  * can honour that: every one of them awaits a websocket token before it opens a
  * socket, so the assignment landed a microtask later and the Stop button never
  * appeared at all. Handing the transport a controller the caller already holds
- * removes the ordering question entirely — there is nothing to read back, so
+ * removes the ordering question entirely: there is nothing to read back, so
  * there is no moment at which reading it is too early.
  *
  * It also decides what an early stop means. A deploy is stoppable from the
  * instant the user asks for it: a click that arrives before the socket is up is
  * remembered and flushed the moment the transport arms the channel, rather than
  * being dropped or hidden behind a disabled button. That window is short but it
- * is exactly the window a user is most likely to change their mind in — they
- * have just clicked Deploy — and a Stop button that silently does nothing is
+ * is exactly the window a user is most likely to change their mind in (they
+ * have just clicked Deploy) and a Stop button that silently does nothing is
  * the bug this whole module exists to fix.
  *
  * Deliberately not reactive: with an early stop queued there is no "not ready

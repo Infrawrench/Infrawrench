@@ -16,7 +16,7 @@ import { colors, spacing } from "@/lib/theme";
  * One saved cost report, read-only.
  *
  * The chart is the same {@link CostGraphCard} a dashboard cost widget uses,
- * pointed at the report's stored config — a report *is* that config with a
+ * pointed at the report's stored config: a report *is* that config with a
  * name, so drawing it any other way would be a second implementation of the
  * same picture.
  *
@@ -26,8 +26,8 @@ import { colors, spacing } from "@/lib/theme";
  * depend on by accident. Delivery schedules follow the same rule: shown with
  * their last-send status, created and edited on web/desktop only. Annotations
  * likewise: the chart draws this report's notes and the org-wide ones, and the
- * text is a tap away, but writing one — which can change what every chart in
- * the org shows — stays on web and desktop.
+ * text is a tap away, but writing one (which can change what every chart in
+ * the org shows) stays on web and desktop.
  */
 export default function CostReportDetailRoute() {
   const router = useRouter();

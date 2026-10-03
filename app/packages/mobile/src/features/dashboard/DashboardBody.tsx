@@ -45,7 +45,7 @@ export interface DashboardData {
   widgets: DashboardWidget[];
 }
 
-/** Shape of GET /api/org/:orgId/dashboards/pin/:pinId — enriched resource pin. */
+/** Shape of GET /api/org/:orgId/dashboards/pin/:pinId: enriched resource pin. */
 interface PinDetail {
   pinId: string;
   resourceId: string;
@@ -78,7 +78,7 @@ function failedPinDetail(pinId: string, error: unknown): PinDetail {
 /**
  * Refresh what the cards fetch for themselves. A screen's pull-to-refresh
  * refetches its own dashboard query and calls this for everything hanging off
- * it — pin probes, budget rows, collection status, and the cost queries.
+ * it: pin probes, budget rows, collection status, and the cost queries.
  */
 export function invalidateDashboardQueries(client: QueryClient): void {
   for (const key of [
@@ -98,7 +98,7 @@ export function invalidateDashboardQueries(client: QueryClient): void {
  * `null` (the default) renders exactly what it always did.
  */
 export interface DashboardEditing {
-  /** The whole grid in its new order — resource, workflow, and widget cards. */
+  /** The whole grid in its new order: resource, workflow, and widget cards. */
   onReorder: (order: DashboardCardRef[]) => void;
   onRemove: (card: DashboardCardRef) => void;
   /** Only widgets are configurable; a pin has nothing to edit. */
@@ -113,7 +113,7 @@ function formatMetricValue(value: unknown, unit: string | null): string {
 }
 
 /**
- * One dashboard's cards, in the order web and desktop render them — the home
+ * One dashboard's cards, in the order web and desktop render them: the home
  * tab shows the org's default dashboard with this, exactly as the web app's
  * home route does, and the dashboard route shows any other one.
  *
@@ -138,7 +138,7 @@ export function DashboardBody({
     enabled: pinIds.length > 0,
     queryFn: async () =>
       // One unreachable pin must not blank the whole dashboard, but it must
-      // not silently vanish either — a failed fetch becomes an error card.
+      // not silently vanish either: a failed fetch becomes an error card.
       Promise.all(
         pinIds.map((id) =>
           api
@@ -198,7 +198,7 @@ export function DashboardBody({
   /**
    * Wrap a card in its edit strip. The order the strip moves cards through is
    * the rendered order, so an arrow always swaps with the neighbour above or
-   * below on screen — the three tables' own `gridX` values never surface here.
+   * below on screen: the three tables' own `gridX` values never surface here.
    */
   const withControls = (index: number, ref: DashboardCardRef, node: ReactNode): ReactNode => {
     if (!editing) return node;
@@ -224,11 +224,11 @@ export function DashboardBody({
             disabled={index === cards.length - 1 || editing.busy}
             onPress={() => move(1)}
           />
-          {/* Custom graphs have no phone-side config — their script is edited
+          {/* Custom graphs have no phone-side config: their script is edited
               on web/desktop, and the card's controls live on the card. */}
           {ref.kind === "widget" &&
           widgets.find((w) => w.id === ref.id)?.kind !== "custom_graph" &&
-          // A cost_report card holds only a reportId — there is nothing on it
+          // A cost_report card holds only a reportId: there is nothing on it
           // to configure. Editing the report changes every dashboard showing
           // it, so it happens on the report's own page, not on one card.
           widgets.find((w) => w.id === ref.id)?.kind !== "cost_report" ? (

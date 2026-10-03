@@ -22,12 +22,12 @@ const SEVERITY_CLASS: Record<HygieneSeverity, string> = {
 };
 
 /**
- * Credential hygiene — the credentials this organization is carrying that it
+ * Credential hygiene: the credentials this organization is carrying that it
  * probably should not be.
  *
  * Every finding here is derived from data the server already holds: no
  * provider call, nothing to enable, no agent. The page's job beyond listing
- * them is to be honest about what the evidence can and cannot support — the
+ * them is to be honest about what the evidence can and cannot support: the
  * audit log records writes, not reads, so the report says nothing about read
  * permissions and says so out loud rather than letting a reader assume
  * coverage that isn't there.

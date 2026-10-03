@@ -15,14 +15,14 @@ import { Button, Card, Row, RowGroup, SectionTitle } from "@/components/ui";
 import { colors, spacing } from "@/lib/theme";
 
 /**
- * The per-resource **Dependencies** view — what this resource points at, and
- * what points at it — mirroring the tab web and desktop render with
+ * The per-resource **Dependencies** view (what this resource points at, and
+ * what points at it) mirroring the tab web and desktop render with
  * `ResourceDependenciesPanel`. The traversal is not reimplemented: the raw
  * node/edge lists go straight into `buildDependencyGraph` + `directDependencies`
  * from `@infrawrench/client-core`, so a phone and a laptop agree on the wiring.
  *
  * The fetch is the endpoint's **focused** form (`?resourceId=`), which is one
- * hop deep by design — that is all two neighbour lists need, and it keeps the
+ * hop deep by design: that is all two neighbour lists need, and it keeps the
  * busiest screen in the app off the org's whole topology. A transitive blast
  * radius needs the org-wide graph, so it lives one tap away on its own screen
  * rather than being paid for on every resource open.

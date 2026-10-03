@@ -4,7 +4,7 @@ interface CalendarIconProps {
 }
 
 /**
- * Operations-calendar glyph — a month block with two marked days, one of them
+ * Operations-calendar glyph: a month block with two marked days, one of them
  * a span. Same 24x24 stroke grid and 2px weight as BackupsIcon/PostureIcon so
  * the Calendar sidebar entry sits level with its neighbours.
  */

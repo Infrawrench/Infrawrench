@@ -9,12 +9,12 @@ export interface SerializedRowsOptions<Row> {
   parse: (value: string) => Row[];
   /** Turn editable rows back into a field value. Must ignore row ids. */
   serialize: (rows: Row[]) => string;
-  /** Rows to show when `value` parses to nothing — e.g. one blank row. */
+  /** Rows to show when `value` parses to nothing, e.g. one blank row. */
   blankRows: () => Row[];
 }
 
 /**
- * Row state for the editors whose field value is a serialized blob —
+ * Row state for the editors whose field value is a serialized blob:
  * `StringListPicker` (comma list), `KeyValueListPicker` (JSON array),
  * `JsonSchemaEditor` (JSON Schema). They keep rows locally so each one can
  * carry a stable id and an in-progress, not-yet-serializable value (a blank
@@ -23,7 +23,7 @@ export interface SerializedRowsOptions<Row> {
  * The reason this is shared rather than three copies: seeding row state from
  * `value` only at mount silently drops anything the parent writes afterwards.
  * A React parent's effects run *after* its children's, so a value the parent
- * computes in an effect — the create modal's `key=` tag-policy stubs — always
+ * computes in an effect (the create modal's `key=` tag-policy stubs) always
  * lands after the picker has already snapshotted the empty value, leaving the
  * form state and the visible rows disagreeing (#116). The same applies to a
  * field action that mints a value and to the form reset when the create

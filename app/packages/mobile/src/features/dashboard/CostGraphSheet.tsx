@@ -27,13 +27,13 @@ import { CostFilterEditor, useDimensionValues } from "./CostFilterEditor";
 import { SavedFilterChip } from "./SavedFilterChip";
 
 /**
- * Author a cost-graph widget — the native counterpart of web's
+ * Author a cost-graph widget: the native counterpart of web's
  * `CostGraphConfigModal`, over the same `CostGraphConfig` and the same
  * defaults, so a graph made on a phone opens unchanged on the web.
  *
  * The one thing web has that a sheet this size can't carry is the custom
  * absolute date range: two date pickers push everything else off the screen,
- * and a widget saved with one keeps it — the presets simply don't offer it, and
+ * and a widget saved with one keeps it; the presets simply don't offer it, and
  * an absolute range that's already set is shown and left alone.
  */
 
@@ -82,7 +82,7 @@ export function CostGraphSheet({
       ...config,
       topN,
       // An empty rule matches everything, which is not what an operator who
-      // added a row and picked nothing meant — drop it rather than save it.
+      // added a row and picked nothing meant: drop it rather than save it.
       filters: config.filters.filter((f) => f.values.length > 0),
     };
     if (cleaned.groupBy === "tag" && !cleaned.groupByTagKey) {

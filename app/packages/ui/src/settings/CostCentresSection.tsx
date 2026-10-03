@@ -14,15 +14,15 @@ import { useSettingsHost } from "./host.js";
 /**
  * Cost centre management: the tree spend is allocated to for showback.
  *
- * Centres nest — a division holds teams, a team holds products — so "what does
+ * Centres nest (a division holds teams, a team holds products) so "what does
  * Engineering cost" is a subtree rather than one bucket. Nesting changes
  * nothing about matching: the allocation rules on the Tag Policy page still
  * evaluate first-match-wins and every cost row is allocated to exactly one
  * centre. What nesting adds is the rollup on the Costs panel, where a parent
  * reports its own spend and its subtree's separately.
  *
- * Move targets are greyed out with `costCentreMoveBlocker` — the same function
- * the server enforces with a 400 — so the picker offers exactly what will be
+ * Move targets are greyed out with `costCentreMoveBlocker` (the same function
+ * the server enforces with a 400) so the picker offers exactly what will be
  * accepted.
  */
 export function CostCentresSection() {
@@ -78,7 +78,7 @@ export function CostCentresSection() {
     return counts;
   }, [centres]);
 
-  /** Resolves true only when the centre was created — the form clears on that. */
+  /** Resolves true only when the centre was created: the form clears on that. */
   async function addCentre(name: string, parentId: string | null): Promise<boolean> {
     setBusyId("__new__");
     try {
@@ -139,7 +139,7 @@ export function CostCentresSection() {
       ? (centres.find((c) => c.id === centre.parentId)?.name ?? gt("its parent"))
       : null;
 
-    // The confirmation says exactly where the pieces land — children move up
+    // The confirmation says exactly where the pieces land: children move up
     // one level, spend history is untouched, and only the rules go away.
     const lines = [gt('Delete cost centre "{name}"?', { name: centre.name })];
     if (childCount > 0) {
@@ -336,8 +336,8 @@ export function CostCentresSection() {
 
 /**
  * The create form, which owns the two fields nothing else on the page reads.
- * The draft name survives a failed create — a rejected POST leaves what you
- * typed where it was — so the form clears only on the `true` the section
+ * The draft name survives a failed create (a rejected POST leaves what you
+ * typed where it was) so the form clears only on the `true` the section
  * returns when the centre actually exists.
  */
 function AddCentreForm({
@@ -413,9 +413,9 @@ function AddCentreForm({
 }
 
 /**
- * The move picker. Every target the server would reject — an unknown parent,
+ * The move picker. Every target the server would reject (an unknown parent,
  * the centre's own subtree, anything that would push the subtree past the depth
- * cap — is disabled by the shared blocker rather than by a second rule written
+ * cap) is disabled by the shared blocker rather than by a second rule written
  * here that could drift from it.
  */
 function MoveSelect({

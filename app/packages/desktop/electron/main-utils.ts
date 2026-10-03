@@ -5,8 +5,8 @@ import path from "node:path";
 
 let _encryptionKey: Buffer | null = null;
 
-// master.key       — legacy plaintext base64 (older installs)
-// master.key.enc   — base64 of safeStorage.encryptString(rawKeyB64)
+// master.key       - legacy plaintext base64 (older installs)
+// master.key.enc   - base64 of safeStorage.encryptString(rawKeyB64)
 // Reads prefer .enc and opportunistically upgrade a legacy plaintext file.
 const LEGACY_KEY_FILENAME = "master.key";
 const ENCRYPTED_KEY_FILENAME = "master.key.enc";
@@ -40,7 +40,7 @@ function readKeyFromDisk(): Buffer | null {
         console.warn("[main-utils] Failed to upgrade master.key to safeStorage:", e);
       }
     } else {
-      // No safeStorage available — tighten perms on the plaintext file in place.
+      // No safeStorage available: tighten perms on the plaintext file in place.
       try {
         fs.chmodSync(legacyPath, 0o600);
       } catch {
@@ -84,8 +84,8 @@ function writeKeyToDisk(rawKey: Buffer): void {
  * reason to mint a new one.
  *
  * Minting is only ever correct on a fresh install. Every other time the key
- * fails to load — a locked keychain, a headless session safeStorage can't
- * reach, a profile opened by a differently-signed build — the old key was
+ * fails to load; a locked keychain, a headless session safeStorage can't
+ * reach, a profile opened by a differently-signed build; the old key was
  * still there and a new one silently orphans every encrypted row: accounts,
  * secret fields, cloud tokens. The GUI runs after the keychain is unlocked
  * and owns first-run setup, so it keeps the minting behaviour; the CLI turns
@@ -98,7 +98,7 @@ export function setRequireExistingEncryptionKey(required: boolean): void {
 }
 
 /**
- * A failure the user caused and can fix — a typo'd flag, a locked keychain, an
+ * A failure the user caused and can fix: a typo'd flag, a locked keychain, an
  * account that isn't there. Hosts render `.message` on its own: the CLI prints
  * it without a stack trace, the GUI can put it straight in a toast. Anything
  * not marked this way is a bug and keeps its stack.
@@ -195,7 +195,7 @@ export function decryptValue(
   return decipher.update(encrypted).toString("utf8") + decipher.final("utf8");
 }
 
-// Lazy DB getter — main.ts sets this once the SQLite database is initialized,
+// Lazy DB getter: main.ts sets this once the SQLite database is initialized,
 // avoiding a circular import.
 let _getDb:
   | (() => Promise<{

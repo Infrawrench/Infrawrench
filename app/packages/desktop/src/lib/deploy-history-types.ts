@@ -3,7 +3,7 @@
  * CLI/main process writes it (`electron/deploy-history.ts`) and the renderer's
  * Deploy tab reads it back over IPC.
  *
- * Types only, no imports — it is compiled by both the node and the web
+ * Types only, no imports: it is compiled by both the node and the web
  * tsconfig, the same arrangement `src/db/schema.ts` has.
  */
 
@@ -26,7 +26,7 @@ export interface LocalDeployRun {
   dirty: boolean;
   image: string | null;
   status: "success" | "failure" | "canceled" | "running" | "pending";
-  /** How far it got — "plan" | "dockerfile" | "build" | "deploy". */
+  /** How far it got: "plan" | "dockerfile" | "build" | "deploy". */
   stage: string | null;
   durationMs: number | null;
   /** Directory holding the Infrafile, i.e. the Docker build context. */
@@ -49,7 +49,7 @@ export interface LocalDeployRun {
   error: string | null;
   /** The org it was also reported to, when it was not a `--local` run. */
   orgId: string | null;
-  /** Whatever the run's `plan()` returned — what `deploy --plan` diffs against. */
+  /** Whatever the run's `plan()` returned: what `deploy --plan` diffs against. */
   plan?: unknown;
   /** The value `infra.output(...)` declared, read back by `deploy outputs`. */
   output?: unknown;

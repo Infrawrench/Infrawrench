@@ -4,7 +4,7 @@ interface QueryMonitorIconProps {
 }
 
 /**
- * Query-monitor glyph — a database drum with a magnifier over it. Same 24x24
+ * Query-monitor glyph: a database drum with a magnifier over it. Same 24x24
  * stroke grid and 2px weight as BackupsIcon/MetricAlertIcon so the Query
  * monitors sidebar entry sits level with its neighbours.
  */

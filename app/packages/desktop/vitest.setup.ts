@@ -1,7 +1,7 @@
 import { initializeGT, initializeGTSPA } from "gt-react";
 
 /**
- * Initialize gt-react for tests, English-only and offline — these assert
+ * Initialize gt-react for tests, English-only and offline: these assert
  * source strings, never translations.
  *
  * Two shapes, because this suite mixes environments. Files that render

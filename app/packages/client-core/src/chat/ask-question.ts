@@ -4,7 +4,7 @@
  *
  * Shared between the server (parse on tool_use, validate on submit) and the
  * clients (render the form, disable Submit until complete). Deliberately not
- * in the MCP registry — an MCP host already has its own way to ask the user.
+ * in the MCP registry: an MCP host already has its own way to ask the user.
  */
 
 export const ASK_QUESTION_TOOL_NAME = "ask_question";

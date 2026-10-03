@@ -19,7 +19,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 import { useActionDispatch } from "./ActionDispatchContext";
 
 /**
- * React Native renderer for plugin `SchemaNode` trees — the mobile
+ * React Native renderer for plugin `SchemaNode` trees: the mobile
  * counterpart of `@infrawrench/ui`'s DOM SchemaRenderer. Schema stays data;
  * every node kind maps to a native view here.
  */
@@ -295,7 +295,7 @@ function MetricChartView({ node }: { node: MetricChartNode }) {
 }
 
 function formatValue(v: number, unit?: string): string {
-  // Byte-valued series ("bytes", "bytes/s") get humanized to KiB/MiB/GiB —
+  // Byte-valued series ("bytes", "bytes/s") get humanized to KiB/MiB/GiB:
   // see MetricChart.tsx (the DOM counterpart) for why the raw number is
   // unreadable. Everything else keeps mobile's existing rounding.
   if (unit === "bytes" || unit === "bytes/s") return createMetricValueFormatter(unit, v)(v);

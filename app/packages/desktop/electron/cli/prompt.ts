@@ -2,13 +2,13 @@
  * Interactive terminal prompts for the CLI.
  *
  * The TUI (`tui.ts`) already hand-rolls raw-mode key handling, but its helpers
- * are closures inside `runTui` and it takes over the whole screen — no use for
+ * are closures inside `runTui` and it takes over the whole screen: no use for
  * a single question mid-deploy. This is the small, inline equivalent: no
  * alternate screen, no dependencies (`ink`/`inquirer` would violate the CLI's
  * zero-runtime-dep rule), just enough to answer one prompt and move on.
  *
  * Every function refuses when stdin is not a TTY. A deploy that would otherwise
- * hang forever in CI should fail loudly instead — which is what
+ * hang forever in CI should fail loudly instead, which is what
  * `--set key=value` exists to prevent in the first place.
  */
 import { CliError } from "./context";
@@ -37,7 +37,7 @@ function requireTty(): void {
 
 /**
  * Read keypresses until `handle` says it is done. Restores raw mode and the
- * cursor on every path, including Ctrl-C — which must still abort rather than
+ * cursor on every path, including Ctrl-C, which must still abort rather than
  * silently resolve the prompt with whatever was selected.
  */
 function readKeys(handle: (key: string) => boolean): Promise<void> {
@@ -89,11 +89,11 @@ export interface SelectOption {
 
 /**
  * Arrow-key (or j/k) list picker. Returns the chosen option's value, or throws
- * if the user escapes — a deploy should stop rather than proceed on a guess.
+ * if the user escapes: a deploy should stop rather than proceed on a guess.
  *
  * Long lists (every GCP region) are WINDOWED to the terminal height: the
  * in-place repaint walks the cursor back up over the previous render, which
- * cannot cross the top of the screen — painting more rows than the viewport
+ * cannot cross the top of the screen; painting more rows than the viewport
  * holds smears the list and scrolls the question away. The title and help
  * line live inside the repainted block, so they stay pinned at the top, with
  * "↑/↓ n more" markers standing in for what is off-window.
@@ -123,7 +123,7 @@ export async function selectOne(message: string, options: SelectOption[]): Promi
 
     const lines: string[] = [c.bold(message), c.dim("  ↑/↓ to move, ↵ to choose")];
     // Marker rows render even when empty so the block height never shifts
-    // between repaints — a varying height would desync the cursor-up walk.
+    // between repaints: a varying height would desync the cursor-up walk.
     lines.push(offset > 0 ? c.dim(`  ↑ ${offset} more`) : "");
     for (let i = offset; i < Math.min(offset + size, options.length); i++) {
       const o = options[i]!;
@@ -201,7 +201,7 @@ export async function askText(message: string, defaultValue = ""): Promise<strin
   return value;
 }
 
-/** Yes/no confirmation. Defaults to no — a stray Enter must not deploy. */
+/** Yes/no confirmation. Defaults to no: a stray Enter must not deploy. */
 export async function confirm(message: string): Promise<boolean> {
   requireTty();
   process.stdout.write(`${c.bold(message)} ${c.dim("[y/N]")} `);

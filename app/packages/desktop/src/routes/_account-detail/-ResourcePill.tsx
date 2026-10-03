@@ -3,7 +3,7 @@ import { ResourcePill as SharedResourcePill, type DraggableResource } from "@inf
 
 /**
  * The account-detail resource pill: `@infrawrench/ui`'s ResourcePill plus the
- * desktop-only concerns — building the DraggableResource from a raw
+ * desktop-only concerns; building the DraggableResource from a raw
  * ResourceInstance, deriving the SSH host for the context menu, and enabling
  * secret-import drops. The rendering, drop logic, and keyboard behavior all
  * live in the shared component.

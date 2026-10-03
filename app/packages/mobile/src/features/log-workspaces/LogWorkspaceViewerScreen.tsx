@@ -11,7 +11,7 @@ import { ErrorView, LoadingView } from "@/components/ui";
 import { colors, radii, spacing } from "@/lib/theme";
 import { useLogWorkspaces } from "./useLogWorkspaces";
 
-/** Per-stream label colors — same round-robin idea as the web workspace. */
+/** Per-stream label colors: same round-robin idea as the web workspace. */
 const STREAM_COLORS = ["#38bdf8", "#34d399", "#fbbf24", "#e879f9", "#fb7185", "#22d3ee"];
 
 const TAIL_LINES = 300;
@@ -28,7 +28,7 @@ interface StreamChunk {
  * Read-only viewer for one saved query: fetches a tail of every stream
  * through the same per-resource logs endpoint the Logs tool uses, merges them
  * into one sequence with colored per-stream labels (arrival order, like the
- * web/desktop panel — the generic `getLogs` contract returns raw text without
+ * web/desktop panel; the generic `getLogs` contract returns raw text without
  * timestamps, so chronological cross-stream ordering isn't possible), and
  * applies the saved search expression (editable locally, client-side only).
  * Pull down to refresh.
@@ -75,7 +75,7 @@ export function LogWorkspaceViewerScreen({ queryId }: { queryId: string }) {
   const compiled = useMemo(() => compileLogSearch(effectiveSearch), [effectiveSearch]);
   // One merged sequence with per-line stream metadata, in arrival order (the
   // generic getLogs contract returns raw text without timestamps, so a
-  // chronological cross-stream sort isn't possible — same as the web panel).
+  // chronological cross-stream sort isn't possible: same as the web panel).
   const merged = useMemo(() => {
     if (!chunks) return [];
     return chunks.flatMap((chunk) =>

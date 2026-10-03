@@ -223,7 +223,7 @@ describe("costCentreMoveBlocker", () => {
     expect(costCentreMoveBlocker(TREE, "plat", "data")).toBeNull();
 
     // Now Platform is 3 levels tall (Platform → Search → Deep). Under Data
-    // (itself at depth 1) that would be 5 — the *leaf* would fit, the subtree
+    // (itself at depth 1) that would be 5: the *leaf* would fit, the subtree
     // does not, which is exactly the case a node-only check would wave through.
     expect(costCentreMoveBlocker(deep, "deep", "data")).toBeNull();
     expect(costCentreMoveBlocker(deep, "plat", "data")).toMatch(
@@ -370,7 +370,7 @@ describe("buildShowbackCentres", () => {
     });
 
     it("is false for the synthetic Unallocated row even though every root's parentId is also null", () => {
-      // FLAT is all roots, so their parentId is null — the same null
+      // FLAT is all roots, so their parentId is null: the same null
       // Unallocated uses for its own costCentreId. Without the guard this
       // reads every root as Unallocated's child.
       const out = buildShowbackCentres(FLAT, totals({}), { USD: 33 });

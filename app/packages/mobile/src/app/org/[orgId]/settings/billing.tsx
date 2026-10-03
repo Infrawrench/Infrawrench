@@ -32,7 +32,7 @@ export default function BillingScreen() {
   }
 
   // The response is an envelope: a complimentary org has every paid perk with
-  // no Stripe subscription at all, so the flag has to be read separately — and
+  // no Stripe subscription at all, so the flag has to be read separately, and
   // so does prepaid capacity, which is a paid plan with no subscription either.
   const sub = billing.data?.subscription ?? null;
   const complimentary = billing.data?.complimentary ?? false;

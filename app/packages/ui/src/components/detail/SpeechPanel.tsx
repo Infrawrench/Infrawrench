@@ -135,7 +135,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
   const [error, setError] = useState<string | null>(null);
   const [clip, setClip] = useState<Clip | null>(null);
 
-  // Object URLs are revoked when replaced and on unmount — a blob left
+  // Object URLs are revoked when replaced and on unmount: a blob left
   // attached to a detached <audio> keeps its buffer alive for the session.
   const clipRef = useRef<Clip | null>(null);
   useEffect(() => {
@@ -314,7 +314,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
   const maxBytes = capability.maxAudioBytes ?? DEFAULT_MAX_AUDIO_BYTES;
   const accept = (capability.acceptedAudioTypes ?? DEFAULT_ACCEPTED_AUDIO_TYPES).join(",");
 
-  // A plugin can veto the recorder on its own — providers that reject the
+  // A plugin can veto the recorder on its own: providers that reject the
   // containers MediaRecorder emits (WebM on Chromium and Firefox, MP4 on
   // Safari) would fail every recording at upload time. Uploading is untouched.
   const recordingBlocked = capability.disableRecording === true;
@@ -342,7 +342,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.onstop = () => {
-        // The recorder's own mimeType is authoritative — browsers disagree
+        // The recorder's own mimeType is authoritative: browsers disagree
         // (webm/opus on Chromium, mp4/aac on Safari) and the plugin needs to
         // forward the real one to the provider.
         const mimeType = recorder.mimeType || "audio/webm";
@@ -624,8 +624,8 @@ function OptionSelect({
   const gt = useGT();
   const gtData = useDataString();
   const selected = options.find((o) => o.id === value);
-  // Several plugins ship a real empty-id entry — "Auto-detect" (Groq, Mistral)
-  // or "Match the input text" (Gemini) — as a meaningful choice. Rendering the
+  // Several plugins ship a real empty-id entry: "Auto-detect" (Groq, Mistral)
+  // or "Match the input text" (Gemini), as a meaningful choice. Rendering the
   // "Select…" placeholder alongside one gives two <option>s with value "", and
   // the browser resolves the collision to the first, so the picker reads
   // "Select…" and choosing the real entry never changes the label. Only offer

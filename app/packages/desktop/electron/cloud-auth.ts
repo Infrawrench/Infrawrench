@@ -44,7 +44,7 @@ app.on("open-url", (event, url) => {
   dispatchProtocolUrl(url);
 });
 
-// Windows/Linux: protocol URLs appear as argv on a second launch — we need
+// Windows/Linux: protocol URLs appear as argv on a second launch; we need
 // a single-instance lock for them to reach the primary process.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -66,7 +66,7 @@ function startOAuthFlow(): void {
   const challenge = createPkceChallenge();
   codeVerifier = challenge.codeVerifier;
   // Without `state`, any infrawrench:// URL with a valid code would be
-  // accepted — CSRF against the custom protocol handler.
+  // accepted: CSRF against the custom protocol handler.
   oauthState = challenge.state;
   void shell.openExternal(buildAuthorizeUrl(challenge, `${PROTOCOL}://callback`));
 }

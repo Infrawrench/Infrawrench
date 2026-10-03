@@ -1,12 +1,12 @@
-// `infrawrench reports` — the org's saved cost reports, and running one.
+// `infrawrench reports`: the org's saved cost reports, and running one.
 //
 // A report is a named cost graph the org already agreed on, which is exactly
 // what makes it worth a CLI verb: `infrawrench reports "Monthly spend" --json`
 // pipes the same numbers the dashboard card draws, without anyone having to
 // restate the filters on the command line.
 //
-// The wire types come from `@infrawrench/client-core` — the same definitions
-// the web, desktop and mobile cost views use — so a server-side change breaks
+// The wire types come from `@infrawrench/client-core` (the same definitions
+// the web, desktop and mobile cost views use) so a server-side change breaks
 // this file's build instead of its output. The import is type-only, so the CLI
 // still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
@@ -32,7 +32,7 @@ function requireCloud(ctx: CliContext): void {
 }
 
 /**
- * `"Finance / Monthly"` for each folder id — the ancestry joined the way the
+ * `"Finance / Monthly"` for each folder id: the ancestry joined the way the
  * Reports page shows it. A tiny local re-derivation of client-core's
  * `costReportFolderPaths` rather than an import, because the CLI keeps its
  * client-core imports type-only (zero runtime dependencies). Defensive on the
@@ -60,7 +60,7 @@ function folderPathsById(folders: CostReportFolder[]): Map<string, string> {
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /**
- * `"weekly Mon 08:00 UTC"` — one delivery schedule, compactly. A local
+ * `"weekly Mon 08:00 UTC"`: one delivery schedule, compactly. A local
  * re-derivation of client-core's `describeReportSchedule` for the same reason
  * `folderPathsById` re-derives paths: the CLI keeps its client-core imports
  * type-only (zero runtime dependencies).
@@ -87,7 +87,7 @@ function deliverySummary(schedules: ReportNotification[]): string {
   return failing > 0 ? `${base} ${c.red(`(${failing} failing)`)}` : base;
 }
 
-/** `"stacked bar · by service · last 30 days"` — how a saved report reads. */
+/** `"stacked bar · by service · last 30 days"`: how a saved report reads. */
 function describeReport(report: CostReport): string {
   const { config } = report;
   const range =
@@ -98,14 +98,14 @@ function describeReport(report: CostReport): string {
   return `${config.chartType.replace("_", " ")} · ${groupBy} · ${range}`;
 }
 
-/** `infrawrench reports` — list the org's saved reports. */
+/** `infrawrench reports`: list the org's saved reports. */
 export async function cmdReports(ctx: CliContext): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);
   const [reports, folders, notifications] = await Promise.all([
     orgFetch<CostReport[]>(org.id, "/cost-reports"),
     orgFetch<CostReportFolder[]>(org.id, "/cost-report-folders"),
-    // One org-wide call rather than one per report — the endpoint exists for
+    // One org-wide call rather than one per report: the endpoint exists for
     // exactly this column. Defensive: a failure costs the column, not the list.
     orgFetch<ReportNotification[]>(org.id, "/cost-report-notifications").catch(
       () => [] as ReportNotification[],
@@ -151,13 +151,13 @@ export async function cmdReports(ctx: CliContext): Promise<void> {
     {
       header: "dashboards",
       // The placement count is the honest answer to "who will notice if I
-      // change this" — a report on five dashboards is not a private draft.
+      // change this": a report on five dashboards is not a private draft.
       value: (r) => (r.placements.length === 0 ? c.dim("—") : String(r.placements.length)),
       align: "right",
     },
     {
       header: "delivery",
-      // Scheduled sends to Slack/Teams/email, with failures called out —
+      // Scheduled sends to Slack/Teams/email, with failures called out:
       // a schedule that quietly stopped delivering is the failure mode this
       // column exists to surface.
       value: (r) => deliverySummary(schedulesByReport.get(r.id) ?? []),
@@ -191,7 +191,7 @@ async function resolveReport(orgId: string, query: string): Promise<CostReport> 
 }
 
 /**
- * `infrawrench reports send <name|id>` — run the report and deliver it to
+ * `infrawrench reports send <name|id>`: run the report and deliver it to
  * every one of its schedules right now. Behind an explicit verb like
  * `exports run`: this posts into somebody's channel and inbox, so it should
  * never happen because a positional was mistyped.
@@ -260,7 +260,7 @@ export async function cmdSendReport(ctx: CliContext, query: string): Promise<voi
   }
 }
 
-/** `infrawrench reports <name|id>` — run a saved report and chart it. */
+/** `infrawrench reports <name|id>`: run a saved report and chart it. */
 export async function cmdRunReport(ctx: CliContext, query: string): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);

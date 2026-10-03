@@ -5,7 +5,7 @@ import type { WorkflowHost } from "./host.js";
 import type { WorkflowFetchRequest } from "./types.js";
 
 /**
- * The prelude is a source string, so nothing type-checks it — these run a real
+ * The prelude is a source string, so nothing type-checks it: these run a real
  * isolate to prove the `fetch` it builds actually marshals a request and
  * rebuilds a usable Response on the other side.
  */

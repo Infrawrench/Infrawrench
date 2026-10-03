@@ -4,7 +4,7 @@ import { runGraph } from "./run.js";
 import type { GraphHost } from "./types.js";
 
 /**
- * The graph prelude is a source string, so nothing type-checks it — these run
+ * The graph prelude is a source string, so nothing type-checks it: these run
  * a real isolate to prove the control lifecycle, the render round-trip, and
  * the fail-closed dispatcher actually behave.
  */
@@ -174,7 +174,7 @@ describe("runGraph", () => {
   it("fails closed on workflow host methods", async () => {
     const result = await runGraph({
       source: [
-        // Bypass the prelude entirely — a hostile script talking straight to __host.
+        // Bypass the prelude entirely: a hostile script talking straight to __host.
         'await (globalThis.__hostRef || __host)("resource.delete", JSON.stringify({}));',
         'graph.render({ chart: { type: "stat", value: 1 } });',
       ].join("\n"),

@@ -4,7 +4,7 @@ interface LogsIconProps {
 }
 
 /**
- * Log workspace glyph — a terminal-style pane with output lines (Lucide
+ * Log workspace glyph: a terminal-style pane with output lines (Lucide
  * "scroll-text" shape). Same 24x24 stroke grid and 2px weight as
  * WorkflowIcon/CostsIcon so the Logs sidebar entry sits level with its
  * neighbours.

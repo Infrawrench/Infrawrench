@@ -15,7 +15,7 @@ interface Props {
   onOpen(conversationId: string): void;
 }
 
-/** Conversation list with new-chat and archive — the chat "home" page. */
+/** Conversation list with new-chat and archive: the chat "home" page. */
 export function ChatListView({ client, onOpen }: Props): React.ReactElement {
   const gt = useGT();
   const gtData = useDataString();

@@ -21,7 +21,7 @@ interface AuditEntry {
 }
 
 /**
- * A key call is attributed to the key, not just to the person who minted it —
+ * A key call is attributed to the key, not just to the person who minted it:
  * a key acts as its owner, so the owner's name alone cannot say whether a
  * human or a token was at the other end. Filtering by key is web/desktop only
  * (the phone has no key picker); reading which key it was belongs everywhere.

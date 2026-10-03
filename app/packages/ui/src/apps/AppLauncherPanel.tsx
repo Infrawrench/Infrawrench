@@ -7,7 +7,7 @@ import type { AppEntry } from "@infrawrench/appstream-core";
  * The application launcher for one host: what is installed, and what is
  * running.
  *
- * Presentational on purpose — it takes a list and two callbacks, so the desktop
+ * Presentational on purpose: it takes a list and two callbacks, so the desktop
  * and the web app can drive it from their own transports and a test can drive
  * it from an array.
  */
@@ -20,7 +20,7 @@ export interface AppLauncherPanelProps {
   /**
    * The most recent launch: one still starting, or the reason one failed.
    *
-   * Launching is the one action here with no visible result of its own — the
+   * Launching is the one action here with no visible result of its own: the
    * window it opens becomes a tab, and a launch that fails opens nothing at
    * all. Without this, clicking a broken entry and clicking a slow one look
    * exactly alike.

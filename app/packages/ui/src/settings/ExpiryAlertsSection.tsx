@@ -8,7 +8,7 @@ const inputClass =
 
 /**
  * Org-level Expiry radar settings: the alert on/off switch and the lead time.
- * The lead time does double duty — it bounds the feed's "upcoming" bucket on
+ * The lead time does double duty: it bounds the feed's "upcoming" bucket on
  * the Expiring screen and decides how early the poller may alert. Who hears
  * the alert is the per-channel "Expiry alerts" trigger above, same split as
  * drift.
@@ -34,7 +34,7 @@ export function ExpiryAlertsSection() {
         }
       })
       .catch(() => {
-        // Non-admins get a 403 — hide the section rather than show an error.
+        // Non-admins get a 403: hide the section rather than show an error.
         if (!cancelled) setForbidden(true);
       });
     return () => {

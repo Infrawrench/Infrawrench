@@ -17,7 +17,7 @@ const inputClass =
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 /**
- * Saved filters — the org's named, reusable cost filter sets.
+ * Saved filters: the org's named, reusable cost filter sets.
  *
  * Lives on the Costs panel rather than in Settings because a saved filter is a
  * cost object, not a preference: it scopes the budgets listed just above this
@@ -210,7 +210,7 @@ function SavedFilterEditModal({
         if (!cancelled) setReferents(rows);
       })
       .catch(() => {
-        // Advisory only — the edit still works; the caveat is just unnamed.
+        // Advisory only: the edit still works; the caveat is just unnamed.
         if (!cancelled) setReferents(null);
       });
     return () => {
@@ -299,7 +299,7 @@ function SavedFilterEditModal({
             </span>
             {/* No savedFilterId props on purpose: a saved filter referencing
                 another saved filter would make resolution recursive for no
-                expressible gain — AND-composition already covers the use. */}
+                expressible gain; AND-composition already covers the use. */}
             <CostFilterEditor
               filters={rows}
               onChange={setRows}

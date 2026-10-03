@@ -141,7 +141,7 @@ describe("accent fills", () => {
   // `text-on-accent` sits on solid accent fills (primary buttons), not on the
   // surfaces, so it gets its own check: AA against the accent it is paired
   // with and against the hover shade the same button transitions to. This
-  // token not existing was the original defect — the utility silently compiled
+  // token not existing was the original defect: the utility silently compiled
   // to nothing and the label inherited white onto dark mode's light-blue
   // accent.
   it.each([
@@ -193,7 +193,7 @@ describe("no hardcoded palette text utilities", () => {
   /**
    * `mobile` is deliberately absent: it is dark-only and styles from a named
    * token object (`mobile/src/lib/theme.ts`), not Tailwind, so it has no
-   * palette classes to regress. `theme.css` is likewise out of reach — only
+   * palette classes to regress. `theme.css` is likewise out of reach, only
    * `.ts`/`.tsx` are read, so the comment there that names the old classes
    * for the reader does not trip the scan.
    */

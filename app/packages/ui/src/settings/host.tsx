@@ -39,17 +39,17 @@ export interface SettingsHostValue {
   /** Re-fetch the caller's role/permissions (after role edits). */
   refreshPermissions(): Promise<void>;
   /**
-   * Jump to another workspace surface — approvals link to the workflow run,
+   * Jump to another workspace surface: approvals link to the workflow run,
    * the drift/expiry cards link to the Changes and Expiring screens.
    */
   openWorkspace(surface: "workflows" | "changes" | "expiring"): void;
   /** Jump to another settings section (e.g. the team page's upgrade link). */
   openSection(section: string): void;
   /**
-   * Open a URL outside the app shell — new tab on web, system browser on
+   * Open a URL outside the app shell: new tab on web, system browser on
    * desktop. Used for Stripe checkout/portal and password-reset links.
    * `sameTab` asks the web host to navigate the current tab instead (Stripe
-   * checkout returns to the app); the desktop host ignores it — the system
+   * checkout returns to the app); the desktop host ignores it: the system
    * browser is the only place those pages can go.
    */
   openExternal(url: string, options?: { sameTab?: boolean }): void;
@@ -57,11 +57,11 @@ export interface SettingsHostValue {
   onAccountDeleted(): void;
   /** Approvals inbox transport for the Approvals section. */
   approvals: ApprovalsClient;
-  /** Change freezes were edited — hosts with a freeze banner refresh it. */
+  /** Change freezes were edited: hosts with a freeze banner refresh it. */
   onChangeFreezesChanged?: (() => void) | undefined;
   /**
    * The cloud origin (`https://app.infrawrench.com`) when the app shell is not
-   * served from it — the desktop host sets this so copy-paste snippets (the
+   * served from it: the desktop host sets this so copy-paste snippets (the
    * bastion agent's websocket URL) point at the cloud, not the app shell.
    * Web leaves it unset and the sections derive from `window.location`.
    */

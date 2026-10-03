@@ -9,7 +9,7 @@ import { getDb } from "../../db/client";
 import { createDesktopWorkflowClient } from "../../lib/workflow-client";
 import { createCloudWorkflowClient } from "../../lib/cloud-workflows";
 
-// One client per source for all dashboard workflow runs — building them is
+// One client per source for all dashboard workflow runs: building them is
 // cheap, but stable instances keep run state tidy.
 let localClient: WorkflowClient | null = null;
 const cloudClients = new Map<string, WorkflowClient>();
@@ -27,8 +27,8 @@ function clientFor(orgId: string | null): WorkflowClient {
  * A pinned workflow on the desktop dashboard.
  *
  * Local dashboards read the card straight out of SQLite. Cloud dashboards get
- * it inline with the dashboard payload (`initialData`) — the server already
- * joined the metrics and last run — and only re-read after a run, since that is
+ * it inline with the dashboard payload (`initialData`) (the server already
+ * joined the metrics and last run) and only re-read after a run, since that is
  * the one moment the values here go stale.
  */
 export function WorkflowPinCard({

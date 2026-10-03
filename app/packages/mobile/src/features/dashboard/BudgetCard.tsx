@@ -7,13 +7,13 @@ import { colors, radii, spacing } from "@/lib/theme";
  * Native counterpart to the web/desktop `BudgetCard`: month-to-date actual
  * against the budget amount, the forecast marker, threshold ticks, and an
  * alert badge once a threshold has fired this month. Same numbers, same
- * status colors — a budget alert that lands as a push reads the same here as
+ * status colors: a budget alert that lands as a push reads the same here as
  * on the dashboard it was configured on.
  */
 export function BudgetCard({ budget }: { budget: BudgetWithStatus }) {
   const amount = budget.amountCents / 100;
   const actual = budget.actualCents / 100;
-  // The number the thresholds are actually judged against — the adjusted one
+  // The number the thresholds are actually judged against: the adjusted one
   // for a budget that opted into a scenario, the bare trend for every other.
   const judgedForecastCents = budget.scenarioForecastCents ?? budget.forecastCents;
   const forecast = judgedForecastCents === null ? null : judgedForecastCents / 100;

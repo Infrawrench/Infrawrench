@@ -173,7 +173,7 @@ export function ResourceModals({
           name={resource.displayName}
           onConfirm={onConfirmDelete}
           onClose={onCloseConfirmDelete}
-          // Cloud mode only — the report is mostly about org objects a local
+          // Cloud mode only: the report is mostly about org objects a local
           // workspace does not have. Passing `undefined` renders no summary
           // rather than an empty one, which would read as "nothing found".
           {...(getCloudCtx()

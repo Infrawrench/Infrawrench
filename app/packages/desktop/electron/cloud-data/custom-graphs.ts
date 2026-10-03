@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch, cloudFetchText } from "./shared";
 
-// Custom graphs — cloud-mode only (the script runs in the web server's
+// Custom graphs: cloud-mode only (the script runs in the web server's
 // sandbox against org data; there is no local-SQLite equivalent).
 
 ipcMain.handle("cloud_list_custom_graphs", async (_e, { orgId }: { orgId: string }) => {
@@ -51,7 +51,7 @@ ipcMain.handle(
   },
 );
 
-// Org-specific since the read-only infra half reflects connected accounts —
+// Org-specific since the read-only infra half reflects connected accounts:
 // this cannot be the static string the renderer once imported.
 ipcMain.handle("cloud_custom_graph_typings", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetchText(orgId, "/custom-graphs/typings");

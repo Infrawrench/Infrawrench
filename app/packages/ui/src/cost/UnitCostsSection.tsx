@@ -34,7 +34,7 @@ function metricToInput(metric: BusinessMetric): BusinessMetricInput {
     ...(metric.description ? { description: metric.description } : {}),
     ...(metric.currency ? { currency: metric.currency } : {}),
     // Round-tripped, or renaming a metric would quietly detach the saved filter
-    // scoping its numerator — updates are full replaces.
+    // scoping its numerator: updates are full replaces.
     ...(metric.savedFilterId ? { savedFilterId: metric.savedFilterId } : {}),
   };
 }
@@ -71,7 +71,7 @@ function describeCoverage(metric: BusinessMetric, gt: ReturnType<typeof useGT>):
 }
 
 /**
- * Business metrics — the denominators unit costs divide by.
+ * Business metrics: the denominators unit costs divide by.
  *
  * Lives on the Costs panel, next to saved filters and budgets, because a metric
  * is a cost object rather than a preference: it names a slice of spend and it

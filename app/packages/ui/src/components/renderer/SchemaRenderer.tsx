@@ -96,7 +96,7 @@ function useActionDispatch() {
         break;
       case "copy-to-clipboard":
         // Inert: nothing resolves the field value on web/desktop yet. No
-        // plugin emits this action today, so no shipped path reaches it — a
+        // plugin emits this action today, so no shipped path reaches it: a
         // plugin that starts emitting it would render a button that does
         // nothing until this case is wired up.
         break;
@@ -162,7 +162,7 @@ function TextNodeRenderer({ node }: { node: TextNode }) {
     return <pre className={cls}>{node.content}</pre>;
   }
   // Block <p> so sibling spacing (space-y-* on parent sections) actually
-  // produces a visible gap — inline <span>s ignore vertical margins.
+  // produces a visible gap: inline <span>s ignore vertical margins.
   return <p className={cls}>{node.content}</p>;
 }
 

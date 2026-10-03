@@ -1,5 +1,5 @@
 /**
- * Public status pages — the monitoring the org already runs, pointed outward.
+ * Public status pages: the monitoring the org already runs, pointed outward.
  *
  * A status page publishes a chosen set of synthetic probes (`./probes`) at an
  * unauthenticated URL. Nothing new is measured: the current state, the 24h
@@ -13,7 +13,7 @@
  *   They name probes, ids and settings.
  * - {@link PublicStatusPage} is the **public** shape behind
  *   `GET /api/status/:slug`, which anyone with the link can read. It carries
- *   labels, states and uptime numbers — never a probe URL, resource id,
+ *   labels, states and uptime numbers, never a probe URL, resource id,
  *   account, org id, or error text. The public payload is assembled by a
  *   dedicated server function rather than by narrowing the private one,
  *   because a field added to the private shape must not become public by
@@ -25,20 +25,20 @@ import type { ProbeStatus } from "./probes";
 /**
  * A component's public state. `operational` / `down` mirror the probe's own
  * up/down; `unknown` covers a probe that has not reported yet, and a disabled
- * probe reads `unknown` too — "we are not currently checking this" is honest,
+ * probe reads `unknown` too: "we are not currently checking this" is honest,
  * where showing its last-known green would not be.
  */
 export type StatusComponentState = "operational" | "degraded" | "down" | "unknown";
 
 /**
  * The page-level rollup, in descending severity. `degraded` means some but not
- * all components are down — the distinction a visitor actually wants ("is it
+ * all components are down: the distinction a visitor actually wants ("is it
  * everything, or just the thing I use?").
  */
 export type StatusPageState = "operational" | "degraded" | "major_outage" | "unknown";
 
 export const STATUS_PAGE_LIMITS = {
-  /** Hard cap on pages per org — a governance rail, not a product tier. */
+  /** Hard cap on pages per org: a governance rail, not a product tier. */
   maxPerOrg: 20,
   /** Components on one page; beyond this it stops being scannable. */
   maxComponents: 50,
@@ -63,17 +63,17 @@ export interface StatusPageComponent {
   /** Optional heading this component sits under. */
   groupName: string | null;
   position: number;
-  /** The probe's internal name — editor-only, to identify what was picked. */
+  /** The probe's internal name: editor-only, to identify what was picked. */
   probeName: string;
   /** Current probe status, so the editor can preview what visitors see. */
   probeStatus: ProbeStatus;
-  /** False when the underlying probe is paused — the editor warns about it. */
+  /** False when the underlying probe is paused: the editor warns about it. */
   probeEnabled: boolean;
 }
 
 export interface StatusPage {
   id: string;
-  /** The public URL segment — the page's only access credential. */
+  /** The public URL segment: the page's only access credential. */
   slug: string;
   title: string;
   description: string | null;
@@ -106,13 +106,13 @@ export interface StatusPageCreate {
   showHistory?: boolean;
   showUptime?: boolean;
   supportUrl?: string | null;
-  /** Order is significant — it is the render order on the public page. */
+  /** Order is significant: it is the render order on the public page. */
   components?: StatusPageComponentInput[];
 }
 
 /**
  * Body of `PUT /api/org/:orgId/status-pages/:id`; omitted fields keep their
- * value. `components`, when present, **replaces** the set — the editor always
+ * value. `components`, when present, **replaces** the set: the editor always
  * submits the whole list, and a per-component diff API would be three more
  * endpoints for no gain.
  */
@@ -127,7 +127,7 @@ export interface StatusPagePatch {
 }
 
 // ---------------------------------------------------------------------------
-// Public contract (`GET /api/status/:slug`) — no auth, no org identifiers
+// Public contract (`GET /api/status/:slug`): no auth, no org identifiers
 // ---------------------------------------------------------------------------
 
 /** One day of a component's history, oldest first. */
@@ -136,7 +136,7 @@ export interface StatusHistoryDay {
   day: string;
   /**
    * Fraction of the day the endpoint was up (0–1), or null when nothing was
-   * recorded — a gap renders grey, never green. A page that started last week
+   * recorded: a gap renders grey, never green. A page that started last week
    * must not claim 90 days of perfect uptime.
    */
   uptime: number | null;
@@ -155,7 +155,7 @@ export interface PublicStatusComponent {
 }
 
 /**
- * A written update on the page — the one thing on a status page that a human
+ * A written update on the page: the one thing on a status page that a human
  * typed. Usually written by incident mode when an incident is declared, and
  * closed when it resolves; the org can also post one by hand.
  *
@@ -181,14 +181,14 @@ export interface PublicStatusNotice {
 export interface PublicStatusPage {
   title: string;
   description: string | null;
-  /** Rollup over the components — see {@link StatusPageState}. */
+  /** Rollup over the components: see {@link StatusPageState}. */
   state: StatusPageState;
   /** One sentence describing `state`, so every renderer says the same thing. */
   summary: string;
   components: PublicStatusComponent[];
   /**
    * Unresolved notices, plus recently resolved ones, newest first. Empty when
-   * nothing is being reported — and empty rather than absent, so a renderer
+   * nothing is being reported, and empty rather than absent, so a renderer
    * never has to distinguish "no notices" from "an older server".
    */
   notices: PublicStatusNotice[];
@@ -225,7 +225,7 @@ export function componentStateFromProbe(
 /**
  * Roll component states up into the page state.
  *
- * `unknown` components are ignored rather than dragging the page to unknown —
+ * `unknown` components are ignored rather than dragging the page to unknown:
  * one newly-added component must not blank out a page that is otherwise
  * reporting. A page with nothing known is `unknown`.
  */
@@ -268,7 +268,7 @@ export function statusComponentLabel(state: StatusComponentState): string {
 }
 
 /**
- * Validate status page settings. Returns a human-readable problem or null —
+ * Validate status page settings. Returns a human-readable problem or null:
  * shared verbatim by the editor UI and the API boundary.
  */
 export function validateStatusPageInput(input: {
@@ -335,7 +335,7 @@ export function statusPageUrl(origin: string, slug: string): string {
  * Group components in render order without sorting them.
  *
  * Order is the org's choice, so groups appear in the order their first member
- * does and members keep their relative order — re-sorting alphabetically here
+ * does and members keep their relative order: re-sorting alphabetically here
  * would silently override the editor's drag order. Ungrouped components come
  * back under a `null` heading.
  */
@@ -382,7 +382,7 @@ export async function createStatusPage(
   });
 }
 
-/** Update a status page — settings, components, publish toggle (`resources:write`). */
+/** Update a status page: settings, components, publish toggle (`resources:write`). */
 export async function updateStatusPage(
   api: CloudFetch,
   orgId: string,
@@ -408,7 +408,7 @@ export async function deleteStatusPage(
  * Roll the slug, revoking the old public URL (`resources:write`).
  *
  * The slug is the page's only credential, so this is the "someone shared the
- * link too widely" escape hatch — the equivalent of a secret reroll.
+ * link too widely" escape hatch: the equivalent of a secret reroll.
  */
 export async function rotateStatusPageSlug(
   api: CloudFetch,

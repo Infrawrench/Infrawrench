@@ -72,13 +72,13 @@ function budgetToInput(budget: BudgetWithStatus): BudgetInput {
     // the cash basis it was deliberately taken off.
     ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
     // Same rule: a rename must not silently detach the saved filter scoping
-    // this budget — updates are full replaces.
+    // this budget; updates are full replaces.
     ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
     // Same rule: a rename must not silently detach the scenario model whose
     // forecast this budget's thresholds were opted into.
     ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
     // Same rule: not exposed as a toggle in this editor, but settable via the
-    // API and the Terraform provider — a save here must not silently move a
+    // API and the Terraform provider; a save here must not silently move a
     // budget back off the adjusted (billing-rule) figure it was opted into.
     ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
   };
@@ -93,19 +93,19 @@ function placementSummary(gt: ReturnType<typeof useGT>, budget: BudgetWithStatus
 
 export interface CostsPanelProps {
   client: CostsClient;
-  /** Open a dashboard by id — the placement list links to them. */
+  /** Open a dashboard by id: the placement list links to them. */
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
   /**
    * Data access for the "Potential savings" section. Omitted when the host
-   * can't answer the query at all — desktop in local-only mode has no org to
-   * classify — and the section is then left out rather than shown empty.
+   * can't answer the query at all (desktop in local-only mode has no org to
+   * classify) and the section is then left out rather than shown empty.
    */
   orphans?: OrphansClient | undefined;
   /** Open a flagged resource's detail view from the savings section. */
   onOpenResource?: ((resource: OrphanedResource, accountId: string) => void) | undefined;
   /**
-   * Data access for the "Oversized" right-sizing section. Cloud-only — the
-   * percentiles live in the metrics warehouse — so desktop leaves it off in
+   * Data access for the "Oversized" right-sizing section. Cloud-only (the
+   * percentiles live in the metrics warehouse) so desktop leaves it off in
    * local mode, same rule as schedules.
    */
   rightsizing?: RightsizingClient | undefined;
@@ -113,14 +113,14 @@ export interface CostsPanelProps {
   onOpenOversizedResource?: ((resource: OversizedResource, accountId: string) => void) | undefined;
   /**
    * Data access for the "Sleep schedules" section. Omitted when the host has
-   * no schedule store (desktop in local-only mode) — the section is then left
+   * no schedule store (desktop in local-only mode): the section is then left
    * out rather than shown empty.
    */
   schedules?: SchedulesClient | undefined;
   /** Open a scheduled resource's detail view from the schedules section. */
   onOpenScheduledResource?: ((schedule: SleepSchedule) => void) | undefined;
   /**
-   * Open a URL outside the app shell — new tab on web, system browser on
+   * Open a URL outside the app shell: new tab on web, system browser on
    * desktop. Used by the credit burndown section for the provider's top-up
    * page and for the "your key can't see this balance" help link.
    */
@@ -156,7 +156,7 @@ export function CostsPanel({
   const [statuses, setStatuses] = useState<CostAccountStatus[]>([]);
   /**
    * The conversion the overview chart's response came back with, reported up by
-   * the card rather than queried again here — the panel would otherwise run the
+   * the card rather than queried again here: the panel would otherwise run the
    * same `/costs/query` twice to learn something the first answer already said.
    * `undefined` for every org that has stated no exchange rates, which is what
    * keeps the notice off the page entirely for them.
@@ -168,7 +168,7 @@ export function CostsPanel({
    * Raw by default, always. The overview is the number people quote, and the
    * one they check against an invoice; showing it marked up because somebody in
    * Settings wrote a rule would make it a number nobody could reconcile. The
-   * toggle only appears for an org that actually has rules — an org with none
+   * toggle only appears for an org that actually has rules: an org with none
    * would be offered a switch between two identical figures.
    */
   const [adjusted, setAdjusted] = useState(false);
@@ -268,8 +268,8 @@ export function CostsPanel({
           reason: both say "the number below is not the plain sum you think it
           is". The cards carry a one-line footnote, which is all a card has room
           for; this is where the rates and their effective dates are actually
-          named, and where a currency that could not be converted — and so is
-          missing from the headline total — is called out. Renders nothing for
+          named, and where a currency that could not be converted (and so is
+          missing from the headline total) is called out. Renders nothing for
           an org that has stated no rates.
         */}
         <CostConversionNotice conversion={conversion} />
@@ -313,7 +313,7 @@ export function CostsPanel({
             The card draws into a `height: 100%` ResponsiveContainer, so it
             needs a parent with a real height. On a dashboard the grid row
             supplies one; here the page is a plain flex column, and the card's
-            `min-h` alone leaves the container measuring zero — the chart
+            `min-h` alone leaves the container measuring zero: the chart
             renders nothing at all. Give it the height, same `[&>*]:h-full`
             trick the dashboard's grid item uses.
           */}
@@ -407,7 +407,7 @@ export function CostsPanel({
         {/* Next to saved filters, and for the same reason: a scenario model is
             a named cost object the graphs above apply by reference, not a
             preference. It also sits within sight of Budgets, which is where a
-            model's sharpest consequence lives — a budget can opt its forecast
+            model's sharpest consequence lives: a budget can opt its forecast
             thresholds into one. */}
         {client.listScenarioModels && <ScenarioModelsSection client={client} />}
 
@@ -420,14 +420,14 @@ export function CostsPanel({
         <TagGovernanceSection client={client} />
 
         <CostAnomaliesSection client={client} />
-        {/* Next to anomalies on purpose — the two are siblings a user should
+        {/* Next to anomalies on purpose; the two are siblings a user should
             compare: anomalies are unconfigured statistical outliers, change
             alerts are configured "moved more than X% vs the prior period". */}
         <CostChangeAlertsSection client={client} />
         {/* The third sibling in the alert family, and last of the three
             because it reads on a different clock. Budgets, anomalies and
             change alerts all answer "did something happen yesterday"; these
-            three answer "is something quietly wrong" — a commitment about to
+            three answer "is something quietly wrong": a commitment about to
             lapse, a commitment nobody is using, a unit cost going the wrong
             way. Nobody acts on them within the hour, and putting them above
             the two that are read that way would bury those. */}
@@ -439,7 +439,7 @@ export function CostsPanel({
         {/* First of the savings-shaped sections: commitments are the largest
             single lever on a big bill, and the planner's recommendations are
             what the orphan/oversize findings below should be weighed against.
-            Distinct from the credit burndown above — credits are a prepaid
+            Distinct from the credit burndown above: credits are a prepaid
             pot with a runway, commitments are a purchase with a term. */}
         <CommitmentsSection client={client} />
 

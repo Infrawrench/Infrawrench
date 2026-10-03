@@ -44,7 +44,7 @@ export function Screen({
  *
  * `Children.toArray` already flattens mapped arrays and drops the `null`s and
  * `false`s that conditional children render, but it treats a Fragment as a
- * single child — and a row list assembled inside a ternary is usually wrapped
+ * single child, and a row list assembled inside a ternary is usually wrapped
  * in one. Recursing means call sites don't have to know that.
  */
 function flattenChildren(children: ReactNode): ReactNode[] {
@@ -55,7 +55,7 @@ function flattenChildren(children: ReactNode): ReactNode[] {
   );
 }
 
-/** Interleave hairlines between siblings — between only, never trailing. */
+/** Interleave hairlines between siblings: between only, never trailing. */
 function withSeparators(children: ReactNode): ReactNode[] {
   return flattenChildren(children).map((child, i) => (
     <Fragment key={i}>
@@ -71,7 +71,7 @@ function withSeparators(children: ReactNode): ReactNode[] {
  * separators itself.
  *
  * Separators belong to the container because only the container knows which
- * row is last — when `Row` drew its own bottom border every list ended with a
+ * row is last, when `Row` drew its own bottom border every list ended with a
  * hairline dangling above the card's border. Dropping the vertical padding
  * matters for the same reason: card padding *plus* the first row's own padding
  * stacked into a conspicuous gap above the first row, and the gap between rows

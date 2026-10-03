@@ -52,12 +52,12 @@ export function MetricChart({ node }: MetricChartProps) {
 
   const unit = node.series[0]?.unit ?? "";
 
-  // Zero-anchored y scale with nice steps — recharts' own ticks stretch the
+  // Zero-anchored y scale with nice steps: recharts' own ticks stretch the
   // domain below zero when the data max doesn't divide evenly.
   const extent = rowsExtent(data, { keys: node.series.map((s) => s.label) });
   const yScale = niceAxis(extent.min, extent.max);
 
-  // One formatter per chart, scaled once from the axis extent — every tick,
+  // One formatter per chart, scaled once from the axis extent: every tick,
   // the tooltip and the aria-label summary share it, so a byte-valued series
   // reads in a single consistent unit (e.g. all GiB) instead of each value
   // picking its own KiB/MiB/GiB independently.

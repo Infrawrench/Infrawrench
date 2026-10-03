@@ -1,12 +1,12 @@
 /**
- * `infrawrench deploy` — build and ship the project in the current directory,
+ * `infrawrench deploy`: build and ship the project in the current directory,
  * driven by the `Infrafile` at its repository root.
  *
  * The CLI is the local half of the feature: the Infrafile is read from disk
  * (never from a database), the image is built by the Docker daemon on this
  * machine, and `select(...)` is answered by a terminal prompt or by `--set`.
  * The web app does the same three stages against a repo pulled from git and an
- * SSH build host — same runtime, different edges.
+ * SSH build host: same runtime, different edges.
  */
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
@@ -15,7 +15,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 // The runtime is ESM-only (its package exports raw .ts), so this CommonJS
-// module takes types statically (erased) and the values via dynamic import —
+// module takes types statically (erased) and the values via dynamic import:
 // the same split electron/workflow-host.ts uses.
 import type {
   BuildRequest,
@@ -64,7 +64,7 @@ const INFRAFILE_NAME = "Infrafile";
 /**
  * Walk up from `cwd` looking for an Infrafile.
  *
- * The search stops at the repository root — a directory containing `.git`. An
+ * The search stops at the repository root: a directory containing `.git`. An
  * Infrafile lives at a repo root by definition, so climbing past one would pick
  * up an unrelated project's file and then build *its* directory as the context,
  * with this repo's git facts attached. Outside a repo there is no such boundary,
@@ -82,7 +82,7 @@ async function findInfrafile(from: string): Promise<{ dir: string; file: string 
       await access(file);
       return { dir, file };
     } catch {
-      // Nothing here — but if this is the repo root, the search ends.
+      // Nothing here, but if this is the repo root, the search ends.
       let atRepoRoot = false;
       try {
         await access(path.join(dir, ".git"));
@@ -158,7 +158,7 @@ interface DeployPluginTree {
 
 /**
  * The org whose accounts the Infrafile sees, per the CLI's global scope flags:
- * `--local` → none, `--org` → that org (errors propagate — the user named it),
+ * `--local` → none, `--org` → that org (errors propagate: the user named it),
  * no flag → the default org, degrading to local-only when the cloud is not
  * reachable. A deploy must never fail because the org could not be listed.
  */
@@ -180,11 +180,11 @@ async function resolveDeployOrg(
 /**
  * Build the accounts tree from the local database plus the scoped org. Mirrors
  * the renderer's `listLocalPlugins`, but only needs enough for
- * `infra.accounts.<plugin>` to resolve — create-field enrichment is a
+ * `infra.accounts.<plugin>` to resolve: create-field enrichment is a
  * typings-path concern and would hit provider APIs on every deploy.
  *
  * Resource-type metadata always comes from the locally loaded plugin
- * definitions — the same code the server runs — so a plugin with only org
+ * definitions (the same code the server runs) so a plugin with only org
  * accounts (gcp connected in the cloud, nothing local) still gets its full
  * `resourceTypes`. The org rows only contribute accounts.
  */
@@ -250,8 +250,8 @@ async function listPluginTree(ctx: CliContext): Promise<DeployPluginTree> {
   // stay empty.
   // Peer plugins each resource type exposes (a cluster's `kubernetes`, a
   // managed database's `postgres`). Functional, not typings garnish: the
-  // prelude builds `cluster.kubernetes` — including its resource groups and
-  // importYaml — from exactly this, so without it sidecars are undefined
+  // prelude builds `cluster.kubernetes` (including its resource groups and
+  // importYaml) from exactly this, so without it sidecars are undefined
   // inside the sandbox.
   const { attachSidecarInfo } = await import("@infrawrench/workflow-runtime");
   const { getPlugin } = await import("../../infrafile/plugins.js");
@@ -316,7 +316,7 @@ async function resolveLocalClient(
  * `select(...)` at the terminal, while the ledger commands (`status`,
  * `destroy --created`) have nothing to ask and pass one that throws.
  *
- * The tree is assembled up front — `getClient` routes by account id, and the
+ * The tree is assembled up front: `getClient` routes by account id, and the
  * ledger commands call `listResources`/`deleteResource` with recorded ids
  * without ever going through `listPlugins`.
  */
@@ -364,13 +364,13 @@ async function buildCliWorkflowHost(
  * Ask, BEFORE the isolate starts, whose cloud accounts this run sees: one of
  * the operator's organizations (merged with the local workspace) or the local
  * workspace alone. Deciding it up front means `infra.accounts` is settled by
- * the time `plan()` first reads it — which accounts exist is scope, not
+ * the time `plan()` first reads it, which accounts exist is scope, not
  * something a plan should discover mid-run.
  *
  * Only asks when there is genuinely a question: an interactive terminal, no
  * `--org`/`--local` already saying the answer, and at least one org to offer.
- * The choice lands in `ctx.flags`, so everything downstream — the accounts
- * tree, run recording, plan diffs — follows the same scope.
+ * The choice lands in `ctx.flags`, so everything downstream (the accounts
+ * tree, run recording, plan diffs) follows the same scope.
  */
 async function chooseDeployScope(ctx: CliContext, json: boolean): Promise<void> {
   if (ctx.flags.org || ctx.flags.local || json || process.stdin.isTTY !== true) return;
@@ -378,7 +378,7 @@ async function chooseDeployScope(ctx: CliContext, json: boolean): Promise<void> 
   try {
     orgs = await listOrgs();
   } catch {
-    return; // Not signed in — the tree builder already degrades to local.
+    return; // Not signed in: the tree builder already degrades to local.
   }
   if (orgs.length === 0) return;
   const LOCAL_ONLY = "__local__";
@@ -392,8 +392,8 @@ async function chooseDeployScope(ctx: CliContext, json: boolean): Promise<void> 
 
 /**
  * Write the ambient declarations for an Infrafile to stdout, so an editor can
- * type it. Generated from the caller's own accounts, exactly like a workflow's
- * — `infra.accounts.` autocompletes with real account names.
+ * type it. Generated from the caller's own accounts, exactly like a workflow's:
+ * `infra.accounts.` autocompletes with real account names.
  *
  * Deliberately plain stdout with no decoration: this is meant to be redirected
  * into `Infrafile.d.ts`.
@@ -412,7 +412,7 @@ async function cmdDeployTypings(ctx: CliContext): Promise<void> {
       envs = [...match[1].matchAll(/["'`]([^"'`]+)["'`]/g)].map((m) => m[1]!);
     }
   } catch {
-    // No Infrafile yet — typings still help you write the first one.
+    // No Infrafile yet: typings still help you write the first one.
   }
 
   process.stdout.write(generateInfrafileDts({ plugins, envs }));
@@ -431,7 +431,7 @@ interface DeploymentRunRow {
 }
 
 /**
- * `infrawrench deploy log` — deploy history, newest first.
+ * `infrawrench deploy log`: deploy history, newest first.
  *
  * `--local` reads this machine's own runs (the same list the desktop app's
  * Deploy tab shows in local mode); anything else reads the organization's.
@@ -521,7 +521,7 @@ function cmdDeployLogLocal(ctx: CliContext, flags: DeployFlags): void {
 }
 
 /**
- * `infrawrench deploy rollback` — ship a previous run's artifact again.
+ * `infrawrench deploy rollback`: ship a previous run's artifact again.
  *
  * The rollback itself happens server-side: it re-reads the Infrafile at the
  * commit that run deployed and replays its `deploy()` with the recorded image,
@@ -659,7 +659,7 @@ async function fetchPreviousPlan(ctx: CliContext, env: string): Promise<unknown>
 /**
  * Shallow-diff this plan against the previous successful deploy's. Best-effort
  * by contract: the plan itself is already on the screen, so nothing thrown in
- * here may escape — a diff that cannot be computed simply does not appear.
+ * here may escape; a diff that cannot be computed simply does not appear.
  */
 async function printPlanDiff(ctx: CliContext, env: string, plan: unknown): Promise<void> {
   try {
@@ -689,7 +689,7 @@ async function printPlanDiff(ctx: CliContext, env: string, plan: unknown): Promi
     println("Changes since last deploy:");
     for (const line of lines) println(line);
   } catch {
-    // Offline, signed out, or a server without plan storage — the plan is
+    // Offline, signed out, or a server without plan storage: the plan is
     // printed either way, the diff just goes missing.
   }
 }
@@ -700,7 +700,7 @@ async function printPlanDiff(ctx: CliContext, env: string, plan: unknown): Promi
  * - The org, so a terminal deploy and a web deploy share one history. Skipped
  *   for `--local`, and best-effort otherwise: a deploy that worked must not be
  *   reported as failed because the record afterwards did not land.
- * - This machine, always — including `--local`, which has no org to report to.
+ * - This machine, always: including `--local`, which has no org to report to.
  *   That is what the desktop app's Deploy tab reads when no org is selected.
  */
 async function recordRun(
@@ -746,7 +746,7 @@ async function recordRun(
       });
       orgId = org.id;
     } catch {
-      // Not signed in, offline, or no permission — the deploy still happened,
+      // Not signed in, offline, or no permission: the deploy still happened,
       // and the local record below still captures it.
     }
   }
@@ -779,7 +779,7 @@ function isDeployStatus(status: string): status is LocalDeployRun["status"] {
 }
 
 /**
- * `infrawrench deploy outputs` — what the last successful deploy's
+ * `infrawrench deploy outputs`: what the last successful deploy's
  * `infra.output({...})` declared. The org's record for cloud-visible runs,
  * this machine's for `--local`.
  */
@@ -844,7 +844,7 @@ function collectLedgerResources(env?: string | undefined): LedgerResource[] {
 }
 
 /**
- * `infrawrench deploy status` — is what the ledger says was created still
+ * `infrawrench deploy status`: is what the ledger says was created still
  * there? Checked against the LOCAL deploy history on purpose: that is where
  * CLI-created resources are recorded, so it is the only ledger this machine
  * can vouch for. Each (account, type) pair is listed once via the providers.
@@ -879,7 +879,7 @@ async function cmdDeployStatus(ctx: CliContext, flags: DeployFlags): Promise<voi
   }
 
   const stateOf = (res: LedgerResource): "ok" | "missing" | "unknown" => {
-    // Listing through a sidecar needs the parent context — out of scope here.
+    // Listing through a sidecar needs the parent context: out of scope here.
     if (res.sidecar) return "unknown";
     const listed = listings.get(`${res.accountId} ${res.resourceTypeId}`);
     if (!listed) return "unknown";
@@ -924,7 +924,7 @@ async function cmdDeployStatus(ctx: CliContext, flags: DeployFlags): Promise<voi
 }
 
 /**
- * `infrawrench deploy destroy --created` — no Infrafile involved: delete what
+ * `infrawrench deploy destroy --created`; no Infrafile involved: delete what
  * the local ledger says this env's runs created, children before parents.
  */
 async function cmdDeployDestroyCreated(ctx: CliContext, flags: DeployFlags): Promise<void> {
@@ -1021,7 +1021,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
     return;
   }
 
-  // `deploy destroy` — run the Infrafile's destroy() stage: tear down what
+  // `deploy destroy`; run the Infrafile's destroy() stage: tear down what
   // deploy() created for this environment. Same host, same file discovery; the
   // runtime skips plan, dockerfile and build entirely.
   const destroy = sub === "destroy";
@@ -1049,7 +1049,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
 
   // Tearing down is the one deploy-shaped action with nothing to preview, so a
   // person at a terminal gets asked once. Non-interactive runs (CI teardown of
-  // a preview env) proceed — there is nobody to ask, and that is the use case.
+  // a preview env) proceed: there is nobody to ask, and that is the use case.
   if (destroy && !json && process.stdin.isTTY === true) {
     const target = flags.env ? `"${flags.env}"` : "this project's environment";
     if (!(await confirm(`Tear down ${target}? This runs the Infrafile's destroy() stage.`))) {
@@ -1058,7 +1058,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
   }
 
   // destroy() never prompts, so anything env and git cannot name has to come
-  // from state the deploy wrote down — hand it the env's last successful
+  // from state the deploy wrote down: hand it the env's last successful
   // deploy's recorded plan. Best-effort by contract: a teardown must not fail
   // because the org was unreachable; the stage just sees no plan.
   let destroyPlan: unknown;
@@ -1076,7 +1076,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
       }
       if (env) destroyPlan = await fetchPreviousPlan(ctx, env);
     } catch {
-      // No history reachable — destroy() runs with plan undefined.
+      // No history reachable: destroy() runs with plan undefined.
     }
   }
   // Build output goes to the terminal as it arrives, but is also captured: in
@@ -1103,7 +1103,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
 
   // Everything the run needs from this machine and the scoped org.
   // `buildWorkflowHost` would give us the full resource surface, but it wants
-  // a client factory — which is exactly what the account-id routing in
+  // a client factory, which is exactly what the account-id routing in
   // `buildCliWorkflowHost` provides.
   const { runInfrafile } = await import("@infrawrench/workflow-runtime");
   const base = await buildCliWorkflowHost(
@@ -1117,7 +1117,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
       if (options.length > 0) return selectOne(spec.message, options);
       if (spec.kind === "boolean") return confirm(spec.message);
       // Everything else is typed text. The runtime validates and coerces the
-      // answer, so the terminal only has to collect the characters — a number
+      // answer, so the terminal only has to collect the characters: a number
       // that isn't one is rejected there with the key named, not here.
       const hint =
         spec.kind === "date"
@@ -1164,8 +1164,8 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
     source,
     host,
     git,
-    // A deploy legitimately waits on real infrastructure — provisioning a
-    // managed cluster can take ten-plus minutes — so the runaway-code budget
+    // A deploy legitimately waits on real infrastructure (provisioning a
+    // managed cluster can take ten-plus minutes) so the runaway-code budget
     // gets an hour rather than the default five.
     limits: { timeoutMs: 60 * 60 * 1000 },
     // Undefined lets the runner pick when the file declares exactly one env,

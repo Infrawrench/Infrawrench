@@ -1,9 +1,9 @@
-// `infrawrench billing-rules` — the org's own adjustments to collected spend.
+// `infrawrench billing-rules`: the org's own adjustments to collected spend.
 //
 // Worth a terminal command specifically because these rules are the answer to
 // "why does this number not match the invoice". When a total in a report is
 // higher than the bill, one of these rows is why, and being able to print them
-// — with `--json` in a CI check or a reconciliation script — is faster than
+// (with `--json` in a CI check or a reconciliation script) is faster than
 // finding the settings page.
 //
 // The wire types come from `@infrawrench/client-core`, type-only with the
@@ -26,12 +26,12 @@ function requireCloud(ctx: CliContext): void {
 }
 
 /**
- * `infrawrench billing-rules` — list them, in the order they evaluate.
+ * `infrawrench billing-rules`: list them, in the order they evaluate.
  *
  * The trailing note is not decoration. Anyone reading this list is reading it
- * to understand a number, and the two facts that make the list interpretable —
- * that nothing here changed the stored data, and that markups compound while
- * reallocation fires once — are not derivable from the rows themselves.
+ * to understand a number, and the two facts that make the list interpretable
+ * (that nothing here changed the stored data, and that markups compound while
+ * reallocation fires once) are not derivable from the rows themselves.
  */
 export async function cmdBillingRules(ctx: CliContext): Promise<void> {
   requireCloud(ctx);
@@ -86,7 +86,7 @@ export async function cmdBillingRules(ctx: CliContext): Promise<void> {
   );
 }
 
-/** `infrawrench billing-rules <name|id>` — one rule in full. */
+/** `infrawrench billing-rules <name|id>`: one rule in full. */
 export async function cmdBillingRule(ctx: CliContext, query: string): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);

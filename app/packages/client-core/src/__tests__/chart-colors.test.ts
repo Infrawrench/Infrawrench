@@ -5,13 +5,13 @@ import { FORECAST_COLOR, OTHER_SERIES_COLOR, SCENARIO_COLOR, SERIES_COLORS } fro
 /**
  * The rule these guard is "an overlay's colour is a decision, not a slot".
  * Asserting the literals alone would be tautological, so what is checked here
- * is the relationship between the overlays and the categorical rotation — the
+ * is the relationship between the overlays and the categorical rotation: the
  * thing that broke when the scenario line was written as `colors[3]`.
  */
 describe("cost chart colours", () => {
   it("gives the scenario projection the amber the caption beside it uses", () => {
-    // `--color-warning` in the dark theme, which is what `text-warning` — the
-    // class on the "Projection includes scenario …" caption — resolves to.
+    // `--color-warning` in the dark theme, which is what `text-warning` (the
+    // class on the "Projection includes scenario …" caption) resolves to.
     expect(SCENARIO_COLOR).toBe("#fbbf24");
   });
 

@@ -72,7 +72,7 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: colors.background },
             }}
           >
-            {/* Titles matter even with headers hidden — iOS uses them as back labels. */}
+            {/* Titles matter even with headers hidden: iOS uses them as back labels. */}
             <Stack.Screen name="index" options={{ headerShown: false, title: "Infrawrench" }} />
             <Stack.Screen name="sign-in" options={{ headerShown: false, title: "Sign in" }} />
             <Stack.Screen name="select-org" options={{ title: "Choose organization" }} />

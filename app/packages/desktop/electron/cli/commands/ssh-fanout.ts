@@ -1,4 +1,4 @@
-// `infrawrench ssh-fanout <command>` — run one command across many SSH hosts
+// `infrawrench ssh-fanout <command>`: run one command across many SSH hosts
 // and collapse the per-host output so the odd one out stands out.
 //
 // Cloud only: the fan-out runner lives server-side (POST /ssh-fanout/run),
@@ -6,8 +6,8 @@
 // are. `infrawrench ssh-fanout --list` shows the selectable hosts, and
 // `ssh-fanout snippets` lists the org's saved commands.
 //
-// Grouping and diffing come from @infrawrench/client-core — the same functions
-// the web and desktop screens render — so the CLI can never disagree with the
+// Grouping and diffing come from @infrawrench/client-core (the same functions
+// the web and desktop screens render) so the CLI can never disagree with the
 // UI about which host is the outlier. Pulled in through the workspace package
 // the CLI already depends on: no new runtime dependency.
 import type { FanoutHostResult } from "@infrawrench/client-core" with {
@@ -20,7 +20,7 @@ import { c, printJson, println, printTable, type Column } from "../output";
 
 /**
  * Mirrors `FANOUT_MAX_TARGETS` in client-core. Duplicated as a literal because
- * the CLI is CommonJS and client-core is ESM-only — the shared module is
+ * the CLI is CommonJS and client-core is ESM-only: the shared module is
  * reached through `await import()` where values are actually needed, and a
  * top-level constant is not worth an async hop just to render an error.
  */

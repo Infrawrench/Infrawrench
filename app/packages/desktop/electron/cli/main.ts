@@ -1,7 +1,7 @@
 // Headless CLI runner. Reached via the bootstrap in electron/index.ts when
 // the process was launched with --cli (normally through the `infrawrench`
-// shell shim). Runs the full Electron app object — safeStorage needs it for
-// the master key — but never opens a window, registers a protocol, or keeps
+// shell shim). Runs the full Electron app object (safeStorage needs it for
+// the master key) but never opens a window, registers a protocol, or keeps
 // the single-instance lock.
 import { app } from "electron";
 import { wireDbGetter, setDatabaseReadOnly } from "../db";
@@ -252,7 +252,7 @@ cloud session, the same organizations. Sign in once, use both.`;
  *   until its next stdout write hits the dead pty and throws `write EIO`.
  *   Exit on SIGHUP like every other CLI instead.
  * - stdout/stderr can die before we do (`| head -1` closes the pipe → EPIPE;
- *   a closed terminal → EIO). Both mean nobody is reading — exit quietly.
+ *   a closed terminal → EIO). Both mean nobody is reading: exit quietly.
  * - Anything else uncaught must print to the terminal and exit non-zero.
  *   Without a listener, Electron answers uncaught exceptions with a GUI
  *   error dialog, which is bizarre from a shell.
@@ -272,14 +272,14 @@ function installTerminalGuards(): void {
     try {
       printErr(c.red(err instanceof Error ? (err.stack ?? err.message) : String(err)));
     } catch {
-      // stderr itself is what broke — nothing left to say it with.
+      // stderr itself is what broke: nothing left to say it with.
     }
     app.exit(1);
   });
 }
 
 /**
- * True when the GUI already runs — probe the single-instance lock.
+ * True when the GUI already runs: probe the single-instance lock.
  *
  * MUST be called after `app.whenReady()`. Losing the lock *before* the ready
  * event leaves the app permanently un-ready: Electron gates startup for a
@@ -324,7 +324,7 @@ export async function runCli(): Promise<void> {
       return;
     }
 
-    // Order is load-bearing — see detectGuiRunning(). Ready first, probe second.
+    // Order is load-bearing: see detectGuiRunning(). Ready first, probe second.
     await app.whenReady();
     const guiRunning = detectGuiRunning();
 
@@ -396,11 +396,11 @@ export async function runCli(): Promise<void> {
         await cmdCosts(ctx, parsed.range);
         break;
       case "reports":
-        // `reports send <name|id>` delivers one to its schedules — behind an
+        // `reports send <name|id>` delivers one to its schedules: behind an
         // explicit verb like `exports run`, because it posts into channels
         // and inboxes. (A report literally named "send" stays reachable by
         // id.) Otherwise `infrawrench reports <name|id>` runs one and bare
-        // `reports` lists them — a name is the point of the object, so the
+        // `reports` lists them: a name is the point of the object, so the
         // positional accepts either.
         if (rest[0] === "send") {
           await cmdSendReport(ctx, rest.slice(1).join(" "));
@@ -454,7 +454,7 @@ export async function runCli(): Promise<void> {
         }
         await cmdInvoices(ctx);
         break;
-      // Not `metrics` — that verb already charts a resource's provider metrics,
+      // Not `metrics`: that verb already charts a resource's provider metrics,
       // and taking it would break a shipped command. With no argument this
       // lists the org's business metrics; with a key it draws the ratio.
       case "unit-costs":
@@ -466,7 +466,7 @@ export async function runCli(): Promise<void> {
         break;
       // Bare `scenarios` lists the org's models; with a name or id it applies
       // one to the forecast and prints the trend beside it. There is no verb
-      // for the apply because there is nothing destructive to guard — and the
+      // for the apply because there is nothing destructive to guard, and the
       // trend is always printed, so the read is never ambiguous.
       case "scenarios":
         if (rest.length > 0) {
@@ -568,7 +568,7 @@ export async function runCli(): Promise<void> {
         await cmdGraph(ctx, rest[0] ? { ...parsed.range, resource: rest[0] } : parsed.range);
         break;
       case "blast-radius":
-        // `infrawrench blast-radius <resource-id>` — the full impact report,
+        // `infrawrench blast-radius <resource-id>`: the full impact report,
         // not just the graph's share of it.
         await cmdBlastRadius(ctx, rest[0]);
         break;
@@ -593,7 +593,7 @@ export async function runCli(): Promise<void> {
     }
   } catch (e) {
     // A stack trace is for a bug in here, not for a typo'd flag or a locked
-    // keychain — those print as a single line.
+    // keychain: those print as a single line.
     if (e instanceof CliError || e instanceof UserFacingError) {
       printErr(c.red(e.message));
       exitCode = e instanceof CliError ? e.exitCode : 1;

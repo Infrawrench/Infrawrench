@@ -31,7 +31,7 @@ export interface CostAnomaliesSectionProps {
 }
 
 /**
- * Recent spend anomalies — days where a provider's or service's spend cleared
+ * Recent spend anomalies: days where a provider's or service's spend cleared
  * the trailing-baseline threshold, and days where one started spending with no
  * history at all. Detection runs server-side after each cost collection; the
  * only thing configurable from here is what counts as anomalous, which the
@@ -62,7 +62,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
     // Awaited inside try/catch rather than chained off .catch(): a host's
     // implementation may throw *synchronously* (desktop's requires cloud mode
     // and throws when there is no active org), and a synchronous throw escapes
-    // a promise chain entirely — straight past .catch() and into the nearest
+    // a promise chain entirely; straight past .catch() and into the nearest
     // error boundary, taking the app down.
     void (async () => {
       try {
@@ -90,8 +90,8 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
           {/*
             The count is of *unexplained* findings, which is what "an
             acknowledged anomaly stops nagging" means here. Explained rows keep
-            their place in the list — the detection was correct and the record
-            is the point — they simply stop being counted.
+            their place in the list (the detection was correct and the record
+            is the point) they simply stop being counted.
           */}
           {anomalies !== null && anomalies.length > 0 && (
             <span className="ml-2 font-normal text-on-surface-faint">
@@ -317,7 +317,7 @@ function toDollars(cents: number): number {
 
 /**
  * The per-org thresholds, edited in place. Read-only when the host omits
- * `updateAnomalySettings` — a viewer without `costs:write` sees what detection
+ * `updateAnomalySettings`: a viewer without `costs:write` sees what detection
  * is tuned to without controls that would fail on save.
  *
  * The bounds mirror the ones the API enforces, so a value the server would

@@ -43,7 +43,7 @@ export function ChatPanel({ capability, onStream }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Auto-scroll to the bottom on every delta. The user can scroll up to
-  // pause auto-follow — checked by comparing scroll position to the
+  // pause auto-follow: checked by comparing scroll position to the
   // pre-update height before applying the new content.
   const userPausedRef = useRef(false);
   useEffect(() => {
@@ -93,7 +93,7 @@ export function ChatPanel({ capability, onStream }: Props) {
         if (controller.signal.aborted) break;
         if (event.kind === "delta") {
           assembled += event.text;
-          // Live update — replace the trailing pending turn with the
+          // Live update: replace the trailing pending turn with the
           // current accumulator on each token.
           setTurns((prev) => {
             const next = prev.slice();
@@ -145,7 +145,7 @@ export function ChatPanel({ capability, onStream }: Props) {
   }, [streaming]);
 
   // Submit on Cmd/Ctrl+Enter, plain Enter for newline (matches OpenAI
-  // playground convention — long prompts want easy multi-line editing).
+  // playground convention: long prompts want easy multi-line editing).
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {

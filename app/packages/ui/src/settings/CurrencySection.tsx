@@ -10,14 +10,14 @@ import { normalizeCurrencyCode } from "@infrawrench/client-core";
 import { useSettingsHost } from "./host.js";
 
 /**
- * Currency — the org's display currency and the exchange rates it states.
+ * Currency: the org's display currency and the exchange rates it states.
  *
  * ## Why its own section rather than a card on Notifications
  *
  * Notifications is about where alerts go. This is about what the numbers mean.
  * It also carries two editors (a currency picker and a full CRUD table over
  * rows with dates), which is a page's worth of surface rather than a card's,
- * and it is gated on `org:settings:write` like Tag Policy — its nearest sibling
+ * and it is gated on `org:settings:write` like Tag Policy: its nearest sibling
  * in kind, an org-level policy that changes how every cost surface reports.
  * It sits next to Tag Policy in the sidebar for that reason.
  *
@@ -94,7 +94,7 @@ export function CurrencySection() {
 
   /**
    * Rates whose `toCurrency` is not the current display currency are dead
-   * weight — nothing reads them — so say so rather than letting someone assume
+   * weight (nothing reads them) so say so rather than letting someone assume
    * their EUR spend is being converted by a EUR→GBP row.
    */
   const staleRates = useMemo(

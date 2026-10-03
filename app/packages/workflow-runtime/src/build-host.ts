@@ -6,7 +6,7 @@
  *
  * Each platform supplies: how to enumerate accounts (`listPlugins`), how to get
  * a client for an account (`getClient`), how to read storage bytes
- * (`readStorageObject` — wired to the platform's StorageNodeDriver), and how to
+ * (`readStorageObject`; wired to the platform's StorageNodeDriver), and how to
  * persist metrics / raise prompts.
  */
 import type { PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
@@ -48,7 +48,7 @@ export interface ClientHostDeps {
    * Resolve a live plugin client for an account in the current trust scope.
    *
    * With a {@link SidecarRef} the caller wants the *peer* plugin's client
-   * instead — credentials resolved from the named parent resource's outputs, so
+   * instead: credentials resolved from the named parent resource's outputs, so
    * a workflow can reach into a managed cluster or database. Platforms that
    * can't build peer clients should throw; the sidecar surface then simply
    * fails at the call rather than returning the wrong account's client.
@@ -124,7 +124,7 @@ export interface ClientHostDeps {
   clearPage?(key: string): Promise<void>;
 
   /**
-   * Block until a human approves (resolve) or denies / times out (reject) —
+   * Block until a human approves (resolve) or denies / times out (reject):
    * powers `infra.waitForApproval`. Cloud-only.
    */
   waitForApproval?(spec: ApprovalSpec): Promise<ApprovalResult>;
@@ -196,7 +196,7 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
       const client = await deps.getClient(accountId);
       if (!client.getCreateConfig) return [];
       // The create form is the one place plugins already publish their region
-      // list with display metadata — reuse it rather than invent a second one.
+      // list with display metadata: reuse it rather than invent a second one.
       const config = await client.getCreateConfig(typeId);
       for (const field of config.fields ?? []) {
         const regions = (field as { regions?: unknown }).regions;
@@ -227,7 +227,7 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
         accountId,
         transformed.fields,
         // A sidecar's own resources are already scoped by the peer client, so
-        // the parent that supplied its credentials is not also its container —
+        // the parent that supplied its credentials is not also its container,
         // only an explicit argument becomes the create-time parent.
         parentResourceId,
       );

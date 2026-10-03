@@ -53,25 +53,25 @@ export interface CostReportsPanelProps {
   /**
    * Which report to show. Absent renders the list. Owned by the host so the
    * URL, the workspace tab, and this panel never disagree about which report
-   * is open — the panel asks to change it and re-renders on the way back.
+   * is open: the panel asks to change it and re-renders on the way back.
    */
   reportId?: string | undefined;
   /** Open a report (or, with undefined, go back to the list). */
   onSelectReport?: ((reportId: string | undefined) => void) | undefined;
-  /** Open a dashboard by id — the placement list links to them. */
+  /** Open a dashboard by id: the placement list links to them. */
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }
 
 /**
- * Cost reports — the org's named, saved cost graphs.
+ * Cost reports: the org's named, saved cost graphs.
  *
  * A report is to a cost graph what a budget is to a budget card: the object is
  * the thing, and a dashboard card is a view onto it. That is why this panel
- * exists at all — before it, a cost graph was a dashboard card and nothing
+ * exists at all: before it, a cost graph was a dashboard card and nothing
  * else, so there was no report to fold into a folder, annotate, schedule, or
  * link a colleague to.
  *
- * The list groups reports into folders — pure organization, rendered as an
+ * The list groups reports into folders: pure organization, rendered as an
  * indented tree inside the existing card list. Filing a report changes nothing
  * but where it appears here; deleting a folder drops its contents back to the
  * top level, never deletes a report, and the confirm says so.
@@ -209,8 +209,8 @@ export function CostReportsPanel({
   }
 
   async function deleteFolder(folder: CostReportFolder) {
-    // The confirm has to say what actually happens: nothing inside is deleted
-    // — reports and subfolders drop back to the top level of the list.
+    // The confirm has to say what actually happens: nothing inside is deleted;
+    // reports and subfolders drop back to the top level of the list.
     const reportCount = (reports ?? []).filter((r) => r.folderId === folder.id).length;
     const subfolderCount = folders.filter((f) => f.parentFolderId === folder.id).length;
     const consequences: string[] = [];
@@ -497,7 +497,7 @@ function ReportList({
       {tree.map(({ folder, depth }) => {
         const contents = byFolder.get(folder.id) ?? [];
         // The depth rule the server enforces decides whether "New subfolder"
-        // is even offered — an offer that 400s is worse than no offer.
+        // is even offered: an offer that 400s is worse than no offer.
         const canNest =
           canManageFolders && costReportFolderMoveBlocker(folders, null, folder.id) === null;
         return (
@@ -773,7 +773,7 @@ function ReportDetail({
         <PlacementList report={report} onOpenDashboard={onOpenDashboard} />
       </div>
 
-      {/* The same notes as a list — where you go to fix a date you can no
+      {/* The same notes as a list, where you go to fix a date you can no
           longer see, or move a note between this report and org-wide. */}
       <CostAnnotationsSection reportId={report.id} reportName={report.name} client={client} />
 
@@ -809,11 +809,11 @@ function PlacementList({
 }
 
 /**
- * Pick a folder for a report or a folder — the "drag" of this list, as a menu.
+ * Pick a folder for a report or a folder: the "drag" of this list, as a menu.
  *
  * Targets a move can never succeed at (the current location, a folder inside
  * the thing being moved, a parent past the depth limit) are shown disabled
- * with the reason, using the exact rule the server enforces — so nothing
+ * with the reason, using the exact rule the server enforces, so nothing
  * pickable here comes back as a 400.
  */
 function MoveToFolderModal({
@@ -890,7 +890,7 @@ function MoveToFolderModal({
 }
 
 /**
- * Add or remove this report's dashboard cards — the same modal the Costs panel
+ * Add or remove this report's dashboard cards; the same modal the Costs panel
  * gives a budget, for the same reason: the object is the thing, and a card is a
  * view onto it that can come and go without touching it.
  */

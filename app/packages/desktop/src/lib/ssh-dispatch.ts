@@ -1,11 +1,11 @@
 /**
- * SSH dispatcher — routes SSH shell, exec, and SFTP operations between local
+ * SSH dispatcher: routes SSH shell, exec, and SFTP operations between local
  * IPC (ssh2 in the electron main process) and the cloud WebSocket proxy at
  * `/api/ws`.
  *
  * Rule: if the user-selected key is a cloud key (private key lives in
- * Infrawrench Cloud), everything goes through the WS proxy. Otherwise —
- * system, app, or pageant — local IPC handles it, regardless of whether
+ * Infrawrench Cloud), everything goes through the WS proxy. Otherwise
+ * (system, app, or pageant) local IPC handles it, regardless of whether
  * the active workspace is cloud or local.
  */
 
@@ -145,8 +145,8 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
 
   // Writes are buffered until the proxy reports `ssh:connected`.
   //
-  // Unlike the local handle — which resolves only once the shell is actually
-  // spawned — this function returns as soon as the socket is *created*, so a
+  // Unlike the local handle (which resolves only once the shell is actually
+  // spawned) this function returns as soon as the socket is *created*, so a
   // caller that writes immediately (the agent tabs send their launch command
   // the moment the handle resolves) would otherwise lose it twice over: the
   // socket is still CONNECTING here, and on the server the `ws.on("message")`

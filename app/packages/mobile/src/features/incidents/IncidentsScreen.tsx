@@ -26,7 +26,7 @@ const FILTERS: Array<{ id: IncidentStatus | "all"; label: string }> = [
  * Declared incidents on the phone.
  *
  * This is the one authoring surface mobile gets in this feature, and
- * deliberately so — it breaks the read-only-billing line for a reason. The
+ * deliberately so: it breaks the read-only-billing line for a reason. The
  * three things you do at 03:14 are declare, read what happened, and write a
  * note, and all three happen while you are away from a laptop. What stays on
  * web/desktop is everything you do *afterwards*: editing the incident,

@@ -202,8 +202,8 @@ describe("summarizeBlastRadius — references and traffic", () => {
 });
 
 describe("resolveFlowPeerIdentities", () => {
-  // `resources.external_id` has no uniqueness constraint — its index is
-  // (plugin_id, external_id), deliberately non-unique — so two accounts
+  // `resources.external_id` has no uniqueness constraint: its index is
+  // (plugin_id, external_id), deliberately non-unique, so two accounts
   // legitimately hold a VPC whose provider id is "default". Keeping the first
   // row a lookup happened to return attributes measured traffic to an
   // arbitrary resource, in a report read seconds before somebody deletes
@@ -226,7 +226,7 @@ describe("resolveFlowPeerIdentities", () => {
   // The regression that matters most: a cross-account peer sharing its
   // provider id with a resource in the account the flow was collected from.
   // Nothing in a flow row says which account the peer is in, so preferring the
-  // local one links the wrong resource — it just does it plausibly.
+  // local one links the wrong resource: it just does it plausibly.
   it("refuses to break a local-vs-remote tie, because the row does not name the peer's account", () => {
     // `inProd` sits in the collecting account; `inStaging` does not.
     const result = resolveFlowPeerIdentities(["default"], [inProd, inStaging]);

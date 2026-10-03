@@ -1,5 +1,5 @@
 /**
- * Resource leases (TTL) — an optional "expires at" on any resource ("give me
+ * Resource leases (TTL): an optional "expires at" on any resource ("give me
  * a test cluster for 3 days").
  *
  * Active leases ride the expiry radar as kind `"lease"` items, so the owner
@@ -7,7 +7,7 @@
  * may additionally opt into **auto-delete**: the poller's lease pass
  * (`server-core/src/leases/pass.ts`) announces the deletion twice on the
  * `expiryAlerts` trigger and then calls the plugin's `deleteResource` at
- * expiry — freeze-aware, and never before both announcements went out.
+ * expiry; freeze-aware, and never before both announcements went out.
  *
  * This module is the shared pure half: the wire contract for
  * `/api/org/:orgId/leases`, the input validation both the editor UIs and the
@@ -18,10 +18,10 @@ import type { CloudFetch } from "./fetch";
 
 /**
  * Lifecycle of a lease row:
- * - `"active"` — counting down (only active leases appear on the radar).
- * - `"deleted"` — auto-delete completed; the resource is gone.
- * - `"failed"` — auto-delete was retried and given up on (see `lastError`).
- * - `"canceled"` — the lease was called off; the resource stays.
+ * - `"active"`: counting down (only active leases appear on the radar).
+ * - `"deleted"`: auto-delete completed; the resource is gone.
+ * - `"failed"`: auto-delete was retried and given up on (see `lastError`).
+ * - `"canceled"`: the lease was called off; the resource stays.
  */
 export type LeaseStatus = "active" | "deleted" | "failed" | "canceled";
 
@@ -32,7 +32,7 @@ export interface ResourceLease {
   accountId: string;
   pluginId: string;
   resourceTypeId: string;
-  /** Resource display name, denormalized at lease time — survives deletion. */
+  /** Resource display name, denormalized at lease time: survives deletion. */
   resourceName: string;
   accountName: string;
   /** The lease deadline, ISO 8601. */
@@ -78,7 +78,7 @@ export interface ResourceLeasePatch {
 }
 
 export const LEASE_LIMITS = {
-  /** Hard cap on lease rows per org — a governance rail, not a product tier. */
+  /** Hard cap on lease rows per org: a governance rail, not a product tier. */
   maxPerOrg: 200,
   /** Furthest a lease may reach into the future, in days. */
   maxHorizonDays: 365,
@@ -90,7 +90,7 @@ const MS_PER_DAY = 86_400_000;
 
 /**
  * Validate a lease deadline + note. Returns a human-readable problem or null
- * when valid — shared verbatim by the editor UIs and the API boundary.
+ * when valid: shared verbatim by the editor UIs and the API boundary.
  */
 export function validateLeaseInput(
   input: { expiresAt: string; note?: string | null | undefined },
@@ -108,7 +108,7 @@ export function validateLeaseInput(
 }
 
 /**
- * Validate just the note — the deadline half of {@link validateLeaseInput} is
+ * Validate just the note: the deadline half of {@link validateLeaseInput} is
  * skipped for patches that don't touch `expiresAt`, so a note edit on a lease
  * whose deadline has already passed isn't rejected as "must be in the future".
  */
@@ -143,7 +143,7 @@ export async function fetchResourceLease(
 
 /**
  * Create a lease (`resources:write`; `autoDelete: true` additionally requires
- * `resources:delete` — the lease becomes a standing deletion).
+ * `resources:delete`: the lease becomes a standing deletion).
  */
 export async function createLease(
   api: CloudFetch,
@@ -169,7 +169,7 @@ export async function updateLease(
   });
 }
 
-/** Cancel a lease — the resource stays, the countdown stops (`resources:write`). */
+/** Cancel a lease: the resource stays, the countdown stops (`resources:write`). */
 export async function cancelLease(
   api: CloudFetch,
   orgId: string,

@@ -1,8 +1,8 @@
 /**
- * Quota & limit radar — the shared pure half.
+ * Quota & limit radar: the shared pure half.
  *
  * The wire contract for `/api/org/:orgId/quotas`, the bounds the settings form
- * and the API boundary both clamp against (the `PROBE_LIMITS` stance — the
+ * and the API boundary both clamp against (the `PROBE_LIMITS` stance: the
  * form and the server must not disagree about what a valid threshold is), and
  * the trend arithmetic that turns a series of snapshots into "this runs out in
  * nine days".
@@ -91,7 +91,7 @@ export interface QuotaSnapshot {
   /** ISO instant the reading was taken. */
   observedAt: string;
   used: number;
-  /** The limit *at the time*. Never today's — see `db/quota-schema.ts`. */
+  /** The limit *at the time*. Never today's: see `db/quota-schema.ts`. */
   limit: number;
   utilization: number;
 }
@@ -99,7 +99,7 @@ export interface QuotaSnapshot {
 /**
  * The projection for one quota. Every field is null when there is not enough
  * evidence, and null is rendered as "not enough history" rather than as
- * "no risk" — the two are opposite claims and only one of them is true.
+ * "no risk": the two are opposite claims and only one of them is true.
  */
 export interface QuotaTrend {
   /** Change in *utilisation fraction* per day, from a least-squares fit. */
@@ -222,8 +222,8 @@ export function fitQuotaSlope(snapshots: QuotaSnapshot[]): number | null {
     numerator += dt * (p.u - meanU);
     denominator += dt * dt;
   }
-  // Every reading at the same instant. Not an error — a freshly backfilled
-  // account looks exactly like this — but it is not a slope either.
+  // Every reading at the same instant. Not an error (a freshly backfilled
+  // account looks exactly like this) but it is not a slope either.
   if (denominator === 0) return null;
   return numerator / denominator;
 }
@@ -311,14 +311,14 @@ export function formatQuotaUtilization(utilization: number): string {
   return `${Math.round(pct)}%`;
 }
 
-/** `1,024 vCPUs` — the unit is the provider's word, so it is printed verbatim. */
+/** `1,024 vCPUs`: the unit is the provider's word, so it is printed verbatim. */
 export function formatQuotaAmount(value: number, unit: string | null | undefined): string {
   const rounded = Number.isInteger(value) ? value : Math.round(value * 100) / 100;
   const num = rounded.toLocaleString("en-US");
   return unit ? `${num} ${unit}` : num;
 }
 
-/** "in 9 days" / "in under a day" — the row's countdown text. */
+/** "in 9 days" / "in under a day": the row's countdown text. */
 export function formatDaysToExhaustion(days: number): string {
   if (days < 1) return "in under a day";
   const whole = Math.round(days);

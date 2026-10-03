@@ -12,7 +12,7 @@ function candidatePaths(): string[] {
   if (process.platform === "win32") {
     // 1Password on Windows speaks the OpenSSH named-pipe protocol on the
     // same pipe Microsoft's OpenSSH agent uses, so existence-checking can't
-    // distinguish them — fall back to $SSH_AUTH_SOCK when set, otherwise
+    // distinguish them: fall back to $SSH_AUTH_SOCK when set, otherwise
     // try the standard pipe.
     const envSock = process.env["SSH_AUTH_SOCK"];
     return envSock ? [envSock] : ["\\\\.\\pipe\\openssh-ssh-agent"];

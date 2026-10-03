@@ -213,7 +213,7 @@ describe("WorkflowsPanel run history", () => {
     fireEvent.click(await screen.findByText("Nightly cleanup"));
     expect(await screen.findByText("Git push")).toBeInTheDocument();
 
-    // The second workflow's runs are still in flight — the first one's history
+    // The second workflow's runs are still in flight: the first one's history
     // must not stand in for them.
     fireEvent.click(screen.getByText("Cost report"));
     await waitFor(() => expect(screen.queryByText("Git push")).not.toBeInTheDocument());

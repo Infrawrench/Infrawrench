@@ -125,7 +125,7 @@ export function FieldRenderer({
         onCloudSignIn: () => {
           void invoke("cloud_auth_start").then(() => {
             // Sign-in happens in a separate browser tab, so there's no
-            // callback to await — poll the token store until it lands.
+            // callback to await: poll the token store until it lands.
             const poll = setInterval(async () => {
               try {
                 const token = await invoke<string | null>("cloud_auth_get_token");

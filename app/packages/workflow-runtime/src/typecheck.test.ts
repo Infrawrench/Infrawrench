@@ -5,8 +5,8 @@ import { resolveTsLibDir, typecheckWorkflow } from "./typecheck.js";
 import type { WorkflowPluginInfo } from "./types.js";
 
 /**
- * Headless type checking must agree with what the Monaco editor shows an author
- * — same lib, same leniency about top-level await, same line numbers.
+ * Headless type checking must agree with what the Monaco editor shows an author:
+ * same lib, same leniency about top-level await, same line numbers.
  */
 
 const PLUGINS: WorkflowPluginInfo[] = [
@@ -188,7 +188,7 @@ describe("typecheckWorkflow", () => {
       'await infra.ai({ prompt: "Classify this error", system: "One word.", maxTokens: 16 });',
     ].join("\n");
     expect(typecheckWorkflow({ source, dts }).diagnostics).toEqual([]);
-    // The model allowlist is a closed union — a typo fails at save time, the
+    // The model allowlist is a closed union: a typo fails at save time, the
     // same place dispatch would refuse it at run time.
     expect(
       typecheckWorkflow({ source: 'await infra.ai("hi", { model: "gpt-4o" });', dts }).hasErrors,
@@ -256,7 +256,7 @@ describe("typecheckWorkflow", () => {
   });
 
   it("rejects fetch options and methods the host would refuse at runtime", () => {
-    // Better to fail at save time than to fail the run — these are exactly the
+    // Better to fail at save time than to fail the run: these are exactly the
     // requests dispatch throws on (see fetch.test.ts).
     expect(
       typecheckWorkflow({

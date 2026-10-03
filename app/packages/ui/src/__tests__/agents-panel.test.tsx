@@ -937,7 +937,7 @@ describe("AgentsPanel", () => {
       });
     });
 
-    // The agent still has to be installed and signed in — T3 Code drives it.
+    // The agent still has to be installed and signed in: T3 Code drives it.
     it("summarizes the surface alongside the tool it drives", async () => {
       const client = makeClient(account, t3Settings());
       render(<AgentsPanel client={client} />);

@@ -1,5 +1,5 @@
 /**
- * Scheduled cost data exports — the wire contract shared by the API, the
+ * Scheduled cost data exports: the wire contract shared by the API, the
  * settings UI, and the CLI.
  *
  * A cost export is a saved query plus a schedule plus a destination: on its
@@ -10,7 +10,7 @@
  * loading into a warehouse.
  *
  * The query scope deliberately reuses {@link CostFilter} and the cost dimension
- * vocabulary rather than inventing a second filter shape — the same values the
+ * vocabulary rather than inventing a second filter shape: the same values the
  * dashboards, budgets and reports already store, so a filter means the same
  * thing everywhere.
  *
@@ -30,7 +30,7 @@ export const COST_EXPORT_FORMAT_LABELS: Record<CostExportFormat, string> = {
 };
 
 /**
- * How often a run happens, and — because a run writes one object per period —
+ * How often a run happens, and (because a run writes one object per period)
  * what a period *is*. `daily` writes one object per calendar day, `weekly` one
  * per ISO week (Monday-start), `monthly` one per calendar month.
  */
@@ -53,7 +53,7 @@ export const COST_EXPORT_DESTINATION_LABELS: Record<CostExportDestinationKind, s
 
 /**
  * Where an S3-compatible run writes. One implementation covers AWS S3,
- * Cloudflare R2, DigitalOcean Spaces, Scaleway, Backblaze B2 and MinIO — they
+ * Cloudflare R2, DigitalOcean Spaces, Scaleway, Backblaze B2 and MinIO: they
  * differ only in `endpoint` and `region`, and all of them speak SigV4.
  */
 export interface CostExportS3Destination {
@@ -82,8 +82,8 @@ export interface CostExportS3Destination {
 
 /**
  * Where an HTTPS run posts. The URL is treated as a credential in its own
- * right — a pre-signed PUT/POST target usually carries its own signature in the
- * query string — so it is encrypted at rest and never returned.
+ * right (a pre-signed PUT/POST target usually carries its own signature in the
+ * query string) so it is encrypted at rest and never returned.
  */
 export interface CostExportHttpDestination {
   kind: "http";
@@ -100,7 +100,7 @@ export type CostExportDestination = CostExportS3Destination | CostExportHttpDest
  * minus everything about *drawing* one.
  *
  * `dimensions` are the row-identity columns kept in the output. Dropping one
- * aggregates over it — an export grouped to `provider` + `service` is a much
+ * aggregates over it: an export grouped to `provider` + `service` is a much
  * smaller object than a per-resource one, and for a finance system that is
  * usually the right grain.
  */
@@ -130,14 +130,14 @@ export type CostExportStatus = (typeof COST_EXPORT_STATUSES)[number];
 /**
  * The object key a run writes, as a template.
  *
- * `{periodStart}` is the period's first day as `YYYY-MM-DD` — for every
+ * `{periodStart}` is the period's first day as `YYYY-MM-DD`, for every
  * cadence, so keys sort lexicographically and nobody has to know ISO week
  * numbering to find last week's file. `{format}` is `csv` or `ndjson`.
  *
  * Deterministic on purpose: re-exporting a period writes the *same* key, so a
  * restatement overwrites the previous copy instead of leaving two files that
  * both claim to be July. This is the mechanism the whole restatement story
- * rests on — see the docs page.
+ * rests on: see the docs page.
  */
 export const COST_EXPORT_KEY_TEMPLATE =
   "{prefix}/cost-export/{exportId}/{cadence}/{periodStart}.{format}";
@@ -250,7 +250,7 @@ export const DEFAULT_COST_EXPORT_INPUT: CostExportInput = {
 /**
  * The measure columns every object carries, in order, after `day` and the
  * chosen identity columns. `usage_unit` is emitted empty whenever the rows
- * folded into one output row disagree on a unit — a total labelled with one of
+ * folded into one output row disagree on a unit: a total labelled with one of
  * several units would be a lie the file could not warn a consumer about.
  */
 export const COST_EXPORT_BASE_COLUMNS = [

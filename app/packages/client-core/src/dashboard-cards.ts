@@ -4,14 +4,14 @@
  * The grid mixes three kinds of card, each stored in its own table with its
  * own `gridX`: resource pins, workflow pins, and widgets (cost graphs and
  * budgets). Drag-to-reorder works across all of them, so the position that
- * matters is a single sequence spanning the three tables — a reorder writes
+ * matters is a single sequence spanning the three tables: a reorder writes
  * `gridX = index` over the merged list, and every insert lands at
  * `max(gridX) + 1` across all three.
  *
  * Dashboards created before that unification have three independent 0..n
  * sequences, so sorting them by `gridX` alone would interleave cards that the
- * user never moved. {@link orderDashboardCards} detects that case — duplicate
- * `gridX` values across kinds — and falls back to the historical grouping
+ * user never moved. {@link orderDashboardCards} detects that case (duplicate
+ * `gridX` values across kinds) and falls back to the historical grouping
  * (resources, then workflows, then widgets) until the first drag renumbers
  * the dashboard into one sequence. No backfill needed; it converges on use.
  */
@@ -21,7 +21,7 @@ export type DashboardCardKind = "resource" | "workflow" | "widget";
 /** Identifies one card in the grid, independent of which table it lives in. */
 export interface DashboardCardRef {
   kind: DashboardCardKind;
-  /** Resource id, workflow id, or widget id — unique within its kind. */
+  /** Resource id, workflow id, or widget id: unique within its kind. */
   id: string;
 }
 

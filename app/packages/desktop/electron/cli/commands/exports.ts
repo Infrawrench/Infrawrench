@@ -1,4 +1,4 @@
-// `infrawrench exports` — the org's scheduled cost exports, and running one.
+// `infrawrench exports`: the org's scheduled cost exports, and running one.
 //
 // A scheduled export is a nightly job whose failure is invisible until someone
 // asks the warehouse why last week is missing, which makes it exactly the kind
@@ -6,8 +6,8 @@
 // last run's status and error for every export, and `infrawrench exports run
 // <name|id>` forces one from a shell or a CI step.
 //
-// The wire types come from `@infrawrench/client-core` — the same definitions
-// the API and the settings UI use — so a server-side change breaks this file's
+// The wire types come from `@infrawrench/client-core` (the same definitions
+// the API and the settings UI use) so a server-side change breaks this file's
 // build instead of its output. The import is type-only, so the CLI still ships
 // zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
@@ -32,7 +32,7 @@ function describeDestination(exp: CostExport): string {
     : `${exp.destination.method} ${exp.destination.urlHint}`;
 }
 
-/** `daily 04:00 Europe/Berlin` — how the schedule reads. */
+/** `daily 04:00 Europe/Berlin`: how the schedule reads. */
 function describeSchedule(exp: CostExport): string {
   return `${exp.cadence} ${String(exp.hour).padStart(2, "0")}:00 ${exp.timezone}`;
 }
@@ -56,7 +56,7 @@ function statusCell(exp: CostExport): string {
   }
 }
 
-/** `infrawrench exports` — list the org's scheduled cost exports. */
+/** `infrawrench exports`: list the org's scheduled cost exports. */
 export async function cmdExports(ctx: CliContext): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);
@@ -113,7 +113,7 @@ export async function cmdExports(ctx: CliContext): Promise<void> {
   println(c.dim("Run one now with `infrawrench exports run <name|id>`."));
 }
 
-/** `infrawrench exports run <name|id>` — force a run and print what it wrote. */
+/** `infrawrench exports run <name|id>`: force a run and print what it wrote. */
 export async function cmdRunExport(ctx: CliContext, query: string): Promise<void> {
   requireCloud(ctx);
   if (!query.trim()) {
@@ -145,7 +145,7 @@ export async function cmdRunExport(ctx: CliContext, query: string): Promise<void
     { method: "POST" },
   );
 
-  // A failed run is a failed command — a CI step that shells out to this has
+  // A failed run is a failed command: a CI step that shells out to this has
   // to be able to notice. The JSON body is still printed first, on stdout, so
   // `--json` output stays parseable either way; the message goes to stderr.
   const failure = new CliError(`Export "${exp.name}" failed: ${run.error ?? "unknown error"}`);

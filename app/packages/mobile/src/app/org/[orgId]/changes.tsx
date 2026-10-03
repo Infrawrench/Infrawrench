@@ -3,7 +3,7 @@ import { ChangesScreen } from "@/features/changes/ChangesScreen";
 
 /**
  * The org change timeline. `since` and `accountId` are how a `resource_drift`
- * push notification hands over the window it summarised — see `pushDataToPath`
+ * push notification hands over the window it summarised: see `pushDataToPath`
  * in `lib/push.ts`; both are absent when the screen is opened by hand.
  */
 export default function ChangesRoute() {

@@ -21,7 +21,7 @@ export interface CliFlags {
   org: string | null;
   local: boolean;
   account: string | null;
-  /** `posture dismiss --reason` — why an accepted risk is acceptable. */
+  /** `posture dismiss --reason`: why an accepted risk is acceptable. */
   reason: string | null;
   help: boolean;
 }
@@ -29,7 +29,7 @@ export interface CliFlags {
 export interface CliContext {
   flags: CliFlags;
   positionals: string[];
-  /** True when the GUI holds the single-instance lock — DB + tokens are read-only. */
+  /** True when the GUI holds the single-instance lock: DB + tokens are read-only. */
   guiRunning: boolean;
 }
 
@@ -78,7 +78,7 @@ export async function orgFetch<T>(orgId: string, path: string, init: RequestInit
     return JSON.parse(body) as T;
   } catch {
     // A 200 that isn't JSON almost always means the SPA's catch-all served an
-    // HTML page because this route doesn't exist on that server — a version
+    // HTML page because this route doesn't exist on that server: a version
     // skew, not a failure. Saying so beats a raw JSON.parse stack trace.
     if (looksLikeHtml(body)) {
       throw new CliError(
@@ -95,7 +95,7 @@ export async function orgFetch<T>(orgId: string, path: string, init: RequestInit
 
 /**
  * Same as {@link orgFetch}, for an endpoint whose body is a document rather
- * than a JSON payload — today that is the asciicast a recorded SSH session
+ * than a JSON payload: today that is the asciicast a recorded SSH session
  * downloads as, which is newline-delimited JSON and would die on `JSON.parse`
  * at its header line.
  */
@@ -140,7 +140,7 @@ function looksLikeHtml(body: string): boolean {
 
 /**
  * A response body worth putting in an error message. HTML is summarised rather
- * than shown — a whole page of markup buries the actual problem — and anything
+ * than shown (a whole page of markup buries the actual problem) and anything
  * long is truncated.
  */
 function describeBody(body: string): string {
@@ -210,8 +210,8 @@ export async function listCloudAccounts(orgId: string): Promise<AccountInfo[]> {
   const rows = await orgFetch<
     Array<{ id: string; pluginId: string; displayName: string; createdAt: string }>
   >(orgId, "/accounts");
-  // The route doesn't order its rows, so without this the list — and the TUI
-  // cursor's starting account — moves between invocations. Local accounts come
+  // The route doesn't order its rows, so without this the list (and the TUI
+  // cursor's starting account) moves between invocations. Local accounts come
   // back `ORDER BY display_name`; match them.
   return rows
     .map((r) => ({ id: r.id, pluginId: r.pluginId, displayName: r.displayName }))
@@ -232,7 +232,7 @@ export interface ResourceRow {
 
 /**
  * `fieldsJson` / `outputsJson` are jsonb columns and the API serves them as
- * real JSON objects (`JsonObject` in api/openapi/paths/accounts.ts) — the name
+ * real JSON objects (`JsonObject` in api/openapi/paths/accounts.ts): the name
  * is a leftover from the column, not a promise of a string. A string is still
  * accepted for anything that does send one.
  */
@@ -264,7 +264,7 @@ export interface ResourceListing {
  * The local `resources` table is *not* the source of truth here: desktop only
  * writes rows for resources the app itself created or pinned, so a workspace
  * full of discovered droplets has an empty table. The GUI's sidebar and
- * account pages have always enumerated through the plugin — this does the
+ * account pages have always enumerated through the plugin: this does the
  * same, from the main process.
  */
 export async function listLocalResources(
@@ -303,7 +303,7 @@ export async function loadLocalResourceOutputs(
 /**
  * Ask the cloud to re-list every resource type of an account from the
  * provider right now. The poller keeps the cache warm on its own schedule,
- * but "show me this account" should mean what the provider says *now* — the
+ * but "show me this account" should mean what the provider says *now*: the
  * desktop account page syncs the same way. Returns the synced row count.
  */
 export async function syncCloudAccount(orgId: string, accountId: string): Promise<number> {

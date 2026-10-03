@@ -1,19 +1,19 @@
 /**
- * "What breaks if I delete this?" — the impact report for one resource.
+ * "What breaks if I delete this?": the impact report for one resource.
  *
  * The report is assembled from data the product already has, and it is
  * deliberately three different kinds of evidence kept apart rather than summed
  * into one number:
  *
- *  - **Dependants** — the inbound half of the dependency graph, walked
+ *  - **Dependants**: the inbound half of the dependency graph, walked
  *    transitively. Hand-wired output references, plugin-declared `dependsOn`
  *    edges and edges inferred from synced cloud data all arrive as ordinary
  *    graph edges, so this file never learns where an edge came from beyond the
  *    `kind` it carries.
- *  - **Traffic** — who actually talks to the resource, from network flow
+ *  - **Traffic**: who actually talks to the resource, from network flow
  *    attribution. Only meaningful when the org turned collection on, which is
  *    why its absence is reported rather than rendered as zero.
- *  - **Soft references** — the things that *point at* the resource without
+ *  - **Soft references**: the things that *point at* the resource without
  *    depending on it: dashboards, custom graphs, probes, metric alerts,
  *    leases, schedules, workflows, status pages, log queries, and its recorded
  *    owner. Deleting the resource does not break these the way it breaks a
@@ -22,7 +22,7 @@
  *
  * The fourth field is the one that makes the other three honest.
  * {@link BlastRadiusReport.unchecked} lists what the report could *not* look
- * at — flow collection off, ClickHouse unreachable, workflow bodies matched
+ * at: flow collection off, ClickHouse unreachable, workflow bodies matched
  * only by literal id. A report with an empty `dependants` list and an empty
  * `unchecked` list is a clean bill of health; a report with an empty
  * `dependants` list and three `unchecked` entries is a shrug, and the two must
@@ -54,7 +54,7 @@ export interface BlastRadiusDependant {
   /** Shortest hop count from the resource being deleted; always >= 1. */
   depth: number;
   /**
-   * How a *direct* dependant reaches it — the consumer field, the provider
+   * How a *direct* dependant reaches it: the consumer field, the provider
    * output, and the edge's provenance. Absent for transitive dependants,
    * whose path is several edges and has no single caption.
    */
@@ -89,14 +89,14 @@ export type BlastRadiusReferenceKind =
 /** One object that names the resource. */
 export interface BlastRadiusReference {
   kind: BlastRadiusReferenceKind;
-  /** The referring object's own id — a dashboard id, a probe id, a user id. */
+  /** The referring object's own id: a dashboard id, a probe id, a user id. */
   id: string;
   /** How the referring object is named to a person. */
   name: string;
   /** One extra clause of context ("every 60s", "auto-deletes on 3 Sep"). */
   detail?: string;
   /**
-   * Set when the reference is visible to somebody outside the org — a public
+   * Set when the reference is visible to somebody outside the org: a public
    * status page component, or the probe behind one.
    */
   userFacing?: boolean;
@@ -104,7 +104,7 @@ export interface BlastRadiusReference {
 
 /** One flow peer: something that measurably talks to the resource. */
 export interface BlastRadiusFlowPeer {
-  /** The peer's stable flow ref — a provider resource id, or a class token. */
+  /** The peer's stable flow ref: a provider resource id, or a class token. */
   ref: string;
   label: string;
   /** Traffic direction relative to the resource being deleted. */
@@ -114,11 +114,11 @@ export interface BlastRadiusFlowPeer {
   bytes: number;
   estimatedCost: number;
   currency: string;
-  /** Days in the window this peer appeared on — a spike versus a standing flow. */
+  /** Days in the window this peer appeared on: a spike versus a standing flow. */
   days: number;
   /**
    * The peer's Infrawrench resource id when the flow ref resolved to exactly
-   * one synced resource. Null when it did not — flow refs are provider-side
+   * one synced resource. Null when it did not: flow refs are provider-side
    * ids, so a peer outside the org (or in an account we do not sync) stays a
    * label, and so does one whose id is claimed by more than one resource. See
    * {@link resolveFlowPeerIdentities}.
@@ -145,7 +145,7 @@ export interface FlowPeerIdentities {
   idByRef: Map<string, string>;
   /**
    * Refs claimed by more than one resource, sorted. The report turns these
-   * into a gap rather than a link — never into whichever one looked likeliest.
+   * into a gap rather than a link, never into whichever one looked likeliest.
    */
   ambiguousRefs: string[];
 }
@@ -154,18 +154,18 @@ export interface FlowPeerIdentities {
  * Resolve flow refs to resource ids, or to nothing.
  *
  * A flow ref is the **provider's** id, and `resources.external_id` carries no
- * uniqueness constraint — its index is `(plugin_id, external_id)`, deliberately
+ * uniqueness constraint: its index is `(plugin_id, external_id)`, deliberately
  * non-unique, because plenty of providers use a name as the id and two accounts
  * legitimately both hold a `default` VPC, a `kube-system` namespace or a volume
  * called `data`. An org-wide lookup that keeps the first row it finds therefore
  * attributes measured traffic to an arbitrary resource, and this report is read
- * in the seconds before somebody deletes something — a peer pointing at the
+ * in the seconds before somebody deletes something: a peer pointing at the
  * wrong resource is a wrong answer at the worst possible moment.
  *
  * So the rule is the strictest one that can be stated without guessing:
  * **exactly one claimant is a link; anything else is not.**
  *
- *  1. **No claimant** is not ambiguity — it is an ordinary endpoint outside the
+ *  1. **No claimant** is not ambiguity: it is an ordinary endpoint outside the
  *     estate (`internet`, another provider, an account nobody synced). It is
  *     left unlinked with no gap recorded, or every report would carry a
  *     complaint about the internet.
@@ -179,12 +179,12 @@ export interface FlowPeerIdentities {
  * the whole point rather than an omission. An earlier version preferred a
  * claimant in the account the flow was collected from, on the grounds that most
  * traffic is intra-account. But `network_flow_daily` carries one `account_id`
- * per row — the *collecting* account — and its endpoint columns are `ref`,
+ * per row (the *collecting* account) and its endpoint columns are `ref`,
  * `label`, `zone`, `region`, `service` and `resource_type_id`, none of which
  * names an account. The scope values are topological (`private_interconnect` is
  * precisely the cross-account peering case), so they do not constrain it
  * either. Locality was therefore a prior about which answer is *usually* right,
- * dressed up as a resolution — and applying it to a contest between a local and
+ * dressed up as a resolution, and applying it to a contest between a local and
  * a remote claimant links a cross-account peer to whichever same-named resource
  * happens to sit in the collecting account.
  *
@@ -220,7 +220,7 @@ export function resolveFlowPeerIdentities(
  * Something the report could not check, and why.
  *
  * `reason` is a full sentence written for the person about to press Delete,
- * not a code — it is rendered verbatim, and "Network flow collection is off
+ * not a code: it is rendered verbatim, and "Network flow collection is off
  * for this organization, so nothing is known about what talks to this
  * resource" is the entire value of the field over a boolean.
  */
@@ -234,18 +234,18 @@ export interface BlastRadiusGap {
 /** How loud the summary line should be. */
 export type BlastRadiusSeverity = "none" | "low" | "medium" | "high" | "unknown";
 
-/** The whole report — the wire shape of `GET /blast-radius`. */
+/** The whole report: the wire shape of `GET /blast-radius`. */
 export interface BlastRadiusReport {
   resourceId: string;
   /** The resource itself, when it participates in the graph. */
   resource: DependencyGraphNode | null;
   /** Affected resources, direct first, then by depth. Excludes the resource. */
   dependants: BlastRadiusDependant[];
-  /** Direct dependants — `dependants` filtered to depth 1. */
+  /** Direct dependants: `dependants` filtered to depth 1. */
   directCount: number;
   /** Dependants at depth 2 or more. */
   transitiveCount: number;
-  /** Objects naming the resource, grouped by nothing — surfaces group. */
+  /** Objects naming the resource, grouped by nothing: surfaces group. */
   references: BlastRadiusReference[];
   /** Measured peers, heaviest first. Empty when collection is off. */
   flowPeers: BlastRadiusFlowPeer[];
@@ -278,7 +278,7 @@ const HIGH_DIRECT_DEPENDANTS = 5;
 /**
  * Assemble the report.
  *
- * Pure, and the only place counts and severity are computed — the server
+ * Pure, and the only place counts and severity are computed: the server
  * returns this shape, so no surface recomputes it and no two surfaces can put
  * a different number next to the same list.
  */
@@ -288,7 +288,7 @@ export function summarizeBlastRadius(input: BlastRadiusInput): BlastRadiusReport
 
   // Direct edges keyed by dependant, so depth-1 rows can carry the field/output
   // caption. A dependant reaching the resource through several fields keeps the
-  // first edge — the panel links the resource, not the field.
+  // first edge: the panel links the resource, not the field.
   const directEdge = new Map<string, BlastRadiusDependant["via"]>();
   for (const edge of model.dependedOnBy.get(resourceId) ?? []) {
     if (directEdge.has(edge.consumerResourceId)) continue;
@@ -372,7 +372,7 @@ interface SeverityInput {
  *
  * Anything user-facing outranks a count: one public status page component is
  * worse news than four internal dashboards. And **nothing found plus something
- * unchecked is `unknown`, never `none`** — the whole point of tracking gaps is
+ * unchecked is `unknown`, never `none`**: the whole point of tracking gaps is
  * that a report which could not look is not a report that found nothing.
  */
 export function blastRadiusSeverity(input: SeverityInput): BlastRadiusSeverity {
@@ -404,7 +404,7 @@ export function blastRadiusHeadline(input: SeverityInput): string {
   return input.unchecked.length > 0 ? `${sentence} The check was also incomplete.` : sentence;
 }
 
-/** "1 resource" / "3 resources" — the plural is the caller's noun plus s. */
+/** "1 resource" / "3 resources": the plural is the caller's noun plus s. */
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
@@ -448,7 +448,7 @@ export function blastRadiusReferenceLabel(kind: BlastRadiusReferenceKind): strin
  * Read `GET /api/org/{orgId}/blast-radius?resourceId=…`.
  *
  * `resourceId` is a query parameter rather than a path segment because
- * composite resource ids contain slashes and colons — the same reason the
+ * composite resource ids contain slashes and colons: the same reason the
  * ownership and lease routes take it that way.
  */
 export async function fetchBlastRadius(

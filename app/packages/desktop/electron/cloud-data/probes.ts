@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Synthetic probes — cloud-mode only (checks run in the cloud poller through
+// Synthetic probes: cloud-mode only (checks run in the cloud poller through
 // the egress proxy, and results live in the cloud metric store).
 
 ipcMain.handle("cloud_probes_list", async (_e, { orgId }: { orgId: string }) => {

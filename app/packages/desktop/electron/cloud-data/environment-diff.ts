@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Environment diff — cloud mode. The comparison is computed server-side over
+// Environment diff: cloud mode. The comparison is computed server-side over
 // the org's synced rows (`GET /environment-diff`, the same endpoint the web
 // Env diff screen and `infrawrench diff` use). The local-mode counterpart
 // lives in the renderer (src/lib/local-environment-diff.ts), which runs the

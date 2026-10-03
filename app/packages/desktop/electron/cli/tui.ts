@@ -1,11 +1,11 @@
-// `infrawrench tui` — full-screen interactive dashboard. Hand-rolled ANSI
+// `infrawrench tui`: full-screen interactive dashboard. Hand-rolled ANSI
 // renderer (alternate screen buffer + raw-mode keys), no curses dependency.
 //
 // Layout:
-//   header   — org switcher tabs (Local + each cloud org)
-//   left     — accounts in the active scope
-//   right    — resources of the selected account, or the detail/metrics pane
-//   footer   — key hints
+//   header   - org switcher tabs (Local + each cloud org)
+//   left     - accounts in the active scope
+//   right    - resources of the selected account, or the detail/metrics pane
+//   footer   - key hints
 import {
   listOrgs,
   listLocalAccounts,
@@ -45,13 +45,13 @@ interface TuiState {
   scopeIndex: number;
   accounts: AccountInfo[];
   accountIndex: number;
-  /** First visible row of the accounts pane — keeps the cursor on screen. */
+  /** First visible row of the accounts pane: keeps the cursor on screen. */
   accountScroll: number;
   resources: ResourceRow[];
   resourceIndex: number;
   /** First visible row of the resources list. */
   resourceScroll: number;
-  /** First visible line of the detail pane (j/k scroll it — no cursor there). */
+  /** First visible line of the detail pane (j/k scroll it: no cursor there). */
   detailScroll: number;
   pane: Pane;
   status: string;
@@ -86,7 +86,7 @@ function truncate(s: string, width: number): string {
 
 /**
  * Clamp a pane's scroll offset so the cursor row stays on screen and the
- * window never runs past the end of the list. Called on every render — the
+ * window never runs past the end of the list. Called on every render: the
  * terminal can resize between key presses, so the offset is re-derived from
  * the current geometry rather than maintained by the key handlers.
  */
@@ -174,7 +174,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
   }
 
   function clearResources(): void {
-    // Invalidate any in-flight listing/sync — its reply belongs to whatever
+    // Invalidate any in-flight listing/sync: its reply belongs to whatever
     // account was selected when it started, not this one.
     resourceLoadToken++;
     state.resources = [];
@@ -237,7 +237,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
     render();
   }
 
-  /** Fill in the selected resource's outputs — local listings arrive without them. */
+  /** Fill in the selected resource's outputs: local listings arrive without them. */
   async function loadResourceOutputs(): Promise<void> {
     const scope = activeScope();
     const account = activeAccount();
@@ -250,12 +250,12 @@ export async function runTui(ctx: CliContext): Promise<void> {
       state.resources[index] = enriched;
       render();
     } catch {
-      /* outputs are a bonus on the detail pane — the fields still render */
+      /* outputs are a bonus on the detail pane: the fields still render */
     }
   }
 
   // Metrics arrive async while the user may already be looking at another
-  // resource — same staleness hazard as resource listing.
+  // resource: same staleness hazard as resource listing.
   let metricsLoadToken = 0;
 
   async function loadMetrics(): Promise<void> {
@@ -390,7 +390,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
       renderCostsPane(right, rightWidth);
     } else if (state.pane === "detail") {
       renderDetailPane(right, rightWidth);
-      // The detail pane has no cursor — j/k slide the whole pane instead.
+      // The detail pane has no cursor: j/k slide the whole pane instead.
       state.detailScroll = Math.max(0, Math.min(state.detailScroll, right.length - bodyRows));
       if (state.detailScroll > 0) {
         right = right.slice(state.detailScroll);
@@ -436,7 +436,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
     for (const r of state.resources) {
       if (!typeIndex.has(r.resourceTypeId)) typeIndex.set(r.resourceTypeId, typeIndex.size);
     }
-    // Two header lines above the list — window the rest around the cursor.
+    // Two header lines above the list: window the rest around the cursor.
     const visible = Math.max(1, bodyRows - 2);
     state.resourceScroll = followScroll(
       state.resourceScroll,
@@ -469,7 +469,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
     );
     lines.push(c.dim(truncate(resource.id, width)));
     lines.push("");
-    // Everything scalar the desktop detail page would show — the pane
+    // Everything scalar the desktop detail page would show: the pane
     // scrolls, so nothing gets sliced away.
     const sections: Array<[string, Array<[string, unknown]>]> = [
       ["", Object.entries(resource.fields)],
@@ -570,7 +570,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
       if (next >= 0 && next < state.accounts.length) {
         state.accountIndex = next;
         // Listing hits the provider, so moving the cursor only clears the
-        // pane — enter is what asks for the new account's resources.
+        // pane: enter is what asks for the new account's resources.
         clearResources();
         render();
       }
@@ -581,7 +581,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
         render();
       }
     } else if (state.pane === "detail") {
-      // No cursor in the detail pane — j/k scroll the content itself.
+      // No cursor in the detail pane: j/k scroll the content itself.
       // render() clamps to the pane's real height.
       state.detailScroll = Math.max(0, state.detailScroll + delta);
       render();
@@ -619,7 +619,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
             void loadResourceOutputs();
             void loadMetrics();
           } else if (!state.loading) {
-            // Tabbed into the pane before listing it — enter still means
+            // Tabbed into the pane before listing it: enter still means
             // "list this account", exactly as the placeholder text says.
             void loadResources();
           }

@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 beforeAll(() => {
-  // jsdom doesn't implement <dialog> showModal/close — stub them, the way
+  // jsdom doesn't implement <dialog> showModal/close: stub them, the way
   // cost-reports-panel.test.tsx does. FileIssueModal renders through Modal.
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
@@ -20,8 +20,8 @@ import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import { IssueFilingProvider, type IssueFilingApi } from "../issue-filing/host.js";
 
 /**
- * The tracker-aware filing affordance has four configuration states — no
- * tracker, Jira only, Linear only, both — and the button's label and modal
+ * The tracker-aware filing affordance has four configuration states (no
+ * tracker, Jira only, Linear only, both) and the button's label and modal
  * behaviour are the whole contract: a wrong label advertises a tracker the
  * org doesn't have, and a missing "already filed" badge is how duplicates get
  * filed. These tests pin each state, plus the badge behaviour when one or
@@ -187,7 +187,7 @@ describe("FileIssueButton", () => {
   });
 
   /**
-   * A link in one tracker suppresses the second offer entirely — filing the
+   * A link in one tracker suppresses the second offer entirely: filing the
    * same finding into the other tracker as well is not a flow the row offers
    * (the badge is the row's whole answer), matching the pre-Linear behaviour.
    */

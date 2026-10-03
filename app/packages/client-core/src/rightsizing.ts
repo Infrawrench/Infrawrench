@@ -1,5 +1,5 @@
 /**
- * Right-sizing ("Oversized") — the pure half of the savings finder's second
+ * Right-sizing ("Oversized"); the pure half of the savings finder's second
  * question: not "is this resource wasted entirely" (orphans) but "is it
  * bigger than what it does".
  *
@@ -8,7 +8,7 @@
  * the size id, which stored metric series measure CPU/memory utilisation, and
  * how to read them. The host supplies the candidate size catalog (the create
  * form's own size-picker options) and 14-day utilisation percentiles from the
- * metrics warehouse; this module turns those into a recommendation — or,
+ * metrics warehouse; this module turns those into a recommendation, or,
  * mostly, into nothing, which is the correct answer for a well-sized fleet.
  *
  * Everything here is pure and unit-tested: quantiles + catalog in,
@@ -41,7 +41,7 @@ export interface RightsizingThresholds {
   memoryP95Max: number;
   /**
    * A candidate size qualifies when the projected p95 utilisation on it stays
-   * at or under this fraction of capacity — the recommendation keeps real
+   * at or under this fraction of capacity: the recommendation keeps real
    * headroom rather than sizing to the observed peak.
    */
   headroom: number;
@@ -53,13 +53,13 @@ export interface RightsizingThresholds {
   minCoverageMinutes: number;
   /**
    * When the provider stores no memory series, a candidate must still keep at
-   * least this fraction of the current size's RAM — an unmeasured halving is
+   * least this fraction of the current size's RAM: an unmeasured halving is
    * the most a recommendation will ever suggest.
    */
   memoryFloorWhenUnmeasured: number;
 }
 
-/** 14 trailing days — far enough back to include weekly load patterns. */
+/** 14 trailing days: far enough back to include weekly load patterns. */
 export const RIGHTSIZING_WINDOW_DAYS = 14;
 
 export const DEFAULT_RIGHTSIZING_THRESHOLDS: RightsizingThresholds = {
@@ -109,7 +109,7 @@ export interface ResolvedUtilisation {
 /**
  * Read the declared CPU/memory series out of a resource's stored quantiles.
  *
- * `currentMemoryMb` is the current size's total RAM — required to turn
+ * `currentMemoryMb` is the current size's total RAM: required to turn
  * byte-denominated series into a percent; byte series without it resolve to
  * "unmeasured" rather than a guess. For `available-bytes` series the p95 of
  * *used* memory is `total − q05(available)`: the busiest moments are the ones
@@ -169,7 +169,7 @@ export interface SizeRecommendationInput {
    * provider bundles the disk with the size. Hetzner and DigitalOcean refuse
    * any resize to a size whose included disk is smaller than the disk the
    * machine already has, so candidates below it are dropped. Falls back to
-   * the current size's `diskGb` when unknown — conservative: a disk never
+   * the current size's `diskGb` when unknown; conservative: a disk never
    * shrinks, so the current type's included disk is an upper bound.
    */
   currentDiskGb?: number | null | undefined;
@@ -192,7 +192,7 @@ export interface SizeRecommendation {
 /**
  * The oversized decision: is the resource's p95 utilisation under the
  * thresholds, and if so, which is the cheapest catalog size that still clears
- * the headroom rule. Returns null in every "leave it alone" case — unknown
+ * the headroom rule. Returns null in every "leave it alone" case: unknown
  * current size, thin metric coverage, healthy utilisation, or no candidate
  * that fits.
  */
@@ -292,7 +292,7 @@ function round2(value: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Wire types — `GET /api/org/:orgId/rightsizing`, shared by web, desktop,
+// Wire types: `GET /api/org/:orgId/rightsizing`, shared by web, desktop,
 // mobile and the CLI so a server-side change breaks builds instead of output.
 // ---------------------------------------------------------------------------
 
@@ -324,7 +324,7 @@ export interface OversizedResource {
   cpuP95: number;
   /** p95 memory utilisation, percent of the current size; null when unmeasured. */
   memoryP95: number | null;
-  /** False when the provider stores no memory series — the UI must say so. */
+  /** False when the provider stores no memory series: the UI must say so. */
   memoryMeasured: boolean;
   /** Projected p95 CPU on the recommended size, for the confirm dialog. */
   projectedCpuP95: number;

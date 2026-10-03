@@ -4,7 +4,7 @@ interface AccessReviewIconProps {
 }
 
 /**
- * Access-review glyph — a key. Deliberately not another shield: Posture sits
+ * Access-review glyph: a key. Deliberately not another shield: Posture sits
  * two tiles away in the same sidebar group and the two pages answer different
  * questions ("what is exposed?" vs "who can get in?"), so they must not read
  * as variants of one another. Same 24x24 stroke grid and 2px weight as

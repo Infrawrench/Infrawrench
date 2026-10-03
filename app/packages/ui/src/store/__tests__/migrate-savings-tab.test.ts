@@ -4,7 +4,7 @@ import { migrateWorkspaceTabs } from "../ui.store";
 /**
  * The Savings tab became a section of Costs. Anyone who had it open has it in
  * localStorage, and a tab whose kind no viewport case renders is a blank panel
- * the user can only close — so the v1 migration has to retarget it.
+ * the user can only close, so the v1 migration has to retarget it.
  */
 const savingsTab = { id: "savings", target: { kind: "savings" }, title: "Savings" };
 const costsTab = { id: "costs", target: { kind: "costs" }, title: "Costs" };

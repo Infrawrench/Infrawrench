@@ -1,6 +1,6 @@
 // Cloud token store shared by the GUI (cloud-auth.ts) and the headless CLI
-// (cli/). This module has NO import-time side effects — no protocol
-// registration, no single-instance lock, no ipcMain handlers — so the CLI can
+// (cli/). This module has NO import-time side effects (no protocol
+// registration, no single-instance lock, no ipcMain handlers) so the CLI can
 // use it without disturbing a running GUI instance. Tokens are encrypted with
 // the local master key and persisted in the SQLite `cloud_sync_state` table,
 // which is why a CLI invocation shares the desktop app's sign-in.
@@ -191,7 +191,7 @@ async function doRefresh(): Promise<boolean> {
       }),
     });
   } catch (e) {
-    // Network error — keep tokens so a later attempt can succeed.
+    // Network error: keep tokens so a later attempt can succeed.
     console.warn("[cloud-auth] Refresh network error, will retry:", e);
     return false;
   }
@@ -260,7 +260,7 @@ export async function getAccessToken(): Promise<string | null> {
   if (currentTokens.expiresAt < Date.now() + 60_000) {
     if (readOnlyTokenStore) {
       // Can't refresh without persisting the rotated pair. The stored token
-      // is still usable until its real expiry — the GUI proactively refreshes
+      // is still usable until its real expiry: the GUI proactively refreshes
       // ~60s early, so this window is rarely hit in practice.
       return currentTokens.expiresAt > Date.now() ? currentTokens.accessToken : null;
     }
@@ -291,7 +291,7 @@ export async function getAuthStatus(): Promise<{
 
 /**
  * The signed-in user's organizations. `[]` means "signed out" (no token, or
- * the refresh token is dead) — a network or server failure throws instead, so
+ * the refresh token is dead): a network or server failure throws instead, so
  * callers can tell "you have no organizations" from "the request failed". The
  * IPC handler serializes the rejection to the renderer, and the CLI's
  * top-level handler prints it.

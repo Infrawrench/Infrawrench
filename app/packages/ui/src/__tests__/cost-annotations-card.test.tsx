@@ -68,7 +68,7 @@ describe("CostGraphCard annotations", () => {
       <CostGraphCard title="Spend" config={CONFIG} api={makeApi([annotation({ id: "a" })])} />,
     );
 
-    // A real <button>, named with its date and text — not a hover-only tooltip.
+    // A real <button>, named with its date and text, not a hover-only tooltip.
     const marker = await screen.findByRole("button", {
       name: /Annotation 1.*Migrated to Graviton/,
     });
@@ -114,7 +114,7 @@ describe("CostGraphCard annotations", () => {
     );
 
     fireEvent.click(await screen.findByRole("button", { name: /^Annotation 1/ }));
-    // The popover is open — its scope line is there — and says nothing about
+    // The popover is open (its scope line is there) and says nothing about
     // an anomaly, because nothing linked this note to one.
     expect(await screen.findByText(/Org-wide/)).toBeTruthy();
     expect(screen.queryByText(/Explains a detected anomaly/)).toBeNull();

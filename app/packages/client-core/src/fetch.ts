@@ -12,7 +12,7 @@ export interface CloudFetchOptions {
   baseUrl: string;
   fetch?: typeof fetch;
   /**
-   * Called with the parsed body of a 409 response before it is thrown —
+   * Called with the parsed body of a 409 response before it is thrown:
    * lets hosts implement the SSH host-key trust prompt. Return true to retry
    * the request once (after e.g. POSTing /ssh-host-keys/trust).
    */

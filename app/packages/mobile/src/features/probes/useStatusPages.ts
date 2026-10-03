@@ -3,7 +3,7 @@ import { fetchStatusPages } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /**
- * The org's public status pages (`GET /status-pages`) — which of its probes
+ * The org's public status pages (`GET /status-pages`), which of its probes
  * are published, and whether each page is currently live.
  *
  * An ordinary read alongside `useProbes`, and read-only for the same reason:

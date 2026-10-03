@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from "vite
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 beforeAll(() => {
-  // jsdom doesn't implement <dialog> showModal/close — stub them, the way
+  // jsdom doesn't implement <dialog> showModal/close: stub them, the way
   // modal.test.tsx does. The move-to-folder modal renders through Modal.
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
@@ -256,7 +256,7 @@ describe("CostReportsPanel", () => {
     );
     await screen.findByText("Monthly spend");
     fireEvent.click(screen.getByText("Move"));
-    // The modal offers the top level (disabled — already there) and the folder.
+    // The modal offers the top level (disabled: already there) and the folder.
     fireEvent.click(await screen.findByRole("button", { name: "Finance" }));
     await waitFor(() =>
       expect(updateReport).toHaveBeenCalledWith("r1", expect.objectContaining({ folderId: "f1" })),

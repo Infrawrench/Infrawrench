@@ -44,9 +44,9 @@ export interface CommitmentsSectionProps {
  * and what the planner would buy next.
  *
  * The rendering rules here are the contract's rules, restated as pixels:
- * a null money field prints "not reported" (never $0 — that reads as free),
+ * a null money field prints "not reported" (never $0: that reads as free),
  * a null region prints "All regions" (a Compute Savings Plan really does
- * apply everywhere), a null utilization prints its reason (never 0% — in a
+ * apply everywhere), a null utilization prints its reason (never 0%; in a
  * table, "unknown" and "unused" are indistinguishable and one of them gets
  * a healthy plan cancelled), and coverage prints as a range because there
  * is no single honest denominator.
@@ -64,7 +64,7 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
     if (!getCommitments) return;
     let cancelled = false;
     // Awaited inside try/catch rather than chained: a host implementation may
-    // throw *synchronously* (desktop's requires cloud mode) — see
+    // throw *synchronously* (desktop's requires cloud mode); see
     // CreditBurndownSection.
     void (async () => {
       try {
@@ -260,7 +260,7 @@ function HoldingRow({ holding }: { holding: CommitmentHolding }) {
                   })}
               {utilization.missingDays > 0 && (
                 // A day collection never ran is reported, never counted as
-                // idle commitment — that miscount cancels healthy plans.
+                // idle commitment: that miscount cancels healthy plans.
                 <> · {gt("{days} days without cost data", { days: utilization.missingDays })}</>
               )}
             </>

@@ -30,9 +30,9 @@ export type { IssueLinksForSource, IssueTracker };
 export interface IssueFilingHostProps {
   orgId: string;
   api: IssueFilingApi;
-  /** Caller holds `jira:read` — without it there is nothing to fetch for Jira. */
+  /** Caller holds `jira:read`: without it there is nothing to fetch for Jira. */
   canReadJira: boolean;
-  /** Caller holds `jira:write` — without it Jira never appears as a filing target. */
+  /** Caller holds `jira:write`: without it Jira never appears as a filing target. */
   canFileJira: boolean;
   /** Caller holds `linear:read`. */
   canReadLinear: boolean;
@@ -52,7 +52,7 @@ export interface IssueFilingValue {
   linearIntegration: LinearIntegration | null;
   /** Trackers the caller can actually file to: connected AND `:write` held. */
   filableTrackers: IssueTracker[];
-  /** Every tracker's link for one finding — both, when it was filed to both. */
+  /** Every tracker's link for one finding: both, when it was filed to both. */
   linksFor: (sourceKind: JiraSourceKind, sourceId: string) => IssueLinksForSource;
   onJiraFiled: (link: JiraIssueLink) => void;
   onLinearFiled: (link: LinearIssueLink) => void;
@@ -62,10 +62,10 @@ const IssueFilingContext = createContext<IssueFilingValue | null>(null);
 
 /**
  * Makes "file this finding as an issue" available to every findings list
- * underneath it, for whichever trackers the org has connected — Jira, Linear,
+ * underneath it, for whichever trackers the org has connected: Jira, Linear,
  * or both.
  *
- * The provider — not the button — owns the reads, and that is the point: it
+ * The provider (not the button) owns the reads, and that is the point: it
  * fetches each connected tracker's integration once and **every** issue link
  * once, so a page showing a hundred findings costs a handful of requests
  * rather than hundreds. Individual buttons then resolve their own state from
@@ -73,7 +73,7 @@ const IssueFilingContext = createContext<IssueFilingValue | null>(null);
  *
  * All reads fail soft. A findings page is about findings; if a tracker or the
  * database is unreachable the page still renders, just without badges or
- * buttons. The user-initiated create is the opposite — see
+ * buttons. The user-initiated create is the opposite: see
  * {@link FileIssueModal}, which surfaces its failures.
  */
 export function IssueFilingProvider({

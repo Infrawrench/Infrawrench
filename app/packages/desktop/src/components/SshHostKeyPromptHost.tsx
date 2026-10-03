@@ -7,7 +7,7 @@ import { invoke } from "../lib/invoke";
 /**
  * Mount once at the root. Listens for `ssh_host_key_prompt` events from the
  * main process and shows a modal for each, letting the user accept or deny
- * the connection. Multiple prompts queue up — we show one at a time.
+ * the connection. Multiple prompts queue up: we show one at a time.
  */
 export function SshHostKeyPromptHost() {
   const gt = useGT();

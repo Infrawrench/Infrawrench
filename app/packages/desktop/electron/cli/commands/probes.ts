@@ -1,4 +1,4 @@
-// `infrawrench probes` — synthetic HTTP uptime/latency checks, run on an
+// `infrawrench probes`: synthetic HTTP uptime/latency checks, run on an
 // interval from the egress proxy on Cloudflare's edge (an external vantage
 // point), with `infrawrench probes <id|name>` for one probe's latency history.
 //
@@ -7,8 +7,8 @@
 // list. The CLI lists; creating and editing probes lives on the web/desktop
 // Probes tab (whose editor suggests endpoints from synced resources).
 //
-// The response shapes come from `@infrawrench/client-core` — the same
-// definitions every other surface renders — so a server-side change breaks
+// The response shapes come from `@infrawrench/client-core` (the same
+// definitions every other surface renders) so a server-side change breaks
 // the CLI's build instead of its output. The imports are type-only, so the
 // CLI still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
@@ -142,7 +142,7 @@ async function printProbeDetail(
   if (facts.length > 0) println(facts.join(c.dim(" · ")));
 
   // Match the latency series by label, falling back to unit so a server-side
-  // label rename degrades to the right chart — never the 0/1 "Up" series.
+  // label rename degrades to the right chart, never the 0/1 "Up" series.
   const latency = series.find((s) => s.label === "Latency") ?? series.find((s) => s.unit === "ms");
   const values = latency?.points.map((p) => p.value) ?? [];
   println();

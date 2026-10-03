@@ -1,5 +1,5 @@
 /**
- * Posture checks — plugin-declared security rules evaluated over
+ * Posture checks; plugin-declared security rules evaluated over
  * already-synced resource fields, producing severity-ranked findings: public
  * buckets, 0.0.0.0/0 ingress, unencrypted disks, publicly-reachable database
  * endpoints, access keys past their rotation budget, missing deletion
@@ -9,13 +9,13 @@
  * types with `postureChecks` (`PostureCheckRule` in
  * `@infrawrench/plugin-base`), and this module is the shared pure half that
  * turns stored rows + those declarations into the findings every surface
- * renders — the web/desktop/mobile screens, the `infrawrench posture` CLI,
+ * renders; the web/desktop/mobile screens, the `infrawrench posture` CLI,
  * the `list_posture_findings` MCP tool and the poller's posture alerts. Rows
  * in, findings out: no plugin client, no credentials, no provider API calls,
- * ever — exactly the `orphanRule` and expiry-radar contract.
+ * ever; exactly the `orphanRule` and expiry-radar contract.
  *
- * Findings have no identity of their own — they are recomputed from scratch
- * on every read — so an operator's decision to accept one is stored against
+ * Findings have no identity of their own (they are recomputed from scratch
+ * on every read) so an operator's decision to accept one is stored against
  * `(resourceId, ruleId)` and applied here, at the end of the computation. A
  * dismissed finding is still evaluated; it is only *partitioned* out of the
  * list and the alert feed, so accepting a risk stays reviewable and
@@ -25,7 +25,7 @@
  * this module must stay free of a *runtime* dependency on plugin-base so the
  * mobile bundle doesn't pull in zod for the sake of a few interfaces. The
  * condition semantics are therefore implemented here too, and must match
- * `evaluatePostureRule` in plugin-base exactly — both sides are covered by
+ * `evaluatePostureRule` in plugin-base exactly: both sides are covered by
  * tests against the documented contract.
  */
 import type { PostureCategory, PostureCheckRule, PostureSeverity } from "@infrawrench/plugin-base";
@@ -87,7 +87,7 @@ export interface PostureFinding {
 }
 
 /**
- * An operator's decision to accept one finding on one resource — the bucket
+ * An operator's decision to accept one finding on one resource: the bucket
  * really is meant to be public, the key really is rotated out of band.
  *
  * Keyed by `(resourceId, ruleId)` rather than by a finding row, because a
@@ -102,7 +102,7 @@ export interface PostureDismissal {
   ruleId: string;
   /** ISO instant the dismissal was recorded. */
   dismissedAt: string;
-  /** Who accepted it — display name or email; null when unknown (local mode). */
+  /** Who accepted it: display name or email; null when unknown (local mode). */
   dismissedBy: string | null;
   /** The operator's note, when they left one. */
   reason: string | null;
@@ -117,7 +117,7 @@ export interface DismissedPostureFinding extends PostureFinding {
 export interface PostureListResponse {
   /** Live findings, worst severity first. Dismissed ones are **not** here. */
   findings: PostureFinding[];
-  /** Live finding count — `findings.length`, dismissals excluded. */
+  /** Live finding count: `findings.length`, dismissals excluded. */
   totalCount: number;
   /** Live finding count per severity; every bucket present, zeros included. */
   counts: Record<PostureSeverity, number>;
@@ -156,7 +156,7 @@ export interface PostureScanAccount {
 
 /**
  * The part of a stored resource row the scan reads. Hosts map their own store
- * onto this — Postgres jsonb, SQLite TEXT bags — so the computation never
+ * onto this (Postgres jsonb, SQLite TEXT bags) so the computation never
  * learns which database it is looking at.
  */
 export interface PostureScanResource {
@@ -175,7 +175,7 @@ export interface PostureScanInput {
   accounts: readonly PostureScanAccount[];
   resources: readonly PostureScanResource[];
   /**
-   * Accepted findings, keyed by `(resourceId, ruleId)`. Omitted means none —
+   * Accepted findings, keyed by `(resourceId, ruleId)`. Omitted means none;
    * a host that has no dismissal store (or hasn't loaded it yet) gets the
    * pre-dismissal behaviour, which is the safe direction: unknown dismissals
    * show the finding rather than hide it.
@@ -193,8 +193,8 @@ export interface PostureScanOptions {
    * of growing an alert channel of its own.
    *
    * Passed in rather than computed here because it is a cross-resource
-   * question — a record is dangling relative to the whole workspace, not to
-   * its own field bag — and every other rule in this module is a pure
+   * question (a record is dangling relative to the whole workspace, not to
+   * its own field bag) and every other rule in this module is a pure
    * per-resource predicate. Hosts that don't have the inventory to hand simply
    * omit it and get the declarative rules alone.
    */
@@ -204,7 +204,7 @@ export interface PostureScanOptions {
 /**
  * Rule id of the one built-in, cross-resource posture finding: a DNS record
  * pointing into a provider namespace this workspace manages that nothing in it
- * claims. Not a plugin `postureChecks` rule — no field bag can express it —
+ * claims. Not a plugin `postureChecks` rule (no field bag can express it)
  * but it rides the same findings list, severities and alert fan-out.
  */
 export const DANGLING_DNS_RULE_ID = "dns-dangling-target";
@@ -264,8 +264,8 @@ function ruleMatches(
  * and API calls off this one function so the three can never drift apart.
  *
  * NUL is the separator because neither half is length-prefixed and both can
- * contain punctuation — GCP resource ids are slash-paths, rule ids are
- * hyphenated — so any printable delimiter could be forged into a collision.
+ * contain punctuation (GCP resource ids are slash-paths, rule ids are
+ * hyphenated) so any printable delimiter could be forged into a collision.
  */
 export function postureFindingKey(finding: { resourceId: string; ruleId: string }): string {
   return `${finding.resourceId}\u0000${finding.ruleId}`;
@@ -275,14 +275,14 @@ export function postureFindingKey(finding: { resourceId: string; ruleId: string 
  * Compute the posture findings for a workspace: every declared rule matched
  * against every stored resource, worst severity first.
  *
- * Pure and deterministic — two hosts reading the same rows render the same
+ * Pure and deterministic: two hosts reading the same rows render the same
  * findings. The sort is severity rank, then account name, then display name,
  * then rule id, so the order is stable across refreshes. Resources whose
  * account is missing from `accounts` are skipped (soft-deleted account, not a
  * finding worth alarming on), as is any bag that isn't a plain object.
  *
  * Dismissed findings are computed exactly like the rest and then *partitioned
- * out* — they leave `findings`/`counts`/`totalCount` (so nothing the org has
+ * out*: they leave `findings`/`counts`/`totalCount` (so nothing the org has
  * accepted can page anyone) and reappear in `dismissed` with the note and
  * author attached (so accepting a risk is reviewable, not a delete).
  */
@@ -370,7 +370,7 @@ export function computePostureFindings(
     a.ruleId.localeCompare(b.ruleId);
 
   findings.sort(bySeverity);
-  // Most recently dismissed first — the list is read to undo a decision, and
+  // Most recently dismissed first: the list is read to undo a decision, and
   // the decision most likely to be wrong is the one just made. Ties fall back
   // to the severity order so the result stays deterministic.
   dismissed.sort(
@@ -396,7 +396,7 @@ export function computePostureFindings(
  *
  * One finding per record, not per target: a round-robin CNAME with two dead
  * targets is one thing to fix. The worst severity across its dangling targets
- * wins, and the reason names the specific target so the fix is unambiguous —
+ * wins, and the reason names the specific target so the fix is unambiguous,
  * including the "you may just not have connected that account" escape hatch,
  * which is the one honest false positive this check has (see `dns.ts`).
  */
@@ -435,13 +435,13 @@ function danglingDnsFindings(dns: DnsInventoryResponse): PostureFinding[] {
   return findings;
 }
 
-/** The findings the poller alerts on — critical and high only. */
+/** The findings the poller alerts on: critical and high only. */
 export function alertablePostureFindings(feed: PostureListResponse): PostureFinding[] {
   return feed.findings.filter((f) => f.severity === "critical" || f.severity === "high");
 }
 
 /**
- * Org-level posture alert settings — the wire shape of
+ * Org-level posture alert settings: the wire shape of
  * `GET|PUT /api/org/:orgId/posture/settings` (permission `org:settings:write`).
  * Shaped like the expiry alert settings, minus a lead time: findings have no
  * clock, so the only tunable is the on/off switch.
@@ -510,7 +510,7 @@ export interface PostureDismissInput {
  * rewrites the note and the author rather than failing.
  *
  * The finding leaves the list and stops feeding the posture alerts, but it is
- * still evaluated on every scan — fixing the resource and then re-breaking it
+ * still evaluated on every scan: fixing the resource and then re-breaking it
  * does not un-dismiss it, which is why the dismissed list is reviewable.
  */
 export async function dismissPostureFinding(

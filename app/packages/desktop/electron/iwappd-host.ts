@@ -1,8 +1,8 @@
 /**
  * Linux application sessions, main-process side.
  *
- * The renderer resolves which host to connect to and with which key — exactly
- * as it does for an SSH tab — and this opens the connection, puts `iwappd` into
+ * The renderer resolves which host to connect to and with which key (exactly
+ * as it does for an SSH tab) and this opens the connection, puts `iwappd` into
  * the host's RAM, runs it, and relays protocol frames both ways.
  *
  * The connection itself is `connectSshChain` from `ssh-shell.ts`, so jump
@@ -111,7 +111,7 @@ function closeSession(sessionId: string): void {
 }
 
 /**
- * The host's applications without opening a session — one exec that uploads,
+ * The host's applications without opening a session: one exec that uploads,
  * lists and deletes. What the launcher paints first.
  */
 async function listHostApps(config: SshShellConfig, iconSize?: number): Promise<unknown[]> {
@@ -130,7 +130,7 @@ async function listHostApps(config: SshShellConfig, iconSize?: number): Promise<
  * What the host is missing, before anything is uploaded.
  *
  * Its own connection rather than the session's, because the whole point is to
- * answer on a host where starting a session would fail — no `gunzip` and the
+ * answer on a host where starting a session would fail: no `gunzip` and the
  * staging step cannot even unpack the binary.
  */
 async function preflightHost(config: SshShellConfig): Promise<HostRequirementsCheck> {
@@ -214,7 +214,7 @@ export function registerIwappdHandlers(): void {
   );
 }
 
-/** Close every session — called when the app quits. */
+/** Close every session: called when the app quits. */
 export function shutdownIwappdSessions(): void {
   for (const sessionId of [...sessions.keys()]) closeSession(sessionId);
 }

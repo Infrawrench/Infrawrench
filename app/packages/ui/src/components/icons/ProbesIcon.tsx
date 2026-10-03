@@ -4,7 +4,7 @@ interface ProbesIconProps {
 }
 
 /**
- * Synthetic-probes glyph — a signal source with radiating waves. Same 24x24
+ * Synthetic-probes glyph: a signal source with radiating waves. Same 24x24
  * stroke grid and 2px weight as ChangesIcon/ExpiryIcon so the sidebar entry
  * sits level with its neighbours. (Lucide's "radio" icon.)
  */

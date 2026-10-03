@@ -3,7 +3,7 @@ import { CLIENT_ID, WORKOS_API_URL } from "../../../env";
 
 /**
  * WorkOS AuthKit OAuth+PKCE via expo-auth-session. WorkOS has no discovery
- * document at the client level, so endpoints are specified manually — same
+ * document at the client level, so endpoints are specified manually: same
  * URLs the desktop's `buildAuthorizeUrl`/`exchangeAuthorizationCode` hit.
  * expo-auth-session generates and stores the PKCE verifier; the code exchange
  * itself goes through client-core's TokenManager so token persistence and

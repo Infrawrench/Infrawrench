@@ -142,8 +142,8 @@ describe("CostCollectionNotice", () => {
   });
 
   it("says so when an account's spend is estimated rather than billed", () => {
-    // The account is healthy in every other respect — coverage, no error, a
-    // recent poll — so this notice is the only thing that says the graph above
+    // The account is healthy in every other respect (coverage, no error, a
+    // recent poll) so this notice is the only thing that says the graph above
     // it is a rate-card calculation rather than an invoice.
     render(<CostCollectionNotice statuses={[status({ estimated: true })]} />);
     expect(screen.getByText("Spend for Infrawrench GCP is estimated")).toBeInTheDocument();

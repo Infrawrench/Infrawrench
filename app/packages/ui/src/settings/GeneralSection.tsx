@@ -563,7 +563,7 @@ interface Enrollment {
 
 /**
  * WorkOS creates the factor as soon as enrolment starts, so closing without
- * verifying has to delete it again — otherwise a half-finished setup would sit
+ * verifying has to delete it again, otherwise a half-finished setup would sit
  * in the list indistinguishable from a working one.
  */
 function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => void }) {
@@ -617,7 +617,7 @@ function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => vo
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Verification failed"));
-      // The challenge is spent either way — get a fresh one so the next
+      // The challenge is spent either way: get a fresh one so the next
       // attempt isn't rejected for the wrong reason.
       try {
         const next = await api.post<{ challengeId: string }>(
@@ -819,8 +819,8 @@ function SessionsCard() {
 }
 
 /**
- * Deleting the account. Required by App Store guideline 5.1.1(v) — an app that
- * can create an account has to be able to delete one — but it is the same
+ * Deleting the account. Required by App Store guideline 5.1.1(v) (an app that
+ * can create an account has to be able to delete one) but it is the same
  * account everywhere, so it lives here rather than only on mobile.
  *
  * The preview is fetched up front rather than letting the user discover the

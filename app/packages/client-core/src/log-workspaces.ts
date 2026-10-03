@@ -1,5 +1,5 @@
 /**
- * Log workspace — tail several log-capable resources in one pane, search
+ * Log workspace: tail several log-capable resources in one pane, search
  * across the merged stream, save the set-up as a named query, and optionally
  * alert when a line matches.
  *
@@ -10,7 +10,7 @@
  * appended lines, and the wire contract + Bearer fetch helpers for
  * `/api/org/:orgId/log-workspaces`.
  */
-// Type-only on purpose — client-core keeps zero runtime dependency on
+// Type-only on purpose: client-core keeps zero runtime dependency on
 // plugin-base (the mobile bundle never pulls the manifest machinery in).
 import type { LogsFetchResult } from "@infrawrench/plugin-base";
 import type { CloudFetch } from "./fetch";
@@ -36,10 +36,10 @@ export interface LogResourceOption {
   parentDisplayName?: string;
 }
 
-/** One resource a saved query tails — enough to call the per-resource logs endpoint. */
+/** One resource a saved query tails: enough to call the per-resource logs endpoint. */
 export interface LogStreamSelector {
   /**
-   * Infrawrench resource id (`resources.id`), or — for a sidecar stream — the
+   * Infrawrench resource id (`resources.id`), or (for a sidecar stream) the
    * peer plugin's own resource id (e.g. `{accountId}:k8s-pod:{ns}:{name}`),
    * which is not a stored row.
    */
@@ -63,7 +63,7 @@ export interface LogWorkspaceQuery {
   id: string;
   name: string;
   resources: LogStreamSelector[];
-  /** The search expression — see `compileLogSearch` for the syntax. */
+  /** The search expression: see `compileLogSearch` for the syntax. */
   search: string;
   /** When true the poller periodically evaluates the query and alerts on match. */
   alertEnabled: boolean;
@@ -108,7 +108,7 @@ export interface LogWorkspaceQueryPatch {
  * that keeps matching doesn't re-fire every pass.
  */
 export const LOG_WORKSPACE_LIMITS = {
-  /** Hard cap on saved queries per org — a governance rail, not a product tier. */
+  /** Hard cap on saved queries per org: a governance rail, not a product tier. */
   maxPerOrg: 100,
   /** Max resources one query can tail. */
   maxResourcesPerQuery: 8,
@@ -130,7 +130,7 @@ export const LOG_WORKSPACE_LIMITS = {
 
 /**
  * A compiled search expression. `test` decides line membership; `error` is
- * set (and `test` matches nothing) when the expression failed to compile —
+ * set (and `test` matches nothing) when the expression failed to compile:
  * surfaced inline by the filter box and stored on the row by the alert pass.
  */
 export interface CompiledLogSearch {
@@ -164,7 +164,7 @@ function tokenizeSearch(expr: string): SearchTerm[] {
 /**
  * Best-effort static rejection of regex shapes whose backtracking can blow up
  * on a hostile line: a `*`/`+`/`{n,m}` quantifier applied to a group that
- * itself contains a quantifier (`(a+)+`, `(\w*)*`, `(?:x{2,}){3,}` — "star
+ * itself contains a quantifier (`(a+)+`, `(\w*)*`, `(?:x{2,}){3,}`; "star
  * height" > 1), or applied to a group with top-level alternation (`(a|aa)+`),
  * whose overlapping branches backtrack the same way. This is a shape check,
  * not a full ReDoS analysis: patterns it cannot see through (e.g. adjacent
@@ -228,7 +228,7 @@ export function hasCatastrophicRegexShape(pattern: string): boolean {
  *
  * Syntax (kept deliberately grep-simple):
  * - empty / whitespace → matches every line
- * - `/pattern/` or `/pattern/i` — the whole expression is a regular
+ * - `/pattern/` or `/pattern/i`: the whole expression is a regular
  *   expression (case-insensitive with the `i` flag, case-sensitive without)
  * - otherwise: whitespace-separated terms, ALL of which must appear in the
  *   line (case-insensitive substring). `"quoted phrases"` keep their spaces;
@@ -299,7 +299,7 @@ export function compileLogSearch(expression: string): CompiledLogSearch {
 export interface LogMatchEvaluation {
   /** Matching lines counted, capped at `matchCap`. */
   matchCount: number;
-  /** True when scanning stopped at the cap — the real count may be higher. */
+  /** True when scanning stopped at the cap: the real count may be higher. */
   truncated: boolean;
   /** Up to `sampleCap` matching lines, most recent last, each length-capped. */
   samples: string[];
@@ -349,7 +349,7 @@ export function evaluateLogMatches(
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]!;
     if (line.length === 0) continue;
-    // Cap the input the (user-supplied) predicate sees — see EVAL_LINE_MAX_LENGTH.
+    // Cap the input the (user-supplied) predicate sees: see EVAL_LINE_MAX_LENGTH.
     const probe = line.length > EVAL_LINE_MAX_LENGTH ? line.slice(0, EVAL_LINE_MAX_LENGTH) : line;
     if (!search.test(probe)) continue;
     matchCount += 1;
@@ -390,7 +390,7 @@ export function computeAppendedLines(prev: string[], next: string[]): string[] {
 }
 
 /**
- * Stable key for a selector — used for React keys and per-stream state maps.
+ * Stable key for a selector: used for React keys and per-stream state maps.
  * Includes the parent: two clusters in one account can both run a pod with
  * the same namespace/name, so the peer resource id alone is ambiguous.
  */
@@ -463,7 +463,7 @@ export async function createLogWorkspaceQuery(
   });
 }
 
-/** Update a saved query — name, resources, search or the alert toggle (`resources:write`). */
+/** Update a saved query: name, resources, search or the alert toggle (`resources:write`). */
 export async function updateLogWorkspaceQuery(
   api: CloudFetch,
   orgId: string,
@@ -484,7 +484,7 @@ export interface LogStreamTail {
 }
 
 /**
- * Fetch one stream's log tail over the cloud API — the platform-neutral half
+ * Fetch one stream's log tail over the cloud API: the platform-neutral half
  * of every Bearer-talking log viewer (mobile today). Builds the per-resource
  * logs endpoint path from the selector, POSTs the tail request, and splits the
  * raw text into lines with `splitLogLines`. Presentation (labels, colors,

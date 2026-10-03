@@ -14,13 +14,13 @@ import { invalidateDashboardQueries, type DashboardData } from "./DashboardBody"
 
 /**
  * Every write a dashboard screen makes, against the endpoints web already
- * uses — no server surface is added for mobile.
+ * uses: no server surface is added for mobile.
  *
  * Two things are worth knowing about the shape here. Failures are reported once,
  * as an `Alert`, and then re-thrown: the sheets show the same message inline and
  * stay open, and a caller that has nothing to add (a row that pins on tap) just
  * swallows it. And a reorder is applied to the cached dashboard before the
- * request goes out — the arrows are the one control whose whole point is that
+ * request goes out: the arrows are the one control whose whole point is that
  * the card moves *now*, and a round trip to see it move reads as a dropped tap.
  */
 export function useDashboardEditing(dashboardId: string) {
@@ -165,7 +165,7 @@ export function useDashboardEditing(dashboardId: string) {
       [dashboardId, post, run, refresh],
     ),
 
-    /** Create the budget row, then the card that points at it — as web does. */
+    /** Create the budget row, then the card that points at it, as web does. */
     createBudget: useCallback(
       async (input: BudgetInput) => {
         await run("Couldn't create the budget", async () => {

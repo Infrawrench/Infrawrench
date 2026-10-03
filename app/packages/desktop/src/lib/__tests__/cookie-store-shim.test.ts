@@ -42,7 +42,7 @@ beforeEach(() => {
 
 afterEach(() => {
   // These tests run under the node environment, so there is usually nothing to
-  // put back — delete rather than assign undefined (exactOptionalPropertyTypes).
+  // put back: delete rather than assign undefined (exactOptionalPropertyTypes).
   if (savedDocument) globals.document = savedDocument;
   else delete globals.document;
   if (savedStorage) globals.localStorage = savedStorage;

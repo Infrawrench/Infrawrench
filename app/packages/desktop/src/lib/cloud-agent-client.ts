@@ -11,19 +11,19 @@ import { useUIStore } from "@infrawrench/ui";
 import { invoke } from "./invoke";
 
 /**
- * Agents mode against the selected org — the desktop counterpart of
+ * Agents mode against the selected org: the desktop counterpart of
  * `web/src/lib/agent-client.ts`, over the `cloud_agents_*` IPC.
  *
  * The local client (`agent-client.ts`) provisions and bootstraps VMs from this
  * machine and reconciles branches into a local checkout. This one does none of
  * that: the cloud server owns the whole pipeline, so the desktop is a
  * controller for sessions the org already shares with web and mobile. That is
- * also why `pickLocalRepoPath` is absent — a folder on this laptop is not
+ * also why `pickLocalRepoPath` is absent: a folder on this laptop is not
  * something the cloud pipeline can clone, so cloud sessions take a Git URL (or
  * a repo from the org's GitHub App) exactly like web's.
  *
  * Resolves the active org at call time rather than at construction so
- * switching org under a mounted Agents tab reaches the new org's sessions —
+ * switching org under a mounted Agents tab reaches the new org's sessions:
  * same convention as the changes, costs and orphans clients.
  */
 export function createCloudAgentClient(): AgentClient {
@@ -36,7 +36,7 @@ export function createCloudAgentClient(): AgentClient {
   };
 
   // Every method is `async` so a missing org rejects rather than throwing
-  // synchronously — callers chain `.catch()` off these (the panel does), and a
+  // synchronously: callers chain `.catch()` off these (the panel does), and a
   // sync throw would sail straight past it.
   return {
     listAccounts: async () =>

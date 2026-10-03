@@ -2,7 +2,7 @@
  * Presentation of the plugins' forward-looking cost estimates
  * (`PluginClient.estimateCost`), shared by every surface that quotes one:
  * the create form's running total, the edit modal's "+$340/month" delta, and
- * the resource detail page's standing estimate — on web, desktop, and mobile.
+ * the resource detail page's standing estimate: on web, desktop, and mobile.
  *
  * It lives in client-core rather than in `@infrawrench/ui` for the usual
  * reason: mobile needs the same numbers rendered by native components, and a
@@ -10,7 +10,7 @@
  *
  * These deliberately do *not* reuse `formatMoney` from `./costs`. That one
  * formats reported spend, where whole dollars are the readable choice above
- * $10 — but an estimate's cents are the whole point when the user is watching
+ * $10, but an estimate's cents are the whole point when the user is watching
  * the figure move as they drag a disk slider, and rounding a $30.37 instance
  * to "$30" makes a $0.37/GB storage change look like it did nothing.
  */
@@ -58,7 +58,7 @@ export function formatMonthlyEstimate(amount: number, currency = "USD"): string 
 /**
  * A signed monthly change: `+$340.00`, `−$12.50`, `no change`.
  *
- * The minus is U+2212, not a hyphen — it aligns with digits, which matters
+ * The minus is U+2212, not a hyphen: it aligns with digits, which matters
  * when a column of these sits under a total.
  */
 export function formatMonthlyDelta(delta: number, currency = "USD"): string {
@@ -69,7 +69,7 @@ export function formatMonthlyDelta(delta: number, currency = "USD"): string {
 
 /**
  * The sentence a host shows beside a proposed edit: "This change adds
- * $340/month". Null when there is nothing worth saying — no delta available,
+ * $340/month". Null when there is nothing worth saying: no delta available,
  * or a change that moves the bill by less than a cent.
  */
 export function describeMonthlyDelta(delta: number | null, currency = "USD"): string | null {
@@ -80,7 +80,7 @@ export function describeMonthlyDelta(delta: number | null, currency = "USD"): st
 
 /**
  * How to label a total that the plugin flagged as covering only part of the
- * resource — "at least $30.37/mo" rather than "$30.37/mo", because quoting a
+ * resource: "at least $30.37/mo" rather than "$30.37/mo", because quoting a
  * floor as if it were the whole bill is exactly the failure the `partial`
  * flag exists to prevent. Null when the estimate is complete.
  */

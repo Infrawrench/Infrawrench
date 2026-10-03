@@ -30,7 +30,7 @@ export default function AccountsScreen() {
       {/*
         The change timeline, expiry feed and log workspace are org-wide but
         they are about resources, so they hang off this tab rather than earning
-        tabs of their own — the tab bar is already at the width where labels
+        tabs of their own: the tab bar is already at the width where labels
         ellipsize. They render even with zero accounts connected: saved log
         queries and the change feed are org rows, not per-account state.
       */}

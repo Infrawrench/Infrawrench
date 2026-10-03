@@ -10,7 +10,7 @@ import { colors, spacing } from "@/lib/theme";
 import { useEfficiencyAlerts } from "./useEfficiencyAlerts";
 
 /**
- * Native counterpart to `EfficiencyAlertsSection` on web and desktop —
+ * Native counterpart to `EfficiencyAlertsSection` on web and desktop:
  * read-only, like every cost section here.
  *
  * The three slow-lane cost alerts share one list because they share one

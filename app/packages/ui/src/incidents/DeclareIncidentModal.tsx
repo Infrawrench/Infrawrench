@@ -29,9 +29,9 @@ export interface DeclareIncidentModalProps {
  * a defensible default, which is why the primary button is reachable without
  * scrolling past anything.
  *
- * The two errands with blast radius beyond the incident — freezing changes and
- * telling the public — are off by default and have to be ticked. The two that
- * only help — pinning the moment and telling your own org — are on.
+ * The two errands with blast radius beyond the incident (freezing changes and
+ * telling the public) are off by default and have to be ticked. The two that
+ * only help (pinning the moment and telling your own org) are on.
  */
 export function DeclareIncidentModal({
   client,

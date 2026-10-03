@@ -3,12 +3,12 @@
  * calls, and the epilogue that drives its stages.
  *
  * This is appended *after* the workflow PRELUDE, so `infra.*`, `fetch`, and
- * `console` behave identically inside an Infrafile — a plan or deploy stage is
+ * `console` behave identically inside an Infrafile: a plan or deploy stage is
  * ordinary workflow code that happens to be wrapped in a function.
  *
  * The stage driver is the interesting part. Each stage boundary is a host RPC,
  * which means the host decides what happens between stages: it validates the
- * env, records the plan, runs the Docker build (outside the isolate — that is
+ * env, records the plan, runs the Docker build (outside the isolate; that is
  * the whole reason the build is an RPC rather than guest code), and can stop the
  * run after `plan()` for a plan-only preview.
  */
@@ -105,7 +105,7 @@ export const INFRAFILE_PRELUDE = String.raw`
  * `defineInfra` has run), inside the same async task the workflow runner uses.
  *
  * Note that `deploy()` receives real resource handles from `infra.*`, so a
- * deploy can apply Kubernetes manifests, read outputs, or SSH — everything a
+ * deploy can apply Kubernetes manifests, read outputs, or SSH: everything a
  * workflow can do. The three helpers it gets on top (`push`, `copyTo`, `notes`)
  * are the parts that need the host's build machinery.
  */

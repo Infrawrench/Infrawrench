@@ -2,13 +2,13 @@ import { useGT } from "gt-react";
 import { useSerializedRows } from "./useSerializedRows.js";
 
 interface StringEntry {
-  /** Stable per-row id for React keys — rows are editable and removable. */
+  /** Stable per-row id for React keys: rows are editable and removable. */
   id: string;
   value: string;
 }
 
 interface StringListPickerProps {
-  /** Current field value — a comma-separated string (e.g. "a@x.com, @y.com"). */
+  /** Current field value: a comma-separated string (e.g. "a@x.com, @y.com"). */
   value: string;
   /** Called with the updated comma-joined value. */
   onChange: (next: string) => void;
@@ -19,11 +19,11 @@ interface StringListPickerProps {
 }
 
 /**
- * Editor for a list of single string values — emails, tags, IDs, hostnames,
+ * Editor for a list of single string values: emails, tags, IDs, hostnames,
  * CIDRs, and anything else that used to be typed as a comma-separated blob.
  * Each entry is its own row with a remove button; the field value is the
  * trimmed, non-empty entries joined with ", " so it drops into any plugin that
- * already splits the value on commas — no backend change needed.
+ * already splits the value on commas: no backend change needed.
  */
 export function StringListPicker({
   value,

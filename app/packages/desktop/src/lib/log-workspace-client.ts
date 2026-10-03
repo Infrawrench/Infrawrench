@@ -19,7 +19,7 @@ import { getPlugin } from "../plugins/loader";
 import { createPeerPluginClient, createPluginClient } from "./plugin-client";
 
 /**
- * Desktop log workspace client — dual-mode, fixed at creation time: the org
+ * Desktop log workspace client; dual-mode, fixed at creation time: the org
  * (or local mode) is captured when the client is built, and org switches are
  * handled by DesktopWorkspaceTabsViewport remounting the panel via its
  * active-organization key (`key={activeCloudOrgId ?? "local"}`), which picks
@@ -144,7 +144,7 @@ async function listLocalLogResources(): Promise<LogResourceOption[]> {
     }
   }
 
-  // Sidecar streams (pods inside a managed cluster) — same shared walk as the
+  // Sidecar streams (pods inside a managed cluster): same shared walk as the
   // cloud discovery, over in-renderer peer clients.
   if (out.length < MAX_RESULTS && sidecarParents.length > 0) {
     const byParentId = new Map(sidecarParents.map((p) => [p.resourceId, p]));

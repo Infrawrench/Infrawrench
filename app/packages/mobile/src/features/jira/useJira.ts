@@ -18,7 +18,7 @@ import { useOrgPermissions } from "@/lib/permissions";
  * Jira state for the mobile findings surfaces.
  *
  * Everything here is a thin react-query wrapper over the shared client in
- * `@infrawrench/client-core` — mobile cannot use `@infrawrench/ui`, so the
+ * `@infrawrench/client-core`: mobile cannot use `@infrawrench/ui`, so the
  * contract is shared at the client layer and only the components differ.
  *
  * The links query is fetched once per org and read per row, matching web: a
@@ -91,7 +91,7 @@ export function useFileJiraIssue() {
 
 /**
  * Whether this viewer can file at all: Jira connected *and* `jira:write`.
- * Both halves matter — a button that opens a sheet which can only 403 is worse
+ * Both halves matter: a button that opens a sheet which can only 403 is worse
  * than no button.
  */
 export function useCanFileJira(): boolean {

@@ -18,7 +18,7 @@ const FILTER_OPTIONS: Array<{ key: StatusFilter; label: string }> = [
 ];
 
 /**
- * Domains — the native counterpart of the web/desktop Domains screens and the
+ * Domains; the native counterpart of the web/desktop Domains screens and the
  * `infrawrench dns` CLI: every zone and record across every provider, with
  * each record's target judged against the rest of the workspace.
  *

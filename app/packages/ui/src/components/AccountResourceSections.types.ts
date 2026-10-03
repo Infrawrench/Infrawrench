@@ -27,11 +27,11 @@ export interface AccountResourceSectionsProps<T extends SectionTypeDef, R extend
   renderResource: (resource: R, category: SectionCategoryState<T, R>) => ReactNode;
   /** Render an optional "Create" button inside a category. Return null to skip. */
   renderCreateButton?: (typeDef: T) => ReactNode;
-  /** Controlled search query — if provided, the component uses this instead of internal state. */
+  /** Controlled search query, if provided, the component uses this instead of internal state. */
   searchQuery?: string | undefined;
   /** Called when the search query changes (only when searchQuery prop is provided). */
   onSearchQueryChange?: ((query: string) => void) | undefined;
-  /** Controlled active section id — if provided, the component uses this instead of internal state. */
+  /** Controlled active section id, if provided, the component uses this instead of internal state. */
   activeSectionId?: string | null | undefined;
   /** Called when the active section changes (only when activeSectionId prop is provided). */
   onActiveSectionIdChange?: ((id: string | null) => void) | undefined;

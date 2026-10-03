@@ -15,7 +15,7 @@ import { colors, spacing } from "@/lib/theme";
  * and a back button to this list.
  *
  * This used to render the default dashboard inline with the others listed
- * underneath, which made the default the only one that felt like a place —
+ * underneath, which made the default the only one that felt like a place:
  * you saw its cards before you saw that alternatives existed.
  *
  * Creating one is an inline form rather than a sheet: a dashboard is a name and
@@ -42,7 +42,7 @@ export default function OrgDashboards() {
     onSuccess: (created) => {
       setName(null);
       void queryClient.invalidateQueries({ queryKey: ["dashboards", orgId] });
-      // Straight into the new dashboard — it is empty, and adding the first
+      // Straight into the new dashboard: it is empty, and adding the first
       // card is the only reason to have made it.
       if (created?.id) router.push(`/org/${orgId}/dashboard/${created.id}`);
     },
@@ -60,7 +60,7 @@ export default function OrgDashboards() {
     );
   }
 
-  // Default first, then alphabetical — the order the sidebar uses on web.
+  // Default first, then alphabetical: the order the sidebar uses on web.
   const list = [...(dashboards.data ?? [])].sort((a, b) => {
     if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
     return a.name.localeCompare(b.name);

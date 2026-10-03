@@ -4,7 +4,7 @@
  * payloads are base64 strings inside JSON (`data` fields).
  *
  * Connect flow: `POST /api/org/:orgId/ws-token` → `wss://host/api/ws?token=…`
- * (token is single-use and expires in ~30s — mint immediately before dialing).
+ * (token is single-use and expires in ~30s; mint immediately before dialing).
  */
 
 /* ------------------------------ client → server --------------------------- */
@@ -146,7 +146,7 @@ export interface ServerDataFrame {
  */
 export interface ServerStatusFrame {
   // Transcribed from the proxies themselves (ssh-proxy, k8s-exec-proxy,
-  // k9s-proxy, k8s-pf-proxy) — the pty protocols say "connected"/"closed"
+  // k9s-proxy, k8s-pf-proxy): the pty protocols say "connected"/"closed"
   // while port-forward says "ready"/"close", and a client that listens for
   // the wrong spelling simply never hears the session open or end.
   type:

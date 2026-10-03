@@ -5,13 +5,13 @@ import { cloudFetch } from "./shared";
  * Agents mode against a cloud org.
  *
  * The desktop app has its own local agent pipeline (SQLite `agent_settings` /
- * `agent_sessions`, bootstrap over the workflow SSH IPC — see
+ * `agent_sessions`, bootstrap over the workflow SSH IPC: see
  * `src/lib/agent-client.ts`). These handlers are the *other* mode: when an org
  * is selected, the panel drives the org's sessions through the same
  * `/api/org/:orgId/agents` routes web uses, so the accounts on offer are the
  * org's accounts and the cloud server owns provisioning and VM bootstrap.
  *
- * Deliberately a thin proxy — every rule that matters (permissions, the
+ * Deliberately a thin proxy: every rule that matters (permissions, the
  * managed `infrawrench-agent` org SSH key, setup resumption, VM deletion)
  * lives on the server, and duplicating any of it here would let the two
  * surfaces drift.

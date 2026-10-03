@@ -21,7 +21,7 @@ const MAX_PREFIXED_NAME = 63;
 /**
  * Reduce a free-text instance name to something every provider accepts as a
  * name component: lowercase, alphanumerics and single dashes, no leading or
- * trailing dash. Deliberately conservative — this string is prepended to names
+ * trailing dash. Deliberately conservative: this string is prepended to names
  * the user never sees us build, and the strictest common denominator (RFC 1123
  * label rules) is the only one that is safe everywhere.
  */
@@ -134,7 +134,7 @@ export function orderTemplateMembers(members: EnvironmentTemplateMember[]): Temp
 const KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /**
- * Validate a template document. Returns a human-readable problem or null —
+ * Validate a template document. Returns a human-readable problem or null:
  * shared verbatim by the editor and the API boundary, so the form and the
  * server cannot disagree about what a valid template is.
  */
@@ -261,7 +261,7 @@ export function parseTtlDraft(raw: string): number | null {
 
 /**
  * Validate a requested TTL against the org's ceiling. Returns a problem or
- * null. A TTL is mandatory — there is no "forever" branch to fall through to.
+ * null. A TTL is mandatory: there is no "forever" branch to fall through to.
  */
 export function validateTtlHours(ttlHours: number, settings: EnvironmentSettings): string | null {
   if (!Number.isFinite(ttlHours)) return "A time-to-live is required.";

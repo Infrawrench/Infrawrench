@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Change timeline / drift feed — cloud-mode only. The events are recorded by
+// Change timeline / drift feed: cloud-mode only. The events are recorded by
 // the cloud poller as it re-syncs accounts, so local-only mode has no poller
 // and therefore no feed (the CLI's `infrawrench changes` says the same thing).
 
@@ -40,7 +40,7 @@ ipcMain.handle(
 );
 
 /**
- * Cost per change — batched for a whole feed page.
+ * Cost per change: batched for a whole feed page.
  *
  * Cloud-only for the same reason the feed is, and additionally because the
  * comparison reads collected provider spend out of ClickHouse, which only the
@@ -69,7 +69,7 @@ ipcMain.handle(
     }),
 );
 
-// Provider status correlation ("is it me or is it them?") — also cloud-only:
+// Provider status correlation ("is it me or is it them?"): also cloud-only:
 // the incident cache is filled by the cloud poller watching provider status
 // feeds, so the desktop reads the correlated view from the API rather than
 // fetching feeds itself.

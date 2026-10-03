@@ -68,7 +68,7 @@ import type {
 
 /**
  * Identifies a peer plugin reached *through* a parent resource, rather than
- * through an account of its own — the `kubernetes` plugin inside a managed
+ * through an account of its own: the `kubernetes` plugin inside a managed
  * cluster, `postgres` inside a managed database. The sandbox attaches one to
  * every RPC it makes against a sidecar resource so the host knows to build the
  * peer plugin's client (credentials resolved from the parent resource's
@@ -95,7 +95,7 @@ export interface ResourceInstanceLite {
   fields: Record<string, string | number | boolean>;
   resolvedOutputs: Record<string, string>;
   /**
-   * The Infrawrench SSH key (name/id) attached at create time, if any — so
+   * The Infrawrench SSH key (name/id) attached at create time, if any, so
    * `resource.ssh(...)` on a just-created resource can authenticate without the
    * author re-specifying the key. Set only by `createResource`.
    */
@@ -139,7 +139,7 @@ export interface SshExecResultLite {
   code: number;
 }
 
-/** One poll of a streaming SSH command — separate stdout/stderr chunks. */
+/** One poll of a streaming SSH command: separate stdout/stderr chunks. */
 export interface SshStreamChunkLite {
   /** Base64 chunk of stdout accumulated since the last read (if any). */
   stdoutBase64?: string;
@@ -186,14 +186,14 @@ export interface WorkflowRunContext {
    * RPC the sandbox makes. Throw to deny; the throw surfaces inside the
    * workflow as an ordinary error the author can see and catch.
    *
-   * Optional, and absent means "no gate" — that is what the desktop host does,
+   * Optional, and absent means "no gate": that is what the desktop host does,
    * where the workflow runs as the one local user and there is nothing to
    * authorize against. The cloud host supplies one because there a workflow
    * runs on behalf of a *person* with a role, and `infra.…delete()` must not
    * be a way around the permission `delete_resource` requires.
    *
-   * Synchronous on purpose. It is called on every RPC — including the
-   * per-statement `line` hook on debug runs — so it must not be a round trip.
+   * Synchronous on purpose. It is called on every RPC (including the
+   * per-statement `line` hook on debug runs) so it must not be a round trip.
    * The cloud host resolves the principal's permissions once before the isolate
    * starts and closes over the result.
    */
@@ -205,14 +205,14 @@ export interface WorkflowRunContext {
   /**
    * Present only on an Infrafile run. Collects the stage artifacts (chosen env,
    * plan, rendered Dockerfile, notes) that are pure bookkeeping and therefore
-   * identical on every platform — see `infrafile/types.ts`.
+   * identical on every platform: see `infrafile/types.ts`.
    */
   infrafile?: InfrafileRunSink;
 }
 
 /**
  * Platform-supplied capabilities. All methods operate within the trust scope
- * the host established (org on web, local user on desktop) — the sandbox can
+ * the host established (org on web, local user on desktop): the sandbox can
  * never reach beyond what these expose.
  */
 export interface WorkflowHost {
@@ -247,7 +247,7 @@ export interface WorkflowHost {
 
   /**
    * The regions a resource type can be created in, with display metadata
-   * (flag, location) — sourced from the plugin's create config, so a plan's
+   * (flag, location): sourced from the plugin's create config, so a plan's
    * region `select` shows the same list the GUI's region picker does.
    */
   getRegions?(accountId: string, typeId: string): Promise<WorkflowRegionOption[]>;
@@ -294,7 +294,7 @@ export interface WorkflowHost {
 
   /**
    * SSH into a resource and run a command to completion (powers
-   * `resource.ssh(cmd)`). Optional — hosts without SSH support omit it and the
+   * `resource.ssh(cmd)`). Optional: hosts without SSH support omit it and the
    * call surfaces a {@link WorkflowCapabilityError}.
    */
   sshExec?(params: SshExecParamsLite): Promise<SshExecResultLite>;
@@ -320,7 +320,7 @@ export interface WorkflowHost {
 
   /**
    * Report daily spend into the org's cost store (powers `infra.costs.write`).
-   * Cloud-only — the desktop host omits it and the call surfaces a
+   * Cloud-only: the desktop host omits it and the call surfaces a
    * {@link WorkflowCapabilityError}, since cost data lives in ClickHouse.
    */
   writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
@@ -353,7 +353,7 @@ export interface WorkflowHost {
    * Suspend the run until a human approves or denies (powers
    * `infra.waitForApproval`). The host persists a pending approval, notifies
    * the org, and blocks until a decision lands or the timeout passes. Denial
-   * and timeout MUST reject — that is what fails the step. Cloud-only: hosts
+   * and timeout MUST reject: that is what fails the step. Cloud-only: hosts
    * without an approvals surface omit it and the call raises a
    * {@link WorkflowCapabilityError}.
    */
@@ -361,8 +361,8 @@ export interface WorkflowHost {
 
   /**
    * Ask an AI model one question on the workflow's behalf (powers `infra.ai`).
-   * The spec is already normalized and validated by {@link dispatch}. Cloud-only
-   * — the call is made server-side with the deployment's API key and metered
+   * The spec is already normalized and validated by {@link dispatch}. Cloud-only:
+   * the call is made server-side with the deployment's API key and metered
    * against the org's monthly AI spend cap; the desktop host omits it and the
    * call surfaces a {@link WorkflowCapabilityError}.
    */
@@ -371,7 +371,7 @@ export interface WorkflowHost {
   /**
    * Make one outbound HTTP request on the workflow's behalf (powers the
    * sandbox's global `fetch`). The request is already normalized and validated
-   * by {@link dispatch}; what a host adds is *where the request leaves from* —
+   * by {@link dispatch}; what a host adds is *where the request leaves from*:
    * the cloud sends it through an egress proxy that lives outside the Kubernetes
    * cluster, so a workflow can never reach cluster-internal services, while
    * desktop just makes the call from the user's own machine.
@@ -462,7 +462,7 @@ export interface WorkflowHost {
   /**
    * Apply arbitrary (multi-doc) YAML to an account (kubectl apply -f). The
    * sidecar is present when the YAML targets a peer plugin reached through a
-   * parent resource — a manifest applied into a managed cluster.
+   * parent resource: a manifest applied into a managed cluster.
    */
   importYaml?(accountId: string, yaml: string, sidecar?: SidecarRef): Promise<{ applied: number }>;
   /** Publish a message to a pub/sub resource. */
@@ -485,7 +485,7 @@ export interface WorkflowHost {
 
 /**
  * A host that can additionally run an Infrafile. The build/push/copy ops are
- * separate from {@link WorkflowHost} because a plain workflow never needs them —
+ * separate from {@link WorkflowHost} because a plain workflow never needs them,
  * only a host driving `runInfrafile` has to implement any of it.
  */
 export type InfrafileHost = WorkflowHost & InfrafileHostOps;
@@ -507,7 +507,7 @@ function requireMethod<T>(fn: T | undefined, name: string): T {
 
 /**
  * Marshal the optional `sidecar` RPC arg. Absent (the common case) or missing
- * either half means "the account's own plugin" — a half-specified ref would be
+ * either half means "the account's own plugin": a half-specified ref would be
  * unresolvable, so it's treated as absent rather than passed on to fail deeper.
  */
 function sidecarRef(raw: unknown): SidecarRef | undefined {
@@ -551,7 +551,7 @@ function requireInfrafileSink(ctx: WorkflowRunContext): InfrafileRunSink {
 
 /**
  * Where to build, read off the plan's reserved `buildOn` key. A resource handle
- * arrives here as its plain identifying fields — `JSON.stringify` dropped the
+ * arrives here as its plain identifying fields: `JSON.stringify` dropped the
  * methods the prelude mixed on, which is exactly what we want to send onward.
  *
  * Returning `undefined` lets the host apply its own default (local for the CLI).
@@ -598,8 +598,8 @@ function registryCredentials(raw: unknown): RegistryCredentials | undefined {
 
 /**
  * Assemble the build request from the rendered Dockerfile plus the plan's
- * reserved keys. Validation lives here so every host — local Docker on the CLI,
- * SSH on the server — receives an identical, already-checked request.
+ * reserved keys. Validation lives here so every host (local Docker on the CLI,
+ * SSH on the server) receives an identical, already-checked request.
  */
 function buildRequest(args: Record<string, unknown>): BuildRequest {
   const dockerfile = String(args["dockerfile"] ?? "");
@@ -802,7 +802,7 @@ const MAX_PAGE_MESSAGE = 1000;
 /**
  * Marshal + validate the `infra.page(...)` argument. Defaults are applied here
  * rather than in the prelude so every host sees the same normalized spec, and a
- * blank message is rejected outright — an empty page is a page nobody can act on.
+ * blank message is rejected outright: an empty page is a page nobody can act on.
  */
 function pageSpec(raw: unknown): PageSpec {
   const spec = (raw ?? {}) as Record<string, unknown>;
@@ -821,7 +821,7 @@ function pageSpec(raw: unknown): PageSpec {
 /**
  * Marshal + validate the `infra.waitForApproval(...)` argument. Defaults and
  * caps are applied here so every host sees the same normalized spec; a blank
- * message is rejected outright — nobody can decide on an empty request.
+ * message is rejected outright: nobody can decide on an empty request.
  */
 function approvalSpec(raw: unknown): ApprovalSpec {
   const spec = (raw ?? {}) as Record<string, unknown>;
@@ -843,7 +843,7 @@ function approvalSpec(raw: unknown): ApprovalSpec {
 /**
  * Marshal + validate the `infra.ai(...)` argument. The model allowlist and the
  * size bounds are settled here, once, so every host receives a spec it can hand
- * straight to its provider; a blank prompt is rejected outright — there is no
+ * straight to its provider; a blank prompt is rejected outright: there is no
  * useful answer to an empty question, but there would be a bill for one.
  */
 function aiSpec(raw: unknown): WorkflowAiSpec {
@@ -990,7 +990,7 @@ export async function dispatch(
   method: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  // Authorization first — before the args are even read, and before any
+  // Authorization first: before the args are even read, and before any
   // branch can reach a host method. Every capability the sandbox has runs
   // through this switch, so gating here gates all of them; a new `case` added
   // below is covered without its author having to remember.
@@ -1027,7 +1027,7 @@ export async function dispatch(
     case "resource.resolveOutput": {
       const resourceId = String(args["resourceId"]);
       // A planned id names a resource that exists nowhere host-side, so its
-      // outputs can only ever be the placeholder — checked regardless of
+      // outputs can only ever be the placeholder: checked regardless of
       // dryRun, since a lookup on one would fail wherever it landed.
       if (resourceId.startsWith(PLANNED_ID_PREFIX)) return PLAN_PLACEHOLDER;
       return host.resolveOutput(
@@ -1085,7 +1085,7 @@ export async function dispatch(
         parentResourceId,
         sidecar,
       );
-      // An Infrafile run keeps a ledger of what it provisioned — that is what
+      // An Infrafile run keeps a ledger of what it provisioned: that is what
       // lets a rollback offer to undo the provisioning, not just the shipping.
       ctx.infrafile?.recordCreated({
         pluginId: created.pluginId,
@@ -1480,7 +1480,7 @@ export async function dispatch(
     case "infrafile.ask": {
       const spec = askSpec(args["spec"]);
       // A pre-supplied answer is validated by exactly the same code a typed one
-      // is — the whole point of doing this host-side.
+      // is: the whole point of doing this host-side.
       const preset = await host.infrafileAnswer?.(spec.key);
       if (preset !== undefined && preset !== null) return coerceAnswer(spec, preset);
       if (!ctx.interactive) {
@@ -1519,7 +1519,7 @@ export async function dispatch(
       const request = runInImageRequest(args);
       const result = await requireMethod(host.infrafileRun, "infrafileRun").call(host, request);
       // A non-zero exit is a failed deploy unless the author opted in to
-      // handling it — the alternative is `wrangler deploy` failing silently
+      // handling it: the alternative is `wrangler deploy` failing silently
       // and the run reporting success.
       if (!request.allowFailure && result.exitCode !== 0) {
         const detail = (result.stderr || result.stdout || "")

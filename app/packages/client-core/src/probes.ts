@@ -1,11 +1,11 @@
 /**
- * Synthetic probes — HTTP uptime/latency checks run on an interval from the
+ * Synthetic probes: HTTP uptime/latency checks run on an interval from the
  * egress-proxy Worker on Cloudflare's edge, i.e. from *outside* the cluster:
  * a probe measures what a user on the internet would see.
  *
  * This module is the shared pure half every surface uses: the wire contract
  * for `/api/org/:orgId/probes`, the input limits the editor UIs and the server
- * boundary both clamp against (the `SCHEDULE_LIMITS` stance — the form and the
+ * boundary both clamp against (the `SCHEDULE_LIMITS` stance; the form and the
  * API can't disagree about what a valid interval is), and the Bearer fetch
  * helpers mobile and the CLI call.
  *
@@ -18,7 +18,7 @@ import type { CloudFetch } from "./fetch";
 
 export type ProbeStatus = "up" | "down" | "unknown";
 
-/** Methods a probe may use — checks, not mutations, so no bodies are sent. */
+/** Methods a probe may use: checks, not mutations, so no bodies are sent. */
 export const PROBE_METHODS = ["GET", "HEAD", "OPTIONS"] as const;
 export type ProbeMethod = (typeof PROBE_METHODS)[number];
 
@@ -27,7 +27,7 @@ export type ProbeMethod = (typeof PROBE_METHODS)[number];
  * boundary and the poller pass so all three agree.
  */
 export const PROBE_LIMITS = {
-  /** Floor on the probe interval — the edge proxy is shared infrastructure. */
+  /** Floor on the probe interval: the edge proxy is shared infrastructure. */
   minIntervalSeconds: 60,
   /** A day. Slower than this and it stops being monitoring. */
   maxIntervalSeconds: 24 * 60 * 60,
@@ -36,7 +36,7 @@ export const PROBE_LIMITS = {
   maxTimeoutMs: 60_000,
   minFailureThreshold: 1,
   maxFailureThreshold: 20,
-  /** Hard cap on probes per org — a governance rail, not a product tier. */
+  /** Hard cap on probes per org: a governance rail, not a product tier. */
   maxPerOrg: 100,
 } as const;
 
@@ -58,7 +58,7 @@ export interface SyntheticProbe {
   timeoutMs: number;
   failureThreshold: number;
   enabled: boolean;
-  /** Linked resource identity — which output suggested the URL. All nullable. */
+  /** Linked resource identity, which output suggested the URL. All nullable. */
   accountId: string | null;
   resourceId: string | null;
   pluginId: string | null;
@@ -130,7 +130,7 @@ export interface ProbeSuggestionsResponse {
   suggestions: ProbeSuggestion[];
 }
 
-/** `GET /probes/:id/metrics` — the recorded Latency/Up series over a range. */
+/** `GET /probes/:id/metrics`: the recorded Latency/Up series over a range. */
 export interface ProbeMetricsResponse {
   series: MetricSeries[];
 }
@@ -147,7 +147,7 @@ export function clampProbeNumber(raw: unknown, fallback: number, min: number, ma
 
 /**
  * Validate and normalize a probe URL. Returns the normalized absolute URL, or
- * a human-readable problem — the editor UIs and the API boundary reject the
+ * a human-readable problem: the editor UIs and the API boundary reject the
  * same inputs with the same words (the `validateScheduleTiming` stance).
  */
 export function normalizeProbeUrl(raw: string): { url: string } | { error: string } {
@@ -174,7 +174,7 @@ export function normalizeProbeMethod(raw: unknown): ProbeMethod {
     : PROBE_DEFAULTS.method;
 }
 
-/** `0.9987` → `"99.87%"`; `1` → `"100%"` — the uptime rendering every surface uses. */
+/** `0.9987` → `"99.87%"`; `1` → `"100%"`: the uptime rendering every surface uses. */
 export function formatUptime(fraction: number): string {
   const pct = fraction * 100;
   const rounded = Number(pct.toFixed(2));
@@ -203,7 +203,7 @@ export async function createProbe(
   });
 }
 
-/** Update a probe — settings and the enable toggle (`resources:write`). */
+/** Update a probe: settings and the enable toggle (`resources:write`). */
 export async function updateProbe(
   api: CloudFetch,
   orgId: string,

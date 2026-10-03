@@ -10,7 +10,7 @@ import { colors, spacing } from "@/lib/theme";
 import { useCostAlertEvents, useCostAlerts } from "./useCostAlertEvents";
 
 /**
- * Native counterpart to `CostChangeAlertsSection` on web and desktop —
+ * Native counterpart to `CostChangeAlertsSection` on web and desktop;
  * read-only, like budgets here: the section lists the org's change-based
  * cost alerts and their recent firings, and a `cost_change` push deep-links
  * to this tab (`pushDataToPath` routes it to `/org/:orgId/costs`), so the
@@ -29,7 +29,7 @@ export function CostChangeAlertsSection() {
   const alertRows = alerts.data ?? [];
   const eventRows = events.data ?? [];
 
-  // Nothing configured and nothing fired: stay out of the way entirely —
+  // Nothing configured and nothing fired: stay out of the way entirely;
   // unlike anomalies (always on), change alerts are opt-in, and a phone is
   // not where anyone will set the first one up.
   if (!alerts.isLoading && !alerts.isError && alertRows.length === 0) return null;
@@ -91,7 +91,7 @@ export function CostChangeAlertsSection() {
   );
 }
 
-/** "Aug 9" in UTC — the day the window is about, not the local rendering. */
+/** "Aug 9" in UTC: the day the window is about, not the local rendering. */
 function formatDay(day: string): string {
   const d = new Date(`${day}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return day;

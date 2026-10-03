@@ -1,5 +1,5 @@
 /**
- * Main-process plugin runtime — loads a plugin, decrypts an account's
+ * Main-process plugin runtime: loads a plugin, decrypts an account's
  * credentials, and builds `HostServices` by calling the node drivers
  * directly. Anything running inside the Electron main process can therefore
  * enumerate live provider resources without a renderer; the CLI (`--cli`)
@@ -11,7 +11,7 @@
  *   - main      → this file                 (drivers directly)
  * Keep them in step when the HostServices contract changes.
  *
- * No GUI side effects — safe to import from electron/cli/*, per the rule in
+ * No GUI side effects: safe to import from electron/cli/*, per the rule in
  * CLAUDE.md that keeps the CLI free of window/IPC dependencies.
  */
 import https from "node:https";
@@ -302,7 +302,7 @@ async function createAccountPluginClient(
  * Resource types worth listing on their own: top-level types plus child types
  * that opted into `showInSidebar`. Duplicated from @infrawrench/ui's
  * `getListableResourceTypes` so the main process doesn't depend on a React
- * package — server-core duplicates it for the same reason.
+ * package: server-core duplicates it for the same reason.
  */
 function listableResourceTypes(types: ResourceTypeDefinition[]): ResourceTypeDefinition[] {
   // An account-root type *is* the account, so it drops out of its own subtree
@@ -370,7 +370,7 @@ export async function listAccountResourcesLive(
 }
 
 /**
- * Fetch a local resource's metric series live from the provider — the same
+ * Fetch a local resource's metric series live from the provider: the same
  * call the GUI's detail view makes through the renderer. Types that don't
  * declare `supportsMetrics` (or plugins without `fetchMetricSeries`) return
  * an empty list rather than throwing, so callers can render "no metrics"
@@ -390,7 +390,7 @@ export async function fetchLocalMetricSeries(
 
 /**
  * Resolve one resource's visible outputs. `listResources` leaves
- * `resolvedOutputs` empty by contract — the host asks for values only when it
+ * `resolvedOutputs` empty by contract: the host asks for values only when it
  * is about to show them, which is what the detail views do. Sensitive and
  * `hidden` outputs are skipped: nothing should print a secret just because a
  * detail pane was opened.

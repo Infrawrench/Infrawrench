@@ -12,7 +12,7 @@ import {
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /**
- * Incident mode on the phone — the declared kind of incident, not a provider
+ * Incident mode on the phone: the declared kind of incident, not a provider
  * status incident (those are `useProviderIncidents`).
  *
  * Every call is a plain Bearer read/write against the same routes web and

@@ -14,7 +14,7 @@ export interface CostReportPickerModalProps {
   onClose: () => void;
 }
 
-/** "Stacked bar · by Service" — enough to tell two saved reports apart. */
+/** "Stacked bar · by Service": enough to tell two saved reports apart. */
 function describe(
   report: CostReport,
   gt: ReturnType<typeof useGT>,

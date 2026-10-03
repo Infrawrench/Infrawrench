@@ -4,7 +4,7 @@
  * With an org selected, the Deploy tab is the web app's Deploy screen: the
  * repositories come from the org's GitHub App, the build runs on a hosted
  * worker, and deploy-on-push triggers live server-side. Without an org there is
- * nothing here to talk to — see `LocalDeploymentsPanel`, which reads what
+ * nothing here to talk to: see `LocalDeploymentsPanel`, which reads what
  * `infrawrench deploy` did on this machine instead.
  *
  * Same split as workflows: one-shot calls are proxied HTTP over IPC, and the
@@ -109,7 +109,7 @@ async function deploy(
           break;
         case "deploy:prompt":
           // Electron's window.prompt is a no-op, and a select() should be a
-          // dropdown anyway — route it to PromptHost at the app root.
+          // dropdown anyway: route it to PromptHost at the app root.
           void requestWorkflowPrompt(m.spec ?? { message: "Input" }).then((value) => {
             send({ type: "deploy:prompt:response", value });
           });

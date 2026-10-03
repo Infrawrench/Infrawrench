@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Resource leases (TTL) — cloud-mode only. The rows live server-side and the
+// Resource leases (TTL): cloud-mode only. The rows live server-side and the
 // cloud poller runs the auto-delete pass; local mode has no lease store, so
 // there is no local counterpart (same stance as sleep/wake schedules).
 

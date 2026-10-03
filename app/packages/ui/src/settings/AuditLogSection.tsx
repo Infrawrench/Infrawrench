@@ -17,7 +17,7 @@ interface AuditLogEntry {
   userEmail: string | null;
   /**
    * Resolved at read time by the route's join. Both are null for a browser
-   * action, and also for a key row that has since been deleted — `apiKeyId`
+   * action, and also for a key row that has since been deleted: `apiKeyId`
    * outlives the key, which is exactly the case the actor cell has to word.
    */
   apiKeyName: string | null;
@@ -96,7 +96,7 @@ export function AuditLogSection() {
    * table, which is still enough to narrow the log and to clear the filter.
    *
    * Gated on `permissionsLoading` because `has` answers false until the
-   * caller's role arrives — running once on mount would read that as a denial
+   * caller's role arrives: running once on mount would read that as a denial
    * and never look again.
    */
   useEffect(() => {
@@ -112,7 +112,7 @@ export function AuditLogSection() {
 
   /**
    * A key deleted since it acted, or one this reader cannot list, is not in
-   * `apiKeys` — without a synthetic option the select would render blank while
+   * `apiKeys`: without a synthetic option the select would render blank while
    * a filter was active, and there would be no way back to the full log.
    */
   const filteredKeyIsListed = apiKeys.some((k) => k.id === apiKeyFilter);
@@ -273,7 +273,7 @@ export function AuditLogSection() {
 /**
  * Who did it. An API-key call is attributed to the key, not just to the person
  * who minted it: a key acts as its owner, so the owner's name alone cannot say
- * whether a human or a token was at the other end — which is the whole
+ * whether a human or a token was at the other end, which is the whole
  * question after a credential leaks. The chip filters the log to that one key
  * via the route's `apiKeyId` parameter, since `userId` would cover the owner
  * and every key they ever issued at once.

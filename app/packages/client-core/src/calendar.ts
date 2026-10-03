@@ -1,5 +1,5 @@
 /**
- * The operations calendar — one time axis over every dated thing the org
+ * The operations calendar: one time axis over every dated thing the org
  * already keeps somewhere else.
  *
  * Nothing here is a new record. A change freeze, a sleep window, a certificate
@@ -13,8 +13,8 @@
  * and the iCalendar serializer.
  *
  * The serializer lives here rather than in the server because RFC 5545 is
- * fiddly in exactly the ways a unit test catches — octet-counted line folding,
- * escaping of `,` `;` `\` and newlines, UTC stamps with no separators — and a
+ * fiddly in exactly the ways a unit test catches (octet-counted line folding,
+ * escaping of `,` `;` `\` and newlines, UTC stamps with no separators) and a
  * subscription URL that renders as garbage in one calendar client and fine in
  * another is the sort of bug you only find months later.
  */
@@ -76,19 +76,19 @@ export interface CalendarEvent {
   /** ISO 8601, UTC. */
   startsAt: string;
   /**
-   * ISO 8601, UTC. Null means a point in time rather than a span — a deadline,
+   * ISO 8601, UTC. Null means a point in time rather than a span: a deadline,
    * a scheduled run. An open-ended span (a freeze with no end) reports its
    * `endsAt` as null too, and `openEnded` distinguishes the two.
    */
   endsAt: string | null;
   /**
-   * True when the event has a span but no known end — a freeze declared
+   * True when the event has a span but no known end: a freeze declared
    * "until further notice", an unresolved incident. Rendered as running to the
    * edge of the view rather than as a moment.
    */
   openEnded: boolean;
   /**
-   * True for deadlines that are only meaningful to the day — a certificate
+   * True for deadlines that are only meaningful to the day: a certificate
    * expiry read off a date field. Point events with a real clock time (a
    * scheduled workflow run) are not all-day.
    */
@@ -106,27 +106,27 @@ export interface CalendarResponse {
   /**
    * Kinds that were asked for and produced no events in this window. Lets the
    * filter chips read "nothing scheduled" rather than leaving an empty chip
-   * looking broken — and, paired with `failedKinds`, keeps "there is none" and
+   * looking broken, and, paired with `failedKinds`, keeps "there is none" and
    * "we could not read it" from looking alike.
    */
   emptyKinds: CalendarEventKind[];
   /**
    * Sources that threw. Named rather than swallowed: a calendar is a summary
-   * surface, so one failing source must cost its own kind and not the page —
+   * surface, so one failing source must cost its own kind and not the page,
    * and a page that quietly drops a source is worse than one that says it did.
    */
   failedKinds: CalendarEventKind[];
   generatedAt: string;
 }
 
-/** A calendar subscription — one iCalendar URL, revocable. */
+/** A calendar subscription: one iCalendar URL, revocable. */
 export interface CalendarSubscription {
   id: string;
   name: string;
   /** Kinds the feed carries; empty means every kind. */
   kinds: CalendarEventKind[];
   /**
-   * Only ever returned once, by the create call. The stored form is a hash —
+   * Only ever returned once, by the create call. The stored form is a hash:
    * the token is the sole credential on an unauthenticated URL, so it follows
    * the API-key stance rather than the "show it again" stance.
    */
@@ -166,8 +166,8 @@ function isValidKind(value: unknown): value is CalendarEventKind {
 }
 
 /**
- * Narrow an untrusted `kinds` list — a query parameter, a stored subscription
- * row — to the kinds this build knows. Unknown members are dropped rather than
+ * Narrow an untrusted `kinds` list (a query parameter, a stored subscription
+ * row) to the kinds this build knows. Unknown members are dropped rather than
  * rejected: a subscription written by a newer server must keep working against
  * an older one, and a URL a calendar client refreshes hourly is the worst place
  * to start returning 400.
@@ -191,7 +191,7 @@ export interface TimeWindow {
 /**
  * Does `[start, end)` overlap the window?
  *
- * A null `end` means **a point in time** — a deadline, a scheduled run — and
+ * A null `end` means **a point in time**: a deadline, a scheduled run, and
  * not an open-ended span. A span with no known end has to say so by passing
  * `Number.POSITIVE_INFINITY`, because the two readings genuinely differ: a
  * freeze declared until further notice overlaps every future window, while a
@@ -199,7 +199,7 @@ export interface TimeWindow {
  */
 export function overlapsWindow(start: number, end: number | null, window: TimeWindow): boolean {
   const finish = end ?? start;
-  // Half-open on both sides, except that a point exactly at `from` counts —
+  // Half-open on both sides, except that a point exactly at `from` counts,
   // otherwise a deadline at midnight vanishes from the day it falls on.
   return start < window.to && (finish > window.from || start >= window.from);
 }
@@ -234,7 +234,7 @@ export function pairSleepWindows(transitions: SleepTransition[]): SleepWindow[] 
   for (const transition of transitions) {
     if (transition.action === "stop") {
       // Two stops in a row cannot happen from a valid timing, but if they did,
-      // keeping the earlier one is the reading that over-reports downtime —
+      // keeping the earlier one is the reading that over-reports downtime:
       // the safe direction for a screen people plan maintenance against.
       openedAt ??= transition.at;
       continue;
@@ -252,7 +252,7 @@ export function pairSleepWindows(transitions: SleepTransition[]): SleepWindow[] 
  * `YYYY-MM-DD` for an instant in a named zone.
  *
  * `Intl.DateTimeFormat` with an explicit `timeZone` is the only correct way to
- * do this — adding an offset to a UTC date is wrong twice a year, and wrong by
+ * do this: adding an offset to a UTC date is wrong twice a year, and wrong by
  * a whole day for anyone east of UTC+12 every day.
  */
 export function calendarDayKey(iso: string, timeZone: string): string {
@@ -276,7 +276,7 @@ function nextDayKey(key: string): string {
 /**
  * Bucket events by the day they touch, in the reader's zone.
  *
- * A span occupies every day it covers, not just the one it starts on — the
+ * A span occupies every day it covers, not just the one it starts on: the
  * whole value of a freeze on a calendar is seeing it sit across the week.
  *
  * The walk is over *date strings* between the start's day and the end's day,
@@ -355,7 +355,7 @@ export function compareCalendarEvents(a: CalendarEvent, b: CalendarEvent): numbe
 
 /**
  * Escape a value for a `TEXT` property: backslash first (or it would double the
- * escapes it just inserted), then the separators, then newlines — which RFC
+ * escapes it just inserted), then the separators, then newlines, which RFC
  * 5545 spells `\n` rather than allowing a literal line break, since a bare
  * newline is how a property ends.
  */
@@ -373,7 +373,7 @@ export function icsEscapeText(value: string): string {
  * Octets, not characters: the limit is on the encoded line, and folding a
  * multi-byte character in half produces a line no parser can decode. The
  * accumulator therefore measures UTF-8 length per code point and never splits
- * one — surrogate pairs included, which is why the loop walks `[...value]`
+ * one: surrogate pairs included, which is why the loop walks `[...value]`
  * rather than indexing.
  */
 export function foldIcsLine(value: string): string {
@@ -398,7 +398,7 @@ export function foldIcsLine(value: string): string {
   return lines.map((line, index) => (index === 0 ? line : ` ${line}`)).join("\r\n");
 }
 
-/** `20260817T134500Z` — the UTC form, which is the only one we ever emit. */
+/** `20260817T134500Z`: the UTC form, which is the only one we ever emit. */
 export function icsTimestamp(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -408,7 +408,7 @@ export function icsTimestamp(iso: string): string {
     .replace(/\.\d{3}/, "");
 }
 
-/** `20260817` — the DATE form, for all-day events. */
+/** `20260817`: the DATE form, for all-day events. */
 export function icsDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -433,7 +433,7 @@ export interface IcsCalendarOptions {
  * than hourly, because an unauthenticated URL is exactly the sort of thing a
  * hundred phones hit every five minutes otherwise.
  *
- * All-day events get `VALUE=DATE` with an exclusive `DTEND` of the next day —
+ * All-day events get `VALUE=DATE` with an exclusive `DTEND` of the next day:
  * the RFC's rule, and the one every client gets wrong if you omit the DTEND.
  */
 export function buildIcsCalendar(events: CalendarEvent[], options: IcsCalendarOptions): string {
@@ -475,7 +475,7 @@ export function buildIcsCalendar(events: CalendarEvent[], options: IcsCalendarOp
   }
 
   lines.push("END:VCALENDAR");
-  // CRLF, per the RFC — some clients accept bare LF, and the ones that do not
+  // CRLF, per the RFC: some clients accept bare LF, and the ones that do not
   // fail by showing an empty calendar with no error.
   return `${lines.map(foldIcsLine).join("\r\n")}\r\n`;
 }

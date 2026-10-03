@@ -1,5 +1,5 @@
 /**
- * Recorded SSH sessions — the platform-neutral client half.
+ * Recorded SSH sessions: the platform-neutral client half.
  *
  * Cloud-mode SSH is proxied server-side, so the server already holds every
  * byte of the pty and recording it is a tee rather than an agent on the
@@ -122,7 +122,7 @@ export async function deleteSessionRecording(
 
 /**
  * Fetch the raw `.cast`. Uses `raw` rather than `org` because the body is a
- * text document, not JSON — the JSON helper would try to parse it and fail on
+ * text document, not JSON: the JSON helper would try to parse it and fail on
  * the very first line.
  */
 export async function fetchSessionRecordingCast(
@@ -139,12 +139,12 @@ export async function fetchSessionRecordingCast(
 }
 
 /* ------------------------------------------------------------------ *
- * Cast parsing and playback timing — pure, so every surface shares it.
+ * Cast parsing and playback timing: pure, so every surface shares it.
  * ------------------------------------------------------------------ */
 
 /**
  * `"o"` output, `"i"` input, `"r"` resize, `"m"` marker. Markers are
- * asciinema's own annotation event — the recorder emits one when somebody
+ * asciinema's own annotation event: the recorder emits one when somebody
  * joined a shared session, took the keyboard, or the share was revoked, so the
  * tape itself answers "whose hands were on this at 04:12". Players ignore them
  * for byte replay (only `"o"` is ever written to the terminal).
@@ -174,7 +174,7 @@ export interface ParsedCast {
  *
  * Tolerant by design: a blank or unparseable line is skipped rather than
  * failing the document. Recordings are assembled from append-only chunks, so
- * the realistic damage is a truncated final line — and dropping one frame
+ * the realistic damage is a truncated final line, and dropping one frame
  * beats refusing to play the ten minutes in front of it.
  */
 export function parseCast(text: string): ParsedCast {
@@ -220,7 +220,7 @@ export function parseCast(text: string): ParsedCast {
  * Seeking a terminal is not seeking a video: the screen at t is the *product*
  * of every byte before t, so there is no keyframe to jump to. The only correct
  * answer is to replay from the start with the delays removed, which is what
- * this returns — the caller clears the terminal and writes the concatenation.
+ * this returns: the caller clears the terminal and writes the concatenation.
  *
  * Input events are excluded: they were never rendered by the host in the first
  * place (the echo you see is output), so replaying them would inject text the
@@ -235,7 +235,7 @@ export function castOutputThrough(cast: ParsedCast, toSeconds: number): string {
   return out;
 }
 
-/** Index of the first event strictly after `seconds` — where playback resumes. */
+/** Index of the first event strictly after `seconds`, where playback resumes. */
 export function castResumeIndex(cast: ParsedCast, seconds: number): number {
   let i = 0;
   while (i < cast.events.length && cast.events[i]!.time <= seconds) i++;
@@ -249,7 +249,7 @@ export function parseResizeData(data: string): { cols: number; rows: number } | 
   return { cols: Number(match[1]), rows: Number(match[2]) };
 }
 
-/** "4m 12s" / "38s" / "1h 02m" — the duration column and the player's clock. */
+/** "4m 12s" / "38s" / "1h 02m": the duration column and the player's clock. */
 export function formatRecordingDuration(ms: number | null): string {
   if (ms === null || !Number.isFinite(ms) || ms < 0) return "—";
   const totalSeconds = Math.round(ms / 1000);
@@ -261,7 +261,7 @@ export function formatRecordingDuration(ms: number | null): string {
   return `${seconds}s`;
 }
 
-/** "0:38" / "12:04" / "1:02:11" — the scrubber's position readout. */
+/** "0:38" / "12:04" / "1:02:11": the scrubber's position readout. */
 export function formatPlaybackClock(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
   const hours = Math.floor(total / 3600);
@@ -271,7 +271,7 @@ export function formatPlaybackClock(seconds: number): string {
   return `${hours > 0 ? `${hours}:` : ""}${mm}:${String(secs).padStart(2, "0")}`;
 }
 
-/** "1.2 MB" — sizes in the list and the storage summary. */
+/** "1.2 MB": sizes in the list and the storage summary. */
 export function formatRecordingBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];

@@ -1,5 +1,5 @@
 /**
- * Credential hygiene — the platform-neutral client half.
+ * Credential hygiene: the platform-neutral client half.
  *
  * API keys nobody uses, SSH keys nothing references, and members holding write
  * permissions they never exercise. All of it derived from data the server
@@ -9,7 +9,7 @@
  * only witnesses writes.** The report never draws a conclusion about a read
  * permission, and `permissionFindingsWithheld` is set when the org does not
  * yet have enough audit history for the unused-permission finding to mean
- * anything. Both are load-bearing — a governance report that overclaims is
+ * anything. Both are load-bearing: a governance report that overclaims is
  * worse than no report.
  *
  * Server contract: `/api/org/:orgId/credential-hygiene` (web

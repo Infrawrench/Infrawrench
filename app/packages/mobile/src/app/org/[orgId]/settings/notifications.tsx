@@ -130,7 +130,7 @@ export default function NotificationsScreen() {
 
   const current: PushPreferences = prefs.data ?? {
     // "No row means the shipped defaults", which is not the same as "nothing
-    // muted" — drift is a continuous feed where the others are exceptional.
+    // muted": drift is a continuous feed where the others are exceptional.
     mutedTriggers: [...DEFAULT_MUTED_TRIGGERS],
   };
   const deviceList = devices.data ?? [];
@@ -158,7 +158,7 @@ export default function NotificationsScreen() {
       <Card>
         {/*
           Driven by the shared trigger registry rather than eleven hand-written
-          rows. A release that adds a trigger gets a row here for free — which
+          rows. A release that adds a trigger gets a row here for free, which
           is the point of the routing refactor: the trigger list lives in one
           place instead of being spelled out in every surface that shows it.
         */}
@@ -268,20 +268,20 @@ function digestStatusView(settings: DigestSettings): { color: string; headline: 
 
 /**
  * The weekly digest's org-level settings, as much of them as belongs on a
- * phone: the on/off switch, the AI-narrative opt-in, Send now, and — the
- * reason this section is more than a toggle — the status of the last delivery
+ * phone: the on/off switch, the AI-narrative opt-in, Send now, and (the
+ * reason this section is more than a toggle) the status of the last delivery
  * attempt, mirroring web's `WeeklyDigestSection`.
  *
  * Deliberately read-only here (see KNOWLEDGE.md's mobile omissions):
  * - the **schedule** (day / hour / time zone) is shown as a sentence rather
  *   than three pickers. Day and hour are easy enough, but the zone list is the
- *   browser's whole tz database — a searchable ~600-row picker — and shipping
+ *   browser's whole tz database (a searchable ~600-row picker) and shipping
  *   two thirds of a schedule editor is worse than none.
  * - the **email recipient list** is shown, not edited. It is an org-wide
  *   distribution list (a `finance@` alias, not a member opt-in), which is
  *   admin configuration rather than something you retune from a phone.
  *
- * The whole section 403s for anyone without `org:settings:write` — the query
+ * The whole section 403s for anyone without `org:settings:write`: the query
  * simply fails and this renders nothing, the same shape as the Slack section.
  */
 function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
@@ -450,7 +450,7 @@ function WeeklyDigestSection({ api, orgId }: { api: CloudFetch; orgId: string })
 }
 
 /**
- * Slack routing for the whole org — unlike the push toggles above, which are
+ * Slack routing for the whole org: unlike the push toggles above, which are
  * per-user. The install itself is an OAuth round-trip in the system browser;
  * when it closes we refetch, because the callback lands on the web app rather
  * than back in here.
@@ -666,7 +666,7 @@ function SlackSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
  * A connected channel, with no per-trigger switches.
  *
  * Which alerts reach a channel is an org-wide routing rule now
- * (`org:settings:write`), and the rules editor is a web/desktop surface — the
+ * (`org:settings:write`), and the rules editor is a web/desktop surface: the
  * same demotion drift-alert settings and the digest schedule already carry
  * here. What the phone keeps is the part that is genuinely per-device: your own
  * push mutes, above.
@@ -683,7 +683,7 @@ function SlackChannelRow({ channel, onRemove }: { channel: SlackChannel; onRemov
 
 /**
  * Microsoft Teams routing for the whole org. There is no "Add to Teams" button
- * because Teams has no app-only install flow for posting channel messages — a
+ * because Teams has no app-only install flow for posting channel messages: a
  * channel is identified by the webhook URL of a Teams "Workflows" automation,
  * which the user creates in Teams and pastes here. See the web settings page
  * and `server-core/src/msteams.ts` for the full reasoning.
@@ -800,7 +800,7 @@ function MsTeamsSection({ api, orgId }: { api: CloudFetch; orgId: string }) {
   );
 }
 
-/** A connected Teams channel. Routing is a web/desktop surface — see `SlackChannelRow`. */
+/** A connected Teams channel. Routing is a web/desktop surface: see `SlackChannelRow`. */
 function MsTeamsWebhookRow({
   webhook,
   onRemove,

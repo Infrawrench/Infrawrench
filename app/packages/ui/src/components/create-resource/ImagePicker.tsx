@@ -28,7 +28,7 @@ export function ImagePicker({
   }, [images]);
 
   const filtered = useMemo(() => {
-    if (!search) return null; // no search — show categorised
+    if (!search) return null; // no search: show categorised
     const q = search.toLowerCase();
     return images.filter(
       (i) => i.label.toLowerCase().includes(q) || i.id.toLowerCase().includes(q),

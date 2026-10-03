@@ -1,9 +1,9 @@
 /**
  * Sandbox-free entry point.
  *
- * This barrel exposes everything a *host* needs — the {@link WorkflowHost}
+ * This barrel exposes everything a *host* needs: the {@link WorkflowHost}
  * contract, {@link buildWorkflowHost}, {@link generateInfraDts}, and the shared
- * types — but deliberately omits `runWorkflow`/`transpileWorkflow`, which drag
+ * types, but deliberately omits `runWorkflow`/`transpileWorkflow`, which drag
  * in the QuickJS/WASM sandbox and its memfs dependency (and thus Node's
  * `Buffer`).
  *

@@ -9,7 +9,7 @@ export type PagingSettings = TwilioPagingSettings;
 
 /**
  * Everything SMS/voice in one place: the Twilio credentials, the recipients they
- * page, and the test send that exercises both. They are one setup — splitting
+ * page, and the test send that exercises both. They are one setup: splitting
  * them across cards made the page read as three unrelated features.
  *
  * When `embedded`, this sits in the Connections detail pane (no outer card).

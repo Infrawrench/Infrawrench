@@ -15,7 +15,7 @@ export interface ProbesPanelProps {
    * surface (or a caller without `incidents:write`) omits it and the button
    * disappears.
    *
-   * A down probe is one of the two places an incident actually starts — the
+   * A down probe is one of the two places an incident actually starts: the
    * button only renders on probes that are currently down, because offering it
    * on a green one is noise.
    */

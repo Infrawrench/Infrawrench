@@ -19,13 +19,13 @@ import { PromptCommandSheet } from "@/components/PromptCommandSheet";
 import { colors, spacing } from "@/lib/theme";
 
 /**
- * A peer pane — the cross-plugin tab a resource picks up from its integrations
+ * A peer pane: the cross-plugin tab a resource picks up from its integrations
  * (Kubernetes workloads inside a managed cluster, tables inside a managed
  * database). The detail payload only carries stubs; the pane itself is built
  * on demand by `POST /resources/:pluginId/:typeId/peer-panes`, same as web.
  *
  * Items navigate into the peer plugin's own resource page, which is why the
- * link carries `parentResourceId` — the peer client can only be constructed
+ * link carries `parentResourceId`: the peer client can only be constructed
  * from the parent resource's credentials.
  */
 
@@ -86,7 +86,7 @@ export function PeerPaneScreen({
   if (!pane) return <EmptyView message="This integration is no longer available." />;
 
   /**
-   * Exec attaches to the pod through the CLUSTER resource — the server
+   * Exec attaches to the pod through the CLUSTER resource: the server
    * resolves its kubeconfig via this peer integration, so the link carries the
    * parent's id, not the pod's.
    */

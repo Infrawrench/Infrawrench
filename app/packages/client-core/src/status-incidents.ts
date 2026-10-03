@@ -1,5 +1,5 @@
 /**
- * Provider status correlation contract — "is it me or is it them?".
+ * Provider status correlation contract: "is it me or is it them?".
  *
  * Wire types for `GET /api/org/{orgId}/status-incidents`, shared by every
  * surface that renders the incident banner or the Changes-page overlap
@@ -23,7 +23,7 @@ export interface ProviderIncidentResourceSample {
 }
 
 /**
- * One provider incident correlated against the org's resources — as returned
+ * One provider incident correlated against the org's resources, as returned
  * by `GET /api/org/{orgId}/status-incidents`. Active incidents come first
  * (most severe first), then incidents resolved within the requested window.
  */
@@ -54,7 +54,7 @@ export interface OrgStatusIncident {
   /** Up to five of the overlapped resources, for display. */
   sampleResources: ProviderIncidentResourceSample[];
   /**
-   * Resource changes recorded on this plugin during the incident window —
+   * Resource changes recorded on this plugin during the incident window:
    * the "these N changes happened during an incident" correlation for the
    * Changes page.
    */
@@ -96,7 +96,7 @@ export function compareStatusIncidents(a: OrgStatusIncident, b: OrgStatusInciden
   return a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0;
 }
 
-/** "DigitalOcean nyc3 degraded — 12 of your resources there" */
+/** "DigitalOcean nyc3 degraded: 12 of your resources there" */
 export function summarizeStatusIncident(incident: OrgStatusIncident): string {
   const where =
     incident.affectedRegions.length > 0

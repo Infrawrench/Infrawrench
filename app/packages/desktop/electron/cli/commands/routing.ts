@@ -1,10 +1,10 @@
-// `infrawrench routing` — the org's alert routing table, and the queue of
+// `infrawrench routing`: the org's alert routing table, and the queue of
 // alerts it is holding or about to escalate.
 //
 // Read-only, like `alerts` and `posture`: routing is org-wide configuration
 // behind `org:settings:write`, and the editor is the web/desktop Notifications
-// page. What the CLI is good for is the question you ask at 3am — "why did (or
-// didn't) that page reach me" — which is answered by seeing the rules in
+// page. What the CLI is good for is the question you ask at 3am: "why did (or
+// didn't) that page reach me", which is answered by seeing the rules in
 // evaluation order and the deliveries that are still in flight.
 //
 // The response shapes come from `@infrawrench/client-core`, the same
@@ -127,7 +127,7 @@ function describeRule(rule: AlertRule, data: AlertRulesResponse, index: number):
   return lines;
 }
 
-/** `infrawrench routing` — the rules, in evaluation order. */
+/** `infrawrench routing`: the rules, in evaluation order. */
 export async function cmdRouting(ctx: CliContext): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
@@ -172,7 +172,7 @@ const STATE_LABELS: Record<string, string> = {
   expired: "given up",
 };
 
-/** `infrawrench routing queue` — held and escalating alerts. */
+/** `infrawrench routing queue`: held and escalating alerts. */
 export async function cmdRoutingQueue(ctx: CliContext, limit?: number): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError("Alert routing lives in Infrawrench Cloud. Drop --local.");

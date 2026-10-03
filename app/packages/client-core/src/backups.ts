@@ -1,16 +1,16 @@
 /**
- * Backup & restore coverage — "what is your actual RPO?".
+ * Backup & restore coverage: "what is your actual RPO?".
  *
  * The product already tells you what is expiring and what is oversized;
  * this is the half that tells you what is *unrecoverable*. Plugins declare
- * two things on their resource types — `backupRole` on the types that **are**
+ * two things on their resource types: `backupRole` on the types that **are**
  * backups (EBS snapshots, RDS snapshots, Droplet backups, Neon/PlanetScale
- * backups) and `backupPolicy` on the stateful types that **need** them — and
+ * backups) and `backupPolicy` on the stateful types that **need** them, and
  * this module is the shared pure half that turns stored rows plus those
  * declarations into findings.
  *
  * Rows in, findings out: no plugin client, no credentials, no provider API
- * calls, ever — exactly the `orphanRule` / expiry-radar / posture contract.
+ * calls, ever; exactly the `orphanRule` / expiry-radar / posture contract.
  * Everything it knows comes from inventory the poller already synced, which is
  * why the surface is free to compute on read rather than materialising a
  * table.
@@ -21,17 +21,17 @@
  *
  * Four things get reported:
  *
- * - **unprotected** — a stateful resource with no backup in the inventory and
+ * - **unprotected**: a stateful resource with no backup in the inventory and
  *   no provider-native automated backup we can see.
- * - **rpo-breach** — the newest backup protecting it is older than the org
+ * - **rpo-breach**: the newest backup protecting it is older than the org
  *   policy's `maxRpoHours`. This is the number people think they know.
- * - **retention-below-policy** — the provider-native retention window is
+ * - **retention-below-policy**: the provider-native retention window is
  *   shorter than the org policy's `minRetentionDays`.
- * - **orphaned-snapshot** — a backup whose source resource is gone. Pure
+ * - **orphaned-snapshot**: a backup whose source resource is gone. Pure
  *   spend, and the one finding that saves rather than costs money.
  *
  * Two silences are deliberate. A snapshot whose `sourceKey` field is absent is
- * **unattributable**, not orphaned — we must never bill someone for deleting a
+ * **unattributable**, not orphaned: we must never bill someone for deleting a
  * snapshot that is in fact attached to something. And a resource whose
  * automated-backup field carries a value we don't recognise is neither cleared
  * nor flagged: missing data must not alarm.
@@ -85,7 +85,7 @@ export type BackupProtectionState =
   /**
    * The type declares a provider-native automated-backup signal, but this
    * instance's value is absent or unrecognised, and no backup is attributable.
-   * We have **not assessed** this resource — distinct from `unprotected`,
+   * We have **not assessed** this resource: distinct from `unprotected`,
    * which is a confirmed gap.
    *
    * This is the state a row synced before its plugin declared the field lands
@@ -129,7 +129,7 @@ export interface BackupFinding {
   retentionDays: number | null;
   /** The policy's floor in days, when one applied. */
   minRetentionDays: number | null;
-  /** Newest backup protecting the resource — its Infrawrench id, name and instant. */
+  /** Newest backup protecting the resource: its Infrawrench id, name and instant. */
   latestBackupId: string | null;
   latestBackupName: string | null;
   latestBackupAt: string | null;
@@ -166,7 +166,7 @@ export interface BackupCoverageRow {
   automatedBackups: boolean | null;
   retentionDays: number | null;
   /**
-   * The policy supplying `maxRpoHours` — the strictest RPO among those
+   * The policy supplying `maxRpoHours`: the strictest RPO among those
    * selecting this resource. Null when no selecting policy sets an RPO.
    *
    * Tracked separately from the retention policy because the two strictest
@@ -187,7 +187,7 @@ export interface BackupCoverageRow {
 export interface BackupCoverageSummary {
   /** Stateful resources the declarations let us judge at all. */
   statefulCount: number;
-  /** Resources with some protection — a backup, or provider-managed backups. */
+  /** Resources with some protection: a backup, or provider-managed backups. */
   protectedCount: number;
   /** Confirmed gaps. This is what the digest reports; it excludes unknowns. */
   unprotectedCount: number;
@@ -195,7 +195,7 @@ export interface BackupCoverageSummary {
    * Resources we could not assess: the type declares a provider-native
    * automated-backup signal but this instance's value was absent or
    * unrecognised. Surfaced rather than folded into either side, the
-   * `unattributableBackupCount` stance — "we found no gap" and "we couldn't
+   * `unattributableBackupCount` stance: "we found no gap" and "we couldn't
    * tell" must not render the same.
    */
   unknownCount: number;
@@ -241,7 +241,7 @@ export interface BackupCoverageResponse {
  * demands of them.
  *
  * The selector is deliberately two independent narrowings rather than a query
- * language — resource types and a tag — because those are the two axes people
+ * language (resource types and a tag) because those are the two axes people
  * actually reason about ("all production volumes", "every database"). Both
  * empty means the policy applies to every stateful resource, which is the
  * useful default for an org's first policy.
@@ -279,7 +279,7 @@ export const BACKUP_POLICY_LIMITS = {
   maxNameLength: 120,
   /** One hour is the shortest RPO any of these providers can honour. */
   minRpoHours: 1,
-  /** A year — beyond that the policy is not expressing a recovery objective. */
+  /** A year: beyond that the policy is not expressing a recovery objective. */
   maxRpoHours: 8760,
   minRetentionDays: 1,
   maxRetentionDays: 3650,
@@ -311,7 +311,7 @@ export function validateBackupPolicyInput(input: BackupPolicyInput): string | nu
     return `The tag value must be at most ${BACKUP_POLICY_LIMITS.maxTagValueLength} characters`;
   }
   // A value with no key selects nothing and would silently make the policy
-  // inert — the `privateValues requires privateKey` stance.
+  // inert: the `privateValues requires privateKey` stance.
   if (input.tagValue != null && input.tagValue !== "" && !input.tagKey) {
     return "A tag value needs a tag key";
   }
@@ -371,7 +371,7 @@ export interface BackupScanAccount {
 
 /**
  * The part of a stored resource row the scan reads. Hosts map their own store
- * onto this — Postgres jsonb, SQLite TEXT bags — so the computation never
+ * onto this (Postgres jsonb, SQLite TEXT bags) so the computation never
  * learns which database it is looking at.
  */
 export interface BackupScanResource {
@@ -399,7 +399,7 @@ export interface BackupScanOptions {
   /**
    * Trailing-window spend keyed `"<accountId> <externalId>"`, exactly the
    * shape the schedules and orphans surfaces already build. Absent or a miss
-   * leaves the cost null — never zero, which would read as "free".
+   * leaves the cost null, never zero, which would read as "free".
    */
   costsByResource?: ReadonlyMap<string, { amount: number; currency: string | null }> | undefined;
 }
@@ -422,7 +422,7 @@ const FALSE_WORDS = new Set(["false", "0", "no", "disabled", "off"]);
 
 /**
  * Leading number out of a stored value, so `"8 GiB"` and `8` and `"8.5"` all
- * read as a size. Null rather than 0 for anything else — a size we can't read
+ * read as a size. Null rather than 0 for anything else: a size we can't read
  * must not shrink the orphan total.
  */
 function parseNumber(value: unknown): number | null {
@@ -439,8 +439,8 @@ function parseNumber(value: unknown): number | null {
  * lists, plus `on`/`off` which several backup flags use. Unknown strings
  * return null so an unrecognised value neither clears a resource nor flags it.
  *
- * `when: "present"` switches to the other documented reading — any non-empty
- * value is "on" — for fields that carry a datum instead of a flag
+ * `when: "present"` switches to the other documented reading (any non-empty
+ * value is "on") for fields that carry a datum instead of a flag
  * (DigitalOcean's `nextBackupStart`). There the absent case is still null, but
  * an explicit `""` is a real "off", which is what that lister writes.
  */
@@ -462,7 +462,7 @@ function parseFlag(value: unknown, when: "truthy" | "present" = "truthy"): boole
 
 /**
  * Interpolate a `{field}` source template. Returns null when any referenced
- * field is missing or empty — a half-filled template would match the wrong
+ * field is missing or empty: a half-filled template would match the wrong
  * resource, which reads as protection that does not exist.
  */
 function renderSourceTemplate(template: string, fields: Record<string, unknown>): string | null {
@@ -485,7 +485,7 @@ function asFields(value: unknown): Record<string, unknown> {
 /**
  * Identity tokens a resource answers to, lowercased. A snapshot's source field
  * holds whichever of these the provider happened to return, so the join has to
- * accept all of them — plus the last segment of a slash path, which is how a
+ * accept all of them, plus the last segment of a slash path, which is how a
  * GCP snapshot's `sourceDisk` self-link finds a disk stored under its bare
  * name.
  */
@@ -499,7 +499,7 @@ function identityTokens(resource: BackupScanResource): string[] {
   if (resource.displayName) tokens.push(resource.displayName);
   // Deduped: a resource whose id, external id and display name are the same
   // string (the common case for id-named resources) would otherwise appear
-  // three times under one token and read as three claimants — i.e. ambiguous,
+  // three times under one token and read as three claimants, i.e. ambiguous,
   // i.e. unmatched.
   return [...new Set(tokens.map((t) => t.trim().toLowerCase()).filter((t) => t !== ""))];
 }
@@ -551,7 +551,7 @@ interface ResolvedBackup {
  * Compute the org's backup coverage: every stateful resource judged against
  * the backups that protect it, plus the backups that protect nothing.
  *
- * Pure and deterministic — two hosts reading the same rows render the same
+ * Pure and deterministic: two hosts reading the same rows render the same
  * findings, which is what lets the surface recompute on read rather than
  * materialising a findings table (the posture stance). Resources whose account
  * is missing from `accounts` are skipped: a soft-deleted account's volumes are
@@ -648,8 +648,8 @@ export function computeBackupCoverage(
       rawSize == null ? null : role.sizeUnit === "bytes" ? rawSize / 1024 ** 3 : rawSize;
 
     // Attribution is by declared field only. `parentResourceId` is a
-    // *containment* link — a DO snapshot's parent is the project it lives in,
-    // a Spanner backup's is the instance — so reading it as "what this
+    // *containment* link (a DO snapshot's parent is the project it lives in,
+    // a Spanner backup's is the instance) so reading it as "what this
     // protects" would attribute every snapshot to the wrong thing.
     let source: BackupScanResource | null = null;
     let unattributable = false;
@@ -725,9 +725,9 @@ export function computeBackupCoverage(
     // produce two contradictory findings.
     //
     // The winning policy is tracked *per objective*, not per resource. The two
-    // strictest demands routinely come from different policies — "everything,
+    // strictest demands routinely come from different policies ("everything,
     // 24h RPO" alongside "production databases, 30 day retention" is the
-    // obvious setup — and collapsing them into one `policy` made a retention
+    // obvious setup) and collapsing them into one `policy` made a retention
     // finding cite the unrelated policy that happened to win the RPO. A
     // finding must name the policy that actually supplies the objective it
     // breaches, because that is the policy the reader has to go and change.
@@ -755,7 +755,7 @@ export function computeBackupCoverage(
       }
     }
     // "Some policy expects this resource to be recoverable" is what escalates
-    // an unprotected finding, so any binding policy will do — but prefer the
+    // an unprotected finding, so any binding policy will do, but prefer the
     // RPO one, since having no backup at all is most directly a failure to
     // meet a recovery point.
     const governingPolicy = rpoPolicy ?? retentionPolicy ?? firstMatch;
@@ -764,8 +764,8 @@ export function computeBackupCoverage(
     const own = (backupsBySource.get(resource.id) ?? []).filter(
       (b) => protectors.size === 0 || protectors.has(b.typeId),
     );
-    // A backup with no readable timestamp still counts as a backup — it is
-    // there — but it can never be the newest, so it cannot satisfy an RPO.
+    // A backup with no readable timestamp still counts as a backup (it is
+    // there) but it can never be the newest, so it cannot satisfy an RPO.
     let latest: ResolvedBackup | null = null;
     for (const backup of own) {
       if (backup.createdAt == null) continue;
@@ -780,8 +780,8 @@ export function computeBackupCoverage(
     const retentionDays = declaration.retentionDaysFieldKey
       ? parseNumber(fields[declaration.retentionDaysFieldKey])
       : null;
-    // A positive retention window IS the proof automated backups are on — the
-    // providers that expose one encode "off" as 0 — so a type declaring only
+    // A positive retention window IS the proof automated backups are on (the
+    // providers that expose one encode "off" as 0) so a type declaring only
     // `retentionDaysFieldKey` needs no separate flag.
     const flag = declaration.automatedBackupFieldKey
       ? parseFlag(
@@ -1035,7 +1035,7 @@ export function computeBackupCoverage(
       orphanedBackupCount: orphanedCount,
       unattributableBackupCount: unattributableCount,
       orphanedGb,
-      // Mixed currencies drop the quote rather than adding pounds to dollars —
+      // Mixed currencies drop the quote rather than adding pounds to dollars:
       // the orphans and schedules annotation rule.
       orphanedMonthlyCost: currencyConflict ? null : orphanedCost,
       currency: currencyConflict ? null : currency,
@@ -1045,7 +1045,7 @@ export function computeBackupCoverage(
   };
 }
 
-/** "3 hours" / "2 days" / "45 minutes" — the one formatter every surface uses. */
+/** "3 hours" / "2 days" / "45 minutes": the one formatter every surface uses. */
 export function formatHours(hours: number): string {
   if (hours < 1) {
     const minutes = Math.max(1, Math.round(hours * 60));
@@ -1059,7 +1059,7 @@ export function formatHours(hours: number): string {
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
-/** The findings worth a line in the weekly digest — everything but orphans. */
+/** The findings worth a line in the weekly digest: everything but orphans. */
 export function riskyBackupFindings(feed: BackupCoverageResponse): BackupFinding[] {
   return feed.findings.filter((f) => f.kind !== "orphaned-snapshot");
 }

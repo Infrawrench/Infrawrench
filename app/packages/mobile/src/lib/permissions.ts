@@ -3,7 +3,7 @@ import { fetchOrgPermissions, hasPermission } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /**
- * The viewer's permissions in the selected org — the mobile counterpart of
+ * The viewer's permissions in the selected org: the mobile counterpart of
  * web's `PermissionsProvider`/`usePermissions`.
  *
  * A hook rather than a context because react-query already dedupes and caches

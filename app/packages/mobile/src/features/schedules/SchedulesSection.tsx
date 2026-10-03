@@ -7,10 +7,10 @@ import { colors, spacing } from "@/lib/theme";
 import { useSchedulePause, useSchedules } from "./useSchedules";
 
 /**
- * "Sleep schedules" — the native counterpart to the section on the web and
+ * "Sleep schedules": the native counterpart to the section on the web and
  * desktop Costs panels, in the same position. Read-mostly by design: the
  * phone shows every schedule with its window, next transition, last outcome
- * and projected saving, and offers only the pause/resume toggle — the
+ * and projected saving, and offers only the pause/resume toggle; the
  * "stop touching my resource" control someone reaches for on the move.
  * Creating and editing (day pickers, times, timezones) stays on web/desktop,
  * the anomaly-tuning line.

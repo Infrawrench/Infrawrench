@@ -17,14 +17,14 @@ import { useOrgPermissions } from "@/lib/permissions";
 import { useCanFileJira, useJiraLinks } from "../jira/useJira";
 
 /**
- * Tracker-aware issue-filing state for the mobile findings surfaces — the
+ * Tracker-aware issue-filing state for the mobile findings surfaces: the
  * native counterpart of `IssueFilingProvider` in `@infrawrench/ui`, which
  * mobile cannot use. The Jira half lives in `../jira/useJira` unchanged; this
  * module adds the Linear half and the combined views a findings row wants:
  * which trackers can be filed to, and every tracker's link for one finding.
  *
  * Same batching rule as everywhere else: the links queries are fetched once
- * per org and read per row — a request per anomaly row would be a request per
+ * per org and read per row; a request per anomaly row would be a request per
  * row on a phone connection.
  */
 
@@ -87,7 +87,7 @@ export function useFileLinearIssue() {
 
 /**
  * Whether this viewer can file into Linear at all: Linear connected *and*
- * `linear:write`. Both halves matter — a button that opens a sheet which can
+ * `linear:write`. Both halves matter: a button that opens a sheet which can
  * only 403 is worse than no button.
  */
 function useCanFileLinear(): boolean {
@@ -113,7 +113,7 @@ export function useFilableTrackers(): IssueTracker[] {
 export type { IssueLinksForSource };
 
 /**
- * Every tracker's link for one finding — both, when it was filed to both.
+ * Every tracker's link for one finding: both, when it was filed to both.
  * One hook call per list, one `linksFor` call per row.
  */
 export function useIssueLinks() {

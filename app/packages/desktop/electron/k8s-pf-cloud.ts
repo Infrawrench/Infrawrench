@@ -5,7 +5,7 @@
  * returns that port to the renderer. For each inbound client connection, it
  * opens a fresh WebSocket to the cloud with a `k8s:pf:open` frame, then
  * pipes bytes bidirectionally (base64 framing on the WS side). One WS per
- * TCP connection — simple, not multiplexed. Fine for the normal case of a
+ * TCP connection: simple, not multiplexed. Fine for the normal case of a
  * single psql/mysql/redis-cli client; if we ever need heavy fan-in we can
  * layer stream ids on top.
  */

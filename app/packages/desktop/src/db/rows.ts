@@ -1,7 +1,7 @@
 /**
  * Shared row shapes for common queries against the desktop SQLite database.
  *
- * These mirror the `accounts` table columns in `schema.ts` — if you change
+ * These mirror the `accounts` table columns in `schema.ts`, if you change
  * the schema there, update these types too.
  */
 

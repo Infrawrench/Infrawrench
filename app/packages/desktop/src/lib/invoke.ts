@@ -1,7 +1,7 @@
 /**
  * Wrapper for typed Electron IPC calls.
  *
- * The preload bridge exposes one method per channel — calling
+ * The preload bridge exposes one method per channel: calling
  * `window.electronAPI[channel](args)` invokes only that specific main-process
  * handler. The renderer cannot pass an attacker-chosen channel string.
  *

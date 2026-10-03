@@ -47,7 +47,7 @@ export interface EnvironmentDiffQuery {
 
 /**
  * Host-injected data access. Web wraps `apiGet`; desktop wraps its cloud IPC
- * in cloud mode and the local SQLite scan otherwise — the panel stays
+ * in cloud mode and the local SQLite scan otherwise: the panel stays
  * platform-agnostic, the same arrangement as `ChangesClient` and
  * `OrphansClient`.
  */

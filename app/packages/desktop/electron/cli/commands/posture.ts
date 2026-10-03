@@ -1,20 +1,20 @@
-// `infrawrench posture` — plugin-declared security checks over synced
+// `infrawrench posture`; plugin-declared security checks over synced
 // resources: public buckets, world-open ingress, unencrypted disks, stale
 // credentials, missing backup/deletion protection, ranked by severity.
 //
 // Works in both modes, because the classification is declarative and runs
 // over stored state rather than a live provider call:
-//   - cloud (default) — GET /posture, the same endpoint the web + desktop
+//   - cloud (default): GET /posture, the same endpoint the web + desktop
 //     Posture screens render.
-//   - --local — electron/local-posture.ts runs the shared computation over
+//   - --local: electron/local-posture.ts runs the shared computation over
 //     this machine's SQLite workspace. No credentials, no network.
 //
 // `posture dismiss` / `posture restore` accept and un-accept a finding by
 // (resource, rule). Cloud mode records the decision for the organization
 // through the API; --local writes this machine's own table.
 //
-// The response shape comes from `@infrawrench/client-core` — the same
-// definition every other surface uses — so a server-side change breaks the
+// The response shape comes from `@infrawrench/client-core` (the same
+// definition every other surface uses) so a server-side change breaks the
 // CLI's build instead of its output. The import is type-only, so the CLI
 // still ships zero new runtime dependencies.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
@@ -212,7 +212,7 @@ export async function cmdPosture(ctx: CliContext): Promise<void> {
 }
 
 /**
- * The accepted risks, listed rather than hidden — a silenced finding nobody
+ * The accepted risks, listed rather than hidden: a silenced finding nobody
  * can see is worse than a noisy one. Never colored by severity: these are
  * decisions, not alarms.
  */

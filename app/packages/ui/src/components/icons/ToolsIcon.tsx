@@ -4,7 +4,7 @@ interface ToolsIconProps {
 }
 
 /**
- * Tools glyph — a hammer and a chisel crossed like the classic mason's mark.
+ * Tools glyph: a hammer and a chisel crossed like the classic mason's mark.
  * The hammer is lucide's, the chisel is tabler's; both are drawn in the same
  * 24x24 stroke grid and 2px weight as the other sidebar icons, laid along
  * opposite diagonals so the pair reads as one emblem.

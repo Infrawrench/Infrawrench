@@ -14,7 +14,7 @@ interface DesktopEnvironmentsPanelProps {
 }
 
 /**
- * Ephemeral environments — cloud-mode only, unlike Graph or Expiring. An
+ * Ephemeral environments: cloud-mode only, unlike Graph or Expiring. An
  * environment is created against org accounts, recorded in org tables and torn
  * down by the cloud lease pass; there is nothing local to render.
  */

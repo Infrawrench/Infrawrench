@@ -12,7 +12,7 @@ import { colors, radii, spacing } from "@/lib/theme";
  * budgets and cost graphs are empty, for both states that produce a blank
  * chart: collection that is failing (with the provider's fix deep-linked when
  * the plugin reported one), and collection that succeeds but has no spend to
- * report yet — plus the state that produces a chart which is *not* blank and
+ * report yet, plus the state that produces a chart which is *not* blank and
  * still isn't the invoice: a provider with no billing API, whose spend is this
  * account's inventory priced against a rate card. Renders nothing when every
  * account is collecting real data.

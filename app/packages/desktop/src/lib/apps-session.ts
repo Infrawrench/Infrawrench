@@ -25,7 +25,7 @@ import { invoke } from "./invoke";
  * Subscribe to a main-process event channel, returning an unsubscribe.
  *
  * The preload bridge only offers `on` and `offAll`, so a session removes every
- * listener for its own channel — which is correct here because each channel
+ * listener for its own channel, which is correct here because each channel
  * name carries the session id and has exactly one subscriber.
  */
 function onEvent(channel: string, handler: (payload: unknown) => void): () => void {
@@ -218,7 +218,7 @@ function view(entry: Entry): HostAppsSession {
  * Join a session that is already open, without being able to start one.
  *
  * A window tab uses this: it has no key and no address, only the resource. When
- * there is no session — after a reload, or once the launcher tab is closed —
+ * there is no session (after a reload, or once the launcher tab is closed)
  * it returns null and the tab says so rather than silently showing nothing.
  */
 export function joinHostSession(key: string): HostAppsSession | null {
@@ -232,7 +232,7 @@ export function joinHostSession(key: string): HostAppsSession | null {
  * What this host is missing before it can run applications.
  *
  * One SSH exec that only looks. Deliberately separate from the session so it
- * can answer on a host where opening one would fail — the missing thing may be
+ * can answer on a host where opening one would fail: the missing thing may be
  * the `gunzip` that unpacks the app server.
  */
 export async function preflightHostApps(config: AppsConnectConfig): Promise<HostRequirementsCheck> {

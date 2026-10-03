@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Resource ownership — cloud-mode only. Ownership is an org record about an
+// Resource ownership: cloud-mode only. Ownership is an org record about an
 // org's resources; a local workspace has no org and no members to own
 // anything, so the renderer wires this panel only when signed in.
 

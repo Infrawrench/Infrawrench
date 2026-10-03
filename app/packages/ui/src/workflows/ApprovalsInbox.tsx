@@ -6,7 +6,7 @@
  * to `/api/org/:orgId/workflow-approvals` over fetch, the desktop app proxies
  * the same routes over IPC, and this component knows about neither. Reading the
  * list needs `workflows:read`; the Approve/Deny buttons need
- * `workflows:approve` — pass `canDecide` from whatever the host knows about the
+ * `workflows:approve`: pass `canDecide` from whatever the host knows about the
  * viewer's permissions. The server enforces both regardless.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -76,7 +76,7 @@ export function ApprovalsInbox({
       setDecideError(null);
       try {
         await client.decide(approvalId, decision);
-        // Drop it immediately — a decided request is no longer pending, and
+        // Drop it immediately: a decided request is no longer pending, and
         // waiting for the next poll would leave a dead row clickable.
         setApprovals((rows) => rows.filter((r) => r.id !== approvalId));
       } catch (e) {

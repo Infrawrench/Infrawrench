@@ -62,7 +62,7 @@ export async function attachSidecarInfo(
  * `staticResourceCapabilities`: the static flags are `ssh`/`sftp`, and both
  * resolve against the account's own plugin (an SSH endpoint on the resource
  * type, a key on the account), which nothing inside somebody else's cluster
- * has. Storage is left off for the same reason — a bucket name comes from the
+ * has. Storage is left off for the same reason: a bucket name comes from the
  * account's plugin. The real flags (logs, describe, manifest, …) arrive from
  * {@link enrichSidecarCapabilities} on the typings path.
  */
@@ -95,7 +95,7 @@ interface CacheEntry {
    * flags on such a failure silently deletes `pod.logs()` from `infra.d.ts`, and
    * the author's already-working workflow stops type-checking with a message
    * that reads like the method never existed. So a failure never erases a
-   * success — it only schedules a retry.
+   * success: it only schedules a retry.
    */
   caps: Record<string, WorkflowResourceCapabilities> | null;
   /** When `caps` was learned (drives {@link TTL_MS}). */
@@ -133,7 +133,7 @@ export interface SidecarCapabilityProbe {
  * plugin is usually reachable through several of them (`kubernetes` hangs off
  * both a GKE and a DOKS cluster) and the answer cannot differ between them. One
  * grouped pass means exactly one provider round-trip per peer plugin, instead
- * of N concurrent ones racing each other into a rate limit — and it means the
+ * of N concurrent ones racing each other into a rate limit, and it means the
  * result no longer depends on which parent type happened to be probed first,
  * which is what made `pod.logs()` appear and disappear between edits.
  *
@@ -141,7 +141,7 @@ export interface SidecarCapabilityProbe {
  * account is not necessarily the one that owns a cluster.
  *
  * Runs on the typings path only (never per run) and caches per peer plugin.
- * Best-effort — but see {@link CacheEntry.caps} for why "best-effort" must not
+ * Best-effort, but see {@link CacheEntry.caps} for why "best-effort" must not
  * mean "forget what we already knew".
  */
 export async function enrichSidecarCapabilities(
@@ -201,7 +201,7 @@ export async function enrichSidecarCapabilities(
             }
           }
         }
-        // No cluster/database exists yet. Not a failure worth backing off from —
+        // No cluster/database exists yet. Not a failure worth backing off from:
         // the first one created should get typed capabilities immediately.
         if (!found) return;
 

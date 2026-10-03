@@ -1,11 +1,11 @@
-// `infrawrench incidents` — "is it me or is it them?" in the terminal.
+// `infrawrench incidents`: "is it me or is it them?" in the terminal.
 //
 // Backed by the same /status-incidents endpoint the web banner and Changes
 // page read: the cloud poller watches each provider plugin's public status
 // feed, caches active incidents, and the endpoint correlates them against the
-// resources the org holds — by region, resource type, or provider-wide scope.
+// resources the org holds; by region, resource type, or provider-wide scope.
 //
-// Wire types come from `@infrawrench/client-core` — the same definitions every
+// Wire types come from `@infrawrench/client-core`: the same definitions every
 // other surface renders with, so a server-side change breaks the CLI's build
 // instead of its output.
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";

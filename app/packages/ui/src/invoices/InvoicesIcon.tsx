@@ -4,7 +4,7 @@ interface InvoicesIconProps {
 }
 
 /**
- * Invoices glyph — a document with a torn foot and a currency mark on it. Same
+ * Invoices glyph: a document with a torn foot and a currency mark on it. Same
  * 24x24 stroke grid and 2px weight as {@link CostsIcon} and
  * {@link CostReportsIcon}, so the three read as one family: Costs is the live
  * spend, Reports is a saved view of it, Invoices is what a customer is billed

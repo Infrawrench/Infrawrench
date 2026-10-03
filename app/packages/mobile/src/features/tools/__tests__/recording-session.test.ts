@@ -69,7 +69,7 @@ describe("withRecordingMode", () => {
   });
 
   it("does not swallow a failure to enable the session", async () => {
-    // Nothing was turned on, so there is nothing to roll back — and the caller
+    // Nothing was turned on, so there is nothing to roll back, and the caller
     // needs to hear about it rather than watch a recorder that never starts.
     const setAudioMode = vi.fn().mockRejectedValue(new Error("category denied"));
     const start = vi.fn();

@@ -22,7 +22,7 @@ import {
  * joined timeline, and a note box.
  *
  * The timeline arrives already ordered and windowed from
- * `buildIncidentTimeline` on the server — this screen renders and does not
+ * `buildIncidentTimeline` on the server: this screen renders and does not
  * decide, so the phone, the browser and the postmortem export cannot disagree
  * about what happened.
  */

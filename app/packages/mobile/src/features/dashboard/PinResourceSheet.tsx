@@ -16,7 +16,7 @@ interface SearchResult {
 }
 
 /**
- * Pick a resource to pin — what Spotlight in `mode="pin"` does on web, over the
+ * Pick a resource to pin: what Spotlight in `mode="pin"` does on web, over the
  * same `/search`. Tapping a result pins it and closes; the sheet stays open
  * while the pin is in flight so a failure has somewhere to report.
  */

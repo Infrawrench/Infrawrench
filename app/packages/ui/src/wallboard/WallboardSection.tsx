@@ -12,8 +12,8 @@ export interface WallboardSectionProps {
   /** The wall, or null while the first load is in flight. */
   data: WallboardResponse | null;
   /**
-   * Load or refresh failure. With `data` present the last wall stays on screen
-   * — a television that blanks on one failed poll is worse than one showing a
+   * Load or refresh failure. With `data` present the last wall stays on screen:
+   * a television that blanks on one failed poll is worse than one showing a
    * reading from a minute ago with a stale marker on it.
    */
   error?: string | null | undefined;
@@ -30,7 +30,7 @@ export interface WallboardSectionProps {
  * The whole-screen tint. Background utilities rather than fixed text colours:
  * text has to come from the semantic tokens (`text-danger`, `text-warning`,
  * `text-success`), which are the only ones guaranteed to clear WCAG AA in both
- * schemes — and a wallboard is the last screen that should be readable in one
+ * schemes, and a wallboard is the last screen that should be readable in one
  * theme and not the other.
  */
 const STATUS_BACKDROP: Record<WallboardStatus, string> = {
@@ -60,7 +60,7 @@ function statusHeadline(gt: ReturnType<typeof useGT>, status: WallboardStatus): 
  * Wide-screen columns per tile count.
  *
  * A wall is looked at from four metres, where an empty cell in the grid reads
- * as a tile that failed to render rather than as spare room — so the columns
+ * as a tile that failed to render rather than as spare room, so the columns
  * follow the number of tiles the server actually sent. Written out in full
  * because Tailwind reads class names literally.
  */
@@ -72,7 +72,7 @@ const TILE_COLUMNS: Record<number, string> = {
 };
 
 /**
- * The wallboard — one screen, read from across the room.
+ * The wallboard: one screen, read from across the room.
  *
  * Deliberately not a dashboard in kiosk mode. Type is large, the palette is
  * three colours, and nothing on it is a trend: the rule is that a wallboard may
@@ -80,7 +80,7 @@ const TILE_COLUMNS: Record<number, string> = {
  * to look at.
  *
  * Rotation is derived from the wall clock rather than a local timer, so two
- * televisions in the same room show the same panel at the same moment — being
+ * televisions in the same room show the same panel at the same moment: being
  * out of step is the sort of thing people notice and nobody can explain.
  */
 export function WallboardSection({

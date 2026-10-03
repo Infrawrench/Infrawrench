@@ -95,7 +95,7 @@ describe("getTerminalAccessibleName", () => {
 
   // An omitted namespace means the --namespace flag is not passed and k9s
   // opens on the kubeconfig context's default, which is not necessarily every
-  // namespace — so the name must not claim a scope it cannot confirm.
+  // namespace, so the name must not claim a scope it cannot confirm.
   it("names a k9s terminal by namespace, and claims no scope without one", () => {
     expect(getTerminalAccessibleName({ kind: "k9s", namespace: "prod" })).toBe(
       "k9s terminal, namespace prod",

@@ -4,7 +4,7 @@ import Svg, { Circle, Path, Rect } from "react-native-svg";
  * Line icons for the tab bar and navigation chrome.
  *
  * Unicode glyphs (⌂ ▤ ⚙ …) are not icons: the OS picks the font, so weights are
- * inconsistent between them and some — the gear especially — resolve to a full
+ * inconsistent between them and some (the gear especially) resolve to a full
  * colour emoji that ignores `color`. These are drawn instead, on the same 24×24
  * stroke grid the web app's `WorkflowIcon` uses, so the two stay visually in
  * step. `react-native-svg` is already a dependency; nothing new is pulled in.
@@ -31,7 +31,7 @@ function Icon({ color, size = 24, children }: IconProps & { children: React.Reac
   );
 }
 
-/** Panels of a dashboard grid — the tab lists dashboards, so a house would lie. */
+/** Panels of a dashboard grid: the tab lists dashboards, so a house would lie. */
 export function DashboardsIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -62,7 +62,7 @@ export function ResourcesIcon(props: IconProps) {
   );
 }
 
-/** Matches the web app's `CostsIcon` — same bars, same 24×24 grid. */
+/** Matches the web app's `CostsIcon`: same bars, same 24×24 grid. */
 export function CostsIcon(props: IconProps) {
   return (
     <Icon {...props}>

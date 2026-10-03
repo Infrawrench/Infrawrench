@@ -1,6 +1,6 @@
 /**
  * Dark theme constants, matching the web app's surface palette. Kept as plain
- * values (not a ThemeProvider) — the app is dark-only for v1, like the
+ * values (not a ThemeProvider): the app is dark-only for v1, like the
  * desktop default.
  */
 export const colors = {

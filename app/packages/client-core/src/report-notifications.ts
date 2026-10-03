@@ -1,12 +1,12 @@
 /**
- * Scheduled delivery of a saved cost report — the wire contract shared by the
+ * Scheduled delivery of a saved cost report: the wire contract shared by the
  * API, the report page's Delivery section, the mobile read-only view, and the
  * CLI.
  *
  * A report notification is a schedule attached to one cost report: on its
  * cadence the server runs the report, composes a text summary (period total in
  * the org's display currency where configured, change vs the previous period,
- * top groups, and a deep link — no chart images), and sends it to the Slack
+ * top groups, and a deep link; no chart images), and sends it to the Slack
  * channels, Teams webhooks and email addresses the schedule names.
  *
  * This follows the weekly digest's model, not alert routing: destinations are
@@ -25,7 +25,7 @@ export const REPORT_NOTIFICATION_CADENCE_LABELS: Record<ReportNotificationCadenc
   monthly: "Monthly",
 };
 
-/** ISO weekday labels, 1 = Monday … 7 = Sunday — the digest's convention. */
+/** ISO weekday labels, 1 = Monday … 7 = Sunday: the digest's convention. */
 export const REPORT_NOTIFICATION_WEEKDAY_LABELS: Record<number, string> = {
   1: "Monday",
   2: "Tuesday",
@@ -41,7 +41,7 @@ export const REPORT_NOTIFICATION_LIMITS = {
   maxEmailRecipients: 20,
   maxSlackChannels: 20,
   maxTeamsWebhooks: 20,
-  /** Schedules per report — enough for "finance monthly + team weekly + me daily". */
+  /** Schedules per report: enough for "finance monthly + team weekly + me daily". */
   maxPerReport: 10,
 } as const;
 
@@ -103,7 +103,7 @@ export interface ReportNotification {
 
 /** One pickable Slack channel or Teams webhook, as the targets endpoint lists them. */
 export interface ReportDeliveryTargetOption {
-  /** The stored row id — what `ReportNotificationInput` carries. */
+  /** The stored row id: what `ReportNotificationInput` carries. */
   id: string;
   /** Display label: `#alerts` for Slack, the user-supplied label for Teams. */
   label: string;
@@ -111,7 +111,7 @@ export interface ReportDeliveryTargetOption {
 
 /**
  * What a schedule can currently be pointed at. `emailAvailable` is whether
- * this deployment can send mail at all — addresses can still be saved without
+ * this deployment can send mail at all: addresses can still be saved without
  * it, but the UI should say they will go nowhere until mail is configured.
  */
 export interface ReportDeliveryTargets {
@@ -120,7 +120,7 @@ export interface ReportDeliveryTargets {
   emailAvailable: boolean;
 }
 
-/** Per-transport outcome of a delivery — the answer to "Send now". */
+/** Per-transport outcome of a delivery: the answer to "Send now". */
 export interface ReportNotificationSendResult {
   attempted: number;
   succeeded: number;
@@ -129,7 +129,7 @@ export interface ReportNotificationSendResult {
   email: { attempted: number; succeeded: number };
 }
 
-/** `"Weekly · Monday 08:00 Europe/Berlin"` — one schedule, said out loud. */
+/** `"Weekly · Monday 08:00 Europe/Berlin"`: one schedule, said out loud. */
 export function describeReportSchedule(n: {
   cadence: ReportNotificationCadence;
   sendDay: number;
@@ -147,7 +147,7 @@ export function describeReportSchedule(n: {
   return `${REPORT_NOTIFICATION_CADENCE_LABELS[n.cadence]} · ${when} ${n.timezone}`;
 }
 
-/** `"2 Slack channels, 1 email"` — where a schedule delivers to. */
+/** `"2 Slack channels, 1 email"`, where a schedule delivers to. */
 export function describeReportTargets(n: {
   slackChannelIds: string[];
   teamsWebhookIds: string[];

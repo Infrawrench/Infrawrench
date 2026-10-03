@@ -420,7 +420,7 @@ export function createDesktopAgentClient(): AgentClient {
         ],
       );
       // Resources declared by .infrawrench/agent.json (e.g. a db branch).
-      // Created ONCE here, not in the retryable setup pipeline — resource
+      // Created ONCE here, not in the retryable setup pipeline: resource
       // creation is not idempotent. A failure marks the session failed so
       // the user sees it and Delete cleans up whatever was created.
       try {
@@ -518,7 +518,7 @@ export function createDesktopAgentClient(): AgentClient {
             "T3 Code owns this server's projects and their branches — push from inside T3 Code. Infrawrench has nothing to reconcile.",
         };
       }
-      // Git-URL sessions have no local checkout to fetch into — reconciling
+      // Git-URL sessions have no local checkout to fetch into: reconciling
       // means pushing from the VM (it cloned the remote, so it has origin).
       if (isCloneableGitRepo(row.repo)) {
         return {
@@ -550,7 +550,7 @@ export function createDesktopAgentClient(): AgentClient {
       ]);
       const row = rows[0];
       if (!row) return;
-      // Revoke the T3 Connect relay link while the VM still exists — once it
+      // Revoke the T3 Connect relay link while the VM still exists: once it
       // is destroyed there is no way to remove the environment from T3's side.
       // Best effort: an unreachable VM must not block deletion of a machine
       // that is still billing.
@@ -561,7 +561,7 @@ export function createDesktopAgentClient(): AgentClient {
         });
       }
       // Resources created from .infrawrench/agent.json (db branches etc.)
-      // go first — same rule as the VM: gone upstream is success, any other
+      // go first; same rule as the VM: gone upstream is success, any other
       // failure aborts so nothing keeps billing silently.
       const createdRefs = parseJson<CreatedResourceRef[]>(row.created_resources_json ?? "[]", []);
       for (const ref of createdRefs) {
@@ -866,7 +866,7 @@ async function ensureAgentVmSetup(
   for (const syncWarning of syncResult.warnings.slice(0, 10)) {
     await appendAgentSessionLog(db, row.id, `Warning: ${syncWarning}`, "setting-up");
   }
-  // Repo-provided setup script — needs the workspace (sync) AND the
+  // Repo-provided setup script: needs the workspace (sync) AND the
   // runtimes (bootstrap), so it runs after both. The bootstrap's own script
   // hook only fires on git-URL clones (web); desktop always runs it here.
   if (!t3Code) await runAgentRepoSetupScript(db, row, target, privateKey);
@@ -891,7 +891,7 @@ async function ensureAgentVmSetup(
  *
  * Resolves the SSH endpoint without the retry loop `waitForAgentSshTarget`
  * uses: teardown should not sit for fifteen minutes waiting on a VM that may
- * already be gone. Every failure is swallowed by the caller — losing the
+ * already be gone. Every failure is swallowed by the caller: losing the
  * revocation is recoverable, being unable to delete a billing VM is not.
  */
 async function revokeT3CodeLinkOnVm(row: SessionRow): Promise<void> {
@@ -1146,7 +1146,7 @@ async function createRepoConfigResources(
       dispatchResourcesChanged({ accountId: account.id, resourceTypeId: spec.resourceTypeId });
     }
   } finally {
-    // Persist whatever was created even on failure — Delete must be able to
+    // Persist whatever was created even on failure: Delete must be able to
     // clean up partial progress, and the env map is still valid as far as it
     // got.
     await persist();
@@ -1382,7 +1382,7 @@ function setupPlanForRow(row: SessionRow): AgentSetupPlan {
 }
 
 function defaultAgentSetupPlan(row: SessionRow): AgentSetupPlan {
-  // The repo-derived fallback can't describe a T3 Code server — it has no repo.
+  // The repo-derived fallback can't describe a T3 Code server: it has no repo.
   if (isT3CodeSurface(row.surface))
     return createT3CodeSetupPlan(row.tool, t3CodeAccessOrDefault(row.t3_access));
   return {
@@ -1470,7 +1470,7 @@ function setupAwareStatusFromLogs(
 ): AgentSession["status"] {
   const setupComplete = logs.includes(AGENT_SETUP_COMPLETE_LOG);
   if (vmStatus === "up") return setupComplete ? "up" : "setting-up";
-  // A VM that already completed setup but is no longer running is "stopped" —
+  // A VM that already completed setup but is no longer running is "stopped":
   // without this, a powered-off VM reads "Setting up" forever.
   if (vmStatus === "setting-up" && setupComplete) return "stopped";
   return vmStatus;
@@ -1507,7 +1507,7 @@ function extractBootstrapWarning(stderr: string): string | null {
 function isRetryableSshSetupError(message: string): boolean {
   // The dpkg/apt lock patterns cover fresh VMs where unattended-upgrades
   // still holds the package lock on first boot, and "exit 124" is the
-  // bootstrap's own `timeout 420s` expiring on a slow VM — re-running the
+  // bootstrap's own `timeout 420s` expiring on a slow VM: re-running the
   // (idempotent) bootstrap resumes where the previous attempt left off.
   return /ssh connection failed|timed out|timeout|econnrefused|connection refused|handshake|ready timeout|all configured authentication methods failed|could not get lock|dpkg[^\n]*lock|lock[^\n]*\/var\/lib\/(?:dpkg|apt)|command failed with exit 124\b/i.test(
     message,
@@ -1515,7 +1515,7 @@ function isRetryableSshSetupError(message: string): boolean {
 }
 
 function formatCommandFailure(result: { stdout: string; stderr: string; code: number }): string {
-  // Prefer stderr (where the actual error lands) and keep only its tail —
+  // Prefer stderr (where the actual error lands) and keep only its tail:
   // the full transcript would otherwise become one unreadable log line.
   const source = result.stderr.trim() || result.stdout.trim();
   const output = tailLines(source, 40);

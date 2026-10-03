@@ -11,7 +11,7 @@ export interface OversizedSectionProps {
   onOpenResource?: ((resource: OversizedResource, accountId: string) => void) | undefined;
 }
 
-/** GB with one decimal only when it isn't whole — "4 GB", "0.5 GB". */
+/** GB with one decimal only when it isn't whole: "4 GB", "0.5 GB". */
 function formatGb(memoryMb: number): string {
   const gb = memoryMb / 1024;
   return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
@@ -62,7 +62,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
   const gt = useGT();
   const [data, setData] = useState<RightsizingListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Per-row in-flight set — one slow resize must not re-enable (or disable)
+  // Per-row in-flight set: one slow resize must not re-enable (or disable)
   // any other row's Apply button.
   const [applying, setApplying] = useState<ReadonlySet<string>>(new Set());
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -101,7 +101,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
         setApplied((prev) => ({ ...prev, [resource.id]: resource.recommendedSize.label }));
       } catch (e) {
         // Change-freeze 423s and tag-policy 422s land here with the server's
-        // own explanation — show it verbatim, offer nothing else.
+        // own explanation: show it verbatim, offer nothing else.
         setRowErrors((prev) => ({
           ...prev,
           [resource.id]: e instanceof Error ? e.message : String(e),

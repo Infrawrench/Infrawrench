@@ -8,7 +8,7 @@
  *
  * **The cache key carries the representation.** Cloudflare's Cache API does not
  * honour `Vary` beyond `Accept-Encoding`, so caching one URL that answers two
- * ways would hand markdown to the next browser that asked for it — the exact
+ * ways would hand markdown to the next browser that asked for it: the exact
  * bug `Vary: Accept` exists to prevent, reintroduced one layer down. Rather than
  * rely on a header the cache ignores, the markdown representation is stored
  * under a distinct key. The `Vary` header is still sent, for every cache
@@ -22,7 +22,7 @@ export const PAGE_CACHE_SECONDS = 600;
  * The cache key for one representation of a URL.
  *
  * A query parameter rather than a header, because that is the part of the
- * request Cloudflare's Cache API actually keys on. It never reaches an origin —
+ * request Cloudflare's Cache API actually keys on. It never reaches an origin:
  * this key is only ever handed to `caches.default`.
  *
  * Built from **origin + pathname only**, never the request's own query string.
@@ -30,7 +30,7 @@ export const PAGE_CACHE_SECONDS = 600;
  * into the key breaks the representation split both ways: a browser request
  * for `/?__repr=md` would render HTML (the representation is decided by
  * `Accept` alone) and store it under the exact key the markdown answer lives
- * at, poisoning every agent's next ten minutes — and any junk parameter
+ * at, poisoning every agent's next ten minutes, and any junk parameter
  * (`?utm_source=…`) would mint its own cache entry, making the edge cache
  * trivially dilutable.
  */
@@ -75,7 +75,7 @@ export async function withPageCache(
       if (ctx) ctx.waitUntil(put);
       else await put;
     } catch {
-      // Not cacheable (streamed body, runtime without a cache) — serve it anyway.
+      // Not cacheable (streamed body, runtime without a cache): serve it anyway.
     }
   }
   return fresh;

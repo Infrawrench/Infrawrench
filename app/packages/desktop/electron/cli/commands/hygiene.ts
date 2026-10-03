@@ -16,7 +16,7 @@ function severityCell(finding: HygieneFinding): string {
 }
 
 /**
- * `infrawrench hygiene` — credentials the org is carrying that it probably
+ * `infrawrench hygiene`: credentials the org is carrying that it probably
  * should not be.
  *
  * The natural home for this is a scheduled `--json` run: unused keys and

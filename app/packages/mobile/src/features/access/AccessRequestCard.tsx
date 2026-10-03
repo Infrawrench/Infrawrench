@@ -10,14 +10,14 @@ import { colors, radii, spacing } from "@/lib/theme";
 /**
  * One break-glass request on a phone.
  *
- * The native counterpart of the web section's row — mobile can't load that
+ * The native counterpart of the web section's row; mobile can't load that
  * component (it is DOM/Tailwind), so this mirrors its information design: who
  * is asking, for exactly which permissions, for how long, and why. The reason
  * gets the most prominent treatment on purpose: it is the thing an approver is
  * actually deciding on, and a card that leads with the permission strings
  * invites approving on pattern-match.
  *
- * Deciding is two taps, never one — the buttons only open the confirmation the
+ * Deciding is two taps, never one: the buttons only open the confirmation the
  * screen owns.
  */
 export function AccessRequestCard({
@@ -30,7 +30,7 @@ export function AccessRequestCard({
   request: AccessRequest;
   /** Whether the viewer holds `access:approve`. */
   canDecide: boolean;
-  /** True while this row's decision is in flight — disables both buttons. */
+  /** True while this row's decision is in flight: disables both buttons. */
   deciding: boolean;
   /** The request the notification deep-linked to, pulled to the top. */
   highlighted?: boolean;

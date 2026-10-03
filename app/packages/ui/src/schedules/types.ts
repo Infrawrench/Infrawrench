@@ -18,7 +18,7 @@ export type {
 
 /**
  * Host-injected data access for the sleep/wake schedule surfaces. Web wraps
- * `apiGet`/`apiPost`; desktop (cloud mode) wraps its cloud IPC — the
+ * `apiGet`/`apiPost`; desktop (cloud mode) wraps its cloud IPC: the
  * components stay platform-agnostic.
  */
 export interface SchedulesClient {

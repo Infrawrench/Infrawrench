@@ -13,7 +13,7 @@ import { useDataString } from "../../i18n/data-strings.js";
 /**
  * The caller's own mobile push setup: per-org trigger toggles, registered
  * devices, and a test send. Devices are enrolled by signing in on the mobile
- * app — there is nothing to add here, only to review and remove.
+ * app: there is nothing to add here, only to review and remove.
  */
 export function PushPreferencesSection({
   orgId,
@@ -234,7 +234,7 @@ export function PushRosterSection({
     api
       .get<PushRecipientRow[]>(`/api/org/${orgId}/push/recipients`)
       .then(setRows)
-      // Non-admins get a 403 — just hide the section.
+      // Non-admins get a 403, just hide the section.
       .catch(() => setForbidden(true));
   }, [orgId]);
 

@@ -49,7 +49,7 @@ function relativeTime(iso: string): string {
 
 /**
  * A dashboard card for a pinned workflow: its declared metrics with current
- * values, last-run status, and an inline Run button. Platform-agnostic — the
+ * values, last-run status, and an inline Run button. Platform-agnostic: the
  * host supplies the data and the run/open/unpin handlers.
  */
 export function WorkflowDashboardCard({

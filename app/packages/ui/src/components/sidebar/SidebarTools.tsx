@@ -3,7 +3,7 @@ import { useGT } from "gt-react";
 import { ToolsIcon } from "../icons/ToolsIcon.js";
 
 /**
- * The org-level tools — Agents, Workflows, Deploy, and friends. They used to
+ * The org-level tools: Agents, Workflows, Deploy, and friends. They used to
  * render as an icon grid pinned above the dashboard list (SidebarNavGrid),
  * but the grid stopped scaling past twenty tiles: every tool cost sidebar
  * height whether or not it was wanted. Now the sidebar carries a single
@@ -45,7 +45,7 @@ export function SidebarToolsButton({ tools }: { tools: SidebarToolDef[] }) {
 
 /**
  * The launcher overlay: a search field over a grid of every tool. Follows
- * SpotlightSearch's dialog conventions — native `<dialog>`/`showModal()` for
+ * SpotlightSearch's dialog conventions: native `<dialog>`/`showModal()` for
  * the top layer and focus containment, focus held in the input with an
  * `aria-activedescendant` listbox underneath, Escape via the cancel event,
  * backdrop mousedown to dismiss.

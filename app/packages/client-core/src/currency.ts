@@ -1,11 +1,11 @@
 /**
- * Org exchange rates — the shared contract for the opt-in display currency and
+ * Org exchange rates: the shared contract for the opt-in display currency and
  * the rate table an org states itself.
  *
  * The premise of the whole feature is in one sentence: **the rates are the
  * org's, not ours.** Infrawrench never fetches live FX. A finance team
  * reconciles a converted total against the rate their accounting system booked
- * the month at, which is a decision someone made — not today's mid-market
+ * the month at, which is a decision someone made, not today's mid-market
  * quote, and not a number a monitoring tool should invent on their behalf. So
  * the org states a rate, with the date it started applying, and a historical
  * period converts at the rate that applied then.
@@ -41,7 +41,7 @@ export const EXCHANGE_RATE_LIMITS = {
   rateScale: 10,
   /**
    * A rate must be strictly positive. Zero would silently erase a currency's
-   * spend from the total — the exact failure this feature is built to prevent —
+   * spend from the total (the exact failure this feature is built to prevent)
    * and a negative rate has no meaning.
    */
   rateMin: 1e-10,
@@ -57,7 +57,7 @@ export const EXCHANGE_RATE_LIMITS = {
 /**
  * The org's display currency, or `null` for "do not convert".
  *
- * Null is not a missing value — it is the configured, default, honest state.
+ * Null is not a missing value: it is the configured, default, honest state.
  * An org with no row and an org that explicitly cleared the setting are the
  * same org, and both get unconverted per-currency numbers.
  */
@@ -91,7 +91,7 @@ export interface ExchangeRate {
    * stated rate has no rate and converts nothing.
    */
   effectiveFrom: string;
-  /** User id that stated the rate — this is a finance-governance record. */
+  /** User id that stated the rate: this is a finance-governance record. */
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -105,7 +105,7 @@ export interface ExchangeRateInput {
   effectiveFrom: string;
 }
 
-/** `GET /costs/currency` — the settings plus the whole rate table. */
+/** `GET /costs/currency`: the settings plus the whole rate table. */
 export interface OrgCurrencyConfig extends OrgCurrencySettings {
   rates: ExchangeRate[];
 }
@@ -121,7 +121,7 @@ export function normalizeCurrencyCode(raw: string): string | null {
 
 /**
  * One-line description of a conversion, for places too small for the full
- * notice — a graph card's footnote, a mobile summary line, a chart's aria
+ * notice: a graph card's footnote, a mobile summary line, a chart's aria
  * label. Returns null when nothing was converted.
  *
  * Shared so every compact surface says the same two things in the same order:

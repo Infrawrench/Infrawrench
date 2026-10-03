@@ -18,7 +18,7 @@ interface TranspileOptions {
   /**
    * Inject `await __line(n)` before each statement (n = 1-based source line),
    * so a debugger can highlight the current line and pause at breakpoints. Only
-   * statements in the async top-level scope are instrumented — we never descend
+   * statements in the async top-level scope are instrumented: we never descend
    * into function/arrow/method bodies, which keeps every injected `await` inside
    * the async `__task` wrapper (see sandbox.ts).
    */
@@ -49,7 +49,7 @@ function lineMarkerTransformer(): ts.TransformerFactory<ts.SourceFile> {
       ts.isConstructorDeclaration(node);
 
     const visit = (node: ts.Node): ts.Node => {
-      // Don't instrument inside function bodies — an injected `await` there
+      // Don't instrument inside function bodies: an injected `await` there
       // would land in a (possibly non-async) nested scope.
       if (isFunctionLike(node)) return node;
       if (ts.isBlock(node)) {

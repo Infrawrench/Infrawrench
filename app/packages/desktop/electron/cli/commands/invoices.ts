@@ -1,4 +1,4 @@
-// `infrawrench invoices` — the customers a managed service provider bills and
+// `infrawrench invoices`: the customers a managed service provider bills and
 // the invoices raised against them.
 //
 // Read-only on purpose. Approving an invoice freezes the figures a customer
@@ -55,7 +55,7 @@ function matchInvoice(
   return { match: null, candidates: partial };
 }
 
-/** `infrawrench invoices` — every invoice, newest period first. */
+/** `infrawrench invoices`: every invoice, newest period first. */
 export async function cmdInvoices(ctx: CliContext): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);
@@ -117,7 +117,7 @@ export async function cmdInvoices(ctx: CliContext): Promise<void> {
   );
 }
 
-/** `infrawrench invoices customers` — the managed accounts themselves. */
+/** `infrawrench invoices customers`: the managed accounts themselves. */
 export async function cmdInvoiceCustomers(ctx: CliContext): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);
@@ -169,7 +169,7 @@ export async function cmdInvoiceCustomers(ctx: CliContext): Promise<void> {
   );
 }
 
-/** `infrawrench invoices <number|id|customer>` — one invoice, with its derivation. */
+/** `infrawrench invoices <number|id|customer>`: one invoice, with its derivation. */
 export async function cmdInvoice(ctx: CliContext, query: string): Promise<void> {
   requireCloud(ctx);
   const org = await resolveOrg(ctx);
@@ -185,7 +185,7 @@ export async function cmdInvoice(ctx: CliContext, query: string): Promise<void> 
     );
   }
 
-  // The list carries no lines — a draft's are recomputed on read — so the
+  // The list carries no lines (a draft's are recomputed on read) so the
   // detail is always a second request rather than a cached half-answer.
   const invoice = await orgFetch<ManagedInvoice>(
     org.id,

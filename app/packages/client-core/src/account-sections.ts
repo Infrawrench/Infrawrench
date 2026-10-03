@@ -3,7 +3,7 @@
  *
  * An account page is the full inventory of one account: every resource type
  * the plugin exposes gets its own section, child types included. Parentage
- * deliberately plays no part here — `showInSidebar` scopes the *sidebar*
+ * deliberately plays no part here: `showInSidebar` scopes the *sidebar*
  * (`getListableResourceTypes`, `?topLevelOnly=true`), and keying section
  * visibility off it once made the account page show a different set of
  * sections empty-query versus searching.
@@ -25,13 +25,13 @@ export interface RootTypeDef {
 }
 
 /**
- * The plugin's account-root type, if it declares one — the singleton that *is*
+ * The plugin's account-root type, if it declares one: the singleton that *is*
  * the account. See `ResourceTypeDefinition.accountRoot`.
  *
  * Shared by web, desktop, and mobile so all three agree on what an account
  * opens to. Only a top-level type qualifies: a root nested under a parent
  * would make the account open to something that is itself inside something
- * else, and `plugin-loader.test.ts` rejects that at build time — but hosts
+ * else, and `plugin-loader.test.ts` rejects that at build time, but hosts
  * check here too rather than trusting a serialized flag from the wire.
  *
  * Returns the *first* match. A plugin declaring two is a bug the loader test
@@ -69,7 +69,7 @@ function getFields(resource: SectionResource): Record<string, unknown> {
  * A section survives when it still has resources after filtering, or when the
  * query matches its own name/id, or when it offers a create button. The same
  * rule runs whether or not there is a query, so searching only ever removes
- * sections — it never reveals ones that were hidden.
+ * sections: it never reveals ones that were hidden.
  */
 export function getVisibleAccountCategories<T extends SectionTypeDef, R extends SectionResource>(
   categories: SectionCategoryState<T, R>[],
@@ -117,7 +117,7 @@ export function getVisibleAccountCategories<T extends SectionTypeDef, R extends 
     .sort((a, b) => a.typeDef.pluralDisplayName.localeCompare(b.typeDef.pluralDisplayName));
 }
 
-/** Picks the section to open by default — the first with resources, else the first at all. */
+/** Picks the section to open by default: the first with resources, else the first at all. */
 export function pickDefaultAccountSectionId<T extends SectionTypeDef, R extends SectionResource>(
   categories: SectionCategoryState<T, R>[],
 ): string | null {

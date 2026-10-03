@@ -54,7 +54,7 @@ function entryTone(entry: IncidentTimelineEntry): string {
  * The merged timeline.
  *
  * Everything here arrived from `buildIncidentTimeline` already ordered,
- * windowed and badged — this component renders and does not decide, which is
+ * windowed and badged: this component renders and does not decide, which is
  * what lets web, desktop and the postmortem export agree about what happened
  * without three copies of the merge.
  *

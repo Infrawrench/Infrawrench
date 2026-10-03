@@ -1,5 +1,5 @@
 /**
- * Local deploy history — what `infrawrench deploy` did on this machine.
+ * Local deploy history: what `infrawrench deploy` did on this machine.
  *
  * A cloud deploy is recorded in the org (`POST /deployments/runs`) and read
  * back by the Deploy screen. A local one has nowhere to go: the CLI builds with
@@ -11,7 +11,7 @@
  * `db.ts` opens read-only whenever the GUI holds the single-instance lock (sql.js
  * rewrites the whole file on every write, so two processes must never both
  * persist). A run recorded from the terminal while the app is open would
- * silently vanish — which is exactly when someone would go look for it. An
+ * silently vanish, which is exactly when someone would go look for it. An
  * append to a file of its own is safe from either process.
  */
 import { app } from "electron";
@@ -23,7 +23,7 @@ import type { LocalDeployRun } from "../src/lib/deploy-history-types";
 export type { LocalDeployRun };
 
 /**
- * Kept small on purpose: this is a local convenience log, not an audit trail —
+ * Kept small on purpose: this is a local convenience log, not an audit trail;
  * the org's history is the durable one. Trimming on write means the file never
  * needs a separate maintenance path.
  */

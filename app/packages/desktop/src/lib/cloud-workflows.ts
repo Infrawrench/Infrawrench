@@ -1,12 +1,12 @@
 /**
  * Desktop renderer-side cloud WorkflowClient.
  *
- * With an org selected, workflows come from the org rather than local SQLite —
+ * With an org selected, workflows come from the org rather than local SQLite:
  * the same swap accounts, dashboards, and costs already make. The isolate runs
  * server-side, so unlike `./workflow-client` there is no host to build here:
  * CRUD, typings, runs, and metrics are plain proxied HTTP (via the
  * `cloud_*_workflow*` IPC), and a manual run opens the cloud websocket so the
- * editor keeps its breakpoints, stepping, live logs, and `infra.prompt` — the
+ * editor keeps its breakpoints, stepping, live logs, and `infra.prompt`: the
  * browser's `lib/workflow-client.ts` drives the identical `workflow:*` frames.
  *
  * The one desktop difference is the prompt: Electron's `window.prompt` is a
@@ -62,7 +62,7 @@ export async function listCloudGithubRepos(orgId: string): Promise<GitRepoOption
 }
 
 /**
- * `returnTo` is where the GitHub App install flow sends the user back to —
+ * `returnTo` is where the GitHub App install flow sends the user back to:
  * "workflows" for git triggers, "agents" for the session repo picker.
  */
 export async function getCloudGithubInstallUrl(
@@ -168,7 +168,7 @@ async function runDebug(
 
 /**
  * Org-wide approvals inbox transport. Same routes the browser hits, proxied
- * over IPC — see `electron/cloud-data/workflows.ts`. Cloud-only: a local
+ * over IPC: see `electron/cloud-data/workflows.ts`. Cloud-only: a local
  * workflow runs in this renderer and has no suspended server-side run to
  * approve, so local mode never constructs one.
  */

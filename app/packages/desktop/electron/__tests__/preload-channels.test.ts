@@ -6,13 +6,13 @@ import { describe, expect, it } from "vitest";
  * The preload bridge is an allowlist: the renderer can only invoke channels
  * listed in `INVOKE_CHANNELS`. A handler registered in `cloud-data/` but
  * missing from that list fails only at runtime, in the one mode nobody runs
- * locally — the feature works on web and silently dies on desktop. This test
+ * locally: the feature works on web and silently dies on desktop. This test
  * is the cheap guard.
  *
  * Source text, not imports: `preload.ts` and the handlers both pull in
  * `electron`, which has no meaningful shape outside a real Electron process.
  */
-// `electron/` builds to CommonJS, so no `import.meta` — resolve from the
+// `electron/` builds to CommonJS, so no `import.meta`: resolve from the
 // package root, which is vitest's cwd.
 const ELECTRON_DIR = join(process.cwd(), "electron");
 

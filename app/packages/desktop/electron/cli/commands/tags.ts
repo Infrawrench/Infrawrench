@@ -1,5 +1,5 @@
-// `infrawrench tags` — the org tag policy, per-account compliance, and
-// untagged spend; `infrawrench showback` — spend by cost centre. Both are
+// `infrawrench tags`: the org tag policy, per-account compliance, and
+// untagged spend; `infrawrench showback`; spend by cost centre. Both are
 // reads over the same endpoints the web/desktop Costs panel uses, and the
 // wire shapes come from `@infrawrench/client-core` type-only, so the CLI
 // keeps its zero-runtime-dependency rule.
@@ -138,7 +138,7 @@ export async function cmdShowback(ctx: CliContext, range: RangeFlags): Promise<v
 
   // Cost centres nest, so the bars are indented into the tree the report
   // already comes back in (depth-first, Unallocated last). A parent's bar is
-  // its **subtree** total — the number someone runs `showback` to read — and
+  // its **subtree** total (the number someone runs `showback` to read) and
   // its own directly-allocated spend is noted after it when the two differ, so
   // "Engineering, of which the division itself" stays legible. Bars therefore
   // deliberately do not sum to the org total; the leaves do.

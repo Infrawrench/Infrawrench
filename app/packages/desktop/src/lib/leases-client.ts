@@ -9,7 +9,7 @@ import {
 import { invoke } from "./invoke";
 
 /**
- * Resource lease data access — cloud-mode only (the rows live server-side
+ * Resource lease data access: cloud-mode only (the rows live server-side
  * and the cloud poller runs the auto-delete pass; local mode has no lease
  * store). The org is resolved at call time so signing in or out under a
  * mounted panel reaches the right store, the schedules-client convention.

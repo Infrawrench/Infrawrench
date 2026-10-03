@@ -8,7 +8,7 @@ export interface ResourceLeasePanelProps {
   target: LeaseEditorTarget;
 }
 
-/** "in 3d" / "in 5h" / "expired 2d ago" — the lease countdown text. */
+/** "in 3d" / "in 5h" / "expired 2d ago": the lease countdown text. */
 function expiresInText(expiresAt: string): string {
   const ms = Date.parse(expiresAt) - Date.now();
   const abs = Math.abs(ms);

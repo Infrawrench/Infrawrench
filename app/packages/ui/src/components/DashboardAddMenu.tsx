@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useGT } from "gt-react";
 
 /**
- * The dashboard's "+ Add" popover menu — one entry per card kind. Web and
+ * The dashboard's "+ Add" popover menu: one entry per card kind. Web and
  * desktop render it identically (they carried byte-identical copies before it
  * moved here); each host wires the callbacks to its own pickers and modals.
  */

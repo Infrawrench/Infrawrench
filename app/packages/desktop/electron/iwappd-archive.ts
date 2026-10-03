@@ -1,12 +1,12 @@
 /**
- * `iwappd.tar.xz` — the Linux app server binaries the desktop app uploads to a
+ * `iwappd.tar.xz`: the Linux app server binaries the desktop app uploads to a
  * customer's host.
  *
  * The archive is produced by `scripts/ensure-iwappd.mjs` (downloaded from R2 when
  * the `linux-appserver/` hash has been built before, compiled in Docker otherwise)
  * and copied into the packaged app by the `extraResources` entry in package.json.
  * It holds one static musl binary per Linux architecture at its root, named
- * `iwappd-<target triple>` — `iwappd-x86_64-unknown-linux-musl` and
+ * `iwappd-<target triple>`: `iwappd-x86_64-unknown-linux-musl` and
  * `iwappd-aarch64-unknown-linux-musl`.
  *
  * It ships on every platform, not just Linux: the host being streamed from is
@@ -21,7 +21,7 @@ import { app } from "electron";
 // `xz-decompress` is CJS with no ESM entry, and Node's cjs-module-lexer cannot
 // see the class through its UMD wrapper. A named import happens to work in the
 // CJS bundle electron-vite emits for the main process, but breaks the moment
-// that output is ESM — take the default and destructure, as the web server's
+// that output is ESM: take the default and destructure, as the web server's
 // `iwappd-binaries.ts` has to.
 import xzDecompressModule from "xz-decompress";
 import { Parser, type ReadEntry } from "tar";

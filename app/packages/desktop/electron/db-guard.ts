@@ -1,5 +1,5 @@
 // Defense-in-depth guards for db_select / db_execute. A compromised renderer
-// can still reach any user-owned table — the surface is narrowed, not removed.
+// can still reach any user-owned table: the surface is narrowed, not removed.
 import { z } from "zod";
 
 export const MAX_SQL_BYTES = 16 * 1024;

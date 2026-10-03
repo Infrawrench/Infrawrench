@@ -151,7 +151,7 @@ describe("DnsSection", () => {
   });
 
   // A <tr> can be given tabIndex but has no role a screen reader announces as
-  // activatable, so navigation lives on a real button in the name cell — which
+  // activatable, so navigation lives on a real button in the name cell, which
   // is what makes both listings keyboard-operable at all.
   it("carries record and zone navigation on real buttons, not the row", () => {
     render(<DnsSection data={inventory()} onOpenRecord={() => {}} onOpenZone={() => {}} />);

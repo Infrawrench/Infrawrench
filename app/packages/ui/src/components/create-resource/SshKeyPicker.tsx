@@ -7,7 +7,7 @@ export interface SshKeyEntry {
   name: string;
   publicKey: string;
   keyType?: string | null;
-  /** Owner info — visible to all org members */
+  /** Owner info: visible to all org members */
   ownerEmail?: string;
   ownerName?: string;
   userId?: string;
@@ -34,7 +34,7 @@ export interface SshKeyPickerProps {
   generateKey: (name: string) => Promise<SshKeyEntry & { privateKey?: string }>;
   /** Delete a key from the backend (only works for own keys) */
   deleteKey: (id: string) => Promise<void>;
-  /** The current user's ID — used to determine which keys are deletable */
+  /** The current user's ID: used to determine which keys are deletable */
   currentUserId?: string;
   /** System-level keys (e.g. from ~/.ssh on desktop). Omit on web. */
   systemKeys?: SystemSshKey[];

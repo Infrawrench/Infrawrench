@@ -1,4 +1,4 @@
-// `infrawrench estimate <resource>` — what a resource costs per month at
+// `infrawrench estimate <resource>`: what a resource costs per month at
 // the provider's list price, itemized.
 //
 // The counterpart to `infrawrench costs`, and deliberately a separate command
@@ -14,7 +14,7 @@
 //
 // The argument may be the compound `{accountId}:{typeId}:{externalId}` id, or
 // a display name / external id when `--account` (and usually `--org`) scopes
-// the lookup — same friendly resolution accounts get via `resolveAccount`.
+// the lookup: same friendly resolution accounts get via `resolveAccount`.
 import type { CostEstimate } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
 
 import {
@@ -29,7 +29,7 @@ import {
 } from "../context";
 import { c, printJson, printKeyValues, println } from "../output";
 
-/** `{accountId}:{typeId}:{externalId}` — the id shape every surface uses. */
+/** `{accountId}:{typeId}:{externalId}`: the id shape every surface uses. */
 function isCompoundResourceId(value: string): boolean {
   // accountId and typeId never contain colons; externalId may. Need at least
   // two separators so a bare name is never mistaken for an id.
@@ -94,7 +94,7 @@ async function resolveEstimateTarget(
     return { ...parts, resourceId: wanted };
   }
 
-  // Friendly name / external id — needs an account scope, same as `resources`.
+  // Friendly name / external id: needs an account scope, same as `resources`.
   if (!ctx.flags.account) {
     throw new CliError(
       `"${wanted}" is not a full resource id. Pass {accountId}:{typeId}:{externalId}, or a name with --account <id|name> (see \`infrawrench resources\`).`,

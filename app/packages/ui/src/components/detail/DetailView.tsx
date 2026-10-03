@@ -77,7 +77,7 @@ interface DetailViewProps {
   providerResources?: ProviderResource[];
   /**
    * Host-provided SQL executor. Required when schema.sqlEditor is set.
-   * The host owns the DB driver — this component only provides the UI.
+   * The host owns the DB driver: this component only provides the UI.
    */
   onRunQuery?: (sql: string) => Promise<QueryResult>;
   /** Host-provided mutation executor (UPDATE/INSERT/DELETE with $1… params) */
@@ -86,23 +86,23 @@ interface DetailViewProps {
   onEstimateQueryCost?: (sql: string) => Promise<QueryCostEstimate>;
   /** Fetch the raw manifest text for the manifest editor tab */
   onGetManifest?: () => Promise<string>;
-  /** Apply an updated manifest — used by the manifest editor tab */
+  /** Apply an updated manifest: used by the manifest editor tab */
   onApplyManifest?: (manifest: string) => Promise<void>;
-  /** Fetch describe text — used by the Describe tab when schema.describe is set */
+  /** Fetch describe text: used by the Describe tab when schema.describe is set */
   onGetDescribe?: () => Promise<string>;
-  /** Fetch log output — used by the Logs tab when schema.logs is set */
+  /** Fetch log output: used by the Logs tab when schema.logs is set */
   onGetLogs?: (params: LogsFetchParams) => Promise<LogsFetchResult>;
-  /** List artifacts — used by the Artifacts tab when schema.artifactRegistry is set */
+  /** List artifacts: used by the Artifacts tab when schema.artifactRegistry is set */
   onListArtifacts?: (params: ArtifactListParams) => Promise<ArtifactListResult>;
-  /** List KV keys — used by the Keys tab when schema.kvBrowser is set */
+  /** List KV keys: used by the Keys tab when schema.kvBrowser is set */
   onListKvKeys?: (params: KvBrowserListParams) => Promise<KvListResult>;
-  /** Read a single KV value (UTF-8) — used by the Keys tab */
+  /** Read a single KV value (UTF-8): used by the Keys tab */
   onGetKvValue?: (key: string) => Promise<string>;
-  /** Create or overwrite a KV value — used by the Keys tab */
+  /** Create or overwrite a KV value: used by the Keys tab */
   onPutKvValue?: (key: string, value: string) => Promise<void>;
-  /** Delete a KV key — used by the Keys tab */
+  /** Delete a KV key: used by the Keys tab */
   onDeleteKvKey?: (key: string) => Promise<void>;
-  /** List secret versions — used by the Versions tab when schema.secretVersions is set */
+  /** List secret versions: used by the Versions tab when schema.secretVersions is set */
   onListSecretVersions?: () => Promise<SecretVersion[]>;
   /** Access a secret version's plaintext value */
   onAccessSecretVersion?: (versionId: string) => Promise<string>;
@@ -113,22 +113,22 @@ interface DetailViewProps {
     versionId: string,
     action: SecretVersionMutation,
   ) => Promise<SecretVersion>;
-  /** Open a console/exec terminal for the resource — when set, renders a "Console" button in the header */
+  /** Open a console/exec terminal for the resource, when set, renders a "Console" button in the header */
   onOpenConsole?: () => void;
   /**
    * The resource's standing monthly cost estimate, from the plugin's
-   * `estimateCost`. Rendered as an expandable chip in the header — the same
+   * `estimateCost`. Rendered as an expandable chip in the header: the same
    * component and the same number the create form quotes, so what the user
    * was promised at create time and what they see afterwards are one figure.
    * Omit when the plugin cannot price this type.
    */
   costEstimate?: CostEstimate | null | undefined;
-  /** Additional panes from peer plugins — rendered as extra tabs */
+  /** Additional panes from peer plugins: rendered as extra tabs */
   peerPanes?: PeerPaneData[];
   renderPeerPane?: (pane: PeerPaneData, index: number) => React.ReactNode;
-  /** Called when the user first opens a peer pane tab — for lazy fetch */
+  /** Called when the user first opens a peer pane tab, for lazy fetch */
   onPeerPaneOpen?: (pane: PeerPaneData, index: number) => void;
-  /** Child resource groups — fetched by the host from child resource types */
+  /** Child resource groups: fetched by the host from child resource types */
   childResourceGroups?: ChildResourceGroup[];
   /** Called when a child resource card is clicked */
   onChildClick?: (child: ChildResource) => void;
@@ -138,27 +138,27 @@ interface DetailViewProps {
   onChildDelete?: (child: ChildResource) => void | Promise<void>;
   /** Submit handler for a child table's inline edit form (changed fields only) */
   onChildEdit?: (child: ChildResource, changedFields: Record<string, string>) => Promise<void>;
-  /** Custom renderer for child resource pills — allows the host to provide draggable pills */
+  /** Custom renderer for child resource pills: allows the host to provide draggable pills */
   renderChildResource?: (child: ChildResource, group: ChildResourceGroup) => React.ReactNode;
-  /** Time-series metric data — rendered as charts in a Metrics tab when present */
+  /** Time-series metric data: rendered as charts in a Metrics tab when present */
   metricSeries?: MetricSeries[] | undefined;
   /**
    * When set, a "Changes" tab renders the resource's change timeline via this
-   * render prop. Host-driven rather than schema-driven — the feed is recorded
+   * render prop. Host-driven rather than schema-driven: the feed is recorded
    * by the cloud poller on the generic stored record, so it exists for every
    * plugin, and only hosts with a change store (web today) wire it.
    */
   renderChangesTab?: (() => React.ReactNode) | undefined;
   /**
    * When set, a "Schedule" tab renders the resource's sleep/wake schedule via
-   * this render prop. Host-driven like `renderChangesTab` — hosts wire it only
+   * this render prop. Host-driven like `renderChangesTab`: hosts wire it only
    * for types whose plugin declares lifecycle start/stop actions and only
    * when a schedule store exists (cloud mode).
    */
   renderScheduleTab?: (() => React.ReactNode) | undefined;
   /**
    * When set, a "Lease" tab renders the resource's TTL lease via this render
-   * prop. Host-driven like `renderScheduleTab` — leases apply to any
+   * prop. Host-driven like `renderScheduleTab`: leases apply to any
    * resource, so hosts wire it whenever a lease store exists (cloud mode).
    */
   renderLeaseTab?: (() => React.ReactNode) | undefined;
@@ -170,7 +170,7 @@ interface DetailViewProps {
    */
   renderOwnershipTab?: (() => React.ReactNode) | undefined;
   /**
-   * When set, a "Blast radius" tab renders the resource's impact report — what
+   * When set, a "Blast radius" tab renders the resource's impact report: what
    * breaks if it is deleted. Host-driven and ungated like `renderOwnershipTab`:
    * the answer is worth having for every resource, and "nothing depends on
    * this" is as useful a finding as a long list.
@@ -192,7 +192,7 @@ interface DetailViewProps {
   renderStorageBrowser?: () => React.ReactNode;
   /**
    * When `schema.chatPanel` is set, the host wires this to a streaming
-   * chat protocol — Electron IPC on desktop, NDJSON-over-fetch on web.
+   * chat protocol: Electron IPC on desktop, NDJSON-over-fetch on web.
    * Each call returns an async iterable of stream events the host's
    * `ChatPanel` consumes incrementally.
    */
@@ -200,14 +200,14 @@ interface DetailViewProps {
   /**
    * When `schema.publishPanel` is set, the host wires this to publish one
    * message to the resource (Cloudflare Queue, SQS topic, …). Plugins throw
-   * on validation/provider errors — the panel renders the thrown message
+   * on validation/provider errors: the panel renders the thrown message
    * inline.
    */
   onPublishMessage?: (payload: PublishMessagePayload) => Promise<PublishMessageResult>;
   /**
    * When `schema.speechPanel` declares "tts", the host wires this to the
    * plugin's `synthesizeSpeech`. The result's audio is base64 in ordinary
-   * JSON — see SpeechPanelCapability for why it isn't streamed.
+   * JSON: see SpeechPanelCapability for why it isn't streamed.
    */
   onSynthesizeSpeech?: (payload: SynthesizeSpeechPayload) => Promise<SynthesizeSpeechResult>;
   /**
@@ -313,7 +313,7 @@ export function DetailView({
   const hasStorageBrowser = !!schema.storageBrowser && !!renderStorageBrowser;
   const hasDescribe = !!schema.describe && !!onGetDescribe;
   const hasLogs = !!schema.logs && !!onGetLogs;
-  // The tab shows whenever the schema declares the capability — a brand-new
+  // The tab shows whenever the schema declares the capability: a brand-new
   // resource that hasn't accumulated any metric data yet would otherwise have
   // the tab disappear, which reads as "metrics broken" rather than "no data
   // yet". `metricSeriesEmpty` drives the empty-state placeholder below.
@@ -321,8 +321,8 @@ export function DetailView({
   const metricSeriesEmpty = !metricSeries || metricSeries.length === 0;
   // Plugins declare their default window in milliseconds because that is what
   // they pass to their provider. Rendering it as minutes regardless turned a
-  // day-long window — Cloudflare's analytics, Neon's consumption, the
-  // Kubernetes cost series — into "Last 1440 min".
+  // day-long window (Cloudflare's analytics, Neon's consumption, the
+  // Kubernetes cost series) into "Last 1440 min".
   // The cut-off is two hours, not one: a one-hour window reads better as
   // "Last 60 min" than as "Last 1 h", and that is the commonest window there is.
   const defaultTimeRangeMs = schema.metricsCapability?.defaultTimeRangeMs;
@@ -348,7 +348,7 @@ export function DetailView({
   const hasNoSqlBrowser = !!schema.noSqlBrowser && !!renderNoSqlBrowser;
   const hasChatPanel = !!schema.chatPanel && !!onChatStream;
   const hasPublishPanel = !!schema.publishPanel && !!onPublishMessage;
-  // A speech panel needs the handler for at least one of its declared modes —
+  // A speech panel needs the handler for at least one of its declared modes:
   // a plugin that only synthesizes still gets a tab on a host that hasn't
   // wired transcription, it just renders the one half.
   const speechModes = schema.speechPanel?.modes ?? [];
@@ -356,7 +356,7 @@ export function DetailView({
     !!schema.speechPanel &&
     ((speechModes.includes("tts") && !!onSynthesizeSpeech) ||
       (speechModes.includes("stt") && !!onTranscribeAudio));
-  // Only claim a tab when the resource participates in the graph at all — an
+  // Only claim a tab when the resource participates in the graph at all: an
   // always-empty Dependencies tab would just be tab-strip noise.
   const hasDependencies =
     !!dependencies &&
@@ -444,7 +444,7 @@ export function DetailView({
     tabRefs.current[next]?.focus();
   };
 
-  // Child resource type IDs a custom tab has claimed — those groups/tables
+  // Child resource type IDs a custom tab has claimed: those groups/tables
   // render in that tab, not on Overview.
   const tabClaimedTypeIds = new Set<string>();
   for (const t of customTabs)
@@ -453,7 +453,7 @@ export function DetailView({
   // Render the child-tables + auto child-groups whose typeId passes `predicate`,
   // in that order. Used by Overview (unclaimed types) and custom tabs (their
   // claimed types).
-  // Types the schema suppresses outright — another surface on this page is
+  // Types the schema suppresses outright: another surface on this page is
   // already their listing. Applied inside renderChildArea so it holds for
   // Overview and custom tabs alike; filtering at the call sites would let a
   // tab that claims the type render it anyway.
@@ -494,7 +494,7 @@ export function DetailView({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header — title row + (separate) tab row, so the tab strip always
+      {/* Header: title row + (separate) tab row, so the tab strip always
           spans the full width and isn't squeezed by right-side actions. */}
       <div className="border-b border-border">
         <div className="flex items-start gap-3 px-6 pt-6 pb-4">
@@ -528,7 +528,7 @@ export function DetailView({
             )}
             {(() => {
               // Custom tabs can override the top-bar header actions when
-              // active — otherwise we fall back to the schema-level ones.
+              // active, otherwise we fall back to the schema-level ones.
               const activeCustom = activeTab.startsWith("custom:")
                 ? customTabs.find((t) => `custom:${t.id}` === activeTab)
                 : null;
@@ -539,7 +539,7 @@ export function DetailView({
             })()}
           </div>
         </div>
-        {/* Tab bar — its own full-width row so the right-side actions never
+        {/* Tab bar: its own full-width row so the right-side actions never
             squeeze it (which would jitter widths between tabs). */}
         {hasTabs && (
           <div
@@ -1256,7 +1256,7 @@ function dispatchPillAction(action: HostAction): void {
  * Schema items (`DetailViewSchema.children` and every `childGroups` entry, on
  * Overview and inside tabs alike) carry a resource id, a badge list and an
  * optional click action, none of which line up with the `ChildResource` shape
- * `ChildResourcePill` renders. This is that mapping, in one place — including
+ * `ChildResourcePill` renders. This is that mapping, in one place, including
  * the fallback of navigating to the child when it declares no action.
  */
 function SchemaChildPill({ child }: { child: DashboardCardSchema }) {
@@ -1319,7 +1319,7 @@ function SchemaChildGroup({ group }: { group: ChildGroupSchema }) {
   );
 }
 
-/** Fallback child pill — used when no custom renderChildResource is provided */
+/** Fallback child pill: used when no custom renderChildResource is provided */
 function ChildResourcePill({
   child,
   onClick,

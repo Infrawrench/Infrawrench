@@ -11,7 +11,7 @@ const description =
 const trimmedBody = body.trim();
 
 interface HarnessSnippet {
-  /** Where the snippet goes — a file path, or a "run this" hint. */
+  /** Where the snippet goes: a file path, or a "run this" hint. */
   file: string;
   content: string;
 }

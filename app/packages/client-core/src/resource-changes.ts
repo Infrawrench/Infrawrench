@@ -5,13 +5,13 @@
  * surface must agree on that isn't a React component.
  *
  * The Bearer readers in the middle (`fetchOrgChanges`, `fetchResourceChanges`)
- * are for hosts that talk to the cloud API directly — mobile today. Web and
+ * are for hosts that talk to the cloud API directly: mobile today. Web and
  * desktop inject their own transport into `ChangesPanel` instead (`apiGet` and
  * a cloud IPC channel respectively), which is why `@infrawrench/ui` keeps its
  * own narrower `ChangeFeedQuery`/`ChangesClient` pair; these are the same
  * endpoints reached the other way.
  *
- * The bottom section is the *differ itself* — the pure snapshot comparison the
+ * The bottom section is the *differ itself*: the pure snapshot comparison the
  * sync path runs to produce those events. It lives here rather than next to
  * the sync writer in `@infrawrench/server-core` because it has a second
  * caller with a different pair of snapshots: the environment diff
@@ -39,7 +39,7 @@ export interface ResourceChangeEntry {
   accountId: string;
   pluginId: string;
   resourceTypeId: string;
-  /** Display name at the time of the change — survives deletion. */
+  /** Display name at the time of the change: survives deletion. */
   displayName: string;
   changeKind: ResourceChangeKind;
   /** Changed fields for "updated" events; empty for created/deleted. */
@@ -109,7 +109,7 @@ export function summarizeChange(entry: Pick<ResourceChangeEntry, "changeKind" | 
  * ------------------------------------------------------------------ */
 
 /**
- * Every filter `GET /api/org/{orgId}/changes` reads — one field per query
+ * Every filter `GET /api/org/{orgId}/changes` reads: one field per query
  * parameter in web's `api/routes/resource-changes.ts`. All optional: the bare
  * request is page 1 of the whole org's feed, newest first.
  */
@@ -123,11 +123,11 @@ export interface ChangeFeedRequest {
   /** Narrow the org feed to one resource's rows. */
   resourceId?: string | undefined;
   /**
-   * ISO timestamp — the server compares `createdAt >= from`, so a change
+   * ISO timestamp: the server compares `createdAt >= from`, so a change
    * recorded exactly on the boundary is included.
    */
   from?: string | undefined;
-  /** ISO timestamp — `createdAt <= to`. */
+  /** ISO timestamp: `createdAt <= to`. */
   to?: string | undefined;
 }
 
@@ -176,7 +176,7 @@ export async function fetchOrgChanges(
 }
 
 /**
- * One resource's slice of the timeline —
+ * One resource's slice of the timeline:
  * `GET /api/org/{orgId}/changes/resource?resourceId=…`. The id rides in a
  * query parameter because composite resource ids contain slashes and colons
  * that don't survive as a path segment. Unpaginated; `limit` caps at 200.
@@ -213,7 +213,7 @@ export async function fetchResourceChanges(
 export interface DriftAlertSettings {
   /** Alert on resources that appeared. */
   notifyCreated: boolean;
-  /** Alert on field-level updates. Off by default — the noisy kind. */
+  /** Alert on field-level updates. Off by default: the noisy kind. */
   notifyUpdated: boolean;
   /** Alert on resources that disappeared. */
   notifyDeleted: boolean;
@@ -251,7 +251,7 @@ export const DEFAULT_DRIFT_ALERT_SETTINGS: DriftAlertSettings = {
  *
  * Deliberately generic: it compares a stored resource record (displayName +
  * fields bag + outputs bag) against another snapshot of the same shape. No
- * provider-specific knowledge belongs here — a plugin that wants richer field
+ * provider-specific knowledge belongs here: a plugin that wants richer field
  * shapes changes what it returns from `listResources`, and the diff follows
  * automatically.
  * ------------------------------------------------------------------ */
@@ -268,7 +268,7 @@ export interface PriorResourceSnapshot {
 }
 
 /**
- * The columns of a freshly fetched snapshot the differ reads — a structural
+ * The columns of a freshly fetched snapshot the differ reads: a structural
  * subset of `ResourceInstance` from `@infrawrench/plugin-base`, so the sync
  * path passes plugin instances straight in while the environment diff can
  * hand over stored rows without inventing the fields an instance carries that
@@ -291,7 +291,7 @@ export interface ResourceChangeEvent {
   changeKind: ResourceChangeKind;
   diff: ResourceFieldChange[];
   /**
-   * Set by non-sync writers that know who caused the change — the sleep/wake
+   * Set by non-sync writers that know who caused the change: the sleep/wake
    * schedule pass stamps `"schedule"` so a scheduled stop reads as intended in
    * the feed rather than as drift. Sync-computed events leave it unset.
    */
@@ -325,7 +325,7 @@ export function valuesEqual(a: unknown, b: unknown): boolean {
  * Diff a prior stored record against a freshly fetched snapshot, using the
  * same merge semantics as the sync upsert: keys the lister stopped returning
  * survive in the DB (user-supplied values), so they must not read as removed
- * here — the effective "after" is `{ ...prior, ...fetched }`.
+ * here; the effective "after" is `{ ...prior, ...fetched }`.
  */
 export function diffResourceRecords(
   prior: PriorResourceSnapshot,
@@ -342,7 +342,7 @@ export function diffResourceRecords(
     incoming: Record<string, unknown>,
     prefix: string,
   ) => {
-    // Merge like the upsert does — incoming keys win, missing keys survive —
+    // Merge like the upsert does (incoming keys win, missing keys survive)
     // then compare per key. Only keys present in `incoming` can change.
     for (const key of Object.keys(incoming)) {
       const beforeValue = before[key];
@@ -366,13 +366,13 @@ export interface ComputeChangeEventsArgs {
   fetched: readonly FetchedResourceSnapshot[];
   /**
    * Resource type ids whose list call succeeded this cycle. Only these may
-   * produce "deleted" events — a failed type's absence is a transient error,
+   * produce "deleted" events: a failed type's absence is a transient error,
    * not a disappearance (mirrors the soft-delete rule in sync-resources).
    */
   deletableTypeIds: readonly string[];
 }
 
-/** Pure event computation — no I/O, unit-testable. */
+/** Pure event computation: no I/O, unit-testable. */
 export function computeResourceChangeEvents({
   prior,
   fetched,

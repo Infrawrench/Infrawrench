@@ -19,7 +19,7 @@ import { colors, radii, spacing } from "@/lib/theme";
  * pinned, when the key changed), and on accept pins it via
  * `POST /ssh-host-keys/trust` before telling the caller to retry.
  *
- * Mobile used to have no prompt at all — an unknown host meant reading the
+ * Mobile used to have no prompt at all: an unknown host meant reading the
  * refusal as red text and going to a desktop to accept the key.
  */
 export function HostKeyTrustHost() {
@@ -36,7 +36,7 @@ export function HostKeyTrustHost() {
       (next) =>
         new Promise<boolean>((resolve) => {
           // A second refusal while one is on screen (two requests racing the
-          // same unknown host) — answer it with the same decision.
+          // same unknown host): answer it with the same decision.
           const previous = resolveRef.current;
           resolveRef.current = (accepted) => {
             previous?.(accepted);

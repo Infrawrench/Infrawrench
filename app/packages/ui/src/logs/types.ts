@@ -29,7 +29,7 @@ export interface LogWorkspaceSavedQueriesClient {
 export interface LogWorkspaceClient {
   /** Org/local resources whose rendered detail declares the logs capability. */
   listLogResources(): Promise<LogResourceOption[]>;
-  /** Fetch a tail chunk for one stream — the per-resource logs machinery. */
+  /** Fetch a tail chunk for one stream: the per-resource logs machinery. */
   fetchLogs(selector: LogStreamSelector, params: LogsFetchParams): Promise<LogsFetchResult>;
   /** Undefined when the host has no server-side saved-query storage. */
   savedQueries?: LogWorkspaceSavedQueriesClient | undefined;

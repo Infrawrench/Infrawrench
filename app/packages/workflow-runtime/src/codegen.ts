@@ -32,7 +32,7 @@ function strLit(raw: string): string {
 
 /**
  * camelCase a human label: the first word is fully lowercased (so leading
- * acronyms read naturally — "DNS Records" → "dnsRecords", "IP Addresses" →
+ * acronyms read naturally; "DNS Records" → "dnsRecords", "IP Addresses" →
  * "ipAddresses", "R2 Buckets" → "r2Buckets"), and each following word is
  * capitalized with its internal casing kept. MUST stay byte-identical to the
  * prelude's `camel` so generated group names match what the sandbox builds.
@@ -62,7 +62,7 @@ function openStringUnion(values: string[]): string {
 
 /**
  * The TS type for a `create(fields)` / `update(fields)` argument. When the host
- * supplied distilled create fields, emit a typed object literal — required
+ * supplied distilled create fields, emit a typed object literal: required
  * fields un-suffixed, optional fields `?`, and fields with a known option list
  * as an open string union (literal suggestions + open `string`). `ssh-key-picker`
  * fields suggest the caller's Infrawrench SSH key names (a name is resolved to
@@ -267,7 +267,7 @@ function groupInterfaceName(pluginId: string): string {
 
 /**
  * One grouped accessor per resource type, named after the type's (camelCased,
- * plural) display name — `account.<group>.list()/get(id)`, plus
+ * plural) display name: `account.<group>.list()/get(id)`, plus
  * `create/update/delete(...)` only for the ops that provider supports
  * (read-only types get just list + get). Groups are de-duped so a display-name
  * collision can't produce a duplicate property.
@@ -300,7 +300,7 @@ function dedupedResourceTypes(types: WorkflowResourceTypeInfo[]): WorkflowResour
  * DNS record doesn't advertise `.ssh()` or `.kv`.
  *
  * Types that expose peer plugins (a managed cluster, a managed database) also
- * get one property per peer — `cluster.kubernetes` — so what lives *inside* the
+ * get one property per peer (`cluster.kubernetes`) so what lives *inside* the
  * resource is reachable from the resource itself rather than only guessable.
  */
 function renderResourceTypeInterface(pluginId: string, rt: WorkflowResourceTypeInfo): string {
@@ -332,7 +332,7 @@ function renderResourceTypeInterface(pluginId: string, rt: WorkflowResourceTypeI
 
 /**
  * A peer plugin's grouped accessors, as reached through a parent resource.
- * Shape-identical to an account's resource groups — the difference is only
+ * Shape-identical to an account's resource groups: the difference is only
  * where the credentials came from, which the runtime handles.
  */
 function renderSidecarInterface(
@@ -509,7 +509,7 @@ interface WorkflowEvent {
 }
 
 /**
- * `infra.costs` — reporting spend from sources that have no provider plugin
+ * `infra.costs`: reporting spend from sources that have no provider plugin
  * (a SaaS invoice, an internal chargeback, a colo bill). Rows land in the same
  * store the provider collectors write to, so they show up in cost graphs,
  * dimension filters, and budgets alongside everything else. Mirrors
@@ -552,12 +552,12 @@ interface InfraCosts {
 }`;
 
 /**
- * `infra.businessMetrics` — the denominator half of a unit cost. `infra.costs`
+ * `infra.businessMetrics`: the denominator half of a unit cost. `infra.costs`
  * reports what was spent; this reports how many of the thing the business does
  * happened, so a cost graph can divide one by the other.
  *
  * Named `businessMetrics` rather than `metrics` because `infra.metrics` is
- * already this workflow's declared key/value metrics — see the note on
+ * already this workflow's declared key/value metrics: see the note on
  * `WorkflowBusinessMetricValue` in types.ts.
  */
 const BUSINESS_METRICS_INTERFACE = `interface BusinessMetricValueInput {
@@ -584,7 +584,7 @@ interface InfraBusinessMetrics {
 }`;
 
 /**
- * `infra.page` — raising an alert to the humans who own the workflow. The
+ * `infra.page`: raising an alert to the humans who own the workflow. The
  * cooldown is enforced by the host and keyed, so a cron that keeps finding the
  * same problem pages once instead of once per run. Mirrors `PageSpec` /
  * `PageResult` in types.ts.
@@ -645,7 +645,7 @@ interface InfraPage {
 }`;
 
 /**
- * `infra.waitForApproval` — a human gate in the middle of a run. Mirrors
+ * `infra.waitForApproval`: a human gate in the middle of a run. Mirrors
  * `ApprovalSpec` / `ApprovalResult` in types.ts.
  */
 const APPROVAL_INTERFACES = `interface ApprovalOptions {
@@ -682,7 +682,7 @@ interface InfraWaitForApproval {
 }`;
 
 /**
- * `infra.ai` — one prompt in, one reply out. The model union must list exactly
+ * `infra.ai`: one prompt in, one reply out. The model union must list exactly
  * `WORKFLOW_AI_MODELS` in types.ts (dispatch rejects anything else at runtime;
  * this makes the editor reject it first). Mirrors `WorkflowAiSpec` /
  * `WorkflowAiResult` in types.ts.
@@ -733,7 +733,7 @@ interface InfraAi {
  * The global `fetch`. Declared here rather than pulled from `lib.dom` because
  * the sandbox implements a deliberately small subset: a fully-buffered body
  * (so the reader methods can be called more than once), no `Request`/`Headers`
- * constructors, no streaming, no cookies — plus two non-standard options
+ * constructors, no streaming, no cookies, plus two non-standard options
  * (`timeoutMs`, `maxBytes`) that the host enforces. Mirrors what the prelude
  * builds and what `WorkflowFetchRequest` in types.ts validates.
  */
@@ -794,26 +794,26 @@ export interface GenerateInfraDtsInput {
   /** When false, prompt() is typed as unavailable (automated triggers). */
   interactive?: boolean;
   /**
-   * The workflow's trigger kind. Narrows `infra.event` — a budget-triggered
+   * The workflow's trigger kind. Narrows `infra.event`: a budget-triggered
    * workflow gets the full crossing payload typed, everything else gets the
    * bare `{ kind }` discriminant.
    */
   triggerKind?: WorkflowTriggerKind;
   /**
-   * Whether this host can store cost data (cloud only — costs live in
+   * Whether this host can store cost data (cloud only: costs live in
    * ClickHouse). When false, `infra.costs` is typed `never` so a desktop
    * author sees it's unavailable while editing instead of at run time.
    */
   costs?: boolean;
   /**
-   * Whether this host supports human-approval gates (cloud only — approvals
+   * Whether this host supports human-approval gates (cloud only: approvals
    * are org-level records with notifications). When false,
    * `infra.waitForApproval` is typed `never` so a desktop author sees it's
    * unavailable while editing instead of at run time.
    */
   approvals?: boolean;
   /**
-   * Whether this host can make AI model calls (cloud only — the call is made
+   * Whether this host can make AI model calls (cloud only: the call is made
    * server-side with the deployment's API key and metered against the org's
    * monthly AI spend cap). When false, `infra.ai` is typed `never` so a
    * desktop author sees it's unavailable while editing instead of at run time.
@@ -828,7 +828,7 @@ export interface GenerateInfraDtsInput {
   /**
    * Read-plus-SSH surface only (custom graphs): strips create/update/delete,
    * importYaml, publish, and sftp from every type and sidecar, and types
-   * `infra.page` as unavailable. The runtime enforces the same boundary — this
+   * `infra.page` as unavailable. The runtime enforces the same boundary: this
    * just makes the editor say so first.
    */
   readOnly?: boolean;
@@ -863,7 +863,7 @@ function stripMutations(plugins: WorkflowPluginInfo[]): WorkflowPluginInfo[] {
  *
  * Deduped by interface name because the same peer plugin is reachable from
  * several parents (every managed-cluster type exposes `kubernetes`) and may
- * additionally have an account of its own — and TypeScript rejects a duplicated
+ * additionally have an account of its own, and TypeScript rejects a duplicated
  * interface declaration. The declarations are identical when the names collide:
  * both are derived from the same plugin id and type id.
  */
@@ -906,7 +906,7 @@ export interface InfraDtsNamedType {
  * The generated typings split into a global scope and the per-plugin named
  * interfaces, so context-priced callers (the MCP/chat tools) can send the
  * global scope first and hand out named interfaces on demand. `full` is the
- * complete file — {@link generateInfraDts} returns exactly it — and `global`
+ * complete file ({@link generateInfraDts} returns exactly it) and `global`
  * is everything except the named interfaces, which it references by name
  * (`InfraAccounts` → `AccountGroup_<plugin>` → `Account_<plugin>` →
  * `Resource_<plugin>_<type>`), so the omitted names are discoverable.

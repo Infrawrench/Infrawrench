@@ -30,7 +30,7 @@ const SEVERITY_CLASS: Record<BlastRadiusSeverity, string> = {
  * Three rules this component exists to hold:
  *
  *  - **It never gates the dialog.** It renders a quiet "Checking…" line while
- *    loading and the dialog is fully usable underneath — including the
+ *    loading and the dialog is fully usable underneath, including the
  *    confirm button.
  *  - **A failed check degrades to a visible "couldn't check", never to
  *    silence.** An absent warning reads as "nothing to warn about", which is

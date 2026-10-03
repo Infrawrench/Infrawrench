@@ -18,7 +18,7 @@ import { getWorkspaceNavigateArgs } from "@/lib/workspace-tabs";
  * Local-only mode keeps the original client: sessions live in this machine's
  * SQLite, VMs are provisioned and bootstrapped from here, and a session can be
  * a local folder. With an org selected the panel switches to the org's
- * sessions over the cloud API — the same ones web and mobile see — which is
+ * sessions over the cloud API (the same ones web and mobile see) which is
  * also the only mode where the accounts on offer are the *org's* accounts.
  * Before this switch existed the tab always listed local accounts, so an
  * account that only lived in the org (a GCP project, say) could never be
@@ -66,7 +66,7 @@ export function DesktopAgentsPanel({
     void refreshGit();
   }, [refreshGit]);
 
-  // Re-check on focus — e.g. after installing the GitHub App in the browser.
+  // Re-check on focus, e.g. after installing the GitHub App in the browser.
   useEffect(() => {
     const onFocus = () => void refreshGit();
     window.addEventListener("focus", onFocus);
@@ -77,7 +77,7 @@ export function DesktopAgentsPanel({
     if (!activeCloudOrgId) return;
     void getCloudGithubInstallUrl(activeCloudOrgId, "agents")
       .then((url) => {
-        // The install flow is a GitHub web page — hand it to the system
+        // The install flow is a GitHub web page: hand it to the system
         // browser rather than a renderer window (that's where the user's
         // GitHub session lives).
         if (url) void invoke("open_external_url", { url });

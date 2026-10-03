@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Incident mode — cloud-mode only. An incident is org-scoped, and declaring one
+// Incident mode: cloud-mode only. An incident is org-scoped, and declaring one
 // composes cloud features (change freezes, alert routing, status pages), none of
 // which a local-mode desktop app has. The "incident" here is the declared kind,
 // not a provider status incident.

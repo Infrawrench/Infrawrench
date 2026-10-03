@@ -10,7 +10,7 @@ export default function ChatLayout() {
         contentStyle: { backgroundColor: colors.background },
       }}
     >
-      {/* Title still matters with the header hidden — iOS uses it as the back label. */}
+      {/* Title still matters with the header hidden: iOS uses it as the back label. */}
       <Stack.Screen name="index" options={{ headerShown: false, title: "Chats" }} />
       <Stack.Screen name="[conversationId]" options={{ title: "Conversation" }} />
     </Stack>

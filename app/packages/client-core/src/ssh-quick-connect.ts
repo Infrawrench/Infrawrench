@@ -1,5 +1,5 @@
 /**
- * Platform-neutral pieces of the "quick connect" SSH flow — the step where a
+ * Platform-neutral pieces of the "quick connect" SSH flow: the step where a
  * resource exposes an `sshEndpoint` (EC2, droplets, Hetzner servers …) rather
  * than plugin-native credentials, so the client has to pair the host with an
  * org SSH key and a username before sending `ssh:open`.

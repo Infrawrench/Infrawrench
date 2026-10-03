@@ -4,7 +4,7 @@ interface ChangesIconProps {
 }
 
 /**
- * Change-timeline glyph — a history clock (circle with a rewind arrow and
+ * Change-timeline glyph: a history clock (circle with a rewind arrow and
  * hands). Same 24x24 stroke grid and 2px weight as WorkflowIcon/CostsIcon so
  * the Changes sidebar entry sits level with its neighbours.
  */

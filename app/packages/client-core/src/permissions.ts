@@ -2,15 +2,15 @@
  * The viewer's effective permissions in an organization, for Bearer hosts.
  *
  * Server contract: `GET /api/org/:orgId/team/me` (web `api/routes/team.ts`),
- * which every member may call — it reports the caller's own role and the
+ * which every member may call; it reports the caller's own role and the
  * permission strings that role resolves to.
  *
  * The matcher below mirrors `hasPermission` in server-core's permission
  * catalog **by value, not by import**: server-core is a Node package (Drizzle,
  * `pg`, `node:crypto`) that a React Native bundle cannot load, and the web app
- * imports the original directly. The rule it implements is small and frozen —
+ * imports the original directly. The rule it implements is small and frozen:
  * split both sides on `:`, every granted segment must equal the required one or
- * be `*`, and a bare `*` matches everything — so keeping a copy here is
+ * be `*`, and a bare `*` matches everything, so keeping a copy here is
  * cheaper than making mobile depend on the server. If the rule ever changes,
  * both copies change together; `__tests__/permissions.test.ts` pins the
  * semantics on this side.

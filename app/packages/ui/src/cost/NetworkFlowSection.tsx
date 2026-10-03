@@ -38,7 +38,7 @@ function endpointName(endpoint: NetworkFlowPairView["source"]): string {
  * explain.
  *
  * Rendered before the itemization rather than after it, because a top-flows
- * list read without it invites exactly the wrong conclusion — that the flows
+ * list read without it invites exactly the wrong conclusion: that the flows
  * shown *are* the egress bill. Both of the numbers it subtracts are known
  * quantities (an unattributable peer, and a tail computed by subtraction), so
  * this is a measurement and not a confidence score.
@@ -168,8 +168,8 @@ function PairRow({ pair }: { pair: NetworkFlowPairView }) {
  *
  * Lives on this section rather than behind a Settings page because the thing it
  * turns on is only meaningful here, and because the sentence that has to be
- * read before flipping it — *this runs queries your provider bills to your own
- * cloud account, every day, until you turn it off* — belongs next to the switch
+ * read before flipping it (*this runs queries your provider bills to your own
+ * cloud account, every day, until you turn it off*) belongs next to the switch
  * rather than a navigation step away from it.
  *
  * Renders read-only for a host (or a viewer) without the org-settings write.
@@ -239,7 +239,7 @@ function CollectionSwitch({
  * collection is switched off; no connected provider can report flows at all;
  * flow logs exist but cannot be read; or collection is on and working and the
  * network really is quiet. Rendering "0 bytes" for the first three is the
- * failure this whole surface is trying to avoid — it is a claim about the
+ * failure this whole surface is trying to avoid: it is a claim about the
  * user's network made out of a gap in ours.
  */
 function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
@@ -323,7 +323,7 @@ export interface NetworkFlowSectionProps {
  * Network costs: which two things are talking, across which boundary, and what
  * that costs.
  *
- * Hides itself entirely when the host client has not wired the endpoint —
+ * Hides itself entirely when the host client has not wired the endpoint:
  * the same rule every other optional section on this panel follows.
  */
 export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
@@ -336,7 +336,7 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
     if (!getNetworkFlows) return;
     let cancelled = false;
     // Awaited inside try/catch rather than chained: a host implementation may
-    // throw *synchronously* (desktop's requires cloud mode) — see
+    // throw *synchronously* (desktop's requires cloud mode); see
     // CreditBurndownSection.
     void (async () => {
       try {

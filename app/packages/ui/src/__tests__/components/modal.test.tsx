@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { Modal } from "../../components/Modal.js";
 
 beforeAll(() => {
-  // jsdom doesn't implement <dialog> showModal/close — stub them.
+  // jsdom doesn't implement <dialog> showModal/close: stub them.
   if (!HTMLDialogElement.prototype.showModal) {
     HTMLDialogElement.prototype.showModal = function () {
       this.open = true;
@@ -53,7 +53,7 @@ describe("Modal", () => {
    * Chromium dispatches `click` at the nearest common ancestor of its
    * pointerdown and pointerup targets. For anything inside this dialog that
    * ancestor is the `<dialog>` itself, so a drag that leaves the panel is
-   * indistinguishable from a backdrop click by target alone — and dismissing
+   * indistinguishable from a backdrop click by target alone, and dismissing
    * on it throws away whatever the user had just typed. These pin the
    * pointer-origin guard that stops it.
    */
@@ -170,8 +170,8 @@ describe("Modal", () => {
     expect(document.querySelector("dialog")).toHaveAttribute("aria-label", "Budget");
   });
 
-  // Without onClose the dialog is still a real modal — focus trapped, page
-  // behind it inert — it just can't be dismissed from outside its own controls.
+  // Without onClose the dialog is still a real modal (focus trapped, page
+  // behind it inert) it just can't be dismissed from outside its own controls.
   describe("without onClose", () => {
     it("ignores a backdrop click", () => {
       render(

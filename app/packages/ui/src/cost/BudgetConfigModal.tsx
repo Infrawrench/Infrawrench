@@ -41,7 +41,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
    * A scope query the text editor could not compile. Saving is blocked while
    * set, for the same reason the graph modal blocks: the input still holds the
    * last filter that parsed, and saving now would scope the budget differently
-   * from what is on screen — for a budget, an alert-firing difference.
+   * from what is on screen, for a budget, an alert-firing difference.
    */
   const [filterError, setFilterError] = useState<string | null>(null);
   const basis = useCostBasisChoice(api, initialInput.costBasis === "amortized");
@@ -268,8 +268,8 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
  *
  * The control exists at all because the opt-in has to be visible on the object
  * it changes. A scenario is somebody's hypothesis; a forecast threshold decides
- * when a person is paged. Making that connection a per-budget checkbox — rather
- * than something a scenario does to every budget in the org — is the whole
+ * when a person is paged. Making that connection a per-budget checkbox (rather
+ * than something a scenario does to every budget in the org) is the whole
  * decision, and it is worth stating in the form rather than only in the docs.
  *
  * Rendered only when the host wired `listScenarioModels` and the org has at

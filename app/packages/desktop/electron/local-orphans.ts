@@ -2,14 +2,14 @@
  * Local-mode orphan & idle resource scan.
  *
  * The cloud path (`GET /api/org/:orgId/orphans`) classifies an organization's
- * synced rows server-side. This is the same scan — plugin-base's
- * `collectOrphanGroups`, over the same declarative `orphanRule`s — run against
+ * synced rows server-side. This is the same scan (plugin-base's
+ * `collectOrphanGroups`, over the same declarative `orphanRule`s) run against
  * the desktop's local SQLite workspace instead, so a signed-out user gets the
  * Potential savings section and `infrawrench orphans --local` at all.
  *
  * Lives in the main process rather than the renderer because it has two
  * callers: the `local_orphans_list` IPC handler and the CLI, which has no
- * renderer. It reads the workspace and loads plugin *metadata* only — no
+ * renderer. It reads the workspace and loads plugin *metadata* only: no
  * plugin client is constructed, no account credentials are decrypted, and no
  * provider is contacted. That is the whole point: classification is a property
  * of stored state, so it works with the network off.
@@ -105,7 +105,7 @@ export async function listLocalOrphans(): Promise<OrphanListResponse> {
     totalCount,
     // Ownership is a cloud record; a local workspace stores none, so every
     // flagged row is unattributed here. Reporting `totalCount` rather than 0
-    // is the honest reading of "how many of these has nobody claimed" — the
+    // is the honest reading of "how many of these has nobody claimed": the
     // local scan knows of no owners, which is not the same as knowing there
     // are none, and the surfaces say "unattributed" for exactly that reason.
     unownedCount: totalCount,

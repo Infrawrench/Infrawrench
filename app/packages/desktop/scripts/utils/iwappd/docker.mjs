@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 
 // The archive is the one `rust-tar` in .github/workflows/desktop-build.yml packs:
 // one static musl binary per Linux architecture, named `iwappd-<target triple>`,
-// at the root of a tar.xz. Keep the two in step — a locally built archive laid out
+// at the root of a tar.xz. Keep the two in step: a locally built archive laid out
 // differently works on this machine and breaks everywhere else.
 const TARGETS = [
   {
@@ -24,7 +24,7 @@ const TARGETS = [
 // and a static build needs a musl build of it, which only Alpine packages
 // (`libxkbcommon-static`). Debian and the cross images fail with `cannot find
 // -lxkbcommon`. Each target is built on a container of its own architecture rather
-// than cross-compiled, for the same reason — the static library has to be the
+// than cross-compiled, for the same reason: the static library has to be the
 // target's.
 const IMAGE = "alpine:3.22";
 

@@ -16,7 +16,7 @@ import { useSettingsHost } from "./host.js";
  * The project and issue type are **pickers fed by the API**, never free text:
  * a project key and an issue type id are Jira's identifiers, not the user's,
  * and typing either by hand is a way to discover a typo as a 400 on the first
- * attempt to file. The pickers only load once credentials are saved — Jira has
+ * attempt to file. The pickers only load once credentials are saved: Jira has
  * nothing to tell us before then.
  */
 export function JiraSection() {
@@ -27,7 +27,7 @@ export function JiraSection() {
   const [integration, setIntegration] = useState<JiraIntegration | null>(null);
   const [siteUrl, setSiteUrl] = useState("");
   const [accountEmail, setAccountEmail] = useState("");
-  /** Blank means "keep the stored token" — the stored one is never shown. */
+  /** Blank means "keep the stored token": the stored one is never shown. */
   const [apiToken, setApiToken] = useState("");
   const [defaultProjectKey, setDefaultProjectKey] = useState("");
   const [defaultIssueTypeId, setDefaultIssueTypeId] = useState("");
@@ -97,7 +97,7 @@ export function JiraSection() {
       const saved = await api.put<JiraIntegration>(`/api/org/${orgId}/jira`, {
         siteUrl,
         accountEmail,
-        // Omit rather than send "" — the server reads an absent token as
+        // Omit rather than send "": the server reads an absent token as
         // "unchanged", which is what a blank field means here.
         ...(apiToken ? { apiToken } : {}),
         defaultProjectKey: defaultProjectKey || null,

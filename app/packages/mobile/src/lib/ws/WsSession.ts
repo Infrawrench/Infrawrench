@@ -38,7 +38,7 @@ export class WsSession {
       const ws = new WebSocket(url);
       this.ws = ws;
 
-      // A hung handshake would otherwise wait forever — the token is only
+      // A hung handshake would otherwise wait forever: the token is only
       // valid ~30s anyway.
       const timeout = setTimeout(() => {
         if (settled) return;

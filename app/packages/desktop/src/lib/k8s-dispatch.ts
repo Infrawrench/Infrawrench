@@ -1,10 +1,10 @@
 /**
- * K8s dispatcher — routes k8s exec, k9s, and port-forward between local
+ * K8s dispatcher: routes k8s exec, k9s, and port-forward between local
  * IPC (kubectl/k9s on the local host) and the cloud WebSocket proxy at
  * `/api/ws`.
  *
  * Rule: if `activeCloudOrgId` is set on the UI store, everything goes through
- * the WS proxy and cloud IPCs. Otherwise — local IPC.
+ * the WS proxy and cloud IPCs. Otherwise: local IPC.
  */
 
 import { invoke } from "./invoke";

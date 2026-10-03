@@ -27,7 +27,7 @@ export function RegionPicker({
   const scoped = useMemo(() => {
     if (!filterValue) return regions;
     const matched = regions.filter((r) => !r.availableFor || r.availableFor.includes(filterValue));
-    // Fall back to the full list when the filter excludes everything —
+    // Fall back to the full list when the filter excludes everything:
     // protects against incomplete or stale per-value tagging (e.g. provider
     // API that renamed an engine and no longer reports any region under the
     // form's engine label). Better to let the user pick and surface the

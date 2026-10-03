@@ -163,7 +163,7 @@ describe("buildAgentLaunchCommand", () => {
     expect(command).toContain(
       'exec detachproc run --session "$SESSION" -- bash -lc "$START_SCRIPT"',
     );
-    // VMs bootstrapped before the detachproc switch lack the binary — the
+    // VMs bootstrapped before the detachproc switch lack the binary: the
     // launch script downloads it itself so those sessions keep working.
     expect(command).toContain("ensure_detachproc");
     expect(command).not.toContain("exec screen");
@@ -437,7 +437,7 @@ describe("bootstrapReportedComplete", () => {
     expect(bootstrapReportedComplete("")).toBe(false);
   });
 
-  // The markers are what the generated scripts actually print — a reworded
+  // The markers are what the generated scripts actually print: a reworded
   // log_step would silently break the guard, so pin them against both builders.
   it("matches what the bootstrap scripts emit", () => {
     for (const marker of AGENT_BOOTSTRAP_COMPLETE_MARKERS) {

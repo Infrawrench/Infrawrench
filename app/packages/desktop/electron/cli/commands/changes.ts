@@ -1,4 +1,4 @@
-// `infrawrench changes` — the cross-provider drift feed in the terminal,
+// `infrawrench changes`: the cross-provider drift feed in the terminal,
 // backed by the same /changes endpoint the web Changes page reads.
 //
 // Every poll cycle diffs a freshly fetched account against the stored snapshot
@@ -7,7 +7,7 @@
 // contributes anything to it, and a new plugin shows up here the moment its
 // resources sync.
 //
-// Wire types and the row summary come from `@infrawrench/client-core` — the
+// Wire types and the row summary come from `@infrawrench/client-core`: the
 // same definitions the web feed renders with, so a server-side change breaks
 // the CLI's build instead of its output.
 import {
@@ -78,7 +78,7 @@ export async function cmdChanges(ctx: CliContext, range: RangeFlags): Promise<vo
     return;
   }
 
-  // The summary line ("name, size and 2 more") is shared with the web feed —
+  // The summary line ("name, size and 2 more") is shared with the web feed:
   // one definition of what an update reads as.
   const { summarizeChange, formatChangeValue } = await import("@infrawrench/client-core");
 
@@ -110,7 +110,7 @@ export async function cmdChanges(ctx: CliContext, range: RangeFlags): Promise<vo
   ]);
 
   // Field-level diffs are the reason to look at one resource, so they print in
-  // full when the feed is already narrowed to one — never for a whole org's
+  // full when the feed is already narrowed to one, never for a whole org's
   // feed, which would be thousands of lines.
   if (range.resource) {
     for (const entry of entries) {

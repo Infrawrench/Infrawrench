@@ -51,7 +51,7 @@ describe("wallboardStatus", () => {
   });
 
   it("is never ok when a source could not be read", () => {
-    // A wall showing green because a query threw is worse than a blank one —
+    // A wall showing green because a query threw is worse than a blank one:
     // it is actively telling the room the wrong thing.
     expect(wallboardStatus({ ...base, failedSources: ["probes"] })).toBe("degraded");
   });

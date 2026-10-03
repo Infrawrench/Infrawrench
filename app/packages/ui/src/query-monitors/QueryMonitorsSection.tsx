@@ -30,7 +30,7 @@ export interface QueryMonitorsSectionProps {
    * What the query can run against: accounts with their own SQL driver, and
    * the SQL-capable resources inside each (a ClickHouse service, a D1 or
    * Turso database, a BigQuery dataset, or a managed database reached through
-   * a SQL peer integration — a Neon database, an RDS instance). Empty and the
+   * a SQL peer integration; a Neon database, an RDS instance). Empty and the
    * editor says so.
    */
   targetOptions?: ReadonlyArray<QueryMonitorTargetAccount> | undefined;
@@ -70,7 +70,7 @@ interface TargetChoice {
 
 /**
  * The select's option value. Resource ids may contain any character the
- * provider put in an external id, so the separator is a newline — the one
+ * provider put in an external id, so the separator is a newline: the one
  * thing neither an account id nor a resource id can carry.
  */
 function targetKey(accountId: string, resourceId: string | null): string {
@@ -151,7 +151,7 @@ function toInput(draft: Draft): QueryMonitorInput {
 }
 
 /**
- * Query monitors — a SQL query on a schedule, with a threshold.
+ * Query monitors: a SQL query on a schedule, with a threshold.
  *
  * The editor's live SQL guard is the same function the server enforces on every
  * execution, so somebody typing `DELETE` sees the refusal as they type rather
@@ -214,7 +214,7 @@ export function QueryMonitorsSection({
   );
   const targetChoices = useMemo(() => targetGroups.flatMap((g) => g.choices), [targetGroups]);
 
-  // A monitor can point at a target the picker no longer offers — the resource
+  // A monitor can point at a target the picker no longer offers: the resource
   // was deleted, or the monitor was created over the API against something the
   // picker does not enumerate. Editing it must not silently reassign the
   // query, so the current target is kept selectable under its stored name.

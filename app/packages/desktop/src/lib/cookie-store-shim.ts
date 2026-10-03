@@ -7,13 +7,13 @@
  * language picker outright: `getLocale()` resolves against
  * `[cookie, ...navigator.languages, _getLocale()]` in that order, so with no
  * cookie the OS language always wins and picking a language appears to do
- * nothing — the app reloads and comes back in the same locale. `_getLocale` is
+ * nothing; the app reloads and comes back in the same locale. `_getLocale` is
  * a last-resort fallback, not an override, so passing the stored choice there
  * cannot fix it; the cookie is the only slot that outranks the OS language.
  *
  * Feature-detected rather than protocol-sniffed: `electron-vite dev` serves the
  * renderer over http://localhost, where cookies work natively and this is a
- * no-op. Install it before anything reads a cookie — the entry does it first.
+ * no-op. Install it before anything reads a cookie: the entry does it first.
  */
 const STORAGE_KEY = "infrawrench-cookie-jar";
 
@@ -43,7 +43,7 @@ function save(jar: Map<string, string>): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(jar)));
   } catch {
-    // Storage denied — the jar stays in memory for this session.
+    // Storage denied: the jar stays in memory for this session.
   }
 }
 

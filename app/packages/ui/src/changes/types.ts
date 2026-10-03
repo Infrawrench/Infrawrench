@@ -21,7 +21,7 @@ export type {
   RevertApplyResponse,
 } from "@infrawrench/client-core";
 
-/** Filters the org feed accepts — one per query parameter the endpoint has. */
+/** Filters the org feed accepts: one per query parameter the endpoint has. */
 export interface ChangeFeedQuery {
   page: number;
   pageSize: number;
@@ -33,7 +33,7 @@ export interface ChangeFeedQuery {
 
 export interface ChangeFeedPage {
   entries: ResourceChangeEntry[];
-  /** Row count matching the filter, for paging — not the page's length. */
+  /** Row count matching the filter, for paging, not the page's length. */
   total: number;
 }
 
@@ -45,7 +45,7 @@ export interface ChangeFeedAccount {
 
 /**
  * Host-injected data access for the change feed. Web wraps `apiGet`; desktop
- * (cloud mode) wraps its cloud IPC — the panel stays platform-agnostic, the
+ * (cloud mode) wraps its cloud IPC: the panel stays platform-agnostic, the
  * same arrangement as `OrphansClient` and `CostsClient`.
  */
 export interface ChangesClient {
@@ -53,7 +53,7 @@ export interface ChangesClient {
   /** Populates the account filter. A failure leaves the filter empty, never blocks the feed. */
   listAccounts(): Promise<ChangeFeedAccount[]>;
   /**
-   * Cost impact for the rows currently on screen — "what did this change do to
+   * Cost impact for the rows currently on screen: "what did this change do to
    * the run rate?". **Optional**: a host that has not wired it (or a build a
    * release ahead of its server) renders the feed with no cost column rather
    * than failing, the same rule the anomaly-settings editor follows.
@@ -76,13 +76,13 @@ export interface ChangesClient {
 }
 
 /**
- * The two halves of a revert — dry run, then apply. Kept as its own interface
+ * The two halves of a revert: dry run, then apply. Kept as its own interface
  * because the per-resource Changes tab needs it without the feed's paging and
  * account lookup.
  */
 export interface ChangeRevertClient {
-  /** `GET /changes/{changeId}/revert` — the plan, computed against live fields. */
+  /** `GET /changes/{changeId}/revert`: the plan, computed against live fields. */
   preview(changeId: string): Promise<RevertPreviewResponse>;
-  /** `POST /changes/{changeId}/revert` — apply it. */
+  /** `POST /changes/{changeId}/revert`: apply it. */
   apply(changeId: string): Promise<RevertApplyResponse>;
 }

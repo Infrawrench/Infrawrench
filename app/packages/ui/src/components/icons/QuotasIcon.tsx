@@ -4,7 +4,7 @@ interface QuotasIconProps {
 }
 
 /**
- * Quota-radar glyph — a gauge with its needle past the middle, which is what
+ * Quota-radar glyph; a gauge with its needle past the middle, which is what
  * the screen is about: a bounded scale and where you sit on it. Same 24x24
  * stroke grid and 2px weight as ChangesIcon/ExpiryIcon/ProbesIcon so the
  * sidebar entry sits level with its neighbours. (Lucide's "gauge" icon.)

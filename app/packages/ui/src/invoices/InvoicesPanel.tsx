@@ -25,7 +25,7 @@ export interface InvoicesPanelProps {
   /**
    * Which invoice to show. Absent renders the list. Owned by the host so the
    * URL, the workspace tab and this panel never disagree about which invoice is
-   * open — the same contract the Cost reports panel uses.
+   * open: the same contract the Cost reports panel uses.
    */
   invoiceId?: string | undefined;
   /** Open an invoice (or, with undefined, go back to the list). */
@@ -47,8 +47,8 @@ export interface InvoicesPanelProps {
  *    the rate and the day it was read are printed under the total. A total
  *    nobody can explain is a total nobody will pay.
  *
- * Actions are driven by {@link managedInvoiceBlocker} — the same function the
- * server refuses with — so a disabled button and a 409 always say the same
+ * Actions are driven by {@link managedInvoiceBlocker}: the same function the
+ * server refuses with, so a disabled button and a 409 always say the same
  * sentence, and neither can drift from the other.
  */
 export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPanelProps) {
@@ -84,7 +84,7 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
     // cost centres ride `costs:read` and accounts ride `accounts:read`, neither
     // of which an invoices-only role necessarily holds. Losing a picker should
     // cost you the ability to *edit* a customer's scope, not the ability to see
-    // this month's invoices — which is what folding them into the load above
+    // this month's invoices, which is what folding them into the load above
     // would have done.
     const [centreRows, cloudRows] = await Promise.all([
       client.listCostCentres().catch(() => [] as CostCentre[]),

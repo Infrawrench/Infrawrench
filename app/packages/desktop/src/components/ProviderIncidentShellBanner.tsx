@@ -4,7 +4,7 @@ import { createDesktopStatusIncidentsClient } from "../lib/status-incidents-clie
 import { invoke } from "../lib/invoke";
 
 /**
- * Desktop shell mount for the shared provider-incident banner. Cloud-only —
+ * Desktop shell mount for the shared provider-incident banner. Cloud-only:
  * renders nothing in local mode (no org) and nothing when no active incident
  * overlaps the org. External links go through the shell's external-URL
  * handler, per the desktop convention.

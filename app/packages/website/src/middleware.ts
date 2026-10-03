@@ -2,14 +2,14 @@
  * Content negotiation for the marketing site.
  *
  * A caller that asks for markdown more strongly than HTML gets markdown from
- * the same URL — the home page, every documentation page, all of it. In
+ * the same URL: the home page, every documentation page, all of it. In
  * practice that caller is an agent, and the point is that it should not have to
  * know a URL convention to read the site: it asks the way HTTP has always said
  * to ask, and the answer is prose.
  *
  * This is why the content pages render on demand rather than prerendering.
  * Astro serves prerendered pages as static assets, which never reach middleware
- * and therefore cannot inspect `Accept` — a static docs page can only ever
+ * and therefore cannot inspect `Accept`: a static docs page can only ever
  * answer HTML. `lib/page-cache.ts` buys back what static serving gave away, and
  * carries the reason the cache key is shaped the way it is.
  *
@@ -63,7 +63,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
   const alternate = alternateFor(pathname);
   const wantsMarkdown =
     alternate !== null && prefersMarkdown(context.request.headers.get("accept"));
-  // `locals.cfContext`, as the `/api` routes already use — `locals.runtime.ctx`
+  // `locals.cfContext`, as the `/api` routes already use: `locals.runtime.ctx`
   // was removed in Astro v6 and throws on access.
   const cfContext = context.locals.cfContext;
 
@@ -79,7 +79,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
           }),
         });
       }
-      // No markdown for this path after all (unknown doc slug) — fall through
+      // No markdown for this path after all (unknown doc slug): fall through
       // so the HTML route can answer, which for a bad slug means its 404.
     }
 

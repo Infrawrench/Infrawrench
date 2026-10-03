@@ -13,7 +13,7 @@ import { colors, radii, spacing } from "@/lib/theme";
 import { useExpiring } from "./useExpiring";
 
 /**
- * Expiry radar — the native counterpart of the web/desktop Expiring screens
+ * Expiry radar; the native counterpart of the web/desktop Expiring screens
  * and the `infrawrench expiring` CLI: one cross-provider countdown of
  * everything with a clock on it, grouped by what kind of clock it is.
  *
@@ -112,7 +112,7 @@ const SEVERITY_LABELS: Record<ExpirySeverity, string> = {
 };
 
 /**
- * Expired and critical share the danger red — both mean "act now" and the
+ * Expired and critical share the danger red: both mean "act now" and the
  * palette has one red. Beyond that the urgency ramp is amber → accent → green.
  */
 const SEVERITY_COLORS: Record<ExpirySeverity, string> = {

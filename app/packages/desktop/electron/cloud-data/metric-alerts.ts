@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
-// Metric threshold alert rules — cloud-mode only (evaluation runs in the
+// Metric threshold alert rules: cloud-mode only (evaluation runs in the
 // cloud poller against the cloud ClickHouse metric store).
 
 ipcMain.handle("cloud_metric_alerts_list", async (_e, { orgId }: { orgId: string }) => {

@@ -45,7 +45,7 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
           }
         })
         .catch((e: unknown) => {
-          // A failed *refresh* must not blank a graph that is already drawn —
+          // A failed *refresh* must not blank a graph that is already drawn:
           // surface it as a banner over the existing render instead.
           if (!cancelled) setError(e instanceof Error ? e.message : gt("Failed to load graph"));
         });

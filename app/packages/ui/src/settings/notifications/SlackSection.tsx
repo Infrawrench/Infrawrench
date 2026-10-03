@@ -75,7 +75,7 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
     try {
       const { url } = await api.get<{ url: string }>(`/api/org/${orgId}/slack/install-url`);
       // Web: same-tab redirect (the OAuth callback lands back on this page).
-      // Desktop: system browser — the callback finishes on the web app, and
+      // Desktop: system browser; the callback finishes on the web app, and
       // this card shows the connected state on the next load.
       openExternal(url, { sameTab: true });
       setBusy(false);
@@ -287,7 +287,7 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
 
 /**
  * Channel picker. Channels come from Slack's conversations.list, so nobody has
- * to know a channel id — the list is fetched lazily on first open because a
+ * to know a channel id: the list is fetched lazily on first open because a
  * large workspace makes it a slow call.
  */
 function AddSlackChannel({

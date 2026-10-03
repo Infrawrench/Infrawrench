@@ -14,7 +14,7 @@ import type {
 
 /**
  * What a host must provide for the metric alerts panel. The write methods are
- * optional — their absence renders the panel read-only, the same capability
+ * optional: their absence renders the panel read-only, the same capability
  * gating `CostsClient` uses.
  */
 export interface MetricAlertsClient {

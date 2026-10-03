@@ -1,5 +1,5 @@
 /**
- * Custom graphs — a third program kind in the QuickJS isolate, after workflows
+ * Custom graphs: a third program kind in the QuickJS isolate, after workflows
  * and Infrafiles. A graph script is read-only over the org (costs, resource
  * listings, provider metrics) plus a private key/value store and the proxied
  * `fetch`; it finishes by declaring controls and a chart, which the host
@@ -76,7 +76,7 @@ export interface GraphMetricSeries {
 }
 
 /**
- * Host capabilities behind a graph run. Deliberately NOT a `WorkflowHost` —
+ * Host capabilities behind a graph run. Deliberately NOT a `WorkflowHost`:
  * a graph must not inherit create/update/delete, SSH, or storage powers, so it
  * gets its own narrow interface and its own dispatcher.
  *
@@ -101,7 +101,7 @@ export interface GraphHost {
   dataList(): Promise<string[]>;
 
   /**
-   * Outbound HTTP, same shape and validation as the workflow `fetch` — cloud
+   * Outbound HTTP, same shape and validation as the workflow `fetch`: cloud
    * hosts send it through the egress proxy. Optional: a host without it makes
    * `fetch()` in graph code throw a clear capability error.
    */
@@ -114,14 +114,14 @@ export type GraphInfraAction = "read" | "storage" | "execute";
 /**
  * Optional `infra.*` access for a graph run: the workflow accounts tree plus a
  * host the whitelisted read/SSH methods are forwarded to. The graph dispatcher
- * only ever forwards its whitelist — mutating workflow methods fail closed
- * whether or not this is supplied — and calls {@link authorize} before every
+ * only ever forwards its whitelist (mutating workflow methods fail closed
+ * whether or not this is supplied) and calls {@link authorize} before every
  * forwarded call, which is where the platform enforces WHO the access runs as
  * (on the cloud: the graph author's role permissions, definer-style, since any
  * viewer can trigger a render).
  */
 export interface GraphInfraAccess {
-  /** JSON `WorkflowPluginInfo[]` — becomes the prelude's `infra.accounts`. */
+  /** JSON `WorkflowPluginInfo[]`: becomes the prelude's `infra.accounts`. */
   accountsTreeJson: string;
   host: WorkflowHost;
   /** Throw to deny; the message surfaces as the script's error. */
@@ -152,7 +152,7 @@ export interface RunGraphOptions {
 
 export interface GraphRunResult {
   status: "success" | "failure";
-  /** Present iff the run succeeded — a graph that never rendered failed. */
+  /** Present iff the run succeeded: a graph that never rendered failed. */
   spec?: CustomGraphRenderSpec;
   error?: { message: string; stack?: string };
   logs: RunLogEntry[];
@@ -181,7 +181,7 @@ export const GRAPH_RUN_LIMITS: RunLimits = {
 export const GRAPH_MAX_COST_QUERIES = 10;
 /** Forwarded infra.* calls per run (ssh stream polls excluded). */
 export const GRAPH_MAX_INFRA_CALLS = 100;
-/** SSH commands per run — each may block up to the clamp below. */
+/** SSH commands per run: each may block up to the clamp below. */
 export const GRAPH_MAX_SSH_COMMANDS = 10;
 /** Hard per-command SSH timeout; a render blocks a dashboard card, not a CI job. */
 export const GRAPH_MAX_SSH_TIMEOUT_MS = 30_000;

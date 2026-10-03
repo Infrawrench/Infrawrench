@@ -21,7 +21,7 @@ const URGENCY_CLASS: Record<RunwayUrgency, string> = {
 
 export interface CreditBurndownSectionProps {
   client: CostsClient;
-  /** Opens a URL outside the app shell — the provider's top-up page. */
+  /** Opens a URL outside the app shell: the provider's top-up page. */
   onOpenExternal?: (url: string) => void;
 }
 
@@ -29,7 +29,7 @@ export interface CreditBurndownSectionProps {
  * Prepaid credit balances and how long they last at the current burn.
  *
  * Lives on the Costs panel rather than in its own screen because it answers a
- * cost question — but it is not the same question the graphs answer. A
+ * cost question, but it is not the same question the graphs answer. A
  * provider that bills in arrears sends an invoice you can argue with; a
  * prepaid pot that empties simply stops answering, which makes this an
  * availability number wearing a finance costume.
@@ -50,7 +50,7 @@ export function CreditBurndownSection({ client, onOpenExternal }: CreditBurndown
     let cancelled = false;
     // Awaited inside try/catch rather than chained: a host implementation may
     // throw *synchronously* (desktop's requires cloud mode), and a synchronous
-    // throw escapes a promise chain entirely — see CostAnomaliesSection.
+    // throw escapes a promise chain entirely; see CostAnomaliesSection.
     void (async () => {
       try {
         const result = await getCredits();

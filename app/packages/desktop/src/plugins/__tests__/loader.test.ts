@@ -113,7 +113,7 @@ describe("loadPlugins", () => {
     expect(ids).toContain("docker");
     expect(new Set(ids).size).toBe(ids.length);
 
-    // cached — calling again returns the same array reference
+    // cached: calling again returns the same array reference
     const again = await loadPlugins();
     expect(again).toBe(loaded);
   });

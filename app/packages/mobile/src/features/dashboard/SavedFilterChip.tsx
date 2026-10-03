@@ -9,8 +9,8 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
  * Read-only is a deliberate omission, not a gap: picking, creating and editing
  * saved filters stays on web/desktop, where the referent list and the delete
  * refusal (409 naming referents) can be shown properly. What mobile must not
- * do is *hide* the reference — an editor that silently omitted "prod only"
- * would let a save look narrower or wider than it is — so the chip names the
+ * do is *hide* the reference (an editor that silently omitted "prod only"
+ * would let a save look narrower or wider than it is) so the chip names the
  * filter and shows the query text it currently resolves to.
  *
  * A reference that fails to resolve is shown as broken rather than skipped,

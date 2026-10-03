@@ -3,7 +3,7 @@
  * viewport renders (`WorkspaceTabsViewport`).
  *
  * The two components are siblings in the shell, not parent and child, so they
- * cannot share a `useId()` — that hook returns a value scoped to one component
+ * cannot share a `useId()`: that hook returns a value scoped to one component
  * instance, and two instances asking for one independently get two different
  * answers. `aria-controls` / `aria-labelledby` need both sides to agree on a
  * single string, so the id is derived from the workspace tab id itself, which
@@ -13,7 +13,7 @@
  * document, give it a distinguishing prefix rather than reaching for `useId`.
  *
  * Tab ids are content-derived (`resource:acct:i-123`, `dashboard:<uuid>`, …)
- * and can contain characters that are awkward in a DOM id — a space would
+ * and can contain characters that are awkward in a DOM id: a space would
  * split an `aria-controls` IDREF list in two, and `:` / `.` / `/` need
  * escaping in a CSS selector. `encodeTabIdForDom` maps everything outside
  * `[A-Za-z0-9-]` to `_<hex>_`, which stays injective (distinct tab ids can
@@ -44,8 +44,8 @@ export function workspaceTabPanelDomId(tabId: string): string {
  * The full attribute set that makes an element a workspace tab's panel.
  *
  * `WorkspaceTabsViewport` spreads this onto every panel it renders. A host
- * that renders a tab's content outside the viewport — web's Settings tab,
- * whose sections are a router subtree — spreads it onto the element that
+ * that renders a tab's content outside the viewport (web's Settings tab,
+ * whose sections are a router subtree) spreads it onto the element that
  * actually contains that content, and tells the viewport not to render a
  * second element for the tab (`panelRenderedByHost`). Either way the tab's
  * `aria-controls` resolves to the one element holding what the tab opens.

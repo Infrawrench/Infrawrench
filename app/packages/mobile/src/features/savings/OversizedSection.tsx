@@ -7,7 +7,7 @@ import { colors, spacing } from "@/lib/theme";
 import { useRightsizing } from "./useRightsizing";
 
 /**
- * "Oversized" — the native counterpart to the web/desktop right-sizing
+ * "Oversized"; the native counterpart to the web/desktop right-sizing
  * section: machines whose p95 utilisation over the last 14 days sits well
  * under their size, with the recommended smaller size and the live-priced
  * monthly saving.

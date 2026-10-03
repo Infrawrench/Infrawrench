@@ -1,9 +1,9 @@
-// `infrawrench scenarios` — the org's scenario models, and applying one to a
+// `infrawrench scenarios`: the org's scenario models, and applying one to a
 // forecast.
 //
 // A forecast is a least-squares fit over trailing daily totals: it can only
 // extrapolate what already happened. A scenario model is where the org writes
-// down what it already *knows* is coming — a purchase next quarter, a team
+// down what it already *knows* is coming: a purchase next quarter, a team
 // starting in September, a migration that takes a fifth off compute.
 //
 // Bare `scenarios` lists the models; `scenarios <name|id>` applies one and
@@ -51,7 +51,7 @@ async function loadModels(orgId: string): Promise<CostScenarioModel[]> {
  *
  * Matched by id first, then case-insensitively by name; names are unique per
  * org, so a name can never be ambiguous. An unknown value is an error listing
- * what exists — never a silent fall-through to an unadjusted projection, which
+ * what exists, never a silent fall-through to an unadjusted projection, which
  * would answer a different question under the heading the user asked for.
  */
 function resolveModel(models: CostScenarioModel[], wanted: string): CostScenarioModel {
@@ -172,7 +172,7 @@ export async function cmdApplyScenario(
       to,
       scenario: { id: model.id, name: model.name, currency: model.currency },
       // `forecast` (the untouched trend) and `scenario` (the adjusted
-      // projection) both ride along in `response` — a script must be able to
+      // projection) both ride along in `response`: a script must be able to
       // diff them without re-running the query.
       ...response,
     });

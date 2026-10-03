@@ -1,5 +1,5 @@
 /**
- * Pure pieces of the KV console — command tokenizing, result formatting, and
+ * Pure pieces of the KV console: command tokenizing, result formatting, and
  * the per-driver copy. Web, desktop and mobile all render this console, so the
  * parsing lives here and each host only supplies the widgets.
  */

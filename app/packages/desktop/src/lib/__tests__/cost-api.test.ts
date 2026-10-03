@@ -8,7 +8,7 @@ import { createDesktopCostReportsClient } from "../cost-reports-client";
 /**
  * The optional `CostApi` members the shared cost components gate their pickers
  * on. Each one is `foo?: …` on the interface, so a host that leaves it out
- * still typechecks — the control simply never renders, which is how the
+ * still typechecks: the control simply never renders, which is how the
  * dashboard's cost graph editor silently lost the scenario and saved-filter
  * pickers while the Costs panel kept them.
  *

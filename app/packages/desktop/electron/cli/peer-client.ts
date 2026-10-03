@@ -1,5 +1,5 @@
 /**
- * Peer (sidecar) plugin clients for the CLI — the plugin a resource exposes
+ * Peer (sidecar) plugin clients for the CLI: the plugin a resource exposes
  * rather than the one its account connects. A managed Kubernetes cluster
  * (DOKS, EKS, GKE, …) hands out a kubeconfig, so the `kubernetes` plugin can
  * be driven inside it; a managed database hands out a connection string, so
@@ -7,13 +7,13 @@
  *
  * Mirrors server-core's `peer-clients.ts`, minus what the CLI cannot (and
  * need not) do: credential rewriters are skipped. The rewriter chain is not
- * declared on the integration — it is a globally registered list (today only
+ * declared on the integration: it is a globally registered list (today only
  * the SSH-tunnel rewriter, a no-op unless the account has a server-side
  * tunnel configured), and the desktop renderer's own peer path skips it the
  * same way. The kubeconfig path this exists for needs none.
  *
  * The parent client may be either a local credential-backed client or an org
- * account's client — `resolveOutput` is the whole contract, and both
+ * account's client: `resolveOutput` is the whole contract, and both
  * implement it.
  */
 import type { PluginClient } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
@@ -25,7 +25,7 @@ import { createPluginClientFromCredentials } from "../infrafile/plugin-host";
 import { CliError } from "./context";
 
 /**
- * One peer client per (parent resource, peer plugin) per process — the same
+ * One peer client per (parent resource, peer plugin) per process: the same
  * cluster reached twice in a deploy resolves its kubeconfig once. A failed
  * build is evicted so a retry (say, after the cluster finishes provisioning)
  * resolves fresh rather than replaying the cached rejection.
@@ -36,8 +36,8 @@ const peerClients = new Map<string, Promise<PluginClient>>();
  * The parent resource's type id, parsed from its canonical
  * `accountId:typeId:externalId` id. When the id is not in canonical form
  * (some listers return provider-native ids), fall back to the one resource
- * type on the parent plugin that declares a peer integration for this plugin
- * — typically exactly one (e.g. only gke-cluster carries a kubernetes peer).
+ * type on the parent plugin that declares a peer integration for this plugin:
+ * typically exactly one (e.g. only gke-cluster carries a kubernetes peer).
  */
 function resolveParentTypeId(
   parentResourceId: string,
@@ -130,7 +130,7 @@ async function buildCliPeerClient(
  * A ready-to-use client for the peer plugin a parent resource exposes: read
  * the parent type's `peerIntegrations` declaration from the local plugin
  * registry, resolve each mapped output through the parent's client, and build
- * the peer plugin's client (with its driver-backed host services — the
+ * the peer plugin's client (with its driver-backed host services; the
  * kubernetes plugin's manifest wires `k8sDrivers` off its kubeconfig
  * credential) from those credentials.
  */

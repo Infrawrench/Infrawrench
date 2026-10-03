@@ -6,7 +6,7 @@ import { colors } from "@/lib/theme";
  * The geometry and marks the mobile SVG charts share.
  *
  * CostChart and CustomGraphChart both draw into the same 320x168 viewBox with
- * the same padding, gridline treatment, and grouped/stacked bar mark — web and
+ * the same padding, gridline treatment, and grouped/stacked bar mark: web and
  * desktop hand the same series to recharts, which is DOM-only, so mobile draws
  * them itself. What differs between the two charts (line gap handling, area
  * fills, legends, overlays) stays in each chart; the shared pieces live here so
@@ -16,7 +16,7 @@ import { colors } from "@/lib/theme";
 /**
  * The app-wide categorical order, assigned per series. Re-exported from
  * `@infrawrench/client-core` rather than restated, so mobile and the web chart
- * theme cannot drift — the two held separate copies, and the overlay hues
+ * theme cannot drift: the two held separate copies, and the overlay hues
  * derived from them had already diverged.
  */
 export { SERIES_COLORS };
@@ -75,7 +75,7 @@ export function GridTicks({
 }
 
 /**
- * First and last bucket labels only — interior labels collide at this width.
+ * First and last bucket labels only: interior labels collide at this width.
  */
 export function EdgeLabels({ start, end }: { start: string; end?: string | null }) {
   return (

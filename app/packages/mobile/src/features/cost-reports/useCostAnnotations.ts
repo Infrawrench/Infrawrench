@@ -7,7 +7,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
  *
  * With a `reportId` this is that report's own notes plus the org-wide ones;
  * without one it is the org-wide notes alone, which is what a dashboard cost
- * card wants — a card belongs to no report, and "we changed instance types" is
+ * card wants: a card belongs to no report, and "we changed instance types" is
  * exactly the kind of note that belongs on it anyway.
  *
  * Read-only on mobile, like the reports themselves: writing a note means a date

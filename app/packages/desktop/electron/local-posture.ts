@@ -3,8 +3,8 @@
  *
  * The cloud path (`GET /api/org/:orgId/posture`) computes the findings
  * server-side over an organization's synced rows. This is the same
- * computation — client-core's `computePostureFindings`, over the same
- * declarative `postureChecks` rules — run against the desktop's local SQLite
+ * computation (client-core's `computePostureFindings`, over the same
+ * declarative `postureChecks` rules) run against the desktop's local SQLite
  * workspace, so `infrawrench posture --local` works signed out. It reads the
  * workspace and loads plugin *metadata* only: no plugin client is
  * constructed, no account credentials are decrypted, and no provider is
@@ -42,7 +42,7 @@ interface LocalDismissalRow {
   updated_at: string;
 }
 
-/** Local dismissals carry no author — the workspace is single-user. */
+/** Local dismissals carry no author: the workspace is single-user. */
 function toDismissal(row: LocalDismissalRow): PostureDismissal {
   return {
     resourceId: row.resource_id,
@@ -80,7 +80,7 @@ export async function listLocalPosture(): Promise<PostureListResponse> {
  * default: SQLite's `datetime('now')` produces `"YYYY-MM-DD HH:MM:SS"`, which
  * reads as a local-time instant everywhere the cloud path writes ISO.
  *
- * Returns the note as stored — trimmed, and `null` for a blank one — so the
+ * Returns the note as stored (trimmed, and `null` for a blank one) so the
  * CLI can report what was persisted rather than what it was handed.
  */
 export async function dismissLocalPostureFinding(
@@ -103,7 +103,7 @@ export async function dismissLocalPostureFinding(
 }
 
 /**
- * Undo a local dismissal. Returns whether there was one to undo — the delete
+ * Undo a local dismissal. Returns whether there was one to undo: the delete
  * is preceded by a read because the main-process `execute` reports no row
  * count, and "that finding is not dismissed" is worth saying out loud.
  */

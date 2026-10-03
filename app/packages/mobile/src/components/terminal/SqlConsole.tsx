@@ -11,7 +11,7 @@ import { colors, radii, spacing } from "@/lib/theme";
  *
  * It has to be this route rather than the WS gateway's `sql:query` frame: the
  * frame carries no resource, so the proxy can only reach plugins that expose
- * `executeQuery` — and it passes the account id where a resource id belongs.
+ * `executeQuery`, and it passes the account id where a resource id belongs.
  * The HTTP route also handles per-resource SQL drivers (Turso, D1, ClickHouse
  * services) and account-level ones (Postgres, MySQL, SQL Server), which is
  * most of what has a SQL editor at all. Hence `resourceId`/`resourceTypeId`.
@@ -25,7 +25,7 @@ interface SqlResult {
 }
 
 /**
- * A failed query is usually the database talking — a syntax error, a missing
+ * A failed query is usually the database talking: a syntax error, a missing
  * table. Dig the server's `{ error }` out of the response body so the console
  * shows that instead of "Cloud request failed: 500 https://…".
  */
@@ -35,7 +35,7 @@ function queryErrorMessage(e: unknown): string {
       const parsed = JSON.parse(e.body) as { error?: unknown };
       if (typeof parsed.error === "string" && parsed.error) return parsed.error;
     } catch {
-      /* not JSON — fall through to the raw message */
+      /* not JSON: fall through to the raw message */
     }
   }
   return e instanceof Error ? e.message : "Query failed";

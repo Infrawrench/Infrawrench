@@ -4,7 +4,7 @@ interface IacIconProps {
 }
 
 /**
- * Infrastructure-as-Code glyph — a document with code brackets on it, for the
+ * Infrastructure-as-Code glyph: a document with code brackets on it, for the
  * page that reconciles declared infrastructure against what is actually
  * running. Same 24x24 stroke grid and 2px weight as ChangesIcon/CostsIcon so
  * the sidebar tile sits level with its neighbours.
