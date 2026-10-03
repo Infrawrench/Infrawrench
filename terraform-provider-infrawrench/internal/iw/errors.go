@@ -123,7 +123,7 @@ const apiKeyDeniedHint = "The configured api_key starts with \"iwk_\", and this 
 
 // apiKeyUnauthorizedHint covers the 401 case. An API key reaching this is a
 // key problem (revoked, expired, past its hash sunset, or aimed at an org its
-// owner has left) rather than the categorical rejection it used to be.
+// owner has left) rather than a categorical rejection of API keys.
 const apiKeyUnauthorizedHint = "The configured api_key starts with \"iwk_\". The org-scoped " +
 	"API does accept API keys, so a 401 here means the key itself was refused: revoked, " +
 	"expired, past its legacy-hash sunset, or owned by somebody who is no longer a member of " +

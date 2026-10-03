@@ -1,5 +1,5 @@
 /**
- * Every DigitalOcean resource lister, extracted from `client.ts`.
+ * Every DigitalOcean resource lister.
  *
  * `listDoResources` is the type dispatcher the client's `listResources`
  * delegates to; the per-type listers below it map one DO API payload into the
@@ -824,9 +824,9 @@ export async function listSpacesBuckets(
 
   // Per-region fan-out is tolerant of individual region failures:
   // freshly-minted Spaces keys can take longer to propagate to some
-  // regions than others, and we'd previously blow up the whole list
-  // call (and the post-create detail page) on a single 403. We log
-  // the failures but never throw from the per-region results.
+  // regions than others, and a single 403 must not fail the whole list
+  // call (and with it the post-create detail page). We log the
+  // failures but never throw from the per-region results.
   const settled = await Promise.allSettled(
     SPACES_REGIONS.map(async (region) => {
       const host = `${region}.digitaloceanspaces.com`;

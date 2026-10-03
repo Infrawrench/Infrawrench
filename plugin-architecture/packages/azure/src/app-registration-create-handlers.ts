@@ -2,11 +2,11 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { AzureCreateContext } from "./create-handlers-shared.js";
 
 /**
- * Create an Entra ID app registration + matching service principal. Three Graph calls:
+ * Create an Entra ID app registration + matching service principal. Two Graph calls:
  * 1. POST /applications → creates the app, returns object `id` and `appId` (different GUIDs).
  * 2. POST /servicePrincipals with `{appId}` → creates the SP, returns `id` (SP object id).
- * 3. (optional) PUT roleAssignment on ARM if a role is requested, not wired in this version;
- *    users assign roles via the Azure portal or future policy-picker support.
+ *
+ * Role assignment is not part of creation; assign roles in the Azure portal.
  */
 export async function createAppRegistration(
   ctx: AzureCreateContext,
