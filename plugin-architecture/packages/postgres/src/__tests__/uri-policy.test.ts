@@ -12,6 +12,7 @@ vi.mock("pg", () => ({
 import { Pool } from "pg";
 import { driver, serverDriver } from "../driver.js";
 import { serverPostgresConnectionStringError } from "../uri-policy.js";
+import { plugin } from "../plugin.js";
 
 describe("serverPostgresConnectionStringError", () => {
   it("accepts ordinary connection strings", () => {
@@ -53,6 +54,20 @@ describe("serverPostgresConnectionStringError", () => {
   });
 });
 
+describe("plugin.validateServerCredentials", () => {
+  it("checks the connection string credential", () => {
+    expect(
+      plugin.validateServerCredentials?.({ connectionString: "postgresql://u:p@h/db" }),
+    ).toBeNull();
+    expect(plugin.validateServerCredentials?.({})).toBeNull();
+    expect(
+      plugin.validateServerCredentials?.({
+        connectionString: "postgresql://u:p@h/db?sslrootcert=/etc/hostname",
+      }),
+    ).toContain("sslrootcert");
+  });
+});
+
 describe("postgres serverDriver", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,7 +82,14 @@ describe("postgres serverDriver", () => {
     await expect(
       serverDriver.execute("postgresql://u:p@h/db?sslkey=/k", "SELECT 1", []),
     ).rejects.toThrow(/sslkey/);
+    await expect(
+      serverDriver.queryReadOnly("postgresql://u:p@h/db?sslcert=/c", "SELECT 1"),
+    ).rejects.toThrow(/sslcert/);
     expect(Pool).not.toHaveBeenCalled();
+  });
+
+  it("exposes the read-only path, so sql_query keeps its read-only transaction", () => {
+    expect(typeof serverDriver.queryReadOnly).toBe("function");
   });
 
   it("passes safe connection strings through", async () => {

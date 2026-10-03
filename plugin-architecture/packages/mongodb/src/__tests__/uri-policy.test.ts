@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { MongoClient } from "mongodb";
 import { serverDriver, serverMongoConnectionStringError } from "../driver.js";
-import { findServerUnsafeMongoOptions } from "../uri-policy.js";
+import { findServerUnsafeMongoOptions, serverMongoUriError } from "../uri-policy.js";
+import { plugin } from "../plugin.js";
 
 // The real driver parses here (no mock): the constructor neither reads files
 // nor dials, and parsing through it is the point of the policy.
@@ -69,6 +70,53 @@ describe("serverMongoConnectionStringError", () => {
     expect(
       serverMongoConnectionStringError("mongodb://db.example.com/?authMechanism=MONGODB-AWS"),
     ).toMatch(/^MongoDB connection string rejected: .*desktop app/);
+  });
+});
+
+describe("serverMongoUriError (driver-free, save time)", () => {
+  // Every URI here is one the real driver parses; the driver-free check must
+  // refuse exactly when the driver-backed one does.
+  const corpus = [
+    "mongodb://u:p@db.example.com:27017/app",
+    "mongodb+srv://u:p@cluster0.example.mongodb.net/?retryWrites=true&w=majority",
+    "mongodb://u:p@a.example.com,b.example.com/app?replicaSet=rs0&authSource=admin",
+    "mongodb://u:p@db.example.com/?authMechanism=SCRAM-SHA-256",
+    "mongodb://u:p@db.example.com/?authMechanism=scram-sha-1",
+    "mongodb://u:p@db.example.com/?authMechanism=PLAIN",
+    "mongodb://u:p@db.example.com/?authMechanism=DEFAULT",
+    "mongodb://db.example.com/?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s",
+    "mongodb://db.example.com/?authMechanism=oidc&authMechanismProperties=ENVIRONMENT:gcp,TOKEN_RESOURCE:a",
+    "mongodb://db.example.com/?authMechanism=MONGODB-AWS",
+    "mongodb://db.example.com/?authmechanism=aws",
+    "mongodb://db.example.com/?authMechanism=MONGODB-X509&tls=true",
+    "mongodb://u@db.example.com/?authMechanism=GSSAPI",
+    "mongodb://u:p@db.example.com/?tls=true&tlsCAFile=/etc/hostname",
+    "mongodb://u:p@db.example.com/?tls=true&TLSCERTIFICATEKEYFILE=/k",
+    "mongodb://u:p@db.example.com/?tls=true&tlsCRLFile=%2Fetc%2Fhostname",
+  ];
+
+  it.each(corpus)("agrees with the driver's own parse: %s", (uri) => {
+    expect(serverMongoUriError(uri) === null).toBe(serverMongoConnectionStringError(uri) === null);
+  });
+
+  it("refuses a repeated authMechanism when any value is unsafe", () => {
+    expect(
+      serverMongoUriError("mongodb://u:p@h/?authMechanism=SCRAM-SHA-256&authMechanism=MONGODB-AWS"),
+    ).toContain("MONGODB-AWS");
+  });
+
+  it("refuses a mechanism it does not recognise", () => {
+    expect(serverMongoUriError("mongodb://u:p@h/?authMechanism=NEW-THING")).toContain("NEW-THING");
+  });
+
+  it("backs plugin.validateServerCredentials", () => {
+    expect(plugin.validateServerCredentials?.({ connectionString: corpus[0]! })).toBeNull();
+    expect(plugin.validateServerCredentials?.({})).toBeNull();
+    expect(
+      plugin.validateServerCredentials?.({
+        connectionString: "mongodb://db.example.com/?authMechanism=MONGODB-AWS",
+      }),
+    ).toMatch(/^MongoDB connection string rejected: .*MONGODB-AWS/);
   });
 });
 

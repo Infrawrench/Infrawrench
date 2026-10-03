@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { PostgresClient } from "./client.js";
+import { serverPostgresConnectionStringError } from "./uri-policy.js";
 import { PostgresDatabaseResourceType } from "./resources/pg-database.js";
 import { PostgresSchemaResourceType } from "./resources/pg-schema.js";
 
@@ -52,4 +53,8 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new PostgresClient(credentials, services),
+  validateServerCredentials: (credentials) => {
+    const connectionString = credentials["connectionString"];
+    return connectionString ? serverPostgresConnectionStringError(connectionString) : null;
+  },
 };

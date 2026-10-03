@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { MongoDBClient } from "./client.js";
+import { serverMongoUriError } from "./uri-policy.js";
 import { MongoDBDatabaseResourceType } from "./resources/mongodb-database.js";
 
 const manifest: PluginManifest = {
@@ -30,4 +31,8 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new MongoDBClient(credentials, services),
+  validateServerCredentials: (credentials) => {
+    const connectionString = credentials["connectionString"];
+    return connectionString ? serverMongoUriError(connectionString) : null;
+  },
 };

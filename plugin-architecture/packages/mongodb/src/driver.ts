@@ -1,8 +1,8 @@
 import { MongoClient, ObjectId } from "mongodb";
 import type { KvNodeDriver } from "@infrawrench/plugin-base";
-import { findServerUnsafeMongoOptions } from "./uri-policy.js";
+import { findServerUnsafeMongoOptions, mongoRejectionMessage } from "./uri-policy.js";
 
-export { findServerUnsafeMongoOptions } from "./uri-policy.js";
+export { findServerUnsafeMongoOptions, serverMongoUriError } from "./uri-policy.js";
 
 /** Convert ObjectId instances to { $oid: "hex" } for JSON-safe serialization */
 function serializeDoc(doc: unknown): unknown {
@@ -276,9 +276,12 @@ export const driver = {
 
 /**
  * The server policy as a credential check: a user-facing message when the
- * connection string is refused, or null. Suitable for a save-time hook such
- * as `Plugin.validateServerCredentials`. A string the driver cannot parse at
- * all is left to the connection attempt to report.
+ * connection string is refused, or null. This is the authoritative check the
+ * server driver runs before every call; the save-time
+ * `Plugin.validateServerCredentials` hook uses the driver-free
+ * `serverMongoUriError` instead, because the plugin entry also loads in the
+ * desktop renderer. A string the driver cannot parse at all is left to the
+ * connection attempt to report.
  */
 export function serverMongoConnectionStringError(connectionString: string): string | null {
   // A pooled client already holds the parsed options. Otherwise parse with a
@@ -292,8 +295,7 @@ export function serverMongoConnectionStringError(connectionString: string): stri
       return null;
     }
   }
-  const reasons = findServerUnsafeMongoOptions(options);
-  return reasons.length > 0 ? `MongoDB connection string rejected: ${reasons.join(" ")}` : null;
+  return mongoRejectionMessage(findServerUnsafeMongoOptions(options));
 }
 
 /**
