@@ -1,15 +1,19 @@
 ---
 title: AssemblyAI
-description: Browse the account's transcripts and run a full upload-submit-poll transcription from the Speech tab in one step.
+description: Browse the account's transcripts, manage Voice Agent API agents, sessions and webhooks, browse the LLM Gateway catalogue, and run a full upload-submit-poll transcription from the Speech tab in one step.
 sidebar_order: 44
 ---
 
-AssemblyAI's v2 API is async-only and deliberately narrow: `GET /v2/transcript` is the single listing endpoint it exposes. There is no REST surface for API keys, usage, billing or team members, so transcripts are the whole of this plugin's inventory — and that is the API's shape, not a gap in the plugin.
+AssemblyAI's transcription API is async-only and deliberately narrow: `GET /v2/transcript` is its single listing endpoint, and there is no REST surface for API keys, usage, billing or team members. The newer Voice Agent API (on `agents.assemblyai.com`) and the LLM Gateway add agents, their sessions and webhooks, and a model catalogue, which is the rest of this plugin's inventory.
 
 ## What you can manage
 
 - **Account** — one per added account, always present. It shows which regional host the key talks to and counts the transcripts still inside the 90-day retention window, and it is where the [Speech tab](#the-speech-tab) lives. Because transcripts only exist once the key has been used, this is the resource that makes the plugin usable on a brand-new account.
 - **Transcripts** — every speech-to-text job the key can see, with its status, the model that produced it, audio duration, detected language, overall confidence, word count and whether diarisation was on. Delete one to purge it early.
+- **Voice agents** — saved agents for the Voice Agent API: system prompt, voice, greeting, key terms, tools and any custom LLM. Create one with a name, a voice picked from AssemblyAI's sixteen documented voices, a system prompt, an optional greeting and key terms. Edit the name, voice, greeting or system prompt later; tools, a custom LLM and pre-connect requests are left exactly as they are. Each agent has a **Metrics** tab charting sessions per day and session minutes, counted from its session history. Delete to remove it.
+- **Agent sessions** — every realtime conversation, newest first, named after the agent it used, with status, duration, how it closed and, once complete, links to the recording, timeline and metadata. Those links are pre-signed and expire quickly, so refresh the page for fresh ones. Delete a session to remove it.
+- **Webhook subscriptions** — deliver `session.started`, `session.completed`, `call.connected`, `call.ended` and `call.failed` events to an HTTPS endpoint, for every agent or just one. Pick the events when creating it; leave the signing secret blank and one is generated and shown **once**. Edit to change the URL, switch events on or off, disable the subscription, or rotate the secret (AssemblyAI only ever reports the secret's version).
+- **LLM Gateway models** — the gateway's model catalogue with creator, context length, maximum completion tokens, supported parameters, regions, retirement date and list prices per million tokens. Read-only; it comes from the gateway host for your region.
 
 ## Credentials
 
@@ -44,3 +48,5 @@ Two models are offered, which are the only two the v2 API still accepts:
 - **Regions do not share data.** An account pointed at EU will not see transcripts submitted through the default host, and vice versa. Pick the one your key already uses.
 - **Rate-limit violations come back as `403`, not `429`** — indistinguishable from an auth failure at the transport layer. The background poller is deliberately kept well under any plausible ceiling so a `403` never has to be guessed at.
 - **Only the first audio track is transcribed** on media that carries several.
+- **Voice agents live on one host.** AssemblyAI documents only `agents.assemblyai.com` for the Voice Agent API, so agents, sessions and webhooks are read from there whichever region the account uses. The LLM Gateway catalogue does follow the region.
+- **Voice agent usage is a session count, not billing.** The agent Metrics tab sums the session list, which is the only usage-shaped data the API offers.
