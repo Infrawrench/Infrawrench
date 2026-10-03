@@ -51,6 +51,7 @@ import {
   postureTitle,
   summarizePosture,
 } from "./summary";
+import { orgAppUrl } from "../app-url";
 
 /** Least time between posture alert scans for one org. */
 export const POSTURE_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -82,13 +83,6 @@ type PostureScanOutcome =
 export type PostureOrgOutcome = DailyWindowOutcome<PostureScanOutcome>;
 
 export type PostureAlertsResult = DailyWindowResult<PostureScanOutcome>;
-
-/** Deep link to the org's posture screen, for the Slack/Teams button. */
-function postureUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/posture`;
-}
 
 const store = dailyWindowStore<PostureSettingsRecord>({
   table: orgPostureSettings,
@@ -151,7 +145,7 @@ async function deliverWindow(
   // mixed cases and hands back null when there is nothing to add.
   const title = securityAlertTitle(summary, accessSummary) ?? postureTitle(summary);
   const context = postureContext();
-  const url = postureUrl(organizationId);
+  const url = orgAppUrl(organizationId, "posture");
   // The message goes out on the posture findings, but it must say that half of
   // the review is missing rather than reading as a complete picture.
   const accessUnavailable = review.ok ? "" : ACCESS_REVIEW_UNAVAILABLE_NOTE;

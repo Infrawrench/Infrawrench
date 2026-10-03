@@ -61,6 +61,7 @@ import {
 } from "./anomaly-settings";
 import { pageAboutAnomalies, type AnomalySmsItem } from "./anomaly-sms";
 import { isoDay, addDays, daysBetween } from "./dates";
+import { orgAppUrl } from "../app-url";
 
 /** Days of history the baseline is computed over (excluding the day itself). */
 const BASELINE_DAYS = 28;
@@ -101,13 +102,6 @@ const lastEvaluatedAt = new Map<string, number>();
 /** The two breakdowns evaluated — matches the `dimension` column's type. */
 const DIMENSIONS = ["provider", "service"] as const;
 type AnomalyDimension = (typeof DIMENSIONS)[number];
-
-/** Deep link to the costs panel, for the Slack/Teams message button. */
-function costsUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/costs`;
-}
 
 function formatAmount(amount: number, currency: string): string {
   try {
@@ -440,7 +434,7 @@ export async function detectCostAnomaliesForOrg(
         const hintedBody = hints.length > 0 ? `${body}\n\nAround then: ${hints.join("; ")}.` : body;
         const pushBody = hints.length > 0 ? `${body}\nLikely related: ${hints[0]}.` : body;
 
-        const url = costsUrl(organizationId);
+        const url = orgAppUrl(organizationId, "costs");
         // `facts` is what routing rules match on, and this is the trigger the
         // feature was designed around: "anomalies over $500 on the prod account
         // → #incidents" is `amountCents >= 50000` AND `accountId in [prod]`.

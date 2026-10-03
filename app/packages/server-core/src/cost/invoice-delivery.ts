@@ -40,6 +40,8 @@ import {
   type ManagedInvoiceDeliveryStatus,
 } from "@infrawrench/client-core";
 import { sendEmails, isEmailConfigured, type EmailMessage } from "../email";
+import { emailButton, emailDocument, escapeHtml } from "../email-html";
+import { orgAppUrl } from "../app-url";
 
 /** What one send attempt did, before it is written to the row. */
 export interface InvoiceDeliveryOutcome {
@@ -85,13 +87,6 @@ export function invoiceRecipients(contactEmail: string | null | undefined): {
     recipients.push(candidate);
   }
   return { recipients, rejected };
-}
-
-/** Deep link to the invoice, for the message body. Null without `APP_URL`. */
-function invoiceUrl(organizationId: string, invoiceId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/invoices/${invoiceId}`;
 }
 
 /** The filename the customer's mail client shows for the attachment. */
@@ -162,14 +157,6 @@ export function formatInvoiceEmailText(
     .join("\n\n");
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 /** The HTML part — the digest's hand-rolled inline-style shape. */
 export function formatInvoiceEmailHtml(
   invoice: ManagedInvoice,
@@ -182,17 +169,7 @@ export function formatInvoiceEmailHtml(
         `<p style="margin:0 0 12px;">${l.bold ? `<strong>${escapeHtml(l.text)}</strong>` : escapeHtml(l.text)}</p>`,
     )
     .join("\n");
-  const button = url
-    ? `<p style="margin:24px 0 0;"><a href="${escapeHtml(url)}" style="display:inline-block;padding:10px 16px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">View this invoice</a></p>`
-    : "";
-  return [
-    `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1f2937;max-width:640px;">`,
-    body,
-    button,
-    `</div>`,
-  ]
-    .filter((s) => s !== "")
-    .join("\n");
+  return emailDocument([body, emailButton(url, "View this invoice")]);
 }
 
 /**
@@ -276,7 +253,7 @@ export async function deliverInvoiceEmail(
   },
 ): Promise<InvoiceDeliveryOutcome> {
   const { recipients, rejected } = invoiceRecipients(options.contactEmail);
-  const url = invoiceUrl(organizationId, invoice.id);
+  const url = orgAppUrl(organizationId, `invoices/${invoice.id}`);
   const subject = invoiceEmailSubject(invoice, options.orgName);
 
   // Built even when mail is unconfigured, exactly like the report deliveries:

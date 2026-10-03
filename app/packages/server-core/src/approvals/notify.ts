@@ -117,10 +117,3 @@ export async function fanOutApprovalRequest(args: ApprovalFanOut): Promise<void>
     console.error(`[approvals] recording Slack messages for ${args.approvalId} failed:`, err);
   }
 }
-
-/** `APP_URL`-rooted deep link, or null when the server has no `APP_URL`. */
-export function appPath(path: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}${path}`;
-}

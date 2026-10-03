@@ -33,6 +33,7 @@ import {
   formatExpiryTeamsBody,
   summarizeExpiry,
 } from "./summary";
+import { orgAppUrl } from "../app-url";
 
 /** Least time between expiry alert scans for one org. */
 export const EXPIRY_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -48,13 +49,6 @@ type ExpiryScanOutcome =
 export type ExpiryOrgOutcome = DailyWindowOutcome<ExpiryScanOutcome>;
 
 export type ExpiryAlertsResult = DailyWindowResult<ExpiryScanOutcome>;
-
-/** Deep link to the org's expiry radar, for the Slack/Teams button. */
-function expiringUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/expiring`;
-}
 
 const store = dailyWindowStore<ExpirySettingsRecord>({
   table: orgExpirySettings,
@@ -90,7 +84,7 @@ async function deliverWindow(
   const summary = summarizeExpiry(due, feed.leadDays);
   const title = expiryTitle(summary);
   const context = expiryContext(summary);
-  const url = expiringUrl(organizationId);
+  const url = orgAppUrl(organizationId, "expiring");
 
   const routed = await routeAlert({
     organizationId,

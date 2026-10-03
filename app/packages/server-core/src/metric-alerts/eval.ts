@@ -32,15 +32,9 @@ import { getMetricMinuteSeriesBatch } from "../clickhouse/readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import { resolveSelectorResources, type SelectedResource } from "./selector";
 import { judgeWindow, type MetricComparator, type WindowSample } from "./window";
+import { orgAppUrl } from "../app-url";
 
 export type MetricAlertRuleRow = typeof metricAlertRules.$inferSelect;
-
-/** Deep link to the metric alerts page, for the Slack/Teams message button. */
-function metricAlertsUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/metric-alerts`;
-}
 
 /** `93.42` → `"93.42"`, `93` → `"93"` — no trailing zero noise in alert text. */
 function formatValue(value: number): string {
@@ -100,7 +94,7 @@ async function notifyFiring(
     title,
     body,
     context,
-    url: metricAlertsUrl(rule.organizationId),
+    url: orgAppUrl(rule.organizationId, "metric-alerts"),
     pushData: {
       type: "metric_alert",
       orgId: rule.organizationId,
@@ -135,7 +129,7 @@ async function notifyResolved(rule: MetricAlertRuleRow, event: OpenEventRow): Pr
     title,
     body,
     context,
-    url: metricAlertsUrl(rule.organizationId),
+    url: orgAppUrl(rule.organizationId, "metric-alerts"),
     pushData: {
       type: "metric_alert",
       orgId: rule.organizationId,

@@ -78,6 +78,7 @@ import {
   type IsoWeekday,
   type WeeklyDigest,
 } from "./compose";
+import { orgAppUrl } from "../app-url";
 
 /**
  * How many attempts a single week's digest gets in total, including the first.
@@ -107,13 +108,6 @@ const RETRY_BACKOFF_MINUTES = [15, 60];
  * that lands a few ticks later is not a summary anyone notices is late.
  */
 export const DIGESTS_PER_TICK = 4;
-
-/** Deep link to the org's cost dashboards, for the message button. */
-function costsUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/costs`;
-}
 
 function dayRange(from: string, to: string): { fromDate: Date; toDatePlusOne: Date } {
   return {
@@ -503,7 +497,7 @@ export async function deliverWeeklyDigest(
 
   const title = digestTitle(digest);
   const context = org ? `${org.displayName} · Infrawrench weekly digest` : undefined;
-  const url = costsUrl(organizationId);
+  const url = orgAppUrl(organizationId, "costs");
 
   const recipients = await db
     .select({ email: digestEmailRecipients.email })

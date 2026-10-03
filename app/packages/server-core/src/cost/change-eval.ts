@@ -52,6 +52,7 @@ import {
   type ChangeWindow,
 } from "./change-detect";
 import { isoDay } from "./dates";
+import { orgAppUrl } from "../app-url";
 
 /**
  * Least time between full evaluations of one org. Same shape and reasoning
@@ -64,13 +65,6 @@ const MIN_EVAL_INTERVAL_MS = 60 * 60 * 1000;
 
 /** orgId → epoch ms of the last evaluation. Best-effort, per process. */
 const lastEvaluatedAt = new Map<string, number>();
-
-/** Deep link to the costs panel, where the change-alerts section lives. */
-function costsUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/costs`;
-}
 
 function formatCents(cents: number, currency: string): string {
   try {
@@ -230,7 +224,7 @@ export async function evaluateCostChangeAlertsForOrg(
   }
 
   const today = isoDay(now);
-  const url = costsUrl(organizationId);
+  const url = orgAppUrl(organizationId, "costs");
 
   for (const row of rows) {
     try {

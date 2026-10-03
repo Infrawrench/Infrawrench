@@ -142,9 +142,3 @@ export async function deliverPage(
     msTeams: routed.byTransport.msTeams,
   };
 }
-
-/** Base URL for deep links, or null when the server has no APP_URL configured. */
-export function appBaseUrl(): string | null {
-  const base = process.env["APP_URL"];
-  return base ? base.replace(/\/$/, "") : null;
-}

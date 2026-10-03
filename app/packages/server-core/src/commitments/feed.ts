@@ -28,6 +28,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../db/client";
 import { accountCommitmentPolls, accountCommitments, accounts } from "../db/schema";
 import { loadPlugins } from "../plugin-loader";
+import { isoDay } from "../cost/dates";
 import {
   getAccountDataDays,
   getCommitmentCoverageCells,
@@ -102,10 +103,6 @@ export interface CommitmentsFeed {
 }
 
 const DAY_MS = 86_400_000;
-
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
 
 function daysBack(to: string, count: number): string[] {
   const end = new Date(`${to}T00:00:00Z`).valueOf();

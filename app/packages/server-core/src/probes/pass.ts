@@ -38,6 +38,7 @@ import type { ProbeRecord } from "./store";
 // Re-exported here for the existing import sites.
 export { PROBE_PLUGIN_ID, PROBE_RESOURCE_TYPE_ID, probeMetricResourceId } from "./metric-ids";
 import { PROBE_PLUGIN_ID, PROBE_RESOURCE_TYPE_ID, probeMetricResourceId } from "./metric-ids";
+import { orgAppUrl } from "../app-url";
 
 /** How long we wait on the proxy itself, beyond the probe's own timeout. */
 const PROXY_OVERHEAD_MS = 10_000;
@@ -153,13 +154,6 @@ async function probeThroughProxy(probe: ProbeRecord): Promise<ProbeProxyResult |
   }
 }
 
-/** Deep link to the probes page, for the Slack/Teams message button. */
-function probesUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/probes`;
-}
-
 function describeFailure(result: ProbeProxyResult): string {
   if (result.status !== undefined) return `HTTP ${result.status}`;
   return result.error ?? "request failed";
@@ -202,7 +196,7 @@ async function notifyDown(probe: ProbeRecord, result: ProbeProxyResult): Promise
     title,
     body,
     context,
-    url: probesUrl(probe.organizationId),
+    url: orgAppUrl(probe.organizationId, "probes"),
     pushData: {
       type: "probe_alert",
       orgId: probe.organizationId,
@@ -241,7 +235,7 @@ async function notifyRecovered(probe: ProbeRecord, result: ProbeProxyResult): Pr
     title,
     body,
     context,
-    url: probesUrl(probe.organizationId),
+    url: orgAppUrl(probe.organizationId, "probes"),
     pushData: {
       type: "probe_alert",
       orgId: probe.organizationId,

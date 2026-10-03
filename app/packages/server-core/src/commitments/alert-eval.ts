@@ -53,6 +53,7 @@ import { loadPlugins } from "../plugin-loader";
 import { getAccountDataDays, getCommitmentDeliveredTotals } from "../clickhouse/commitment-readers";
 import { alertReached, routeAlert } from "../alerts/route";
 import { usdFloorIn } from "../cost/anomaly-detect";
+import { addDays, isoDay } from "../cost/dates";
 import { getOrgEfficiencySettings } from "../cost/efficiency-settings";
 import { computeCommitmentUtilization } from "./utilization";
 import {
@@ -65,6 +66,7 @@ import {
   type IdleCommitmentFinding,
   type IdleCommitmentInput,
 } from "./idle-detect";
+import { orgAppUrl } from "../app-url";
 
 /**
  * Least time between full evaluations of one org. Same shape and reasoning as
@@ -89,23 +91,6 @@ const lastEvaluatedAt = new Map<string, number>();
  * catch-up, not an ongoing preference.
  */
 const EXPIRED_LOOKBACK_DAYS = 90;
-
-const DAY_MS = 86_400_000;
-
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function daysBack(day: string, n: number): string {
-  return new Date(new Date(`${day}T00:00:00Z`).valueOf() - n * DAY_MS).toISOString().slice(0, 10);
-}
-
-/** Deep link to the costs panel, where the commitments section lives. */
-function costsUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/costs`;
-}
 
 function formatAmount(amount: number, currency: string | null): string {
   const code = currency ?? "USD";
@@ -611,7 +596,7 @@ export async function evaluateCommitmentAlertsForOrg(
   // days-with-data intersection. The idle threshold is judged over ≥14 days;
   // one soft day cannot move it past a bar.
   const window = {
-    from: daysBack(today, settings.commitmentIdleWindowDays - 1),
+    from: addDays(today, -(settings.commitmentIdleWindowDays - 1)),
     to: today,
   };
 
@@ -624,7 +609,7 @@ export async function evaluateCommitmentAlertsForOrg(
   }
   if (!rows || rows.length === 0) return;
 
-  const url = costsUrl(organizationId);
+  const url = orgAppUrl(organizationId, "costs");
 
   if (settings.commitmentExpiryEnabled) {
     try {

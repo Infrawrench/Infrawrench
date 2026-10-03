@@ -26,7 +26,8 @@ import {
 
 import { db } from "../db/client";
 import { workflowApprovals, workflows } from "../db/schema";
-import { appPath, formatApprovalExpiry } from "../approvals/notify";
+import { formatApprovalExpiry } from "../approvals/notify";
+import { appPath } from "../app-url";
 import { routeAlert } from "../alerts/route";
 import { settleDeliveriesForPushTarget } from "../alerts/ack";
 import {

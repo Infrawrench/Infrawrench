@@ -23,6 +23,7 @@ import {
   civilMoment,
   conversionCaveat,
   formatAmount,
+  formatSegmentsEmailHtml,
   isValidTimeZone,
   type DigestLine,
 } from "../digest/compose";
@@ -265,45 +266,12 @@ export function formatReportEmailText(data: ReportDeliveryData): string {
   return lines.join("\n");
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 /**
- * The email HTML part — same hand-rolled inline-style shape as the digest's,
- * built from the segments so text and markup never mix in one string.
+ * The email HTML part: the digest's hand-rolled inline-style shape, built from
+ * the segments so text and markup never mix in one string.
  */
 export function formatReportEmailHtml(data: ReportDeliveryData): string {
-  const body = reportDeliverySegments(data)
-    .filter((line) => line.length > 0)
-    .map((line) => {
-      const html = line
-        .map((seg) =>
-          seg.bold ? `<strong>${escapeHtml(seg.text)}</strong>` : escapeHtml(seg.text),
-        )
-        .join("");
-      const bullet = line[0]?.text.startsWith("•") ?? false;
-      return `<p style="margin:0 0 8px;${bullet ? "padding-left:12px;" : ""}">${html}</p>`;
-    })
-    .join("\n");
-
-  const button = data.url
-    ? `<p style="margin:24px 0 0;"><a href="${escapeHtml(data.url)}" style="display:inline-block;padding:10px 16px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">View in Infrawrench</a></p>`
-    : "";
-
-  return [
-    `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1f2937;max-width:640px;">`,
-    `<h1 style="font-size:18px;margin:0 0 16px;">${escapeHtml(reportDeliveryTitle(data))}</h1>`,
-    body,
-    button,
-    `</div>`,
-  ]
-    .filter((s) => s !== "")
-    .join("\n");
+  return formatSegmentsEmailHtml(reportDeliveryTitle(data), reportDeliverySegments(data), data.url);
 }
 
 // --- Delivery classification and retry backoff (the digest's conventions) ---

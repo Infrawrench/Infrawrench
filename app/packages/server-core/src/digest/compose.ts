@@ -1,4 +1,5 @@
 import type { CostConversion } from "@infrawrench/client-core";
+import { emailButton, emailDocument, escapeHtml } from "../email-html";
 /**
  * Weekly digest composition — pure functions only. Everything here takes data
  * in and returns data out, so the whole module is unit-testable without a
@@ -809,14 +810,6 @@ export function formatDigestTeamsBody(digest: WeeklyDigest, narrative?: string |
 // Both are built from the same `digestSegments` output so the three transports
 // can never drift in what they report.
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 /** The plain-text part: the shared lines, unadorned. */
 export function formatDigestEmailText(
   digest: WeeklyDigest,
@@ -832,24 +825,23 @@ export function formatDigestEmailText(
 }
 
 /**
- * The HTML part. Hand-rolled rather than templated — the markup is a handful
- * of tags and a templating dependency would buy nothing. Styles are inline
- * because mail clients strip `<style>` blocks, and the palette is deliberately
- * neutral so it reads in both light and dark clients.
+ * An email HTML part built from segment lines: a heading, one paragraph per
+ * non-blank line, and the "View in Infrawrench" button when there is a link.
+ * Shared by the digest and by scheduled report deliveries.
  *
  * Every character of every segment is escaped, and the only markup in the body
  * is the `<strong>` this function writes around segments that asked for it.
- * That is why the body is built from {@link digestSegments} rather than from
- * the flattened lines: text and markup are never mixed into one string, so
- * there is nothing to un-mix afterwards and no input — model-written narrative
- * included — that can arrive already looking like markup.
+ * That is why the body is built from segments rather than from the flattened
+ * lines: text and markup are never mixed into one string, so there is nothing
+ * to un-mix afterwards and no input (model-written narrative included) that
+ * can arrive already looking like markup.
  */
-export function formatDigestEmailHtml(
-  digest: WeeklyDigest,
-  narrative?: string | null,
+export function formatSegmentsEmailHtml(
+  title: string,
+  lines: DigestLine[],
   url?: string | null,
 ): string {
-  const body = digestSegments(digest, narrative)
+  const body = lines
     .filter((line) => line.length > 0)
     .map((line) => {
       const html = line
@@ -862,17 +854,18 @@ export function formatDigestEmailHtml(
     })
     .join("\n");
 
-  const button = url
-    ? `<p style="margin:24px 0 0;"><a href="${escapeHtml(url)}" style="display:inline-block;padding:10px 16px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">View in Infrawrench</a></p>`
-    : "";
-
-  return [
-    `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1f2937;max-width:640px;">`,
-    `<h1 style="font-size:18px;margin:0 0 16px;">${escapeHtml(digestTitle(digest))}</h1>`,
+  return emailDocument([
+    `<h1 style="font-size:18px;margin:0 0 16px;">${escapeHtml(title)}</h1>`,
     body,
-    button,
-    `</div>`,
-  ]
-    .filter((s) => s !== "")
-    .join("\n");
+    emailButton(url, "View in Infrawrench"),
+  ]);
+}
+
+/** The digest's HTML part (see {@link formatSegmentsEmailHtml}). */
+export function formatDigestEmailHtml(
+  digest: WeeklyDigest,
+  narrative?: string | null,
+  url?: string | null,
+): string {
+  return formatSegmentsEmailHtml(digestTitle(digest), digestSegments(digest, narrative), url);
 }

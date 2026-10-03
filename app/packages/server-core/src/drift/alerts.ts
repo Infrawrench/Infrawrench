@@ -54,6 +54,7 @@ import {
   summarizeDrift,
   type DriftChangeRow,
 } from "./summary";
+import { orgAppUrl } from "../app-url";
 
 /** Why a pass did or did not produce a notification. Returned for tests/logs. */
 export type DriftNotifyOutcome =
@@ -70,13 +71,6 @@ export type DriftNotifyOutcome =
    * see the invariant in `notifyResourceDrift`.
    */
   | { status: "failed"; error: string; released: boolean };
-
-/** Deep link to the org's change timeline, for the Slack/Teams button. */
-function changesUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/changes`;
-}
 
 /**
  * Take the org's notification slot for this window.
@@ -258,7 +252,7 @@ async function deliverWindow(
   const summary = summarizeDrift(rows, since);
   const title = driftTitle(summary);
   const context = driftContext(summary);
-  const url = changesUrl(organizationId);
+  const url = orgAppUrl(organizationId, "changes");
 
   const routed = await routeAlert({
     organizationId,

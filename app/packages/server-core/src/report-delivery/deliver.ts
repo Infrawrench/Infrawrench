@@ -59,6 +59,7 @@ import {
   toReportNotificationView,
   type ReportNotificationRecord,
 } from "./store";
+import { orgAppUrl } from "../app-url";
 
 function addDaysIso(isoDate: string, days: number): string {
   const [y, m, d] = isoDate.split("-").map((n) => Number.parseInt(n, 10));
@@ -72,13 +73,6 @@ function daySpan(from: string, to: string): number {
         86_400_000,
     ) + 1
   );
-}
-
-/** Deep link to the report's own page, for the message button. */
-function reportUrl(organizationId: string, reportId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/cost-reports/${reportId}`;
 }
 
 function sumOf(g: CostSeriesGroup): number {
@@ -223,7 +217,7 @@ export async function buildReportDelivery(
     totals,
     topGroups,
     ...(currentConverted.conversion ? { conversion: currentConverted.conversion } : {}),
-    url: reportUrl(organizationId, report.id),
+    url: orgAppUrl(organizationId, `cost-reports/${report.id}`),
   };
 }
 

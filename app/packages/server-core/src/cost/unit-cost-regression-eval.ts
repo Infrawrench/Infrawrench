@@ -57,6 +57,7 @@ import {
 } from "./unit-cost-regression";
 import { addDays, isoDay } from "./dates";
 import type { CostFilter } from "@infrawrench/client-core";
+import { orgAppUrl } from "../app-url";
 
 /**
  * Least time between full evaluations of one org — the anomaly and
@@ -89,13 +90,6 @@ const COOLDOWN_DAYS = 14;
  * ones are covered every pass rather than an arbitrary rotation.
  */
 const MAX_METRICS_PER_PASS = 50;
-
-/** Deep link to the costs panel, where the unit-costs section lives. */
-function costsUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/costs`;
-}
 
 function formatAmount(amount: number, currency: string): string {
   try {
@@ -400,7 +394,7 @@ export async function evaluateUnitCostRegressionsForOrg(
   // sides of the ratio and would compare a partial numerator against a partial
   // denominator.
   const windows = unitCostWindows(addDays(isoDay(now), -1), settings.unitCostWindowDays);
-  const url = costsUrl(organizationId);
+  const url = orgAppUrl(organizationId, "costs");
 
   for (const metric of metrics) {
     try {

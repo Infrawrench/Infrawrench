@@ -24,6 +24,8 @@ const fanOut = vi.fn(async () => undefined);
 vi.mock("../approvals/notify", () => ({
   fanOutApprovalRequest: (...a: unknown[]) => fanOut(...(a as [])),
   formatApprovalExpiry: () => "expires in 60 minutes",
+}));
+vi.mock("../app-url", () => ({
   appPath: (p: string) => `https://app.test${p}`,
 }));
 vi.mock("../slack-approvals", () => ({

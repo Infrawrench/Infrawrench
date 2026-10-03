@@ -39,6 +39,7 @@
  * committed vCPUs ran, and in a table that prints 0%, "unknown" and "unused"
  * are indistinguishable; one of those is a purchase order nobody should sign.
  */
+import { addDays } from "../cost/dates";
 
 export type CommitmentUtilizationUnavailableReason =
   "unit_denominated" | "no_active_days" | "no_data_days";
@@ -77,17 +78,11 @@ export interface CommitmentUtilizationResult {
   missingDays: number;
 }
 
-const DAY_MS = 86_400_000;
-
 /** "2026-07-01T…" or "2026-07-01" → "2026-07-01"; empty/invalid → null. */
 function isoDayOf(value: string | null | undefined): string | null {
   if (!value) return null;
   const day = value.slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
-}
-
-function addDays(day: string, n: number): string {
-  return new Date(new Date(`${day}T00:00:00Z`).valueOf() + n * DAY_MS).toISOString().slice(0, 10);
 }
 
 export function computeCommitmentUtilization(

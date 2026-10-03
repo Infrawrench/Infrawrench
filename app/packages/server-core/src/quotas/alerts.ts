@@ -30,6 +30,7 @@ import {
   quotaTitle,
   summarizeQuotas,
 } from "./summary";
+import { orgAppUrl } from "../app-url";
 
 /** Least time between quota alert scans for one org. */
 export const QUOTA_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -45,13 +46,6 @@ type QuotaScanOutcome =
 export type QuotaOrgOutcome = DailyWindowOutcome<QuotaScanOutcome>;
 
 export type QuotaAlertsResult = DailyWindowResult<QuotaScanOutcome>;
-
-/** Deep link to the org's quota radar, for the Slack/Teams button. */
-function quotasUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/quotas`;
-}
 
 const store = dailyWindowStore<QuotaSettingsRecord>({
   table: orgQuotaSettings,
@@ -96,7 +90,7 @@ async function deliverWindow(
     teamsBody: formatQuotaTeamsBody(summary),
     pushBody: formatQuotaPushBody(summary),
     context: quotaContext(summary),
-    url: quotasUrl(organizationId),
+    url: orgAppUrl(organizationId, "quotas"),
     pushData: { type: "quota_alert", orgId: organizationId },
   });
   // A hold counts as spent: the digest *will* arrive, and rewinding the claim

@@ -40,6 +40,7 @@ import { getOrgAccountClient } from "../org-accounts";
 import { getClientForResource } from "../peer-clients";
 import { alertReached, routeAlert } from "../alerts/route";
 import type { LogWorkspaceQueryRecord } from "./store";
+import { orgAppUrl } from "../app-url";
 
 /** Lease written into `next_eval_at` by the claim. */
 export const LOG_ALERT_LEASE_MS = 10 * 60 * 1000;
@@ -129,13 +130,6 @@ async function completeEval(
         `leaving the edited row's state in place`,
     );
   }
-}
-
-/** Deep-link base for notification buttons; null when APP_URL is unset. */
-function logWorkspacesUrl(organizationId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/logs`;
 }
 
 interface StreamMatchResult {
@@ -335,7 +329,7 @@ async function evaluateQuery(
       `${totalMatches}${anyTruncated ? "+" : ""} matching line${totalMatches === 1 && !anyTruncated ? "" : "s"} ` +
       `for "${row.search}" (${matchedStreams.map(formatCount).join(", ")})` +
       (lastSample ? ` — ${lastSample.slice(0, 200)}` : "");
-    const url = logWorkspacesUrl(row.organizationId);
+    const url = orgAppUrl(row.organizationId, "logs");
     const context = `Checked the last ${LOG_WORKSPACE_LIMITS.alertTailLines} lines per resource; next alert after the ${Math.round(LOG_WORKSPACE_LIMITS.alertCooldownMs / 60000)}-minute cooldown.`;
     const routed = await routeAlert({
       organizationId: row.organizationId,

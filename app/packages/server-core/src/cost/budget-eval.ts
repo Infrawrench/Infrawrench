@@ -27,13 +27,7 @@ import {
   listBudgetTriggerWorkflows,
 } from "../workflows/budget-triggers";
 import { isoDay, addDays } from "./dates";
-
-/** Deep link to the budget, for the Slack message's button. */
-function budgetUrl(organizationId: string, budgetId: string): string | null {
-  const base = process.env["APP_URL"];
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/org/${organizationId}/budgets/${budgetId}`;
-}
+import { orgAppUrl } from "../app-url";
 
 function formatCents(cents: number, currency: string): string {
   try {
@@ -449,7 +443,7 @@ export async function evaluateBudgetsForOrg(
         const paged = await sendBudgetAlertPage(organizationId, alertBody);
         // Routing is independent of the org's Twilio settings — dedupe already
         // happened via the budget_alert_events insert above.
-        const url = budgetUrl(organizationId, budget.id);
+        const url = orgAppUrl(organizationId, `budgets/${budget.id}`);
         const routed = await routeAlert({
           organizationId,
           trigger: "budgetAlerts",

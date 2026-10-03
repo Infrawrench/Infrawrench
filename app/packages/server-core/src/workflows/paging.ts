@@ -18,8 +18,8 @@ import type { PageResult, PageSpec } from "@infrawrench/workflow-runtime";
 
 import { db } from "../db/client";
 import { workflowPages } from "../db/schema";
+import { appBaseUrl } from "../app-url";
 import {
-  appBaseUrl,
   deliverPage,
   pageKeyAndCooldown,
   type PageAudience,

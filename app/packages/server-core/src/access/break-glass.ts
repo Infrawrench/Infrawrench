@@ -28,7 +28,8 @@ import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { AccessRequest, AccessRequestStatus, ActiveElevation } from "@infrawrench/client-core";
 
-import { appPath, fanOutApprovalRequest, formatApprovalExpiry } from "../approvals/notify";
+import { fanOutApprovalRequest, formatApprovalExpiry } from "../approvals/notify";
+import { appPath } from "../app-url";
 import { db } from "../db/client";
 import { accessRequests, users } from "../db/schema";
 import { hasPermission, isSubsetOfCallerPerms } from "../permissions/catalog";
