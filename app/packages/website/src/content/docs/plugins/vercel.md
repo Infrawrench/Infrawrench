@@ -6,7 +6,7 @@ sidebar_order: 22
 
 ## What you can manage
 
-- Projects (create, edit build settings, pause, Attack Challenge Mode)
+- Projects (create, edit build settings, pause, Attack Challenge Mode, Web Analytics metrics)
 - Deployments (status, build logs, cancel, redeploy, promote, instant rollback)
 - Domains (auto-renew, DNS configuration check)
 - DNS records on domains that use Vercel's nameservers
@@ -26,6 +26,7 @@ If you belong to a Team, provide the team ID so infrawrench lists team-owned pro
 
 - **Deploy list** with status badges and links to the Vercel inspector.
 - **Build logs**: a deployment's Logs tab shows its build output (commands, stdout, stderr).
+- **Metrics**: a project's Metrics tab charts its [Web Analytics](https://vercel.com/docs/analytics) traffic: page views, visitors, custom events (from `track()`), and the visitors behind those events. Ranges of up to three days are bucketed by hour, longer ones by day; the default window is the last week.
 - **Deployment actions**: **Cancel** a build in progress, **Redeploy** from the same source and settings (production deploys stay production), **Promote to Production** for a ready preview, and **Instant Rollback** for a previous production deployment Vercel marks as a rollback candidate. Every action asks for confirmation first.
 - **Project settings**: **Edit** changes the framework preset, Node.js version (24.x, 22.x, 20.x), default function region, and the build, install, development, output, and root directory settings. Clearing a command field resets it to the framework default.
 - **Pause / Resume** a project (a paused project answers every request with a 503) and toggle **Attack Challenge Mode**, which puts a browser challenge in front of every visitor during an attack.
@@ -36,9 +37,12 @@ If you belong to a Team, provide the team ID so infrawrench lists team-owned pro
 
 <insert [Vercel deployment detail view showing the Cancel/Redeploy/Promote header actions and the Logs tab with build output] here>
 
+<insert [Vercel project Metrics tab showing Page Views, Visitors and Custom Events charts over the last week] here>
+
 ## Tips & limits
 
 - Runtime (function) logs are a live stream in Vercel's API, so the Logs tab shows the build output only; use the Vercel dashboard or `vercel logs` for request logs.
+- Project metrics need Web Analytics enabled on the project and cover production traffic only. A project without it shows an empty Metrics tab. How far back you can look follows your plan's Web Analytics reporting window.
 - Rollback is offered only on production deployments Vercel lists as rollback candidates. After a rollback, Vercel stops auto-promoting new production builds until you promote one.
 - DNS records are only listed for domains on Vercel's nameservers; domains pointed at Vercel from another DNS provider have no records here.
 - Sensitive environment variables can never be read back, even by their owner.

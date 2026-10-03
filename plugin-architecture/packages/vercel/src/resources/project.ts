@@ -50,6 +50,8 @@ export const VercelProjectResourceType = rt({
   dependsOn: [{ fieldKey: "ownerId", targetTypeId: "vercel-team", label: "owned by" }],
   supportsCreate: true,
   supportsUpdate: true,
+  // Web Analytics page views, visitors and custom events (production only).
+  supportsMetrics: true,
   iconKey: "vercel",
   // Stable alias is `<project>.vercel.app`; git-branch aliases are
   // `<project>-git-<branch>-<scope>.vercel.app`. Capture group 1 is the

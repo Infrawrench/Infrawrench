@@ -1494,3 +1494,78 @@ describe("webhooks", () => {
     expect(calls[0]!.url).toContain("/v1/webhooks/hook_1");
   });
 });
+
+describe("web analytics metrics", () => {
+  it("charts page views, visitors and custom events by hour for short ranges", async () => {
+    installFetch((url) => {
+      if (url.includes("/visits/aggregate")) {
+        return jsonResponse({
+          version: 1,
+          data: [
+            { timestamp: "2026-10-01T01:00:00.000Z", pageviews: 30, visitors: 12 },
+            { timestamp: "2026-10-01T00:00:00.000Z", pageviews: 20, visitors: 10 },
+          ],
+        });
+      }
+      return jsonResponse({
+        version: 1,
+        data: [{ timestamp: "2026-10-01T00:00:00.000Z", count: 4, visitors: 3 }],
+      });
+    });
+    const start = Date.parse("2026-10-01T00:00:00.000Z");
+    const series = await client({ accessToken: "tok", teamId: "team_x" }).fetchMetricSeries(
+      "vercel-project",
+      "acct-1:vercel-project:prj_1",
+      ACCOUNT,
+      { startMs: start, endMs: start + 86_400_000 },
+    );
+    expect(series.map((s) => s.label)).toEqual([
+      "Page Views",
+      "Visitors",
+      "Custom Events",
+      "Event Visitors",
+    ]);
+    expect(series[0]!.points).toEqual([
+      { timestamp: start, value: 20 },
+      { timestamp: start + 3_600_000, value: 30 },
+    ]);
+    const visits = calls.find((c) => c.url.includes("/visits/aggregate"))!.url;
+    expect(visits).toContain("projectId=prj_1");
+    expect(visits).toContain("by=hour");
+    expect(visits).toContain(`since=${start}`);
+    expect(visits).toContain("teamId=team_x");
+  });
+
+  it("buckets by day for long ranges and yields nothing when analytics is off", async () => {
+    installFetch(() => jsonResponse({ error: { message: "not enabled" } }, 404));
+    const series = await client().fetchMetricSeries(
+      "vercel-project",
+      "acct-1:vercel-project:prj_1",
+      ACCOUNT,
+      { startMs: 0, endMs: 30 * 86_400_000 },
+    );
+    expect(series).toEqual([]);
+    expect(calls[0]!.url).toContain("by=day");
+  });
+
+  it("ignores other resource types", async () => {
+    installFetch(() => jsonResponse({}));
+    expect(
+      await client().fetchMetricSeries("vercel-domain", "acct-1:vercel-domain:x", ACCOUNT),
+    ).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("gives the project detail a Metrics tab", () => {
+    const detail = client().renderDetail({
+      id: "acct-1:vercel-project:prj_1",
+      pluginId: "vercel",
+      resourceTypeId: "vercel-project",
+      accountId: ACCOUNT,
+      displayName: "web",
+      fields: { name: "web" },
+      resolvedOutputs: {},
+    } as never);
+    expect(detail.metricsCapability).toEqual({ defaultTimeRangeMs: 7 * 86_400_000 });
+  });
+});
