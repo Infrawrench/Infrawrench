@@ -44,6 +44,8 @@ const METRICS_PERMISSIONS: PreflightPermission[] = [
   { id: "cloudwatch:GetMetricStatistics", label: "Read CloudWatch metric datapoints" },
   { id: "cloudwatch:GetMetricData", label: "Read CloudWatch metric series" },
   { id: "cloudwatch:ListMetrics", label: "Enumerate CloudWatch metrics" },
+  { id: "logs:FilterLogEvents", label: "Read CloudWatch Logs events for the Logs tab" },
+  { id: "logs:DescribeLogStreams", label: "List the streams in a log group" },
 ];
 
 const COSTS_PERMISSIONS: PreflightPermission[] = [
@@ -63,7 +65,8 @@ export const awsPreflight: PreflightDeclaration = {
     {
       id: "metrics",
       label: "Metrics & dashboards",
-      description: "CloudWatch metric series for resource dashboards and rightsizing.",
+      description:
+        "CloudWatch metric series for resource dashboards and rightsizing, and CloudWatch Logs events for Logs tabs.",
       requiredPermissions: METRICS_PERMISSIONS,
     },
     {

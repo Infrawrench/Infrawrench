@@ -246,6 +246,14 @@ describe("AWSClient delegating methods", () => {
     expect(c.renderDetail(inst())).toEqual({ tabs: [] });
     expect(c.renderSidebarItem(inst())).toEqual({ label: "x" });
   });
+  it("renderDetail adds a Logs tab only for types with a log group", () => {
+    const c = new AWSClient(credMap);
+    expect(c.renderDetail(inst({ resourceTypeId: "lambda-function" })).logs).toEqual({
+      defaultTailLines: 200,
+    });
+    expect(c.renderDetail(inst({ resourceTypeId: "eks-cluster" })).logs).toBeDefined();
+    expect(c.renderDetail(inst()).logs).toBeUndefined();
+  });
   it("storage passthroughs", async () => {
     const c = new AWSClient(credMap);
     expect((await c.listStorageObjects("bucket", "")).length).toBe(1);

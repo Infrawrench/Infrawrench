@@ -72,6 +72,7 @@ export const EKSClusterResourceType = rt({
   ],
   iconKey: "kubernetes",
   supportsCreate: true,
+  supportsMetrics: true,
   peerIntegrations: [
     {
       pluginId: "kubernetes",
