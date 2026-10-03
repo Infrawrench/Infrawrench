@@ -18,6 +18,7 @@ import {
   type LogWorkspaceQueryListResponse,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
+import { isUniqueViolation } from "../db/errors";
 import { logWorkspaceQueries, resources } from "../db/schema";
 
 export interface LogWorkspaceQueryRecord {
@@ -61,16 +62,6 @@ export class LogWorkspaceInputError extends Error {
     super(message);
     this.name = "LogWorkspaceInputError";
   }
-}
-
-/** Postgres unique-index conflict (23505), possibly wrapped by the ORM. */
-function isUniqueViolation(error: unknown): boolean {
-  let current: unknown = error;
-  while (current instanceof Error) {
-    if ((current as { code?: unknown }).code === "23505") return true;
-    current = current.cause;
-  }
-  return false;
 }
 
 export function toWire(row: LogWorkspaceQueryRecord): LogWorkspaceQuery {

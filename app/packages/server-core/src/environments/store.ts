@@ -26,6 +26,7 @@ import {
   type MemberFailureRecord,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
+import { isUniqueViolation } from "../db/errors";
 import {
   environmentInstanceMembers,
   environmentInstances,
@@ -42,16 +43,6 @@ export class EnvironmentInputError extends Error {
     super(message);
     this.name = "EnvironmentInputError";
   }
-}
-
-/** Postgres unique-index conflict (23505), possibly wrapped by the ORM. */
-function isUniqueViolation(error: unknown): boolean {
-  let current: unknown = error;
-  while (current instanceof Error) {
-    if ((current as { code?: unknown }).code === "23505") return true;
-    current = current.cause;
-  }
-  return false;
 }
 
 // ---------------------------------------------------------------------------

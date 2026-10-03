@@ -18,6 +18,7 @@ import {
   type ResourceLeaseListResponse,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
+import { isUniqueViolation } from "../db/errors";
 import { accounts, resourceLeases, resources } from "../db/schema";
 
 export interface LeaseRecord {
@@ -69,16 +70,6 @@ export class LeaseInputError extends Error {
     super(message);
     this.name = "LeaseInputError";
   }
-}
-
-/** Postgres unique-index conflict (23505), possibly wrapped by the ORM. */
-function isUniqueViolation(error: unknown): boolean {
-  let current: unknown = error;
-  while (current instanceof Error) {
-    if ((current as { code?: unknown }).code === "23505") return true;
-    current = current.cause;
-  }
-  return false;
 }
 
 function normalizeNote(note: string | null | undefined): string | null {

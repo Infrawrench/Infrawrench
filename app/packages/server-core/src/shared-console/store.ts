@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { db } from "../db/client";
+import { isUniqueViolation } from "../db/errors";
 import { sharedConsoleParticipants, sharedConsoles, users } from "../db/schema";
 
 import {
@@ -469,17 +470,6 @@ export async function setDriver(input: {
     if (isUniqueViolation(err)) throw new DriverRaceLostError();
     throw err;
   }
-}
-
-/** Postgres 23505, however the driver in use chose to surface it. */
-function isUniqueViolation(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) return false;
-  const code = (err as { code?: unknown }).code;
-  if (code === "23505") return true;
-  const cause = (err as { cause?: unknown }).cause;
-  return (
-    typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === "23505"
-  );
 }
 
 export async function requestDriver(participantId: string, now = new Date()): Promise<void> {

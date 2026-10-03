@@ -19,6 +19,7 @@ import {
 } from "@infrawrench/client-core";
 import type { LifecycleActionsDeclaration } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
+import { isUniqueViolation } from "../db/errors";
 import { resourceSchedules, resources } from "../db/schema";
 import { getPlugin } from "../plugin-loader";
 
@@ -68,16 +69,6 @@ export class ScheduleInputError extends Error {
     super(message);
     this.name = "ScheduleInputError";
   }
-}
-
-/** Postgres unique-index conflict (23505), possibly wrapped by the ORM. */
-function isUniqueViolation(error: unknown): boolean {
-  let current: unknown = error;
-  while (current instanceof Error) {
-    if ((current as { code?: unknown }).code === "23505") return true;
-    current = current.cause;
-  }
-  return false;
 }
 
 /** The `lifecycle` declaration for a type, or null when it has none. */
