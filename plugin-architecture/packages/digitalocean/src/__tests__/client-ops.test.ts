@@ -336,9 +336,9 @@ describe("fetchDashboardStats / getLogs", () => {
     expect(logs.containers).toEqual(["events"]);
   });
 
-  it("getLogs returns empty for non-database types", async () => {
+  it("getLogs returns empty for types without a Logs tab", async () => {
     installFetch(() => undefined);
-    const logs = await newClient().getLogs("droplet", `${ACC}:droplet:1`, ACC, {});
+    const logs = await newClient().getLogs("volume", `${ACC}:volume:1`, ACC, {});
     expect(logs).toEqual({ text: "", containers: [], activeContainer: "" });
   });
 });

@@ -630,4 +630,6 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
 
   detail.customTabs = customTabs;
   detail.metricsCapability = { defaultTimeRangeMs: 60 * 60 * 1000 };
+  // DigitalOcean Insights logs (Observability agent); see `fetchDropletInsightsLogs`.
+  detail.logs = { defaultTailLines: 200 };
 }
