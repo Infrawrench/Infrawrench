@@ -11,6 +11,8 @@ import { fieldBool, fieldNumber, fieldString, tf } from "@infrawrench/plugin-bas
  * The listers do not retain GCE boot disks/images or Cloud Run revision
  * containers, so those resource types cannot produce valid Terraform. Firewall
  * allow/deny protocol blocks are likewise not retained in a structured form.
+ * Cloud Run jobs are the exception among Cloud Run types: the lister keeps
+ * the job's image and task settings, which is everything the block requires.
  */
 export const gcpTerraformExport: TerraformExportCapability = {
   provider: { name: "google", source: "hashicorp/google", version: "~> 7.0" },
@@ -36,6 +38,8 @@ export const gcpTerraformExport: TerraformExportCapability = {
     "bigquery-dataset",
     "artifact-registry-repo",
     "gcp-service-account",
+    "cloud-run-job",
+    "memorystore-valkey",
   ],
   mapResource(resource): TerraformExportResult | null {
     switch (resource.resourceTypeId) {
@@ -227,6 +231,83 @@ export const gcpTerraformExport: TerraformExportCapability = {
             name: accountId,
             attributes,
             importId: resource.externalId || fieldString(resource, "email"),
+          },
+        };
+      }
+      case "cloud-run-job": {
+        const name = fieldString(resource, "name") || resource.displayName;
+        const location = fieldString(resource, "region");
+        const image = fieldString(resource, "image");
+        if (!name || !location || !image) return null;
+        const task: Record<string, TerraformValue> = {
+          containers: tf.block({ image: tf.str(image) }),
+        };
+        const maxRetries = fieldNumber(resource, "maxRetries");
+        if (maxRetries !== undefined) task["max_retries"] = tf.num(maxRetries);
+        const timeoutSeconds = fieldNumber(resource, "timeoutSeconds");
+        if (timeoutSeconds) task["timeout"] = tf.str(`${timeoutSeconds}s`);
+        const serviceAccount = fieldString(resource, "serviceAccount");
+        if (serviceAccount) task["service_account"] = tf.str(serviceAccount);
+        const execution: Record<string, TerraformValue> = { template: tf.block(task) };
+        const taskCount = fieldNumber(resource, "taskCount");
+        if (taskCount !== undefined) execution["task_count"] = tf.num(taskCount);
+        const parallelism = fieldNumber(resource, "parallelism");
+        if (parallelism) execution["parallelism"] = tf.num(parallelism);
+        return {
+          resource: {
+            type: "google_cloud_run_v2_job",
+            name,
+            attributes: {
+              name: tf.str(name),
+              location: tf.str(location),
+              template: tf.block(execution),
+            },
+            importId: resource.externalId,
+            comments: [
+              "Only the first container's image is exported; env, secrets and resource limits are not.",
+            ],
+          },
+        };
+      }
+      case "memorystore-valkey": {
+        const instanceId = fieldString(resource, "name") || resource.displayName;
+        const location = fieldString(resource, "region");
+        const shardCount = fieldNumber(resource, "shardCount");
+        if (!instanceId || !location || !shardCount) return null;
+        const attributes: Record<string, TerraformValue> = {
+          instance_id: tf.str(instanceId),
+          location: tf.str(location),
+          shard_count: tf.num(shardCount),
+        };
+        const replicaCount = fieldNumber(resource, "replicaCount");
+        if (replicaCount !== undefined) attributes["replica_count"] = tf.num(replicaCount);
+        for (const [field, attr] of [
+          ["mode", "mode"],
+          ["nodeType", "node_type"],
+          ["engineVersion", "engine_version"],
+          ["authorizationMode", "authorization_mode"],
+          ["transitEncryptionMode", "transit_encryption_mode"],
+        ] as const) {
+          const value = fieldString(resource, field);
+          if (value) attributes[attr] = tf.str(value);
+        }
+        attributes["deletion_protection_enabled"] = tf.bool(
+          fieldBool(resource, "deletionProtectionEnabled"),
+        );
+        const network = fieldString(resource, "network");
+        if (network) {
+          attributes["desired_auto_created_endpoints"] = tf.block({
+            // A raw expression so the project interpolates from the variable.
+            network: tf.ref(`"projects/\${var.gcp_project}/global/networks/${network}"`),
+            project_id: tf.ref("var.gcp_project"),
+          });
+        }
+        return {
+          resource: {
+            type: "google_memorystore_instance",
+            name: instanceId,
+            attributes,
+            importId: resource.externalId,
           },
         };
       }

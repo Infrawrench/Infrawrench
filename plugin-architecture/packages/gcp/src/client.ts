@@ -135,14 +135,20 @@ import {
   attachResource as runAttachResource,
 } from "./compute-extras-client.js";
 import { enrichDetail as runEnrichDetail } from "./enrich-detail-client.js";
+import {
+  cancelLatestCloudRunJobExecution,
+  runCloudRunJob,
+  updateCloudRunJob,
+  updateMemorystoreValkey,
+} from "./cloud-run-job-handlers.js";
 import { VERTEX_GEMINI_MODELS } from "./resources/vertex-gemini-model.js";
 
 /**
- * Default Vertex AI region used for the Gemini chat playground. Vertex's
- * OpenAI-compatible chat endpoint is regionalised; us-central1 carries every
- * curated Gemini model, so we anchor to it unless we learn otherwise.
+ * Vertex AI location used for the Gemini chat playground. The `global`
+ * endpoint serves every curated Gemini model (the 3.x previews are served
+ * nowhere else) and routes to whichever region has capacity.
  */
-const VERTEX_DEFAULT_LOCATION = "us-central1";
+const VERTEX_DEFAULT_LOCATION = "global";
 
 export class GcpClient implements PluginClient {
   private readonly key: ServiceAccountKey;
@@ -383,6 +389,10 @@ export class GcpClient implements PluginClient {
         return listers.listForwardingRules(ctx, accountId, p);
       case "memorystore-memcached":
         return listers.listMemorystoreMemcached(ctx, accountId, p);
+      case "memorystore-valkey":
+        return listers.listMemorystoreValkey(ctx, accountId, p);
+      case "cloud-run-job":
+        return listers.listCloudRunJobs(ctx, accountId, p);
       case "vertex-ai-endpoint":
         return listers.listVertexAiEndpoints(ctx, accountId, p);
       case "vertex-gemini-model":
@@ -645,6 +655,12 @@ export class GcpClient implements PluginClient {
       await setGceInstancePower(this.sharedCtx, resource, actionId);
       return;
     }
+    if (typeId === "cloud-run-job" && (actionId === "execute" || actionId === "cancel-latest")) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (actionId === "execute") await runCloudRunJob(this.sharedCtx, resource);
+      else await cancelLatestCloudRunJobExecution(this.sharedCtx, resource);
+      return;
+    }
     throw new Error(`GCP plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
   }
 
@@ -827,6 +843,13 @@ export class GcpClient implements PluginClient {
       }
       const resource = await this.getResource(typeId, resourceId, accountId);
       await setGceInstanceMachineType(this.sharedCtx, resource, machineType);
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
+    if (typeId === "cloud-run-job" || typeId === "memorystore-valkey") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (typeId === "cloud-run-job") await updateCloudRunJob(this.sharedCtx, resource, fields);
+      else await updateMemorystoreValkey(this.sharedCtx, resource, fields);
       return this.getResource(typeId, resourceId, accountId);
     }
 
@@ -1097,8 +1120,11 @@ export class GcpClient implements PluginClient {
       return;
     }
 
+    // The global location has no region prefix on its host name.
+    const host =
+      location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
     const endpoint =
-      `https://${location}-aiplatform.googleapis.com/v1/projects/${this.project}` +
+      `https://${host}/v1/projects/${this.project}` +
       `/locations/${location}/endpoints/openapi/chat/completions`;
     const body = JSON.stringify({
       model: `google/${modelId}`,

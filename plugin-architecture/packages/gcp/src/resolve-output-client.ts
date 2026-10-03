@@ -234,6 +234,11 @@ export async function resolveOutput(
     return String(resource.resolvedOutputs["url"] ?? "");
   }
 
+  if (typeId === "memorystore-valkey" || typeId === "cloud-run-job") {
+    const resource = await ctx.getResource(typeId, resourceId, accountId);
+    return String(resource.resolvedOutputs[outputKey] ?? "");
+  }
+
   if (typeId === "vpc-network") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     return String(resource.resolvedOutputs[outputKey] ?? "");

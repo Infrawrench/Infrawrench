@@ -9,11 +9,13 @@ sidebar_order: 3
 - **Projects** — the GCP projects your service-account key can see, so surfaces can offer a picker instead of asking for a project ID.
 - **Compute** — Compute Engine VM instances.
 - **Kubernetes** — GKE clusters (links to the [Kubernetes plugin](./kubernetes.md)).
-- **Databases** — Cloud SQL (Postgres, MySQL).
+- **Databases** — Cloud SQL (Postgres, MySQL), AlloyDB (pick the PostgreSQL version, 14 to 18, at create time), and Memorystore for Redis, Memcached and **Valkey**.
 - **Analytics** — BigQuery datasets and tables.
-- **App hosting** — App Engine services.
+- **App hosting** — App Engine services, Cloud Run services and **Cloud Run jobs**.
 - **Storage** — Cloud Storage buckets.
-- **AI/ML** — Vertex AI endpoints and a curated list of Vertex AI Gemini chat models.
+- **AI/ML** — Vertex AI endpoints and a curated list of Vertex AI Gemini chat models (Gemini 3.8, 3.7, 3.6 and 3.5 Flash, 3.5 and 3.1 Flash-Lite, the Gemini 3.1 Pro and 3 Flash previews, and Gemini 2.5).
+
+Region pickers list every public Google Cloud region, including Mexico (`northamerica-south1`), Stockholm (`europe-north2`) and Bangkok (`asia-southeast3`). A service that is not offered in a region rejects it with an error naming the region. The VM image picker includes Debian 13 (Trixie).
 
 ## Credentials
 
@@ -49,10 +51,38 @@ Follow the link and click **Enable** for each service you want listed, or leave 
 - **SQL editor** on Cloud SQL (Postgres, MySQL, SQL Server) — direct connection to the instance's public IP using the embedded root password (see below).
 - **File browser** on GCS buckets.
 - **Secret export to K8s** for Cloud SQL and GCS (with service account key export as a secret).
-- **Gemini Playground** on Vertex AI Gemini models — open any model under **AI/ML** and use the **Playground** tab to chat with it. Responses stream token-by-token through Vertex AI's OpenAI-compatible chat endpoint (`us-central1`), authorized with the account's service account. The whole conversation history is sent on each turn. The service account needs the **Vertex AI User** role (`roles/aiplatform.user`) and the Vertex AI API enabled on the project.
+- **Gemini Playground** on Vertex AI Gemini models — open any model under **AI/ML** and use the **Playground** tab to chat with it. Responses stream token-by-token through Vertex AI's OpenAI-compatible chat endpoint, authorized with the account's service account. The whole conversation history is sent on each turn. Requests go to Vertex AI's `global` endpoint, which serves every model in the list (the Gemini 3.x previews are only offered there). The service account needs the **Vertex AI User** role (`roles/aiplatform.user`) and the Vertex AI API enabled on the project.
 - **Send test messages** to Pub/Sub topics and Cloud Tasks queues from a **Publish** / **Create task** tab on the detail page — see [Send test messages](../features/send-test-message.md). The service account needs `roles/pubsub.publisher` and `roles/cloudtasks.enqueuer` respectively.
 
 ![GCP Gemini model detail page with the Playground tab open, showing a streamed assistant reply](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gcp/gemini-playground.png)
+
+## Cloud Run jobs
+
+Cloud Run jobs run containers to completion instead of serving requests. Each job lists its image, task count, parallelism, retries, task timeout and the status of its latest execution.
+
+- **Execute** on the detail page starts a new execution with the job's configuration. While the latest execution is pending or running, **Cancel execution** stops it.
+- The **Executions** tab lists the 20 most recent executions with their status, tasks succeeded, and start and finish times.
+- **Logs** reads the job's `cloud_run_job` entries from Cloud Logging, and **Metrics** charts completed and running executions and task attempts.
+- **Create** takes a name, region (from Cloud Run's own region list), container image, tasks, parallelism, retries, timeout, CPU, memory and an optional service account from a picker.
+- **Edit** changes the image, task count, parallelism, retries and timeout. Infrawrench reads the live job and changes only those values, so environment variables, secrets and volumes set elsewhere are kept.
+
+The service account needs `run.jobs.list` to list jobs, `roles/run.developer` to create, edit or delete them, and `run.jobs.run` (in `roles/run.invoker`) to execute them.
+
+<insert [Cloud Run job detail page with the Execute header action and the Executions tab listing recent runs] here>
+
+## Memorystore for Valkey
+
+Valkey instances, in cluster mode or with cluster mode disabled, are listed with their node type, shard and replica counts, engine version, authentication and in-transit encryption settings. The detail page shows the endpoint clients connect to (and the reader endpoint for cluster-mode-disabled instances with replicas), and the **Host**, **Port** and **Valkey URL** outputs can be exported as secrets. The URL uses `rediss://` when in-transit encryption is on.
+
+- **Create** asks for the instance ID, region, VPC network (from a picker), mode, shard count (cluster mode only), replicas, node type (every type from shared-core-nano to highmem-2xlarge, with its vCPU and memory), Valkey version (9.1 is in Preview), authentication, in-transit encryption and deletion protection. The network needs a [service connection policy](https://cloud.google.com/memorystore/docs/valkey/networking) for Memorystore in that region before the instance can be created.
+- **Edit** scales the node type, shard count and replicas per shard, upgrades the Valkey version, and toggles deletion protection. Only the fields you change are sent. Cluster-mode-disabled instances always keep exactly one shard.
+- **Metrics** charts CPU and memory utilization, used memory, connected clients, commands, keys, and keyspace hits and misses.
+
+Listing needs `memorystore.instances.list` (in `roles/memorystore.viewer`); creating and editing need `roles/memorystore.admin`.
+
+## Terraform export
+
+[Eject to Terraform](../features/terraform-export.md) covers Cloud Storage buckets, VPC networks and subnets, GKE clusters, Pub/Sub topics, Cloud DNS zones, BigQuery datasets, Artifact Registry repositories, service accounts, Cloud Run jobs (`google_cloud_run_v2_job`; only the first container's image is exported) and Memorystore for Valkey instances (`google_memorystore_instance`).
 
 ## Cloud SQL connectivity
 
