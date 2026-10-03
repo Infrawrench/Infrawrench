@@ -675,10 +675,13 @@ describe("principalRole declarations", () => {
         if (actionId) declared.push(`${plugin.manifest.id}/${type.id}:${actionId}`);
       }
     }
-    // Both are `{ type: "plugin-action" }` header actions their plugin's
-    // `invokeAction` already handles, and both revoke rather than delete.
+    // Each is a `{ type: "plugin-action" }` header action its plugin's
+    // `invokeAction` already handles, and each revokes rather than deletes.
     expect(declared.sort()).toEqual([
       "anthropic/api-key:deactivate-key",
+      "clickhouse/ch-api-key:disable",
+      "tailscale/user:suspend",
+      "workos/organization-api-key:expire",
       "workos/organization-membership:deactivate",
     ]);
   });
