@@ -126,3 +126,26 @@ export const ORGANIZATION_LOG_EVENTS: readonly string[] = WEBHOOK_EVENTS.filter(
     "group.",
   ].some((prefix) => event.startsWith(prefix)),
 );
+
+/**
+ * Event families charted on an organization's Metrics tab, each one a series.
+ * Only events whose payload carries `organization_id` can be filtered to an
+ * organization: of the authentication events that is the SSO family alone
+ * (password, magic auth, OAuth and passkey sign-ins carry a user, not an
+ * organization), so the series say "SSO" rather than "sign-ins".
+ */
+export const ORGANIZATION_METRIC_SERIES: readonly { label: string; events: readonly string[] }[] = [
+  { label: "SSO sign-ins", events: ["authentication.sso_succeeded"] },
+  {
+    label: "SSO failures",
+    events: ["authentication.sso_failed", "authentication.sso_timed_out"],
+  },
+  { label: "Sessions created", events: ["session.created"] },
+  {
+    label: "Directory Sync changes",
+    // User and group changes, not directory lifecycle (activated/deleted).
+    events: WEBHOOK_EVENTS.filter(
+      (event) => event.startsWith("dsync.user.") || event.startsWith("dsync.group."),
+    ),
+  },
+];

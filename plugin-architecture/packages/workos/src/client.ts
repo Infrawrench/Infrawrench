@@ -4,6 +4,7 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  MetricSeries,
   PluginClient,
   ResourceInstance,
   ResourceStatus,
@@ -16,7 +17,7 @@ import type {
   LogsFetchResult,
   PolicyOption,
 } from "@infrawrench/plugin-base";
-import { ORGANIZATION_LOG_EVENTS, WEBHOOK_EVENTS } from "./events.js";
+import { ORGANIZATION_LOG_EVENTS, ORGANIZATION_METRIC_SERIES, WEBHOOK_EVENTS } from "./events.js";
 
 const BASE_URL = "https://api.workos.com";
 
@@ -25,6 +26,15 @@ const PAGE_SIZE = 100;
 
 /** Hard cap on cursor-following so a huge environment can't hang a sync. */
 const MAX_LIST_PAGES = 20;
+
+/** The Metrics tab's default window when the host passes no range. */
+const METRICS_DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
+
+/** The Events API answers at most 30 days of events per request. */
+const EVENTS_MAX_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Roughly how many points each metric series is bucketed into. */
+const METRIC_BUCKETS = 48;
 
 // ---------------------------------------------------------------------------
 // WorkOS API shapes: verified against the official OpenAPI spec
@@ -1251,6 +1261,83 @@ export class WorkosClient implements PluginClient {
       createdAt,
       updatedAt: str(group.updated_at) || createdAt,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Metrics
+  // -------------------------------------------------------------------------
+
+  /**
+   * An organization's SSO, session and Directory Sync activity, counted per
+   * bucket from the Events API. WorkOS has no metrics endpoint; the events
+   * are the record. The API answers at most 30 days per request (and keeps
+   * 90), so a longer window is clamped to its latest 30 days.
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "organization") return [];
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = Math.max(
+      timeRange?.startMs ?? endMs - METRICS_DEFAULT_RANGE_MS,
+      endMs - EVENTS_MAX_RANGE_MS,
+    );
+    const query = new URLSearchParams({
+      organization_id: externalIdOf(resourceId),
+      range_start: new Date(startMs).toISOString(),
+      range_end: new Date(endMs).toISOString(),
+      order: "desc",
+      limit: String(PAGE_SIZE),
+    });
+    for (const series of ORGANIZATION_METRIC_SERIES) {
+      for (const event of series.events) query.append("events", event);
+    }
+
+    // Newest first, so a busy organization that outruns the page cap loses
+    // its oldest buckets rather than its most recent ones.
+    const events: WosEvent[] = [];
+    let after = "";
+    for (let page = 0; page < MAX_LIST_PAGES; page++) {
+      if (after) query.set("after", after);
+      const body = await this.fetch<WosList<WosEvent>>(`/events?${query.toString()}`);
+      const items = body.data ?? [];
+      events.push(...items);
+      after = str(body.list_metadata?.after);
+      if (!after || items.length === 0) break;
+    }
+
+    const timestamps = events
+      .map((event) => ({ name: str(event.event), at: Date.parse(str(event.created_at)) }))
+      .filter((event) => Number.isFinite(event.at));
+    // A cursor surviving the cap means everything before the oldest event
+    // fetched is unknown, not zero; start the chart where the data does.
+    const firstMs = after
+      ? Math.min(...timestamps.map((event) => event.at), endMs)
+      : Number.NEGATIVE_INFINITY;
+    const bucketMs = Math.max(
+      60_000,
+      Math.ceil((endMs - startMs) / METRIC_BUCKETS / 60_000) * 60_000,
+    );
+    const buckets: number[] = [];
+    for (let at = startMs; at < endMs; at += bucketMs) if (at >= firstMs) buckets.push(at);
+
+    return ORGANIZATION_METRIC_SERIES.map((series) => {
+      const counts = new Map<number, number>(buckets.map((at) => [at, 0]));
+      for (const event of timestamps) {
+        if (!series.events.includes(event.name)) continue;
+        const bucket = startMs + Math.floor((event.at - startMs) / bucketMs) * bucketMs;
+        const current = counts.get(bucket);
+        if (current !== undefined) counts.set(bucket, current + 1);
+      }
+      return {
+        label: series.label,
+        unit: "count",
+        points: buckets.map((timestamp) => ({ timestamp, value: counts.get(timestamp) ?? 0 })),
+      };
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -2489,6 +2576,7 @@ export class WorkosClient implements PluginClient {
       status: { kind: "status-dot", status: "healthy" },
       sections,
       logs: { defaultTailLines: 100 },
+      metricsCapability: { defaultTimeRangeMs: METRICS_DEFAULT_RANGE_MS },
       headerActions: [
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
         {
