@@ -51,6 +51,12 @@ field — Infrawrench works out which one you gave it:
 - **Storage quota** feeds the [Quota radar](../features/quota-radar.md): the
   storage counted against the app's quota is tracked over time, with an alert
   before uploads start failing.
+- **Upload activity** on the app's **Metrics** tab: uploads, bytes uploaded,
+  failed uploads, and the running total of stored bytes, over the last 30 days
+  by default. UploadThing has no usage history API, so these are built from the
+  file listing's upload times and sizes. Deleted files are no longer in that
+  listing, so the charts describe how the app's current contents arrived, not
+  a storage history.
 
 ![UploadThing app detail page showing the storage quota section, with the file listing on its own Files tab](https://agent-assets.infrawrench.com/docs-screenshots/plugins/uploadthing/app-detail-storage.png)
 

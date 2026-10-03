@@ -39,6 +39,8 @@ export const UtAppResourceType = rt({
   // account lands here instead of on a section holding one pill.
   accountRoot: true,
   supportsStorageBrowser: true,
+  // Upload activity, bucketed from the `listFiles` walk.
+  supportsMetrics: true,
   supportsCreate: false,
   supportsDelete: false,
   iconKey: "app",

@@ -4,6 +4,7 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  MetricSeries,
   PluginClient,
   QuotaUsage,
   ResourceInstance,
@@ -19,7 +20,9 @@ import {
   externalIdOf,
   buildMultipartBody,
   normalizeQuotaUsage,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
+import { UtAppResourceType } from "./resources/ut-app.js";
 
 /**
  * UploadThing plugin client.
@@ -56,6 +59,15 @@ const API_BASE = "https://api.uploadthing.com";
  * a single walk rather than repeating it.
  */
 const FILE_PAGE_SIZE = 500;
+
+/**
+ * UploadThing has no time-series API (`getUsageInfo` is a point-in-time total),
+ * so the app's Metrics tab is built from the `listFiles` walk the listing
+ * already does: every file carries `uploadedAt` and `size`. Files deleted since
+ * are gone from that list, so the charts describe what is still in the app.
+ */
+const METRICS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const METRICS_BUCKETS = 60;
 
 /** How many file keys to send per `deleteFiles` call when clearing a folder. */
 const DELETE_BATCH_SIZE = 250;
@@ -1078,6 +1090,89 @@ export class UploadThingClient implements PluginClient {
   }
 
   // -------------------------------------------------------------------------
+  // Metrics
+  // -------------------------------------------------------------------------
+
+  /**
+   * Upload activity for the app, bucketed from the file list (see
+   * {@link METRICS_WINDOW_MS}). "Stored bytes" is the running total of files
+   * in the `Uploaded` state by upload time, so it shows how the current
+   * contents accumulated rather than a historical storage reading.
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "ut-app") return [];
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
+    const files = await this.fetchFiles();
+
+    const bucketMs = Math.max(60 * 60 * 1000, Math.ceil((endMs - startMs) / METRICS_BUCKETS));
+    const firstBucket = Math.floor(startMs / bucketMs) * bucketMs;
+    const uploads: number[] = [];
+    const bytes: number[] = [];
+    const failed: number[] = [];
+    const storedDelta: number[] = [];
+    for (let t = firstBucket; t < endMs; t += bucketMs) {
+      uploads.push(0);
+      bytes.push(0);
+      failed.push(0);
+      storedDelta.push(0);
+    }
+    let storedBefore = 0;
+    for (const file of files) {
+      const at = Number(file.uploadedAt);
+      if (!Number.isFinite(at) || at >= endMs) continue;
+      const size = Number(file.size) || 0;
+      const stored = file.status === "Uploaded";
+      if (at < firstBucket) {
+        if (stored) storedBefore += size;
+        continue;
+      }
+      const index = Math.floor((at - firstBucket) / bucketMs);
+      if (index >= uploads.length) continue;
+      if (file.status === "Failed") {
+        failed[index] = (failed[index] ?? 0) + 1;
+        continue;
+      }
+      uploads[index] = (uploads[index] ?? 0) + 1;
+      bytes[index] = (bytes[index] ?? 0) + size;
+      if (stored) storedDelta[index] = (storedDelta[index] ?? 0) + size;
+    }
+
+    const at = (i: number) => firstBucket + i * bucketMs;
+    let running = storedBefore;
+    return [
+      {
+        label: "Uploads",
+        unit: "count",
+        points: uploads.map((value, i) => ({ timestamp: at(i), value })),
+      },
+      {
+        label: "Bytes uploaded",
+        unit: "bytes",
+        points: bytes.map((value, i) => ({ timestamp: at(i), value })),
+      },
+      {
+        label: "Failed uploads",
+        unit: "count",
+        points: failed.map((value, i) => ({ timestamp: at(i), value })),
+      },
+      {
+        label: "Stored bytes",
+        unit: "bytes",
+        points: storedDelta.map((delta, i) => {
+          running += delta;
+          return { timestamp: at(i), value: running };
+        }),
+      },
+    ];
+  }
+
+  // -------------------------------------------------------------------------
   // Rendering
   // -------------------------------------------------------------------------
 
@@ -1138,7 +1233,12 @@ export class UploadThingClient implements PluginClient {
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     return resource.resourceTypeId === "ut-file"
       ? this.renderFileDetail(resource)
-      : this.renderAppDetail(resource);
+      : withMetricsCapability(
+          this.renderAppDetail(resource),
+          [UtAppResourceType],
+          "ut-app",
+          METRICS_WINDOW_MS,
+        );
   }
 
   private renderAppDetail(resource: ResourceInstance): DetailViewSchema {
