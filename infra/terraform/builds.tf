@@ -8,18 +8,27 @@
 # isolation is structural instead of something a NetworkPolicy has to keep
 # getting right.
 #
+# Cloud Build has a metadata server of its own, though, and every step can mint
+# a token for the account the build runs as. The customer decides what the
+# steps run, so that account is effectively theirs for the length of the build,
+# and every tenant's build runs as the same one. Hence the shape of the grants
+# below: the build account can read no other build's anything. It holds no
+# storage, registry or project-wide Secret Manager access; source, the staged
+# image and run() output move through per-object signed URLs the web pods mint,
+# and each per-build secret is bound to it individually.
+#
 # The runtime side is app/packages/server-core/src/infrafile/build-cloud.ts,
-# which reads GCP_BUILD_PROJECT_ID / _STAGING_BUCKET / _STAGING_REPO / _REGION
-# out of var.app_env. The outputs in outputs.tf print the exact values to paste
-# there. Without them the web app simply reports that hosted builds are
-# unavailable, so this whole file is optional.
+# which reads GCP_BUILD_PROJECT_ID / _STAGING_BUCKET / _SERVICE_ACCOUNT /
+# _REGION out of var.app_env. The outputs in outputs.tf print the exact values
+# to paste there. Without them the web app simply reports that hosted builds
+# are unavailable, so this whole file is optional.
 
 data "google_project" "this" {
   project_id = var.project_id
 }
 
-# artifactregistry.googleapis.com is already in google_project_service.required
-# (main.tf) for the production image repo, so only these two are new.
+# iamcredentials.googleapis.com (signBlob, for the signed URLs) is already in
+# google_project_service.required (main.tf), so only these are new.
 resource "google_project_service" "builds" {
   for_each = toset([
     "cloudbuild.googleapis.com",
@@ -42,35 +51,68 @@ locals {
   # keyless treatment rather than a JSON key of their own.
   build_caller = "serviceAccount:${google_service_account.vertex.email}"
 
-  # Which account a build itself runs as depends on when the project was
-  # created: projects that enabled the Cloud Build API before Google's default
-  # service account change use the legacy
-  # PROJECT_NUMBER@cloudbuild.gserviceaccount.com, newer ones fall back to the
-  # Compute Engine default account. build-cloud.ts submits builds without
-  # naming one, so var.build_service_account is how an older project points the
-  # grants below at the right principal.
-  build_service_account = coalesce(
-    var.build_service_account,
-    "${data.google_project.this.number}-compute@developer.gserviceaccount.com",
-  )
+  build_worker = "serviceAccount:${google_service_account.build.email}"
+}
+
+# ---------------------------------------------------------------------------
+# The account builds run as
+# ---------------------------------------------------------------------------
+
+# Dedicated, and named on every submission (`serviceAccount` in build-cloud.ts).
+# Left to itself Cloud Build runs as the project default: the legacy Cloud
+# Build account or the Compute Engine default, either of which is shared with
+# everything else in the project, and the latter of which is granted project
+# Editor on creation in most projects. A customer build holding Editor could
+# read and overwrite anything here.
+#
+# MANUAL STEP: this config does not, and should not blindly, take Editor away
+# from `<project-number>-compute@developer.gserviceaccount.com`; other things
+# outside Terraform may run as it. Once hosted builds run as this account,
+# check what else uses the default one and remove its Editor binding by hand.
+# See infra/README.md.
+resource "google_service_account" "build" {
+  account_id   = "${var.cluster_name}-build"
+  display_name = "Hosted Infrafile builds: runs customer Dockerfiles, holds no data access"
+}
+
+# The one project-level grant, and it is write-only: logEntries.create cannot be
+# granted below the project. Cloud Build insists on an explicit log destination
+# once a build names its own account, and Cloud Logging is the one that costs no
+# isolation. The alternative, a logs bucket, needs the build account to hold
+# storage access there, which would let one customer's build read another's
+# log. A build can add log entries to this project and read none of them.
+resource "google_project_iam_member" "builder_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = local.build_worker
+}
+
+# Submitting a build that runs as another account is acting as that account,
+# so the web pods need actAs on this one. Granted on the account itself, not
+# the project, so the pods cannot act as anything else.
+resource "google_service_account_iam_member" "web_act_as_builder" {
+  service_account_id = google_service_account.build.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = local.build_caller
 }
 
 # ---------------------------------------------------------------------------
 # Staging bucket
 # ---------------------------------------------------------------------------
 
-# Two things live here: the source tarball a deploy uploads for Cloud Build to
-# extract into /workspace, and the build's log — builds run with
-# `logging: GCS_ONLY`, so this bucket holds the only copy of it, and run()
-# reads it back to recover the command's stdout.
+# Everything a deploy stages: the source tarball, the `docker save` of the
+# built image that later run() builds load, and each run()'s captured output.
+# The build account has no access to any of it. The web pods write the source
+# and read the output with their own credential, and hand each build signed
+# URLs for exactly the objects it needs, so a build that reads its own token
+# still cannot see another deploy's source or swap out its image.
 resource "google_storage_bucket" "builds" {
   name     = local.build_bucket
   location = var.region
 
-  # Both are scratch: read minutes after they are written and never again. A
-  # short TTL keeps this from growing without bound, and — since the tarballs
-  # are customer source — keeps other people's code from accumulating in our
-  # project indefinitely.
+  # All of it is scratch, deleted when the deploy finishes. A short TTL is the
+  # backstop for a pod killed mid-deploy, and, since the tarballs are customer
+  # source, keeps other people's code from accumulating in our project.
   lifecycle_rule {
     condition {
       age = 3
@@ -97,36 +139,6 @@ resource "google_storage_bucket" "builds" {
 }
 
 # ---------------------------------------------------------------------------
-# Staging repository
-# ---------------------------------------------------------------------------
-
-resource "google_artifact_registry_repository" "builds" {
-  location      = var.region
-  repository_id = var.build_repository_id
-  description   = "Scratch images for hosted Infrafile builds — pulled by run() steps, never deployed"
-  format        = "DOCKER"
-
-  # Every hosted build pushes its image here even when the Infrafile publishes
-  # nowhere, because a Cloud Build step pulls its image from a registry and an
-  # image built on one worker does not exist on the next one. The deployed
-  # image still goes to the customer's own registry; this is only how a later
-  # run() step in the same deploy gets something to pull.
-  #
-  # build-cloud.ts deletes the tag when the deploy finishes, but that is best
-  # effort — a pod killed mid-deploy never gets there. One day is far past the
-  # 20-minute build timeout, so anything this policy catches is orphaned.
-  cleanup_policies {
-    id     = "delete-stale"
-    action = "DELETE"
-    condition {
-      older_than = "86400s" # 1 day
-    }
-  }
-
-  depends_on = [google_project_service.builds]
-}
-
-# ---------------------------------------------------------------------------
 # What the web pods may do
 # ---------------------------------------------------------------------------
 
@@ -141,23 +153,23 @@ resource "google_project_iam_member" "web_cloudbuild" {
   depends_on = [google_project_service.builds]
 }
 
-# Bucket-scoped rather than project-wide: the pods upload source and read logs
-# back, and have no business anywhere else in the project's storage.
+# Bucket-scoped rather than project-wide: the pods stage and clean up objects
+# here, and have no business anywhere else in the project's storage. A signed
+# URL carries its signer's authority, so this is also what the URLs handed to
+# builds can do, one object and one method at a time.
 resource "google_storage_bucket_iam_member" "web_builds_bucket" {
   bucket = google_storage_bucket.builds.name
   role   = "roles/storage.objectAdmin"
   member = local.build_caller
 }
 
-# repoAdmin, not writer, and only on this repo. The pods never push — the build
-# worker does — but they do delete the staged tag after each deploy, and
-# artifactregistry.tags.delete is in repoAdmin only. With writer that cleanup
-# would 403 silently and the policy above would be doing all the work.
-resource "google_artifact_registry_repository_iam_member" "web_staging_repo" {
-  location   = google_artifact_registry_repository.builds.location
-  repository = google_artifact_registry_repository.builds.name
-  role       = "roles/artifactregistry.repoAdmin"
-  member     = local.build_caller
+# Signing those URLs. On GKE the pods have no private key, so the IAM
+# Credentials API signs for them, and that takes signBlob on their own account
+# even when it is signing as itself.
+resource "google_service_account_iam_member" "web_sign_urls" {
+  service_account_id = google_service_account.vertex.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = local.build_caller
 }
 
 # ---------------------------------------------------------------------------
@@ -169,14 +181,14 @@ resource "google_artifact_registry_repository_iam_member" "web_staging_repo" {
 # argument: Cloud Build records a step's args in *our* project's build history
 # permanently, so a `docker login --password <value>` would leave a customer's
 # credential sitting in our logs. So build-cloud.ts creates a Secret Manager
-# secret per build (per variable, for run()), references it by name from
-# availableSecrets so only the worker ever sees the value, and destroys it in a
-# `finally` — the credential outlives neither the build nor a failure of it.
+# secret per build (per variable, for run()), binds the build account to that
+# one secret, references it by name from availableSecrets so only the worker
+# ever sees the value, and destroys it in a `finally`; a TTL on the secret is
+# the backstop.
 #
 # roles/secretmanager.admin would cover that, but it also carries
-# secretmanager.versions.access and secrets.setIamPolicy: the web pods could
-# read the payload of every secret in the project and grant others the same.
-# They only ever write, so these custom roles drop both.
+# secretmanager.versions.access: the web pods could read the payload of every
+# secret in the project. They only ever write, so these custom roles drop it.
 
 locals {
   # Must match the secretId build-cloud.ts generates: `infrawrench-deploy-<uuid>`.
@@ -202,13 +214,17 @@ resource "google_project_iam_custom_role" "build_secret_create" {
   permissions = ["secretmanager.secrets.create"]
 }
 
+# setIamPolicy is how each secret is shared with the build account and nothing
+# else. It is confined to these secrets by the condition below, so the pods can
+# grant access to the credentials they staged and to no other secret.
 resource "google_project_iam_custom_role" "build_secret_manage" {
   project     = var.project_id
   role_id     = "infrawrenchBuildSecretManage"
-  title       = "Infrawrench hosted build — write and destroy a build secret"
-  description = "Add a version to, and delete, a per-build secret. Cannot read any payload."
+  title       = "Infrawrench hosted build: write, share and destroy a build secret"
+  description = "Add a version to, bind the build account to, and delete a per-build secret. Cannot read any payload."
   permissions = [
     "secretmanager.secrets.delete",
+    "secretmanager.secrets.setIamPolicy",
     "secretmanager.versions.add",
   ]
 }
@@ -222,8 +238,8 @@ resource "google_project_iam_member" "web_secret_create" {
   member  = local.build_caller
 }
 
-# Writing and destroying name a secret that already exists, so they are
-# confined to the ones this feature creates.
+# Writing, sharing and destroying name a secret that already exists, so they
+# are confined to the ones this feature creates.
 resource "google_project_iam_member" "web_secret_manage" {
   project = var.project_id
   role    = google_project_iam_custom_role.build_secret_manage.id
@@ -236,49 +252,8 @@ resource "google_project_iam_member" "web_secret_manage" {
   }
 }
 
-# ---------------------------------------------------------------------------
-# What the build worker may do
-# ---------------------------------------------------------------------------
-
-# The worker reads the uploaded source and writes the build log back.
-resource "google_storage_bucket_iam_member" "builder_bucket" {
-  bucket = google_storage_bucket.builds.name
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${local.build_service_account}"
-}
-
-# ...and must also be able to READ THE BUCKET ITSELF, which objectAdmin does not
-# grant — it covers objects only. Cloud Build calls buckets.get to validate the
-# source before it starts, so without this every submission is rejected up front
-# with `invalid bucket ...; service account does not have access`, long before
-# any step runs. Found by submitting a real build.
-resource "google_storage_bucket_iam_member" "builder_bucket_read" {
-  bucket = google_storage_bucket.builds.name
-  role   = "roles/storage.legacyBucketReader"
-  member = "serviceAccount:${local.build_service_account}"
-}
-
-# Pushing the staged image is the only registry access a build needs. It never
-# deletes, so writer rather than the repoAdmin the pods hold.
-resource "google_artifact_registry_repository_iam_member" "builder_staging_repo" {
-  location   = google_artifact_registry_repository.builds.location
-  repository = google_artifact_registry_repository.builds.name
-  role       = "roles/artifactregistry.writer"
-  member     = "serviceAccount:${local.build_service_account}"
-}
-
-# A per-build secret is created and abandoned with no IAM policy of its own, so
-# the worker's read access has to be granted at the project. The condition is
-# what keeps a build running a stranger's Dockerfile from reading anything else
-# we ever put in Secret Manager.
-resource "google_project_iam_member" "builder_secret_access" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${local.build_service_account}"
-
-  condition {
-    title       = "Per-build secrets only"
-    description = "Secrets named by build-cloud.ts (${local.build_secret_prefix}<uuid>)."
-    expression  = local.build_secret_condition
-  }
-}
+# There is deliberately no project-level secretAccessor for the build account,
+# not even one conditioned on the name prefix. Every tenant's build runs as the
+# same account, so a prefix grant would let any build read any other build's
+# credential by name. The per-secret binding build-cloud.ts adds is the only
+# way the account reads a secret, and it has no secrets.list to discover one.

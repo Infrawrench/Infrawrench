@@ -200,6 +200,38 @@ Verify enforcement is live before trusting the policy — apply it, then confirm
 connection that _should_ be blocked actually is. A NetworkPolicy that is present
 but inert is worse than none, because it reads as protection.
 
+## Hosted builds and the default compute service account
+
+Hosted Infrafile builds (`terraform/builds.tf`) run customer Dockerfiles, and
+any build step can mint a token for the account the build runs as. They run as
+a dedicated account (the `build_service_account` output, set as
+`GCP_BUILD_SERVICE_ACCOUNT` in `app_env`) that holds `logging.logWriter` and
+nothing else; source, staged images, `run()` output and credentials reach each
+build through per-object signed URLs and per-secret bindings.
+
+Before that, builds ran as the project's default account, which on most
+projects is `<project-number>-compute@developer.gserviceaccount.com` and was
+granted **project Editor** automatically when the Compute Engine API was
+enabled. Terraform never created that binding and deliberately does not remove
+it, because things outside this config (a VM created by hand, an old Cloud
+Function) may run as that account. **Manual step after applying:**
+
+1. Confirm builds run as the new account: a recent build in
+   `gcloud builds list --limit 5 --format='value(id,serviceAccount)'` should
+   name the `-build` account.
+2. Find what else uses the default account:
+   `gcloud compute instances list --format='table(name,serviceAccounts[].email)'`,
+   plus Cloud Functions, Cloud Run and Dataflow if the project uses them. GKE
+   nodes and the ClickHouse VM use `google_service_account.nodes`, not it.
+3. If nothing does, remove the grant:
+   `gcloud projects remove-iam-policy-binding <project> --member='serviceAccount:<number>-compute@developer.gserviceaccount.com' --role=roles/editor`.
+   Projects old enough to have builds default to the legacy
+   `<number>@cloudbuild.gserviceaccount.com` should apply the same check to
+   that account; it no longer runs our builds either.
+
+The org policy `iam.automaticIamGrantsForDefaultServiceAccounts` stops new
+projects from granting Editor to begin with.
+
 ## Day-2 notes
 
 - **Deploys are push-to-main.** Every deploy is a full image rebuild pinned to

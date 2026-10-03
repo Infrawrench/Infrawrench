@@ -14,13 +14,13 @@ output "registry_endpoint" {
 }
 
 output "build_staging_bucket" {
-  description = "Bucket hosted Infrafile builds stage source and logs in. Set as GCP_BUILD_STAGING_BUCKET in var.app_env."
+  description = "Bucket hosted Infrafile builds stage source, images and run() output in. Set as GCP_BUILD_STAGING_BUCKET in var.app_env."
   value       = google_storage_bucket.builds.name
 }
 
-output "build_staging_repo" {
-  description = "Artifact Registry path hosted Infrafile builds stage images to. Set as GCP_BUILD_STAGING_REPO in var.app_env."
-  value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.builds.repository_id}"
+output "build_service_account" {
+  description = "Dedicated account hosted Infrafile builds run as. Set as GCP_BUILD_SERVICE_ACCOUNT in var.app_env."
+  value       = google_service_account.build.email
 }
 
 output "ci_service_account" {

@@ -27,7 +27,7 @@ import {
 } from "../github/app.js";
 import {
   buildOnCloudBuild,
-  cleanupStagedImage,
+  cleanupHostedBuild,
   cloudBuildConfig,
   runOnCloudBuild,
   type CloudBuildContext,
@@ -519,8 +519,9 @@ export async function runDeployment(
     // Always clear the scratch directory: a failed deploy leaves a clone with
     // build artifacts behind otherwise, and those accumulate silently.
     if (sshCtx) await cleanupOverSsh(sshCtx).catch(() => {});
-    // Same for the staged image: it exists only so run() had something to pull.
-    if (cloudCtx) await cleanupStagedImage(cloudCtx).catch(() => {});
+    // Same for the staged source and image: they exist only so run() had
+    // something to mount and load.
+    if (cloudCtx) await cleanupHostedBuild(cloudCtx).catch(() => {});
   }
 
   // A production deploy that fails at 3am should wake somebody. Reuses the four
