@@ -1,5 +1,6 @@
 import type { DetailViewSchema, ResourceInstance } from "@infrawrench/plugin-base";
 import { formatBytes } from "@infrawrench/plugin-base";
+import { OBSERVABILITY_LOG_LINES, OBSERVABILITY_WINDOW_MS } from "./observability.js";
 
 /**
  * Agents and Libraries: shapes, mappers and renderers.
@@ -221,6 +222,8 @@ export function renderAgentDetail(resource: ResourceInstance): DetailViewSchema 
         : []),
     ],
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    metricsCapability: { defaultTimeRangeMs: OBSERVABILITY_WINDOW_MS },
+    logs: { defaultTailLines: OBSERVABILITY_LOG_LINES },
   };
 }
 

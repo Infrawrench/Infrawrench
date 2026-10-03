@@ -12,6 +12,9 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * edit/delete, because base models can be neither: archive and unarchive
  * (`POST`/`DELETE /v1/fine_tuning/models/{model_id}/archive`) and delete
  * (`DELETE /v1/models/{model_id}`).
+ *
+ * Metrics and Logs come from Studio Observability spans whose
+ * `request_model`/`response_model` is this model (see `observability.ts`).
  */
 export const MistralModelResourceType = rt({
   name: "Model",
@@ -33,6 +36,9 @@ export const MistralModelResourceType = rt({
   outputs: [o("modelId", "Model ID"), o("baseUrl", "API Base URL")],
   // Fine-tuned models carry the id of the job that produced them.
   dependsOn: [{ fieldKey: "job", targetTypeId: "mistral-fine-tuning-job", label: "produced by" }],
+  // Calls, latency and token series plus a Logs tab of recent calls, from
+  // Studio Observability spans (Enterprise, Private Preview).
+  supportsMetrics: true,
   supportsDelete: false,
   iconKey: "cpu",
 });

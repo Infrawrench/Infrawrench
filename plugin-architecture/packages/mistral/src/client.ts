@@ -5,6 +5,9 @@ import type {
   CreateResourceConfig,
   DetailViewSchema,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
+  MetricSeries,
   PluginClient,
   ResourceInstance,
   SidebarItemSchema,
@@ -30,6 +33,12 @@ import {
   renderAgentDetail,
   renderLibraryDetail,
 } from "./agents.js";
+import {
+  OBSERVABILITY_LOG_LINES,
+  OBSERVABILITY_WINDOW_MS,
+  fetchObservabilityLogs,
+  fetchObservabilitySeries,
+} from "./observability.js";
 
 /** Data plane. `Authorization: Bearer <apiKey>`. https://docs.mistral.ai/api */
 const BASE = "https://api.mistral.ai/v1";
@@ -1107,6 +1116,44 @@ export class MistralClient implements PluginClient {
     return rows;
   }
 
+  // ---------------------------------------------------------- observability
+
+  /**
+   * Metrics for models and agents from Studio Observability traces; see
+   * `observability.ts` for the queries. Empty when the organization has no
+   * Observability access.
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const externalId = resourceId.slice(`${accountId}:${resourceTypeId}:`.length);
+    return fetchObservabilitySeries(
+      (path, options) => this.fetch(path, options),
+      resourceTypeId,
+      externalId,
+      timeRange,
+    );
+  }
+
+  /** Recent traced model calls or agent runs, one line each. */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    const externalId = resourceId.slice(`${accountId}:${typeId}:`.length);
+    return fetchObservabilityLogs(
+      (path, options) => this.fetch(path, options),
+      typeId,
+      externalId,
+      params,
+    );
+  }
+
   // ------------------------------------------------------------------ audio
 
   /**
@@ -1439,6 +1486,8 @@ export class MistralClient implements PluginClient {
           : []),
       ],
       speechPanel: this.speechPanel(resource),
+      metricsCapability: { defaultTimeRangeMs: OBSERVABILITY_WINDOW_MS },
+      logs: { defaultTailLines: OBSERVABILITY_LOG_LINES },
     };
   }
 

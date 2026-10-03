@@ -9,6 +9,9 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * edit is `PATCH /v1/agents/{agent_id}` (each edit mints a new version),
  * delete is `DELETE /v1/agents/{agent_id}`.
  * https://docs.mistral.ai/openapi.yaml
+ *
+ * Metrics and Logs come from Studio Observability traces carrying this
+ * `agent_id` (see `observability.ts`).
  */
 export const MistralAgentResourceType = rt({
   name: "Agent",
@@ -47,6 +50,7 @@ export const MistralAgentResourceType = rt({
     { fieldKey: "libraries", targetTypeId: "mistral-library", label: "searches" },
     { fieldKey: "handoffs", targetTypeId: "mistral-agent", label: "hands off to" },
   ],
+  supportsMetrics: true,
   supportsCreate: true,
   supportsUpdate: true,
   supportsDelete: true,
