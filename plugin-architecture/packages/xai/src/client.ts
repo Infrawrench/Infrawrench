@@ -1384,6 +1384,15 @@ export class XaiClient implements PluginClient {
     toDate: string,
     timeUnit: string,
   ): Promise<XaiUsageResponse> {
+    // `endTime` is exclusive, so push it to the start of the next day.
+    return this.queryUsageBetween(`${fromDate} 00:00:00`, `${nextDay(toDate)} 00:00:00`, timeUnit);
+  }
+
+  private async queryUsageBetween(
+    startTime: string,
+    endTime: string,
+    timeUnit: string,
+  ): Promise<XaiUsageResponse> {
     const teamId = await this.getTeamId();
     return this.mgmtFetch<XaiUsageResponse>(
       `/v1/billing/teams/${encodeURIComponent(teamId)}/usage`,
@@ -1391,12 +1400,7 @@ export class XaiClient implements PluginClient {
         method: "POST",
         body: JSON.stringify({
           analyticsRequest: {
-            timeRange: {
-              startTime: `${fromDate} 00:00:00`,
-              // `endTime` is exclusive, so push it to the start of the next day.
-              endTime: `${nextDay(toDate)} 00:00:00`,
-              timezone: "Etc/GMT",
-            },
+            timeRange: { startTime, endTime, timezone: "Etc/GMT" },
             timeUnit,
             values: [{ name: "usd", aggregation: "AGGREGATION_SUM" }],
             groupBy: ["description"],
@@ -1408,9 +1412,32 @@ export class XaiClient implements PluginClient {
   }
 
   /**
-   * Daily spend for a model, read off the same billing analytics query. The
-   * `description` group labels look like "Chat grok-4-0709", so the series are
-   * matched on the model id rather than by using an undocumented filter syntax.
+   * The billing analytics query over a chart window. Windows of up to two
+   * days are bucketed by hour (`TIME_UNIT_HOUR`, documented alongside
+   * `TIME_UNIT_DAY`), longer ones by day, with the bounds widened to whole
+   * buckets so the first and last points are not partial.
+   */
+  private async queryUsageWindow(startMs: number, endMs: number): Promise<XaiUsageResponse> {
+    const hourly = endMs - startMs <= 2 * DAY_MS;
+    const bucket = hourly ? HOUR_MS : DAY_MS;
+    const from = Math.floor(startMs / bucket) * bucket;
+    const to = Math.max(Math.ceil(endMs / bucket) * bucket, from + bucket);
+    return this.queryUsageBetween(
+      usageTimestamp(from),
+      usageTimestamp(to),
+      hourly ? "TIME_UNIT_HOUR" : "TIME_UNIT_DAY",
+    );
+  }
+
+  /**
+   * Spend charts off the same billing analytics query (`usd` summed per
+   * line-item `description`, the only value and group-by xAI documents):
+   *
+   *   - **model**: the model's own spend. The `description` group labels look
+   *     like "Chat grok-4-0709", so the series are matched on the model id
+   *     rather than by using an undocumented filter syntax.
+   *   - **spending-limit**: the whole team's spend, plus the line items that
+   *     cost the most over the window, so the trend sits next to the limit.
    */
   async fetchMetricSeries(
     resourceTypeId: string,
@@ -1418,12 +1445,15 @@ export class XaiClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "model" || !this.managementKey) return [];
+    if (resourceTypeId !== "model" && resourceTypeId !== "spending-limit") return [];
+    if (!this.managementKey) return [];
     const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 30 * 24 * 60 * 60 * 1000;
-    const modelId = resourceId.split(":").slice(2).join(":");
+    const startMs = timeRange?.startMs ?? endMs - 30 * DAY_MS;
+    const usage = await this.queryUsageWindow(startMs, endMs);
 
-    const usage = await this.queryUsage(isoDate(startMs), isoDate(endMs), "TIME_UNIT_DAY");
+    if (resourceTypeId === "spending-limit") return teamSpendSeries(usage);
+
+    const modelId = resourceId.split(":").slice(2).join(":");
     const points: Array<{ timestamp: number; value: number }> = [];
     for (const s of usage.timeSeries ?? []) {
       const label = s.groupLabels?.[0] ?? s.group?.[0] ?? "";
@@ -2718,6 +2748,55 @@ function formatEpochSeconds(seconds: number | undefined): string {
 
 function isoDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+/** How many line items the spending-limit chart breaks out beside the total. */
+const TOP_LINE_ITEMS = 5;
+
+/** `YYYY-MM-DD HH:MM:SS` in UTC, the analytics query's `timeRange` format. */
+function usageTimestamp(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+}
+
+/**
+ * Team-wide spend: one total series summed across every line item, then the
+ * {@link TOP_LINE_ITEMS} costliest line items over the window. Line items that
+ * cost nothing in the window are left out entirely.
+ */
+function teamSpendSeries(usage: XaiUsageResponse): MetricSeries[] {
+  const total = new Map<number, number>();
+  const items: Array<{ label: string; sum: number; points: MetricSeries["points"] }> = [];
+  for (const s of usage.timeSeries ?? []) {
+    const label = s.groupLabels?.[0] ?? s.group?.[0] ?? "xAI API";
+    const points: MetricSeries["points"] = [];
+    let sum = 0;
+    for (const p of s.dataPoints ?? []) {
+      if (!p.timestamp) continue;
+      const ts = Date.parse(p.timestamp);
+      if (Number.isNaN(ts)) continue;
+      const value = p.values?.[0] ?? 0;
+      points.push({ timestamp: ts, value });
+      total.set(ts, (total.get(ts) ?? 0) + value);
+      sum += value;
+    }
+    if (sum > 0) items.push({ label, sum, points });
+  }
+  if (total.size === 0) return [];
+  const byTime = (a: { timestamp: number }, b: { timestamp: number }) => a.timestamp - b.timestamp;
+  const out: MetricSeries[] = [
+    {
+      label: "Total spend",
+      unit: "USD",
+      points: [...total].map(([timestamp, value]) => ({ timestamp, value })).sort(byTime),
+    },
+  ];
+  items.sort((a, b) => b.sum - a.sum);
+  for (const item of items.slice(0, TOP_LINE_ITEMS)) {
+    out.push({ label: item.label, unit: "USD", points: [...item.points].sort(byTime) });
+  }
+  return out;
 }
 
 function nextDay(date: string): string {

@@ -12,6 +12,9 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * Docs: https://docs.x.ai/developers/rest-api-reference/management/billing
  * (GET/POST /v1/billing/teams/{team_id}/postpaid/spending-limits,
  *  GET /v1/billing/teams/{team_id}/postpaid/invoice/preview)
+ *
+ * The Metrics tab charts the team's spend, total and costliest line items,
+ * from POST /v1/billing/teams/{team_id}/usage.
  */
 export const SpendingLimitResourceType = rt({
   name: "Spending Limit",
@@ -53,6 +56,7 @@ export const SpendingLimitResourceType = rt({
     }),
   ],
   outputs: [o("softLimit", "Monthly Spending Limit (USD)"), o("currentSpend", "Current Spend")],
+  supportsMetrics: true,
   supportsUpdate: true,
   supportsDelete: false,
   iconKey: "dashboard",

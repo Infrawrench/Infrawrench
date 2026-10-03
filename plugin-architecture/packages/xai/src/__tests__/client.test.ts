@@ -451,6 +451,89 @@ describe("fetchMetricSeries", () => {
       [],
     );
   });
+
+  function usageBodies(): Array<{ analyticsRequest: Record<string, unknown> }> {
+    return calls
+      .filter((c) => c.url.endsWith("/usage"))
+      .map(
+        (c) => JSON.parse(String(c.init?.body)) as { analyticsRequest: Record<string, unknown> },
+      );
+  }
+
+  it("buckets by hour for windows up to two days and by day beyond", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/auth/management-keys/validation")) return jsonResponse({ scopeId: "t1" });
+      return jsonResponse({ timeSeries: [] });
+    });
+    const id = `${ACCOUNT}:model:grok-4`;
+    await client("xai-mgmt").fetchMetricSeries("model", id, ACCOUNT, {
+      startMs: Date.parse("2026-07-01T10:30:00Z"),
+      endMs: Date.parse("2026-07-02T10:30:00Z"),
+    });
+    await client("xai-mgmt").fetchMetricSeries("model", id, ACCOUNT, {
+      startMs: Date.parse("2026-06-01T10:30:00Z"),
+      endMs: Date.parse("2026-07-01T10:30:00Z"),
+    });
+    const [hourly, daily] = usageBodies();
+    expect(hourly?.analyticsRequest["timeUnit"]).toBe("TIME_UNIT_HOUR");
+    expect(hourly?.analyticsRequest["timeRange"]).toEqual({
+      startTime: "2026-07-01 10:00:00",
+      endTime: "2026-07-02 11:00:00",
+      timezone: "Etc/GMT",
+    });
+    expect(daily?.analyticsRequest["timeUnit"]).toBe("TIME_UNIT_DAY");
+    expect(daily?.analyticsRequest["timeRange"]).toEqual({
+      startTime: "2026-06-01 00:00:00",
+      endTime: "2026-07-02 00:00:00",
+      timezone: "Etc/GMT",
+    });
+  });
+
+  it("charts team spend on the spending limit: a total plus the costliest line items", async () => {
+    const day1 = "2026-07-01T00:00:00Z";
+    const day2 = "2026-07-02T00:00:00Z";
+    const line = (label: string, a: number, b: number) => ({
+      groupLabels: [label],
+      dataPoints: [
+        { timestamp: day2, values: [b] },
+        { timestamp: day1, values: [a] },
+      ],
+    });
+    installFetch((url) => {
+      if (url.endsWith("/auth/management-keys/validation")) return jsonResponse({ scopeId: "t1" });
+      return jsonResponse({
+        timeSeries: [
+          line("Chat grok-4", 1, 2),
+          line("Image grok-imagine", 0, 0),
+          line("Chat grok-3", 0.5, 0),
+          line("Search", 0.1, 0.1),
+          line("Chat grok-4-fast", 0.2, 0.2),
+          line("Embeddings", 0.3, 0.3),
+          line("Voice", 0.01, 0),
+        ],
+      });
+    });
+
+    const series = await client("xai-mgmt").fetchMetricSeries(
+      "spending-limit",
+      `${ACCOUNT}:spending-limit:team`,
+      ACCOUNT,
+      { startMs: Date.parse(day1), endMs: Date.parse("2026-07-10T00:00:00Z") },
+    );
+    expect(series.map((s) => s.label)).toEqual([
+      "Total spend",
+      "Chat grok-4",
+      "Embeddings",
+      "Chat grok-3",
+      "Chat grok-4-fast",
+      "Search",
+    ]);
+    expect(series[0]?.points.map((p) => [p.timestamp, Number(p.value.toFixed(2))])).toEqual([
+      [Date.parse(day1), 2.11],
+      [Date.parse(day2), 2.6],
+    ]);
+    expect(series.every((s) => s.unit === "USD")).toBe(true);
+  });
 });
 
 describe("synthesizeSpeech", () => {

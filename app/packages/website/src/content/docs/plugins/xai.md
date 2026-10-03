@@ -49,7 +49,12 @@ Open any voice — built-in or custom — and you get a **Speech** tab with both
 
 ## Costs and metrics
 
-With a management key attached, spend is collected from `POST /v1/billing/teams/{team_id}/usage` — a real analytics query, asked for as a daily USD sum grouped by line-item description. That gives you a per-service daily breakdown on the cost page, and a spend chart on each model's **Metrics** tab.
+With a management key attached, spend is collected from `POST /v1/billing/teams/{team_id}/usage`, a real analytics query, asked for as a daily USD sum grouped by line-item description. That gives you a per-service daily breakdown on the cost page, and spend charts on two **Metrics** tabs:
+
+- each **model** charts its own spend, and
+- the **spending limit** charts the whole team's spend next to the limit, with the five costliest line items broken out beside the total.
+
+Windows of two days or less are bucketed by hour, longer ones by day.
 
 The same management key also feeds **prepaid credit tracking**: the remaining prepaid balance for the current billing period, read from xAI's invoice preview, so the account can warn you before credit runs out and the API stops answering. A team with no prepaid credit reports no balance rather than a zero one. Invoices and the spending limit are listed as resources (see above) for reconciling against a statement.
 
