@@ -12,4 +12,4 @@ I want to clean up my codebase and improve code quality. This is a complex task,
 
 I want each to do detailed research on their task, write a critical assessment of the current code and recommendations, and then implement all high confidence recommendations.
 
-When your subagents are done, don't commit the markdown files. Instead commit everything else in multiple commits using conventional commits and punctuation at the end and include the write up in the git commit. Don't add merge commits. When this is done, push to the branch this is ran on. Do not make a new branch.
+When your subagents are done, don't commit the markdown files. Instead commit everything else in multiple commits using conventional commits and punctuation at the end and include the write up in the git commit. Don't add merge commits. Commit on the branch that is checked out and do not push; the workflow opens a pull request from your commits once you finish.

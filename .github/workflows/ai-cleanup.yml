@@ -1,18 +1,85 @@
 name: AI Slop Cleanup
 
+# Three jobs, so that no step that runs the agent ever holds a credential it
+# could misuse. The agent reads repository content (docs, fixtures, plugin
+# metadata) with permissions skipped, so anything it can reach must be assumed
+# reachable by a prompt injection in that content.
+#
+# - refresh-token rotates the Claude OAuth secrets with SECRETS_ADMIN_PAT. It
+#   checks nothing out and runs no repository or agent code.
+# - cleanup runs the agent with a read-only token and no push credentials, and
+#   hands its commits on as a git bundle artifact.
+# - open-pr pushes that bundle to a fresh branch and opens a PR against the
+#   branch the workflow was dispatched on. Nothing lands without review.
+
 on:
   workflow_dispatch:
 
+permissions: {}
+
+concurrency:
+  group: ai-cleanup-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  execute:
+  refresh-token:
+    name: Refresh Claude OAuth token
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      # Refreshes ahead of the agent's 180 minute timeout plus an hour, so the
+      # cleanup job, which never sees SECRETS_ADMIN_PAT, starts with a token
+      # that outlives the run. Secrets are resolved when a job starts, so the
+      # cleanup job reads the values written here.
+      # Endpoint and client id mirror the pinned claude-code-base-action.
+      - name: Refresh token if it expires before the run would end
+        env:
+          CLAUDE_REFRESH_TOKEN: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
+          CLAUDE_EXPIRES_AT: ${{ secrets.CLAUDE_EXPIRES_AT }}
+          GH_TOKEN: ${{ secrets.SECRETS_ADMIN_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          now_ms=$(( $(date +%s) * 1000 ))
+          remaining_ms=$(( ${CLAUDE_EXPIRES_AT:-0} - now_ms ))
+          if [ "$remaining_ms" -gt $(( 240 * 60 * 1000 )) ]; then
+            echo "Token valid for another $(( remaining_ms / 60000 )) minutes; not refreshing."
+            exit 0
+          fi
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Token expires within 4 hours and SECRETS_ADMIN_PAT is not set."
+            exit 1
+          fi
+          response=$(jq -n --arg rt "$CLAUDE_REFRESH_TOKEN" \
+            '{grant_type: "refresh_token", refresh_token: $rt, client_id: "9d1c250a-e61b-44d9-88ed-5944d1962f5e"}' \
+            | curl -fsS -X POST https://console.anthropic.com/v1/oauth/token \
+                -H 'Content-Type: application/json' --data @-)
+          access_token=$(jq -er '.access_token' <<<"$response")
+          refresh_token=$(jq -er '.refresh_token' <<<"$response")
+          expires_in=$(jq -er '.expires_in' <<<"$response")
+          echo "::add-mask::$access_token"
+          echo "::add-mask::$refresh_token"
+          expires_at=$(( ( $(date +%s) + expires_in ) * 1000 ))
+          printf '%s' "$access_token" | gh secret set CLAUDE_ACCESS_TOKEN --repo "$REPO"
+          printf '%s' "$refresh_token" | gh secret set CLAUDE_REFRESH_TOKEN --repo "$REPO"
+          printf '%s' "$expires_at" | gh secret set CLAUDE_EXPIRES_AT --repo "$REPO"
+          echo "Token refreshed; expires in $(( expires_in / 60 )) minutes."
+
+  cleanup:
     name: Execute slop cleanup markdown
+    needs: refresh-token
     runs-on: ubuntu-24.04-arm
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/cache@v4
+      # Restore only: this job runs agent-controlled code, and a saved
+      # node_modules under the key test.yml restores would carry that code
+      # into other workflows.
+      - uses: actions/cache/restore@v4
         with:
           path: |
             .turbo
@@ -34,6 +101,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
+      # No secrets_admin_pat: the action exports it into the agent's
+      # environment. Token rotation happens in refresh-token instead.
       - name: Run Claude Code with prompt file
         uses: Infrawrench/claude-code-base-action@15e19c645e8088acf05af5b16a9fef294aef55df
         with:
@@ -44,8 +113,69 @@ jobs:
           claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
           claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
           claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
-          secrets_admin_pat: ${{ secrets.SECRETS_ADMIN_PAT}}
           model: "claude-fable-5"
 
-      - name: Run git push just in case
-        run: git push
+      - name: Bundle the agent's commits
+        id: bundle
+        env:
+          BASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          count=$(git rev-list --count "$BASE_SHA..HEAD")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo "The agent made no commits."
+            exit 0
+          fi
+          git bundle create "$RUNNER_TEMP/cleanup.bundle" "$BASE_SHA..HEAD"
+
+      - if: steps.bundle.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanup-bundle
+          path: ${{ runner.temp }}/cleanup.bundle
+          retention-days: 7
+
+    outputs:
+      commits: ${{ steps.bundle.outputs.count }}
+
+  open-pr:
+    name: Open cleanup PR
+    needs: cleanup
+    if: needs.cleanup.outputs.commits != '0'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cleanup-bundle
+          path: ${{ runner.temp }}
+
+      # Only git plumbing touches the bundle; nothing from it is executed.
+      # Requiring the dispatch commit as an ancestor keeps the PR a plain
+      # extension of the base branch.
+      - name: Push to a new branch and open a PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.sha }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          BRANCH: ai-cleanup/${{ github.run_id }}-${{ github.run_attempt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/cleanup.bundle"
+          git bundle verify "$bundle"
+          git fetch --no-tags "$bundle" HEAD
+          git merge-base --is-ancestor "$BASE_SHA" FETCH_HEAD
+          git push origin "FETCH_HEAD:refs/heads/$BRANCH"
+          gh pr create \
+            --base "$BASE_BRANCH" \
+            --head "$BRANCH" \
+            --title "chore: AI slop cleanup (run ${{ github.run_id }})" \
+            --body "Automated output of the AI Slop Cleanup workflow ([run]($RUN_URL)), opened for review. The commits were written by an unsupervised agent; review them as untrusted changes.
+
+          This PR was opened with the workflow's GITHUB_TOKEN, so it does not trigger other workflows. Push an empty commit or close and reopen it to run CI."
