@@ -76,6 +76,11 @@ filter_commits = false
 fail_on_unmatched_commit = false
 # An array of link parsers for extracting external references, and turning them into URLs, using regex.
 link_parsers = []
+# Only desktop release tags (vX.Y.Z) delimit releases. The SDK publisher
+# (sdk-vX.Y.Z) and the Terraform provider (terraform-provider-vX.Y.Z) tag the
+# same branch; without this, `--unreleased` stops at the newest of those and
+# drops every desktop commit before it from the release notes.
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
 # Include only the tags that belong to the current branch.
 use_branch_tags = false
 # Order releases topologically instead of chronologically.
