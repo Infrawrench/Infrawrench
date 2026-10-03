@@ -13,6 +13,10 @@ import { PrimaryIpResourceType } from "./resources/primary-ip.js";
 import { SshKeyResourceType } from "./resources/ssh-key.js";
 import { ImageResourceType } from "./resources/image.js";
 import { PlacementGroupResourceType } from "./resources/placement-group.js";
+import { CertificateResourceType } from "./resources/certificate.js";
+import { DnsZoneResourceType } from "./resources/dns-zone.js";
+import { DnsRecordResourceType } from "./resources/dns-record.js";
+import { StorageBoxResourceType } from "./resources/storage-box.js";
 
 const manifest: PluginManifest = {
   id: "hetzner",
@@ -31,7 +35,7 @@ const manifest: PluginManifest = {
       key: "apiToken",
       label: "API Token",
       description:
-        "A Hetzner Cloud API token. Generate one in the Hetzner Cloud Console under Security → API Tokens.",
+        "A Hetzner project API token (read + write). Generate one in the Hetzner Console under your project → Security → API Tokens. The same token covers Cloud, DNS and Storage Boxes.",
       sensitive: true,
       placeholder: "",
     },
@@ -80,6 +84,10 @@ const resourceTypes: ResourceTypeDefinition[] = [
   SshKeyResourceType,
   ImageResourceType,
   PlacementGroupResourceType,
+  CertificateResourceType,
+  DnsZoneResourceType,
+  DnsRecordResourceType,
+  StorageBoxResourceType,
 ];
 
 export const plugin: Plugin = {

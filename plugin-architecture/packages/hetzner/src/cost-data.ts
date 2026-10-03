@@ -104,6 +104,8 @@ interface HetznerServer {
   status?: string;
   created?: string;
   server_type?: { name?: string };
+  /** Replaced `datacenter` on 2025-12-16; `datacenter` was removed 2026-07-01. */
+  location?: { name?: string };
   datacenter?: { name?: string; location?: { name?: string } };
   /** Non-null exactly when backups are enabled, e.g. "22-02". */
   backup_window?: string | null;
@@ -184,9 +186,10 @@ function createdMs(created: string | undefined, fallback: number): number {
 /**
  * Location slug for a resource.
  *
- * Most objects carry `location.name` directly. Servers nest it under
- * `datacenter.location`, and a datacenter name is `<location>-dcN`, which is
- * the last-resort fallback.
+ * Every object carries `location.name` directly. Servers and primary IPs
+ * used to nest it under `datacenter.location` (removed from the API on
+ * 2026-07-01), and a datacenter name is `<location>-dcN`, which is the
+ * last-resort fallback for payloads that still carry it.
  */
 function locationName(
   location: { name?: string } | undefined,
@@ -352,7 +355,7 @@ export async function fetchHetznerCostData(
   const monthDays = daysInMonth(today);
 
   for (const server of servers) {
-    const region = locationName(undefined, server.datacenter);
+    const region = locationName(server.location, server.datacenter);
     const typeName = server.server_type?.name ?? "";
     const rate = rateFor<ServerTypeRate>(card.serverTypes, typeName, region);
     if (!rate) continue;

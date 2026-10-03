@@ -3,4 +3,8 @@ export { ServerResourceType } from "./resources/server.js";
 export { VolumeResourceType } from "./resources/volume.js";
 export { FloatingIpResourceType } from "./resources/floating-ip.js";
 export { FirewallResourceType } from "./resources/firewall.js";
+export { CertificateResourceType } from "./resources/certificate.js";
+export { DnsZoneResourceType } from "./resources/dns-zone.js";
+export { DnsRecordResourceType } from "./resources/dns-record.js";
+export { StorageBoxResourceType } from "./resources/storage-box.js";
 export { HetznerClient } from "./client.js";

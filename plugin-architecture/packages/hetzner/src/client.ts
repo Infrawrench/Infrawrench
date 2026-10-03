@@ -23,6 +23,34 @@ import {
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { fetchHetznerCostData } from "./cost-data.js";
+import type { HetznerApi } from "./api.js";
+import {
+  createRrset,
+  createZone,
+  deleteRrset,
+  deleteZone,
+  listRrsets,
+  listZones,
+  recordCreateConfig,
+  updateRrset,
+  updateZone,
+  zoneCreateConfig,
+} from "./dns.js";
+import {
+  certificateCreateConfig,
+  createCertificate,
+  listCertificates,
+  retryCertificate,
+} from "./certificates.js";
+import {
+  STORAGE_BOX_ACTIONS,
+  createStorageBox,
+  deleteStorageBox,
+  invokeStorageBoxAction,
+  listStorageBoxes,
+  storageBoxCreateConfig,
+  updateStorageBox,
+} from "./storage-boxes.js";
 import { createRateCardCache, type RateCardCache } from "./pricing.js";
 
 /**
@@ -33,6 +61,11 @@ export class HetznerClient implements PluginClient {
   private readonly token: string;
   private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly baseUrl = "https://api.hetzner.cloud/v1";
+  /**
+   * The Hetzner API (as opposed to the Cloud API) hosts Storage Boxes. It
+   * accepts the same project-scoped token.
+   */
+  private readonly hetznerBaseUrl = "https://api.hetzner.com/v1";
 
   private static readonly LOCATION_INFO: Record<string, { location: string; flag: string }> = {
     fsn1: { location: "Falkenstein, Germany", flag: "🇩🇪" },
@@ -61,10 +94,10 @@ export class HetznerClient implements PluginClient {
     this.services = services;
   }
 
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
+  private async fetch<T>(path: string, options?: RequestInit, baseUrl?: string): Promise<T> {
     return jsonRestFetch<T>({
       vendor: "Hetzner",
-      url: `${this.baseUrl}${path}`,
+      url: `${baseUrl ?? this.baseUrl}${path}`,
       errorPath: path,
       headers: { Authorization: `Bearer ${this.token}` },
       ...(options ? { init: options } : {}),
@@ -74,7 +107,17 @@ export class HetznerClient implements PluginClient {
     });
   }
 
-  private async fetchAll<T>(path: string, rootKey: string): Promise<T[]> {
+  /** The request surface handed to the per-product modules. */
+  private get api(): HetznerApi {
+    return {
+      fetch: (path, init) => this.fetch(path, init),
+      fetchAll: (path, rootKey) => this.fetchAll(path, rootKey),
+      fetchHetzner: (path, init) => this.fetch(path, init, this.hetznerBaseUrl),
+      fetchAllHetzner: (path, rootKey) => this.fetchAll(path, rootKey, this.hetznerBaseUrl),
+    };
+  }
+
+  private async fetchAll<T>(path: string, rootKey: string, baseUrl?: string): Promise<T[]> {
     const items: T[] = [];
     let page = 1;
     const perPage = 50;
@@ -83,6 +126,8 @@ export class HetznerClient implements PluginClient {
       const separator = path.includes("?") ? "&" : "?";
       const data = await this.fetch<Record<string, unknown>>(
         `${path}${separator}page=${page}&per_page=${perPage}`,
+        undefined,
+        baseUrl,
       );
       const batch = data[rootKey] as T[] | undefined;
       if (!batch || batch.length === 0) break;
@@ -119,6 +164,14 @@ export class HetznerClient implements PluginClient {
         return this.listImages(accountId);
       case "placement-group":
         return this.listPlacementGroups(accountId);
+      case "certificate":
+        return listCertificates(this.api, accountId);
+      case "dns-zone":
+        return listZones(this.api, accountId);
+      case "dns-record":
+        return listRrsets(this.api, accountId);
+      case "storage-box":
+        return listStorageBoxes(this.api, accountId);
       default:
         throw new Error(`Hetzner plugin: unknown resource type "${typeId}"`);
     }
@@ -202,11 +255,26 @@ export class HetznerClient implements PluginClient {
     if (typeId === "placement-group" && outputKey === "placementGroupId") {
       return resourceId.split(":").pop() ?? "";
     }
+    if (typeId === "certificate" && outputKey === "certificateId") {
+      return resourceId.split(":").pop() ?? "";
+    }
+    if (typeId === "dns-zone" || typeId === "storage-box") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return String(value);
+    }
 
     throw new Error(`Hetzner plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
+    if (typeId === "certificate") return certificateCreateConfig();
+    if (typeId === "dns-zone") return zoneCreateConfig();
+    if (typeId === "dns-record") return recordCreateConfig(this.api, parentResourceId);
+    if (typeId === "storage-box") return storageBoxCreateConfig(this.api);
+    if (typeId === "network") return this.networkCreateConfig();
+    if (typeId === "primary-ip") return this.primaryIpCreateConfig();
+    if (typeId === "load-balancer") return this.loadBalancerCreateConfig();
     if (typeId === "server") {
       const [locationsData, serverTypesData, imagesData] = await Promise.all([
         this.fetchAll<HetznerLocation>("/locations", "locations"),
@@ -226,8 +294,8 @@ export class HetznerClient implements PluginClient {
       // Group server types by architecture/category
       const sizesByCategory = new Map<string, SizeOption[]>();
       for (const st of serverTypesData) {
-        if (st.deprecated) continue;
-        const category = categorizeServerType(st.name);
+        if (!isServerTypeOrderable(st)) continue;
+        const category = categorizeServerType(st);
         if (!sizesByCategory.has(category)) sizesByCategory.set(category, []);
         // Use the first price entry for monthly pricing
         const price = st.prices?.[0];
@@ -248,8 +316,15 @@ export class HetznerClient implements PluginClient {
 
       // Build image list grouped by OS
       const imageMap = new Map<string, ImageOption[]>();
+      const seenImageIds = new Set<string>();
       for (const img of imagesData) {
         if (img.status !== "available") continue;
+        if (img.deprecation || img.deprecated) continue;
+        // System images exist once per architecture under the same name;
+        // Hetzner resolves the name against the chosen server type's arch.
+        const imageId = img.name ?? String(img.id);
+        if (seenImageIds.has(imageId)) continue;
+        seenImageIds.add(imageId);
         const cat = img.os_flavor || img.os_version || "Other";
         if (!imageMap.has(cat)) imageMap.set(cat, []);
         imageMap.get(cat)!.push({
@@ -454,7 +529,17 @@ export class HetznerClient implements PluginClient {
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
+    parentResourceId?: string,
   ): Promise<ResourceInstance> {
+    if (typeId === "certificate") return createCertificate(this.api, accountId, fields);
+    if (typeId === "dns-zone") return createZone(this.api, accountId, fields);
+    if (typeId === "dns-record") {
+      return createRrset(this.api, accountId, fields, parentResourceId);
+    }
+    if (typeId === "storage-box") return createStorageBox(this.api, accountId, fields);
+    if (typeId === "network") return this.createNetwork(accountId, fields);
+    if (typeId === "primary-ip") return this.createPrimaryIp(accountId, fields);
+    if (typeId === "load-balancer") return this.createLoadBalancer(accountId, fields);
     if (typeId === "server") {
       // Upload SSH key to Hetzner account if provided
       const sshKeyIds: number[] = [];
@@ -663,6 +748,35 @@ export class HetznerClient implements PluginClient {
       case "placement-group":
         await this.fetch<unknown>(`/placement_groups/${externalId}`, { method: "DELETE" });
         break;
+      case "network":
+        await this.fetch<unknown>(`/networks/${externalId}`, { method: "DELETE" });
+        break;
+      case "load-balancer":
+        await this.fetch<unknown>(`/load_balancers/${externalId}`, { method: "DELETE" });
+        break;
+      case "primary-ip":
+        // Hetzner refuses (`must_be_unassigned`) while the IP is assigned.
+        await this.fetch<unknown>(`/primary_ips/${externalId}`, { method: "DELETE" });
+        break;
+      case "ssh-key":
+        await this.fetch<unknown>(`/ssh_keys/${externalId}`, { method: "DELETE" });
+        break;
+      case "image":
+        // Only snapshots and backups can be deleted; Hetzner rejects system images.
+        await this.fetch<unknown>(`/images/${externalId}`, { method: "DELETE" });
+        break;
+      case "certificate":
+        await this.fetch<unknown>(`/certificates/${externalId}`, { method: "DELETE" });
+        break;
+      case "dns-zone":
+        await deleteZone(this.api, resourceId);
+        break;
+      case "dns-record":
+        await deleteRrset(this.api, resourceId);
+        break;
+      case "storage-box":
+        await deleteStorageBox(this.api, resourceId);
+        break;
       default:
         throw new Error(`Hetzner plugin: deleteResource not supported for type "${typeId}"`);
     }
@@ -684,6 +798,14 @@ export class HetznerClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    if (typeId === "volume") return this.updateVolume(resourceId, accountId, fields);
+    if (typeId === "dns-zone") return updateZone(this.api, resourceId, accountId, fields);
+    if (typeId === "dns-record") return updateRrset(this.api, resourceId, accountId, fields);
+    if (typeId === "storage-box") {
+      return updateStorageBox(this.api, resourceId, accountId, fields);
+    }
+    const renamePath = RENAMEABLE_COLLECTIONS[typeId];
+    if (renamePath) return this.updateSimple(typeId, renamePath, resourceId, accountId, fields);
     if (typeId !== "server") {
       throw new Error(`Hetzner plugin: updateResource not supported for type "${typeId}"`);
     }
@@ -741,6 +863,293 @@ export class HetznerClient implements PluginClient {
     };
   }
 
+  private async locationRegions(): Promise<
+    Array<{ id: string; label: string; location?: string; flag?: string; networkZone?: string }>
+  > {
+    const locations = await this.fetchAll<HetznerLocation>("/locations", "locations");
+    return locations.map((loc) => {
+      const info = HetznerClient.LOCATION_INFO[loc.name];
+      return {
+        id: loc.name,
+        label: loc.city,
+        ...(info ? { location: info.location, flag: info.flag } : {}),
+        ...(loc.network_zone ? { networkZone: loc.network_zone } : {}),
+      };
+    });
+  }
+
+  private async networkCreateConfig(): Promise<CreateResourceConfig> {
+    const regions = await this.locationRegions();
+    const zones = [...new Set(regions.map((r) => r.networkZone).filter((z): z is string => !!z))];
+    return {
+      fields: [
+        { key: "name", label: "Name", kind: "text", required: true },
+        {
+          key: "ipRange",
+          label: "IP Range",
+          kind: "text",
+          required: true,
+          defaultValue: "10.0.0.0/16",
+          description: "Private RFC 1918 range for the whole network, /24 or larger",
+        },
+        {
+          key: "subnetRange",
+          label: "First Subnet",
+          kind: "text",
+          required: false,
+          defaultValue: "10.0.0.0/24",
+          description: "Cloud subnet inside the IP range. Leave empty to add subnets later",
+        },
+        {
+          key: "networkZone",
+          label: "Network Zone",
+          kind: "select",
+          required: false,
+          options: zones.map((z) => ({ id: z, label: z })),
+          ...(zones[0] ? { defaultValue: zones[0] } : {}),
+          description: "Servers in locations of this zone can join the subnet",
+        },
+      ],
+    };
+  }
+
+  private async createNetwork(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const subnetRange = fields["subnetRange"]?.trim();
+    const data = await this.fetch<{ network: HetznerNetwork }>("/networks", {
+      method: "POST",
+      body: JSON.stringify({
+        name: fields["name"],
+        ip_range: fields["ipRange"],
+        ...(subnetRange && fields["networkZone"]
+          ? {
+              subnets: [
+                { type: "cloud", ip_range: subnetRange, network_zone: fields["networkZone"] },
+              ],
+            }
+          : {}),
+      }),
+    });
+    return this.mapNetwork(data.network, accountId);
+  }
+
+  private async primaryIpCreateConfig(): Promise<CreateResourceConfig> {
+    const regions = await this.locationRegions();
+    return {
+      fields: [
+        { key: "name", label: "Name", kind: "text", required: true },
+        {
+          key: "type",
+          label: "Type",
+          kind: "select",
+          required: true,
+          defaultValue: "ipv4",
+          options: [
+            { id: "ipv4", label: "IPv4" },
+            { id: "ipv6", label: "IPv6 (/64)" },
+          ],
+        },
+        {
+          key: "location",
+          label: "Location",
+          kind: "region-picker",
+          required: true,
+          regions,
+          ...(regions[0] ? { defaultValue: regions[0].id } : {}),
+        },
+        {
+          key: "autoDelete",
+          label: "Auto Delete",
+          kind: "select",
+          required: false,
+          defaultValue: "false",
+          options: [
+            { id: "false", label: "Keep when the server is deleted" },
+            { id: "true", label: "Delete with the server" },
+          ],
+        },
+      ],
+    };
+  }
+
+  private async createPrimaryIp(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const data = await this.fetch<{ primary_ip: HetznerPrimaryIp }>("/primary_ips", {
+      method: "POST",
+      body: JSON.stringify({
+        name: fields["name"],
+        type: fields["type"] || "ipv4",
+        // No assignee: the IP is created unassigned, bound to the location.
+        location: fields["location"],
+        auto_delete: fields["autoDelete"] === "true",
+      }),
+    });
+    return this.mapPrimaryIp(data.primary_ip, accountId);
+  }
+
+  private async loadBalancerCreateConfig(): Promise<CreateResourceConfig> {
+    const [regions, types] = await Promise.all([
+      this.locationRegions(),
+      this.fetchAll<HetznerLoadBalancerType>("/load_balancer_types", "load_balancer_types"),
+    ]);
+    const options = types
+      .filter((t) => !t.deprecation && !t.deprecated)
+      .map((t) => {
+        const monthly = t.prices?.[0]?.price_monthly?.gross;
+        return {
+          id: t.name,
+          label: [
+            t.name.toUpperCase(),
+            t.max_targets ? `${t.max_targets} targets` : "",
+            t.max_connections ? `${t.max_connections.toLocaleString("en")} connections` : "",
+            monthly ? `${Number(monthly).toFixed(2)}/mo gross` : "",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        };
+      });
+    return {
+      fields: [
+        { key: "name", label: "Name", kind: "text", required: true },
+        {
+          key: "location",
+          label: "Location",
+          kind: "region-picker",
+          required: true,
+          regions,
+          ...(regions[0] ? { defaultValue: regions[0].id } : {}),
+        },
+        {
+          key: "type",
+          label: "Type",
+          kind: "select",
+          required: true,
+          options,
+          ...(options[0] ? { defaultValue: options[0].id } : {}),
+        },
+        {
+          key: "algorithm",
+          label: "Algorithm",
+          kind: "select",
+          required: false,
+          defaultValue: "round_robin",
+          options: [
+            { id: "round_robin", label: "Round robin" },
+            { id: "least_connections", label: "Least connections" },
+          ],
+        },
+      ],
+    };
+  }
+
+  private async createLoadBalancer(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const data = await this.fetch<{ load_balancer: HetznerLoadBalancer }>("/load_balancers", {
+      method: "POST",
+      body: JSON.stringify({
+        name: fields["name"],
+        load_balancer_type: fields["type"],
+        location: fields["location"],
+        algorithm: { type: fields["algorithm"] || "round_robin" },
+      }),
+    });
+    return this.mapLoadBalancer(data.load_balancer, accountId);
+  }
+
+  /**
+   * Edit a volume: rename via `PUT /volumes/{id}` and grow via
+   * `actions/resize`. Hetzner only grows volumes, so a smaller size is
+   * refused here with a clear message rather than as a provider 422.
+   */
+  private async updateVolume(
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const externalId = resourceId.split(":").pop();
+    if (!externalId) throw new Error("Cannot parse volume ID");
+    const current = await this.getResource("volume", resourceId, accountId);
+    const failures: string[] = [];
+    const name = fields["name"];
+    if (name !== undefined && name !== "") {
+      try {
+        await this.fetch<unknown>(`/volumes/${externalId}`, {
+          method: "PUT",
+          body: JSON.stringify({ name }),
+        });
+      } catch (e) {
+        failures.push(`rename failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    const sizeRaw = fields["sizeGb"];
+    const size = sizeRaw !== undefined && sizeRaw !== "" ? Number(sizeRaw) : undefined;
+    if (size !== undefined) {
+      const currentSize = Number(current.fields["sizeGb"] ?? 0);
+      if (!Number.isFinite(size) || size < currentSize) {
+        failures.push(
+          `resize failed: Hetzner volumes can only grow (current size ${currentSize} GB)`,
+        );
+      } else if (size > currentSize) {
+        try {
+          await this.fetch<unknown>(`/volumes/${externalId}/actions/resize`, {
+            method: "POST",
+            body: JSON.stringify({ size }),
+          });
+        } catch (e) {
+          failures.push(`resize failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    }
+    if (failures.length > 0) throw new Error(`Hetzner volume update: ${failures.join("; ")}`);
+    return {
+      ...current,
+      ...(name ? { displayName: name } : {}),
+      fields: {
+        ...current.fields,
+        ...(name ? { name } : {}),
+        ...(size !== undefined ? { sizeGb: size } : {}),
+      },
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Edit the resource types whose only mutable attributes live on the
+   * object itself (`PUT /{collection}/{id}`): the name everywhere, plus a
+   * floating IP's description and a primary IP's `auto_delete`.
+   */
+  private async updateSimple(
+    typeId: string,
+    collection: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const externalId = resourceId.split(":").pop();
+    if (!externalId) throw new Error(`Cannot parse ${typeId} ID`);
+    const body: Record<string, unknown> = {};
+    if (fields["name"] !== undefined && fields["name"] !== "") body["name"] = fields["name"];
+    if (typeId === "floating-ip" && fields["description"] !== undefined) {
+      body["description"] = fields["description"];
+    }
+    if (typeId === "primary-ip" && fields["autoDelete"] !== undefined) {
+      body["auto_delete"] = fields["autoDelete"] === "true";
+    }
+    if (Object.keys(body).length > 0) {
+      await this.fetch<unknown>(`/${collection}/${externalId}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+    }
+    return this.getResource(typeId, resourceId, accountId);
+  }
+
   /**
    * Per-location monthly prices for server types. `/server_types` carries a
    * price per location, so unlike the create-config catalog (which quotes the
@@ -771,10 +1180,38 @@ export class HetznerClient implements PluginClient {
     actionId: string,
     _accountId: string,
   ): Promise<void> {
-    if (typeId === "server" && (actionId === "poweron" || actionId === "poweroff")) {
-      const externalId = resourceId.split(":").pop();
+    const externalId = resourceId.split(":").pop();
+    if (typeId === "server" && SERVER_ACTIONS.has(actionId)) {
       if (!externalId) throw new Error("Cannot parse server ID");
+      if (actionId === "create_snapshot") {
+        // `create_image` with type snapshot; the description is what the
+        // Console lists, so stamp it with the date the snapshot was taken.
+        await this.fetch<unknown>(`/servers/${externalId}/actions/create_image`, {
+          method: "POST",
+          body: JSON.stringify({
+            type: "snapshot",
+            description: `infrawrench-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}`,
+          }),
+        });
+        return;
+      }
+      if (actionId === "enable_protection" || actionId === "disable_protection") {
+        const on = actionId === "enable_protection";
+        await this.fetch<unknown>(`/servers/${externalId}/actions/change_protection`, {
+          method: "POST",
+          body: JSON.stringify({ delete: on, rebuild: on }),
+        });
+        return;
+      }
       await this.fetch<unknown>(`/servers/${externalId}/actions/${actionId}`, { method: "POST" });
+      return;
+    }
+    if (typeId === "certificate" && actionId === "retry") {
+      await retryCertificate(this.api, resourceId);
+      return;
+    }
+    if (typeId === "storage-box" && STORAGE_BOX_ACTIONS.has(actionId)) {
+      await invokeStorageBoxAction(this.api, resourceId, actionId);
       return;
     }
     throw new Error(
@@ -1019,6 +1456,64 @@ export class HetznerClient implements PluginClient {
       ];
     }
 
+    if (resourceTypeId === "certificate") {
+      const issuance = String(f["issuanceStatus"] ?? "");
+      return [
+        { label: "Type", value: String(f["type"] ?? "") },
+        ...(issuance
+          ? [
+              {
+                label: "Issuance",
+                value: issuance,
+                variant:
+                  issuance === "completed"
+                    ? ("status-healthy" as const)
+                    : issuance === "failed"
+                      ? ("status-error" as const)
+                      : ("status-degraded" as const),
+              },
+            ]
+          : []),
+        { label: "Valid Until", value: String(f["notValidAfter"] ?? "") || "Pending" },
+        { label: "Domains", value: String(f["domainNames"] ?? "") },
+      ];
+    }
+
+    if (resourceTypeId === "dns-zone") {
+      const delegation = String(f["delegationStatus"] ?? "");
+      return [
+        { label: "Records", value: String(f["recordCount"] ?? 0) },
+        { label: "Default TTL", value: `${String(f["ttl"] ?? "")}s` },
+        {
+          label: "Delegation",
+          value: delegation || "unknown",
+          variant:
+            delegation === "valid"
+              ? ("status-healthy" as const)
+              : delegation === "invalid" || delegation === "lame"
+                ? ("status-error" as const)
+                : ("status-degraded" as const),
+        },
+        { label: "Nameservers", value: String(f["nameservers"] ?? "") },
+      ];
+    }
+
+    if (resourceTypeId === "storage-box") {
+      const size = Number(f["sizeGb"] ?? 0);
+      const used = Number(f["usedGb"] ?? 0);
+      return [
+        { label: "Status", value: String(f["status"] ?? "") },
+        { label: "Type", value: String(f["storageBoxType"] ?? "") },
+        {
+          label: "Used",
+          value:
+            size > 0 ? `${used} / ${size} GB (${Math.round((used / size) * 100)}%)` : `${used} GB`,
+        },
+        { label: "Snapshots", value: `${String(f["snapshotsGb"] ?? 0)} GB` },
+        { label: "Server", value: String(f["server"] ?? "") },
+      ];
+    }
+
     return [];
   }
 
@@ -1063,10 +1558,20 @@ export class HetznerClient implements PluginClient {
 
     if (resourceTypeId === "server") {
       let resp: HetznerMetricsResponse;
+      // Hetzner's `cpu` series is per vCPU (100 = one full core, so a busy
+      // 4-vCPU server reads 400), so the core count is needed to turn it into
+      // the 0-100% utilisation the chart and right-sizing expect. Fetched
+      // alongside; a failure just leaves the series unnormalised.
+      let cores = 0;
       try {
-        resp = await this.fetch<HetznerMetricsResponse>(
-          `/servers/${externalId}/metrics?type=cpu,disk,network&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-        );
+        const [metrics, server] = await Promise.all([
+          this.fetch<HetznerMetricsResponse>(
+            `/servers/${externalId}/metrics?type=cpu,disk,network&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+          ),
+          this.fetch<{ server: HetznerServer }>(`/servers/${externalId}`).catch(() => null),
+        ]);
+        resp = metrics;
+        cores = server?.server?.server_type?.cores ?? 0;
       } catch {
         return [];
       }
@@ -1076,22 +1581,30 @@ export class HetznerClient implements PluginClient {
       const push = (s: MetricSeries | null) => {
         if (s) results.push(s);
       };
-      push(toSeries(ts, "cpu", "CPU Utilization", "%"));
+      const cpu = toSeries(ts, "cpu", "CPU Utilization", "%");
+      if (cpu && cores > 1) {
+        cpu.points = cpu.points.map((p) => ({ ...p, value: p.value / cores }));
+      }
+      push(cpu);
       push(toSeries(ts, "disk.0.iops.read", "Disk IOPS (read)", "iops"));
       push(toSeries(ts, "disk.0.iops.write", "Disk IOPS (write)", "iops"));
+      push(toSeries(ts, "disk.0.bandwidth.read", "Disk Read", "bytes/s"));
+      push(toSeries(ts, "disk.0.bandwidth.write", "Disk Write", "bytes/s"));
       push(toSeries(ts, "network.0.bandwidth.in", "Network In", "bytes/s"));
       push(toSeries(ts, "network.0.bandwidth.out", "Network Out", "bytes/s"));
+      push(toSeries(ts, "network.0.pps.in", "Packets In", "packets/s"));
+      push(toSeries(ts, "network.0.pps.out", "Packets Out", "packets/s"));
       return results;
     }
 
     // load-balancer: Hetzner exposes /load_balancers/{id}/metrics with metric types
-    // open_connections, connections_per_second, requests_per_second, bandwidth.
-    // Ref: https://raw.githubusercontent.com/hetznercloud/hcloud-go/main/hcloud/load_balancer.go
+    // open_connections, connections_per_second, requests_per_second, bandwidth
+    // (https://docs.hetzner.cloud/reference/cloud#load-balancers-get-metrics-for-a-loadbalancer).
     if (resourceTypeId === "load-balancer") {
       let resp: HetznerMetricsResponse;
       try {
         resp = await this.fetch<HetznerMetricsResponse>(
-          `/load_balancers/${externalId}/metrics?type=open_connections,bandwidth&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+          `/load_balancers/${externalId}/metrics?type=open_connections,connections_per_second,requests_per_second,bandwidth&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
         );
       } catch {
         return [];
@@ -1103,6 +1616,8 @@ export class HetznerClient implements PluginClient {
         if (s) results.push(s);
       };
       push(toSeries(ts, "open_connections", "Open Connections", "connections"));
+      push(toSeries(ts, "connections_per_second", "New Connections", "connections/s"));
+      push(toSeries(ts, "requests_per_second", "Requests", "requests/s"));
       push(toSeries(ts, "bandwidth.in", "Bandwidth In", "bytes/s"));
       push(toSeries(ts, "bandwidth.out", "Bandwidth Out", "bytes/s"));
       return results;
@@ -1159,13 +1674,155 @@ export class HetznerClient implements PluginClient {
           },
         });
       }
+      if (s === "running") {
+        lifecycleActions.push(
+          {
+            kind: "action",
+            label: "Shut down",
+            action: {
+              type: "plugin-action",
+              actionId: "shutdown",
+              confirmMessage:
+                "Send an ACPI shutdown to this server? The guest OS shuts down gracefully; Hetzner keeps billing a powered-off server.",
+              successMessage: "Shutdown requested.",
+            },
+          },
+          {
+            kind: "action",
+            label: "Reboot",
+            action: {
+              type: "plugin-action",
+              actionId: "reboot",
+              confirmMessage: "Send a soft (ACPI) reboot to this server?",
+              successMessage: "Reboot requested.",
+            },
+          },
+          {
+            kind: "action",
+            label: "Reset",
+            action: {
+              type: "plugin-action",
+              actionId: "reset",
+              confirmMessage:
+                "Hard reset this server? This is like pressing the reset button; unsaved data in memory is lost.",
+              successMessage: "Reset requested.",
+            },
+            variant: "danger",
+          },
+        );
+      }
+      lifecycleActions.push({
+        kind: "action",
+        label: "Take snapshot",
+        action: {
+          type: "plugin-action",
+          actionId: "create_snapshot",
+          confirmMessage:
+            "Create a snapshot of this server's disk? Snapshots are billed per GB-month until deleted.",
+          successMessage: "Snapshot requested. It appears under Images once Hetzner finishes it.",
+        },
+      });
+      const backupsOn = String(fields["backupWindow"] ?? "") !== "";
+      lifecycleActions.push(
+        backupsOn
+          ? {
+              kind: "action",
+              label: "Disable backups",
+              action: {
+                type: "plugin-action",
+                actionId: "disable_backup",
+                confirmMessage:
+                  "Disable automatic backups? Hetzner deletes every existing backup of this server immediately.",
+                successMessage: "Backups disabled.",
+              },
+              variant: "danger",
+            }
+          : {
+              kind: "action",
+              label: "Enable backups",
+              action: {
+                type: "plugin-action",
+                actionId: "enable_backup",
+                confirmMessage:
+                  "Enable daily automatic backups? Hetzner adds 20% of the server's price to its cost.",
+                successMessage: "Backups enabled.",
+              },
+            },
+      );
+      const protectedNow = fields["deleteProtection"] === true;
+      lifecycleActions.push({
+        kind: "action",
+        label: protectedNow ? "Disable protection" : "Enable protection",
+        action: {
+          type: "plugin-action",
+          actionId: protectedNow ? "disable_protection" : "enable_protection",
+          ...(protectedNow
+            ? {
+                confirmMessage:
+                  "Remove delete and rebuild protection? The server can then be deleted or rebuilt.",
+              }
+            : {}),
+          successMessage: protectedNow ? "Protection disabled." : "Protection enabled.",
+        },
+      });
+    }
+
+    if (resource.resourceTypeId === "certificate" && fields["type"] === "managed") {
+      const failed = fields["issuanceStatus"] === "failed" || fields["renewalStatus"] === "failed";
+      if (failed) {
+        lifecycleActions.push({
+          kind: "action",
+          label: "Retry issuance",
+          action: {
+            type: "plugin-action",
+            actionId: "retry",
+            successMessage: "Hetzner is retrying the certificate.",
+          },
+        });
+      }
+    }
+
+    if (resource.resourceTypeId === "storage-box") {
+      const protectedNow = fields["deleteProtection"] === true;
+      lifecycleActions.push(
+        {
+          kind: "action",
+          label: "Take snapshot",
+          action: {
+            type: "plugin-action",
+            actionId: "create_snapshot",
+            successMessage: "Snapshot requested.",
+          },
+        },
+        {
+          kind: "action",
+          label: protectedNow ? "Disable protection" : "Enable protection",
+          action: {
+            type: "plugin-action",
+            actionId: protectedNow ? "disable_protection" : "enable_protection",
+            successMessage: protectedNow ? "Protection disabled." : "Protection enabled.",
+          },
+        },
+      );
+      if (fields["snapshotPlan"]) {
+        lifecycleActions.push({
+          kind: "action",
+          label: "Disable snapshot plan",
+          action: {
+            type: "plugin-action",
+            actionId: "disable_snapshot_plan",
+            confirmMessage: "Stop taking automatic snapshots? Existing snapshots are kept.",
+            successMessage: "Snapshot plan disabled.",
+          },
+        });
+      }
     }
 
     return {
       title: resource.displayName,
       subtitle: joinSubtitle(
         resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId),
-        fields["location"],
+        fields["location"] ?? fields["zoneName"],
       ),
       status: { kind: "status-dot", status },
       sections: [
@@ -1230,15 +1887,20 @@ export class HetznerClient implements PluginClient {
         name: s.name,
         status: s.status,
         serverType: s.server_type?.name ?? "",
-        location: s.datacenter?.location?.name ?? "",
+        // `location` replaced `datacenter` (removed from the API 2026-07-01);
+        // the nested form is read only as a fallback for older payloads.
+        location: s.location?.name ?? s.datacenter?.location?.name ?? "",
         image: s.image?.name ?? s.image?.description ?? "",
-        datacenter: s.datacenter?.name ?? "",
         placementGroupId: s.placement_group?.id != null ? String(s.placement_group.id) : "",
         firewallIds: firewallIds.join(", "),
         networkIds: networkIds.join(", "),
         // Straight off the payload. Feeds the right-sizing disk guard: a
         // resize target's included disk must be >= this.
         primaryDiskGb: s.primary_disk_size ?? s.server_type?.disk ?? 0,
+        // Non-null exactly when automatic backups are enabled.
+        backupWindow: s.backup_window ?? "",
+        deleteProtection: s.protection?.delete ?? false,
+        rescueEnabled: s.rescue_enabled ?? false,
       },
       resolvedOutputs: {
         ipv4: publicIpv4,
@@ -1286,6 +1948,7 @@ export class HetznerClient implements PluginClient {
       displayName: fip.name || fip.ip,
       fields: {
         name: fip.name || "",
+        description: fip.description ?? "",
         ip: fip.ip,
         type: fip.type,
         location: fip.home_location?.name ?? "",
@@ -1341,7 +2004,11 @@ export class HetznerClient implements PluginClient {
 
   private async listNetworks(accountId: string): Promise<ResourceInstance[]> {
     const networks = await this.fetchAll<HetznerNetwork>("/networks", "networks");
-    return networks.map((n) => ({
+    return networks.map((n) => this.mapNetwork(n, accountId));
+  }
+
+  private mapNetwork(n: HetznerNetwork, accountId: string): ResourceInstance {
+    return {
       id: `${accountId}:network:${n.id}`,
       pluginId: "hetzner",
       resourceTypeId: "network",
@@ -1367,7 +2034,7 @@ export class HetznerClient implements PluginClient {
       externalId: String(n.id),
       createdAt: n.created ?? new Date().toISOString(),
       updatedAt: n.created ?? new Date().toISOString(),
-    }));
+    };
   }
 
   private async listLoadBalancers(accountId: string): Promise<ResourceInstance[]> {
@@ -1375,54 +2042,60 @@ export class HetznerClient implements PluginClient {
       "/load_balancers",
       "load_balancers",
     );
-    return loadBalancers.map((lb) => {
-      // Targets are `{type:"server", server:{id}}`, or `{type:"label_selector",
-      // targets:[{server:{id}}]}` once Hetzner has resolved the selector, or
-      // `{type:"ip"}` (no server to link). Both server-bearing shapes count.
-      const targetServerIds = new Set<string>();
-      for (const target of lb.targets ?? []) {
-        if (target.server?.id != null) targetServerIds.add(String(target.server.id));
-        for (const resolved of target.targets ?? []) {
-          if (resolved.server?.id != null) targetServerIds.add(String(resolved.server.id));
-        }
+    return loadBalancers.map((lb) => this.mapLoadBalancer(lb, accountId));
+  }
+
+  private mapLoadBalancer(lb: HetznerLoadBalancer, accountId: string): ResourceInstance {
+    // Targets are `{type:"server", server:{id}}`, or `{type:"label_selector",
+    // targets:[{server:{id}}]}` once Hetzner has resolved the selector, or
+    // `{type:"ip"}` (no server to link). Both server-bearing shapes count.
+    const targetServerIds = new Set<string>();
+    for (const target of lb.targets ?? []) {
+      if (target.server?.id != null) targetServerIds.add(String(target.server.id));
+      for (const resolved of target.targets ?? []) {
+        if (resolved.server?.id != null) targetServerIds.add(String(resolved.server.id));
       }
-      const networkIds = (lb.private_net ?? [])
-        .map((n) => (n.network != null ? String(n.network) : ""))
-        .filter(Boolean);
-      return {
-        id: `${accountId}:load-balancer:${lb.id}`,
-        pluginId: "hetzner",
-        resourceTypeId: "load-balancer",
-        accountId,
-        displayName: lb.name,
-        fields: {
-          name: lb.name,
-          status: lb.status ?? "unknown",
-          type: lb.load_balancer_type?.name ?? "",
-          location: lb.location?.name ?? "",
-          ipv4: lb.public_net?.ipv4?.ip ?? "",
-          ipv6: lb.public_net?.ipv6?.ip ?? "",
-          targetCount: (lb.targets ?? []).length,
-          serviceCount: (lb.services ?? []).length,
-          targetServerIds: [...targetServerIds].join(", "),
-          networkIds: networkIds.join(", "),
-        },
-        resolvedOutputs: {
-          loadBalancerId: String(lb.id),
-          ipv4: lb.public_net?.ipv4?.ip ?? "",
-          ipv6: lb.public_net?.ipv6?.ip ?? "",
-        },
-        secretStates: [],
-        externalId: String(lb.id),
-        createdAt: lb.created ?? new Date().toISOString(),
-        updatedAt: lb.created ?? new Date().toISOString(),
-      };
-    });
+    }
+    const networkIds = (lb.private_net ?? [])
+      .map((n) => (n.network != null ? String(n.network) : ""))
+      .filter(Boolean);
+    return {
+      id: `${accountId}:load-balancer:${lb.id}`,
+      pluginId: "hetzner",
+      resourceTypeId: "load-balancer",
+      accountId,
+      displayName: lb.name,
+      fields: {
+        name: lb.name,
+        status: lb.status ?? "unknown",
+        type: lb.load_balancer_type?.name ?? "",
+        location: lb.location?.name ?? "",
+        ipv4: lb.public_net?.ipv4?.ip ?? "",
+        ipv6: lb.public_net?.ipv6?.ip ?? "",
+        targetCount: (lb.targets ?? []).length,
+        serviceCount: (lb.services ?? []).length,
+        targetServerIds: [...targetServerIds].join(", "),
+        networkIds: networkIds.join(", "),
+      },
+      resolvedOutputs: {
+        loadBalancerId: String(lb.id),
+        ipv4: lb.public_net?.ipv4?.ip ?? "",
+        ipv6: lb.public_net?.ipv6?.ip ?? "",
+      },
+      secretStates: [],
+      externalId: String(lb.id),
+      createdAt: lb.created ?? new Date().toISOString(),
+      updatedAt: lb.created ?? new Date().toISOString(),
+    };
   }
 
   private async listPrimaryIps(accountId: string): Promise<ResourceInstance[]> {
     const ips = await this.fetchAll<HetznerPrimaryIp>("/primary_ips", "primary_ips");
-    return ips.map((ip) => ({
+    return ips.map((ip) => this.mapPrimaryIp(ip, accountId));
+  }
+
+  private mapPrimaryIp(ip: HetznerPrimaryIp, accountId: string): ResourceInstance {
+    return {
       id: `${accountId}:primary-ip:${ip.id}`,
       pluginId: "hetzner",
       resourceTypeId: "primary-ip",
@@ -1432,7 +2105,7 @@ export class HetznerClient implements PluginClient {
         name: ip.name || "",
         ip: ip.ip,
         type: ip.type,
-        datacenter: ip.datacenter?.name ?? "",
+        location: ip.location?.name ?? ip.datacenter?.location?.name ?? "",
         assigneeId: ip.assignee_id != null ? String(ip.assignee_id) : "",
         assigneeType: ip.assignee_type ?? "",
         blocked: ip.blocked ?? false,
@@ -1443,7 +2116,7 @@ export class HetznerClient implements PluginClient {
       externalId: String(ip.id),
       createdAt: ip.created ?? new Date().toISOString(),
       updatedAt: ip.created ?? new Date().toISOString(),
-    }));
+    };
   }
 
   private async listSshKeys(accountId: string): Promise<ResourceInstance[]> {
@@ -1559,12 +2232,66 @@ function serverStatusToDot(status: string): ResourceStatus {
   }
 }
 
-function categorizeServerType(name: string): string {
-  if (name.startsWith("cx") || name.startsWith("cpx")) return "Shared vCPU (x86)";
+/** Types `updateSimple` edits, mapped to their API collection. */
+const RENAMEABLE_COLLECTIONS: Record<string, string> = {
+  certificate: "certificates",
+  "floating-ip": "floating_ips",
+  "primary-ip": "primary_ips",
+  firewall: "firewalls",
+  network: "networks",
+  "load-balancer": "load_balancers",
+  "placement-group": "placement_groups",
+  "ssh-key": "ssh_keys",
+};
+
+/**
+ * Server action ids `invokeAction` accepts. Most are Hetzner action names
+ * verbatim (`POST /servers/{id}/actions/{name}`); `create_snapshot` and the
+ * protection pair are composed from `create_image` / `change_protection`.
+ */
+const SERVER_ACTIONS = new Set([
+  "poweron",
+  "poweroff",
+  "shutdown",
+  "reboot",
+  "reset",
+  "create_snapshot",
+  "enable_backup",
+  "disable_backup",
+  "enable_protection",
+  "disable_protection",
+]);
+
+/**
+ * Picker group for a server type. Hetzner names the family itself in
+ * `category` (added 2025-08-25, e.g. "Shared vCPU", "Cost-Optimized") and the
+ * CPU in `architecture`; the name-prefix guess is the fallback for payloads
+ * without them.
+ */
+function categorizeServerType(
+  st: Pick<HetznerServerType, "name" | "category" | "architecture">,
+): string {
+  const arch = st.architecture === "arm" ? "Arm64" : st.architecture === "x86" ? "x86" : undefined;
+  if (st.category) return arch ? `${st.category} (${arch})` : st.category;
+  const name = st.name;
   if (name.startsWith("cax")) return "Shared vCPU (Arm64)";
+  if (name.startsWith("cx") || name.startsWith("cpx")) return "Shared vCPU (x86)";
   if (name.startsWith("ccx")) return "Dedicated vCPU (x86)";
-  if (name.startsWith("cax")) return "Dedicated vCPU (Arm64)";
   return "Other";
+}
+
+/**
+ * Whether a server type can still be ordered somewhere. Deprecation moved
+ * per location on 2025-09-24 (`locations[].deprecation`, `.available`), and
+ * the top-level `deprecated` flag is removed on 2026-11-02, so both forms are
+ * read: a type is offered when at least one of its locations is neither
+ * deprecated nor temporarily unavailable.
+ */
+function isServerTypeOrderable(st: HetznerServerType): boolean {
+  if (st.locations && st.locations.length > 0) {
+    return st.locations.some((l) => !l.deprecation && l.available !== false);
+  }
+  return !st.deprecation && !st.deprecated;
 }
 
 interface HetznerServer {
@@ -1583,9 +2310,15 @@ interface HetznerServer {
   server_type?: { name: string; cores: number; memory: number; disk: number };
   /** Actual root disk size in GB: stays put on change_type with upgrade_disk=false. */
   primary_disk_size?: number;
+  location?: { name: string; city?: string };
+  /** Removed from the API on 2026-07-01; kept for older payloads. */
   datacenter?: { name: string; location?: { name: string; city: string } };
   image?: { name: string; description: string };
   placement_group?: { id?: number; name?: string; type?: string } | null;
+  /** Time window (UTC) automatic backups run in; null when backups are disabled. */
+  backup_window?: string | null;
+  protection?: { delete?: boolean; rebuild?: boolean };
+  rescue_enabled?: boolean;
 }
 
 interface HetznerVolume {
@@ -1602,6 +2335,7 @@ interface HetznerVolume {
 interface HetznerFloatingIp {
   id: number;
   name: string;
+  description?: string | null;
   ip: string;
   type: string;
   created: string;
@@ -1628,6 +2362,7 @@ interface HetznerLocation {
   id: number;
   name: string;
   city: string;
+  network_zone?: string;
   country: string;
   description: string;
 }
@@ -1638,7 +2373,17 @@ interface HetznerServerType {
   cores: number;
   memory: number;
   disk: number;
-  deprecated: boolean;
+  /** Removed from the API on 2026-11-02; superseded by `locations[].deprecation`. */
+  deprecated?: boolean;
+  deprecation?: { unavailable_after?: string; announced?: string } | null;
+  category?: string;
+  architecture?: "x86" | "arm";
+  locations?: Array<{
+    name: string;
+    deprecation?: { unavailable_after?: string; announced?: string } | null;
+    available?: boolean;
+    recommended?: boolean;
+  }>;
   prices?: Array<{
     location: string;
     price_monthly: { net: string; gross: string };
@@ -1653,6 +2398,10 @@ interface HetznerImage {
   type: string;
   os_flavor: string;
   os_version: string | null;
+  architecture?: "x86" | "arm";
+  /** Removed from the API on 2026-11-02; superseded by `deprecation`. */
+  deprecated?: string | boolean | null;
+  deprecation?: { unavailable_after?: string; announced?: string } | null;
 }
 
 interface HetznerNetwork {
@@ -1690,13 +2439,26 @@ interface HetznerLoadBalancer {
   protection?: { delete?: boolean };
 }
 
+interface HetznerLoadBalancerType {
+  id: number;
+  name: string;
+  max_connections?: number;
+  max_targets?: number;
+  /** Superseded by `deprecation` (2026-06-05). */
+  deprecated?: boolean | string | null;
+  deprecation?: unknown;
+  prices?: Array<{ location: string; price_monthly?: { net?: string; gross?: string } }>;
+}
+
 interface HetznerPrimaryIp {
   id: number;
   name: string;
   ip: string;
   type: string;
   created: string;
-  datacenter?: { name: string };
+  location?: { name: string };
+  /** Removed from the API on 2026-07-01; kept for older payloads. */
+  datacenter?: { name: string; location?: { name: string } };
   assignee_id: number | null;
   assignee_type: string | null;
   blocked: boolean;

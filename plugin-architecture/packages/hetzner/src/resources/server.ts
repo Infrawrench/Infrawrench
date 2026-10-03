@@ -23,7 +23,7 @@ export const ServerResourceType = rt({
     }),
     f("serverType", "Server Type", {
       description:
-        "Server type slug, e.g. cx22, cpx11, cax11. Changing it resizes the server (Hetzner change_type; requires the server to be powered off)",
+        "Server type slug, e.g. cx23, cpx22, cax11. Changing it resizes the server (Hetzner change_type; requires the server to be powered off)",
     }),
     f("location", "Location", {
       kind: "enum",
@@ -32,11 +32,6 @@ export const ServerResourceType = rt({
     }),
     f("image", "Image", {
       description: "OS image name, e.g. ubuntu-24.04",
-      editable: false,
-    }),
-    f("datacenter", "Datacenter", {
-      required: false,
-      description: "Datacenter name, e.g. fsn1-dc14",
       editable: false,
     }),
     f("placementGroupId", "Placement Group", {
@@ -61,6 +56,19 @@ export const ServerResourceType = rt({
         "Actual root disk size. A type change keeps it (upgrade_disk=false), and the target type's included disk must be at least this big",
       editable: false,
     }),
+    f("backupWindow", "Backup Window", {
+      required: false,
+      description:
+        "UTC time window Hetzner's daily automatic backups run in. Empty when automatic backups are disabled",
+      editable: false,
+    }),
+    f("deleteProtection", "Delete Protection", {
+      kind: "boolean",
+      required: false,
+      description: "When on, Hetzner refuses to delete or rebuild the server",
+      editable: false,
+    }),
+    f("rescueEnabled", "Rescue Mode", { kind: "boolean", required: false, editable: false }),
   ],
   outputs: [o("ipv4", "Public IPv4"), o("ipv6", "Public IPv6"), o("ipv4Private", "Private IPv4")],
   // All three are ids straight off the /servers payload; each target type's
@@ -94,7 +102,7 @@ export const ServerResourceType = rt({
       // The agents flow submits only these defaults; without a location the
       // create call omits it and placement becomes nondeterministic.
       location: "fsn1",
-      serverType: "cx22",
+      serverType: "cx23",
       image: "ubuntu-24.04",
     },
     linuxImageDefaults: { image: "ubuntu-24.04" },
@@ -122,11 +130,13 @@ export const ServerResourceType = rt({
       "Hetzner requires the server to be powered off before changing its type. The disk keeps its current size, so the change can be reverted.",
   },
   // Backups land in the `image` type carrying this server's id in `boundTo`.
-  // Hetzner's `backup_window` on the server payload is not synced, so there is
-  // no automated-backup field to declare: an unbacked server reads as
-  // unprotected purely on the absence of a bound image, which is the honest
-  // answer from what we have.
-  backupPolicy: { protectedBy: ["image"] },
+  // `backup_window` is non-null exactly while automatic backups are enabled,
+  // so its presence is the automated-backup signal.
+  backupPolicy: {
+    protectedBy: ["image"],
+    automatedBackupFieldKey: "backupWindow",
+    automatedBackupWhen: "present",
+  },
   // The lister always writes `firewallIds` ("" when none are attached), so
   // `equals ""` can't flag rows synced before the field existed.
   postureChecks: [
