@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import {
   ENVIRONMENT_LIMITS,
+  formatCo2e,
   parseTtlDraft,
   resolveParameterValues,
   validateParameterValues,
@@ -260,6 +261,21 @@ export function InstantiateModal({
                     count: estimate.unpricedCount,
                     suffix: estimate.unpricedCount === 1 ? "" : "s",
                   })}
+                </span>
+              )}
+            </p>
+          )}
+          {estimate && estimate.monthlyKgCo2e !== null && (
+            <p
+              className="text-xs text-on-surface-tertiary"
+              title={gt("Estimated from published grid figures; processors only")}
+            >
+              {gt("Estimated carbon: ~{amount} CO2e/month", {
+                amount: formatCo2e(estimate.monthlyKgCo2e),
+              })}
+              {estimate.uncarbonedCount > 0 && (
+                <span className="text-on-surface-faint">
+                  {gt(" · {count} not estimated", { count: estimate.uncarbonedCount })}
                 </span>
               )}
             </p>

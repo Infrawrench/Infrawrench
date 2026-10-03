@@ -14,6 +14,7 @@
  * the figure move as they drag a disk slider, and rounding a $30.37 instance
  * to "$30" makes a $0.37/GB storage change look like it did nothing.
  */
+import type { CarbonEstimate, ResourceCarbonEstimate } from "./carbon";
 import type { CostEstimate } from "@infrawrench/plugin-base";
 
 import type { CloudFetch } from "./fetch";
@@ -111,4 +112,30 @@ export async function fetchResourceCostEstimate(
     },
   );
   return result?.estimate ?? null;
+}
+
+/**
+ * Both halves of the `cost-estimate` response: the price and the estimated
+ * carbon of the same configuration. Mobile's resource card reads this so the
+ * two figures come from one request.
+ */
+export async function fetchResourceFootprint(
+  api: CloudFetch,
+  orgId: string,
+  input: { accountId: string; resourceTypeId: string; resourceId: string },
+): Promise<{ estimate: CostEstimate | null; carbon: ResourceCarbonEstimate | null }> {
+  const result = await api.org<{
+    estimate: CostEstimate | null;
+    carbon?: ResourceCarbonEstimate | null;
+  }>(orgId, `/resources/cost-estimate`, { method: "POST", body: JSON.stringify(input) });
+  return { estimate: result?.estimate ?? null, carbon: result?.carbon ?? null };
+}
+
+/** The org's carbon estimate (`GET /carbon`), for mobile and the CLI. */
+export async function fetchCarbonEstimate(
+  api: CloudFetch,
+  orgId: string,
+  windowDays?: number,
+): Promise<CarbonEstimate | null> {
+  return api.org<CarbonEstimate>(orgId, `/carbon${windowDays ? `?windowDays=${windowDays}` : ""}`);
 }

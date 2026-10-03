@@ -6,6 +6,7 @@
  * filters on both org and graph id. `fetch` leaves through the workflow
  * egress proxy, never from the pod.
  */
+import { getCarbonEstimate } from "@infrawrench/server-core/cost/carbon";
 import { and, asc, count, eq, ilike, isNull, sql } from "drizzle-orm";
 
 import { getMetricRange } from "@infrawrench/server-core/clickhouse/readers";
@@ -160,6 +161,7 @@ export function buildOrgCustomGraphHost(organizationId: string, graphId: string)
   );
   return {
     queryCosts: (query) => queryOrgCosts(organizationId, query),
+    carbonEstimate: (windowDays) => getCarbonEstimate(organizationId, { windowDays }),
     listResources: (filter) => listOrgResources(organizationId, filter),
     metricSeries: (resourceId, range) => metricSeriesForResource(organizationId, resourceId, range),
 

@@ -243,11 +243,20 @@ export interface EnvironmentCostEstimate {
   partial: boolean;
   /** Members whose cost is unknown; reported, never rounded to zero. */
   unpricedCount: number;
+  /**
+   * Estimated monthly kg CO2e of the members that could be placed (sized
+   * compute in a region with a published grid figure). Null when none could.
+   */
+  monthlyKgCo2e: number | null;
+  /** In-scope members whose carbon could not be estimated. */
+  uncarbonedCount: number;
   members: {
     memberKey: string;
     displayName: string;
     monthlyAmount: number | null;
     currency: string | null;
+    /** Null when out of scope (a bucket) or not placeable. */
+    monthlyKgCo2e: number | null;
   }[];
 }
 

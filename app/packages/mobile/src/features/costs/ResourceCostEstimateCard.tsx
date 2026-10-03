@@ -1,7 +1,9 @@
 import { Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
-  fetchResourceCostEstimate,
+  ASSUMED_CPU_UTILIZATION,
+  fetchResourceFootprint,
+  formatCo2e,
   formatMonthlyEstimate,
   partialEstimatePrefix,
 } from "@infrawrench/client-core";
@@ -33,12 +35,39 @@ export function ResourceCostEstimateCard({
 
   const estimate = useQuery({
     queryKey: ["resource-cost-estimate", orgId, resourceId],
-    queryFn: () => fetchResourceCostEstimate(api, orgId, { accountId, resourceTypeId, resourceId }),
+    queryFn: () => fetchResourceFootprint(api, orgId, { accountId, resourceTypeId, resourceId }),
     retry: false,
   });
 
-  const data = estimate.data;
-  if (!data) return null;
+  const data = estimate.data?.estimate ?? null;
+  const carbon = estimate.data?.carbon?.estimate ?? null;
+  if (!data && !carbon) return null;
+
+  // Carbon beside the price, from the same response. Its basis is printed
+  // under it rather than behind a tap: nothing in it is measured.
+  const carbonBlock = carbon ? (
+    <View style={{ gap: 2 }}>
+      <Text style={{ color: colors.text, fontSize: 16, fontWeight: "600" }}>
+        ~{formatCo2e(carbon.kgCo2e)} CO2e
+        <Text style={{ color: colors.textMuted, fontSize: 14, fontWeight: "400" }}>/mo</Text>
+      </Text>
+      <Text style={{ color: colors.textFaint, fontSize: 12 }}>
+        Estimated: {carbon.count === 1 ? "" : `${carbon.count} × `}
+        {carbon.vcpus} vCPU in {carbon.gridZone} at {Math.round(carbon.gridIntensity)} g/kWh, PUE{" "}
+        {carbon.pue}, {Math.round(ASSUMED_CPU_UTILIZATION * 100)}% assumed utilisation. Processors
+        only.
+      </Text>
+    </View>
+  ) : null;
+
+  if (!data) {
+    return (
+      <Card>
+        <SectionTitle>Estimated carbon</SectionTitle>
+        {carbonBlock}
+      </Card>
+    );
+  }
 
   const prefix = partialEstimatePrefix(data);
 
@@ -69,6 +98,7 @@ export function ResourceCostEstimateCard({
           {note}
         </Text>
       ))}
+      {carbonBlock}
       <View>
         <Text style={{ color: colors.textFaint, fontSize: 12 }}>
           List-price projection from the provider&rsquo;s published rates — not a bill. Your Costs

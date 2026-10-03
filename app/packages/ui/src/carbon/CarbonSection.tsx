@@ -18,7 +18,7 @@ export interface CarbonSectionProps {
  * The design constraint is that nothing here may read as measured. The word
  * "estimated" is in the heading, the assumptions are on the page rather than
  * behind a tooltip, and the resources that could not be estimated are counted
- * beside the total rather than tucked at the bottom — because a total that
+ * beside the total rather than tucked at the bottom, because a total that
  * silently covered two thirds of an estate is the failure mode this page has.
  */
 export function CarbonSection({ data, error, onRetry }: CarbonSectionProps) {
@@ -30,16 +30,17 @@ export function CarbonSection({ data, error, onRetry }: CarbonSectionProps) {
         <h2 className="text-lg font-semibold mb-1">{gt("Estimated carbon")}</h2>
         <T>
           <p className="text-sm text-on-surface-muted">
-            An estimate of the emissions from running your compute, using published grid figures for
-            each region. It is not measured, and it does not cover storage, network or the emissions
-            from manufacturing the hardware.
+            An estimate of the emissions from the processors in your virtual machines, Kubernetes
+            nodes and sized managed services, using published grid figures for each region. It is
+            not measured, and it does not cover storage, memory, network or the emissions from
+            manufacturing the hardware.
           </p>
         </T>
       </div>
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load the carbon estimate — {error}", { error })}{" "}
+          {gt("Couldn't load the carbon estimate: {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
               {gt("Retry")}
@@ -79,13 +80,39 @@ export function CarbonSection({ data, error, onRetry }: CarbonSectionProps) {
                   of an estate must not look like a complete answer. */}
               <div
                 className={`mt-1 text-2xl font-semibold tabular-nums ${
-                  data.unestimated.length > 0 ? "text-warning" : "text-on-surface"
+                  data.unestimatedCount > 0 ? "text-warning" : "text-on-surface"
                 }`}
               >
-                {data.unestimated.length}
+                {data.unestimatedCount}
               </div>
+              {data.duplicateCount > 0 && (
+                <div className="mt-1 text-xs text-on-surface-tertiary">
+                  {gt("{count} Kubernetes nodes counted as their instance", {
+                    count: data.duplicateCount,
+                  })}
+                </div>
+              )}
             </div>
           </div>
+
+          {data.byProvider.length > 1 && (
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-on-surface">{gt("By provider")}</h3>
+              <ul className="flex flex-col gap-1 text-xs">
+                {data.byProvider.map((group) => (
+                  <li key={group.key} className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-on-surface">{group.label}</span>
+                    <span className="tabular-nums text-on-surface-secondary">
+                      {formatCo2e(group.kgCo2e)}
+                    </span>
+                    <span className="text-on-surface-faint">
+                      {gt("{count} resources", { count: group.resourceCount })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {data.byRegion.length > 0 && (
             <div>
@@ -99,6 +126,31 @@ export function CarbonSection({ data, error, onRetry }: CarbonSectionProps) {
                     </span>
                     <span className="text-on-surface-faint">
                       {gt("{count} resources", { count: group.resourceCount })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {data.rows.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-on-surface">
+                {gt("Heaviest resources")}
+              </h3>
+              <ul className="flex flex-col gap-1 text-xs">
+                {data.rows.slice(0, 10).map((row) => (
+                  <li key={row.resourceId} className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-on-surface">{row.displayName}</span>
+                    <span className="tabular-nums text-on-surface-secondary">
+                      {formatCo2e(row.kgCo2e)}
+                    </span>
+                    <span className="text-on-surface-faint">
+                      {gt("{vcpus} vCPU in {zone} at {grams} g/kWh", {
+                        vcpus: row.vcpus * row.count,
+                        zone: row.gridZone,
+                        grams: Math.round(row.gridIntensity),
+                      })}
                     </span>
                   </li>
                 ))}
@@ -126,7 +178,7 @@ export function CarbonSection({ data, error, onRetry }: CarbonSectionProps) {
             <details className="text-xs text-on-surface-tertiary">
               <summary className="cursor-pointer">
                 {gt("{count} resources with no estimate, and why", {
-                  count: data.unestimated.length,
+                  count: data.unestimatedCount,
                 })}
               </summary>
               <ul className="mt-2 flex flex-col gap-1">

@@ -752,6 +752,96 @@ export interface RightsizingDeclaration {
   resizeNote?: string;
 }
 
+/**
+ * How the carbon estimate reads one resource of this type: where its
+ * hardware is and how many vCPUs it runs. Purely declarative; the host does
+ * the arithmetic against published coefficients and never hard-codes a
+ * provider's field names.
+ *
+ * A type without this (and without a `rightsizing` declaration, which is
+ * read as an implicit one) is outside the estimate's scope: a bucket or a DNS
+ * record draws no processor power anyone publishes a figure for, and counting
+ * it as "could not be estimated" would bury the gaps that matter.
+ */
+export interface CarbonDeclaration {
+  /**
+   * `"instance"` (default): hardware nothing else in the inventory lists, so
+   * it is summed into the organisation's total.
+   *
+   * `"aggregate"`: a group whose machines are usually listed in their own
+   * right too (a managed Kubernetes cluster's nodes are droplets, EC2
+   * instances, Scaleway instances). Shown on the resource and in the create
+   * form, never added to the total, because adding it would count every node
+   * twice.
+   */
+  role?: "instance" | "aggregate";
+  /** Field holding the region, zone or location the hardware runs in. */
+  regionFieldKey: string;
+  /**
+   * Which coefficient table the region belongs to. Defaults to the plugin's
+   * own id. `"auto"` tries every hyperscaler table, for resources that run on
+   * somebody else's cloud and only report the region (Kubernetes nodes,
+   * managed databases hosted on AWS or GCP).
+   */
+  grid?: string;
+  /**
+   * Field naming the grid per resource (ClickHouse's `provider`), consulted
+   * before `grid`.
+   */
+  gridFieldKey?: string;
+  /** How many vCPUs one unit runs. */
+  vcpus: CarbonVcpuSource;
+  /**
+   * Field holding how many units the resource runs (node count, worker
+   * count). Absent = one. A missing or non-numeric value also means one.
+   */
+  countFieldKey?: string;
+  /** Added to the count: a Databricks cluster's driver beside its workers. */
+  countOffset?: number;
+}
+
+export type CarbonVcpuSource =
+  | {
+      /** The synced fields carry the vCPU count directly. */
+      from: "field";
+      fieldKey: string;
+      /**
+       * `"number"` (default) for a plain count, `"k8s-quantity"` for a
+       * Kubernetes CPU quantity ("4", "3920m").
+       */
+      format?: "number" | "k8s-quantity";
+    }
+  | {
+      /**
+       * The synced fields carry a size id, resolved against the size-picker
+       * of a create form, where providers already publish vCPU counts.
+       */
+      from: "size";
+      sizeFieldKey: string;
+      /**
+       * The resource type whose create form carries the catalogue, when it
+       * is not this one: RDS classes are EC2 sizes with a `db.` prefix.
+       */
+      catalogueTypeId?: string;
+      /** Key of the size-picker in that form. Defaults to `sizeFieldKey`. */
+      catalogueFieldKey?: string;
+      /**
+       * Match the stored value against the option's `label` instead of its
+       * `id` (OVH's picker ids are per-region UUIDs; the synced value is the
+       * flavour name).
+       */
+      matchBy?: "id" | "label";
+      /** Stripped from the stored value before matching (`db.`, `cache.`). */
+      stripPrefix?: string;
+      /** Stripped from the stored value before matching (`.search`). */
+      stripSuffix?: string;
+      /**
+       * The stored value is a comma-separated list (EKS `instanceTypes`); the
+       * first entry is used.
+       */
+      list?: boolean;
+    };
+
 export interface ResourceTypeDefinition {
   id: string;
   displayName: string;
@@ -989,6 +1079,12 @@ export interface ResourceTypeDefinition {
    * flagged as oversized.
    */
   rightsizing?: RightsizingDeclaration;
+  /**
+   * How the carbon estimate reads this type; see {@link CarbonDeclaration}.
+   * Absent = a `rightsizing` declaration is read in its place, and a type
+   * with neither is outside the estimate's scope.
+   */
+  carbon?: CarbonDeclaration;
   /**
    * Marks this type as an identity principal inside the customer's cloud (an
    * IAM user or role, a service account, an app registration, a role binding,

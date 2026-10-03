@@ -3,6 +3,17 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const ElastiCacheClusterResourceType = rt({
   name: "ElastiCache Cluster",
   id: "elasticache-cluster",
+  carbon: {
+    regionFieldKey: "region",
+    vcpus: {
+      from: "size",
+      sizeFieldKey: "nodeType",
+      catalogueTypeId: "ec2-instance",
+      catalogueFieldKey: "instanceType",
+      stripPrefix: "cache.",
+    },
+    countFieldKey: "numNodes",
+  },
   description: "An Amazon ElastiCache Valkey, Redis OSS or Memcached cluster",
   fields: [
     f("clusterId", "Cluster ID"),

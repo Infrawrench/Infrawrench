@@ -115,6 +115,7 @@
  * audit, all of it) rather than by a second teardown scheduler that would
  * have to relearn the same lessons.
  */
+import { carbonHintFor, getConfigCarbon } from "../cost/carbon";
 import { and, eq, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import {
   attemptedPositionCeiling,
@@ -1143,9 +1144,37 @@ export async function estimateEnvironmentInstantiation(
   // floor, exactly as `CostEstimate.partial` does one level down.
   let sawPartial = false;
 
+  // Carbon beside the price, read the way the create form reads a member's
+  // fields. In-scope members that cannot be placed are counted, not zeroed.
+  let carbonTotal = 0;
+  let carbonPlaced = false;
+  let uncarbonedCount = 0;
+  const memberCarbon = async (
+    accountId: string,
+    member: EnvironmentTemplateMember,
+    fields: Record<string, string>,
+  ): Promise<number | null> => {
+    const hint = await carbonHintFor(member.pluginId, member.resourceTypeId).catch(() => undefined);
+    if (!hint) return null;
+    const footprint = await getConfigCarbon(organizationId, {
+      accountId,
+      pluginId: member.pluginId,
+      resourceTypeId: member.resourceTypeId,
+      fields,
+    }).catch(() => null);
+    if (!footprint) {
+      uncarbonedCount += 1;
+      return null;
+    }
+    carbonPlaced = true;
+    carbonTotal += footprint.kgCo2e;
+    return footprint.kgCo2e;
+  };
+
   for (const member of template.members) {
     const accountId = accountOverrides[member.key] ?? member.accountId;
     const fields = estimateFields(member, parameters);
+    const monthlyKgCo2e = await memberCarbon(accountId, member, fields);
     let ctxClient = clients.get(accountId);
     if (ctxClient === undefined) {
       ctxClient = await getOrgAccountClient(accountId, organizationId).catch(() => null);
@@ -1162,6 +1191,7 @@ export async function estimateEnvironmentInstantiation(
         displayName: member.sourceName,
         monthlyAmount: null,
         currency: null,
+        monthlyKgCo2e,
       });
       continue;
     }
@@ -1176,6 +1206,7 @@ export async function estimateEnvironmentInstantiation(
         displayName: member.sourceName,
         monthlyAmount: estimate.monthlyAmount,
         currency: estimate.currency,
+        monthlyKgCo2e,
       });
       continue;
     }
@@ -1187,6 +1218,7 @@ export async function estimateEnvironmentInstantiation(
       displayName: member.sourceName,
       monthlyAmount: estimate.monthlyAmount,
       currency: estimate.currency,
+      monthlyKgCo2e,
     });
   }
 
@@ -1195,6 +1227,8 @@ export async function estimateEnvironmentInstantiation(
     currency: priced ? currency : null,
     partial: unpricedCount > 0 || sawPartial,
     unpricedCount,
+    monthlyKgCo2e: carbonPlaced ? carbonTotal : null,
+    uncarbonedCount,
     members,
   };
 }

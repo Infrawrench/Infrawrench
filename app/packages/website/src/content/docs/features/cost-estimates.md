@@ -31,6 +31,8 @@ infrawrench estimate <resource-id> --json
 
 Prints the monthly total and its line items. Cloud only.
 
+**Carbon beside it.** Everywhere a price is quoted here, an [estimated carbon](./carbon.md) figure sits beside it: a grey **Estimated carbon** badge next to the cost badge, a CO2e figure on each size card in the create form, and a carbon line under the cost delta in the edit dialog. It comes from the same request, so the two figures always describe the same configuration.
+
 ## What the numbers mean
 
 Estimates are **list-price projections, not bills**. Specifically:

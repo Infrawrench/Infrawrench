@@ -16,6 +16,9 @@
 // a display name / external id when `--account` (and usually `--org`) scopes
 // the lookup: same friendly resolution accounts get via `resolveAccount`.
 import type { CostEstimate } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
+import type { ResourceCarbonEstimate } from "@infrawrench/client-core" with {
+  "resolution-mode": "import",
+};
 
 import {
   CliError,
@@ -27,7 +30,7 @@ import {
   type CliContext,
   type ResourceRow,
 } from "../context";
-import { c, printJson, printKeyValues, println } from "../output";
+import { c, formatCo2e, printJson, printKeyValues, println } from "../output";
 
 /** `{accountId}:{typeId}:{externalId}`: the id shape every surface uses. */
 function isCompoundResourceId(value: string): boolean {
@@ -135,16 +138,18 @@ export async function cmdEstimate(ctx: CliContext, resourceArg: string): Promise
   const { accountId, resourceTypeId, resourceId } = await resolveEstimateTarget(ctx, resourceArg);
   const org = await resolveOrg(ctx);
 
-  const { estimate } = await orgFetch<{ estimate: CostEstimate | null }>(
-    org.id,
-    "/resources/cost-estimate",
-    { method: "POST", body: JSON.stringify({ accountId, resourceTypeId, resourceId }) },
-  );
+  const { estimate, carbon } = await orgFetch<{
+    estimate: CostEstimate | null;
+    carbon?: ResourceCarbonEstimate | null;
+  }>(org.id, "/resources/cost-estimate", {
+    method: "POST",
+    body: JSON.stringify({ accountId, resourceTypeId, resourceId }),
+  });
 
   if (ctx.flags.output === "json") {
     // `null` rather than a zeroed object: a caller scripting against this has
     // to be able to tell "we can't price it" from "it's free".
-    printJson({ resourceId, estimate });
+    printJson({ resourceId, estimate, carbon: carbon ?? null });
     return;
   }
 
@@ -152,6 +157,7 @@ export async function cmdEstimate(ctx: CliContext, resourceArg: string): Promise
     println(
       `${c.dim("No estimate available for")} ${c.bold(resourceTypeId)} ${c.dim("— this provider plugin doesn't publish rates for it.")}`,
     );
+    printCarbon(carbon ?? null);
     return;
   }
 
@@ -173,4 +179,33 @@ export async function cmdEstimate(ctx: CliContext, resourceArg: string): Promise
     println(c.yellow("! Partial — some components of this resource have no published rate."));
   }
   for (const note of estimate.notes ?? []) println(c.dim(`  ${note}`));
+  printCarbon(carbon ?? null);
+}
+
+/** The carbon line beside the price, with what it rests on. */
+function printCarbon(carbon: ResourceCarbonEstimate | null): void {
+  if (!carbon?.inScope) return;
+  println();
+  const f = carbon.estimate;
+  if (!f) {
+    const why: Record<string, string> = {
+      "unsupported-provider": "no published grid figures for this provider",
+      "unknown-region": "this region is not in the published coefficient set",
+      "unknown-size": "no vCPU count is known for this size",
+    };
+    println(c.dim(`No carbon estimate: ${why[carbon.reason ?? ""] ?? "it could not be placed"}.`));
+    return;
+  }
+  const units = f.count === 1 ? `${f.vcpus} vCPU` : `${f.count} × ${f.vcpus} vCPU`;
+  println(`${c.bold(`~${formatCo2e(f.kgCo2e)} CO2e/month`)} ${c.dim("· estimated")}`);
+  println(
+    c.dim(
+      `  ${units} in ${f.gridZone} at ${Math.round(f.gridIntensity)} g/kWh, PUE ${f.pue}, ${Math.round(
+        carbon.assumptions.cpuUtilization * 100,
+      )}% assumed utilisation`,
+    ),
+  );
+  if (carbon.role === "aggregate") {
+    println(c.dim("  Its machines are listed in their own right and counted there, not here."));
+  }
 }

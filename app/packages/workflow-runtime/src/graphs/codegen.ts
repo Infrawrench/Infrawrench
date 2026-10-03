@@ -108,6 +108,42 @@ interface GraphCostResult {
   currencies: string[];
 }
 
+interface GraphCarbonGroup {
+  key: string;
+  label: string;
+  kgCo2e: number;
+  kwh: number;
+  resourceCount: number;
+}
+
+/**
+ * The org's ESTIMATED operational carbon (same figures as the Costs page's
+ * carbon section). Processors only; nothing here is measured. Always show
+ * unestimatedCount beside totalKgCo2e so a partial total is not read as whole.
+ */
+interface GraphCarbonEstimate {
+  windowDays: number;
+  totalKgCo2e: number;
+  totalKwh: number;
+  estimatedCount: number;
+  unestimatedCount: number;
+  byProvider: GraphCarbonGroup[];
+  byRegion: GraphCarbonGroup[];
+  byAccount: GraphCarbonGroup[];
+  rows: Array<{
+    resourceId: string;
+    displayName: string;
+    pluginId: string;
+    region: string;
+    vcpus: number;
+    count: number;
+    gridIntensity: number;
+    kwh: number;
+    kgCo2e: number;
+  }>;
+  assumptions: { cpuUtilization: number; coefficientSource: string; scope: string };
+}
+
 interface GraphResourceInfo {
   id: string;
   displayName: string;
@@ -192,6 +228,10 @@ interface Graph {
   costs: {
     /** Query the organization's collected spend (same data as cost graphs). */
     query(opts?: GraphCostQueryOptions): Promise<GraphCostResult>;
+  };
+  carbon: {
+    /** Estimated CO2e of the org's compute over a window (1–365 days, default 30). */
+    estimate(opts?: { windowDays?: number }): Promise<GraphCarbonEstimate>;
   };
   resources: {
     /** List the organization's resources, e.g. to build a picker. */

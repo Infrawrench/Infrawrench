@@ -46,7 +46,7 @@ import type { AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices, persistPlaintextSecret } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
-import { makeResourceCostEstimator } from "../lib/cost-estimate";
+import { makeResourceCarbonEstimator, makeResourceCostEstimator } from "../lib/cost-estimate";
 import { applyCredentialRewriters } from "../lib/credential-rewriters";
 import { invoke } from "../lib/invoke";
 import type { PluginClient, PeerPaneContext, AssociationSource } from "@infrawrench/plugin-base";
@@ -239,6 +239,17 @@ export function ResourcePanel({
   const loadCostEstimate = useMemo(
     () =>
       makeResourceCostEstimator({
+        resource,
+        accountId,
+        resourceId: decodedResourceId,
+        getLocalClient: () => clientRef.current,
+        getCloudCtx: () => cloudCtxRef.current,
+      }),
+    [resource, accountId, decodedResourceId],
+  );
+  const loadCarbonEstimate = useMemo(
+    () =>
+      makeResourceCarbonEstimator({
         resource,
         accountId,
         resourceId: decodedResourceId,
@@ -1217,6 +1228,7 @@ export function ResourcePanel({
               cloudParentResourceId={cloudCtxRef.current?.parentResourceId}
               accountPluginId={account?.plugin_id}
               loadCostEstimate={loadCostEstimate}
+              loadCarbonEstimate={loadCarbonEstimate}
               onPeerPaneOpen={handlePeerPaneOpen}
               onRunQuery={handleRunQuery}
               onExecute={handleExecute}

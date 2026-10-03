@@ -58,7 +58,11 @@ import type {
   TerraformExportOutcome,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
-import type { PeerIntegrationStub, ResolvedPeerPane } from "@infrawrench/client-core";
+import type {
+  PeerIntegrationStub,
+  ResolvedPeerPane,
+  ResourceCarbonEstimate,
+} from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { createWebAgentClient } from "@/lib/agent-client";
@@ -248,29 +252,59 @@ export function ResourceDetailClient({
   // the plugin can't price this type, which is most of them: the header chip
   // simply doesn't render.
   const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+  const [carbonEstimate, setCarbonEstimate] = useState<ResourceCarbonEstimate | null>(null);
+  // One request answers both the price and the carbon of a configuration;
+  // the in-flight promise is shared so the edit modal's two loaders cost one
+  // round trip per pause, not two.
+  const loadEstimates = useMemo(() => {
+    const inflight = new Map<
+      string,
+      Promise<{ estimate: CostEstimate | null; carbon?: ResourceCarbonEstimate | null }>
+    >();
+    return (fields: Record<string, string>) => {
+      const key = JSON.stringify(fields);
+      let p = inflight.get(key);
+      if (!p) {
+        p = apiPost<{ estimate: CostEstimate | null; carbon?: ResourceCarbonEstimate | null }>(
+          `/api/org/${orgId}/resources/cost-estimate`,
+          {
+            accountId,
+            resourceTypeId,
+            resourceId,
+            ...(Object.keys(fields).length > 0 ? { fields } : {}),
+          },
+        );
+        inflight.set(key, p);
+        void p.finally(() => setTimeout(() => inflight.delete(key), 1000));
+      }
+      return p;
+    };
+  }, [orgId, accountId, resourceTypeId, resourceId]);
   const loadCostEstimate = useCallback(
-    (fields: Record<string, string>) =>
-      apiPost<{ estimate: CostEstimate | null }>(`/api/org/${orgId}/resources/cost-estimate`, {
-        accountId,
-        resourceTypeId,
-        resourceId,
-        ...(Object.keys(fields).length > 0 ? { fields } : {}),
-      }).then(({ estimate }) => estimate),
-    [orgId, accountId, resourceTypeId, resourceId],
+    (fields: Record<string, string>) => loadEstimates(fields).then(({ estimate }) => estimate),
+    [loadEstimates],
+  );
+  const loadCarbonEstimate = useCallback(
+    (fields: Record<string, string>) => loadEstimates(fields).then(({ carbon }) => carbon ?? null),
+    [loadEstimates],
   );
   useEffect(() => {
     let cancelled = false;
-    void loadCostEstimate({})
-      .then((estimate) => {
-        if (!cancelled) setCostEstimate(estimate);
+    void loadEstimates({})
+      .then(({ estimate, carbon }) => {
+        if (cancelled) return;
+        setCostEstimate(estimate);
+        setCarbonEstimate(carbon ?? null);
       })
       .catch(() => {
-        if (!cancelled) setCostEstimate(null);
+        if (cancelled) return;
+        setCostEstimate(null);
+        setCarbonEstimate(null);
       });
     return () => {
       cancelled = true;
     };
-  }, [loadCostEstimate]);
+  }, [loadEstimates]);
   const [showExportCredential, setShowExportCredential] = useState(false);
   const [showTerraformExport, setShowTerraformExport] = useState(false);
   const [metricSeries, setMetricSeries] = useState<MetricSeries[] | undefined>(undefined);
@@ -1354,6 +1388,7 @@ export function ResourceDetailClient({
               resourceId={resourceId}
               pluginLogoSvg={pluginLogoSvg}
               costEstimate={costEstimate}
+              carbonEstimate={carbonEstimate}
               {...(hasSqlEditor
                 ? {
                     onRunQuery: handleRunQuery,
@@ -1647,6 +1682,7 @@ export function ResourceDetailClient({
           )}
           onClose={() => setShowEditModal(false)}
           loadCostEstimate={loadCostEstimate}
+          loadCarbonEstimate={loadCarbonEstimate}
           onSubmit={async (changed) => {
             await handleUpdate(changed);
             // Server-rendered page: a full reload picks up the new fields.

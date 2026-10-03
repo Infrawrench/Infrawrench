@@ -332,6 +332,13 @@ export interface OversizedResource {
   currency: string;
   /** current − recommended monthly price; null when either side is unpriced. */
   monthlySaving: number | null;
+  /**
+   * Estimated monthly kg CO2e of the current size where it runs; null when
+   * the region cannot be placed against a published grid figure.
+   */
+  currentMonthlyKgCo2e: number | null;
+  /** Estimated monthly kg CO2e the resize would save; null as above. */
+  monthlyKgCo2eSaving: number | null;
   /** Plugin-authored caveat for the confirm dialog (e.g. "power off first"). */
   resizeNote: string | null;
   lastSyncedAt: string | null;

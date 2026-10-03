@@ -922,12 +922,18 @@ export {
   CARBON_UNESTIMATED_LABELS,
   estimateCarbon,
   formatCo2e,
+  formatMonthlyCo2e,
+  formatMonthlyCo2eDelta,
   gridIntensityFor,
   type CarbonEstimate,
+  type CarbonFootprint,
   type CarbonRow,
   type CarbonUnestimatedReason,
+  type ResourceCarbonEstimate,
 } from "@infrawrench/client-core";
 export { CarbonSection } from "./carbon/CarbonSection.js";
+export { CarbonEstimateChip } from "./components/CarbonEstimateChip.js";
+export type { CarbonEstimateChipProps } from "./components/CarbonEstimateChip.js";
 export type { CarbonSectionProps } from "./carbon/CarbonSection.js";
 export {
   DNS_CLASSIFICATION_LABELS,

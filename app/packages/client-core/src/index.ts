@@ -219,7 +219,9 @@ export {
 } from "./costs";
 export {
   describeMonthlyDelta,
+  fetchCarbonEstimate,
   fetchResourceCostEstimate,
+  fetchResourceFootprint,
   formatMonthlyDelta,
   formatMonthlyEstimate,
   partialEstimatePrefix,

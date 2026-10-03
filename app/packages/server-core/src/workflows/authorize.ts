@@ -114,6 +114,10 @@ export const WORKFLOW_OPERATION_PERMISSIONS: Readonly<Record<string, string | nu
   // (it writes a number the organization's unit costs and margins are computed
   // from) so it rides the same permission rather than earning its own.
   "businessMetrics.write": "costs:write",
+  // The carbon estimate is a reporting figure read beside spend, gated the way
+  // `GET /carbon` is; one resource's footprint includes its price, so the same.
+  "carbon.estimate": "costs:read",
+  "carbon.resource": "costs:read",
 
   // --- Infrafile deploy stages -------------------------------------------
   // Unreachable through `runOrgWorkflow` today (deployments build their own

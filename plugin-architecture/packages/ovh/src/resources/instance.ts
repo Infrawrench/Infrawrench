@@ -2,6 +2,17 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 
 export const InstanceResourceType = rt({
   id: "instance",
+  // The create form's flavour ids are per-region UUIDs; the synced value is the
+  // flavour name, which is the option's label.
+  carbon: {
+    regionFieldKey: "region",
+    vcpus: {
+      from: "size",
+      sizeFieldKey: "flavorName",
+      catalogueFieldKey: "flavorId",
+      matchBy: "label",
+    },
+  },
   name: "Instance",
   plural: "Instances",
   description: "An OVHcloud Public Cloud virtual machine",

@@ -24,7 +24,7 @@ import { DockerSetupModal } from "../../components/DockerSetupModal";
 import { SpotlightSearch } from "../../components/SpotlightSearch";
 import { CreateResourceModal } from "../../components/CreateResourceModal";
 import { exportCloudCredential } from "../../lib/cloud-api";
-import { makeResourceCostEstimator } from "../../lib/cost-estimate";
+import { makeResourceCarbonEstimator, makeResourceCostEstimator } from "../../lib/cost-estimate";
 import {
   accountTabTarget,
   navigateToWorkspaceTarget,
@@ -132,6 +132,17 @@ export function ResourceModals({
       }),
     [resource, accountId, decodedResourceId, getLocalClient, getCloudCtx],
   );
+  const loadCarbonEstimate = useMemo(
+    () =>
+      makeResourceCarbonEstimator({
+        resource,
+        accountId,
+        resourceId: decodedResourceId,
+        getLocalClient,
+        getCloudCtx,
+      }),
+    [resource, accountId, decodedResourceId, getLocalClient, getCloudCtx],
+  );
   return (
     <>
       {showExportCredential && resource && credentialFormats.length > 0 && (
@@ -199,6 +210,7 @@ export function ResourceModals({
           onClose={onCloseEditModal}
           onSubmit={onSubmitEdit}
           {...(loadCostEstimate ? { loadCostEstimate } : {})}
+          {...(loadCarbonEstimate ? { loadCarbonEstimate } : {})}
         />
       )}
 

@@ -16,6 +16,7 @@ import { costAlertTools } from "./cost-alerts";
 import { invoiceTools } from "./invoices";
 import { scheduleTools } from "./schedules";
 import { rightsizingTools } from "./rightsizing";
+import { carbonTools } from "./carbon";
 import { momentTools } from "./moment";
 import { customGraphTools } from "./custom-graphs";
 import { workflowTools } from "./workflows";
@@ -39,6 +40,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...invoiceTools(),
     ...scheduleTools(),
     ...rightsizingTools(),
+    ...carbonTools(),
     ...momentTools(),
     ...workflowTools(),
     ...customGraphTools(),

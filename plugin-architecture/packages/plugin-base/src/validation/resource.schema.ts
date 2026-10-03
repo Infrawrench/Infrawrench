@@ -324,6 +324,32 @@ const lifecycleActionsSchema = z
     path: ["statusFieldKey"],
   });
 
+const carbonSchema = z.object({
+  role: z.enum(["instance", "aggregate"]).optional(),
+  regionFieldKey: z.string().min(1),
+  grid: z.string().min(1).optional(),
+  gridFieldKey: z.string().min(1).optional(),
+  vcpus: z.discriminatedUnion("from", [
+    z.object({
+      from: z.literal("field"),
+      fieldKey: z.string().min(1),
+      format: z.enum(["number", "k8s-quantity"]).optional(),
+    }),
+    z.object({
+      from: z.literal("size"),
+      sizeFieldKey: z.string().min(1),
+      catalogueTypeId: z.string().min(1).optional(),
+      catalogueFieldKey: z.string().min(1).optional(),
+      matchBy: z.enum(["id", "label"]).optional(),
+      stripPrefix: z.string().min(1).optional(),
+      stripSuffix: z.string().min(1).optional(),
+      list: z.boolean().optional(),
+    }),
+  ]),
+  countFieldKey: z.string().min(1).optional(),
+  countOffset: z.number().int().min(0).optional(),
+});
+
 const rightsizingSchema = z
   .object({
     sizeFieldKey: z.string().min(1),
@@ -432,5 +458,6 @@ export const resourceTypeDefinitionSchema = z.object({
   backupPolicy: backupPolicySchema.optional(),
   lifecycle: lifecycleActionsSchema.optional(),
   rightsizing: rightsizingSchema.optional(),
+  carbon: carbonSchema.optional(),
   principalRole: principalRoleSchema.optional(),
 });

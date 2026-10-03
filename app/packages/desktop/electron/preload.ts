@@ -181,6 +181,7 @@ const INVOKE_CHANNELS = [
   "cloud_metric_alerts_delete",
   "cloud_orphans_list",
   "cloud_rightsizing_list",
+  "cloud_carbon_estimate",
   "local_orphans_list",
   "cloud_expiring",
   "cloud_quotas",

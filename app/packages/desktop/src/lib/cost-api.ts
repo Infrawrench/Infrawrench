@@ -11,6 +11,7 @@ import {
   listCloudCostScenarioModels,
   listCloudSavedCostFilters,
   loadCloudCostDimensionValues,
+  loadCloudCarbonEstimate,
   loadCloudCostStatus,
   queryCloudCosts,
   queryCloudUnitCosts,
@@ -53,6 +54,9 @@ export function createDesktopCostApi(): CostApi {
       if (!orgId) return Promise.resolve([]);
       return loadCloudCostDimensionValues(orgId, dimension, tagKey);
     },
+    // Cloud-only: in local mode it rejects, and the Costs panel's carbon
+    // section shows its own error rather than a zero.
+    getCarbonEstimate: async () => loadCloudCarbonEstimate(requireCloudOrgId()),
     loadCostStatus: () => {
       const orgId = useUIStore.getState().activeCloudOrgId;
       if (!orgId) return Promise.resolve([]);

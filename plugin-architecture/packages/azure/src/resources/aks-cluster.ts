@@ -3,6 +3,14 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const AKSClusterResourceType = rt({
   name: "AKS Cluster",
   id: "azure-aks-cluster",
+  // Node pools are scale sets the Kubernetes plugin lists as nodes; shown here,
+  // never summed twice.
+  carbon: {
+    role: "aggregate",
+    regionFieldKey: "location",
+    vcpus: { from: "size", sizeFieldKey: "vmSize", catalogueFieldKey: "nodeSize" },
+    countFieldKey: "nodeCount",
+  },
   description:
     "An Azure Kubernetes Service cluster. Pulling images from an Azure Container Registry requires an AcrPull role assignment for the cluster's kubelet identity (az aks update --attach-acr <registry>) — or a dockerConfigJson pull secret from the registry resource.",
   fields: [

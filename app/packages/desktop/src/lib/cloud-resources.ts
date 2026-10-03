@@ -1,4 +1,5 @@
 import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
+import type { ResourceCarbonEstimate } from "@infrawrench/client-core";
 // From client-core, where it is defined, rather than through the `@infrawrench/ui`
 // barrel that re-exports it: this is the only *value* the cloud API modules take
 // from `ui`, and importing it from there pulls the whole component library into
@@ -489,6 +490,44 @@ export async function getCloudCreatePricing(
  * price a proposed edit: the server merges `fields` over the resource's
  * stored fields, so only the changed keys have to be sent.
  */
+type CostEstimateResponse = {
+  estimate: CostEstimate | null;
+  carbon?: ResourceCarbonEstimate | null;
+};
+
+/**
+ * One `cost-estimate` round trip shared by the price and carbon readers: a
+ * detail page and an edit modal ask for both halves of the same response at
+ * the same moment, and that should be one request, not two.
+ */
+const inflightEstimates = new Map<string, Promise<CostEstimateResponse>>();
+function costEstimateResponse(args: Record<string, unknown>): Promise<CostEstimateResponse> {
+  const key = JSON.stringify(args);
+  let p = inflightEstimates.get(key);
+  if (!p) {
+    p = invoke<CostEstimateResponse>("cloud_get_cost_estimate", args);
+    inflightEstimates.set(key, p);
+    void p.finally(() => setTimeout(() => inflightEstimates.delete(key), 1000)).catch(() => {});
+  }
+  return p;
+}
+
+/** The `carbon` half of the same `cost-estimate` response. */
+export async function getCloudCarbonEstimate(
+  orgId: string,
+  accountId: string,
+  resourceTypeId: string,
+  options: {
+    fields?: Record<string, string>;
+    resourceId?: string;
+    pluginId?: string;
+    parentResourceId?: string;
+  } = {},
+): Promise<ResourceCarbonEstimate | null> {
+  const res = await costEstimateResponse({ orgId, accountId, resourceTypeId, ...options });
+  return res?.carbon ?? null;
+}
+
 export async function getCloudCostEstimate(
   orgId: string,
   accountId: string,
@@ -500,12 +539,7 @@ export async function getCloudCostEstimate(
     parentResourceId?: string;
   } = {},
 ): Promise<CostEstimate | null> {
-  const res = await invoke<{ estimate: CostEstimate | null }>("cloud_get_cost_estimate", {
-    orgId,
-    accountId,
-    resourceTypeId,
-    ...options,
-  });
+  const res = await costEstimateResponse({ orgId, accountId, resourceTypeId, ...options });
   return res?.estimate ?? null;
 }
 

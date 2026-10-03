@@ -270,6 +270,25 @@ export interface CreateFieldConfig {
 
 export interface CreateResourceConfig {
   fields: CreateFieldConfig[];
+  /**
+   * Filled by the host, never by a plugin: what the create form needs to show
+   * an estimated carbon figure beside the price, read from the type's
+   * `carbon` (or `rightsizing`) declaration. Absent = no carbon figure.
+   */
+  carbon?: CreateCarbonHint;
+}
+
+/** See {@link CreateResourceConfig.carbon}. */
+export interface CreateCarbonHint {
+  /** Coefficient table the form's region resolves in (a plugin id, or "auto"). */
+  grid: string;
+  role: "instance" | "aggregate";
+  /** Create-form field holding the unit count (node count), when there is one. */
+  countFieldKey?: string;
+  /** Create-form size-picker to read, when the form has more than one. */
+  sizeFieldKey?: string;
+  /** Create-form field holding the region, when it is not a `region-picker`. */
+  regionFieldKey?: string;
 }
 
 /**

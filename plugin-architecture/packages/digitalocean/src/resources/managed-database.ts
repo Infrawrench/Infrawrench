@@ -65,6 +65,11 @@ const makeKafkaConnectionUserAction: PeerGuidanceAction = {
 export const ManagedDatabaseResourceType = rt({
   name: "Managed Database",
   id: "managed-database",
+  carbon: {
+    regionFieldKey: "region",
+    vcpus: { from: "size", sizeFieldKey: "size" },
+    countFieldKey: "nodeCount",
+  },
   description: "A DigitalOcean Managed Database cluster",
   fields: [
     f("name", "Name"),

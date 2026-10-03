@@ -6,13 +6,14 @@
  * it appears on is the Costs screen. Gating it with the cost permission keeps
  * "who may see the organization's reporting figures" one answer rather than two.
  *
- * The estimate is assembled in `services/carbon.ts`, which needs plugin clients
- * to resolve instance types to vCPU counts.
+ * The estimate is assembled in server-core (`cost/carbon.ts`), which needs
+ * plugin clients to resolve instance types to vCPU counts. A single
+ * resource's carbon rides `POST /resources/cost-estimate`, beside its price.
  */
 import { Hono } from "hono";
 import { CARBON_LIMITS } from "@infrawrench/client-core";
 
-import { getCarbonEstimate } from "../../services/carbon";
+import { getCarbonEstimate } from "@infrawrench/server-core/cost/carbon";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 

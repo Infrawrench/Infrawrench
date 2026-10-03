@@ -9,6 +9,7 @@ import {
   ResourceId,
   ResourceStatus,
 } from "../common";
+import { ResourceCarbonEstimate } from "./carbon";
 import type { BuildContext } from "../context";
 import { FreezeLockedResponse } from "./change-freezes";
 import { TagPolicyUnmetResponse } from "./tag-policy";
@@ -985,7 +986,17 @@ export function registerResourcePaths(ctx: BuildContext) {
     responses: {
       200: {
         description: "Estimate, or null when the plugin cannot price this configuration",
-        content: { "application/json": { schema: strict({ estimate: CostEstimate.nullable() }) } },
+        content: {
+          "application/json": {
+            schema: strict({
+              estimate: CostEstimate.nullable(),
+              carbon: ResourceCarbonEstimate.nullable().describe(
+                "Estimated monthly CO2e of the same configuration, beside its price. Null for a " +
+                  "peer resource or when the size catalogue could not be read.",
+              ),
+            }),
+          },
+        },
       },
       404: ErrorResponses[404],
     },

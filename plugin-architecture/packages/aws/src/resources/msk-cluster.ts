@@ -3,6 +3,17 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MSKClusterResourceType = rt({
   name: "MSK Cluster",
   id: "msk-cluster",
+  carbon: {
+    regionFieldKey: "region",
+    vcpus: {
+      from: "size",
+      sizeFieldKey: "instanceType",
+      catalogueTypeId: "ec2-instance",
+      catalogueFieldKey: "instanceType",
+      stripPrefix: "kafka.",
+    },
+    countFieldKey: "numberOfBrokerNodes",
+  },
   description: "An Amazon Managed Streaming for Apache Kafka cluster",
   fields: [
     f("clusterName", "Cluster Name"),

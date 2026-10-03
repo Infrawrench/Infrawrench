@@ -97,6 +97,10 @@ export interface ClientHostDeps {
 
   /** Write daily spend into the org's cost store (cloud-only). */
   writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
+  /** The org's estimated carbon (cloud-only, like `writeCosts`). */
+  carbonEstimate?(windowDays: number): Promise<unknown>;
+  /** One resource's monthly cost and carbon (cloud-only). */
+  resourceFootprint?(resourceId: string, fields?: Record<string, string>): Promise<unknown>;
 
   /** Report daily business metric values (cloud-only, like `writeCosts`). */
   writeBusinessMetricValues?(
@@ -384,6 +388,8 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.sftpMkdir ? { sftpMkdir: deps.sftpMkdir } : {}),
     ...(deps.sftpDelete ? { sftpDelete: deps.sftpDelete } : {}),
     ...(deps.writeCosts ? { writeCosts: deps.writeCosts } : {}),
+    ...(deps.carbonEstimate ? { carbonEstimate: deps.carbonEstimate } : {}),
+    ...(deps.resourceFootprint ? { resourceFootprint: deps.resourceFootprint } : {}),
     ...(deps.writeBusinessMetricValues
       ? { writeBusinessMetricValues: deps.writeBusinessMetricValues }
       : {}),

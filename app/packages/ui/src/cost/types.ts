@@ -46,6 +46,7 @@ import type {
  * this package) shares one definition of it; re-exported for web and desktop.
  */
 export type {
+  CarbonEstimate,
   CommitmentsFeed,
   CreditBurndown,
   BudgetWithStatus,

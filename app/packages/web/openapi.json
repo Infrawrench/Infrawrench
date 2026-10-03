@@ -7140,6 +7140,20 @@
             ],
             "description": "Current minus recommended monthly price; null when either side is unpriced."
           },
+          "currentMonthlyKgCo2e": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Estimated monthly kg CO2e of the current size where it runs; null when the region has no published grid figure. See the Carbon tag for the method."
+          },
+          "monthlyKgCo2eSaving": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Estimated monthly kg CO2e the resize would save; null as above."
+          },
           "resizeNote": {
             "type": [
               "string",
@@ -7172,6 +7186,8 @@
           "projectedCpuP95",
           "currency",
           "monthlySaving",
+          "currentMonthlyKgCo2e",
+          "monthlyKgCo2eSaving",
           "resizeNote",
           "lastSyncedAt"
         ],
@@ -14173,6 +14189,139 @@
         ],
         "additionalProperties": false
       },
+      "CarbonFootprint": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "vcpus": {
+            "type": "number",
+            "description": "vCPUs per unit."
+          },
+          "count": {
+            "type": "integer",
+            "description": "Units the figure covers (node count); 1 for one machine."
+          },
+          "region": {
+            "type": "string"
+          },
+          "grid": {
+            "type": "string",
+            "description": "The coefficient table the region resolved in: `aws`, `gcp`, `azure`, `hetzner`..."
+          },
+          "gridIntensity": {
+            "type": "number",
+            "description": "Grams CO2e per kWh used for this row: the published figure, not a band."
+          },
+          "gridZone": {
+            "type": "string",
+            "description": "What the grid figure describes, e.g. `Germany`."
+          },
+          "gridBasis": {
+            "type": "string",
+            "enum": [
+              "ccf",
+              "ember-2024"
+            ],
+            "description": "`ccf`: Cloud Carbon Footprint's per-region table. `ember-2024`: Ember's 2024 lifecycle figure for the country."
+          },
+          "pue": {
+            "type": "number",
+            "description": "Datacentre overhead used: regional where published, else fleet."
+          },
+          "kwh": {
+            "type": "number"
+          },
+          "kgCo2e": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "vcpus",
+          "count",
+          "region",
+          "grid",
+          "gridIntensity",
+          "gridZone",
+          "gridBasis",
+          "pue",
+          "kwh",
+          "kgCo2e"
+        ],
+        "additionalProperties": false,
+        "description": "Monthly (730 h) footprint, or null."
+      },
+      "ResourceCarbonEstimate": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "estimate": {
+            "$ref": "#/components/schemas/CarbonFootprint"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "unsupported-provider",
+              "unknown-region",
+              "unknown-size"
+            ],
+            "description": "Why a resource has no estimate. Reported per resource rather than folded into the total: a figure that quietly excluded a third of the estate would read as a complete answer."
+          },
+          "inScope": {
+            "type": "boolean",
+            "description": "False when the type declares nothing to read: a bucket, a DNS record."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "instance",
+              "aggregate"
+            ],
+            "description": "`aggregate`: a group (a managed cluster) whose machines are also listed in their own right; shown per resource, never summed into the org total."
+          },
+          "assumptions": {
+            "type": "object",
+            "properties": {
+              "cpuUtilization": {
+                "type": "number",
+                "description": "Assumed average CPU utilisation, 0 to 1. **The largest single source of error**, stated here rather than buried in a constant: the product does not collect per-resource CPU history for every provider, and a figure derived from the few that do would be quietly inconsistent across an estate."
+              },
+              "coefficientSource": {
+                "type": "string"
+              },
+              "coefficientVintage": {
+                "type": "string"
+              },
+              "scope": {
+                "type": "string",
+                "description": "What the estimate covers, in one sentence a reader can check."
+              }
+            },
+            "required": [
+              "cpuUtilization",
+              "coefficientSource",
+              "coefficientVintage",
+              "scope"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "estimate",
+          "reason",
+          "inScope",
+          "role",
+          "assumptions"
+        ],
+        "additionalProperties": false,
+        "description": "Estimated monthly CO2e of the same configuration, beside its price. Null for a peer resource or when the size catalogue could not be read."
+      },
       "CostEstimateRequest": {
         "type": "object",
         "properties": {
@@ -19585,6 +19734,9 @@
           "pluginId": {
             "type": "string"
           },
+          "resourceTypeId": {
+            "type": "string"
+          },
           "accountId": {
             "type": "string",
             "format": "uuid",
@@ -19616,6 +19768,7 @@
           "resourceId",
           "displayName",
           "pluginId",
+          "resourceTypeId",
           "accountId",
           "accountName",
           "region",
@@ -19654,6 +19807,47 @@
       "CarbonRow": {
         "type": "object",
         "properties": {
+          "vcpus": {
+            "type": "number",
+            "description": "vCPUs per unit."
+          },
+          "count": {
+            "type": "integer",
+            "description": "Units the figure covers (node count); 1 for one machine."
+          },
+          "region": {
+            "type": "string"
+          },
+          "grid": {
+            "type": "string",
+            "description": "The coefficient table the region resolved in: `aws`, `gcp`, `azure`, `hetzner`..."
+          },
+          "gridIntensity": {
+            "type": "number",
+            "description": "Grams CO2e per kWh used for this row: the published figure, not a band."
+          },
+          "gridZone": {
+            "type": "string",
+            "description": "What the grid figure describes, e.g. `Germany`."
+          },
+          "gridBasis": {
+            "type": "string",
+            "enum": [
+              "ccf",
+              "ember-2024"
+            ],
+            "description": "`ccf`: Cloud Carbon Footprint's per-region table. `ember-2024`: Ember's 2024 lifecycle figure for the country."
+          },
+          "pue": {
+            "type": "number",
+            "description": "Datacentre overhead used: regional where published, else fleet."
+          },
+          "kwh": {
+            "type": "number"
+          },
+          "kgCo2e": {
+            "type": "number"
+          },
           "resourceId": {
             "type": "string"
           },
@@ -19661,6 +19855,9 @@
             "type": "string"
           },
           "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
             "type": "string"
           },
           "accountId": {
@@ -19673,38 +19870,25 @@
               "string",
               "null"
             ]
-          },
-          "region": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "vcpus": {
-            "type": "number"
-          },
-          "gridIntensity": {
-            "type": "number",
-            "description": "Grams CO2e per kWh used for this row — the published figure, not a band."
-          },
-          "kwh": {
-            "type": "number"
-          },
-          "kgCo2e": {
-            "type": "number"
           }
         },
         "required": [
+          "vcpus",
+          "count",
+          "region",
+          "grid",
+          "gridIntensity",
+          "gridZone",
+          "gridBasis",
+          "pue",
+          "kwh",
+          "kgCo2e",
           "resourceId",
           "displayName",
           "pluginId",
+          "resourceTypeId",
           "accountId",
-          "accountName",
-          "region",
-          "vcpus",
-          "gridIntensity",
-          "kwh",
-          "kgCo2e"
+          "accountName"
         ],
         "additionalProperties": false
       },
@@ -19713,14 +19897,14 @@
         "properties": {
           "cpuUtilization": {
             "type": "number",
-            "description": "Assumed average CPU utilisation, 0–1. **The largest single source of error**, stated here rather than buried in a constant: the product does not collect per-resource CPU history for every provider, and a figure derived from the few that do would be quietly inconsistent across an estate."
+            "description": "Assumed average CPU utilisation, 0 to 1. **The largest single source of error**, stated here rather than buried in a constant: the product does not collect per-resource CPU history for every provider, and a figure derived from the few that do would be quietly inconsistent across an estate."
           },
           "pue": {
             "type": "object",
             "additionalProperties": {
               "type": "number"
             },
-            "description": "Power Usage Effectiveness, per contributing provider."
+            "description": "Fleet Power Usage Effectiveness, per contributing grid."
           },
           "vcpuWatts": {
             "type": "object",
@@ -19783,6 +19967,14 @@
               "$ref": "#/components/schemas/CarbonUnestimatedRow"
             }
           },
+          "unestimatedCount": {
+            "type": "integer",
+            "description": "Total unestimated resources; `unestimated` is capped at 200."
+          },
+          "duplicateCount": {
+            "type": "integer",
+            "description": "Kubernetes nodes skipped because their machine is already counted as an instance (a GKE node is also a GCE instance). Counted once, and the number skipped is said."
+          },
           "byRegion": {
             "type": "array",
             "items": {
@@ -19790,6 +19982,12 @@
             }
           },
           "byAccount": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CarbonGroup"
+            }
+          },
+          "byProvider": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CarbonGroup"
@@ -19815,8 +20013,11 @@
           "totalKwh",
           "estimatedCount",
           "unestimated",
+          "unestimatedCount",
+          "duplicateCount",
           "byRegion",
           "byAccount",
+          "byProvider",
           "rows",
           "assumptions",
           "generatedAt"
@@ -21957,6 +22158,17 @@
           "unpricedCount": {
             "type": "integer"
           },
+          "monthlyKgCo2e": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Estimated monthly kg CO2e of the members that could be placed against a published grid figure. Null when none could. See the Carbon tag for the method."
+          },
+          "uncarbonedCount": {
+            "type": "integer",
+            "description": "Sized compute members whose carbon could not be estimated."
+          },
           "members": {
             "type": "array",
             "items": {
@@ -21979,13 +22191,20 @@
                     "string",
                     "null"
                   ]
+                },
+                "monthlyKgCo2e": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
                 }
               },
               "required": [
                 "memberKey",
                 "displayName",
                 "monthlyAmount",
-                "currency"
+                "currency",
+                "monthlyKgCo2e"
               ],
               "additionalProperties": false
             }
@@ -21996,6 +22215,8 @@
           "currency",
           "partial",
           "unpricedCount",
+          "monthlyKgCo2e",
+          "uncarbonedCount",
           "members"
         ],
         "additionalProperties": false
@@ -48569,10 +48790,14 @@
                   "properties": {
                     "estimate": {
                       "$ref": "#/components/schemas/CostEstimate"
+                    },
+                    "carbon": {
+                      "$ref": "#/components/schemas/ResourceCarbonEstimate"
                     }
                   },
                   "required": [
-                    "estimate"
+                    "estimate",
+                    "carbon"
                   ],
                   "additionalProperties": false
                 }
@@ -52439,7 +52664,7 @@
           "Carbon"
         ],
         "summary": "Estimated operational carbon, with its assumptions",
-        "description": "An **estimate**, in the same sense the cost estimates here are, and built to be honest about that in three ways.\n\n**A resource that cannot be placed is never guessed.** No published figure for the provider, no entry for the region, no vCPU count — each produces an `unestimated` row with a stated reason and contributes nothing to the total. A carbon figure computed against a guessed grid is worse than no figure, because it is a number somebody will put in a report.\n\n**The assumptions travel with the answer**: utilisation, PUE, the coefficient source and its vintage are all on the response.\n\n**It covers operational compute and says so.** Storage, network egress, managed services and embodied (manufacturing) emissions are excluded.\n\nvCPU counts come from each plugin's own size catalogue via the `rightsizing` declaration, so a provider that gains right-sizing gains a carbon estimate for free — and a type that declares no size field is an explainable gap rather than a guess.\n\nCoefficients are reproduced from the Cloud Carbon Footprint project (Apache-2.0), which sources them from government and grid-operator publications. They are not measured by us.",
+        "description": "An **estimate**, in the same sense the cost estimates here are, and built to be honest about that in three ways.\n\n**A resource that cannot be placed is never guessed.** No published figure for the provider, no entry for the region, no vCPU count: each produces an `unestimated` row with a stated reason and contributes nothing to the total. A carbon figure computed against a guessed grid is worse than no figure, because it is a number somebody will put in a report.\n\n**The assumptions travel with the answer**: utilisation, PUE, the coefficient source and its vintage are all on the response.\n\n**It covers processors and says so.** Virtual machines, Kubernetes nodes and sized managed services; storage, memory, network egress and embodied (manufacturing) emissions are excluded. Types with nothing to read (a bucket, a DNS record) are out of scope, not unestimated.\n\nWhat to read comes from each plugin's `carbon` declaration (or its `rightsizing` one): the region field, and vCPUs either directly or through the create form's size catalogue. Managed clusters whose nodes are listed in their own right are left out of the total, and a Kubernetes node that is also an instance is counted once (`duplicateCount`).\n\nGrid figures are Cloud Carbon Footprint's (Apache-2.0) for AWS, GCP and Azure, and Ember's 2024 country figures for every other provider; each row says which (`gridBasis`). They are not measured by us. One resource's monthly figure rides `POST /resources/cost-estimate` as `carbon`, beside its price.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -52487,7 +52712,8 @@
             }
           }
         },
-        "operationId": "getOrgOrgIdCarbon"
+        "operationId": "getOrgOrgIdCarbon",
+        "x-required-permission": "costs:read"
       }
     },
     "/api/org/{orgId}/dns": {

@@ -326,6 +326,18 @@ export interface WorkflowHost {
   writeCosts?(rows: WorkflowCostRow[]): Promise<WorkflowCostWriteResult>;
 
   /**
+   * The org's estimated carbon over a window (powers `infra.carbon.estimate`).
+   * Cloud-only like `writeCosts`: resolving sizes needs the org's provider
+   * credentials server-side.
+   */
+  carbonEstimate?(windowDays: number): Promise<unknown>;
+  /**
+   * One resource's estimated monthly cost and carbon, optionally for a
+   * proposed edit (powers `infra.carbon.resource`).
+   */
+  resourceFootprint?(resourceId: string, fields?: Record<string, string>): Promise<unknown>;
+
+  /**
    * Report daily business metric values (powers `infra.businessMetrics.write`).
    * Cloud-only for the same reason `writeCosts` is: the values are only useful
    * next to the spend they divide, and that lives in the cloud's cost store.
@@ -1386,6 +1398,22 @@ export async function dispatch(
         String(args["resourceId"]),
         args["timeRange"] as { startMs: number; endMs: number } | undefined,
         sidecar,
+      );
+
+    case "carbon.estimate": {
+      const raw = args["windowDays"];
+      const windowDays = raw === undefined ? 30 : Number(raw);
+      if (!Number.isInteger(windowDays) || windowDays < 1 || windowDays > 365) {
+        throw new Error("infra.carbon.estimate: windowDays must be a whole number from 1 to 365.");
+      }
+      return requireMethod(host.carbonEstimate, "carbonEstimate").call(host, windowDays);
+    }
+
+    case "carbon.resource":
+      return requireMethod(host.resourceFootprint, "resourceFootprint").call(
+        host,
+        String(args["resourceId"] ?? ""),
+        (args["fields"] as Record<string, string> | undefined) ?? undefined,
       );
 
     case "costs.write":

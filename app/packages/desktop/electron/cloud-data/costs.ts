@@ -27,6 +27,16 @@ ipcMain.handle("cloud_costs_status", async (_e, { orgId }: { orgId: string }) =>
   return cloudFetch(orgId, "/costs/status");
 });
 
+// The carbon estimate on the Costs panel. Cloud-only like the rest of this
+// file: resolving instance types to vCPUs needs the org's provider
+// credentials. One resource's carbon rides `cloud_get_cost_estimate`.
+ipcMain.handle(
+  "cloud_carbon_estimate",
+  async (_e, { orgId, windowDays }: { orgId: string; windowDays?: number }) => {
+    return cloudFetch(orgId, `/carbon${windowDays ? `?windowDays=${windowDays}` : ""}`);
+  },
+);
+
 ipcMain.handle(
   "cloud_costs_anomalies",
   async (_e, { orgId, days }: { orgId: string; days?: number }) => {

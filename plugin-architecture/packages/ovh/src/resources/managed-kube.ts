@@ -2,6 +2,14 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 
 export const ManagedKubeResourceType = rt({
   id: "managed-kube",
+  // Nodes are Public Cloud instances in their own right: shown here, never
+  // summed twice.
+  carbon: {
+    role: "aggregate",
+    regionFieldKey: "region",
+    vcpus: { from: "size", sizeFieldKey: "flavor" },
+    countFieldKey: "nodeCount",
+  },
   name: "Managed Kubernetes",
   plural: "Managed Kubernetes",
   description: "An OVHcloud Managed Kubernetes Service cluster",

@@ -4,7 +4,11 @@ import type {
   CreateResourceConfig,
   CreateFieldConfig,
 } from "@infrawrench/plugin-base";
-import { formatMonthlyEstimate } from "@infrawrench/client-core";
+import {
+  estimateCreateFormCarbon,
+  formatMonthlyEstimate,
+  type CarbonFootprint,
+} from "@infrawrench/client-core";
 import { evaluateShowWhen, buildDefaultFields, formatErrorMessage } from "../utils.js";
 
 /** Callback signatures that each platform provides */
@@ -57,6 +61,13 @@ export interface CreateResourceFormState {
    * `estimatedMonthlyPriceLabel`) or when nothing could be priced at all.
    */
   costEstimate: CostEstimate | null;
+  /**
+   * Estimated monthly CO2e of what the form describes, computed locally from
+   * the picked size's vCPUs and the picked region (no request). Null until
+   * both are picked, when the host attached no carbon hint, or when the
+   * region has no published grid figure.
+   */
+  carbonEstimate: CarbonFootprint | null;
   handleCreate: () => Promise<void>;
   /** Whether an action on this field is currently running (keyed by field key). */
   fieldActionRunning: Record<string, boolean>;
@@ -337,6 +348,22 @@ export function useCreateResourceForm(
     return formatMonthlyEstimate(estimatedMonthlyPrice, costEstimate?.currency ?? "USD");
   }, [estimatedMonthlyPrice, costEstimate]);
 
+  const carbonEstimate = useMemo(() => {
+    if (!configWithPricing) return null;
+    const visible: Record<string, string> = {};
+    for (const f of configWithPricing.fields) {
+      if (evaluateShowWhen(f, fields) && fields[f.key] !== undefined)
+        visible[f.key] = fields[f.key]!;
+    }
+    return estimateCreateFormCarbon(
+      {
+        ...configWithPricing,
+        fields: configWithPricing.fields.filter((f) => evaluateShowWhen(f, fields)),
+      },
+      visible,
+    );
+  }, [configWithPricing, fields]);
+
   const visibleFields = useMemo(() => {
     if (!configWithPricing) return [];
     return configWithPricing.fields.filter((f) => evaluateShowWhen(f, fields));
@@ -428,6 +455,7 @@ export function useCreateResourceForm(
     isValid,
     estimatedMonthlyPriceLabel,
     costEstimate,
+    carbonEstimate,
     handleCreate,
     fieldActionRunning,
     fieldActionError,
