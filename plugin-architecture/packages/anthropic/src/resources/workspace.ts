@@ -18,15 +18,31 @@ export const WorkspaceResourceType = rt({
   description:
     "A Console workspace that scopes API keys, files, batches and rate limits. Requires an Admin API key. Archiving is irreversible and revokes every key in the workspace.",
   fields: [
-    f("name", "Name"),
-    f("displayColor", "Display Color", { required: false, editable: false }),
+    f("name", "Name", { description: "Up to 40 characters." }),
+    f("displayColor", "Display Color", {
+      required: false,
+      description: "Hex colour shown in the Console workspace switcher, e.g. #6C5BB9.",
+    }),
     f("createdAt", "Created", { required: false, editable: false }),
     f("archivedAt", "Archived", { required: false, editable: false }),
     f("workspaceGeo", "Workspace Geo", { required: false, editable: false }),
-    f("defaultInferenceGeo", "Default Inference Geo", { required: false, editable: false }),
-    f("allowedInferenceGeos", "Allowed Inference Geos", { required: false, editable: false }),
+    f("defaultInferenceGeo", "Default Inference Geo", {
+      kind: "enum",
+      required: false,
+      enumValues: ["global", "us"],
+      description:
+        "Where requests that omit `inference_geo` run. Must be one of the allowed geos unless those are unrestricted.",
+    }),
+    f("allowedInferenceGeos", "Allowed Inference Geos", {
+      kind: "enum",
+      required: false,
+      enumValues: ["unrestricted", "global, us", "global", "us"],
+    }),
     f("externalKeyId", "CMEK Key ID", { required: false, editable: false }),
-    f("tags", "Tags", { required: false, editable: false }),
+    f("tags", "Tags", {
+      required: false,
+      description: "Comma-separated key=value pairs. Keys may not begin with anthropic.",
+    }),
   ],
   outputs: [o("workspaceId", "Workspace ID"), o("workspaceName", "Workspace Name")],
   supportsCreate: true,

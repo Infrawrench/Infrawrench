@@ -1,26 +1,29 @@
 ---
 title: Anthropic
-description: Claude models, Message Batches and Files, plus workspaces, members, invites, API keys, usage and cost reporting with an Admin API key.
+description: Claude models, Message Batches, Files and Skills, plus workspaces, workspace members, organization members, invites, API keys, rate limits, usage, Claude Code analytics and cost reporting with an Admin API key.
 sidebar_order: 31
 ---
 
 ## What you can manage
 
-- **Models** — every Claude model this key is entitled to call, with its real context window, output cap, and the full capability matrix: vision, PDF input, batch eligibility, citations, code execution, structured outputs, extended thinking and context management. Read-only, with a usage chart.
-- **Message Batches** — asynchronous batch jobs with their per-status request counters. Cancel one while it is in progress; delete it once processing has ended.
-- **Files** — anything uploaded through the Files API and referenced from a content block by `file_id` (delete).
-- **Workspaces** — the boundary API keys, files, batches and rate limits are scoped to. Create, rename, and archive. Admin key only.
-- **Organization members** — role changes and removal. Admin key only.
-- **Invites** — send and revoke. Admin key only.
-- **API keys** — listed, renamed, and moved between active, inactive and archived. Never created or deleted. Admin key only.
+- **Models**: every Claude model this key is entitled to call, with its real context window, output cap, and the full capability matrix: vision, PDF input, batch eligibility, citations, code execution, structured outputs, extended thinking and context management. Read-only, with a usage chart.
+- **Message Batches**: asynchronous batch jobs with their per-status request counters. Cancel one while it is in progress; delete it once processing has ended.
+- **Files**: anything uploaded through the Files API and referenced from a content block by `file_id`, with its expiry when one was set at upload (delete). Expiring files show up on the [Expiry radar](../features/expiry-radar.md).
+- **Skills**: custom Agent Skills uploaded to the key's workspace plus Anthropic's pre-built ones (pptx, xlsx, docx, pdf), with each Skill's version history. Copy a Skill's `skill_id` into a request's `container.skills`, or delete a custom Skill together with all of its versions.
+- **Workspaces**: the boundary API keys, files, batches and rate limits are scoped to. Create with a display colour and data residency (allowed and default inference geo), then edit the name, colour, geos and tags, or archive. Each workspace page lists its effective rate limits, marking which values are workspace overrides and which are inherited from the organization. Admin key only.
+- **Workspace members**: who can use each workspace and with which workspace role (user, restricted developer, developer, admin, billing). Add an existing organization member from a picker, change their role, or remove them. Also listed under each workspace. Admin key only.
+- **Organization members**: role changes and removal, with a usage chart of the member's API tokens and their Claude Code activity (sessions, lines added and removed, commits, pull requests, edit acceptance rate, estimated cost). Admin key only.
+- **Invites**: send and revoke. Admin key only.
+- **API keys**: listed, renamed, and moved between active, inactive and archived, with a per-key token usage chart. Shows whether the key belongs to a workspace or to the whole organization, and whether it acts as a user or a service account. Never created or deleted. Admin key only.
+- **Rate limits**: the organization's configured limits per model family (requests, input tokens and output tokens per minute) and per API surface (Message Batches, Files, Token Counting, Skills, web search). Read-only. Admin key only.
 
 ## Credentials
 
 Anthropic splits its API across two credentials that share a prefix but nothing else.
 
-**API Key** (required) — Console → **Settings → API keys**. Starts `sk-ant-api`. This drives Models, Message Batches and Files. It is not an admin key and returns `401` on every `/v1/organizations/*` endpoint.
+**API Key** (required) — Console → **Settings → API keys**. Starts `sk-ant-api`. This drives Models, Message Batches, Files and Skills. It is not an admin key and returns `401` on every `/v1/organizations/*` endpoint.
 
-**Admin API Key** (optional) — Console → **Settings → Admin keys**. Starts `sk-ant-admin`, and only an organization admin can provision one. It unlocks the **Workspaces**, **Organization Members**, **Invites** and **API Keys** sections plus the **usage and cost charts** — all of which live under `/v1/organizations/*`. Leave it blank and everything else keeps working; those four sections simply come back empty.
+**Admin API Key** (optional) — Console → **Settings → Admin keys**. Starts `sk-ant-admin`, and only an organization admin can provision one. It unlocks the **Workspaces**, **Workspace Members**, **Organization Members**, **Invites**, **API Keys** and **Rate Limits** sections plus the **usage, Claude Code and cost charts**, all of which live under `/v1/organizations/*`. Leave it blank and everything else keeps working; those sections simply come back empty.
 
 The Admin API does not exist on individual (non-organization) accounts, so there is nothing to add on a personal plan.
 
@@ -41,4 +44,8 @@ With an admin key attached, spend is collected from `GET /v1/organizations/cost_
 - **Batches expire 24 hours after creation** and are billed at half the interactive rate. Up to 100,000 requests fit in one.
 - **Invites expire after 21 days and the expiry cannot be changed.** On seat-based plans an invite consumes a seat from the lowest tier with availability and fails with a `400` when none is free.
 - **Not every role can be assigned over the API.** `admin`, `membership_admin`, `owner` and `primary_owner` are Console-only, and members holding them cannot be removed through the API either. The roles you can set are `user`, `developer`, `billing`, `claude_code_user` and, on Claude Enterprise, `managed`.
-- **The Default Workspace has no id** and never appears in the workspace list — that is Anthropic's behaviour, not a missing row.
+- **The Default Workspace never appears in the workspace list**, so it has no page, no members list and no rate-limit overrides here; that is Anthropic's behaviour, not a missing row. Every organization member can already use it.
+- **Rate limits are read-only.** Organization limits follow your usage tier, and workspace overrides are set on the workspace's **Rate limits** tab in the Claude Console. The API reads both but changes neither.
+- **Workspace Billing can't be assigned when adding a member.** Add them with another role, then edit the membership.
+- **Claude Code analytics are daily and per person.** The chart on an organization member fetches one day at a time (up to the last 31 days of the selected range) and matches the member by email. Activity through Bedrock, Vertex AI or Microsoft Foundry is not included, and the most recent hour is withheld by Anthropic.
+- **Service accounts aren't listed.** Anthropic's service-account endpoints only accept an OAuth token with the `org:admin` scope, not an Admin API key. Keys that act as a service account still show up under API keys.

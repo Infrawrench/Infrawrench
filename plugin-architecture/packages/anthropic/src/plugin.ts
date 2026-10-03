@@ -9,6 +9,9 @@ import { WorkspaceResourceType } from "./resources/workspace.js";
 import { OrganizationUserResourceType } from "./resources/organization-user.js";
 import { InviteResourceType } from "./resources/invite.js";
 import { ApiKeyResourceType } from "./resources/api-key.js";
+import { WorkspaceMemberResourceType } from "./resources/workspace-member.js";
+import { RateLimitResourceType } from "./resources/rate-limit.js";
+import { SkillResourceType } from "./resources/skill.js";
 
 // Anthropic's corporate "A" mark, taken verbatim from the official logo
 // (native viewBox "0 0 24 24", path unmodified) and rescaled onto the 100×100
@@ -19,7 +22,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Anthropic",
   description:
-    "Claude models, Message Batches, Files, and — with an Admin API key — workspaces, members, invites, API keys, usage and cost reporting.",
+    "Claude models, Message Batches, Files and Skills, plus (with an Admin API key) workspaces and their members, organization members, invites, API keys, rate limits, usage, Claude Code analytics and cost reporting.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#D97757"/>
     <g transform="translate(18.8,19.45) scale(2.6)" fill="#F0EEE6" fill-rule="evenodd">
@@ -33,7 +36,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A standard Claude API key from Console → Settings → API keys. Starts with sk-ant-api. This key drives Models, Message Batches and Files. It is NOT an Admin key and will return 401 on every /v1/organizations/* endpoint.",
+        "A standard Claude API key from Console → Settings → API keys. Starts with sk-ant-api. This key drives Models, Message Batches, Files and Skills. It is NOT an Admin key and will return 401 on every /v1/organizations/* endpoint.",
       sensitive: true,
       placeholder: "sk-ant-api03-...",
       helpLink: {
@@ -45,7 +48,7 @@ const manifest: PluginManifest = {
       key: "adminApiKey",
       label: "Admin API Key (optional)",
       description:
-        "A separate Admin API key from Console → Settings → Admin keys. Starts with sk-ant-admin and can only be provisioned by an organization admin. It unlocks the Workspaces, Organization Members, Invites and API Keys sections plus the usage and cost charts, all of which live under /v1/organizations/*. Leave blank and everything else keeps working — those four sections simply come back empty. The Admin API is unavailable on individual (non-organization) accounts.",
+        "A separate Admin API key from Console → Settings → Admin keys. Starts with sk-ant-admin and can only be provisioned by an organization admin. It unlocks the Workspaces, Workspace Members, Organization Members, Invites, API Keys and Rate Limits sections plus the usage, Claude Code and cost charts, all of which live under /v1/organizations/*. Leave blank and everything else keeps working; those sections simply come back empty. The Admin API is unavailable on individual (non-organization) accounts.",
       sensitive: true,
       optional: true,
       placeholder: "sk-ant-admin01-...",
@@ -67,10 +70,13 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ModelResourceType,
   MessageBatchResourceType,
   FileResourceType,
+  SkillResourceType,
   WorkspaceResourceType,
+  WorkspaceMemberResourceType,
   OrganizationUserResourceType,
   InviteResourceType,
   ApiKeyResourceType,
+  RateLimitResourceType,
 ];
 
 export const plugin: Plugin = {

@@ -6,4 +6,7 @@ export { WorkspaceResourceType } from "./resources/workspace.js";
 export { OrganizationUserResourceType } from "./resources/organization-user.js";
 export { InviteResourceType } from "./resources/invite.js";
 export { ApiKeyResourceType } from "./resources/api-key.js";
+export { WorkspaceMemberResourceType } from "./resources/workspace-member.js";
+export { RateLimitResourceType } from "./resources/rate-limit.js";
+export { SkillResourceType } from "./resources/skill.js";
 export { AnthropicClient } from "./client.js";

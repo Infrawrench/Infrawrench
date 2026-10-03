@@ -47,5 +47,6 @@ export const OrganizationUserResourceType = rt({
   supportsCreate: false,
   supportsUpdate: true,
   supportsDelete: true,
+  supportsMetrics: true,
   iconKey: "user",
 });
