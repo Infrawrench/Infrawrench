@@ -139,6 +139,8 @@ The pixels a screenshot shows, the coordinates a click takes, and the bounds the
 
 The session is reused across calls and shares the resource's [SSH key resolution](../team-and-billing/ssh-keys.md) — a VM resource takes an `sshKeyId`, a host whose plugin supplies SSH natively (Fly, Hetzner) needs none. Every tool carries `resources:execute` and is audit-logged, the same as the terminal.
 
+In the in-app [AI chat](./ai-chat.md), the tools that amount to running a command wait for your approval, as `ssh_exec` does: `type_in_app_window` and `press_keys_in_app_window` (typing into a terminal window is running a command), and `launch_app` when it is given a raw `exec` command instead of an installed application. Looking at a window, clicking, scrolling and closing run without a prompt.
+
 ## What is recorded
 
 Starting a session and launching an application are written to the [audit log](../team-and-billing/audit-log.md). So is installing packages on a host through the setup check, with the packages it installed named — it changes the state of a machine you own, and that is the kind of thing someone comes looking for months later. Because it is a change to a host, it also respects [change freezes](../team-and-billing/change-freeze.md).

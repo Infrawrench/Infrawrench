@@ -575,7 +575,9 @@ export function workflowTools(): ToolDefinition[] {
         "A global `fetch(url, init)` is available for HTTP APIs Infrawrench has no plugin for; it " +
         "goes through a proxy outside the cluster, so only PUBLIC addresses are reachable — a " +
         "private/loopback/cluster-internal URL is refused at runtime. " +
-        "Only fields you pass are changed. Audit-logged.",
+        "Only fields you pass are changed. Audit-logged. In chat, a call that sets source, " +
+        "trigger, or secretIds, or enables the workflow, waits for the user's approval, so " +
+        "send those together in one call.",
       inputSchema: {
         workflowId: z.string().optional().describe("Omit to create a new workflow."),
         name: z.string().optional(),
@@ -594,6 +596,15 @@ export function workflowTools(): ToolDefinition[] {
           .describe("Save even when the source has type errors. Use only when deliberate."),
       },
       risk: "write",
+      // Saved source runs unattended once a trigger fires (a cron within the
+      // minute), so anything that changes what runs or when it runs waits for
+      // approval exactly like run_workflow. Name, description, metrics, and
+      // disabling stay auto-run.
+      requiresApproval: async (input) =>
+        input["source"] !== undefined ||
+        input["trigger"] !== undefined ||
+        input["secretIds"] !== undefined ||
+        input["enabled"] === true,
       permission: "workflows:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "workflows:write");

@@ -60,7 +60,7 @@ The same graph can sit on any number of dashboards; removing a card leaves the g
 
 ## Creating one with AI
 
-Custom graphs are designed to be written by an AI over [MCP](../team-and-billing/openapi.md) or the in-app chat. The model calls `get_custom_graph_typings` for the full `graph` API, writes the script with `write_custom_graph` (the source is type-checked before saving — errors are returned as diagnostics instead of being persisted), and verifies it with `render_custom_graph`. Ask for "a graph of our egress spend against the bandwidth metrics of the CDN droplets, with a toggle for daily/weekly" and pin the result.
+Custom graphs are designed to be written by an AI over [MCP](../team-and-billing/openapi.md) or the in-app chat. The model calls `get_custom_graph_typings` for the full `graph` API, writes the script with `write_custom_graph` (the source is type-checked before saving; errors are returned as diagnostics instead of being persisted), and verifies it with `render_custom_graph`. In the in-app chat, a `write_custom_graph` call that sets the source waits for your approval first, because the script can run SSH commands whenever the graph renders. Ask for "a graph of our egress spend against the bandwidth metrics of the CDN droplets, with a toggle for daily/weekly" and pin the result.
 
 ## Who infrastructure access runs as
 

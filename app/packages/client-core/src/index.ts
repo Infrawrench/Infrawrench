@@ -748,6 +748,7 @@ export {
   type AskQuestionType,
 } from "./chat/ask-question";
 export { createBearerChatClient } from "./chat/bearer-client";
+export { toolInputPreview, type ToolInputPreview } from "./chat/tool-input-preview";
 export * from "./ws-protocol";
 export {
   parseCronExpression,

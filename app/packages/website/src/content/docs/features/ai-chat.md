@@ -84,11 +84,18 @@ The agent can mix both in one form. Submit sends every answer together and the c
 
 ## Destructive-action approval
 
-Every tool is tagged with a risk tier: `read`, `write`, or `destructive`. Read and write tools auto-run inside the model loop. Destructive tools (deletes, drops, exec, manifest applies, write SQL, KV writes, Docker stop/restart, secret destroy, credential export) **suspend the loop** and write a pending-action row. A few tools are only safe on some targets and escalate per call: `sql_query` is auto-run where the database enforces read-only and needs approval everywhere else.
+Every tool is tagged with a risk tier: `read`, `write`, or `destructive`. Read and write tools auto-run inside the model loop. Destructive tools (deletes, drops, exec, manifest applies, write SQL, KV writes, Docker stop/restart, adding or destroying a secret version, credential export, typing or pressing keys in a [Linux application](./linux-apps.md) window, creating a [sleep/wake schedule](./sleep-schedules.md)) **suspend the loop** and write a pending-action row.
+
+A few tools need approval only for some inputs or targets, because one argument turns them into running code or writing data:
+
+- `sql_query` auto-runs where the database enforces read-only and needs approval everywhere else.
+- `launch_app` when it is given a raw `exec` command rather than an installed application.
+- `write_workflow` when the call sets the source, the trigger or the assigned secrets, or enables the workflow. A saved cron workflow runs within the minute, so saving it is as consequential as running it. Renaming, redescribing, editing metrics or disabling still auto-run.
+- `write_custom_graph` when the call sets the source, since a graph script can run SSH commands every time a dashboard renders it.
 
 The UI surfaces these as Approve / Reject cards inline in the conversation. Approving runs the tool and resumes the model with the result; rejecting feeds the model an error message it can react to.
 
-Tool calls render as compact status cards (`Running…` → `Done`); the input JSON and the tool's result sit behind a collapsed **Details** toggle on each card, except while an action is pending approval, when the input is shown so you can see exactly what you're approving.
+Tool calls render as compact status cards (`Running…` → `Done`); the input JSON and the tool's result sit behind a collapsed **Details** toggle on each card, except while an action is pending approval, when the input is shown so you can see exactly what you're approving. Multi-line inputs such as workflow source, scripts and SQL are shown as plain text under their field name rather than as an escaped JSON string, so you can read the code before approving it.
 
 ## Secure secret input
 

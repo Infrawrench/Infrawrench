@@ -11,13 +11,27 @@
  * A window is addressed by its numeric id, which `launch_app` and
  * `list_app_windows` return; the coordinates a screenshot shows, a click
  * takes, and the accessibility tree reports are the same buffer-pixel space.
+ *
+ * Approval: `launch_app` with `exec` spawns an arbitrary program (the host
+ * splits it into argv and runs it), and typing or pressing keys into a
+ * terminal window is command execution, so those wait for approval in chat
+ * exactly like `ssh_exec`. Launching a desktop entry, looking, clicking,
+ * scrolling and closing stay `write`.
  */
 import { z } from "zod";
 import type { A11yNode } from "@infrawrench/appstream-core";
 
 import { getHeadlessSession, endHeadlessSession, AppsHostError } from "@/services/apps-headless";
 import { logAudit } from "@/services/audit";
-import { ok, okImage, okText, err, type ToolAuthContext, type ToolDefinition } from "./types";
+import {
+  ok,
+  okImage,
+  okText,
+  err,
+  isNonBlankString,
+  type ToolAuthContext,
+  type ToolDefinition,
+} from "./types";
 
 const PERMISSION = "resources:execute" as const;
 
@@ -112,9 +126,15 @@ export function linuxAppTools(): ToolDefinition[] {
       inputSchema: {
         ...targetShape,
         appId: z.string().optional().describe("Desktop-entry id from list_apps_on_host."),
-        exec: z.string().optional().describe("A raw command, when no desktop entry fits."),
+        exec: z
+          .string()
+          .optional()
+          .describe(
+            "A raw command, when no desktop entry fits. Runs an arbitrary program on the host, so it waits for approval in chat.",
+          ),
       },
       risk: "write",
+      requiresApproval: async (input) => isNonBlankString(input["exec"]),
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, appId, exec } = input as {
@@ -306,7 +326,8 @@ export function linuxAppTools(): ToolDefinition[] {
         windowId: z.number().int(),
         text: z.string().describe("The literal text to type."),
       },
-      risk: "write",
+      // Typing into a terminal app is running a command.
+      risk: "destructive",
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, windowId, text } = input as {
@@ -338,7 +359,8 @@ export function linuxAppTools(): ToolDefinition[] {
         windowId: z.number().int(),
         keys: z.string().describe('A key or "+"-joined chord.'),
       },
-      risk: "write",
+      // Enter in a terminal app submits whatever was typed.
+      risk: "destructive",
       permission: PERMISSION,
       handler: async (input, auth) => {
         const { resourceId, sshKeyId, username, windowId, keys } = input as {

@@ -62,7 +62,8 @@ export function scheduleTools(): ToolDefinition[] {
         accountId: z.string().describe("The account the resource belongs to."),
         ...timingShape,
       },
-      risk: "write",
+      // Arms the poller to stop the resource on a timer, unattended.
+      risk: "destructive",
       permission: "resources:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "resources:write");

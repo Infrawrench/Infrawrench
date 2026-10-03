@@ -27,6 +27,7 @@ export {
   ASK_QUESTION_TOOL_NAME,
   askQuestionAnswersComplete,
   parseAskQuestionInput,
+  toolInputPreview,
   type AskQuestion,
   type AskQuestionAnswer,
 } from "@infrawrench/client-core";

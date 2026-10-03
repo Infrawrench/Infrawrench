@@ -11,6 +11,7 @@ import {
   ASK_QUESTION_TOOL_NAME,
   askQuestionAnswersComplete,
   parseAskQuestionInput,
+  toolInputPreview,
   type ChatClient,
   type ChatConversationMessage,
   type ChatContentBlock,
@@ -701,6 +702,7 @@ function BlockView({
             ? "text-success"
             : "text-on-surface-muted";
     const resultText = pending?.result ?? result?.text;
+    const inputPreview = toolInputPreview(block.input);
 
     return (
       <div className="border border-border rounded-lg bg-surface-overlay text-xs">
@@ -740,10 +742,21 @@ function BlockView({
           <div className="mt-1 space-y-2 pb-1">
             <div>
               <div className="text-on-surface-faint mb-0.5">{gt("Input")}</div>
-              <pre className="whitespace-pre-wrap break-words text-on-surface-muted font-mono text-[11px]">
-                {JSON.stringify(block.input, null, 2)}
-              </pre>
+              {(Object.keys(inputPreview.fields).length > 0 ||
+                inputPreview.blocks.length === 0) && (
+                <pre className="whitespace-pre-wrap break-words text-on-surface-muted font-mono text-[11px]">
+                  {JSON.stringify(inputPreview.fields, null, 2)}
+                </pre>
+              )}
             </div>
+            {inputPreview.blocks.map(({ key, text }) => (
+              <div key={key}>
+                <div className="text-on-surface-faint mb-0.5 font-mono">{key}</div>
+                <pre className="whitespace-pre-wrap break-words text-on-surface-muted font-mono text-[11px] max-h-96 overflow-auto">
+                  {text}
+                </pre>
+              </div>
+            ))}
             {resultText != null && (
               <div>
                 <div className="text-on-surface-faint mb-0.5">
