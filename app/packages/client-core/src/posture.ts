@@ -31,6 +31,7 @@
 import type { PostureCategory, PostureCheckRule, PostureSeverity } from "@infrawrench/plugin-base";
 
 import type { DnsInventoryResponse } from "./dns";
+import { parseExpiryInstant } from "./expiry";
 import type { CloudFetch } from "./fetch";
 
 export type {
@@ -221,35 +222,6 @@ const TRUE_WORDS = new Set(["true", "1", "yes", "enabled"]);
 const FALSE_WORDS = new Set(["false", "0", "no", "disabled"]);
 
 /**
- * Parse a stored field value as a point in time, epoch milliseconds — the
- * same tolerance as the expiry radar's `parseExpiryInstant`. Returns null for
- * anything unparseable: a value that fails to parse must fail the condition,
- * never alarm. Small numbers (< 1e8, i.e. before ~1973 as seconds) are
- * rejected rather than guessed at, so a port or a count never reads as a
- * date.
- */
-function parseInstant(value: unknown): number | null {
-  if (typeof value === "number") {
-    if (!Number.isFinite(value) || value < 1e8) return null;
-    return value >= 1e12 ? value : value * 1000;
-  }
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (trimmed === "") return null;
-  if (/^\d+(\.\d+)?$/.test(trimmed)) return parseInstant(Number(trimmed));
-  const parsed = Date.parse(trimmed);
-  if (!Number.isNaN(parsed)) return parsed;
-  // Go-style timestamps carry a zone name after the numeric offset that
-  // Date.parse rejects.
-  const goStyle = trimmed.replace(/ [A-Z]{3,4}$/, "");
-  if (goStyle !== trimmed) {
-    const reparsed = Date.parse(goStyle);
-    if (!Number.isNaN(reparsed)) return reparsed;
-  }
-  return null;
-}
-
-/**
  * Whether a rule matches a stored field bag. The documented
  * `PostureCondition` semantics, implemented identically to plugin-base's
  * `evaluatePostureRule` (see the module doc for why it is not imported).
@@ -265,7 +237,7 @@ function ruleMatches(
     if (cond.when === "empty") return raw == null || raw === "";
     if (raw == null) return false;
     if (cond.when === "olderThanDays") {
-      const instant = parseInstant(raw);
+      const instant = parseExpiryInstant(raw);
       if (instant === null) return false;
       return now - instant > cond.days * MS_PER_DAY;
     }

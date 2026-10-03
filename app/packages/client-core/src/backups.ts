@@ -38,6 +38,7 @@
  */
 import type { BackupPolicyDeclaration, BackupRoleDeclaration } from "@infrawrench/plugin-base";
 
+import { parseExpiryInstant } from "./expiry";
 import type { CloudFetch } from "./fetch";
 import { extractRecordTags } from "./tag-policy";
 
@@ -420,31 +421,6 @@ const TRUE_WORDS = new Set(["true", "1", "yes", "enabled", "on"]);
 const FALSE_WORDS = new Set(["false", "0", "no", "disabled", "off"]);
 
 /**
- * Parse a stored field value as a point in time, epoch milliseconds — the same
- * tolerance as the expiry radar's `parseExpiryInstant` and posture's
- * `parseInstant`. Null for anything unparseable: an undatable backup is not
- * evidence of a recent one, so it must never satisfy an RPO.
- */
-function parseInstant(value: unknown): number | null {
-  if (typeof value === "number") {
-    if (!Number.isFinite(value) || value < 1e8) return null;
-    return value >= 1e12 ? value : value * 1000;
-  }
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (trimmed === "") return null;
-  if (/^\d+(\.\d+)?$/.test(trimmed)) return parseInstant(Number(trimmed));
-  const parsed = Date.parse(trimmed);
-  if (!Number.isNaN(parsed)) return parsed;
-  const goStyle = trimmed.replace(/ [A-Z]{3,4}$/, "");
-  if (goStyle !== trimmed) {
-    const reparsed = Date.parse(goStyle);
-    if (!Number.isNaN(reparsed)) return reparsed;
-  }
-  return null;
-}
-
-/**
  * Leading number out of a stored value, so `"8 GiB"` and `8` and `"8.5"` all
  * read as a size. Null rather than 0 for anything else — a size we can't read
  * must not shrink the orphan total.
@@ -666,7 +642,7 @@ export function computeBackupCoverage(
       if (!role.backupTypeValues.some((v) => v.toLowerCase() === actual)) continue;
     }
 
-    const createdAt = parseInstant(fields[role.createdKey ?? "createdAt"]);
+    const createdAt = parseExpiryInstant(fields[role.createdKey ?? "createdAt"]);
     const rawSize = parseNumber(fields[role.sizeKey ?? "sizeGb"]);
     const sizeGb =
       rawSize == null ? null : role.sizeUnit === "bytes" ? rawSize / 1024 ** 3 : rawSize;

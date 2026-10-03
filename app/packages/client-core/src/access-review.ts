@@ -43,6 +43,7 @@
 import type { PrincipalRole, PrincipalRoleDeclaration } from "@infrawrench/plugin-base";
 
 import type { ExpiryListResponse } from "./expiry";
+import { parseExpiryInstant } from "./expiry";
 import type { CloudFetch } from "./fetch";
 import type { ResourceOwnerAnnotation } from "./ownership";
 
@@ -342,34 +343,6 @@ const TRUE_WORDS = new Set(["true", "1", "yes", "enabled", "on"]);
 const FALSE_WORDS = new Set(["false", "0", "no", "disabled", "off"]);
 
 /**
- * Parse a stored field value as a point in time, epoch milliseconds — the same
- * tolerance as the expiry radar's `parseExpiryInstant` and the posture
- * module's `parseInstant`. Anything unparseable is null, which is what keeps
- * a garbled timestamp out of the stale bucket. Small numbers (< 1e8) are
- * rejected rather than guessed at, so a port or a count never reads as a date.
- */
-function parseInstant(value: unknown): number | null {
-  if (typeof value === "number") {
-    if (!Number.isFinite(value) || value < 1e8) return null;
-    return value >= 1e12 ? value : value * 1000;
-  }
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (trimmed === "") return null;
-  if (/^\d+(\.\d+)?$/.test(trimmed)) return parseInstant(Number(trimmed));
-  const parsed = Date.parse(trimmed);
-  if (!Number.isNaN(parsed)) return parsed;
-  // Go-style timestamps carry a zone name after the numeric offset that
-  // Date.parse rejects.
-  const goStyle = trimmed.replace(/ [A-Z]{3,4}$/, "");
-  if (goStyle !== trimmed) {
-    const reparsed = Date.parse(goStyle);
-    if (!Number.isNaN(reparsed)) return reparsed;
-  }
-  return null;
-}
-
-/**
  * Read a declared boolean-ish field. Returns null for absent and for strings
  * outside the known word lists — an unrecognised value must not be read as
  * `false` and turned into an accusation.
@@ -531,8 +504,8 @@ export function collectAccessPrincipals(
     const lastUsedKey = d.lastUsedKey ?? DEFAULT_PRINCIPAL_LAST_USED_KEY;
     const createdKey = d.createdKey ?? DEFAULT_PRINCIPAL_CREATED_KEY;
 
-    const lastUsedMs = parseInstant(fields[lastUsedKey]);
-    const createdMs = parseInstant(fields[createdKey]);
+    const lastUsedMs = parseExpiryInstant(fields[lastUsedKey]);
+    const createdMs = parseExpiryInstant(fields[createdKey]);
     const daysSinceLastUsed =
       lastUsedMs === null ? null : Math.floor((now - lastUsedMs) / MS_PER_DAY);
     // `unknown` is the answer whenever there is no parseable evidence. It is
