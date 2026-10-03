@@ -624,11 +624,18 @@ describe("CloudflareClient.fetchMetricSeries", () => {
         viewer: {
           accounts: [
             {
-              workersInvocationsAdaptiveGroups: [
+              totals: [
                 {
-                  dimensions: { datetime: dt },
+                  dimensions: { datetimeHour: dt },
                   sum: { requests: 10, subrequests: 2, errors: 1 },
-                  quantiles: { cpuTimeP50: 5, cpuTimeP99: 9 },
+                  quantiles: { cpuTimeP50: 5, cpuTimeP99: 9, wallTimeP50: 20, wallTimeP99: 80 },
+                },
+              ],
+              byStatus: [
+                { dimensions: { datetimeHour: dt, status: "success" }, sum: { requests: 9 } },
+                {
+                  dimensions: { datetimeHour: dt, status: "scriptThrewException" },
+                  sum: { requests: 1 },
                 },
               ],
             },
@@ -637,7 +644,14 @@ describe("CloudflareClient.fetchMetricSeries", () => {
       },
     });
     const out = await client.fetchMetricSeries("worker", "acct:worker:w1", "acct", range);
-    expect(out.find((s) => s.label === "Requests")).toBeTruthy();
+    const labels = out.map((s) => s.label);
+    expect(labels).toEqual(
+      expect.arrayContaining(["Requests", "Wall Time p99", "Invocations: Exception"]),
+    );
+    expect(labels).not.toContain("Invocations: Success");
+    expect(out.find((s) => s.label === "Requests")!.points[0]!.timestamp).toBe(
+      new Date(dt).getTime(),
+    );
   });
 
   it("r2 metrics parse ops + storage groups", async () => {

@@ -15,6 +15,7 @@ The Cloudflare plugin is broad: 35 resource types across DNS, edge compute, stor
 - **Zero Trust** — Access applications and policies, Tunnels.
 - **Security & traffic** — WAF custom rules, rate limiting rules, redirect rules, cache rules, IP access rules, load balancers, waiting rooms, Spectrum applications, and Turnstile widgets.
 - **Account** — notification (alerting) policies, Logpush jobs, Secrets Store secrets.
+- **Data & analytics**: Basin Pipelines streams, sinks and pipelines, Basin Catalog (Apache Iceberg on R2) catalogs and tables with a Basin SQL editor, and Workers Analytics Engine datasets with their own SQL editor. See [Basin](#basin-pipelines-catalog-and-sql) and [Workers Analytics Engine](#workers-analytics-engine).
 - **Zone settings** — cache, security, SSL, and performance options edited via a settings form (toggles, dropdowns, numbers) on the zone's **Zone Settings** tab. DNSSEC can be enabled or disabled from the zone header.
 
 ## Editing resources
@@ -63,6 +64,43 @@ Workflow settings (class, script, step limits, schedules) are deploy-time config
 
 Needs the **Secrets Store** permission (Read to list, Edit to create, change, or delete). The "Create a token with these scopes" link doesn't include it yet, so add **Account · Secrets Store:Edit** to the token by hand.
 
+## Basin (Pipelines, Catalog and SQL)
+
+[Cloudflare Basin](https://developers.cloudflare.com/basin/) went GA on 2026-10-01 and is the new name for the Cloudflare Data Platform: **Basin Pipelines** (formerly Pipelines), **Basin Catalog** (formerly R2 Data Catalog) and **Basin SQL** (formerly R2 SQL). Infrawrench manages all three from the account sidebar.
+
+- **Basin Streams**: durable buffers events land in. **Create** takes a name, whether HTTP ingest is on (and whether it requires a token), allowed CORS origins, whether Workers can send through a binding, and an optional schema (`{ "fields": [{ "name": "user_id", "type": "string", "required": true }] }`; leave it blank for an unstructured stream). **Edit** changes HTTP ingest, token auth, CORS and the Worker binding; Cloudflare doesn't allow changing a stream's schema after creation. The detail page has a copyable `curl` example against the stream's ingest endpoint and a `[[pipelines]]` binding snippet, and the stream ID and endpoint are output references and credentials exports.
+- **Basin Sinks**: where pipelines write. Pick **Basin Catalog table** (Iceberg, Parquet) and choose the catalog from a list of buckets with Basin Catalog enabled, a namespace and a new table name, or **Files in an R2 bucket** with a bucket picker, path prefix, partitioning pattern and JSON or Parquet. Compression, roll interval and roll size are optional. The credentials a sink writes with default to this account's own API token: a catalog sink uses it as the catalog token, and an R2 sink derives its R2 access key from it the way Cloudflare documents (token ID as the access key ID, SHA-256 of the token as the secret), so you only fill these in to use a separate token or R2 key. Sinks can't be edited; create a new one instead.
+- **Basin Pipelines**: the SQL that connects a stream to a sink. **Create** takes a name, a source stream and a destination sink from pickers, and optional SQL; with the SQL left blank, the pipeline copies every event unchanged (`INSERT INTO <sink> SELECT * FROM <stream>`). The detail page shows the status, the streams and sinks it reads and writes, the SQL, and any failure reason. Pipeline SQL can't be edited after creation, so change it by creating a new pipeline and deleting the old one.
+- **Basin Catalogs**: one per R2 bucket. **Create** turns the catalog on for a bucket you pick (only buckets without one are listed) and can switch on table maintenance at the same time: compaction with a 64, 128, 256 or 512 MB target file size, and snapshot expiration with a maximum age and a minimum number of snapshots to keep. Maintenance jobs run with a stored service token; leave **Maintenance Token** blank to use this account's token. **Edit** changes the maintenance settings or replaces the token, and **Delete** disables the catalog: the bucket and its data files stay in R2, but Iceberg clients can't reach the tables until you enable it again. The detail page lists the catalog's tables and gives the **Catalog URI** and **Warehouse** (also output references and an `ICEBERG_CATALOG_URI` / `ICEBERG_WAREHOUSE` credentials export) with a PyIceberg example for connecting Spark, DuckDB, Trino, Snowflake or StarRocks.
+- **Basin Tables**: every Iceberg table across your active catalogs, grouped under their catalog and also listed in the sidebar. The detail page shows the namespace, table UUID and storage locations. **Edit** sets per-table compaction and snapshot expiration, which override the catalog's defaults. Tables are created by sinks or Iceberg clients; Infrawrench doesn't drop them.
+
+### Basin SQL editor
+
+Basin Catalogs and Basin Tables have a **SQL Editor** tab, the same one D1 and BigQuery use. Queries run through Basin SQL against that catalog's warehouse, so address tables as `namespace.table` and join across any tables in the catalog. Autocomplete lists the catalog's tables; column names aren't available without running a query, so they aren't suggested. Basin SQL is read-only (`SELECT`, `EXPLAIN`, CTEs, joins, window functions) and is billed per byte scanned with a 10 MB minimum per query, so add a `LIMIT` and filter on partition columns while exploring.
+
+<insert [Basin Table detail page showing the SQL Editor tab with a SELECT against default.events and a result grid] here>
+
+### Metrics
+
+- **Pipelines**: records and bytes ingested, decode errors, records and bytes delivered, files written, and dropped events split by error type (missing field, type mismatch, parse failure, null value). Streams show the ingest half and sinks the delivery half.
+- **Catalogs and tables**: catalog request count, failed requests, average request latency, maintenance job count and failures, and files and bytes compacted.
+
+### Permissions
+
+The "Create a token with these scopes" link includes **Pipelines: Edit**, **Workers R2 Data Catalog: Edit** and **Workers R2 SQL: Read**. Basin SQL also needs R2 storage read access, which the link's **Workers R2 Storage: Edit** covers, and the metrics need **Account Analytics: Read**. HTTP ingest with token auth expects callers to send a token with **Pipelines: Send**, which is separate from the token Infrawrench uses. Tokens created before these scopes were added need them added by hand.
+
+Cloudflare's legacy (pre-streams) Pipelines API is deprecated and isn't listed; manage those pipelines in the dashboard or move them to streams and sinks.
+
+## Workers Analytics Engine
+
+**Analytics Engine Datasets** lists every dataset in the account (from `SHOW TABLES`). A dataset appears once a Worker has written to it through an `[[analytics_engine_datasets]]` binding; Cloudflare has no API to create or delete one, so there's no create or delete here.
+
+- **SQL Editor**: query any dataset with the [Analytics Engine SQL API](https://developers.cloudflare.com/analytics/analytics-engine/sql-api/). Autocomplete knows every dataset and its fixed columns (`timestamp`, `index1`, `blob1` to `blob20`, `double1` to `double20`, `_sample_interval`). The default query charts events per hour for the last day. Rows are sampled under load, so weight counts and sums by `_sample_interval`.
+- **Metrics**: data points written (sample-weighted) and rows stored, per hour, or per five minutes for windows under six hours. Analytics Engine keeps three months of data, longer than the GraphQL datasets other metrics use.
+- The detail page has a binding snippet with a `writeDataPoint()` example, and the dataset name is an output reference and an `ANALYTICS_ENGINE_DATASET` credentials export.
+
+Needs **Account Analytics: Read**, which the "Create a token with these scopes" link includes.
+
 ## Credentials
 
 The API token field in the **Add account** and **Update credentials** forms shows a **“Create a token with these scopes”** link. Click it to open Cloudflare's token creator with the scopes this plugin uses already selected — review them, create the token, and paste it back into the field. (Cloudflare only ever shows the token value once, at creation time.)
@@ -85,7 +123,7 @@ An expired or disabled token is flagged across every row. The generator produces
 
 - **DNS records table** — a zone's records render as a Cloudflare-style table (type, name, content, proxy, TTL) with inline create and delete. See [DNS records](../features/dns-records.md).
 - **DNS record editor** with type-aware fields (A, AAAA, CNAME, MX, TXT, SRV, CAA). A/AAAA/CNAME values can be [pointed at another resource](../features/dns-records.md) (e.g. an AWS Elastic IP) and tracked live.
-- **Worker script editing** in Monaco with deploy, plus an editable **Settings** tab — see [Worker settings](#worker-settings) below.
+- **Worker script editing** in Monaco with deploy, plus an editable **Settings** tab — see [Worker settings](#worker-settings) below. Workers also get a **Logs** tab and a **Traces** tab from Workers Observability; see [Worker logs and traces](#worker-logs-and-traces).
 - **R2 file browser** and **secret export to K8s** for bucket credentials.
 - **R2 storage class and public access**: new buckets take a default storage class (Standard or Infrequent Access) alongside the location hint, and **Edit** changes it later; only new uploads pick up the new class. The bucket page's **Public Development URL** section shows whether the bucket's `r2.dev` URL is serving and has **Enable r2.dev Access** / **Disable r2.dev Access** buttons. The URL is also a **Public r2.dev URL** output reference. The `r2.dev` URL is rate limited and meant for development; use a custom domain for production.
 - **KV namespace browser** — open any Workers KV namespace and use the **Keys** tab to list keys (cursor-paginated, with optional prefix filter), view stored values, add or overwrite a key, and delete keys. Backed by Cloudflare's `/storage/kv/namespaces/{id}/keys` and `/values/{key}` REST endpoints. Values are treated as UTF-8 text.
@@ -110,7 +148,7 @@ An expired or disabled token is flagged across every row. The generator produces
 Open a Worker and switch to the **Settings** tab for a labeled form — no raw JSON. Settings are grouped:
 
 - **General** — usage model (read-only), Logpush, the `workers.dev` subdomain toggle, and tags.
-- **Observability** — invocation logging on/off and the head sampling rate (0–1).
+- **Observability** — the master switch and head sampling rate (0–1), then Workers Logs (on/off, invocation logs, logs sampling rate, persist) and Workers Traces (on/off, traces sampling rate, persist). OpenTelemetry export destinations are shown read-only; manage them in the Cloudflare dashboard. Changing one of these keeps the rest of the observability block as it was, destinations included.
 - **Compatibility** — compatibility date and flags (read-only; change them by redeploying the Worker).
 - **Placement** — Smart Placement mode (read-only).
 - **Limits** — the per-invocation CPU limit (read-only).
@@ -120,6 +158,19 @@ Open a Worker and switch to the **Settings** tab for a labeled form — no raw J
 Editable rows are saved per setting and routed to the right Cloudflare endpoint — the worker script settings (`logpush`, observability, tags), the `workers.dev` subdomain, or the cron-trigger schedule. The read-only rows surface deploy-time configuration that Cloudflare doesn't expose to a simple settings patch. Editing needs the **Workers Scripts:Edit** permission.
 
 ![Cloudflare Worker detail view with the Settings tab open, showing the General and Observability groups populated for a real Worker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cloudflare/worker-settings-tab.png)
+
+## Worker logs and traces
+
+Workers Observability is Cloudflare's store for a Worker's logs and traces. Turn it on per Worker in the **Settings** tab (the **Observability** group) or with `observability.enabled = true` in your Wrangler config. The Worker's overview shows whether Workers Logs and Workers Traces are on and at what sampling rate.
+
+- **Logs tab**: the newest Workers Logs events, oldest first, with timestamp, level and message. Each invocation gets one summary line with its trigger (`GET /path`, cron, queue…), HTTP status, outcome, CPU and wall time, and the data center that ran it; a short request id ties console lines back to their invocation. The dropdown filters to errors, warnings and errors, failed invocations (any outcome other than `ok`), invocations only, or console logs only. The tab looks back 24 hours, then the full retention window (7 days, 3 on the Free plan) if that's empty. When nothing comes back it tells you whether logging is off for the Worker or the Worker has just been quiet. Workers also show up in the [log workspace](../features/log-workspace.md), so you can tail them alongside other services and alert on a match.
+- **Traces tab**: the most recent traces from the last 24 hours, each with its root span, span count, duration, the Workers it crossed, and any errors. It needs Workers Traces turned on; until then the tab says how to enable it.
+
+Both read Cloudflare's Workers Observability telemetry query API (`POST /accounts/{account_id}/workers/observability/telemetry/query`). Cloudflare's API reference lists **Workers Observability Write** as the permission this endpoint accepts, even for read-only queries, so add **Account · Workers Observability:Edit** to the token by hand; the "Create a token with these scopes" link doesn't include it yet. Without it, the Logs tab shows a missing-permission message and the log-level and span charts are left out of the Metrics tab.
+
+<insert [Cloudflare Worker detail page with the Logs tab open, the filter dropdown set to "failed invocations", showing invocation summary lines with status, outcome, CPU and wall time] here>
+
+<insert [Cloudflare Worker detail page with the Traces tab open, showing a table of recent traces with root span, span count, duration, services and errors] here>
 
 ## Cache
 
@@ -148,7 +199,7 @@ Open a zone and use the **Enable DNSSEC** / **Disable DNSSEC** buttons in the de
 The detail page surfaces a **Metrics** tab whenever Cloudflare's GraphQL Analytics API exposes useful time-series data for a resource. The plugin pulls from the relevant adaptive-groups datasets so you can see traffic and health without leaving Infrawrench:
 
 - **Zone** — requests, bandwidth, cached requests, threats, unique visitors (`httpRequests1mGroups` / `httpRequests1hGroups`).
-- **Worker** — invocations, errors, subrequests, CPU time p50/p99 (`workersInvocationsAdaptiveGroups`).
+- **Worker** — requests, errors, subrequests, CPU time and wall time p50/p99, and failed invocations broken down by outcome (exception, exceeded resources, client disconnected, internal error) from `workersInvocationsAdaptiveGroups`. With Workers Observability on, the tab adds log events per level (log, info, warn, error, debug) and, with Workers Traces on, span count and span duration p50/p99; these come from the Workers Observability telemetry API and need the permission described in [Worker logs and traces](#worker-logs-and-traces).
 - **R2 bucket** — Class A and Class B operations, object count, stored bytes (`r2OperationsAdaptiveGroups`, `r2StorageAdaptiveGroups`).
 - **Spectrum application** — events, ingress/egress bytes, connections (`spectrumNetworkAnalyticsAdaptiveGroups`).
 - **D1 database** — read/write queries, rows read/written, response bytes, query batch latency p90 (`d1AnalyticsAdaptiveGroups`, daily granularity).
@@ -160,6 +211,9 @@ The detail page surfaces a **Metrics** tab whenever Cloudflare's GraphQL Analyti
 - **Turnstile widget** — challenge volume in fifteen-minute buckets (`turnstileAdaptiveGroups`, filtered by site key).
 - **Workflow**: instances started, succeeded, failed, and terminated, plus steps succeeded, steps failed, and failed step attempts (`workflowsAdaptiveGroups`, grouped by event type).
 - **Durable Object namespace** — invocation requests and response body size (`durableObjectsInvocationsAdaptiveGroups`), CPU time (`durableObjectsPeriodicGroups`), and stored bytes (`durableObjectsStorageGroups`) — all filtered by namespace.
+- **Basin pipeline, stream and sink**: records and bytes ingested and delivered, decode errors, files written, dropped events by error type (`pipelinesOperatorAdaptiveGroups`, `pipelinesSinkAdaptiveGroups`, `pipelinesUserErrorsAdaptiveGroups`, hourly).
+- **Basin catalog and table**: catalog requests, failures and average latency, maintenance jobs and compaction volume (`r2CatalogDataOperationsAdaptiveGroups`, `r2CatalogTableMaintenanceAdaptiveGroups`).
+- **Analytics Engine dataset**: data points written and rows stored, computed with the Analytics Engine SQL API rather than GraphQL.
 
 The token needs the **Account Analytics:Read** permission for account-scoped datasets and **Zone Analytics:Read** for zone-scoped ones — the "Create a token with these scopes" link includes both. Resources with no traffic in the selected window show an empty Metrics tab, which is expected.
 
@@ -168,6 +222,7 @@ The token needs the **Account Analytics:Read** permission for account-scoped dat
 - Cloudflare’s API returns paginated lists; very large zones (1000s of records) load in chunks.
 - Tokens can be scoped to specific zones. If you only see some zones, check the token scope.
 - GraphQL Analytics datasets retain the last 31 days of data; older ranges return no points.
+- Since 2026-10-02 every plan keeps at least 31 days of the adaptive analytics datasets (HTTP requests, security events, DNS and the other `*AdaptiveGroups` datasets), including Free and Pro zones, so metric ranges up to about 30 days return data on every plan. Aggregated datasets such as `httpRequests1hGroups`, which the zone traffic charts use, keep their existing per-plan limits ([changelog](https://developers.cloudflare.com/changelog/product-group/analytics/)).
 
 ## Cost graphs
 

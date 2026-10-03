@@ -119,6 +119,8 @@ export async function getWorkerManifest(api: CloudflareApi, externalId: string):
         ? {
             enabled: raw.observability.enabled,
             head_sampling_rate: raw.observability.head_sampling_rate ?? null,
+            ...(raw.observability.logs ? { logs: raw.observability.logs } : {}),
+            ...(raw.observability.traces ? { traces: raw.observability.traces } : {}),
           }
         : null,
       placement: raw.placement && "mode" in raw.placement ? { mode: raw.placement.mode } : null,

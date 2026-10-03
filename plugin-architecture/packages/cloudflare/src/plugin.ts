@@ -38,6 +38,12 @@ import { AiSearchResourceType } from "./resources/ai-search.js";
 import { DurableObjectNamespaceResourceType } from "./resources/durable-object-namespace.js";
 import { WorkflowResourceType } from "./resources/workflow.js";
 import { SecretsStoreSecretResourceType } from "./resources/secrets-store-secret.js";
+import { BasinPipelineResourceType } from "./resources/basin-pipeline.js";
+import { BasinStreamResourceType } from "./resources/basin-stream.js";
+import { BasinSinkResourceType } from "./resources/basin-sink.js";
+import { BasinCatalogResourceType } from "./resources/basin-catalog.js";
+import { BasinTableResourceType } from "./resources/basin-table.js";
+import { AnalyticsEngineDatasetResourceType } from "./resources/analytics-engine-dataset.js";
 
 // Deep link to Cloudflare's "Create Token" page (user/profile tokens) with the
 // scopes this plugin uses pre-selected. Format per Cloudflare's token-template
@@ -76,7 +82,16 @@ const CREATE_TOKEN_SCOPES = [
   { key: "vectorize", type: "edit" },
   { key: "ai_gateway", type: "edit" },
   { key: "autorag", type: "edit" },
+  // Basin Pipelines, Basin Catalog (formerly R2 Data Catalog) and Basin SQL
+  // (formerly R2 SQL). Keys match the dashboard's "Pipelines", "Workers R2
+  // Data Catalog" and "Workers R2 SQL" permission groups.
+  { key: "pipelines", type: "edit" },
+  { key: "r2_catalog", type: "edit" },
+  { key: "r2_catalog_sql", type: "read" },
   { key: "analytics", type: "read" },
+  // Account Analytics Read: account-scoped GraphQL datasets (Workers, D1,
+  // Pipelines, Catalog, ...) and the Workers Analytics Engine SQL API.
+  { key: "account_analytics", type: "read" },
   // Billing Read backs cost graphs via the Billable Usage API.
   { key: "billing", type: "read" },
 ];
@@ -159,6 +174,12 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DurableObjectNamespaceResourceType,
   WorkflowResourceType,
   SecretsStoreSecretResourceType,
+  BasinPipelineResourceType,
+  BasinStreamResourceType,
+  BasinSinkResourceType,
+  BasinCatalogResourceType,
+  BasinTableResourceType,
+  AnalyticsEngineDatasetResourceType,
 ];
 
 export const plugin: Plugin = {

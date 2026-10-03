@@ -19,7 +19,7 @@ import type { SettingDescriptor } from "@infrawrench/plugin-base";
 /** Subset of the Cloudflare worker script-settings payload we expose. */
 export interface WorkerSettings {
   logpush?: boolean;
-  observability?: { enabled?: boolean; head_sampling_rate?: number | null } | null;
+  observability?: WorkerObservabilitySettings | null;
   placement?: { mode?: string } | null;
   tags?: string[];
   usage_model?: string;
@@ -28,6 +28,30 @@ export interface WorkerSettings {
   compatibility_flags?: string[];
   limits?: { cpu_ms?: number } | null;
   bindings?: unknown[];
+}
+
+/**
+ * `observability` as `GET/PATCH /workers/scripts/{name}/settings` carry it.
+ * `logs` and `traces` are optional sub-objects (Workers Logs and Workers
+ * Traces); when `logs` is absent, logs follow the top-level switch.
+ */
+export interface WorkerObservabilitySettings {
+  enabled?: boolean;
+  head_sampling_rate?: number | null;
+  logs?: {
+    enabled: boolean;
+    invocation_logs: boolean;
+    head_sampling_rate?: number | null;
+    persist?: boolean;
+    destinations?: string[];
+  } | null;
+  traces?: {
+    enabled?: boolean;
+    head_sampling_rate?: number | null;
+    persist?: boolean;
+    destinations?: string[];
+    propagation_policy?: "authenticated" | "accept";
+  } | null;
 }
 
 /** Everything the detail form needs, gathered from the three endpoints. */
@@ -43,9 +67,19 @@ const onOff = (b: boolean | undefined): string => (b ? "on" : "off");
 
 const dash = (s: string): string => (s.length > 0 ? s : "—");
 
+const rate = (n: number | null | undefined): string => (n == null ? "" : String(n));
+
+/** Blank or non-numeric → null (the API's "use the default of 1"). */
+function parseRate(value: string): number | null {
+  const n = Number(value);
+  return value.trim() === "" || Number.isNaN(n) ? null : n;
+}
+
 /** Build the host-facing settings form rows from the gathered worker settings. */
 export function buildWorkerSettingDescriptors(input: WorkerSettingsInput): SettingDescriptor[] {
   const s = input.settings;
+  const logs = s.observability?.logs ?? null;
+  const traces = s.observability?.traces ?? null;
   return [
     // ── Editable: workers.dev subdomain (own endpoint) ──
     {
@@ -79,18 +113,87 @@ export function buildWorkerSettingDescriptors(input: WorkerSettingsInput): Setti
       control: "toggle",
       value: onOff(s.observability?.enabled),
       group: "Observability",
-      description: "Capture invocation logs viewable in the dashboard and via the API.",
+      description:
+        "Master switch for Workers Logs and Traces. Logs show up in this Worker's Logs tab.",
     },
     {
       id: "observability_head_sampling_rate",
       label: "Head sampling rate",
       control: "number",
-      value:
-        s.observability?.head_sampling_rate == null
-          ? ""
-          : String(s.observability.head_sampling_rate),
+      value: rate(s.observability?.head_sampling_rate),
       group: "Observability",
       description: "Fraction of requests to log, 0–1 (1 = 100%). Blank uses the default of 1.",
+    },
+    {
+      id: "observability_logs_enabled",
+      label: "Logs",
+      control: "toggle",
+      // No `logs` object means logs follow the top-level switch.
+      value: onOff(logs ? logs.enabled : s.observability?.enabled),
+      group: "Observability",
+      description: "Store console output and errors in Workers Logs (the Logs tab).",
+    },
+    {
+      id: "observability_logs_invocation_logs",
+      label: "Invocation logs",
+      control: "toggle",
+      value: onOff(logs ? logs.invocation_logs : s.observability?.enabled),
+      group: "Observability",
+      description:
+        "Add one log per invocation with its trigger, outcome, status, CPU and wall time.",
+    },
+    {
+      id: "observability_logs_head_sampling_rate",
+      label: "Logs sampling rate",
+      control: "number",
+      value: rate(logs?.head_sampling_rate),
+      group: "Observability",
+      description: "Fraction of requests whose logs are kept, 0–1. Blank uses the default of 1.",
+    },
+    {
+      id: "observability_logs_persist",
+      label: "Persist logs",
+      control: "toggle",
+      value: onOff(logs ? logs.persist !== false : s.observability?.enabled),
+      group: "Observability",
+      description:
+        "Keep logs in Cloudflare for querying. Turn off to only export them to destinations.",
+    },
+    {
+      id: "observability_traces_enabled",
+      label: "Traces",
+      control: "toggle",
+      value: onOff(traces?.enabled),
+      group: "Observability",
+      description:
+        "Record automatic traces of handlers, fetch calls and binding calls (KV, R2, Durable Objects).",
+    },
+    {
+      id: "observability_traces_head_sampling_rate",
+      label: "Traces sampling rate",
+      control: "number",
+      value: rate(traces?.head_sampling_rate),
+      group: "Observability",
+      description: "Fraction of requests to trace, 0–1. Blank uses the default of 1.",
+    },
+    {
+      id: "observability_traces_persist",
+      label: "Persist traces",
+      control: "toggle",
+      value: onOff(traces ? traces.persist !== false : false),
+      group: "Observability",
+      description:
+        "Keep traces in Cloudflare for querying. Turn off to only export them to destinations.",
+    },
+    {
+      id: "observability_destinations",
+      label: "Export destinations",
+      control: "readonly",
+      value: dash(
+        [...new Set([...(logs?.destinations ?? []), ...(traces?.destinations ?? [])])].join(", "),
+      ),
+      group: "Observability",
+      description: "OpenTelemetry export destinations, managed in the Cloudflare dashboard.",
     },
     // ── Editable: cron triggers (own endpoint) ──
     {
@@ -167,8 +270,15 @@ function splitList(value: string): string[] {
 interface WorkerScriptSettingsPatch {
   logpush: boolean;
   tags: string[];
-  observability: { enabled: boolean; head_sampling_rate: number | null };
+  observability: WorkerObservabilityPatch;
 }
+
+type WorkerObservabilityPatch = {
+  enabled: boolean;
+  head_sampling_rate: number | null;
+  logs?: NonNullable<WorkerObservabilitySettings["logs"]>;
+  traces?: NonNullable<WorkerObservabilitySettings["traces"]>;
+};
 
 interface WorkerSettingsApply {
   /** Script-settings patch for `settings.edit`, or null if unchanged. */
@@ -184,6 +294,13 @@ const SCRIPT_SETTING_IDS = new Set([
   "tags",
   "observability_enabled",
   "observability_head_sampling_rate",
+  "observability_logs_enabled",
+  "observability_logs_invocation_logs",
+  "observability_logs_head_sampling_rate",
+  "observability_logs_persist",
+  "observability_traces_enabled",
+  "observability_traces_head_sampling_rate",
+  "observability_traces_persist",
 ]);
 
 /**
@@ -213,14 +330,27 @@ export function applyWorkerSettingChanges(
   if (!touchesScript) return { settings: null, ...endpointUpdates };
 
   // Seed from current values so the PATCH sends a coherent settings object.
+  // `logs` and `traces` are carried over whole (destinations included):
+  // PATCH replaces the nested `observability` object, so leaving them out
+  // would silently turn off traces or drop export destinations.
+  const cur = current.observability;
   const patch: WorkerScriptSettingsPatch = {
     logpush: current.logpush ?? false,
     tags: current.tags ?? [],
     observability: {
-      enabled: current.observability?.enabled ?? false,
-      head_sampling_rate: current.observability?.head_sampling_rate ?? null,
+      enabled: cur?.enabled ?? false,
+      head_sampling_rate: cur?.head_sampling_rate ?? null,
+      ...(cur?.logs ? { logs: { ...cur.logs } } : {}),
+      ...(cur?.traces ? { traces: { ...cur.traces } } : {}),
     },
   };
+  const obs = patch.observability;
+  // First touch of a logs field materializes the object from the implicit
+  // "logs follow the top-level switch" default.
+  const ensureLogs = (): NonNullable<WorkerObservabilitySettings["logs"]> =>
+    (obs.logs ??= { enabled: obs.enabled, invocation_logs: obs.enabled });
+  const ensureTraces = (): NonNullable<WorkerObservabilitySettings["traces"]> =>
+    (obs.traces ??= { enabled: false });
 
   for (const { id, value } of changed) {
     switch (id) {
@@ -233,11 +363,30 @@ export function applyWorkerSettingChanges(
       case "observability_enabled":
         patch.observability.enabled = value === "on";
         break;
-      case "observability_head_sampling_rate": {
-        const n = Number(value);
-        patch.observability.head_sampling_rate = value.trim() === "" || Number.isNaN(n) ? null : n;
+      case "observability_head_sampling_rate":
+        obs.head_sampling_rate = parseRate(value);
         break;
-      }
+      case "observability_logs_enabled":
+        ensureLogs().enabled = value === "on";
+        break;
+      case "observability_logs_invocation_logs":
+        ensureLogs().invocation_logs = value === "on";
+        break;
+      case "observability_logs_head_sampling_rate":
+        ensureLogs().head_sampling_rate = parseRate(value);
+        break;
+      case "observability_logs_persist":
+        ensureLogs().persist = value === "on";
+        break;
+      case "observability_traces_enabled":
+        ensureTraces().enabled = value === "on";
+        break;
+      case "observability_traces_head_sampling_rate":
+        ensureTraces().head_sampling_rate = parseRate(value);
+        break;
+      case "observability_traces_persist":
+        ensureTraces().persist = value === "on";
+        break;
       default:
         break;
     }

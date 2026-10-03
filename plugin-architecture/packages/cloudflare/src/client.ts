@@ -18,6 +18,8 @@ import type {
   CostFetchRange,
   CostRow,
   PreflightResult,
+  LogsFetchParams,
+  LogsFetchResult,
 } from "@infrawrench/plugin-base";
 import {
   streamOpenAiSseChat,
@@ -69,6 +71,7 @@ import { fetchMetricSeries as fetchMetricSeriesImpl } from "./metric-series.js";
 import * as zoneApi from "./clients/zone-client.js";
 import * as dnsRecordApi from "./clients/dns-record-client.js";
 import * as workerApi from "./clients/worker-client.js";
+import * as workerObservabilityApi from "./clients/worker-observability.js";
 import * as r2Api from "./clients/r2-client.js";
 import * as kvApi from "./clients/kv-client.js";
 import * as d1Api from "./clients/d1-client.js";
@@ -108,6 +111,7 @@ import * as aiGatewayApi from "./clients/ai-gateway-client.js";
 import * as aiSearchApi from "./clients/ai-search-client.js";
 import * as workflowApi from "./clients/workflow-client.js";
 import * as secretsStoreApi from "./clients/secrets-store-client.js";
+import * as dataPlatform from "./data-platform.js";
 
 /** Map each rules-engine resource type id to its phase spec. */
 const RULE_SPECS: Record<string, RulePhaseSpec> = {
@@ -136,6 +140,9 @@ export class CloudflareClient implements PluginClient {
   }
 
   private async listResourcesImpl(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    if (dataPlatform.isDataPlatformType(typeId)) {
+      return dataPlatform.listDataPlatform(this.api, typeId, accountId);
+    }
     switch (typeId) {
       case "zone":
         return zoneApi.listZones(this.api, accountId);
@@ -217,6 +224,9 @@ export class CloudflareClient implements PluginClient {
   ): Promise<ResourceInstance> {
     const externalId = resourceId.split(":").slice(2).join(":");
 
+    if (dataPlatform.isDataPlatformType(typeId)) {
+      return dataPlatform.getDataPlatform(this.api, typeId, resourceId, accountId);
+    }
     if (typeId === "zone") {
       return zoneApi.getZone(this.api, externalId, accountId);
     }
@@ -267,6 +277,15 @@ export class CloudflareClient implements PluginClient {
     outputKey: string,
     accountId: string,
   ): Promise<string> {
+    if (dataPlatform.isDataPlatformType(typeId)) {
+      return dataPlatform.resolveDataPlatformOutput(
+        this.api,
+        typeId,
+        resourceId,
+        outputKey,
+        accountId,
+      );
+    }
     const resource = await this.getResource(typeId, resourceId, accountId);
     if (typeId === "zone") {
       if (outputKey === "zoneId") return resource.externalId ?? "";
@@ -349,6 +368,12 @@ export class CloudflareClient implements PluginClient {
    * details and metrics.
    */
   async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    if (dataPlatform.isDataPlatformType(resource.resourceTypeId)) {
+      return dataPlatform.enrichDataPlatform(this.api, resource);
+    }
+    if (resource.resourceTypeId === "worker") {
+      return workerObservabilityApi.enrichWorkerDetail(this.api, resource);
+    }
     if (resource.resourceTypeId === "ai-gateway") {
       // The gateway endpoint URL and the Workers AI playground both need data
       // that isn't on the listed resource: the Cloudflare account id (for the
@@ -439,6 +464,21 @@ export class CloudflareClient implements PluginClient {
     return resource;
   }
 
+  /**
+   * Worker Logs tab, backed by the Workers Observability telemetry API. The
+   * container dropdown carries the level/outcome filter.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    if (typeId !== "worker") return { text: "", containers: [], activeContainer: "" };
+    const scriptName = resourceId.split(":").slice(2).join(":");
+    return workerObservabilityApi.fetchWorkerLogs(this.api, scriptName, params);
+  }
+
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     // Cloudflare's GraphQL analytics default to the last 24h (see
     // `analyticsWindow` in metric-series.ts). Every type that fetcher handles
@@ -453,6 +493,9 @@ export class CloudflareClient implements PluginClient {
   }
 
   private renderDetailInner(resource: ResourceInstance): DetailViewSchema {
+    if (dataPlatform.isDataPlatformType(resource.resourceTypeId)) {
+      return dataPlatform.renderDataPlatformDetail(resource, this.resourceTypes);
+    }
     switch (resource.resourceTypeId) {
       case "zone":
         return renderZoneDetail(resource);
@@ -541,6 +584,8 @@ export class CloudflareClient implements PluginClient {
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
+    const dataPlatformItem = dataPlatform.renderDataPlatformSidebar(resource);
+    if (dataPlatformItem) return dataPlatformItem;
     if (resource.resourceTypeId === "dns-record") {
       return renderDnsRecordSidebar(resource);
     }
@@ -676,6 +721,8 @@ export class CloudflareClient implements PluginClient {
   }
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
+    const dataPlatformConfig = await dataPlatform.dataPlatformCreateConfig(this.api, typeId);
+    if (dataPlatformConfig) return dataPlatformConfig;
     return getCreateConfigImpl(this.api, typeId, parentResourceId);
   }
 
@@ -697,6 +744,9 @@ export class CloudflareClient implements PluginClient {
     parentResourceId?: string,
   ): Promise<ResourceInstance> {
     const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
+    if (dataPlatform.isDataPlatformType(typeId)) {
+      return dataPlatform.createDataPlatform(this.api, typeId, accountId, fields);
+    }
     switch (typeId) {
       case "zone":
         return zoneApi.createZone(this.api, accountId, fields);
@@ -791,6 +841,9 @@ export class CloudflareClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
     const externalId = resourceId.split(":").slice(2).join(":");
+    if (dataPlatform.isDataPlatformType(typeId)) {
+      return dataPlatform.updateDataPlatform(this.api, typeId, resourceId, accountId, fields);
+    }
     if (typeId === "dns-record") {
       return dnsRecordApi.updateDnsRecord(this.api, externalId, accountId, fields);
     }
@@ -937,6 +990,9 @@ export class CloudflareClient implements PluginClient {
   ): Promise<void> {
     const externalId = resourceId.split(":").slice(2).join(":");
 
+    if (dataPlatform.isDataPlatformType(typeId)) {
+      return dataPlatform.deleteDataPlatform(this.api, typeId, resourceId);
+    }
     switch (typeId) {
       case "zone":
         return zoneApi.deleteZone(this.api, externalId);
@@ -1008,10 +1064,18 @@ export class CloudflareClient implements PluginClient {
     _accountId: string,
     sql: string,
   ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
+    if (dataPlatform.isDataPlatformResourceId(resourceId)) {
+      return withCloudflareErrors(() =>
+        dataPlatform.executeDataPlatformQuery(this.api, resourceId, sql),
+      );
+    }
     return d1Api.executeD1Query(this.api, resourceId, sql);
   }
 
   async introspectResource(resourceId: string, _accountId: string): Promise<SqlTableMeta[]> {
+    if (dataPlatform.isDataPlatformResourceId(resourceId)) {
+      return dataPlatform.introspectDataPlatform(this.api, resourceId);
+    }
     return d1Api.introspectD1Database(this.api, resourceId);
   }
 
@@ -1334,6 +1398,9 @@ export class CloudflareClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
+    if (dataPlatform.isDataPlatformType(resourceTypeId)) {
+      return dataPlatform.fetchDataPlatformMetrics(this.api, resourceTypeId, resourceId, timeRange);
+    }
     return fetchMetricSeriesImpl(this.api, resourceTypeId, resourceId, _accountId, timeRange);
   }
 

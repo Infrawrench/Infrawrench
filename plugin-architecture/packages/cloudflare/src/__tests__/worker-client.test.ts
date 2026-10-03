@@ -137,6 +137,78 @@ describe("worker-client", () => {
     expect(api.cf.workers.scripts.settings.edit).not.toHaveBeenCalled();
   });
 
+  it("getWorkerManifest exposes the logs and traces sub-settings", async () => {
+    const api = workerApi();
+    (api.cf.workers.scripts.scriptAndVersionSettings.get as Mock).mockResolvedValue({
+      observability: {
+        enabled: true,
+        head_sampling_rate: 1,
+        logs: { enabled: true, invocation_logs: false, head_sampling_rate: 0.5, persist: true },
+        traces: { enabled: true, head_sampling_rate: 0.05, destinations: ["honeycomb"] },
+      },
+    });
+    const json = JSON.parse(await getWorkerManifest(api, "w1")) as {
+      settings: Array<{ id: string; value: string }>;
+    };
+    const byId = Object.fromEntries(json.settings.map((s) => [s.id, s.value]));
+    expect(byId["observability_logs_enabled"]).toBe("on");
+    expect(byId["observability_logs_invocation_logs"]).toBe("off");
+    expect(byId["observability_logs_head_sampling_rate"]).toBe("0.5");
+    expect(byId["observability_traces_enabled"]).toBe("on");
+    expect(byId["observability_traces_head_sampling_rate"]).toBe("0.05");
+    expect(byId["observability_destinations"]).toBe("honeycomb");
+  });
+
+  it("applyWorkerManifest keeps traces and destinations when editing the sampling rate", async () => {
+    const api = workerApi();
+    const traces = { enabled: true, head_sampling_rate: 0.1, destinations: ["otel"] };
+    (api.cf.workers.scripts.settings.get as Mock).mockResolvedValue({
+      logpush: false,
+      tags: [],
+      observability: { enabled: true, head_sampling_rate: 1, traces },
+    });
+    await applyWorkerManifest(
+      api,
+      "w1",
+      JSON.stringify([{ id: "observability_head_sampling_rate", value: "0.25" }]),
+    );
+    expect(api.cf.workers.scripts.settings.edit).toHaveBeenCalledWith(
+      "w1",
+      expect.objectContaining({
+        observability: { enabled: true, head_sampling_rate: 0.25, traces },
+      }),
+    );
+  });
+
+  it("applyWorkerManifest materializes logs/traces objects on first edit", async () => {
+    const api = workerApi();
+    (api.cf.workers.scripts.settings.get as Mock).mockResolvedValue({
+      logpush: false,
+      tags: [],
+      observability: { enabled: true, head_sampling_rate: null },
+    });
+    await applyWorkerManifest(
+      api,
+      "w1",
+      JSON.stringify([
+        { id: "observability_logs_invocation_logs", value: "off" },
+        { id: "observability_traces_enabled", value: "on" },
+        { id: "observability_traces_head_sampling_rate", value: "" },
+      ]),
+    );
+    expect(api.cf.workers.scripts.settings.edit).toHaveBeenCalledWith(
+      "w1",
+      expect.objectContaining({
+        observability: {
+          enabled: true,
+          head_sampling_rate: null,
+          logs: { enabled: true, invocation_logs: false },
+          traces: { enabled: true, head_sampling_rate: null },
+        },
+      }),
+    );
+  });
+
   it("applyWorkerManifest throws on a non-array payload", async () => {
     await expect(applyWorkerManifest(workerApi(), "w1", JSON.stringify({}))).rejects.toThrow(
       /must be an array/,
