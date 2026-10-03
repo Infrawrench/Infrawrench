@@ -9,7 +9,6 @@ import type {
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
-  MetricSeriesPoint,
   PluginClient,
   ResourceInstance,
   SectionNode,
@@ -847,12 +846,23 @@ export class DeepgramClient implements PluginClient {
     if (EXTRA_TYPES.has(resourceTypeId)) return this.extras.stats(resource);
 
     switch (resourceTypeId) {
-      case "api-key":
+      case "api-key": {
+        // Requests this key authenticated in the last 30 days; best effort,
+        // since a member-scoped credential cannot read project usage.
+        const { projectId, childId } = splitChildId(resourceId);
+        const usage = childId
+          ? await this.fetchUsageBuckets(projectId, undefined, { accessor: childId }).catch(
+              () => undefined,
+            )
+          : undefined;
+        const totals = usage ? summariseUsage(usage) : undefined;
         return [
+          ...(totals ? [{ label: "Requests (30d)", value: totals.requests.toLocaleString() }] : []),
           { label: "Scopes", value: String(f["scopes"] ?? "") || "—" },
           { label: "Created", value: String(f["created"] ?? "") },
           { label: "Expires", value: String(f["expirationDate"] ?? "") || "Never" },
         ];
+      }
       case "member":
         return [
           { label: "Email", value: String(f["email"] ?? "") },
@@ -880,21 +890,28 @@ export class DeepgramClient implements PluginClient {
   }
 
   /**
-   * https://developers.deepgram.com/reference/management-api/usage/breakdown
+   * https://developers.deepgram.com/reference/manage/usage/breakdown/get
    *
    * Consumption only: Deepgram exposes no quota ceiling, so there is nothing
    * to draw a used-vs-limit gauge from. Prepaid customers get a separate
    * `balances.amount`, which the Overview surfaces instead.
+   *
+   * `filters` carries the endpoint's own query parameters: `grouping` (one of
+   * `accessor`, `endpoint`, `feature_set`, `models`, `method`, `tags`,
+   * `deployment`), `accessor` (the API key id a request authenticated with)
+   * and `model` (a model UUID, not its canonical name).
    */
   private async fetchUsageBuckets(
     projectId: string,
     range?: { startMs: number; endMs: number },
+    filters: Record<string, string> = {},
   ): Promise<DgUsageBucket[]> {
     const endMs = range?.endMs ?? Date.now();
     const startMs = range?.startMs ?? endMs - 30 * 24 * 60 * 60 * 1000;
     const params = new URLSearchParams({
       start: new Date(startMs).toISOString().slice(0, 10),
       end: new Date(endMs).toISOString().slice(0, 10),
+      ...filters,
     });
     const data = await this.fetch<DgUsageBreakdown>(
       `/v1/projects/${encodeURIComponent(projectId)}/usage/breakdown?${params.toString()}`,
@@ -902,83 +919,51 @@ export class DeepgramClient implements PluginClient {
     return data.results ?? [];
   }
 
+  /**
+   * Usage charts from the breakdown endpoint. The project charts its whole
+   * consumption plus requests split by endpoint (`listen`, `speak`, `agent`,
+   * `read`) and by method (`sync`, `async`, `streaming`); an API key charts
+   * only the requests it authenticated (`accessor=`), and a model only the
+   * requests that ran on it (`model=`, which takes the model's UUID).
+   */
   async fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
-    _accountId: string,
+    accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "project") return [];
-    const projectId = externalIdOf(resourceId);
-    const buckets = await this.fetchUsageBuckets(projectId, timeRange);
-    if (buckets.length === 0) return [];
-
-    // Deepgram can return several rows per interval (one per grouping key), so
-    // sum into a map keyed by the bucket's own timestamp rather than assuming
-    // one row per point.
-    type Acc = {
-      requests: number;
-      hours: number;
-      characters: number;
-      agentHours: number;
-      tokensIn: number;
-      tokensOut: number;
-    };
-    const byStamp = new Map<number, Acc>();
-    for (const bucket of buckets) {
-      const stamp = Date.parse(bucket.grouping?.start ?? bucket.grouping?.end ?? "");
-      if (!Number.isFinite(stamp)) continue;
-      const acc = byStamp.get(stamp) ?? {
-        requests: 0,
-        hours: 0,
-        characters: 0,
-        agentHours: 0,
-        tokensIn: 0,
-        tokensOut: 0,
-      };
-      acc.requests += num(bucket.requests);
-      acc.hours += num(bucket.hours);
-      acc.characters += num(bucket.tts_characters);
-      acc.agentHours += num(bucket.agent_hours);
-      acc.tokensIn += num(bucket.tokens_in);
-      acc.tokensOut += num(bucket.tokens_out);
-      byStamp.set(stamp, acc);
+    if (resourceTypeId === "project") {
+      const projectId = externalIdOf(resourceId);
+      const [buckets, byEndpoint, byMethod] = await Promise.all([
+        this.fetchUsageBuckets(projectId, timeRange),
+        // The splits are extras: a failure there must not blank the totals.
+        this.fetchUsageBuckets(projectId, timeRange, { grouping: "endpoint" }).catch(
+          () => [] as DgUsageBucket[],
+        ),
+        this.fetchUsageBuckets(projectId, timeRange, { grouping: "method" }).catch(
+          () => [] as DgUsageBucket[],
+        ),
+      ]);
+      if (buckets.length === 0) return [];
+      return [
+        ...usageSeries(buckets),
+        ...groupedRequestSeries(byEndpoint, (g) => g.endpoint, "Requests"),
+        ...groupedRequestSeries(byMethod, (g) => g.method, "Requests"),
+      ];
     }
-
-    const stamps = [...byStamp.keys()].sort((a, b) => a - b);
-    const requests: MetricSeriesPoint[] = [];
-    const hours: MetricSeriesPoint[] = [];
-    const characters: MetricSeriesPoint[] = [];
-    const agentHours: MetricSeriesPoint[] = [];
-    const tokensIn: MetricSeriesPoint[] = [];
-    const tokensOut: MetricSeriesPoint[] = [];
-    for (const stamp of stamps) {
-      const acc = byStamp.get(stamp)!;
-      requests.push({ timestamp: stamp, value: acc.requests });
-      hours.push({ timestamp: stamp, value: acc.hours });
-      characters.push({ timestamp: stamp, value: acc.characters });
-      agentHours.push({ timestamp: stamp, value: acc.agentHours });
-      tokensIn.push({ timestamp: stamp, value: acc.tokensIn });
-      tokensOut.push({ timestamp: stamp, value: acc.tokensOut });
+    if (resourceTypeId === "api-key") {
+      const { projectId, childId } = splitChildId(resourceId);
+      if (!childId) return [];
+      return usageSeries(await this.fetchUsageBuckets(projectId, timeRange, { accessor: childId }));
     }
-
-    const series: MetricSeries[] = [];
-    const nonZero = (points: MetricSeriesPoint[]): boolean => points.some((p) => p.value !== 0);
-    if (nonZero(requests)) series.push({ label: "Requests", unit: "count", points: requests });
-    if (nonZero(hours)) series.push({ label: "Audio Hours", unit: "hours", points: hours });
-    if (nonZero(characters)) {
-      series.push({ label: "TTS Characters", unit: "characters", points: characters });
+    if (resourceTypeId === "model") {
+      const { projectId } = splitChildId(resourceId);
+      const model = await this.getResource("model", resourceId, accountId);
+      const uuid = String(model.fields["uuid"] ?? "");
+      if (!uuid) return [];
+      return usageSeries(await this.fetchUsageBuckets(projectId, timeRange, { model: uuid }));
     }
-    // Voice Agent API usage: talk time plus the LLM tokens it spent.
-    if (nonZero(agentHours)) {
-      series.push({ label: "Voice Agent Hours", unit: "hours", points: agentHours });
-    }
-    if (nonZero(tokensIn))
-      series.push({ label: "LLM Tokens In", unit: "tokens", points: tokensIn });
-    if (nonZero(tokensOut)) {
-      series.push({ label: "LLM Tokens Out", unit: "tokens", points: tokensOut });
-    }
-    return series;
+    return [];
   }
 
   // -------------------------------------------------------------------------
@@ -1665,6 +1650,8 @@ export class DeepgramClient implements PluginClient {
           ],
         },
       ],
+      // Usage this key authenticated (`usage/breakdown?accessor=`).
+      metricsCapability: { defaultTimeRangeMs: 30 * 24 * 60 * 60 * 1000 },
     };
   }
 
@@ -1823,6 +1810,8 @@ export class DeepgramClient implements PluginClient {
             ]
           : []),
       ],
+      // Usage that ran on this model (`usage/breakdown?model=<uuid>`).
+      metricsCapability: { defaultTimeRangeMs: 30 * 24 * 60 * 60 * 1000 },
     };
   }
 
@@ -1906,6 +1895,84 @@ export class DeepgramClient implements PluginClient {
         };
     }
   }
+}
+
+/**
+ * Sum usage-breakdown rows into per-interval series. Deepgram can return
+ * several rows per interval (one per grouping key), so rows are summed into a
+ * map keyed by the bucket's own timestamp rather than assuming one row per
+ * point. All-zero series are dropped.
+ */
+function usageSeries(buckets: DgUsageBucket[]): MetricSeries[] {
+  const fields = [
+    { label: "Requests", unit: "count", read: (b: DgUsageBucket) => b.requests },
+    { label: "Audio Hours", unit: "hours", read: (b: DgUsageBucket) => b.hours },
+    // `total_hours` counts every channel of multichannel audio, so it only
+    // earns its own line when it differs from `hours`.
+    { label: "Total Hours", unit: "hours", read: (b: DgUsageBucket) => b.total_hours },
+    { label: "TTS Characters", unit: "characters", read: (b: DgUsageBucket) => b.tts_characters },
+    // Voice Agent API usage: talk time plus the LLM tokens it spent.
+    { label: "Voice Agent Hours", unit: "hours", read: (b: DgUsageBucket) => b.agent_hours },
+    { label: "LLM Tokens In", unit: "tokens", read: (b: DgUsageBucket) => b.tokens_in },
+    { label: "LLM Tokens Out", unit: "tokens", read: (b: DgUsageBucket) => b.tokens_out },
+  ];
+  const byStamp = new Map<number, number[]>();
+  for (const bucket of buckets) {
+    const stamp = bucketStamp(bucket);
+    if (stamp === undefined) continue;
+    const acc = byStamp.get(stamp) ?? fields.map(() => 0);
+    fields.forEach((field, i) => {
+      acc[i]! += num(field.read(bucket));
+    });
+    byStamp.set(stamp, acc);
+  }
+  const stamps = [...byStamp.keys()].sort((a, b) => a - b);
+  const series: MetricSeries[] = [];
+  fields.forEach((field, i) => {
+    const points = stamps.map((timestamp) => ({ timestamp, value: byStamp.get(timestamp)![i]! }));
+    if (!points.some((p) => p.value !== 0)) return;
+    if (field.label === "Total Hours") {
+      const hours = stamps.map((t) => byStamp.get(t)![1]!);
+      if (points.every((p, j) => Math.abs(p.value - hours[j]!) < 1e-9)) return;
+    }
+    series.push({ label: field.label, unit: field.unit, points });
+  });
+  return series;
+}
+
+/**
+ * One request-count series per grouping key (`Requests: listen`, …) from a
+ * breakdown fetched with `grouping=`. Rows without the key are skipped.
+ */
+function groupedRequestSeries(
+  buckets: DgUsageBucket[],
+  keyOf: (grouping: NonNullable<DgUsageBucket["grouping"]>) => string | null | undefined,
+  prefix: string,
+): MetricSeries[] {
+  const byKey = new Map<string, Map<number, number>>();
+  for (const bucket of buckets) {
+    const stamp = bucketStamp(bucket);
+    const key = bucket.grouping ? keyOf(bucket.grouping) : undefined;
+    if (stamp === undefined || !key) continue;
+    const points = byKey.get(key) ?? new Map<number, number>();
+    points.set(stamp, (points.get(stamp) ?? 0) + num(bucket.requests));
+    byKey.set(key, points);
+  }
+  const series: MetricSeries[] = [];
+  for (const key of [...byKey.keys()].sort()) {
+    const points = [...byKey.get(key)!.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([timestamp, value]) => ({ timestamp, value }));
+    if (points.some((p) => p.value !== 0)) {
+      series.push({ label: `${prefix}: ${key}`, unit: "count", points });
+    }
+  }
+  return series;
+}
+
+function bucketStamp(bucket: DgUsageBucket): number | undefined {
+  const stamp = Date.parse(bucket.grouping?.start ?? bucket.grouping?.end ?? "");
+  return Number.isFinite(stamp) ? stamp : undefined;
 }
 
 /** Roll a usage breakdown up into the three counters the Overview shows. */

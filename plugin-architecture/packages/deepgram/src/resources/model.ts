@@ -46,5 +46,7 @@ export const ModelResourceType = rt({
   showInSidebar: true,
   supportsCreate: false,
   supportsDelete: false,
+  // Usage breakdown filtered to this model (`model=<uuid>`).
+  supportsMetrics: true,
   iconKey: "model",
 });

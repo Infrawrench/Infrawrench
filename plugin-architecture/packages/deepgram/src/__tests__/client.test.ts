@@ -466,6 +466,7 @@ describe("fetchMetricSeries", () => {
       expect(url).toContain("/usage/breakdown?");
       expect(url).toContain("start=");
       expect(url).toContain("end=");
+      if (url.includes("grouping=")) return jsonResponse({ results: [] });
       // Per-bucket timestamps live on `grouping`, NOT at the top of the result.
       return jsonResponse({
         start: "2026-07-01",
@@ -508,7 +509,7 @@ describe("fetchMetricSeries", () => {
   });
 
   it("sums several grouped rows that share one interval", async () => {
-    installFetch(() =>
+    installFetch((url) =>
       jsonResponse({
         results: [
           {
@@ -551,11 +552,97 @@ describe("fetchMetricSeries", () => {
     expect(series.map((s) => s.label)).toEqual(["Requests", "Audio Hours"]);
   });
 
-  it("returns nothing for non-project types", async () => {
+  it("returns nothing for types without usage", async () => {
     installFetch(() => jsonResponse({}));
-    const series = await client().fetchMetricSeries("api-key", `${ACCOUNT}:api-key:x/y`, ACCOUNT);
+    const series = await client().fetchMetricSeries("member", `${ACCOUNT}:member:x/y`, ACCOUNT);
     expect(series).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+
+  it("splits project requests by endpoint and method", async () => {
+    installFetch((url) => {
+      if (url.includes("grouping=endpoint")) {
+        return jsonResponse({
+          results: [
+            { requests: 4, grouping: { start: "2026-07-01", endpoint: "listen" } },
+            { requests: 6, grouping: { start: "2026-07-01", endpoint: "speak" } },
+            { requests: 0, grouping: { start: "2026-07-01", endpoint: "read" } },
+          ],
+        });
+      }
+      if (url.includes("grouping=method")) {
+        return jsonResponse({
+          results: [{ requests: 10, grouping: { start: "2026-07-01", method: "streaming" } }],
+        });
+      }
+      return jsonResponse({
+        results: [{ requests: 10, hours: 2, total_hours: 4, grouping: { start: "2026-07-01" } }],
+      });
+    });
+    const series = await client().fetchMetricSeries(
+      "project",
+      `${ACCOUNT}:project:${PROJECT}`,
+      ACCOUNT,
+    );
+    // `Total Hours` differs from `Audio Hours` (multichannel), so it is kept;
+    // the all-zero `read` split is dropped.
+    expect(series.map((s) => s.label)).toEqual([
+      "Requests",
+      "Audio Hours",
+      "Total Hours",
+      "Requests: listen",
+      "Requests: speak",
+      "Requests: streaming",
+    ]);
+    expect(series[3]!.points).toEqual([{ timestamp: Date.parse("2026-07-01"), value: 4 }]);
+  });
+
+  it("keeps the totals when a grouped breakdown fails", async () => {
+    installFetch((url) =>
+      url.includes("grouping=")
+        ? jsonResponse({ err_msg: "nope" }, 500)
+        : jsonResponse({ results: [{ requests: 3, grouping: { start: "2026-07-01" } }] }),
+    );
+    const series = await client().fetchMetricSeries(
+      "project",
+      `${ACCOUNT}:project:${PROJECT}`,
+      ACCOUNT,
+    );
+    expect(series.map((s) => s.label)).toEqual(["Requests"]);
+  });
+
+  it("charts an API key's own usage through accessor=", async () => {
+    installFetch(() =>
+      jsonResponse({
+        results: [{ requests: 3, hours: 0.5, grouping: { start: "2026-07-01" } }],
+      }),
+    );
+    const series = await client().fetchMetricSeries(
+      "api-key",
+      `${ACCOUNT}:api-key:${PROJECT}/key-123`,
+      ACCOUNT,
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain(`/v1/projects/${PROJECT}/usage/breakdown?`);
+    expect(new URL(calls[0]!.url).searchParams.get("accessor")).toBe("key-123");
+    expect(series.map((s) => s.label)).toEqual(["Requests", "Audio Hours"]);
+  });
+
+  it("charts a model's usage by its UUID, not its canonical name", async () => {
+    installFetch((url) => {
+      if (url.includes("/models")) return jsonResponse(MODEL_LIST);
+      return jsonResponse({
+        results: [{ requests: 8, hours: 1, grouping: { start: "2026-07-01" } }],
+      });
+    });
+    const series = await client().fetchMetricSeries(
+      "model",
+      `${ACCOUNT}:model:${PROJECT}/nova-3`,
+      ACCOUNT,
+    );
+    const usage = calls.find((c) => c.url.includes("/usage/breakdown"));
+    expect(new URL(usage!.url).searchParams.get("model")).toBe("stt-uuid-1");
+    expect(series.map((s) => s.label)).toEqual(["Requests", "Audio Hours"]);
   });
 });
 

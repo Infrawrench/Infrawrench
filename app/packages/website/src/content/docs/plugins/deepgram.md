@@ -43,7 +43,9 @@ If the key cannot read the project's model catalogue, the tab explains that a me
 
 ## Metrics
 
-Projects get a **Metrics** tab over the last 30 days, charting requests, audio hours and TTS characters, plus Voice Agent hours and the LLM tokens in and out that agents spent, when the project uses voice agents. Deepgram can return several rows per interval — one per grouping key — so the plugin sums them per bucket rather than assuming one row per point.
+Projects get a **Metrics** tab over the last 30 days, charting requests, audio hours and TTS characters, plus Voice Agent hours and the LLM tokens in and out that agents spent, when the project uses voice agents. **Total hours** appears alongside audio hours when the two differ (multichannel audio counts every channel). Requests are also split by endpoint (`listen`, `speak`, `agent`, `read`) and by method (`sync`, `async`, `streaming`). Deepgram can return several rows per interval (one per grouping key), so the plugin sums them per bucket rather than assuming one row per point.
+
+**API keys** and **models** get a Metrics tab of their own, with the same series filtered to the requests that key authenticated (`accessor=`) or that ran on that model (`model=`, which takes the model's UUID rather than its canonical name). An API key's dashboard card also shows its request count over the last 30 days.
 
 ## Request log
 
