@@ -33,6 +33,7 @@ export const OrganizationUserResourceType = rt({
     adminValues: ["owner"],
   },
   iconKey: "user",
+  supportsMetrics: true,
   supportsUpdate: true,
   supportsDelete: true,
 });
