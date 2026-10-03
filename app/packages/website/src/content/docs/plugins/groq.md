@@ -44,7 +44,8 @@ Groq publishes Prometheus-compatible metrics at `api.groq.com/v1/metrics/prometh
 
 - requests per second, split by HTTP status code
 - input and output tokens per second
-- queue latency p99, time to first token p50 and p99, and end-to-end latency p50 and p99
+- input and output tokens per request, p50 and p99
+- queue latency p50 and p99, time to first token p50 and p99, and end-to-end latency p50 and p99
 - prompt cache hit rate
 
 On any other tier the endpoint refuses the key and the tab stays empty; the plugin makes one probe request and stops, so it costs nothing.

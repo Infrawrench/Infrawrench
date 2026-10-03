@@ -337,7 +337,11 @@ describe("fetchMetricSeries", () => {
       { startMs: 1700000000000, endMs: 1700003600000 },
     );
 
-    expect(calls).toHaveLength(9);
+    expect(calls).toHaveLength(14);
+    const queries = calls.map((c) => new URL(c.url).searchParams.get("query") ?? "");
+    expect(queries).toContain(
+      'histogram_quantile(0.99, sum by (le) (le_model_project_id:tokens_out_bucket:rate5m{model="llama-3.1-8b-instant"}))',
+    );
     const first = new URL(calls[0]?.url ?? "");
     expect(first.origin + first.pathname).toBe(
       "https://api.groq.com/v1/metrics/prometheus/api/v1/query_range",
