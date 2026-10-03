@@ -9,6 +9,8 @@ import { ManagedEndpointResourceType } from "./resources/managed-endpoint.js";
 import { HardwareResourceType } from "./resources/hardware.js";
 import { BatchResourceType } from "./resources/batch.js";
 import { EvaluationResourceType } from "./resources/evaluation.js";
+import { GpuClusterResourceType } from "./resources/gpu-cluster.js";
+import { SharedVolumeResourceType } from "./resources/shared-volume.js";
 
 // Mark taken verbatim from Together AI's own favicon, served at
 // https://api.together.ai/favicon.svg: three overlapping lobes in the brand
@@ -20,7 +22,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Together AI",
   description:
-    "Serverless and dedicated inference, fine-tuning, batch jobs and evaluations on Together AI.",
+    "Serverless and dedicated inference, fine-tuning, batch jobs, evaluations and GPU clusters on Together AI.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#0D0D0D"/>
     <g transform="translate(16 18.3) scale(0.14)">
@@ -36,13 +38,24 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your Together AI API key, sent as `Authorization: Bearer`. Create one at api.together.ai/settings/api-keys. Together has a single key type — the same key covers inference, fine-tuning, files, dedicated endpoints, batches and evaluations, so there is no second admin key to add. The project this key belongs to is discovered automatically from GET /v1/whoami; you do not need to paste a project id.",
+        "Your Together AI API key, sent as `Authorization: Bearer`. Create one at api.together.ai/settings/api-keys. Together has a single key type: the same key covers inference, fine-tuning, files, dedicated endpoints, batches, evaluations, GPU clusters and the organization's billing usage, so there is no second admin key to add. The project this key belongs to is discovered automatically from GET /v1/whoami; you do not need to paste a project id.",
       sensitive: true,
       placeholder: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       helpLink: { label: "Create an API key", url: "https://api.together.ai/settings/api-keys" },
     },
     caCertCredentialField,
   ],
+  costs: {
+    // `GET /v1/billing/usage` returns daily windows of priced line items.
+    // `product_name` becomes the service; a model named in the line item's
+    // pricing dimensions or attributes becomes the resource, and every
+    // attribute (api_key_id, project_id, ...) is kept as a tag.
+    dimensions: ["service", "resource", "tag"],
+    // The route takes any `month=YYYY-MM`; no retention limit is documented.
+    maxHistoryDays: 365,
+    // Prior months can lag by up to 24 hours, the current month by an hour.
+    restatementDays: 3,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -54,6 +67,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   BatchResourceType,
   EvaluationResourceType,
   HardwareResourceType,
+  GpuClusterResourceType,
+  SharedVolumeResourceType,
 ];
 
 export const plugin: Plugin = {
