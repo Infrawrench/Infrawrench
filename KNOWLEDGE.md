@@ -477,7 +477,7 @@ API key scopes use the same permission strings; the `Permission` enum in `app/pa
 
 1. **Chat endpoint** (`app/packages/web/src/chat/auth.ts`) — `authenticateChat` enforces `chat:read`/`chat:write` on **all three** auth paths (session cookie, WorkOS bearer, API key). It previously applied `requireScope` only to keys, so session callers reached chat on membership alone and the permission was unenforceable for the UI. `chat:read`/`chat:write` are in the member system role to preserve that behaviour; a custom role that omits them now actually blocks chat.
 2. **Tool registry** (`app/packages/web/src/tools/`) — consumed by both MCP and the chat agent. Every `ToolDefinition` declares `permission: Permission | null` mirroring the equivalent HTTP route's `requirePermission`. It is enforced centrally by `authorizeToolCall` (`tools/permissions.ts`) at each dispatch site — `mcp/server.ts` and both call sites in `chat/agent.ts` — never inside a handler, so a new tool cannot forget to gate itself. `null` means "exposes no org data" (static plugin catalogs only). `src/tools/__tests__/permissions.test.ts` asserts every tool declares one and that no write/destructive tool is ungated.
-3. **WebSocket gateway** (`app/packages/web/server.ts`) — `resources:execute` for every channel. The browser path gets it from `POST /ws-token`; the API-key fallback calls `requireScope` directly.
+3. **WebSocket gateway** (`app/packages/web/server.ts`, `services/ws-auth.ts`) — `resources:execute` for every channel, resolved through `effectivePermissions` like HTTP. The upgrade produces a `WsPrincipal` (key `scopes`, `agentRegistrationId`) that rides the socket into every channel handler; never reduce it to `{organizationId, userId}`, which resolves a key to its owner's whole role. `ws_tokens` stores the minter's ceiling for the same reason, and `console:attach` refuses keys and agents to match `/shared-consoles` in `API_KEY_DENY_RULES`.
 4. **Step-up routes** (`app/packages/web/src/auth/step-up.ts`) — account-takeover-adjacent `/api/profile` operations additionally require a sign-in newer than `STEP_UP_MAX_AGE_MS`, returning a 403 with `code: "reauthentication_required"`.
 5. **Workflow sandbox** (`app/packages/server-core/src/workflows/authorize.ts`) — see below. This is the one that was missing, and it mattered most: the host bridge reaches the org's real accounts, so for a while `workflows:write` was a de-facto `resources:*`.
 
@@ -1325,7 +1325,7 @@ All mutations in `web/src/actions/`: accounts, resources, dashboard, association
 - `workflow:run` / `:continue` / `:step` / `:stop` / `:prompt:response` → the live workflow step-debugger (`services/workflow-ws.ts`)
 - `deploy:run` / `:stop` / `:prompt:response` → Infrafile deployments
 
-Every channel is gated on `resources:execute` — the browser gets it from `POST /ws-token`, API keys via `requireScope`.
+Every channel is gated on `resources:execute` by `authenticateWsUpgrade` (`services/ws-auth.ts`), which resolves a ws-token or a bearer credential to a `WsPrincipal` and checks it with `effectivePermissions`; `workflow:run` and `deploy:run` check that same principal again for `workflows:write` / `deployments:plan|write`.
 
 ### SSH SSRF: resolve once, dial the address, verify the name
 

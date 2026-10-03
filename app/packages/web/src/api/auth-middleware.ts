@@ -48,6 +48,11 @@ interface ApiKeyPrincipal {
   id: string;
   /** The key's stored scopes, before intersection with the owner's role. */
   scopes: readonly string[];
+  /**
+   * Set by `agentOrgMiddleware`: the principal is an agent, whose `scopes` are
+   * already final and must not be intersected with its `users` row's role.
+   */
+  agentRegistrationId?: string;
 }
 
 declare module "hono" {
@@ -401,7 +406,11 @@ export const agentOrgMiddleware = createMiddleware(async (c, next) => {
   // `null` makes every "is the caller an owner" check fail closed.
   c.set("role", null);
   c.set("elevations", []);
-  c.set("apiKey", { id: auth.agentRegistrationId, scopes: auth.scopes ?? [] });
+  c.set("apiKey", {
+    id: auth.agentRegistrationId,
+    scopes: auth.scopes ?? [],
+    agentRegistrationId: auth.agentRegistrationId,
+  });
 
   return runWithAuditPrincipal({ apiKeyId: auth.agentRegistrationId, userId: auth.userId }, next);
 });

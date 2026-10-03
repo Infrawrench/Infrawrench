@@ -18,8 +18,7 @@ import type { WebSocket } from "ws";
 import type { MetricValue, PromptSpec } from "@infrawrench/workflow-runtime";
 
 import { runDeployment } from "./deployments";
-import { effectivePermissions } from "../auth/effective-permissions";
-import { hasPermission } from "@infrawrench/server-core/permissions";
+import { wsPrincipalCan, type WsPrincipal } from "./ws-auth";
 
 interface DeployMessage {
   type: string;
@@ -43,34 +42,28 @@ function send(ws: WebSocket, msg: unknown): void {
  * The frame carries `planOnly`, so it needs the same split those routes use: a
  * preview is `deployments:plan`, an actual deploy is `deployments:write`.
  */
-async function requireDeployPermission(
-  organizationId: string,
-  planOnly: boolean,
-  userId?: string,
-): Promise<void> {
+async function requireDeployPermission(principal: WsPrincipal, planOnly: boolean): Promise<void> {
   const required = planOnly ? "deployments:plan" : "deployments:write";
   const verb = planOnly ? "preview a deploy" : "deploy";
-  // No identified user means nothing to resolve a role against: deny rather
-  // than fall through to an unchecked run.
-  if (!userId) throw new Error(`You do not have permission to ${verb} in this organization.`);
-  const granted = await effectivePermissions({ organizationId, userId });
-  if (!hasPermission(granted, required)) {
+  // The whole principal, key scopes and agent ceiling included: resolving from
+  // `userId` alone would hand a narrowly scoped key its owner's full role.
+  if (!(await wsPrincipalCan(principal, required))) {
     throw new Error(`You do not have permission to ${verb} in this organization.`);
   }
 }
 
 export function handleDeploymentSession(
   ws: WebSocket,
-  organizationId: string,
+  principal: WsPrincipal,
   start: {
     repo: string;
     branch: string;
     env?: string;
     planOnly?: boolean;
     answers?: Record<string, string>;
-    userId?: string;
   },
 ): void {
+  const { organizationId, userId } = principal;
   const abort = new AbortController();
   let resolvePrompt: ((v: MetricValue) => void) | null = null;
 
@@ -112,11 +105,11 @@ export function handleDeploymentSession(
   ws.on("close", unwind);
   ws.on("error", unwind);
 
-  void requireDeployPermission(organizationId, Boolean(start.planOnly), start.userId)
+  void requireDeployPermission(principal, Boolean(start.planOnly))
     .then(() =>
       runDeployment({
         organizationId,
-        ...(start.userId ? { userId: start.userId } : {}),
+        userId,
         repo: start.repo,
         branch: start.branch,
         ...(start.env ? { env: start.env } : {}),
