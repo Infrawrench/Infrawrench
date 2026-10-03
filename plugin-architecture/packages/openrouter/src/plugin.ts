@@ -5,6 +5,9 @@ import { ModelResourceType } from "./resources/model.js";
 import { ModelEndpointResourceType } from "./resources/model-endpoint.js";
 import { ProviderResourceType } from "./resources/provider.js";
 import { ApiKeyResourceType } from "./resources/api-key.js";
+import { GuardrailResourceType } from "./resources/guardrail.js";
+import { WorkspaceResourceType } from "./resources/workspace.js";
+import { ByokCredentialResourceType } from "./resources/byok-credential.js";
 
 // OpenRouter's own mark, taken from the inline logo on openrouter.ai
 // (viewBox 19.82 17.199 365.556 258.298) and its favicon colours: near-black
@@ -14,7 +17,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "OpenRouter",
   description:
-    "The OpenRouter model catalogue, per-provider endpoint pricing and uptime, API keys, credits and activity",
+    "The OpenRouter model catalogue, per-provider endpoint pricing and uptime, API keys, guardrails, workspaces and budgets, BYOK credentials, credits and activity",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#070C0E"/>
     <g transform="translate(15,26) scale(0.1913) translate(-19.82,-17.199)" fill="#FAFAFB">
@@ -28,7 +31,7 @@ const manifest: PluginManifest = {
       key: "managementKey",
       label: "Management Key",
       description:
-        "OpenRouter's privileged credential — formerly called a provisioning key — created at openrouter.ai/settings/management-keys. A plain inference key gets a 403 from /credits, /activity, /keys and /generation, which is almost the whole console surface, so this is the key the plugin lists resources with.",
+        "OpenRouter's privileged credential (formerly called a provisioning key), created at openrouter.ai/settings/management-keys. A plain inference key gets a 403 from /credits, /activity, /keys, /guardrails, /workspaces, /byok and /generation, which is almost the whole console surface, so this is the key the plugin lists resources with.",
       sensitive: true,
       placeholder: "sk-or-v1-…",
       helpLink: {
@@ -71,6 +74,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ModelEndpointResourceType,
   ProviderResourceType,
   ApiKeyResourceType,
+  GuardrailResourceType,
+  WorkspaceResourceType,
+  ByokCredentialResourceType,
 ];
 
 export const plugin: Plugin = {
