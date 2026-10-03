@@ -109,3 +109,23 @@ export function fetchServiceBusAccessToken(
     http,
   );
 }
+
+/**
+ * The application id of the "Azure Kubernetes Service AAD Server" app,
+ * the same in every tenant. Entra-integrated AKS API servers accept tokens
+ * issued for it; it is what kubelogin's `--server-id` names.
+ */
+export const AKS_AAD_SERVER_APP_ID = "6dae42f8-4368-4678-94ff-3960e28e3630";
+
+/**
+ * AAD access token for the API server of an Entra-integrated AKS cluster,
+ * minted for the account's own service principal: what `kubelogin
+ * get-token --login spn` produces, done in-process so the kubeconfig can
+ * carry it as a static bearer token.
+ */
+export function fetchAksAccessToken(
+  creds: AzureCredentials,
+  http?: AzureAuthHttp,
+): Promise<string> {
+  return exchangeAadToken(creds, `${AKS_AAD_SERVER_APP_ID}/.default`, "Azure AKS auth", http);
+}

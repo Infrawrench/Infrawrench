@@ -24,6 +24,20 @@ declare module "hono" {
 
 const app = new Hono();
 
+/**
+ * The plugin's verdict on whether `credentials` may be used on this shared
+ * server (a kubeconfig that runs a local command may not, for instance).
+ * Checked where credentials enter, so the user sees the reason up front;
+ * the plugin's server-side code refuses them again at use time.
+ */
+async function serverCredentialError(
+  pluginId: string,
+  credentials: Record<string, string>,
+): Promise<string | null> {
+  const loaded = await getPlugin(pluginId);
+  return loaded?.plugin.validateServerCredentials?.(credentials) ?? null;
+}
+
 /** GET /api/plugins: list available plugins */
 app.get("/plugins", async (c) => {
   requirePermission(c, "accounts:read");
@@ -92,6 +106,8 @@ app.post("/preflight", async (c) => {
   const organizationId = c.get("organizationId");
   const loaded = await getPlugin(pluginId);
   if (!loaded) return c.json({ error: "Plugin not found" }, 404);
+  const credentialError = await serverCredentialError(pluginId, credentials);
+  if (credentialError) return c.json({ error: credentialError }, 400);
 
   // Same never-trust-the-client check as account creation, so the probe
   // egresses through the same path the account will.
@@ -161,6 +177,9 @@ app.post("/", async (c) => {
     credentials: Record<string, string>;
     bastionId?: string | null;
   }>();
+
+  const credentialError = await serverCredentialError(pluginId, credentials);
+  if (credentialError) return c.json({ error: credentialError }, 400);
 
   // The free plan caps connected accounts. Deleted accounts don't count:
   // the filter matches the list route's.
@@ -361,11 +380,13 @@ app.put("/:id/credentials", async (c) => {
     return c.json({ error: "credentials object is required" }, 400);
   }
   const [existing] = await db
-    .select({ id: accounts.id })
+    .select({ id: accounts.id, pluginId: accounts.pluginId })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
     .limit(1);
   if (!existing) return c.json({ error: "Account not found" }, 404);
+  const credentialError = await serverCredentialError(existing.pluginId, credentials);
+  if (credentialError) return c.json({ error: credentialError }, 400);
   const { ciphertext, iv } = await encrypt(
     JSON.stringify(credentials),
     buildAad("account", accountId, "credentials"),

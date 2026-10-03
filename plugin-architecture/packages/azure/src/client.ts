@@ -50,6 +50,7 @@ import type {
 import { withMetricsCapability } from "@infrawrench/plugin-base";
 import {
   fetchAccessToken,
+  fetchAksAccessToken,
   fetchGraphAccessToken,
   fetchServiceBusAccessToken,
   fetchStorageAccessToken,
@@ -449,6 +450,7 @@ export class AzureClient implements PluginClient {
           const exp = await this.exportCredential(t, r, a, "client-secret");
           return exp.content;
         },
+        aksAccessToken: () => fetchAksAccessToken(this.creds, this.http),
       },
       typeId,
       resourceId,

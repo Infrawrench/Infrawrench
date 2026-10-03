@@ -1025,6 +1025,18 @@ export interface Plugin {
    * credentials: the host offers it even before the user has working keys.
    */
   policyTemplate?(capabilityIds: string[]): PolicyTemplate;
+  /**
+   * Reject credentials that are fine on a user's own machine but unsafe on
+   * a shared, multi-tenant server host: anything that would make the host
+   * run a local command, read a local file, or otherwise act outside the
+   * provider's API (a kubeconfig `exec` plugin, for instance). Returns a
+   * user-facing error message, or null when the credentials are acceptable.
+   * Only the cloud host calls this, when credentials are entered or
+   * probed; the desktop never does. The plugin's own server-side code must
+   * still refuse such credentials at use time, since they can also arrive
+   * by paths that skip this check.
+   */
+  validateServerCredentials?(credentials: Record<string, string>): string | null;
 }
 
 // Forward declarations: defined in their own modules but used here

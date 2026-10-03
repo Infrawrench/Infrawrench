@@ -18,7 +18,9 @@ import { driver as kafkaDriver } from "@infrawrench/plugin-kafka/driver";
 import { driver as memcachedDriver } from "@infrawrench/plugin-memcached/driver";
 import { driver as mongodbDriver } from "@infrawrench/plugin-mongodb/driver";
 import { driver as dockerDriver } from "@infrawrench/plugin-docker/driver";
-import { driver as k8sDriver } from "@infrawrench/plugin-kubernetes/driver";
+// The restricted driver: a kubeconfig that would run a command or read a
+// local file in this shared pod is refused. The desktop uses the full one.
+import { serverDriver as k8sDriver } from "@infrawrench/plugin-kubernetes/driver";
 import { driver as libsqlDriver } from "@infrawrench/plugin-turso/driver";
 import { driver as planetscaleDriver } from "@infrawrench/plugin-planetscale/driver";
 import { nodeDriver as gcpDriver } from "@infrawrench/plugin-gcp/node-driver";
@@ -42,6 +44,12 @@ export const kvDrivers = new Map<string, KvNodeDriver>([
 export const dockerDrivers = new Map<string, DockerNodeDriver>([[dockerDriver.id, dockerDriver]]);
 
 export const k8sDrivers = new Map<string, K8sNodeDriver>([[k8sDriver.id, k8sDriver]]);
+
+/**
+ * The policy `k8sDriver` enforces, for server code that hands a kubeconfig
+ * to kubectl or k9s rather than to the driver.
+ */
+export { assertKubeconfigSafeForServer } from "@infrawrench/plugin-kubernetes/driver";
 
 export const storageDrivers = new Map<string, StorageNodeDriver>([
   [gcpDriver.pluginId, gcpDriver],

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sqlDrivers, kvDrivers, dockerDrivers, storageDrivers } from "../drivers";
+import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers, storageDrivers } from "../drivers";
 
 describe("driver registry", () => {
   it("sqlDrivers contains postgres, mysql, mssql, libsql, and mysql-planetscale", () => {
@@ -48,5 +48,18 @@ describe("driver registry", () => {
     for (const [, driver] of dockerDrivers) {
       expect(typeof driver.command).toBe("function");
     }
+  });
+
+  it("the kubernetes driver is the server one, which refuses exec kubeconfigs", async () => {
+    const driver = k8sDrivers.get("kubernetes");
+    const kubeconfig = [
+      "clusters: [{ name: c, cluster: { server: 'https://127.0.0.1:1' } }]",
+      "users: [{ name: u, user: { exec: { command: /bin/true } } }]",
+      "contexts: [{ name: x, context: { cluster: c, user: u } }]",
+      "current-context: x",
+    ].join("\n");
+    await expect(driver!.command(kubeconfig, "getVersion")).rejects.toThrow(
+      /users\[0\]\.user\.exec/,
+    );
   });
 });

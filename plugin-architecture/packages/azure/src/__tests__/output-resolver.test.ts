@@ -54,6 +54,61 @@ describe("resolveAzureOutput", () => {
     expect(out).toBe("kubeconfig-content");
   });
 
+  it("AKS kubeconfig for an Entra cluster is rebuilt around a minted static token", async () => {
+    const aad = [
+      "apiVersion: v1",
+      "clusters:",
+      "- cluster:",
+      "    certificate-authority-data: Q0FEQVRB",
+      "    server: https://k1-dns.hcp.eastus.azmk8s.io:443",
+      "  name: k1",
+      "contexts:",
+      "- context:",
+      "    cluster: k1",
+      "    user: clusterUser_rg1_k1",
+      "  name: k1",
+      "current-context: k1",
+      "kind: Config",
+      "users:",
+      "- name: clusterUser_rg1_k1",
+      "  user:",
+      "    exec:",
+      "      apiVersion: client.authentication.k8s.io/v1beta1",
+      "      command: kubelogin",
+      "      args: [get-token, --server-id, 6dae42f8-4368-4678-94ff-3960e28e3630]",
+    ].join("\n");
+    const aksAccessToken = vi.fn(async () => "aad-token");
+    const deps = {
+      ...makeDeps({
+        resource: res({ resourceTypeId: "azure-aks-cluster", externalId: "rg1/k1" }),
+        post: () => ({ kubeconfigs: [{ value: btoa(aad) }] }),
+      }),
+      aksAccessToken,
+    };
+    const out = await resolveAzureOutput(deps, "azure-aks-cluster", "id", "kubeconfig", "acct");
+    expect(aksAccessToken).toHaveBeenCalledOnce();
+    expect(out).not.toMatch(/exec|kubelogin/);
+    expect(out).toContain("    server: https://k1-dns.hcp.eastus.azmk8s.io:443");
+    expect(out).toContain("    certificate-authority-data: Q0FEQVRB");
+    expect(out).toContain("    token: aad-token");
+    expect(out).toContain("current-context: k1");
+  });
+
+  it("AKS kubeconfig with inline local-account credentials passes through untouched", async () => {
+    const local = "users:\n- name: u\n  user:\n    client-certificate-data: Q0VSVA==\n";
+    const aksAccessToken = vi.fn(async () => "unused");
+    const deps = {
+      ...makeDeps({
+        resource: res({ resourceTypeId: "azure-aks-cluster", externalId: "rg1/k1" }),
+        post: () => ({ kubeconfigs: [{ value: btoa(local) }] }),
+      }),
+      aksAccessToken,
+    };
+    const out = await resolveAzureOutput(deps, "azure-aks-cluster", "id", "kubeconfig", "acct");
+    expect(out).toBe(local);
+    expect(aksAccessToken).not.toHaveBeenCalled();
+  });
+
   it("Cosmos primaryKey returns the master key", async () => {
     const deps = makeDeps({
       resource: res({ resourceTypeId: "azure-cosmos-db", externalId: "rg1/c1" }),
