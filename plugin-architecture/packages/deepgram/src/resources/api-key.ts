@@ -48,5 +48,7 @@ export const ApiKeyResourceType = rt({
   parentTypeId: "project",
   showInSidebar: true,
   supportsCreate: true,
+  // Usage breakdown filtered to this key (`accessor=`).
+  supportsMetrics: true,
   iconKey: "key",
 });
