@@ -1,9 +1,9 @@
 /**
  * The alert routing rules editor.
  *
- * Replaces the trigger matrix that used to sit on every Slack channel and Teams
- * webhook row. That matrix could only answer "does this channel take this kind
- * of alert"; a rule answers "which alerts, under what conditions, to whom, when,
+ * Rules rather than a trigger matrix on every Slack channel and Teams webhook
+ * row: a matrix can only answer "does this channel take this kind of alert";
+ * a rule answers "which alerts, under what conditions, to whom, when,
  * and what if nobody responds".
  *
  * Shape notes worth keeping in mind while reading:

@@ -1,4 +1,4 @@
-// Coding-agent VM setup pipeline, extracted from ssh-host.ts: plan a setup
+// Coding-agent VM setup pipeline: plan a setup
 // (runtime/package-manager detection), sync repo + agent config files to the
 // VM over SFTP, and reconcile the agent's branch back via git bundles. The
 // IPC registrations that call into this module live in ssh-host.ts.

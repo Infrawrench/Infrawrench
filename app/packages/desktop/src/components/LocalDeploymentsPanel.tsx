@@ -11,8 +11,8 @@ import { listLocalDeploys, type LocalDeployRun } from "../lib/deploy-history";
  * branch head, and a build host to build on. Locally the CLI is the thing that
  * deploys, because it already has what a local deploy needs: the working tree
  * on disk and your own Docker daemon. So this half is a record rather than a
- * console, and it exists because a local deploy previously left no trace the
- * app could show at all: the answer was "go read your terminal scrollback".
+ * console, and it exists because without it a local deploy leaves no trace
+ * the app can show at all: the answer is "go read your terminal scrollback".
  *
  * Cloud mode renders the shared DeploymentsPanel instead.
  */

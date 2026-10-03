@@ -5,9 +5,9 @@
  * with a Bearer token, and mobile fetches with a Bearer token directly. All
  * hosts render chat UIs parameterized by a `ChatClient`.
  *
- * Moved here from `@infrawrench/ui` so non-DOM hosts (React Native) can use
- * the contract without pulling in the web component library; ui re-exports
- * these for backwards compatibility.
+ * These live in client-core rather than `@infrawrench/ui` so non-DOM hosts
+ * (React Native) can use the contract without pulling in the web component
+ * library; ui re-exports them.
  */
 
 import type { AskQuestionAnswer } from "./ask-question";

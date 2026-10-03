@@ -14,9 +14,9 @@ import { colors, spacing } from "@/lib/theme";
  * opens it on its own screen, which carries the dashboard's name in the header
  * and a back button to this list.
  *
- * This used to render the default dashboard inline with the others listed
- * underneath, which made the default the only one that felt like a place:
- * you saw its cards before you saw that alternatives existed.
+ * The default is deliberately not rendered inline above the list: that makes
+ * it the only dashboard that feels like a place, because you see its cards
+ * before you see that alternatives exist.
  *
  * Creating one is an inline form rather than a sheet: a dashboard is a name and
  * nothing else, and everything that fills it lives one screen deeper, on the

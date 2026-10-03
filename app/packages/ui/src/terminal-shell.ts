@@ -1,7 +1,7 @@
 /**
  * Shell-quoting helpers for launching a command inside a remote SSH
  * terminal. Shared by the web (WebTerminal) and desktop (SshTerminal)
- * hosts, which previously kept identical copies.
+ * hosts.
  */
 
 /**

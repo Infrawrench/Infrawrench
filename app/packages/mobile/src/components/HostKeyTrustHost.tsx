@@ -18,9 +18,6 @@ import { colors, radii, spacing } from "@/lib/theme";
  * HostKeyTrustDialog: shows the presented fingerprint (and the one previously
  * pinned, when the key changed), and on accept pins it via
  * `POST /ssh-host-keys/trust` before telling the caller to retry.
- *
- * Mobile used to have no prompt at all: an unknown host meant reading the
- * refusal as red text and going to a desktop to accept the key.
  */
 export function HostKeyTrustHost() {
   const { api, orgId } = useAuth();

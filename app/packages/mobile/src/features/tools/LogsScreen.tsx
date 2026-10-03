@@ -10,8 +10,8 @@ import { colors, radii, spacing } from "@/lib/theme";
 /**
  * Logs viewer with the same controls as the web Logs tab: container picker,
  * tail length, previous-instance, follow, copy and reload. Everything the
- * plugin's `getLogs` accepts is exposed: mobile used to post no parameters at
- * all and take whatever defaults the provider chose.
+ * plugin's `getLogs` accepts is exposed, rather than posting no parameters
+ * and taking whatever defaults the provider chose.
  */
 
 const FOLLOW_INTERVAL_MS = 5000;
