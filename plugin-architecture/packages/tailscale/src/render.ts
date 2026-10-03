@@ -5,6 +5,7 @@ import {
   type ResourceStatus,
 } from "@infrawrench/plugin-base";
 import type { LogStreamConfig, LogStreamStatus, ServiceHost } from "./api.js";
+import { FLOW_METRICS_DEFAULT_RANGE_MS } from "./network-flows.js";
 import { resourceTypes } from "./resource-types.js";
 
 type Section = DetailViewSchema["sections"][number];
@@ -276,6 +277,7 @@ function renderTailnet(resource: ResourceInstance): Body {
       },
     ],
     logs: { defaultTailLines: 200 },
+    metricsCapability: { defaultTimeRangeMs: FLOW_METRICS_DEFAULT_RANGE_MS },
   };
 }
 
@@ -385,6 +387,8 @@ function renderDevice(resource: ResourceInstance): Body {
         },
       },
     ],
+    logs: { defaultTailLines: 200 },
+    metricsCapability: { defaultTimeRangeMs: FLOW_METRICS_DEFAULT_RANGE_MS },
   };
 }
 

@@ -110,6 +110,7 @@ export const deviceType = rt({
   expiryFields: [{ fieldKey: "expires", from: "expiry", kind: "other", label: "Node key expires" }],
   supportsUpdate: true,
   supportsDelete: true,
+  supportsMetrics: true,
   sshEndpoint: { hostOutputKey: "ip", defaultUsername: "root" },
 });
 
@@ -365,6 +366,7 @@ export const tailnetType = rt({
   outputs: [o("dnsName", "MagicDNS suffix", { description: "e.g. tail1234.ts.net" })],
   pinnable: true,
   supportsUpdate: true,
+  supportsMetrics: true,
   iconKey: "network",
 });
 
