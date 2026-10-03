@@ -29,7 +29,7 @@ export const ApiKeyResourceType = rt({
     f("expiresAt", "Expires", { required: false }),
     f("createdAt", "Created", { required: false }),
     f("updatedAt", "Updated", { required: false }),
-    f("workspaceId", "Workspace ID", { required: false }),
+    f("workspaceId", "Workspace ID", { required: false, editable: false }),
     f("creatorUserId", "Created By", { required: false }),
   ],
   outputs: [
@@ -39,6 +39,7 @@ export const ApiKeyResourceType = rt({
       description: "Plaintext key — only ever returned by the create call",
     }),
   ],
+  dependsOn: [{ fieldKey: "workspaceId", targetTypeId: "workspace", label: "belongs to" }],
   expiryFields: [
     { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Key expires" },
   ],

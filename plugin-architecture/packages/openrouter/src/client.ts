@@ -29,6 +29,28 @@ import {
   joinSubtitle,
   jsonRestFetch,
 } from "@infrawrench/plugin-base";
+import {
+  byokBody,
+  byokCreateConfig,
+  guardrailBody,
+  guardrailCreateConfig,
+  mapByok,
+  mapGuardrail,
+  mapWorkspace,
+  parseList,
+  renderByokDetail,
+  renderGuardrailDetail,
+  renderWorkspaceDetail,
+  workspaceBody,
+  workspaceBudgetChanges,
+  workspaceCreateConfig,
+  type OrByokCredential,
+  type OrGuardrail,
+  type OrGuardrailKeyAssignment,
+  type OrWorkspace,
+  type OrWorkspaceBudget,
+  type PickerSources,
+} from "./management.js";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -59,6 +81,9 @@ const FALLBACK_TTS_VOICE = "en_paul_neutral";
 const FALLBACK_STT_MODEL = "openai/whisper-large-v3";
 
 const DASH = "—";
+
+/** Guardrail, workspace and BYOK listings cap `limit` at 100. */
+const MANAGEMENT_PAGE_SIZE = 100;
 
 // ---------------------------------------------------------------- API shapes
 
@@ -253,6 +278,16 @@ export class OpenRouterClient implements PluginClient {
         return this.listProviders(accountId);
       case "api-key":
         return this.listApiKeys(accountId);
+      case "guardrail":
+        return (await this.listPaged<OrGuardrail>("/guardrails")).map((g) =>
+          mapGuardrail(accountId, g),
+        );
+      case "workspace":
+        return (await this.listPaged<OrWorkspace>("/workspaces")).map((w) =>
+          mapWorkspace(accountId, w),
+        );
+      case "byok-credential":
+        return (await this.listPaged<OrByokCredential>("/byok")).map((b) => mapByok(accountId, b));
       default:
         throw new Error(`OpenRouter plugin: unknown resource type "${typeId}"`);
     }
@@ -419,6 +454,28 @@ export class OpenRouterClient implements PluginClient {
     };
   }
 
+  /**
+   * Offset + limit listing used by the management collections, which report
+   * `total_count` alongside each page.
+   */
+  private async listPaged<T>(path: string): Promise<T[]> {
+    const out: T[] = [];
+    for (let offset = 0; offset < 50 * MANAGEMENT_PAGE_SIZE; offset += MANAGEMENT_PAGE_SIZE) {
+      const qs = new URLSearchParams({
+        offset: String(offset),
+        limit: String(MANAGEMENT_PAGE_SIZE),
+      });
+      const data = await this.fetch<{ data?: T[]; total_count?: number }>(
+        `${path}?${qs.toString()}`,
+      );
+      const page = data.data ?? [];
+      out.push(...page);
+      if (page.length < MANAGEMENT_PAGE_SIZE) break;
+      if (data.total_count !== undefined && out.length >= data.total_count) break;
+    }
+    return out;
+  }
+
   /** GET /providers */
   private async listProviders(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.fetch<{ data?: OrProvider[] }>("/providers");
@@ -516,6 +573,43 @@ export class OpenRouterClient implements PluginClient {
     if (typeId === "api-key") {
       const data = await this.fetch<{ data: OrKey }>(`/keys/${encodeURIComponent(externalId)}`);
       return this.mapKey(accountId, now, data.data);
+    }
+
+    if (typeId === "guardrail") {
+      const id = encodeURIComponent(externalId);
+      const [data, assignments] = await Promise.all([
+        this.fetch<{ data: OrGuardrail }>(`/guardrails/${id}`),
+        this.listPaged<OrGuardrailKeyAssignment>(`/guardrails/${id}/assignments/keys`).catch(
+          () => undefined,
+        ),
+      ]);
+      return mapGuardrail(accountId, data.data, assignments);
+    }
+
+    if (typeId === "workspace") {
+      const id = encodeURIComponent(externalId);
+      const [data, budgets, members] = await Promise.all([
+        this.fetch<{ data: OrWorkspace }>(`/workspaces/${id}`),
+        this.fetch<{ data?: OrWorkspaceBudget[]; include_byok_in_budgets?: boolean }>(
+          `/workspaces/${id}/budgets`,
+        ).catch(() => undefined),
+        this.fetch<{ total_count?: number; data?: unknown[] }>(
+          `/workspaces/${id}/members?limit=1`,
+        ).catch(() => undefined),
+      ]);
+      return mapWorkspace(
+        accountId,
+        data.data,
+        budgets,
+        members ? (members.total_count ?? members.data?.length) : undefined,
+      );
+    }
+
+    if (typeId === "byok-credential") {
+      const data = await this.fetch<{ data: OrByokCredential }>(
+        `/byok/${encodeURIComponent(externalId)}`,
+      );
+      return mapByok(accountId, data.data);
     }
 
     if (typeId === "model-endpoint") {
@@ -767,13 +861,81 @@ export class OpenRouterClient implements PluginClient {
 
   // ------------------------------------------------------------ create/edit
 
+  /**
+   * Live catalogues for the create forms' pickers. Each source degrades to an
+   * empty list on its own, so one failing call never blocks the form.
+   */
+  private async pickerSources(
+    need: Partial<Record<keyof PickerSources, boolean>>,
+  ): Promise<PickerSources> {
+    const [providers, models, keys, workspaces] = await Promise.all([
+      need.providers
+        ? this.fetch<{ data?: OrProvider[] }>("/providers")
+            .then((d) => d.data ?? [])
+            .catch(() => [] as OrProvider[])
+        : Promise.resolve([] as OrProvider[]),
+      need.models
+        ? this.fetchAllModels().catch(() => [] as OrModel[])
+        : Promise.resolve([] as OrModel[]),
+      need.keys
+        ? this.fetch<{ data?: OrKey[] }>("/keys")
+            .then((d) => d.data ?? [])
+            .catch(() => [] as OrKey[])
+        : Promise.resolve([] as OrKey[]),
+      need.workspaces
+        ? this.listPaged<OrWorkspace>("/workspaces").catch(() => [] as OrWorkspace[])
+        : Promise.resolve([] as OrWorkspace[]),
+    ]);
+    return {
+      providers: providers.map((p) => ({ slug: p.slug, ...(p.name ? { name: p.name } : {}) })),
+      models: models.map((m) => ({ id: m.id, ...(m.name ? { name: m.name } : {}) })),
+      keys: keys.map((k) => ({
+        hash: k.hash,
+        ...(k.name ? { name: k.name } : {}),
+        ...(k.label ? { label: k.label } : {}),
+      })),
+      workspaces: workspaces.map((w) => ({
+        id: w.id,
+        name: w.name,
+        ...(w.slug ? { slug: w.slug } : {}),
+      })),
+    };
+  }
+
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "api-key") {
-      throw new Error(`OpenRouter plugin: no create config for type "${typeId}"`);
+    switch (typeId) {
+      case "api-key":
+        break;
+      case "guardrail":
+        return guardrailCreateConfig(
+          await this.pickerSources({ providers: true, models: true, keys: true, workspaces: true }),
+        );
+      case "workspace":
+        return workspaceCreateConfig(await this.pickerSources({ models: true }));
+      case "byok-credential":
+        return byokCreateConfig(await this.pickerSources({ providers: true, workspaces: true }));
+      default:
+        throw new Error(`OpenRouter plugin: no create config for type "${typeId}"`);
     }
+    const { workspaces } = await this.pickerSources({ workspaces: true });
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
+        ...(workspaces.length > 0
+          ? [
+              {
+                key: "workspaceId",
+                label: "Workspace",
+                kind: "select" as const,
+                required: false,
+                options: [
+                  { id: "", label: "Default workspace" },
+                  ...workspaces.map((w) => ({ id: w.id, label: w.name || w.slug || w.id })),
+                ],
+                defaultValue: "",
+              },
+            ]
+          : []),
         {
           key: "limit",
           label: "Credit limit (USD)",
@@ -822,11 +984,30 @@ export class OpenRouterClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    if (typeId !== "api-key") throw new Error(`OpenRouter plugin: cannot create type "${typeId}"`);
+    switch (typeId) {
+      case "api-key":
+        break;
+      case "guardrail":
+        return this.createGuardrail(accountId, fields);
+      case "workspace":
+        return this.createWorkspace(accountId, fields);
+      case "byok-credential": {
+        if (!fields["provider"]) throw new Error("OpenRouter plugin: pick a provider");
+        if (!fields["key"]) throw new Error("OpenRouter plugin: the provider API key is required");
+        const created = await this.fetch<{ data: OrByokCredential }>("/byok", {
+          method: "POST",
+          body: JSON.stringify(byokBody(fields, true)),
+        });
+        return mapByok(accountId, created.data);
+      }
+      default:
+        throw new Error(`OpenRouter plugin: cannot create type "${typeId}"`);
+    }
     const name = fields["name"];
     if (!name) throw new Error("OpenRouter plugin: missing API key name");
 
     const body: Record<string, unknown> = { name };
+    if (fields["workspaceId"]) body["workspace_id"] = fields["workspaceId"];
     if (fields["limit"]) body["limit"] = Number(fields["limit"]);
     if (fields["limitReset"]) body["limit_reset"] = fields["limitReset"];
     if (fields["expiresAt"]) body["expires_at"] = fields["expiresAt"];
@@ -841,6 +1022,78 @@ export class OpenRouterClient implements PluginClient {
     return resource;
   }
 
+  /**
+   * POST /guardrails, then POST /guardrails/{id}/assignments/keys for the
+   * keys picked in the form.
+   */
+  private async createGuardrail(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (!fields["name"]) throw new Error("OpenRouter plugin: missing guardrail name");
+    const { assignedKeys, workspaceId, ...rest } = fields;
+    const body = guardrailBody(rest);
+    if (workspaceId) body["workspace_id"] = workspaceId;
+    const created = await this.fetch<{ data: OrGuardrail }>("/guardrails", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const keyHashes = parseList(assignedKeys);
+    if (keyHashes.length > 0) {
+      await this.fetch(`/guardrails/${encodeURIComponent(created.data.id)}/assignments/keys`, {
+        method: "POST",
+        body: JSON.stringify({ key_hashes: keyHashes }),
+      });
+    }
+    return mapGuardrail(accountId, created.data);
+  }
+
+  /** POST /workspaces, then PUT a monthly budget when one was entered. */
+  private async createWorkspace(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (!fields["name"]) throw new Error("OpenRouter plugin: missing workspace name");
+    if (!fields["slug"]) throw new Error("OpenRouter plugin: missing workspace slug");
+    const created = await this.fetch<{ data: OrWorkspace }>("/workspaces", {
+      method: "POST",
+      body: JSON.stringify(workspaceBody(fields)),
+    });
+    await this.applyWorkspaceBudgets(created.data.id, fields);
+    return mapWorkspace(accountId, created.data);
+  }
+
+  /**
+   * PUT /workspaces/{ref}/budgets/{interval} for each amount the form set, and
+   * DELETE for each one it cleared. `include_byok_in_budgets` rides along on
+   * the PUT body, which is the only place the API takes it for a workspace.
+   */
+  private async applyWorkspaceBudgets(
+    workspaceId: string,
+    fields: Record<string, string>,
+  ): Promise<void> {
+    const ref = encodeURIComponent(workspaceId);
+    const changes = workspaceBudgetChanges(fields);
+    const byok =
+      fields["includeByokInBudgets"] !== undefined
+        ? { include_byok_in_budgets: fields["includeByokInBudgets"] === "true" }
+        : {};
+    for (const change of changes) {
+      const path = `/workspaces/${ref}/budgets/${change.interval}`;
+      if (change.limitUsd === null) {
+        await this.fetch(path, { method: "DELETE" }).catch((err: unknown) => {
+          // Clearing a budget that never existed is not worth failing the edit over.
+          if (!/API error 404\b/.test(String((err as Error).message))) throw err;
+        });
+      } else {
+        await this.fetch(path, {
+          method: "PUT",
+          body: JSON.stringify({ limit_usd: change.limitUsd, ...byok }),
+        });
+      }
+    }
+  }
+
   /** PATCH /keys/{hash} */
   async updateResource(
     typeId: string,
@@ -848,8 +1101,45 @@ export class OpenRouterClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    if (typeId !== "api-key") throw new Error(`OpenRouter plugin: cannot update type "${typeId}"`);
-    const hash = resourceId.split(":").slice(2).join(":");
+    const externalId = resourceId.split(":").slice(2).join(":");
+    switch (typeId) {
+      case "api-key":
+        break;
+      case "guardrail": {
+        const body = guardrailBody(fields);
+        if (Object.keys(body).length > 0) {
+          await this.fetch(`/guardrails/${encodeURIComponent(externalId)}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+        }
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "workspace": {
+        const body = workspaceBody(fields);
+        if (Object.keys(body).length > 0) {
+          await this.fetch(`/workspaces/${encodeURIComponent(externalId)}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+        }
+        await this.applyWorkspaceBudgets(externalId, fields);
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "byok-credential": {
+        const body = byokBody(fields, false);
+        if (Object.keys(body).length > 0) {
+          await this.fetch(`/byok/${encodeURIComponent(externalId)}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+        }
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      default:
+        throw new Error(`OpenRouter plugin: cannot update type "${typeId}"`);
+    }
+    const hash = externalId;
 
     const body: Record<string, unknown> = {};
     if (fields["name"] !== undefined) body["name"] = fields["name"];
@@ -872,11 +1162,27 @@ export class OpenRouterClient implements PluginClient {
     return this.mapKey(accountId, new Date().toISOString(), updated.data);
   }
 
-  /** DELETE /keys/{hash} */
+  /** DELETE /keys/{hash}, /guardrails/{id}, /workspaces/{id} or /byok/{id} */
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId !== "api-key") throw new Error(`OpenRouter plugin: cannot delete type "${typeId}"`);
-    const hash = resourceId.split(":").slice(2).join(":");
-    await this.fetch(`/keys/${encodeURIComponent(hash)}`, { method: "DELETE" });
+    const externalId = encodeURIComponent(resourceId.split(":").slice(2).join(":"));
+    switch (typeId) {
+      case "api-key":
+        await this.fetch(`/keys/${externalId}`, { method: "DELETE" });
+        return;
+      case "guardrail":
+        await this.fetch(`/guardrails/${externalId}`, { method: "DELETE" });
+        return;
+      // The default workspace refuses deletion without an explicit
+      // confirmation flag; the plugin deliberately never sends it.
+      case "workspace":
+        await this.fetch(`/workspaces/${externalId}`, { method: "DELETE" });
+        return;
+      case "byok-credential":
+        await this.fetch(`/byok/${externalId}`, { method: "DELETE" });
+        return;
+      default:
+        throw new Error(`OpenRouter plugin: cannot delete type "${typeId}"`);
+    }
   }
 
   // ---------------------------------------------------------------- speech
@@ -1098,6 +1404,12 @@ export class OpenRouterClient implements PluginClient {
         return this.renderProviderDetail(resource);
       case "api-key":
         return this.renderApiKeyDetail(resource);
+      case "guardrail":
+        return renderGuardrailDetail(resource);
+      case "workspace":
+        return renderWorkspaceDetail(resource);
+      case "byok-credential":
+        return renderByokDetail(resource);
       default:
         return {
           title: resource.displayName,
@@ -1554,7 +1866,7 @@ export class OpenRouterClient implements PluginClient {
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
-    if (resource.resourceTypeId === "api-key") {
+    if (resource.resourceTypeId === "api-key" || resource.resourceTypeId === "byok-credential") {
       return {
         id: resource.id,
         label: resource.displayName,

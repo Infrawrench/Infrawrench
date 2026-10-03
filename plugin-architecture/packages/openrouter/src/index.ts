@@ -4,3 +4,6 @@ export { ModelResourceType } from "./resources/model.js";
 export { ModelEndpointResourceType } from "./resources/model-endpoint.js";
 export { ProviderResourceType } from "./resources/provider.js";
 export { ApiKeyResourceType } from "./resources/api-key.js";
+export { GuardrailResourceType } from "./resources/guardrail.js";
+export { WorkspaceResourceType } from "./resources/workspace.js";
+export { ByokCredentialResourceType } from "./resources/byok-credential.js";

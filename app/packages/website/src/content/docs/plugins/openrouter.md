@@ -1,6 +1,6 @@
 ---
 title: OpenRouter
-description: Browse the OpenRouter catalogue with per-provider pricing, uptime and latency percentiles, manage API keys and credits, and run speech synthesis and transcription from the Speech tab.
+description: Browse the OpenRouter catalogue with per-provider pricing, uptime and latency percentiles, manage API keys, guardrails, workspaces, budgets, BYOK credentials and credits, and run speech synthesis and transcription from the Speech tab.
 sidebar_order: 36
 ---
 
@@ -9,7 +9,10 @@ sidebar_order: 36
 - **Models** — the full catalogue across every modality, with per-million-token pricing, context length, tokenizer and knowledge cutoff.
 - **Model endpoints** — the thing that is genuinely unique to OpenRouter: each provider's own serving endpoint for a model, with its own price, uptime over 5 minutes / 30 minutes / 1 day, latency p50–p99 and throughput. This is how you tell whether "GPT-4 on OpenRouter" is the cheap slow one or the fast expensive one today.
 - **Providers** — every upstream OpenRouter routes to, with headquarters and datacenter regions for data-residency checks.
-- **API keys** — full CRUD, including per-key credit limits, reset interval (daily/weekly/monthly), expiry, and whether BYOK usage counts against the limit.
+- **API keys**: full CRUD, including per-key credit limits, reset interval (daily/weekly/monthly), expiry, whether BYOK usage counts against the limit, and the workspace the key belongs to.
+- **Guardrails**: spend limits and routing policy (allowed and blocked providers and models, data regions, zero data retention, training opt-ins), with the API keys they apply to. Full CRUD.
+- **Workspaces**: default models and provider sort, observability logging settings, daily, weekly, monthly and lifetime budgets, and member count. Full CRUD.
+- **BYOK credentials**: your own keys for upstream providers, with fallback and BYOK-only routing. Create, edit and delete.
 
 ## Credentials
 
@@ -38,6 +41,20 @@ Models that produce **speech** or **transcription** get a **Speech** tab.
 
 Both halves share one model picker. If you leave it on a transcription model and press Synthesize, the plugin quietly falls back to a valid speech model rather than sending a request OpenRouter will reject.
 
+## Guardrails, workspaces and BYOK
+
+All three need the management key.
+
+**Create a guardrail** with pickers for everything it references: allowed and blocked providers come from the live provider list, allowed and blocked models from the full model catalogue, and **Apply to API keys** from your keys. The plugin creates the guardrail and then assigns the picked keys in a second call. The detail page shows the budget, the routing policy, any built-in content filters (email, phone numbers, secrets and so on) and the assigned keys.
+
+Editing a guardrail changes its limit, reset interval, flags and policy lists. The lists are edited as comma-separated provider slugs or model ids, exactly as the detail page shows them; key assignments are made at creation or in the OpenRouter dashboard.
+
+<insert [OpenRouter Create Guardrail form with the allowed providers multi-select open and two API keys ticked under Apply to API keys] here>
+
+**Workspaces** carry their own budgets, one per interval. Edit the **Daily**, **Weekly**, **Monthly** or **Lifetime Budget** field to set it; clear it (or set it to 0) to remove that budget. **BYOK Counts Toward Budgets** travels with the budget update, which is the only place OpenRouter accepts it for a workspace. Deleting the default workspace is refused; OpenRouter requires an explicit confirmation the plugin never sends.
+
+**BYOK credentials** are created from a provider picker and the provider's own key, which OpenRouter stores encrypted and never returns: only its masked label is shown. You can toggle fallback to OpenRouter credits, BYOK-only routing and the allowed models later.
+
 ## Costs and metrics
 
 Spend comes from `GET /activity`, broken down by day, model and upstream provider, so the cost page attributes spend to the provider that actually served the request. Each model's **Metrics** tab charts its daily spend and request count.
@@ -51,5 +68,6 @@ Remaining account credit is read from `GET /credits` and shown on API key cards.
 - **`GET /models` defaults to text-only.** Image, speech, transcription and embedding models only appear when you ask for every modality, which the plugin does. Dedicated audio models report `speech` and `transcription` as their output modality, not `audio` — `audio` is reserved for omni chat models.
 - **Prices arrive as decimal strings in USD per token.** The app normalizes everything to dollars per million tokens so models are comparable without mental arithmetic.
 - **Uploads are capped at 25 MB.**
+- **Analytics are not charted yet.** OpenRouter's `/analytics/query` takes metric and dimension names from `/analytics/meta` at runtime, so per-key series need a live account to map against.
 - **The plaintext of a new API key is shown once.** `POST /keys` is the only response that ever contains it; OpenRouter cannot return it again.
 - **Mid-stream errors are not HTTP errors.** Once a streamed response emits its first token the `200` is already committed, so a failure arrives as an SSE event with `finish_reason: "error"` rather than a status code. Nothing in this plugin streams, but it is worth knowing if you are debugging your own OpenRouter integration alongside it.

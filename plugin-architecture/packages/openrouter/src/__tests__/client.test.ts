@@ -534,3 +534,218 @@ describe("transcribeAudio", () => {
     ).rejects.toThrow(/over the 25 MB limit/);
   });
 });
+
+describe("guardrails", () => {
+  const guardrail = {
+    id: "gr_1",
+    name: "Prod policy",
+    limit_usd: 50,
+    reset_interval: "monthly",
+    include_byok_in_budgets: false,
+    allowed_providers: ["openai", "anthropic"],
+    allowed_models: [],
+    enforce_zdr: true,
+    content_filter_builtins: [{ slug: "email", action: "redact" }],
+    workspace_id: "ws_1",
+    created_at: "2026-09-01T00:00:00Z",
+  };
+
+  it("lists with offset + limit and flattens the policy lists", async () => {
+    installFetch(() => jsonResponse({ data: [guardrail], total_count: 1 }));
+    const [resource] = await client().listResources("guardrail", ACCOUNT);
+    expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/guardrails?offset=0&limit=100");
+    const auth = (calls[0]?.init?.headers as Record<string, string>)["Authorization"];
+    expect(auth).toBe("Bearer sk-or-v1-management");
+    expect(resource?.fields).toMatchObject({
+      allowedProviders: "openai, anthropic",
+      allowedModels: "",
+      resetInterval: "monthly",
+      enforceZdr: true,
+      contentFilters: 1,
+    });
+  });
+
+  it("creates the guardrail, then assigns the picked keys", async () => {
+    installFetch((url) =>
+      url.endsWith("/assignments/keys")
+        ? jsonResponse({ assigned_count: 2 })
+        : jsonResponse({ data: guardrail }, 201),
+    );
+    await client().createResource("guardrail", ACCOUNT, {
+      name: "Prod policy",
+      limitUsd: "50",
+      resetInterval: "monthly",
+      allowedProviders: JSON.stringify(["openai", "anthropic"]),
+      allowedDataRegions: JSON.stringify(["europe"]),
+      enforceZdr: "true",
+      workspaceId: "ws_1",
+      assignedKeys: JSON.stringify(["hash_a", "hash_b"]),
+    });
+    expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/guardrails");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      name: "Prod policy",
+      limit_usd: 50,
+      reset_interval: "monthly",
+      allowed_providers: ["openai", "anthropic"],
+      allowed_data_regions: ["europe"],
+      enforce_zdr: true,
+      workspace_id: "ws_1",
+    });
+    expect(calls[1]?.url).toBe("https://openrouter.ai/api/v1/guardrails/gr_1/assignments/keys");
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+      key_hashes: ["hash_a", "hash_b"],
+    });
+  });
+
+  it("patches only the edited fields, mapping never to a null reset", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "PATCH") return jsonResponse({ data: guardrail });
+      if (url.includes("/assignments/keys")) {
+        return jsonResponse({
+          data: [{ key_hash: "hash_a", key_name: "ci" }],
+          total_count: 1,
+        });
+      }
+      return jsonResponse({ data: guardrail });
+    });
+    const updated = await client().updateResource(
+      "guardrail",
+      `${ACCOUNT}:guardrail:gr_1`,
+      ACCOUNT,
+      {
+        resetInterval: "never",
+        ignoredModels: "openai/gpt-4o, x-ai/grok-4",
+      },
+    );
+    const patch = calls.find((call) => call.init?.method === "PATCH");
+    expect(patch?.url).toBe("https://openrouter.ai/api/v1/guardrails/gr_1");
+    expect(JSON.parse(String(patch?.init?.body))).toEqual({
+      reset_interval: null,
+      ignored_models: ["openai/gpt-4o", "x-ai/grok-4"],
+    });
+    expect(updated.fields["assignedKeys"]).toBe("ci");
+  });
+});
+
+describe("workspaces", () => {
+  const workspace = {
+    id: "ws_1",
+    name: "Production",
+    slug: "production",
+    default_provider_sort: null,
+    is_observability_io_logging_enabled: false,
+    io_logging_sampling_rate: 1,
+    created_at: "2026-09-01T00:00:00Z",
+  };
+
+  it("loads budgets and the member count on the detail read", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/budgets")) {
+        return jsonResponse({
+          data: [
+            { limit_usd: 100, reset_interval: "monthly" },
+            { limit_usd: 500, reset_interval: null },
+          ],
+          include_byok_in_budgets: true,
+        });
+      }
+      if (url.includes("/members")) return jsonResponse({ data: [{}], total_count: 7 });
+      return jsonResponse({ data: workspace });
+    });
+    const resource = await client().getResource("workspace", `${ACCOUNT}:workspace:ws_1`, ACCOUNT);
+    expect(resource.fields).toMatchObject({
+      budgetMonthly: 100,
+      budgetLifetime: 500,
+      budgetDaily: 0,
+      includeByokInBudgets: true,
+      memberCount: 7,
+      defaultProviderSort: "default",
+    });
+  });
+
+  it("puts a changed budget and deletes a cleared one", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "PUT" || init?.method === "DELETE") return jsonResponse({ data: {} });
+      if (url.endsWith("/budgets")) return jsonResponse({ data: [] });
+      if (url.includes("/members")) return jsonResponse({ data: [], total_count: 0 });
+      return jsonResponse({ data: workspace });
+    });
+    await client().updateResource("workspace", `${ACCOUNT}:workspace:ws_1`, ACCOUNT, {
+      budgetWeekly: "25",
+      budgetMonthly: "",
+      includeByokInBudgets: "true",
+    });
+    const put = calls.find((call) => call.init?.method === "PUT");
+    expect(put?.url).toBe("https://openrouter.ai/api/v1/workspaces/ws_1/budgets/weekly");
+    expect(JSON.parse(String(put?.init?.body))).toEqual({
+      limit_usd: 25,
+      include_byok_in_budgets: true,
+    });
+    const del = calls.find((call) => call.init?.method === "DELETE");
+    expect(del?.url).toBe("https://openrouter.ai/api/v1/workspaces/ws_1/budgets/monthly");
+    expect(calls.some((call) => call.init?.method === "PATCH")).toBe(false);
+  });
+});
+
+describe("BYOK credentials", () => {
+  it("creates with the provider and workspace, and never echoes the key", async () => {
+    installFetch(() =>
+      jsonResponse(
+        {
+          data: {
+            id: "byok_1",
+            provider: "anthropic",
+            label: "sk-ant-...abcd",
+            disabled: false,
+            is_fallback: true,
+            workspace_id: "ws_1",
+            created_at: "2026-09-01T00:00:00Z",
+          },
+        },
+        201,
+      ),
+    );
+    const resource = await client().createResource("byok-credential", ACCOUNT, {
+      provider: "anthropic",
+      key: "sk-ant-secret",
+      workspaceId: "ws_1",
+      isFallback: "true",
+    });
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      provider: "anthropic",
+      workspace_id: "ws_1",
+      key: "sk-ant-secret",
+      is_fallback: true,
+    });
+    expect(JSON.stringify(resource)).not.toContain("sk-ant-secret");
+    expect(resource.fields["isFallback"]).toBe(true);
+  });
+
+  it("deletes through /byok/{id}", async () => {
+    installFetch(() => jsonResponse({ deleted: true }));
+    await client().deleteResource("byok-credential", `${ACCOUNT}:byok-credential:byok_1`, ACCOUNT);
+    expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/byok/byok_1");
+    expect(calls[0]?.init?.method).toBe("DELETE");
+  });
+});
+
+describe("api key workspace", () => {
+  it("offers a workspace picker and sends workspace_id on create", async () => {
+    installFetch((url, init) => {
+      if (url.includes("/workspaces")) {
+        return jsonResponse({ data: [{ id: "ws_1", name: "Production" }], total_count: 1 });
+      }
+      if (init?.method === "POST") {
+        return jsonResponse({ data: { hash: "h1", name: "ci", workspace_id: "ws_1" }, key: "sk" });
+      }
+      return jsonResponse({});
+    });
+    const config = await client().getCreateConfig("api-key");
+    const picker = config.fields.find((field) => field.key === "workspaceId");
+    expect(picker?.options?.map((option) => option.id)).toEqual(["", "ws_1"]);
+
+    await client().createResource("api-key", ACCOUNT, { name: "ci", workspaceId: "ws_1" });
+    const post = calls.find((call) => call.init?.method === "POST");
+    expect(JSON.parse(String(post?.init?.body))).toEqual({ name: "ci", workspace_id: "ws_1" });
+  });
+});
