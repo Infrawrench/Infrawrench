@@ -12,17 +12,17 @@ OpenAI's API is really two APIs behind one brand: the project plane your `sk-pro
 - **Fine-tuning jobs**: create a run from a training file and a base model, then pause, resume or cancel it while it is going.
 - **Batches**: create a batch from an uploaded JSONL file, watch the request counters, cancel it. Batches are never deletable.
 - **Files**: fine-tuning datasets, batch inputs and outputs, and file-search sources (delete).
-- **Vector stores**: the chunked-and-embedded collections behind the `file_search` tool (create, rename, delete).
+- **Vector stores**: the chunked-and-embedded collections behind the `file_search` tool (create, rename, delete), with a chart of the file search calls made against each one (admin key).
 - **Containers**: the sandboxes Code Interpreter runs inside (create, delete). They expire on their own idle timer and bill per session.
 - **Evals**: evaluation definitions with their data source and graders (rename, delete).
-- **Projects**: the billing and rate-limit boundary (create with an optional data residency region, rename, archive), with a cost and token usage chart. Admin key only.
+- **Projects**: the billing and rate-limit boundary (create with an optional data residency region, rename, archive), with a cost and usage chart and a **Logs** tab of the project's audit log. Admin key only.
 - **Project members**: who can use each project and as `owner` or `member`. Add an existing organization member from a picker, change their role, or remove them. Admin key only.
-- **Project service accounts**: the non-human identities that own project keys. Rename, switch between `member` and `owner`, mint another API key with **Get credentials** (shown once), or delete, which revokes its keys. Admin key only.
+- **Project service accounts**: the non-human identities that own project keys. Rename, switch between `member` and `owner`, mint another API key with **Get credentials** (shown once), or delete, which revokes its keys. A **Logs** tab shows what the service account did, from the audit log. Admin key only.
 - **Project rate limits**: each project's per-model limits: requests and tokens per minute, plus images, audio, daily requests and batch input tokens where the model has them. Edit to lower a project below the organization's limit. Listed under each project. Admin key only.
-- **Project API keys**: listed and revoked, never created, with expiry, last use and a per-key token usage chart. Admin key only.
+- **Project API keys**: listed and revoked, never created, with expiry, last use, a per-key usage chart and a **Logs** tab of the audit events on that key. Admin key only.
 - **Spend limits**: hard monthly caps in US dollars for the whole organization or a single project. Once spend reaches the cap, requests are refused. Create, change the amount, or delete. Admin key only.
 - **Spend alerts**: emails sent when monthly spend for the organization or a project crosses a threshold. Pick the scope, set the amount, recipients and an optional subject prefix, and edit any of them later. Admin key only.
-- **Organization members**: role changes between `owner` and `reader`, and removal, with a token usage chart per member. Admin key only.
+- **Organization members**: role changes between `owner` and `reader`, and removal, with a usage chart and an audit-log **Logs** tab per member. Admin key only.
 - **Invites**: send and revoke. Admin key only.
 - **Admin API keys**: every `sk-admin-` key with its owner, expiry and last use (revoke). New admin keys are created in the dashboard. Admin key only.
 
@@ -35,7 +35,7 @@ OpenAI needs **two keys** to cover its whole surface, and they are not interchan
 **Admin API Key** (optional) — [Settings → Organization → Admin keys](https://platform.openai.com/settings/organization/admin-keys). Starts `sk-admin-`, and only an organization owner can mint one. It unlocks:
 
 - **Projects** and everything inside them (members, service accounts, rate limits, API keys), **spend limits**, **spend alerts**, **organization members**, **invites** and **admin API keys**; without it these lists are unavailable rather than broken,
-- the **usage charts** on models, projects, project API keys and organization members,
+- the **usage charts** on models, projects, project API keys, organization members and vector stores, and the audit-log **Logs** tabs,
 - **cost collection**, which is otherwise disabled with a message saying why.
 
 ![OpenAI Add-account form showing the required API Key field and the optional Admin API Key field, with the description explaining what the admin key unlocks](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openai/add-account.png)
@@ -55,7 +55,21 @@ If you open a model that cannot do audio at all and hit Synthesize, the plugin f
 
 With an admin key attached, spend comes from `GET /v1/organization/costs`, bucketed by day and grouped by line item, with the project id carried alongside as a tag. Up to a year of history is available, and the most recent three days are re-fetched on each sync because OpenAI restates them.
 
-Models, projects, project API keys and organization members each get a **Metrics** tab charting input, cached input and output tokens and request counts from `GET /v1/organization/usage/completions`. Projects add their daily cost on top.
+Models, projects, project API keys and organization members each get a **Metrics** tab charting input, cached input and output tokens and request counts from `GET /v1/organization/usage/completions`, plus cache write and audio tokens when there are any. Projects add their daily cost on top.
+
+The same tab pulls in every other usage endpoint that accepts the resource as a filter, and shows a chart only when it has something in the selected range:
+
+- embeddings and moderations input tokens and requests,
+- images generated and image requests,
+- speech characters, transcribed audio seconds and their request counts,
+- web search calls and file search calls,
+- for projects only, Code Interpreter sessions and vector store storage in bytes.
+
+Vector stores get a **Metrics** tab of their own with the file search calls made against them, from `GET /v1/organization/usage/file_search_calls`.
+
+## Audit log
+
+Projects, organization members, project service accounts and project API keys each get a **Logs** tab read from `GET /v1/organization/audit_logs`: a project shows every event inside it, a member or service account the events they performed, and an API key the events performed on it (creation, scope changes, deletion). Each line carries the time, event type, who did it and from which IP, and what it was done to; the newest 100 events are shown. Audit logging has to be enabled once by an organization owner under **Settings → Organization → Data controls**, cannot be turned off again, and records nothing from before it was enabled.
 
 ## Tips & limits
 
