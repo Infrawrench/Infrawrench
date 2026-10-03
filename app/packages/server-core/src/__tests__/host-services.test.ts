@@ -339,6 +339,40 @@ describe("secrets.setPlaintext", () => {
   });
 });
 
+describe("secrets scoped to an account", () => {
+  async function getAccountSecretService() {
+    const out = await hs.buildPluginHostServices(
+      {} as never,
+      {},
+      { accountId: "acc-1", bastionId: null },
+    );
+    return out!.secrets!;
+  }
+
+  it("reads a secret of a resource carrying the account's prefix", async () => {
+    pg.setRows([secretRow({ resolutionKind: "literal", encryptedValue: "ENC", valueIv: "IV" })]);
+    const svc = await getAccountSecretService();
+    expect(await svc.getPlaintext("acc-1:db-user:c1:app", "password")).toBe("plaintext-secret");
+  });
+
+  it("never queries a secret of another account's resource", async () => {
+    pg.setRows([secretRow({ resolutionKind: "literal", encryptedValue: "ENC", valueIv: "IV" })]);
+    const svc = await getAccountSecretService();
+    expect(await svc.getPlaintext("acc-2:db-user:c1:app", "password")).toBeNull();
+    // A bare "acc-1" prefix must not match "acc-10".
+    expect(await svc.getPlaintext("acc-10:db-user:c1:app", "password")).toBeNull();
+    expect(pg.queries.some((q) => q.sql.includes('"secret_field_states"'))).toBe(false);
+  });
+
+  it("refuses to write a secret onto another account's resource", async () => {
+    const svc = await getAccountSecretService();
+    await expect(svc.setPlaintext!("acc-2:db-user:c1:app", "password", "x")).rejects.toThrow(
+      /does not belong/,
+    );
+    expect(pg.queries.some((q) => q.sql.includes('"secret_field_states"'))).toBe(false);
+  });
+});
+
 // --- HTTP service ----------------------------------------------------------
 describe("http.request — bastion routing", () => {
   it("throws BastionDisconnectedError when bound but no dispatcher", async () => {

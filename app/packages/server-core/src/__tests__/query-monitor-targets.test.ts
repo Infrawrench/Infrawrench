@@ -20,6 +20,7 @@ const {
   listQueryMonitorTargets,
   QueryMonitorInputError,
   sqlPeerIntegrationsOf,
+  updateQueryMonitor,
 } = await import("../query-monitors/store");
 const { BUNDLED_PLUGINS } = await import("../plugin-loader");
 
@@ -277,5 +278,55 @@ describe("createQueryMonitor resource validation", () => {
     expect(insert).toBeDefined();
     expect(insert!.params).toContain("ch-service");
     expect(insert!.params).toContain("acc-1:service:s1");
+  });
+});
+
+describe("query monitor org scoping", () => {
+  const storedRow = {
+    id: "mon-1",
+    name: "Dead letters",
+    description: null,
+    accountId: "acc-1",
+    accountName: "CH Cloud",
+    resourceId: null,
+    resourceTypeId: null,
+    resourceName: null,
+    sql: "SELECT count(*) FROM dead_letters",
+    mode: "scalar",
+    operator: "gt",
+    threshold: 100,
+    intervalMinutes: 15,
+    consecutiveBreaches: 1,
+    enabled: true,
+    state: "unknown",
+    lastValue: null,
+    lastRunAt: null,
+    lastError: null,
+    breachStreak: 0,
+    lastAlertedAt: null,
+    createdByUserId: null,
+    createdAt: new Date("2026-08-25T00:00:00.000Z"),
+    updatedAt: new Date("2026-08-25T00:00:00.000Z"),
+  };
+
+  it("refuses to move a monitor onto an account outside the org", async () => {
+    pg.queueRows([storedRow]); // getQueryMonitor
+    pg.queueRows([]); // the account ownership check finds nothing
+    await expect(
+      updateQueryMonitor("org-1", "mon-1", { accountId: "acc-of-another-org" }),
+    ).rejects.toMatchObject({ message: "No such account.", status: 404 });
+    expect(pg.queries.some((q) => q.sql.startsWith("update"))).toBe(false);
+  });
+
+  it("joins account and resource names within the monitor's own org", async () => {
+    pg.queueRows([storedRow]);
+    await updateQueryMonitor("org-1", "mon-1", {}).catch(() => undefined);
+    const select = pg.queries[0]!.sql;
+    expect(select).toMatch(
+      /left join "accounts" on \("accounts"\."id" = "query_monitors"\."account_id" and "accounts"\."organization_id" = "query_monitors"\."organization_id"\)/,
+    );
+    expect(select).toMatch(
+      /left join "resources" on \("resources"\."id" = "query_monitors"\."resource_id" and "resources"\."organization_id" = "query_monitors"\."organization_id"\)/,
+    );
   });
 });
