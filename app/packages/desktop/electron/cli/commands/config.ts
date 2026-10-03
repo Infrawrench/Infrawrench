@@ -30,7 +30,7 @@ import { c, printJson, println } from "../output";
 import { confirm } from "../prompt";
 
 /** Order the plan renders sections in — the order they are applied. */
-const SECTION_LABELS: Record<string, string> = {
+const SECTION_LABELS: Record<OrgConfigSection, string> = {
   budgets: "budgets",
   customGraphs: "custom graphs",
   workflows: "workflows",
@@ -41,6 +41,9 @@ const SECTION_LABELS: Record<string, string> = {
   tagPolicy: "tag policy",
   alertSettings: "alert settings",
 };
+
+/** The keys of {@link SECTION_LABELS}, which the annotation makes exactly the sections. */
+const SECTIONS = Object.keys(SECTION_LABELS) as OrgConfigSection[];
 
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
@@ -113,9 +116,9 @@ interface DocumentSummary {
 
 function summarizeDocument(document: OrgConfigDocument): DocumentSummary {
   const counts: Record<string, number> = {};
-  for (const [section, label] of Object.entries(SECTION_LABELS)) {
-    const value = (document as unknown as Record<string, unknown>)[section];
-    if (Array.isArray(value)) counts[label] = value.length;
+  for (const section of SECTIONS) {
+    const value = document[section];
+    if (Array.isArray(value)) counts[SECTION_LABELS[section]] = value.length;
   }
   return { counts };
 }

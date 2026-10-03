@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { ipcMain } from "electron";
+import type { ParamsObject } from "sql.js";
 import { z } from "zod";
 
 import { getSqlite, persist } from "./db";
@@ -27,7 +28,25 @@ interface SecretRow {
   id: string;
   name: string;
   encrypted_value: string | null;
-  value_iv?: string | null;
+  value_iv: string | null;
+}
+
+/** A nullable TEXT column, as sql.js hands it back. */
+function textOrNull(value: ParamsObject[string] | undefined): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * Narrow a `workflow_secrets` row. `id` and `name` are NOT NULL TEXT; the
+ * value columns are nullable and absent when the query did not select them.
+ */
+function toSecretRow(row: ParamsObject): SecretRow {
+  return {
+    id: String(row["id"]),
+    name: String(row["name"]),
+    encrypted_value: textOrNull(row["encrypted_value"]),
+    value_iv: textOrNull(row["value_iv"]),
+  };
 }
 
 function metadata(row: SecretRow) {
@@ -39,7 +58,7 @@ function readSecret(db: Awaited<ReturnType<typeof getSqlite>>, id: string): Secr
     "SELECT id, name, encrypted_value, value_iv FROM workflow_secrets WHERE id = ? LIMIT 1",
   );
   stmt.bind([id]);
-  const row = stmt.step() ? (stmt.getAsObject() as unknown as SecretRow) : null;
+  const row = stmt.step() ? toSecretRow(stmt.getAsObject()) : null;
   stmt.free();
   return row;
 }
@@ -52,7 +71,7 @@ function assertNameAvailable(
   const stmt = db.prepare("SELECT id, name FROM workflow_secrets");
   let conflict: SecretRow | null = null;
   while (stmt.step()) {
-    const row = stmt.getAsObject() as unknown as SecretRow;
+    const row = toSecretRow(stmt.getAsObject());
     if (
       row.id !== excludeId &&
       (row.name === name || row.name.startsWith(`${name}.`) || name.startsWith(`${row.name}.`))
@@ -97,14 +116,12 @@ export async function loadLocalWorkflowSecretValuesForWorkflow(
     "SELECT assigned_secret_ids FROM workflows WHERE id = ? AND deleted_at IS NULL LIMIT 1",
   );
   stmt.bind([workflowId]);
-  const row = stmt.step()
-    ? (stmt.getAsObject() as unknown as { assigned_secret_ids?: unknown })
-    : null;
+  const row = stmt.step() ? stmt.getAsObject() : null;
   stmt.free();
   if (!row) throw new Error("Workflow not found");
   let ids: string[] = [];
   try {
-    const parsed = JSON.parse(String(row.assigned_secret_ids ?? "[]"));
+    const parsed = JSON.parse(String(row["assigned_secret_ids"] ?? "[]"));
     if (Array.isArray(parsed)) {
       ids = parsed.filter((value): value is string => typeof value === "string");
     }
@@ -120,7 +137,7 @@ ipcMain.handle("workflow_secrets_list", async () => {
     "SELECT id, name, encrypted_value FROM workflow_secrets ORDER BY name ASC",
   );
   const rows: SecretRow[] = [];
-  while (stmt.step()) rows.push(stmt.getAsObject() as unknown as SecretRow);
+  while (stmt.step()) rows.push(toSecretRow(stmt.getAsObject()));
   stmt.free();
   return rows.map(metadata);
 });
@@ -173,7 +190,12 @@ ipcMain.handle("workflow_secret_delete", async (_event, raw: unknown) => {
     const stmt = db.prepare("SELECT id, assigned_secret_ids FROM workflows");
     const workflows: { id: string; assigned_secret_ids: string }[] = [];
     while (stmt.step()) {
-      workflows.push(stmt.getAsObject() as unknown as { id: string; assigned_secret_ids: string });
+      const row = stmt.getAsObject();
+      // Both NOT NULL TEXT columns.
+      workflows.push({
+        id: String(row["id"]),
+        assigned_secret_ids: String(row["assigned_secret_ids"]),
+      });
     }
     stmt.free();
     for (const workflow of workflows) {
