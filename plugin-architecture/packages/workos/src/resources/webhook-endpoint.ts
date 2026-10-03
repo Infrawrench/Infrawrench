@@ -19,8 +19,8 @@ export const WebhookEndpointResourceType = rt({
     }),
     f("events", "Events", {
       required: false,
-      editable: false,
-      description: "Subscribed event types, comma-separated.",
+      description:
+        "Subscribed event types, comma-separated, e.g. user.created, dsync.user.updated.",
     }),
     f("createdAt", "Created", { required: false, editable: false }),
   ],

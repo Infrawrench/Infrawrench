@@ -10,6 +10,13 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { joinSubtitle, jsonRestFetch, externalIdOf } from "@infrawrench/plugin-base";
+import type {
+  CredentialExport,
+  LogsFetchParams,
+  LogsFetchResult,
+  PolicyOption,
+} from "@infrawrench/plugin-base";
+import { ORGANIZATION_LOG_EVENTS, WEBHOOK_EVENTS } from "./events.js";
 
 const BASE_URL = "https://api.workos.com";
 
@@ -32,8 +39,15 @@ interface WosList<T> {
 }
 
 interface WosOrganizationDomain {
+  id?: string;
+  organization_id?: string;
   domain?: string;
   state?: string;
+  verification_prefix?: string;
+  verification_token?: string;
+  verification_strategy?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface WosOrganization {
@@ -54,6 +68,7 @@ interface WosUser {
   profile_picture_url?: string | null;
   external_id?: string | null;
   last_sign_in_at?: string | null;
+  locale?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -104,6 +119,8 @@ interface WosDirectory {
   type?: string;
   state?: string;
   external_key?: string;
+  /** Aggregate counts of what the directory has synced. */
+  metadata?: { users?: { active?: number; inactive?: number }; groups?: number };
   created_at?: string;
   updated_at?: string;
 }
@@ -136,9 +153,78 @@ interface WosRole {
   name?: string;
   description?: string | null;
   type?: string;
+  resource_type_slug?: string;
   permissions?: string[];
   created_at?: string;
   updated_at?: string;
+}
+
+interface WosPermission {
+  id?: string;
+  slug?: string;
+  name?: string;
+  description?: string | null;
+  system?: boolean;
+  resource_type_slug?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface WosApiKey {
+  id?: string;
+  owner?: { type?: string; id?: string };
+  name?: string;
+  obfuscated_value?: string;
+  /** The full key: only on the create response. */
+  value?: string;
+  last_used_at?: string | null;
+  expires_at?: string | null;
+  permissions?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface WosFeatureFlag {
+  id?: string;
+  slug?: string;
+  name?: string;
+  description?: string | null;
+  owner?: { email?: string; first_name?: string | null; last_name?: string | null } | null;
+  tags?: string[];
+  enabled?: boolean;
+  default_value?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface WosGroup {
+  id?: string;
+  organization_id?: string;
+  name?: string;
+  description?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface WosSession {
+  id?: string;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  organization_id?: string;
+  auth_method?: string;
+  status?: string;
+  impersonator?: { email?: string; reason?: string | null } | null;
+  expires_at?: string;
+  ended_at?: string | null;
+  created_at?: string;
+}
+
+interface WosEvent {
+  id?: string;
+  event?: string;
+  data?: Record<string, unknown>;
+  created_at?: string;
+  context?: { actor?: { id?: string; source?: string; name?: string | null } };
 }
 
 interface WosWebhookEndpoint {
@@ -157,6 +243,43 @@ interface WosWebhookEndpoint {
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/** Parse a `policy-picker` value (a JSON array of ids), tolerating a comma list. */
+function pickedList(value: string | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+  } catch {
+    // Not JSON: fall through to the comma convention.
+  }
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+/** Split a composite `{organizationId}/{id}` external id. */
+function orgScoped(externalId: string): [string, string] {
+  const slash = externalId.indexOf("/");
+  if (slash < 0) throw new Error(`WorkOS plugin: expected "organization/id", got "${externalId}"`);
+  return [externalId.slice(0, slash), externalId.slice(slash + 1)];
+}
+
+function domainStateDot(state: string): ResourceStatus {
+  switch (state) {
+    case "verified":
+    case "legacy_verified":
+      return "healthy";
+    case "pending":
+    case "unverified":
+      return "provisioning";
+    case "failed":
+      return "error";
+    default:
+      return "info";
+  }
 }
 
 function membershipStatusDot(status: string): ResourceStatus {
@@ -423,6 +546,55 @@ export class WorkosClient implements PluginClient {
         this.webhookEndpointsCache = endpoints;
         return endpoints.map((endpoint) => this.mapWebhookEndpoint(accountId, endpoint));
       }
+      case "organization-domain": {
+        // There is no domain listing route: every organization carries its
+        // full domain objects, ids included.
+        const orgs = await this.fetchOrganizations();
+        return orgs.flatMap((org) =>
+          (org.domains ?? [])
+            .filter((domain) => domain.id)
+            .map((domain) =>
+              this.mapOrganizationDomain(accountId, {
+                ...domain,
+                organization_id: domain.organization_id ?? str(org.id),
+              }),
+            ),
+        );
+      }
+      case "organization-role": {
+        const roles = await this.listForEachOrganization(async (orgId) => {
+          const body = await this.fetch<WosList<WosRole>>(
+            `/authorization/organizations/${encodeURIComponent(orgId)}/roles`,
+          );
+          // The org listing also returns the environment roles it inherits.
+          return (body.data ?? [])
+            .filter((role) => role.type === "OrganizationRole")
+            .map((role) => ({ role, orgId }));
+        });
+        return roles.map(({ role, orgId }) => this.mapOrganizationRole(accountId, orgId, role));
+      }
+      case "permission": {
+        const permissions = await this.paginate<WosPermission>("/authorization/permissions");
+        return permissions.map((permission) => this.mapPermission(accountId, permission));
+      }
+      case "organization-api-key": {
+        const keys = await this.listForEachOrganization(async (orgId) =>
+          (
+            await this.paginate<WosApiKey>(`/organizations/${encodeURIComponent(orgId)}/api_keys`)
+          ).map((key) => ({ key, orgId })),
+        );
+        return keys.map(({ key, orgId }) => this.mapApiKey(accountId, orgId, key));
+      }
+      case "feature-flag": {
+        const flags = await this.paginate<WosFeatureFlag>("/feature-flags");
+        return flags.map((flag) => this.mapFeatureFlag(accountId, flag));
+      }
+      case "group": {
+        const groups = await this.listForEachOrganization((orgId) =>
+          this.paginate<WosGroup>(`/organizations/${encodeURIComponent(orgId)}/groups`),
+        );
+        return groups.map((group) => this.mapGroup(accountId, group));
+      }
       default:
         throw new Error(`WorkOS plugin: unknown resource type "${typeId}"`);
     }
@@ -509,6 +681,46 @@ export class WorkosClient implements PluginClient {
         if (!match) throw new Error(`WorkOS plugin: webhook endpoint "${id}" not found`);
         return this.mapWebhookEndpoint(accountId, match);
       }
+      case "organization-domain": {
+        const domain = await this.fetch<WosOrganizationDomain>(
+          `/organization_domains/${encodeURIComponent(id)}`,
+        );
+        return this.mapOrganizationDomain(accountId, domain);
+      }
+      case "organization-role": {
+        const [orgId, slug] = orgScoped(id);
+        const role = await this.fetch<WosRole>(
+          `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
+        );
+        return this.mapOrganizationRole(accountId, orgId, role);
+      }
+      case "permission": {
+        const permission = await this.fetch<WosPermission>(
+          `/authorization/permissions/${encodeURIComponent(id)}`,
+        );
+        return this.mapPermission(accountId, permission);
+      }
+      case "organization-api-key": {
+        // No single-key GET: list the owning organization's keys.
+        const [orgId, keyId] = orgScoped(id);
+        const keys = await this.paginate<WosApiKey>(
+          `/organizations/${encodeURIComponent(orgId)}/api_keys`,
+        );
+        const match = keys.find((key) => key.id === keyId);
+        if (!match) throw new Error(`WorkOS plugin: API key "${keyId}" not found`);
+        return this.mapApiKey(accountId, orgId, match);
+      }
+      case "feature-flag": {
+        const flag = await this.fetch<WosFeatureFlag>(`/feature-flags/${encodeURIComponent(id)}`);
+        return this.mapFeatureFlag(accountId, flag);
+      }
+      case "group": {
+        const [orgId, groupId] = orgScoped(id);
+        const group = await this.fetch<WosGroup>(
+          `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
+        );
+        return this.mapGroup(accountId, group);
+      }
       default:
         throw new Error(`WorkOS plugin: unknown resource type "${typeId}"`);
     }
@@ -593,6 +805,7 @@ export class WorkosClient implements PluginClient {
         emailVerified: user.email_verified === true,
         userId: id,
         externalId: str(user.external_id),
+        locale: str(user.locale),
         lastSignInAt: str(user.last_sign_in_at),
         createdAt,
       },
@@ -625,6 +838,10 @@ export class WorkosClient implements PluginClient {
         userId: str(membership.user_id),
         organizationId,
         role,
+        roles: (membership.roles ?? [])
+          .map((r) => str(r.slug))
+          .filter(Boolean)
+          .join(", "),
         status: str(membership.status),
         directoryManaged: membership.directory_managed === true,
         createdAt,
@@ -724,6 +941,9 @@ export class WorkosClient implements PluginClient {
         state: str(directory.state),
         organizationId,
         externalKey: str(directory.external_key),
+        activeUsers: directory.metadata?.users?.active ?? 0,
+        inactiveUsers: directory.metadata?.users?.inactive ?? 0,
+        groupCount: directory.metadata?.groups ?? 0,
         createdAt,
       },
       resolvedOutputs: { directoryId: id },
@@ -812,6 +1032,7 @@ export class WorkosClient implements PluginClient {
         description: str(role.description),
         type: str(role.type),
         permissions: (role.permissions ?? []).join(", "),
+        resourceTypeSlug: str(role.resource_type_slug),
         createdAt,
       },
       resolvedOutputs: { roleSlug: slug },
@@ -855,6 +1076,183 @@ export class WorkosClient implements PluginClient {
     };
   }
 
+  private mapOrganizationDomain(
+    accountId: string,
+    domain: WosOrganizationDomain,
+  ): ResourceInstance {
+    const id = str(domain.id);
+    const createdAt = str(domain.created_at) || new Date().toISOString();
+    const organizationId = str(domain.organization_id);
+    const prefix = str(domain.verification_prefix);
+    const name = str(domain.domain);
+    // DNS verification publishes the token as a TXT record at
+    // `{verification_prefix}.{domain}`.
+    const txtRecordName = prefix && name ? `${prefix}.${name}` : "";
+    const txtRecordValue = str(domain.verification_token);
+    return {
+      id: `${accountId}:organization-domain:${id}`,
+      pluginId: "workos",
+      resourceTypeId: "organization-domain",
+      accountId,
+      displayName: name || id,
+      externalId: id,
+      fields: {
+        domain: name,
+        state: str(domain.state),
+        verificationStrategy: str(domain.verification_strategy),
+        txtRecordName,
+        txtRecordValue,
+        organizationId,
+        createdAt,
+      },
+      resolvedOutputs: { domainId: id, txtRecordName, txtRecordValue },
+      secretStates: [],
+      ...(organizationId
+        ? { parentResourceId: `${accountId}:organization:${organizationId}` }
+        : {}),
+      createdAt,
+      updatedAt: str(domain.updated_at) || createdAt,
+    };
+  }
+
+  private mapOrganizationRole(accountId: string, orgId: string, role: WosRole): ResourceInstance {
+    const slug = str(role.slug);
+    const externalId = `${orgId}/${slug}`;
+    const createdAt = str(role.created_at) || new Date().toISOString();
+    return {
+      id: `${accountId}:organization-role:${externalId}`,
+      pluginId: "workos",
+      resourceTypeId: "organization-role",
+      accountId,
+      displayName: str(role.name) || slug,
+      externalId,
+      fields: {
+        slug,
+        name: str(role.name),
+        description: str(role.description),
+        permissions: (role.permissions ?? []).join(", "),
+        resourceTypeSlug: str(role.resource_type_slug),
+        organizationId: orgId,
+        createdAt,
+      },
+      resolvedOutputs: { roleSlug: slug },
+      secretStates: [],
+      parentResourceId: `${accountId}:organization:${orgId}`,
+      createdAt,
+      updatedAt: str(role.updated_at) || createdAt,
+    };
+  }
+
+  private mapPermission(accountId: string, permission: WosPermission): ResourceInstance {
+    const slug = str(permission.slug);
+    const createdAt = str(permission.created_at) || new Date().toISOString();
+    return {
+      id: `${accountId}:permission:${slug}`,
+      pluginId: "workos",
+      resourceTypeId: "permission",
+      accountId,
+      displayName: str(permission.name) || slug,
+      externalId: slug,
+      fields: {
+        slug,
+        name: str(permission.name),
+        description: str(permission.description),
+        system: permission.system === true,
+        resourceTypeSlug: str(permission.resource_type_slug),
+        createdAt,
+      },
+      resolvedOutputs: { permissionSlug: slug },
+      secretStates: [],
+      createdAt,
+      updatedAt: str(permission.updated_at) || createdAt,
+    };
+  }
+
+  private mapApiKey(accountId: string, orgId: string, key: WosApiKey): ResourceInstance {
+    const id = str(key.id);
+    const externalId = `${orgId}/${id}`;
+    const createdAt = str(key.created_at) || new Date().toISOString();
+    return {
+      id: `${accountId}:organization-api-key:${externalId}`,
+      pluginId: "workos",
+      resourceTypeId: "organization-api-key",
+      accountId,
+      displayName: str(key.name) || str(key.obfuscated_value) || id,
+      externalId,
+      fields: {
+        name: str(key.name),
+        obfuscatedValue: str(key.obfuscated_value),
+        permissions: (key.permissions ?? []).join(", "),
+        lastUsedAt: str(key.last_used_at),
+        expiresAt: str(key.expires_at),
+        organizationId: orgId,
+        createdAt,
+      },
+      resolvedOutputs: { apiKeyId: id },
+      secretStates: [],
+      parentResourceId: `${accountId}:organization:${orgId}`,
+      createdAt,
+      updatedAt: str(key.updated_at) || createdAt,
+    };
+  }
+
+  private mapFeatureFlag(accountId: string, flag: WosFeatureFlag): ResourceInstance {
+    const slug = str(flag.slug);
+    const createdAt = str(flag.created_at) || new Date().toISOString();
+    const owner = flag.owner
+      ? [str(flag.owner.first_name), str(flag.owner.last_name)].filter(Boolean).join(" ") ||
+        str(flag.owner.email)
+      : "";
+    return {
+      id: `${accountId}:feature-flag:${slug}`,
+      pluginId: "workos",
+      resourceTypeId: "feature-flag",
+      accountId,
+      displayName: str(flag.name) || slug,
+      externalId: slug,
+      fields: {
+        slug,
+        name: str(flag.name),
+        description: str(flag.description),
+        enabled: flag.enabled === true,
+        defaultValue: flag.default_value === true,
+        tags: (flag.tags ?? []).join(", "),
+        owner,
+        createdAt,
+      },
+      resolvedOutputs: { flagSlug: slug },
+      secretStates: [],
+      createdAt,
+      updatedAt: str(flag.updated_at) || createdAt,
+    };
+  }
+
+  private mapGroup(accountId: string, group: WosGroup): ResourceInstance {
+    const id = str(group.id);
+    const orgId = str(group.organization_id);
+    const externalId = `${orgId}/${id}`;
+    const createdAt = str(group.created_at) || new Date().toISOString();
+    return {
+      id: `${accountId}:group:${externalId}`,
+      pluginId: "workos",
+      resourceTypeId: "group",
+      accountId,
+      displayName: str(group.name) || id,
+      externalId,
+      fields: {
+        name: str(group.name),
+        description: str(group.description),
+        organizationId: orgId,
+        createdAt,
+      },
+      resolvedOutputs: { groupId: id },
+      secretStates: [],
+      ...(orgId ? { parentResourceId: `${accountId}:organization:${orgId}` } : {}),
+      createdAt,
+      updatedAt: str(group.updated_at) || createdAt,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Dashboard stats
   // -------------------------------------------------------------------------
@@ -891,6 +1289,18 @@ export class WorkosClient implements PluginClient {
     }
 
     if (resourceTypeId === "directory") {
+      // The directory carries its own sync counts; page through users and
+      // groups only when an older response lacks them.
+      const directory = await this.fetch<WosDirectory>(
+        `/directories/${encodeURIComponent(id)}`,
+      ).catch(() => undefined);
+      if (directory?.metadata) {
+        return [
+          { label: "Active Users", value: String(directory.metadata.users?.active ?? 0) },
+          { label: "Inactive Users", value: String(directory.metadata.users?.inactive ?? 0) },
+          { label: "Synced Groups", value: String(directory.metadata.groups ?? 0) },
+        ];
+      }
       const [users, groups] = await Promise.all([
         this.paginate<WosDirectoryUser>("/directory_users", { directory: id }).catch(
           () => [] as WosDirectoryUser[],
@@ -1026,12 +1436,123 @@ export class WorkosClient implements PluginClient {
             {
               key: "events",
               label: "Events",
-              kind: "string-list",
+              kind: "policy-picker",
               required: true,
-              addLabel: "+ Add event",
-              description:
-                "Event types to subscribe to, e.g. user.created, invitation.accepted, dsync.user.updated, connection.activated. Full list: workos.com/docs/events.",
+              policies: WEBHOOK_EVENTS.map((event) => ({
+                id: event,
+                label: event,
+                category: event.split(".")[0] ?? event,
+              })),
+              description: "Event types WorkOS delivers to this endpoint.",
             },
+          ],
+        };
+      case "organization-domain":
+        return {
+          fields: [
+            ...(await this.organizationPickerField(parentResourceId)),
+            {
+              key: "domain",
+              label: "Domain",
+              kind: "text",
+              required: true,
+              placeholder: "example.com",
+              description:
+                "Added as pending. Publish the TXT record the domain page shows, then choose Verify.",
+            },
+          ],
+        };
+      case "organization-role":
+        return {
+          fields: [
+            ...(await this.organizationPickerField(parentResourceId)),
+            {
+              key: "name",
+              label: "Name",
+              kind: "text",
+              required: true,
+              placeholder: "Billing admin",
+            },
+            {
+              key: "slug",
+              label: "Slug",
+              kind: "text",
+              required: false,
+              placeholder: "org-billing-admin",
+              description:
+                "Optional. Must start with org- and use lowercase letters, numbers, hyphens and underscores. Generated from the name when blank.",
+            },
+            { key: "description", label: "Description", kind: "text", required: false },
+            {
+              key: "permissions",
+              label: "Permissions",
+              kind: "policy-picker",
+              required: false,
+              policies: await this.permissionOptions(),
+            },
+          ],
+        };
+      case "permission":
+        return {
+          fields: [
+            {
+              key: "slug",
+              label: "Slug",
+              kind: "text",
+              required: true,
+              placeholder: "invoices:read",
+              description:
+                "Lowercase letters, numbers, hyphens, underscores, colons, periods and asterisks.",
+            },
+            {
+              key: "name",
+              label: "Name",
+              kind: "text",
+              required: true,
+              placeholder: "Read invoices",
+            },
+            { key: "description", label: "Description", kind: "text", required: false },
+          ],
+        };
+      case "organization-api-key":
+        return {
+          fields: [
+            ...(await this.organizationPickerField(parentResourceId)),
+            {
+              key: "name",
+              label: "Name",
+              kind: "text",
+              required: true,
+              placeholder: "CI pipeline",
+            },
+            {
+              key: "permissions",
+              label: "Permissions",
+              kind: "policy-picker",
+              required: false,
+              policies: await this.permissionOptions(),
+            },
+            {
+              key: "expiresAt",
+              label: "Expires",
+              kind: "datetime",
+              required: false,
+              description: "Optional. Leave empty for a key that does not expire.",
+            },
+          ],
+        };
+      case "group":
+        return {
+          fields: [
+            ...(await this.organizationPickerField(parentResourceId)),
+            {
+              key: "name",
+              label: "Name",
+              kind: "text",
+              required: true,
+              placeholder: "Engineering",
+            },
+            { key: "description", label: "Description", kind: "text", required: false },
           ],
         };
       default:
@@ -1093,6 +1614,21 @@ export class WorkosClient implements PluginClient {
       options,
       description: "Leave unset for the organization's default role.",
     };
+  }
+
+  /** Every permission in the environment, as policy-picker options. */
+  private async permissionOptions(): Promise<PolicyOption[]> {
+    const permissions = await this.paginate<WosPermission>("/authorization/permissions").catch(
+      () => [] as WosPermission[],
+    );
+    return permissions
+      .filter((permission) => permission.slug)
+      .map((permission) => ({
+        id: str(permission.slug),
+        label: str(permission.name) || str(permission.slug),
+        description: str(permission.slug),
+        category: permission.system ? "System" : "Custom",
+      }));
   }
 
   /**
@@ -1199,10 +1735,7 @@ export class WorkosClient implements PluginClient {
         return this.mapRole(accountId, role);
       }
       case "webhook-endpoint": {
-        const events = (fields["events"] ?? "")
-          .split(",")
-          .map((event) => event.trim())
-          .filter(Boolean);
+        const events = pickedList(fields["events"]);
         if (events.length === 0) {
           throw new Error("WorkOS plugin: at least one event type is required");
         }
@@ -1211,6 +1744,96 @@ export class WorkosClient implements PluginClient {
           body: JSON.stringify({ endpoint_url: fields["endpointUrl"], events }),
         });
         return this.mapWebhookEndpoint(accountId, endpoint);
+      }
+      case "organization-domain": {
+        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+        const domain = (fields["domain"] ?? "").trim().toLowerCase();
+        if (!domain) throw new Error("WorkOS plugin: a domain is required");
+        const created = await this.fetch<WosOrganizationDomain>("/organization_domains", {
+          method: "POST",
+          body: JSON.stringify({ domain, organization_id: organizationId }),
+        });
+        return this.mapOrganizationDomain(accountId, created);
+      }
+      case "organization-role": {
+        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+        const slug = (fields["slug"] ?? "").trim();
+        if (slug && !/^org-[a-z0-9_-]+$/.test(slug)) {
+          throw new Error(
+            "WorkOS plugin: organization role slugs start with org- and use lowercase letters, numbers, hyphens and underscores",
+          );
+        }
+        const base = `/authorization/organizations/${encodeURIComponent(organizationId)}/roles`;
+        let role = await this.fetch<WosRole>(base, {
+          method: "POST",
+          body: JSON.stringify({
+            name: fields["name"],
+            ...(slug ? { slug } : {}),
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+          }),
+        });
+        const permissions = pickedList(fields["permissions"]);
+        if (permissions.length > 0) {
+          role = await this.fetch<WosRole>(
+            `${base}/${encodeURIComponent(str(role.slug))}/permissions`,
+            { method: "PUT", body: JSON.stringify({ permissions }) },
+          );
+        }
+        return this.mapOrganizationRole(accountId, organizationId, role);
+      }
+      case "permission": {
+        const slug = (fields["slug"] ?? "").trim();
+        if (!/^[a-z0-9_.:*-]+$/.test(slug)) {
+          throw new Error(
+            "WorkOS plugin: permission slugs use lowercase letters, numbers, hyphens, underscores, colons, periods and asterisks",
+          );
+        }
+        const permission = await this.fetch<WosPermission>("/authorization/permissions", {
+          method: "POST",
+          body: JSON.stringify({
+            slug,
+            name: fields["name"],
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+          }),
+        });
+        return this.mapPermission(accountId, permission);
+      }
+      case "organization-api-key": {
+        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+        const permissions = pickedList(fields["permissions"]);
+        const expiresAt = (fields["expiresAt"] ?? "").trim();
+        if (expiresAt && !(Date.parse(expiresAt) > Date.now())) {
+          throw new Error("WorkOS plugin: the expiry must be in the future");
+        }
+        const key = await this.fetch<WosApiKey>(
+          `/organizations/${encodeURIComponent(organizationId)}/api_keys`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              name: fields["name"],
+              ...(permissions.length > 0 ? { permissions } : {}),
+              ...(expiresAt ? { expires_at: new Date(expiresAt).toISOString() } : {}),
+            }),
+          },
+        );
+        const created = this.mapApiKey(accountId, organizationId, key);
+        // The full value is returned on this response only.
+        if (key.value) created.resolvedOutputs = { ...created.resolvedOutputs, apiKey: key.value };
+        return created;
+      }
+      case "group": {
+        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+        const group = await this.fetch<WosGroup>(
+          `/organizations/${encodeURIComponent(organizationId)}/groups`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              name: fields["name"],
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+            }),
+          },
+        );
+        return this.mapGroup(accountId, { organization_id: organizationId, ...group });
       }
       default:
         throw new Error(`WorkOS plugin: cannot create resource type "${typeId}"`);
@@ -1232,7 +1855,12 @@ export class WorkosClient implements PluginClient {
       case "organization": {
         const org = await this.fetch<WosOrganization>(`/organizations/${encodeURIComponent(id)}`, {
           method: "PUT",
-          body: JSON.stringify({ ...(fields["name"] ? { name: fields["name"] } : {}) }),
+          body: JSON.stringify({
+            ...(fields["name"] ? { name: fields["name"] } : {}),
+            ...(fields["externalId"] !== undefined
+              ? { external_id: fields["externalId"].trim() || null }
+              : {}),
+          }),
         });
         return this.mapOrganization(accountId, org);
       }
@@ -1244,6 +1872,10 @@ export class WorkosClient implements PluginClient {
         if (fields["emailVerified"] !== undefined) {
           body["email_verified"] = fields["emailVerified"] === "true";
         }
+        if (fields["externalId"] !== undefined) {
+          body["external_id"] = fields["externalId"].trim() || null;
+        }
+        if (fields["locale"] !== undefined) body["locale"] = fields["locale"].trim() || null;
         const user = await this.fetch<WosUser>(`/user_management/users/${encodeURIComponent(id)}`, {
           method: "PUT",
           body: JSON.stringify(body),
@@ -1272,11 +1904,90 @@ export class WorkosClient implements PluginClient {
         const body: Record<string, unknown> = {};
         if (fields["endpointUrl"] !== undefined) body["endpoint_url"] = fields["endpointUrl"];
         if (fields["status"] !== undefined) body["status"] = fields["status"];
+        if (fields["events"] !== undefined) {
+          const events = pickedList(fields["events"]);
+          const unknown = events.filter((event) => !WEBHOOK_EVENTS.includes(event));
+          if (unknown.length > 0) {
+            throw new Error(`WorkOS plugin: unknown webhook events: ${unknown.join(", ")}`);
+          }
+          if (events.length === 0) {
+            throw new Error("WorkOS plugin: at least one event type is required");
+          }
+          body["events"] = events;
+        }
         const endpoint = await this.fetch<WosWebhookEndpoint>(
           `/webhook_endpoints/${encodeURIComponent(id)}`,
           { method: "PATCH", body: JSON.stringify(body) },
         );
         return this.mapWebhookEndpoint(accountId, endpoint);
+      }
+      case "connection": {
+        const connection = await this.fetch<WosConnection>(
+          `/connections/${encodeURIComponent(id)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ ...(fields["name"] ? { name: fields["name"] } : {}) }),
+          },
+        );
+        return this.mapConnection(accountId, connection);
+      }
+      case "organization-role": {
+        const [orgId, slug] = orgScoped(id);
+        const role = await this.fetch<WosRole>(
+          `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+              ...(fields["description"] !== undefined
+                ? { description: fields["description"] || null }
+                : {}),
+            }),
+          },
+        );
+        return this.mapOrganizationRole(accountId, orgId, role);
+      }
+      case "permission": {
+        const permission = await this.fetch<WosPermission>(
+          `/authorization/permissions/${encodeURIComponent(id)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+              ...(fields["description"] !== undefined
+                ? { description: fields["description"] || null }
+                : {}),
+            }),
+          },
+        );
+        return this.mapPermission(accountId, permission);
+      }
+      case "feature-flag": {
+        if (fields["enabled"] !== undefined) {
+          const action = fields["enabled"] === "true" ? "enable" : "disable";
+          const flag = await this.fetch<WosFeatureFlag>(
+            `/feature-flags/${encodeURIComponent(id)}/${action}`,
+            { method: "PUT" },
+          );
+          return this.mapFeatureFlag(accountId, flag);
+        }
+        return this.getResource(typeId, resourceId, accountId);
+      }
+      case "group": {
+        const [orgId, groupId] = orgScoped(id);
+        const group = await this.fetch<WosGroup>(
+          `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+              ...(fields["description"] !== undefined
+                ? { description: fields["description"] || null }
+                : {}),
+            }),
+          },
+        );
+        return this.mapGroup(accountId, group);
       }
       default:
         throw new Error(`WorkOS plugin: cannot update resource type "${typeId}"`);
@@ -1308,6 +2019,28 @@ export class WorkosClient implements PluginClient {
         return this.requestVoid(`/directories/${id}`, "DELETE");
       case "webhook-endpoint":
         return this.requestVoid(`/webhook_endpoints/${id}`, "DELETE");
+      case "organization-domain":
+        return this.requestVoid(`/organization_domains/${id}`, "DELETE");
+      case "permission":
+        return this.requestVoid(`/authorization/permissions/${id}`, "DELETE");
+      case "organization-role": {
+        const [orgId, slug] = orgScoped(externalIdOf(resourceId));
+        return this.requestVoid(
+          `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
+          "DELETE",
+        );
+      }
+      case "organization-api-key": {
+        const [, keyId] = orgScoped(externalIdOf(resourceId));
+        return this.requestVoid(`/api_keys/${encodeURIComponent(keyId)}`, "DELETE");
+      }
+      case "group": {
+        const [orgId, groupId] = orgScoped(externalIdOf(resourceId));
+        return this.requestVoid(
+          `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
+          "DELETE",
+        );
+      }
       default:
         throw new Error(`WorkOS plugin: cannot delete resource type "${typeId}"`);
     }
@@ -1353,7 +2086,252 @@ export class WorkosClient implements PluginClient {
       }
     }
 
+    if (typeId === "directory" && actionId === "sync") {
+      // Queues an asynchronous sync; 202 means accepted, not finished.
+      await this.fetch<{ status?: string }>(`/directories/${id}/sync`, { method: "POST" });
+      return;
+    }
+
+    if (typeId === "organization-domain" && actionId === "verify") {
+      await this.fetch<WosOrganizationDomain>(`/organization_domains/${id}/verify`, {
+        method: "POST",
+      });
+      return;
+    }
+
+    if (typeId === "organization-api-key" && actionId === "expire") {
+      const [, keyId] = orgScoped(externalIdOf(resourceId));
+      // No `expires_at` expires the key immediately.
+      await this.fetch<WosApiKey>(`/api_keys/${encodeURIComponent(keyId)}/expire`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      return;
+    }
+
+    if (typeId === "feature-flag" && (actionId === "enable" || actionId === "disable")) {
+      await this.fetch<WosFeatureFlag>(`/feature-flags/${id}/${actionId}`, { method: "PUT" });
+      return;
+    }
+
+    if (typeId === "user") {
+      if (actionId === "send-verification-email") {
+        await this.fetch<unknown>(`/user_management/users/${id}/email_verification/send`, {
+          method: "POST",
+        });
+        return;
+      }
+      if (actionId === "revoke-sessions") {
+        const sessions = await this.paginate<WosSession>(`/user_management/users/${id}/sessions`);
+        const active = sessions.filter((session) => session.status === "active" && session.id);
+        for (const session of active) {
+          await this.fetch<unknown>("/user_management/sessions/revoke", {
+            method: "POST",
+            body: JSON.stringify({ session_id: session.id }),
+          });
+        }
+        return;
+      }
+    }
+
     throw new Error(`WorkOS plugin: unknown action "${actionId}" for type "${typeId}"`);
+  }
+
+  /**
+   * Form-driven actions: role permission sets, feature flag targets and group
+   * membership. Form values arrive JSON-encoded in `args[0]`.
+   */
+  async executeNoSqlCommand(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    command: string,
+    args: (string | number)[],
+  ): Promise<unknown> {
+    const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+    const id = externalIdOf(resourceId);
+
+    if (command === "set-permissions" && (typeId === "role" || typeId === "organization-role")) {
+      const permissions = pickedList(values["permissions"]);
+      const path =
+        typeId === "role"
+          ? `/authorization/roles/${encodeURIComponent(id)}/permissions`
+          : (() => {
+              const [orgId, slug] = orgScoped(id);
+              return `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}/permissions`;
+            })();
+      return this.fetch<WosRole>(path, { method: "PUT", body: JSON.stringify({ permissions }) });
+    }
+
+    if (typeId === "feature-flag" && (command === "add-target" || command === "remove-target")) {
+      const target = values["target"] ?? "";
+      // Targets are organizations or users, addressed by their own ids.
+      if (!/^(org|user)_[A-Za-z0-9]+$/.test(target)) {
+        throw new Error("WorkOS plugin: choose an organization or user to target");
+      }
+      const path = `/feature-flags/${encodeURIComponent(id)}/targets/${encodeURIComponent(target)}`;
+      if (command === "add-target") {
+        await this.requestVoid(path, "POST");
+      } else {
+        await this.requestVoid(path, "DELETE");
+      }
+      return { ok: true };
+    }
+
+    if (typeId === "group" && (command === "add-member" || command === "remove-member")) {
+      const [orgId, groupId] = orgScoped(id);
+      const membershipId = values["membershipId"] ?? "";
+      if (!membershipId) throw new Error("WorkOS plugin: choose a member");
+      const base = `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}/organization-memberships`;
+      if (command === "add-member") {
+        return this.fetch<WosGroup>(base, {
+          method: "POST",
+          body: JSON.stringify({ organization_membership_id: membershipId }),
+        });
+      }
+      await this.requestVoid(`${base}/${encodeURIComponent(membershipId)}`, "DELETE");
+      return { ok: true };
+    }
+
+    throw new Error(`WorkOS plugin: unknown command "${command}" for type "${typeId}"`);
+  }
+
+  /** Admin Portal links for an organization, minted fresh and shown once. */
+  async exportCredential(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    formatId: string,
+  ): Promise<CredentialExport> {
+    const intents = [
+      "sso",
+      "dsync",
+      "domain_verification",
+      "certificate_renewal",
+      "audit_logs",
+      "log_streams",
+      "bring_your_own_key",
+    ];
+    const intent = formatId.replace(/^portal-/, "");
+    if (typeId !== "organization" || !formatId.startsWith("portal-") || !intents.includes(intent)) {
+      throw new Error(`WorkOS plugin: unknown credential format "${formatId}"`);
+    }
+    const organization = externalIdOf(resourceId);
+    const body = await this.fetch<{ link?: string }>("/portal/generate_link", {
+      method: "POST",
+      body: JSON.stringify({ organization, intent }),
+    });
+    const link = str(body.link);
+    if (!link) throw new Error("WorkOS plugin: WorkOS returned no Admin Portal link");
+    return {
+      content: link,
+      filename: `${organization}-admin-portal-${intent}.txt`,
+      mimeType: "text/plain",
+      fields: [
+        { label: "Admin Portal link", value: link, sensitive: true, hint: "Expires in 5 minutes" },
+      ],
+      warning:
+        "Send this link to the organization's IT admin now. Anyone holding it can configure the organization until it expires five minutes after creation.",
+    };
+  }
+
+  /** Recent WorkOS events for an organization (the Events API). */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    if (typeId !== "organization") throw new Error("WorkOS plugin: only organizations have logs");
+    const organizationId = externalIdOf(resourceId);
+    const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 100);
+    const query = new URLSearchParams({
+      organization_id: organizationId,
+      limit: String(limit),
+      order: "desc",
+    });
+    // `events` is required and repeats per value.
+    for (const event of ORGANIZATION_LOG_EVENTS) query.append("events", event);
+    const body = await this.fetch<WosList<WosEvent>>(`/events?${query.toString()}`);
+    const lines = (body.data ?? []).reverse().map((event) => {
+      const data = event.data ?? {};
+      const subject =
+        str(data["email"]) || str(data["name"]) || str(data["domain"]) || str(data["id"]);
+      const actor = event.context?.actor;
+      const by = actor ? ` by ${str(actor.name) || str(actor.id)} (${str(actor.source)})` : "";
+      return `${str(event.created_at)} ${str(event.event)} ${subject}${by}`.trim();
+    });
+    return {
+      text: lines.map((line) => `${line}\n`).join(""),
+      containers: ["events"],
+      activeContainer: "events",
+    };
+  }
+
+  /**
+   * Load what the synchronous detail views need beyond the synced record:
+   * picker options for form actions and a user's sessions.
+   */
+  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    const id = externalIdOf(resource.id);
+    const extra: Record<string, string> = {};
+    switch (resource.resourceTypeId) {
+      case "role":
+      case "organization-role":
+        extra["__permissionOptions__"] = JSON.stringify(await this.permissionOptions());
+        break;
+      case "feature-flag": {
+        const [orgs, users] = await Promise.all([
+          this.fetchOrganizations().catch(() => [] as WosOrganization[]),
+          this.paginate<WosUser>("/user_management/users").catch(() => [] as WosUser[]),
+        ]);
+        extra["__targets__"] = JSON.stringify([
+          ...orgs.map((org) => ({
+            id: str(org.id),
+            label: `Organization: ${str(org.name) || str(org.id)}`,
+          })),
+          ...users.map((user) => ({
+            id: str(user.id),
+            label: `User: ${str(user.email) || str(user.id)}`,
+          })),
+        ]);
+        break;
+      }
+      case "group": {
+        const [orgId, groupId] = orgScoped(id);
+        const [members, memberships, emails] = await Promise.all([
+          this.paginate<WosMembership>(
+            `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}/organization-memberships`,
+          ).catch(() => [] as WosMembership[]),
+          this.paginate<WosMembership>("/user_management/organization_memberships", {
+            organization_id: orgId,
+          }).catch(() => [] as WosMembership[]),
+          this.fetchUserEmailMap(),
+        ]);
+        const label = (m: WosMembership) =>
+          emails.get(str(m.user_id)) || str(m.user_id) || str(m.id);
+        const memberIds = new Set(members.map((m) => str(m.id)));
+        extra["__members__"] = JSON.stringify(
+          members.map((m) => ({ id: str(m.id), label: label(m), status: str(m.status) })),
+        );
+        extra["__candidates__"] = JSON.stringify(
+          memberships
+            .filter((m) => m.id && !memberIds.has(str(m.id)))
+            .map((m) => ({ id: str(m.id), label: label(m) })),
+        );
+        break;
+      }
+      case "user": {
+        const sessions = await this.paginate<WosSession>(
+          `/user_management/users/${encodeURIComponent(id)}/sessions`,
+        ).catch(() => [] as WosSession[]);
+        extra["__sessions__"] = JSON.stringify(sessions.slice(0, 50));
+        break;
+      }
+      default:
+        return resource;
+    }
+    return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
   }
 
   // -------------------------------------------------------------------------
@@ -1382,6 +2360,18 @@ export class WorkosClient implements PluginClient {
         return this.renderRoleDetail(resource);
       case "webhook-endpoint":
         return this.renderWebhookEndpointDetail(resource);
+      case "organization-domain":
+        return this.renderOrganizationDomainDetail(resource);
+      case "organization-role":
+        return this.renderRoleDetail(resource);
+      case "permission":
+        return this.renderPermissionDetail(resource);
+      case "organization-api-key":
+        return this.renderApiKeyDetail(resource);
+      case "feature-flag":
+        return this.renderFeatureFlagDetail(resource);
+      case "group":
+        return this.renderGroupDetail(resource);
       default:
         return {
           title: resource.displayName,
@@ -1423,6 +2413,15 @@ export class WorkosClient implements PluginClient {
         break;
       case "webhook-endpoint":
         status = fields["status"] === "enabled" ? "healthy" : "degraded";
+        break;
+      case "organization-domain":
+        status = domainStateDot(String(fields["state"] ?? ""));
+        break;
+      case "organization-api-key":
+        status = this.apiKeyStatus(resource);
+        break;
+      case "feature-flag":
+        status = fields["enabled"] === true ? "healthy" : "degraded";
         break;
       default:
         status = "info";
@@ -1489,6 +2488,7 @@ export class WorkosClient implements PluginClient {
       subtitle: "WorkOS organization",
       status: { kind: "status-dot", status: "healthy" },
       sections,
+      logs: { defaultTailLines: 100 },
       headerActions: [
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
         {
@@ -1531,15 +2531,91 @@ export class WorkosClient implements PluginClient {
                 },
                 { key: "Email Verified", value: verified ? "Yes" : "No" },
                 { key: "External ID", value: String(fields["externalId"] ?? "") || "—" },
+                { key: "Locale", value: String(fields["locale"] ?? "") || "—" },
                 { key: "Last Sign-In", value: String(fields["lastSignInAt"] ?? "") || "Never" },
                 { key: "Created", value: String(fields["createdAt"] ?? "") || "—" },
               ],
             },
           ],
         },
+        ...this.sessionSections(resource),
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        ...(verified
+          ? []
+          : [
+              {
+                kind: "action" as const,
+                label: "Send verification email",
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "send-verification-email",
+                  successMessage: "Verification email sent.",
+                },
+              },
+            ]),
+        {
+          kind: "action",
+          label: "Sign out everywhere",
+          variant: "danger",
+          action: {
+            type: "plugin-action",
+            actionId: "revoke-sessions",
+            confirmMessage:
+              "Revoke every active session for this user? They are signed out of every device and must sign in again.",
+            successMessage: "Sessions revoked.",
+          },
+        },
+      ],
     };
+  }
+
+  private sessionSections(resource: ResourceInstance): DetailViewSchema["sections"] {
+    const sessions = this.stashed<WosSession[]>(resource, "__sessions__", []);
+    if (sessions.length === 0) return [];
+    return [
+      {
+        kind: "section",
+        title: `Sessions (${sessions.length})`,
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "status", label: "Status", width: "narrow" },
+              { key: "method", label: "Method" },
+              { key: "ip", label: "IP address", mono: true },
+              { key: "agent", label: "User agent" },
+              { key: "created", label: "Started" },
+              { key: "expires", label: "Expires" },
+            ],
+            rows: sessions.map((session) => ({
+              cells: {
+                status: str(session.status),
+                method: session.impersonator
+                  ? `impersonation by ${str(session.impersonator.email)}`
+                  : str(session.auth_method),
+                ip: str(session.ip_address),
+                agent: str(session.user_agent),
+                created: str(session.created_at),
+                expires: str(session.ended_at) || str(session.expires_at),
+              },
+            })),
+          },
+        ],
+      },
+    ];
+  }
+
+  /** Read a JSON value `enrichDetail` stashed in `resolvedOutputs`. */
+  private stashed<T>(resource: ResourceInstance, key: string, fallback: T): T {
+    const raw = resource.resolvedOutputs[key];
+    if (!raw) return fallback;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return fallback;
+    }
   }
 
   private renderMembershipDetail(resource: ResourceInstance): DetailViewSchema {
@@ -1598,6 +2674,7 @@ export class WorkosClient implements PluginClient {
                   copyable: true,
                 },
                 { key: "Role", value: String(fields["role"] ?? "") || "—" },
+                { key: "All Roles", value: String(fields["roles"] ?? "") || "—" },
                 { key: "Status", value: status || "—" },
                 { key: "Directory Managed", value: directoryManaged ? "Yes" : "No" },
                 { key: "Created", value: String(fields["createdAt"] ?? "") || "—" },
@@ -1719,7 +2796,7 @@ export class WorkosClient implements PluginClient {
             {
               kind: "text",
               content:
-                "Connections are configured through the WorkOS dashboard or an Admin Portal session — the API only lists, inspects and deletes them.",
+                "Set up and reconfigure connections through the organization's Admin Portal link (Get credentials on the organization) or the WorkOS dashboard. Rename or delete them here.",
               variant: "muted",
             },
           ],
@@ -1761,6 +2838,9 @@ export class WorkosClient implements PluginClient {
                   copyable: true,
                 },
                 { key: "External Key", value: String(fields["externalKey"] ?? "") || "—" },
+                { key: "Active Users", value: String(fields["activeUsers"] ?? 0) },
+                { key: "Inactive Users", value: String(fields["inactiveUsers"] ?? 0) },
+                { key: "Groups", value: String(fields["groupCount"] ?? 0) },
                 { key: "Created", value: String(fields["createdAt"] ?? "") || "—" },
               ],
             },
@@ -1778,6 +2858,19 @@ export class WorkosClient implements PluginClient {
       ],
       headerActions: [
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        ...(state === "linked"
+          ? [
+              {
+                kind: "action" as const,
+                label: "Sync now",
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "sync",
+                  successMessage: "Sync queued. Changes arrive as the provider responds.",
+                },
+              },
+            ]
+          : []),
         {
           kind: "action",
           label: "Open Dashboard",
@@ -1900,12 +2993,405 @@ export class WorkosClient implements PluginClient {
       });
     }
 
+    const options = this.stashed<PolicyOption[]>(resource, "__permissionOptions__", []);
+    const headerActions: DetailViewSchema["headerActions"] = [
+      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+    ];
+    if (options.length > 0) {
+      headerActions.push({
+        kind: "action",
+        label: "Edit permissions…",
+        action: {
+          type: "prompt-nosql-command",
+          command: "set-permissions",
+          title: "Role permissions",
+          description:
+            "Replaces the role's permissions with this selection. Everyone holding the role is affected immediately.",
+          fields: [
+            {
+              key: "permissions",
+              label: "Permissions",
+              kind: "policy-picker",
+              required: false,
+              policies: options,
+              defaultValue: JSON.stringify(permissions),
+            },
+          ],
+          submitLabel: "Save permissions",
+        },
+      });
+    }
+
     return {
       title: resource.displayName,
-      subtitle: "WorkOS role",
+      subtitle:
+        resource.resourceTypeId === "organization-role"
+          ? "WorkOS organization role"
+          : "WorkOS role",
       status: { kind: "status-dot", status: "info" },
       sections,
+      headerActions,
+    };
+  }
+
+  private apiKeyStatus(resource: ResourceInstance): ResourceStatus {
+    const expiresAt = Date.parse(String(resource.fields["expiresAt"] ?? ""));
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return "error";
+    return "healthy";
+  }
+
+  private kv(
+    resource: ResourceInstance,
+    rows: Array<[string, string]>,
+  ): DetailViewSchema["sections"][number]["children"][number] {
+    return {
+      kind: "key-value-list",
+      items: rows.map(([label, key]) => ({
+        key: label,
+        value:
+          typeof resource.fields[key] === "boolean"
+            ? resource.fields[key]
+              ? "Yes"
+              : "No"
+            : String(resource.fields[key] ?? "") || "—",
+      })),
+    };
+  }
+
+  private renderOrganizationDomainDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const state = String(fields["state"] ?? "");
+    const verified = state === "verified" || state === "legacy_verified";
+    const txtName = String(fields["txtRecordName"] ?? "");
+    const txtValue = String(fields["txtRecordValue"] ?? "");
+    return {
+      title: resource.displayName,
+      subtitle: `Organization domain · ${state || "unknown"}`,
+      status: { kind: "status-dot", status: domainStateDot(state) },
+      sections: [
+        {
+          kind: "section",
+          title: "Domain",
+          children: [
+            this.kv(resource, [
+              ["Domain", "domain"],
+              ["State", "state"],
+              ["Verification", "verificationStrategy"],
+              ["Organization ID", "organizationId"],
+              ["Created", "createdAt"],
+            ]),
+          ],
+        },
+        ...(!verified && txtName && txtValue
+          ? [
+              {
+                kind: "section" as const,
+                title: "DNS verification",
+                children: [
+                  {
+                    kind: "text" as const,
+                    content: "Publish this TXT record at your DNS provider, then choose Verify.",
+                  },
+                  {
+                    kind: "key-value-list" as const,
+                    items: [
+                      { key: "Type", value: "TXT" },
+                      { key: "Name", value: txtName, copyable: true },
+                      { key: "Value", value: txtValue, copyable: true },
+                    ],
+                  },
+                ],
+              },
+            ]
+          : []),
+      ],
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        ...(!verified
+          ? [
+              {
+                kind: "action" as const,
+                label: "Verify",
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "verify",
+                  successMessage: "Verification requested. Refresh to see the result.",
+                },
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
+  private renderPermissionDetail(resource: ResourceInstance): DetailViewSchema {
+    const system = resource.fields["system"] === true;
+    return {
+      title: resource.displayName,
+      subtitle: "WorkOS permission",
+      status: { kind: "status-dot", status: "info" },
+      sections: [
+        {
+          kind: "section",
+          title: "Permission",
+          children: [
+            this.kv(resource, [
+              ["Slug", "slug"],
+              ["Name", "name"],
+              ["Description", "description"],
+              ["Resource type", "resourceTypeSlug"],
+              ["System", "system"],
+              ["Created", "createdAt"],
+            ]),
+            ...(system
+              ? [
+                  {
+                    kind: "text" as const,
+                    variant: "muted" as const,
+                    content: "WorkOS manages system permissions; they cannot be deleted.",
+                  },
+                ]
+              : []),
+          ],
+        },
+      ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderApiKeyDetail(resource: ResourceInstance): DetailViewSchema {
+    const status = this.apiKeyStatus(resource);
+    return {
+      title: resource.displayName,
+      subtitle: "Organization API key",
+      status: {
+        kind: "status-dot",
+        status,
+        label: status === "error" ? "Expired" : "Active",
+      },
+      sections: [
+        {
+          kind: "section",
+          title: "API Key",
+          children: [
+            this.kv(resource, [
+              ["Name", "name"],
+              ["Key", "obfuscatedValue"],
+              ["Permissions", "permissions"],
+              ["Last used", "lastUsedAt"],
+              ["Expires", "expiresAt"],
+              ["Organization ID", "organizationId"],
+              ["Created", "createdAt"],
+            ]),
+            {
+              kind: "text",
+              variant: "muted",
+              content:
+                "The full key is only returned when it is created; it is kept as the sensitive apiKey output of keys created here.",
+            },
+          ],
+        },
+      ],
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        ...(status !== "error"
+          ? [
+              {
+                kind: "action" as const,
+                label: "Expire now",
+                variant: "danger" as const,
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "expire",
+                  confirmMessage:
+                    "Expire this API key now? Requests using it start failing immediately.",
+                  successMessage: "API key expired.",
+                },
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
+  private renderFeatureFlagDetail(resource: ResourceInstance): DetailViewSchema {
+    const enabled = resource.fields["enabled"] === true;
+    const targets = this.stashed<Array<{ id: string; label: string }>>(resource, "__targets__", []);
+    const targetField = {
+      key: "target",
+      label: "Organization or user",
+      kind: "select" as const,
+      required: true,
+      options: targets,
+      ...(targets[0] ? { defaultValue: targets[0].id } : {}),
+    };
+    return {
+      title: resource.displayName,
+      subtitle: `Feature flag · ${String(resource.fields["slug"] ?? "")}`,
+      status: {
+        kind: "status-dot",
+        status: enabled ? "healthy" : "degraded",
+        label: enabled ? "Enabled" : "Disabled",
+      },
+      sections: [
+        {
+          kind: "section",
+          title: "Flag",
+          children: [
+            this.kv(resource, [
+              ["Slug", "slug"],
+              ["Name", "name"],
+              ["Description", "description"],
+              ["Enabled", "enabled"],
+              ["Default value", "defaultValue"],
+              ["Tags", "tags"],
+              ["Owner", "owner"],
+              ["Created", "createdAt"],
+            ]),
+          ],
+        },
+      ],
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        {
+          kind: "action",
+          label: enabled ? "Disable" : "Enable",
+          ...(enabled ? { variant: "danger" as const } : {}),
+          action: {
+            type: "plugin-action",
+            actionId: enabled ? "disable" : "enable",
+            confirmMessage: enabled
+              ? "Disable this flag? Everyone falls back to its default value."
+              : "Enable this flag in this environment?",
+            successMessage: enabled ? "Flag disabled." : "Flag enabled.",
+          },
+        },
+        ...(targets.length > 0
+          ? [
+              {
+                kind: "action" as const,
+                label: "Add target…",
+                action: {
+                  type: "prompt-nosql-command" as const,
+                  command: "add-target",
+                  title: "Target an organization or user",
+                  fields: [targetField],
+                  submitLabel: "Add target",
+                },
+              },
+              {
+                kind: "action" as const,
+                label: "Remove target…",
+                action: {
+                  type: "prompt-nosql-command" as const,
+                  command: "remove-target",
+                  title: "Stop targeting an organization or user",
+                  fields: [targetField],
+                  submitLabel: "Remove target",
+                  danger: true,
+                },
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
+  private renderGroupDetail(resource: ResourceInstance): DetailViewSchema {
+    const members = this.stashed<Array<{ id: string; label: string; status: string }>>(
+      resource,
+      "__members__",
+      [],
+    );
+    const candidates = this.stashed<Array<{ id: string; label: string }>>(
+      resource,
+      "__candidates__",
+      [],
+    );
+    const headerActions: DetailViewSchema["headerActions"] = [
+      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+    ];
+    if (candidates.length > 0) {
+      headerActions.push({
+        kind: "action",
+        label: "Add member…",
+        action: {
+          type: "prompt-nosql-command",
+          command: "add-member",
+          title: "Add a member to this group",
+          fields: [
+            {
+              key: "membershipId",
+              label: "Member",
+              kind: "select",
+              required: true,
+              options: candidates,
+              defaultValue: candidates[0]!.id,
+            },
+          ],
+          submitLabel: "Add",
+        },
+      });
+    }
+    if (members.length > 0) {
+      headerActions.push({
+        kind: "action",
+        label: "Remove member…",
+        variant: "danger",
+        action: {
+          type: "prompt-nosql-command",
+          command: "remove-member",
+          title: "Remove a member from this group",
+          fields: [
+            {
+              key: "membershipId",
+              label: "Member",
+              kind: "select",
+              required: true,
+              options: members.map(({ id, label }) => ({ id, label })),
+              defaultValue: members[0]!.id,
+            },
+          ],
+          submitLabel: "Remove",
+          danger: true,
+        },
+      });
+    }
+    return {
+      title: resource.displayName,
+      subtitle: "WorkOS group",
+      status: { kind: "status-dot", status: "info" },
+      sections: [
+        {
+          kind: "section",
+          title: "Group",
+          children: [
+            this.kv(resource, [
+              ["Name", "name"],
+              ["Description", "description"],
+              ["Organization ID", "organizationId"],
+              ["Created", "createdAt"],
+            ]),
+          ],
+        },
+        {
+          kind: "section",
+          title: `Members (${members.length})`,
+          children: [
+            members.length > 0
+              ? {
+                  kind: "table",
+                  columns: [
+                    { key: "member", label: "Member" },
+                    { key: "status", label: "Status", width: "narrow" },
+                  ],
+                  rows: members.map((m) => ({ cells: { member: m.label, status: m.status } })),
+                }
+              : { kind: "text", variant: "muted", content: "No members yet." },
+          ],
+        },
+      ],
+      headerActions,
     };
   }
 
