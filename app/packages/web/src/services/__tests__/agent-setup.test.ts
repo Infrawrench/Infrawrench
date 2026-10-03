@@ -38,6 +38,12 @@ vi.mock("@/services/plugin-clients", () => ({
   getClientForAccount: vi.fn().mockResolvedValue(null),
 }));
 
+// Attached-service installs have their own suite (agent-services.test.ts);
+// the real module reaches server-core's DB client through sync-resources.
+vi.mock("@/services/agent-services", () => ({
+  installAgentServices: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/services/encryption", () => ({
   decrypt: vi.fn().mockResolvedValue("PRIVATE-KEY"),
   buildAad: vi.fn().mockReturnValue(Buffer.from("aad")),

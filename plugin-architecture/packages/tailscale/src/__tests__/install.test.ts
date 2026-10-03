@@ -74,6 +74,12 @@ describe("Tailscale enrollment", () => {
     expect(api.createKey).not.toHaveBeenCalled();
     expect(exec).toHaveBeenCalledTimes(1);
   });
+  it("treats a device of this tailnet that is still starting as already connected", async () => {
+    const { exec, api } = setup();
+    exec.mockReset().mockResolvedValue(status("Starting", "node-1"));
+    expect((await installOnSsh({ exec }, api)).message).toContain("already connected");
+    expect(api.createKey).not.toHaveBeenCalled();
+  });
   it("does not move a device out of another tailnet", async () => {
     const { exec, api } = setup();
     exec.mockReset().mockResolvedValue(status("Running", "other-node"));

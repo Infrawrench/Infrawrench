@@ -46335,7 +46335,9 @@
             }
           }
         },
-        "operationId": "getOrgOrgIdResourcesSshInstallAccounts"
+        "operationId": "getOrgOrgIdResourcesSshInstallAccounts",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
       }
     },
     "/api/org/{orgId}/resources/ssh-install": {
@@ -46344,7 +46346,7 @@
           "Resources"
         ],
         "summary": "Install and enroll a service on an existing SSH target",
-        "description": "Requires resources:write and resources:execute. Uses the selected target's saved SSH connection or an org SSH key. Respects change freezes and host-key trust. Enrollment credentials never appear in the response or audit log.",
+        "description": "Requires resources:write and resources:execute. Uses the selected target's saved SSH connection or an org SSH key. Respects change freezes and host-key trust. Enrollment credentials never appear in the response or audit log.\n\n_Requires permission: `resources:execute`._",
         "parameters": [
           {
             "schema": {
@@ -46420,7 +46422,8 @@
             }
           }
         },
-        "operationId": "postOrgOrgIdResourcesSshInstall"
+        "operationId": "postOrgOrgIdResourcesSshInstall",
+        "x-required-permission": "resources:execute"
       }
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/detail": {

@@ -1018,6 +1018,9 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /resources/{pluginId}/{typeId}/secret-versions/modify": "secrets:write",
   "DELETE /resources/{pluginId}/{typeId}": "resources:delete",
   "POST /resources/invoke-action": "resources:write",
+  "GET /resources/ssh-install/accounts": "resources:read",
+  // Also needs resources:write; the route checks both (see its description).
+  "POST /resources/ssh-install": "resources:execute",
   "POST /resources/nosql-command": "resources:execute",
   "POST /resources/attach": "resources:write",
   "POST /resources/{pluginId}/{typeId}/export-credential": "secrets:read",

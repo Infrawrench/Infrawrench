@@ -140,7 +140,9 @@ export async function installOnSsh(
       throw new Error(
         "This server already belongs to another tailnet. Disconnect it there before enrolling it here.",
       );
-    if (before.BackendState === "Running") {
+    // "Starting" is the same node coming up (e.g. right after a reboot):
+    // already ours, so don't re-key it.
+    if (before.BackendState === "Running" || before.BackendState === "Starting") {
       return { message: INSTALL_MESSAGES[0]!, ...addressOf(before) };
     }
     if (before.BackendState === "NeedsMachineAuth") {

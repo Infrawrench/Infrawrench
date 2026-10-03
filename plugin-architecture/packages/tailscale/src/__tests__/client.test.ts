@@ -156,4 +156,40 @@ describe("Tailscale plugin", () => {
     await c.releaseSshInstall!("nGone");
     expect(request).toHaveBeenCalledTimes(1);
   });
+  it("ignores devices shared in from another tailnet", async () => {
+    const { request, client: c } = client();
+    request.mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({
+        devices: [
+          { id: "1", nodeId: "nMine", name: "a", hostname: "mine", addresses: [] },
+          {
+            id: "2",
+            nodeId: "nShared",
+            name: "b",
+            hostname: "shared",
+            addresses: [],
+            isExternal: true,
+          },
+        ],
+      }),
+    });
+    const listed = await c.listResources("device", "acct");
+    expect(listed.map((r) => r.displayName)).toEqual(["mine"]);
+    await expect(c.getResource("device", "acct:device:nShared", "acct")).rejects.toThrow(
+      "not found",
+    );
+  });
+  it("rejects a rename whose label exceeds the DNS limit", async () => {
+    const { request, client: c } = client();
+    request.mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({
+        devices: [{ id: "1", nodeId: "nMine", name: "a", hostname: "mine", addresses: [] }],
+      }),
+    });
+    await expect(
+      c.updateResource!("device", "acct:device:nMine", "acct", { name: "x".repeat(64) }),
+    ).rejects.toThrow("63 characters");
+  });
 });

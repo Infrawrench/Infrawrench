@@ -30,6 +30,8 @@ interface Device {
   created?: string;
   expires?: string;
   keyExpiryDisabled?: boolean;
+  /** Shared in from another tailnet, not a member of this one. */
+  isExternal?: boolean;
 }
 
 export class TailscaleClient implements PluginClient {
@@ -73,7 +75,10 @@ export class TailscaleClient implements PluginClient {
     );
     if (!Array.isArray(response.devices))
       throw new Error("Tailscale returned an invalid device list.");
-    return response.devices;
+    // The list includes devices shared *into* this tailnet. They are not
+    // members (enrollment must not treat them as "already here") and this
+    // token cannot approve, expire, rename or remove them.
+    return response.devices.filter((d) => !d.isExternal);
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -144,7 +149,9 @@ export class TailscaleClient implements PluginClient {
     const resource = await this.getResource(typeId, resourceId, accountId);
     if (fields.name !== undefined) {
       const name = fields.name.trim();
-      if (!name || name.length > 253) throw new Error("Enter a DNS name of up to 253 characters.");
+      // A base name is one DNS label (63 max); a full name is at most 253.
+      if (!name || name.length > 253 || name.split(".").some((label) => label.length > 63))
+        throw new Error("Enter a DNS name whose parts are each at most 63 characters.");
       await this.request(`/device/${encodeURIComponent(resource.externalId!)}/name`, "POST", {
         name,
       });
