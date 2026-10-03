@@ -508,3 +508,152 @@ describe("evaluators, users, secrets and quotas", () => {
     expect(JSON.parse(String(patch?.init?.body))).toEqual({ value: "4" });
   });
 });
+
+describe("logs", () => {
+  it("downloads an evaluation job's execution log from the signed URL without the API key", async () => {
+    installFetch((url) => {
+      if (url.includes(":getExecutionLogEndpoint")) {
+        return jsonResponse({
+          executionLogSignedUri: "https://storage.googleapis.com/fw/log.txt?sig=1",
+          contentType: "text/plain",
+        });
+      }
+      return jsonResponse("line one\nline two\nline three\n");
+    });
+    const result = await client().getLogs(
+      "evaluation-job",
+      `${ACCOUNT}:evaluation-job:ej1`,
+      ACCOUNT,
+      { tailLines: 2 },
+    );
+    expect(calls[0]?.url).toBe(
+      "https://api.fireworks.ai/v1/accounts/my-team/evaluationJobs/ej1:getExecutionLogEndpoint",
+    );
+    const signed = calls[1]?.init?.headers as Record<string, string>;
+    expect(signed["Authorization"]).toBeUndefined();
+    expect(result.text).toBe("line two\nline three\n");
+  });
+
+  it("says so when the evaluator has no build log yet", async () => {
+    installFetch(() => jsonResponse({}));
+    const result = await client().getLogs("evaluator", `${ACCOUNT}:evaluator:ev1`, ACCOUNT, {});
+    expect(calls[0]?.url).toContain("/evaluators/ev1:getBuildLogEndpoint");
+    expect(result.text).toBe("No build log yet.\n");
+  });
+
+  it("filters the audit log to a deployment and prints it oldest first", async () => {
+    installFetch(() =>
+      jsonResponse({
+        auditLogs: [
+          {
+            timestamp: "2026-07-02T00:00:00Z",
+            method: "/gateway.Gateway/ScaleDeployment",
+            principal: "ops@example.com",
+            resource: "accounts/my-team/deployments/d1",
+            status: { code: "PERMISSION_DENIED", message: "not allowed" },
+          },
+          {
+            timestamp: "2026-07-01T00:00:00Z",
+            method: "/gateway.Gateway/CreateDeployment",
+            principal: "ops@example.com",
+            resource: "accounts/my-team/deployments/d1",
+            status: { code: "OK" },
+            clientIp: "10.0.0.1",
+          },
+        ],
+      }),
+    );
+    const result = await client().getLogs("deployment", `${ACCOUNT}:deployment:d1`, ACCOUNT, {
+      tailLines: 100,
+    });
+    const url = new URL(calls[0]?.url ?? "");
+    expect(url.pathname).toBe("/v1/accounts/my-team/auditLogs");
+    expect(url.searchParams.get("filter")).toBe('resource:"deployments/d1"');
+    expect(url.searchParams.get("pageSize")).toBe("200");
+    expect(result.text).toBe(
+      "2026-07-01T00:00:00Z OK ops@example.com CreateDeployment accounts/my-team/deployments/d1 (ip=10.0.0.1)\n" +
+        "2026-07-02T00:00:00Z PERMISSION_DENIED ops@example.com ScaleDeployment accounts/my-team/deployments/d1 (not allowed)\n",
+    );
+  });
+
+  it("explains a refused audit log instead of failing", async () => {
+    installFetch((url) =>
+      url.includes("/users/")
+        ? jsonResponse({ name: "accounts/my-team/users/u1", email: "a@example.com" })
+        : jsonResponse({ error: "forbidden" }, 403),
+    );
+    const result = await client().getLogs("user", `${ACCOUNT}:user:u1`, ACCOUNT, {});
+    expect(new URL(calls[1]?.url ?? "").searchParams.get("filter")).toBe('email="a@example.com"');
+    expect(result.text).toContain("Enterprise accounts");
+  });
+});
+
+describe("live deployment metrics", () => {
+  const exposition = [
+    "# TYPE request_counter_total:sum_by_deployment gauge",
+    'request_counter_total:sum_by_deployment{deployment_id="d1",base_model="m"} 4.5',
+    'request_counter_total:sum_by_deployment{deployment_id="other"} 99',
+    'requests_error_total:sum_by_deployment{deployment_id="d1",http_code="500"} 0.5',
+    'tokens_prompt_total:sum_by_deployment{deployment_id="d1"} 1000',
+    'tokens_cached_prompt_total:sum_by_deployment{deployment_id="d1"} 250',
+    'latency_to_first_token_ms_bucket:sum_by_deployment{deployment_id="d1",le="100"} 1',
+    'latency_to_first_token_ms_bucket:sum_by_deployment{deployment_id="d1",le="200"} 3',
+    'latency_to_first_token_ms_bucket:sum_by_deployment{deployment_id="d1",le="+Inf"} 4',
+    'generator_kv_blocks_fraction:avg_by_deployment{deployment_id="d1"} 0.42',
+  ].join("\n");
+
+  it("stashes the deployment's current rates and renders a Live performance section", async () => {
+    installFetch(() => jsonResponse(exposition));
+    const c = client();
+    const resource = {
+      id: `${ACCOUNT}:deployment:d1`,
+      pluginId: "fireworks",
+      resourceTypeId: "deployment",
+      accountId: ACCOUNT,
+      displayName: "d1",
+      externalId: "d1",
+      status: "healthy" as const,
+      fields: { deploymentId: "d1", state: "READY" },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    };
+    const enriched = await c.enrichDetail(resource);
+    expect(calls[0]?.url).toBe("https://api.fireworks.ai/v1/accounts/my-team/metrics");
+    expect((calls[0]?.init?.headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer fw_test",
+    );
+    const detail = c.renderDetail(enriched);
+    expect(detail.logs).toEqual({ defaultTailLines: 200 });
+    const live = detail.sections.find(
+      (s) => s.kind === "section" && s.title === "Live performance",
+    );
+    const json = JSON.stringify(live);
+    expect(json).toContain("4.50 req/s");
+    expect(json).toContain("0.50 req/s");
+    expect(json).toContain("25.0%");
+    // p50 of 4 requests: rank 2 falls halfway into the 100-200 bucket.
+    expect(json).toContain("150 ms / 200 ms");
+    expect(json).toContain("42.0%");
+  });
+
+  it("leaves the resource alone when the endpoint is rate limited", async () => {
+    installFetch(() => jsonResponse("too many requests", 429));
+    const c = client();
+    const resource = {
+      id: `${ACCOUNT}:deployment:d1`,
+      pluginId: "fireworks",
+      resourceTypeId: "deployment",
+      accountId: ACCOUNT,
+      displayName: "d1",
+      status: "healthy" as const,
+      fields: {},
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    };
+    expect(await c.enrichDetail(resource)).toBe(resource);
+  });
+});
