@@ -6,8 +6,13 @@ import type {
   ResourceTypeDefinition,
   ActionNode,
   ResourceStatus,
+  DetailViewTab,
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems } from "@infrawrench/plugin-base";
+import type {
+  WorkerObservabilityState,
+  WorkerTraceSummary,
+} from "../clients/worker-observability.js";
 import {
   actionsForStatus,
   type WorkflowInstanceAction,
@@ -22,8 +27,136 @@ import {
  */
 const CLOUDFLARE_METRICS = { defaultTimeRangeMs: 24 * 3_600_000 };
 
+function parseJson<T>(raw: string | undefined): T | null {
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+const onOffLabel = (b: boolean): string => (b ? "On" : "Off");
+const pct = (n: number | null): string => `${Math.round((n ?? 1) * 1000) / 10}%`;
+
+/** Workers Logs / Traces switches, with a pointer to the Settings tab when off. */
+function workerObservabilitySection(state: WorkerObservabilityState | null): SectionNode | null {
+  if (!state) return null;
+  return {
+    kind: "section",
+    title: "Observability",
+    children: [
+      {
+        kind: "key-value-list",
+        items: [
+          { key: "Workers Logs", value: onOffLabel(state.logsEnabled) },
+          ...(state.logsEnabled
+            ? [
+                { key: "Invocation logs", value: onOffLabel(state.invocationLogs) },
+                {
+                  key: "Logs sampling",
+                  value: pct(state.logsSamplingRate ?? state.headSamplingRate),
+                },
+              ]
+            : []),
+          { key: "Workers Traces", value: onOffLabel(state.tracesEnabled) },
+          ...(state.tracesEnabled
+            ? [{ key: "Trace sampling", value: pct(state.tracesSamplingRate) }]
+            : []),
+        ],
+      },
+      ...(state.logsEnabled
+        ? []
+        : [
+            {
+              kind: "text" as const,
+              content:
+                "Workers Logs is off, so the Logs tab and the log-level and trace charts stay empty. Turn on Observability in the Settings tab to start collecting.",
+              variant: "muted" as const,
+            },
+          ]),
+    ],
+  };
+}
+
+function formatTraceDuration(msValue: number): string {
+  if (!Number.isFinite(msValue)) return "";
+  return msValue >= 1000 ? `${(msValue / 1000).toFixed(2)} s` : `${Math.round(msValue)} ms`;
+}
+
+/** "Traces" tab: the latest trace summaries from the telemetry `traces` view. */
+function workerTracesTab(
+  resource: ResourceInstance,
+  state: WorkerObservabilityState | null,
+): DetailViewTab | null {
+  if (!state) return null;
+  const traces = parseJson<WorkerTraceSummary[]>(resource.resolvedOutputs["__traces__"]);
+  const error = resource.resolvedOutputs["__tracesError__"];
+  const muted = (content: string): SectionNode["children"][number] => ({
+    kind: "text",
+    content,
+    variant: "muted",
+  });
+
+  let body: SectionNode["children"];
+  if (!state.tracesEnabled) {
+    body = [
+      muted(
+        "Workers Traces is off for this Worker. Turn on Traces under Observability in the Settings tab; Cloudflare then records the handler, outbound fetch calls and binding calls (KV, R2, Durable Objects) for each sampled request.",
+      ),
+    ];
+  } else if (error) {
+    body = [muted(`Couldn't load traces: ${error}`)];
+  } else if (!traces || traces.length === 0) {
+    body = [muted("No traces in the last 24 hours.")];
+  } else {
+    const rows: TableRow[] = traces.map((t) => ({
+      cells: {
+        started: Number.isFinite(t.traceStartMs) ? new Date(t.traceStartMs).toISOString() : "",
+        root: t.rootSpanName || t.rootTransactionName || "",
+        spans: String(t.spans ?? ""),
+        duration: formatTraceDuration(t.traceDurationMs),
+        services: (t.service ?? []).join(", "),
+        errors: (t.errors ?? []).join("; "),
+        traceId: t.traceId,
+      },
+    }));
+    body = [
+      {
+        kind: "table",
+        columns: [
+          { key: "started", label: "Started" },
+          { key: "root", label: "Root span", width: "wide" },
+          { key: "spans", label: "Spans", width: "narrow" },
+          { key: "duration", label: "Duration", width: "narrow" },
+          { key: "services", label: "Services" },
+          { key: "errors", label: "Errors" },
+          { key: "traceId", label: "Trace ID", mono: true },
+        ],
+        rows,
+      },
+    ];
+  }
+  return {
+    id: "worker-traces",
+    label: "Traces",
+    sections: [
+      {
+        kind: "section",
+        title: `Recent Traces${traces && traces.length > 0 ? ` (${traces.length})` : ""}`,
+        children: body,
+      },
+    ],
+  };
+}
+
 export function renderWorkerDetail(resource: ResourceInstance): DetailViewSchema {
   const fields = resource.fields;
+  const observability = parseJson<WorkerObservabilityState>(
+    resource.resolvedOutputs["__observability__"],
+  );
+  const observabilitySection = workerObservabilitySection(observability);
+  const tracesTab = workerTracesTab(resource, observability);
   return {
     title: resource.displayName,
     subtitle: "Worker Script",
@@ -51,7 +184,13 @@ export function renderWorkerDetail(resource: ResourceInstance): DetailViewSchema
           },
         ],
       },
+      ...(observabilitySection ? [observabilitySection] : []),
     ],
+    // Declared unconditionally (not only when observability is on) because
+    // log-workspace discovery renders stored rows without enrichDetail; a
+    // Worker with logging off gets an explanation from getLogs instead.
+    logs: { defaultTailLines: 200 },
+    ...(tracesTab ? { customTabs: [tracesTab] } : {}),
     // Surfaces a curated, labeled settings *form* (not a raw JSON editor) via the
     // settingsEditor capability. The host calls getManifest → { settings:
     // SettingDescriptor[] } to populate it and sends changed rows back through

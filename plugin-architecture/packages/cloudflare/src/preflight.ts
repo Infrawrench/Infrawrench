@@ -101,6 +101,9 @@ const TEMPLATE_SCOPES: Record<string, Array<{ key: string; type: string; name: s
     { key: "notifications", type: "edit", name: "Notifications" },
     { key: "vectorize", type: "edit", name: "Vectorize" },
     { key: "ai_gateway", type: "edit", name: "AI Gateway" },
+    { key: "pipelines", type: "edit", name: "Pipelines" },
+    { key: "r2_catalog", type: "edit", name: "Workers R2 Data Catalog" },
+    { key: "r2_catalog_sql", type: "read", name: "Workers R2 SQL" },
   ],
   metrics: [
     { key: "analytics", type: "read", name: "Analytics" },

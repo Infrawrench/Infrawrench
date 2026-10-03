@@ -1,5 +1,6 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { asRecord, type CloudflareApi } from "./clients/shared.js";
+import { fetchWorkerMetricSeries } from "./worker-metrics.js";
 
 /**
  * Resolve the analytics window for a metric fetch.
@@ -210,123 +211,6 @@ export async function fetchMetricSeries(
   return [requests, bytes, cached, threats, uniques].filter((s) =>
     s.points.some((p) => p.value > 0),
   );
-}
-
-/**
- * Worker metrics via GraphQL `workersInvocationsAdaptive`. Worker scripts
- * are account-scoped (not zone-scoped) so this resolves the CF account ID
- * via the shared client before issuing the query. Resource id encoding:
- * `${infrawrenchAccountId}:worker:${scriptName}`: we take the last segment.
- */
-async function fetchWorkerMetricSeries(
-  api: CloudflareApi,
-  resourceId: string,
-  timeRange?: { startMs: number; endMs: number },
-): Promise<MetricSeries[]> {
-  const scriptName = resourceId.split(":").pop();
-  if (!scriptName) return [];
-
-  let cfAccountId: string;
-  try {
-    cfAccountId = await api.getAccountId();
-  } catch {
-    return [];
-  }
-
-  const { from, to, useHourly } = analyticsWindow(timeRange);
-  // Workers GraphQL exposes 15-minute and 1-hour buckets; the 1m schema is
-  // gated behind paid plans, so always pick 15m for short windows and 1h
-  // for windows ≥6h.
-  const groupName = useHourly
-    ? "workersInvocationsAdaptiveGroups"
-    : "workersInvocationsAdaptiveGroups";
-  const orderBy = "datetime_ASC";
-
-  // workersInvocationsAdaptive sum-able fields are requests / subrequests /
-  // errors only: duration is exposed via the `quantiles` block (cpuTimeP50/
-  // cpuTimeP99, durationP50/durationP99). See:
-  // https://developers.cloudflare.com/analytics/graphql-api/tutorials/querying-workers-metrics/
-  const query = `query W($account: String!, $script: String!, $from: Time!, $to: Time!) {
-      viewer {
-        accounts(filter: { accountTag: $account }) {
-          ${groupName}(
-            limit: 1000
-            filter: { scriptName: $script, datetime_geq: $from, datetime_lt: $to }
-            orderBy: [${orderBy}]
-          ) {
-            dimensions { datetime }
-            sum { requests subrequests errors }
-            quantiles { cpuTimeP50 cpuTimeP99 }
-          }
-        }
-      }
-    }`;
-
-  interface Group {
-    dimensions: { datetime: string };
-    sum: { requests?: number; subrequests?: number; errors?: number };
-    quantiles: { cpuTimeP50?: number; cpuTimeP99?: number };
-  }
-  interface Resp {
-    data?: { viewer?: { accounts?: Array<{ workersInvocationsAdaptiveGroups?: Group[] }> } };
-  }
-
-  let groups: Group[] = [];
-  try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${api.apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        variables: { account: cfAccountId, script: scriptName, from, to },
-      }),
-    });
-    if (!res.ok) return [];
-    const json = (await res.json()) as Resp;
-    groups = json.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptiveGroups ?? [];
-  } catch {
-    return [];
-  }
-  if (groups.length === 0) return [];
-
-  const tsOf = (g: Group): number => new Date(g.dimensions.datetime).getTime();
-  const series: MetricSeries[] = [
-    {
-      label: "Requests",
-      unit: "requests",
-      points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.requests ?? 0) })),
-    },
-    {
-      label: "Errors",
-      unit: "errors",
-      points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.errors ?? 0) })),
-    },
-    {
-      label: "Subrequests",
-      unit: "subrequests",
-      points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.subrequests ?? 0) })),
-    },
-    {
-      label: "CPU Time p50",
-      unit: "μs",
-      points: groups.map((g) => ({
-        timestamp: tsOf(g),
-        value: Number(g.quantiles.cpuTimeP50 ?? 0),
-      })),
-    },
-    {
-      label: "CPU Time p99",
-      unit: "μs",
-      points: groups.map((g) => ({
-        timestamp: tsOf(g),
-        value: Number(g.quantiles.cpuTimeP99 ?? 0),
-      })),
-    },
-  ];
-  return series.filter((s) => s.points.some((p) => p.value > 0));
 }
 
 /**
