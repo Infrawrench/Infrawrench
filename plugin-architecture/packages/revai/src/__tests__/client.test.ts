@@ -460,3 +460,79 @@ describe("companion job APIs", () => {
     expect(calls[0]?.init?.method).toBe("DELETE");
   });
 });
+
+describe("account metrics", () => {
+  const day = Date.UTC(2026, 8, 1);
+  const range = { startMs: day, endMs: day + 2 * 86_400_000 - 1 };
+
+  it("charts daily jobs, failures, minutes per transcriber and turnaround", async () => {
+    const urls: string[] = [];
+    installFetch((url) => {
+      urls.push(url);
+      return jsonResponse([
+        {
+          id: "j3",
+          status: "transcribed",
+          transcriber: "fusion",
+          created_on: "2026-09-02T10:00:00.000Z",
+          completed_on: "2026-09-02T10:01:00.000Z",
+          duration_seconds: 300,
+        },
+        {
+          id: "j2",
+          status: "failed",
+          transcriber: "machine",
+          created_on: "2026-09-01T11:00:00.000Z",
+          failure: "invalid_media",
+        },
+        {
+          id: "j1",
+          status: "transcribed",
+          transcriber: "machine",
+          created_on: "2026-09-01T10:00:00.000Z",
+          completed_on: "2026-09-01T10:00:30.000Z",
+          duration_seconds: 120,
+        },
+        {
+          id: "s1",
+          status: "transcribed",
+          type: "stream",
+          created_on: "2026-09-01T09:00:00.000Z",
+          stream_duration_seconds: 600,
+        },
+      ]);
+    });
+    const series = await client().fetchMetricSeries(
+      "account",
+      `${ACCOUNT}:account:self`,
+      ACCOUNT,
+      range,
+    );
+    expect(urls).toEqual([`${US}/jobs?limit=1000`]);
+    expect(series.map((s) => s.label)).toEqual([
+      "Jobs",
+      "Failed jobs",
+      "Audio minutes",
+      "Audio minutes: fusion",
+      "Audio minutes: machine",
+      "Streaming minutes",
+      "Avg turnaround",
+    ]);
+    expect(series[0]!.points).toEqual([
+      { timestamp: day, value: 3 },
+      { timestamp: day + 86_400_000, value: 1 },
+    ]);
+    expect(series[1]!.points[0]!.value).toBe(1);
+    expect(series[2]!.points.map((p) => p.value)).toEqual([2, 5]);
+    expect(series[5]!.points[0]!.value).toBe(10);
+    expect(series[6]!.points).toEqual([
+      { timestamp: day, value: 30 },
+      { timestamp: day + 86_400_000, value: 60 },
+    ]);
+  });
+
+  it("returns nothing for other types", async () => {
+    installFetch(() => jsonResponse([]));
+    expect(await client().fetchMetricSeries("job", `${ACCOUNT}:job:x`, ACCOUNT)).toEqual([]);
+  });
+});

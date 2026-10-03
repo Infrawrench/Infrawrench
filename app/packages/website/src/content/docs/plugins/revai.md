@@ -40,6 +40,10 @@ Rev AI's fourth transcriber, **Human**, is deliberately left out of this panel. 
 
 <insert [Rev AI Speech tab on the account, with the Transcriber picker open showing Machine, Low cost and Fusion] here>
 
+## Metrics
+
+The **Account** has a **Metrics** tab charting, per day: jobs submitted, failed jobs, audio minutes (split by transcriber when more than one is in use, since they bill at different rates), streaming minutes when the account streams, and the average turnaround from submission to transcript. Rev AI has no usage endpoint, so these are counted from `GET /jobs`, which only reaches back 30 days; the walk stops at 5,000 jobs per range.
+
 ## Tips & limits
 
 - **Jobs are kept for 30 days.** `GET /jobs` only covers the last 30 days, so the Transcription Jobs list is a rolling month rather than a full history.
