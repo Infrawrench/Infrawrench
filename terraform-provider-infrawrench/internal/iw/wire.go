@@ -451,34 +451,37 @@ type CostExportDestination struct {
 	URLHint *string `json:"urlHint,omitempty"`
 }
 
+// costExportS3Destination and costExportHTTPDestination are the wire shapes of
+// the two branches; MarshalJSON picks one so no other branch's keys leak in.
+type costExportS3Destination struct {
+	Kind           string  `json:"kind"`
+	Bucket         *string `json:"bucket,omitempty"`
+	Prefix         *string `json:"prefix,omitempty"`
+	Region         *string `json:"region,omitempty"`
+	Endpoint       *string `json:"endpoint,omitempty"`
+	ForcePathStyle *bool   `json:"forcePathStyle,omitempty"`
+}
+
+type costExportHTTPDestination struct {
+	Kind   string  `json:"kind"`
+	Method *string `json:"method,omitempty"`
+}
+
 // MarshalJSON emits only the keys belonging to the named branch, since the
 // server's destination schema is a strict discriminated union.
 func (d CostExportDestination) MarshalJSON() ([]byte, error) {
 	switch d.Kind {
 	case "s3":
-		out := map[string]any{"kind": "s3"}
-		if d.Bucket != nil {
-			out["bucket"] = *d.Bucket
-		}
-		if d.Prefix != nil {
-			out["prefix"] = *d.Prefix
-		}
-		if d.Region != nil {
-			out["region"] = *d.Region
-		}
-		if d.Endpoint != nil {
-			out["endpoint"] = *d.Endpoint
-		}
-		if d.ForcePathStyle != nil {
-			out["forcePathStyle"] = *d.ForcePathStyle
-		}
-		return json.Marshal(out)
+		return json.Marshal(costExportS3Destination{
+			Kind:           "s3",
+			Bucket:         d.Bucket,
+			Prefix:         d.Prefix,
+			Region:         d.Region,
+			Endpoint:       d.Endpoint,
+			ForcePathStyle: d.ForcePathStyle,
+		})
 	case "http":
-		out := map[string]any{"kind": "http"}
-		if d.Method != nil {
-			out["method"] = *d.Method
-		}
-		return json.Marshal(out)
+		return json.Marshal(costExportHTTPDestination{Kind: "http", Method: d.Method})
 	default:
 		return nil, fmt.Errorf("unknown export destination kind %q (want \"s3\" or \"http\")", d.Kind)
 	}
