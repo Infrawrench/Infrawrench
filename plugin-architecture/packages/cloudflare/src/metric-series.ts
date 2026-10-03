@@ -950,7 +950,7 @@ async function fetchKVMetricSeries(
 
 /**
  * Queue metrics via GraphQL `queueMessageOperationsAdaptiveGroups` (publish/
- * consume counts and bytes) and `queuesBacklogAdaptiveGroups` (backlog
+ * consume counts and bytes) and `queueBacklogAdaptiveGroups` (backlog
  * messages/bytes). Account-scoped, filter by `queueId`. Resource id:
  * `${accountId}:queue:${queueId}`.
  */
@@ -984,7 +984,7 @@ async function fetchQueueMetricSeries(
             sum { bytes }
             dimensions { ${timeDim} actionType }
           }
-          queuesBacklogAdaptiveGroups(
+          queueBacklogAdaptiveGroups(
             limit: 10000
             filter: { queueId: $queue, datetime_geq: $from, datetime_leq: $to }
             orderBy: [${timeDim}_ASC]
@@ -1010,7 +1010,7 @@ async function fetchQueueMetricSeries(
       viewer?: {
         accounts?: Array<{
           queueMessageOperationsAdaptiveGroups?: OpsGroup[];
-          queuesBacklogAdaptiveGroups?: BacklogGroup[];
+          queueBacklogAdaptiveGroups?: BacklogGroup[];
         }>;
       };
     };
@@ -1034,7 +1034,7 @@ async function fetchQueueMetricSeries(
     const json = (await res.json()) as Resp;
     const acc = json.data?.viewer?.accounts?.[0];
     ops = acc?.queueMessageOperationsAdaptiveGroups ?? [];
-    backlog = acc?.queuesBacklogAdaptiveGroups ?? [];
+    backlog = acc?.queueBacklogAdaptiveGroups ?? [];
   } catch {
     return [];
   }

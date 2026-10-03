@@ -5,7 +5,7 @@ import { fetchWorkerTelemetrySeries } from "./clients/worker-observability.js";
 /**
  * Worker metrics. Two sources, fetched in parallel:
  *
- * 1. GraphQL `workersInvocationsAdaptiveGroups` (always available, any plan):
+ * 1. GraphQL `workersInvocationsAdaptive` (always available, any plan):
  *    requests / errors / subrequests, CPU and wall time p50/p99, and the
  *    invocation count split by `status` (success, scriptThrewException,
  *    exceededResources, clientDisconnected, internalError...). Field names
@@ -92,7 +92,7 @@ async function fetchInvocationSeries(
   const query = `query W($account: String!, $script: String!, $from: Time!, $to: Time!) {
       viewer {
         accounts(filter: { accountTag: $account }) {
-          totals: workersInvocationsAdaptiveGroups(
+          totals: workersInvocationsAdaptive(
             limit: 2000
             filter: ${filter}
             orderBy: [${dim}_ASC]
@@ -101,7 +101,7 @@ async function fetchInvocationSeries(
             sum { requests subrequests errors }
             quantiles { cpuTimeP50 cpuTimeP99 wallTimeP50 wallTimeP99 }
           }
-          byStatus: workersInvocationsAdaptiveGroups(
+          byStatus: workersInvocationsAdaptive(
             limit: 5000
             filter: ${filter}
             orderBy: [${dim}_ASC]
