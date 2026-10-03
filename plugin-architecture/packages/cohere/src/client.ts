@@ -1,4 +1,5 @@
 import type {
+  CreateResourceConfig,
   DashboardStat,
   DetailViewSchema,
   HostServices,
@@ -40,10 +41,44 @@ import type {
 const BASE_URL = "https://api.cohere.com";
 
 /**
- * The only transcription model Cohere ships.
+ * Cohere's general transcription model, used when the live model list has no
+ * `cohere-transcribe*` entry. The Arabic specialist
+ * (`cohere-transcribe-arabic-07-2026`) is picked up from the live list by the
+ * same name prefix.
  * https://docs.cohere.com/v2/docs/transcribe
  */
 const TRANSCRIBE_MODEL = "cohere-transcribe-03-2026";
+
+/**
+ * Dataset types a batch can read. Batches take a request file in one of
+ * these shapes; anything else fails validation at submit time, so the
+ * picker only offers these.
+ * https://docs.cohere.com/reference/create-dataset
+ */
+const BATCH_INPUT_DATASET_TYPES = [
+  "batch-chat-input",
+  "batch-chat-v2-input",
+  "batch-openai-chat-input",
+  "batch-embed-v2-input",
+];
+
+/** The `input_type` values `POST /v1/embed-jobs` accepts. */
+const EMBED_INPUT_TYPES = [
+  { id: "search_document", label: "Search document", description: "Vectors stored for search" },
+  { id: "search_query", label: "Search query", description: "Queries run against a vector store" },
+  { id: "classification", label: "Classification", description: "Input to a text classifier" },
+  { id: "clustering", label: "Clustering", description: "Input to a clustering algorithm" },
+  { id: "image", label: "Image", description: "Image inputs" },
+];
+
+/** The `embedding_types` values `POST /v1/embed-jobs` accepts. */
+const EMBEDDING_TYPES = [
+  { id: "float", label: "float", description: "Default; every model" },
+  { id: "int8", label: "int8", description: "v3 and newer" },
+  { id: "uint8", label: "uint8", description: "v3 and newer" },
+  { id: "binary", label: "binary", description: "v3 and newer" },
+  { id: "ubinary", label: "ubinary", description: "v3 and newer" },
+];
 
 /** Cohere caps transcription uploads at 25 MB. */
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
@@ -637,6 +672,162 @@ export class CohereClient implements PluginClient {
     }
 
     throw new Error(`Cohere plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Create
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Batches and embed jobs are created over an already-uploaded dataset, so
+   * both forms are pickers over the live model and dataset lists: deprecated
+   * models are left out, and only datasets of the right type that passed
+   * validation are offered.
+   */
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId === "batch") {
+      const [models, datasets] = await Promise.all([
+        this.safely(() => this.fetchModels(), [] as CohereModel[]),
+        this.safely(() => this.fetchDatasets(), [] as CohereDataset[]),
+      ]);
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "inputDatasetId",
+            label: "Input dataset",
+            kind: "select",
+            required: true,
+            options: datasetOptions(datasets, BATCH_INPUT_DATASET_TYPES),
+            description: "A validated batch input dataset. Upload one in the Cohere dashboard.",
+          },
+          {
+            key: "model",
+            label: "Model",
+            kind: "select",
+            required: true,
+            options: modelOptions(models, ["chat", "embed"]),
+          },
+        ],
+      };
+    }
+
+    if (typeId === "embed-job") {
+      const [models, datasets] = await Promise.all([
+        this.safely(() => this.fetchModels(), [] as CohereModel[]),
+        this.safely(() => this.fetchDatasets(), [] as CohereDataset[]),
+      ]);
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: false },
+          {
+            key: "datasetId",
+            label: "Input dataset",
+            kind: "select",
+            required: true,
+            options: datasetOptions(datasets, ["embed-input"]),
+            description: "A validated embed-input dataset.",
+          },
+          {
+            key: "model",
+            label: "Embedding model",
+            kind: "select",
+            required: true,
+            options: modelOptions(models, ["embed"]),
+          },
+          {
+            key: "inputType",
+            label: "Input type",
+            kind: "select",
+            required: true,
+            options: EMBED_INPUT_TYPES,
+            defaultValue: "search_document",
+          },
+          {
+            key: "embeddingType",
+            label: "Embedding type",
+            kind: "select",
+            required: false,
+            options: EMBEDDING_TYPES,
+            defaultValue: "float",
+          },
+          {
+            key: "truncate",
+            label: "Truncate long inputs from",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "END", label: "End", description: "Discard the end of the input" },
+              { id: "START", label: "Start", description: "Discard the start of the input" },
+            ],
+            defaultValue: "END",
+          },
+        ],
+      };
+    }
+
+    throw new Error(`Cohere plugin: no create config for type "${typeId}"`);
+  }
+
+  /**
+   * Batches: `POST /v2/batches` → `{ batch }`;
+   * https://docs.cohere.com/reference/create-batch
+   * Embed jobs: `POST /v1/embed-jobs` → `{ job_id }`, then
+   * `GET /v1/embed-jobs/{id}` for the full row;
+   * https://docs.cohere.com/reference/create-embed-job
+   */
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const now = new Date().toISOString();
+
+    if (typeId === "batch") {
+      const name = fields["name"]?.trim();
+      const inputDatasetId = fields["inputDatasetId"];
+      const model = fields["model"];
+      if (!name || !inputDatasetId || !model) {
+        throw new Error("Cohere plugin: a batch needs a name, an input dataset and a model");
+      }
+      const created = await this.fetch<{ batch?: CohereBatch }>("/v2/batches", {
+        method: "POST",
+        body: JSON.stringify({ name, input_dataset_id: inputDatasetId, model }),
+      });
+      if (!created.batch?.id) throw new Error("Cohere plugin: POST /v2/batches returned no batch");
+      return this.mapBatch(accountId, created.batch, now);
+    }
+
+    if (typeId === "embed-job") {
+      const datasetId = fields["datasetId"];
+      const model = fields["model"];
+      const inputType = fields["inputType"] || "search_document";
+      if (!datasetId || !model) {
+        throw new Error("Cohere plugin: an embed job needs an input dataset and a model");
+      }
+      const body: Record<string, unknown> = {
+        model,
+        dataset_id: datasetId,
+        input_type: inputType,
+      };
+      if (fields["name"]?.trim()) body["name"] = fields["name"].trim();
+      if (fields["embeddingType"]) body["embedding_types"] = [fields["embeddingType"]];
+      if (fields["truncate"]) body["truncate"] = fields["truncate"];
+
+      const created = await this.fetch<{ job_id?: string }>("/v1/embed-jobs", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const jobId = created.job_id;
+      if (!jobId) throw new Error("Cohere plugin: POST /v1/embed-jobs returned no job_id");
+      const job = await this.safely(
+        () => this.fetch<CohereEmbedJob>(`/v1/embed-jobs/${encodeURIComponent(jobId)}`),
+        { job_id: jobId, name: String(body["name"] ?? ""), model, input_dataset_id: datasetId },
+      );
+      return this.mapEmbedJob(accountId, { ...job, job_id: job.job_id ?? jobId }, now);
+    }
+
+    throw new Error(`Cohere plugin: cannot create type "${typeId}"`);
   }
 
   // ---------------------------------------------------------------------------
@@ -1488,6 +1679,44 @@ export class CohereClient implements PluginClient {
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
+
+/** Non-deprecated models serving at least one of `endpoints`, as picker options. */
+function modelOptions(
+  models: CohereModel[],
+  endpoints: string[],
+): Array<{ id: string; label: string; description?: string }> {
+  return models
+    .filter(
+      (m) =>
+        Boolean(m.name) &&
+        !m.is_deprecated &&
+        (m.endpoints ?? []).some((e) => endpoints.includes(String(e))),
+    )
+    .map((m) => ({
+      id: m.name!,
+      label: m.name!,
+      description: (m.endpoints ?? []).join(", "),
+    }));
+}
+
+/** Validated datasets of one of `types`, as picker options. */
+function datasetOptions(
+  datasets: CohereDataset[],
+  types: string[],
+): Array<{ id: string; label: string; description?: string }> {
+  return datasets
+    .filter(
+      (d) =>
+        Boolean(d.id) &&
+        types.includes(String(d.dataset_type ?? "")) &&
+        String(d.validation_status ?? "") === "validated",
+    )
+    .map((d) => ({
+      id: d.id!,
+      label: d.name || d.id!,
+      description: [d.dataset_type, d.created_at].filter(Boolean).join(" · "),
+    }));
+}
 
 function defaultTranscribeOption(): SpeechPanelOption {
   return {

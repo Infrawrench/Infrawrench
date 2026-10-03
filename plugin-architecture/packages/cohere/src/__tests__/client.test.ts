@@ -462,3 +462,134 @@ describe("error surfacing", () => {
     );
   });
 });
+
+describe("create: batches and embed jobs", () => {
+  const models = {
+    models: [
+      { name: "command-a-plus-05-2026", endpoints: ["chat"] },
+      { name: "embed-v5.0-pro", endpoints: ["embed"] },
+      { name: "embed-english-v2.0", endpoints: ["embed"], is_deprecated: true },
+      { name: "rerank-v4.0-pro", endpoints: ["rerank"] },
+    ],
+    next_page_token: "",
+  };
+  const datasets = {
+    datasets: [
+      {
+        id: "ds-batch",
+        name: "requests",
+        dataset_type: "batch-chat-v2-input",
+        validation_status: "validated",
+      },
+      {
+        id: "ds-embed",
+        name: "corpus",
+        dataset_type: "embed-input",
+        validation_status: "validated",
+      },
+      {
+        id: "ds-pending",
+        name: "pending",
+        dataset_type: "embed-input",
+        validation_status: "processing",
+      },
+    ],
+  };
+
+  function routes(url: string): Response {
+    if (url.includes("/v1/models")) return jsonResponse(models);
+    if (url.includes("/v1/datasets")) return jsonResponse(datasets);
+    throw new Error(`unrouted: ${url}`);
+  }
+
+  it("offers only validated datasets of the right type and live, non-deprecated models", async () => {
+    installFetch(routes);
+    const c = client();
+
+    const batch = await c.getCreateConfig("batch");
+    const batchField = (key: string) => batch.fields.find((f) => f.key === key)!;
+    expect(batchField("inputDatasetId").options?.map((o) => o.id)).toEqual(["ds-batch"]);
+    expect(batchField("model").options?.map((o) => o.id)).toEqual([
+      "command-a-plus-05-2026",
+      "embed-v5.0-pro",
+    ]);
+
+    const embed = await c.getCreateConfig("embed-job");
+    const embedField = (key: string) => embed.fields.find((f) => f.key === key)!;
+    expect(embedField("datasetId").options?.map((o) => o.id)).toEqual(["ds-embed"]);
+    expect(embedField("model").options?.map((o) => o.id)).toEqual(["embed-v5.0-pro"]);
+    expect(embedField("inputType").defaultValue).toBe("search_document");
+  });
+
+  it("creates a batch on the v2 path and maps the returned batch", async () => {
+    installFetch(() =>
+      jsonResponse({
+        batch: {
+          id: "b-1",
+          name: "nightly",
+          model: "command-a-plus-05-2026",
+          input_dataset_id: "ds-batch",
+          status: "BATCH_STATUS_QUEUED",
+        },
+      }),
+    );
+    const created = await client().createResource("batch", ACCOUNT, {
+      name: "nightly",
+      inputDatasetId: "ds-batch",
+      model: "command-a-plus-05-2026",
+    });
+    expect(calls[0]!.url).toBe("https://api.cohere.com/v2/batches");
+    expect(calls[0]!.init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+      name: "nightly",
+      input_dataset_id: "ds-batch",
+      model: "command-a-plus-05-2026",
+    });
+    expect(created.id).toBe(`${ACCOUNT}:batch:b-1`);
+    expect(created.fields["status"]).toBe("BATCH_STATUS_QUEUED");
+  });
+
+  it("creates an embed job on v1 and reads it back by id", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "POST") return jsonResponse({ job_id: "ej-1" });
+      if (url.endsWith("/v1/embed-jobs/ej-1")) {
+        return jsonResponse({
+          job_id: "ej-1",
+          name: "index",
+          status: "processing",
+          model: "embed-v5.0-pro",
+          input_dataset_id: "ds-embed",
+          truncate: "END",
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const created = await client().createResource("embed-job", ACCOUNT, {
+      name: "index",
+      datasetId: "ds-embed",
+      model: "embed-v5.0-pro",
+      inputType: "search_document",
+      embeddingType: "int8",
+      truncate: "END",
+    });
+    expect(calls[0]!.url).toBe("https://api.cohere.com/v1/embed-jobs");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+      model: "embed-v5.0-pro",
+      dataset_id: "ds-embed",
+      input_type: "search_document",
+      name: "index",
+      embedding_types: ["int8"],
+      truncate: "END",
+    });
+    expect(created.id).toBe(`${ACCOUNT}:embed-job:ej-1`);
+    expect(created.fields["status"]).toBe("processing");
+  });
+
+  it("refuses a batch without a dataset before calling the API", async () => {
+    const spy = installFetch(() => jsonResponse({}));
+    await expect(
+      client().createResource("batch", ACCOUNT, { name: "x", model: "m" }),
+    ).rejects.toThrow(/input dataset/);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});

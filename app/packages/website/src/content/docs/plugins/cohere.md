@@ -6,13 +6,24 @@ sidebar_order: 34
 
 ## What you can manage
 
-- **Models** — every model the platform serves, with its endpoints, context length, feature flags, tokenizer URL and sampling defaults. Deprecated models stay in the list and are labelled as such. Read-only, and the home of the Speech tab.
-- **Datasets** — uploaded training data and job inputs and outputs, with validation status, errors and warnings (delete).
-- **Fine-tuned models** — custom models trained from a Cohere base model, with their hyperparameters and dataset (delete).
-- **Embed jobs** — bulk embedding runs that write vectors into an output dataset (cancel).
-- **Batches** — asynchronous batch inference over an uploaded dataset, with per-record success and failure counts (cancel).
+- **Models**: every model the platform serves, with its endpoints, context length, feature flags, tokenizer URL and sampling defaults. Deprecated models stay in the list and are labelled as such. Read-only, and the home of the Speech tab.
+- **Datasets**: uploaded training data and job inputs and outputs, with validation status, errors and warnings (delete).
+- **Fine-tuned models**: custom models trained from a Cohere base model, with their hyperparameters and dataset (delete).
+- **Embed jobs**: bulk embedding runs that write vectors into an output dataset (create, cancel).
+- **Batches**: asynchronous batch inference over an uploaded dataset, with per-record success and failure counts (create, cancel).
 
-Embed jobs and batches are cancelled, never deleted — Cohere has no delete endpoint for either.
+Embed jobs and batches are cancelled, never deleted; Cohere has no delete endpoint for either.
+
+## Starting a batch or an embed job
+
+Both run over a dataset you have already uploaded, so the create forms are pickers rather than ID fields:
+
+- **Batch**: a name, an input dataset, and a model. The dataset list only offers datasets of a batch input type (`batch-chat-input`, `batch-chat-v2-input`, `batch-openai-chat-input`, `batch-embed-v2-input`) that have passed validation, and the model list only offers chat and embed models Cohere has not deprecated.
+- **Embed job**: an optional name, an `embed-input` dataset that has passed validation, an embed model, the input type (search document, search query, classification, clustering or image), the embedding type (`float` by default, or `int8`, `uint8`, `binary`, `ubinary` on v3 and newer models), and which end of an over-long input to truncate.
+
+The output dataset appears on the job once it completes. Upload datasets themselves in the Cohere dashboard.
+
+<insert [Cohere create-batch form with the input dataset picker open, showing only validated batch input datasets] here>
 
 ## Credentials
 
@@ -26,7 +37,7 @@ Cohere issues two kinds of key: a **Trial** key (free, heavily rate-limited, not
 
 Cohere ships **transcription only** — there is no text-to-speech endpoint anywhere in the product — so the Speech tab on a model has one half. See [Speech testing](../features/speech-testing.md) for how it works generally.
 
-Transcription runs on `cohere-transcribe-03-2026`. Language is **required** by the API, so pick the one spoken in the clip rather than hoping for auto-detection. Cohere returns plain text with no word-level timings, so there is no word table under the transcript.
+Transcription runs on `cohere-transcribe-03-2026` by default. The model picker is filled from the live model list, so Cohere's Arabic specialist, `cohere-transcribe-arabic-07-2026` (Arabic in all major dialects, plus Arabic-accented English), appears alongside it. Language is **required** by the API, so pick the one spoken in the clip rather than hoping for auto-detection. Cohere returns plain text with no word-level timings, so there is no word table under the transcript.
 
 ![Cohere Speech tab on a model, showing the transcribe half with the required language picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cohere/speech-tab-transcribe.png)
 
