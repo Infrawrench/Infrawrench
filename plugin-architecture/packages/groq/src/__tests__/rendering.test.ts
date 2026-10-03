@@ -70,13 +70,13 @@ describe("renderDetail — model", () => {
     expect(detail.speechPanel?.maxCharacters).toBe(200);
   });
 
-  it("says billing is console-only rather than showing an empty chart", () => {
+  it("says billing is console-only and declares the Prometheus Metrics tab", () => {
     const detail = client().renderDetail(
       resource("groq-model", { modelId: "llama-3.1-8b-instant" }),
     );
     const rendered = JSON.stringify(detail);
-    expect(rendered).toContain("no usage, cost, or API-key management API");
-    expect(detail.metricsCapability).toBeUndefined();
+    expect(rendered).toContain("no cost or API-key management API");
+    expect(detail.metricsCapability).toEqual({ defaultTimeRangeMs: 24 * 60 * 60 * 1000 });
   });
 });
 

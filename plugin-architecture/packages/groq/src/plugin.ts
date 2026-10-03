@@ -26,7 +26,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A GroqCloud API key (starts with gsk_), created under API Keys in the Groq console. Groq has a single key type — there is no separate admin key, and no usage, billing, or key-management API, so spend and rate-limit history stay in the console.",
+        "A GroqCloud API key (starts with gsk_), created under API Keys in the Groq console. Groq has a single key type: there is no separate admin key, and no billing or key-management API, so spend stays in the console. On the Enterprise tier the same key also reads per-model Prometheus metrics.",
       sensitive: true,
       placeholder: "gsk_...",
       helpLink: { label: "Create an API key", url: "https://console.groq.com/keys" },

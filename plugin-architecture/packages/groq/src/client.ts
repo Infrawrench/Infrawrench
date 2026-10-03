@@ -2,6 +2,7 @@ import type {
   CreateResourceConfig,
   DetailViewSchema,
   HostServices,
+  MetricSeries,
   PluginClient,
   ResourceInstance,
   SidebarItemSchema,
@@ -18,7 +19,20 @@ import {
   formatBytes,
   joinSubtitle,
   jsonRestFetch,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
+import { GroqBatchResourceType } from "./resources/batch.js";
+import { GroqFileResourceType } from "./resources/file.js";
+import { GroqFineTuningResourceType } from "./resources/fine-tuning.js";
+import { GroqModelResourceType } from "./resources/model.js";
+
+/** Resource types, for deriving the Metrics tab from `supportsMetrics`. */
+const RESOURCE_TYPES = [
+  GroqModelResourceType,
+  GroqBatchResourceType,
+  GroqFileResourceType,
+  GroqFineTuningResourceType,
+];
 
 /**
  * OpenAI-compatible surface: models, batches, files, audio.
@@ -34,6 +48,31 @@ const ROOT_BASE = "https://api.groq.com/v1";
 
 /** Groq's console: there is no usage or billing API to read instead. */
 const USAGE_CONSOLE_URL = "https://console.groq.com/dashboard/usage";
+
+/**
+ * Prometheus-compatible metrics (VictoriaMetrics, MetricsQL), Enterprise
+ * tier only. Same bearer key as everything else.
+ * https://console.groq.com/docs/prometheus-metrics
+ */
+const METRICS_BASE = "https://api.groq.com/v1/metrics/prometheus";
+
+/** Window the Metrics tab shows when the host asks without a range. */
+const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Batch targets and completion windows, from https://console.groq.com/docs/batch.
+ * The window accepts any duration from `24h` to `7d`.
+ */
+const BATCH_ENDPOINTS = [
+  { id: "/v1/chat/completions", label: "Chat completions" },
+  { id: "/v1/audio/transcriptions", label: "Audio transcriptions" },
+  { id: "/v1/audio/translations", label: "Audio translations" },
+];
+const BATCH_COMPLETION_WINDOWS = [
+  { id: "24h", label: "24 hours" },
+  { id: "48h", label: "48 hours" },
+  { id: "7d", label: "7 days" },
+];
 
 /**
  * `GET /openai/v1/audio/transcriptions` limits, verified against
@@ -141,6 +180,8 @@ interface GroqBatch {
   error_file_id?: string | null;
   completion_window?: string;
   request_counts?: { total?: number; completed?: number; failed?: number };
+  errors?: { data?: Array<{ code?: string; message?: string; line?: number | null }> } | null;
+  metadata?: Record<string, string> | null;
   created_at?: number;
   expires_at?: number;
   completed_at?: number | null;
@@ -163,6 +204,15 @@ interface GroqFineTuning {
   status?: string;
   input_file_id?: string;
   created_at?: number;
+}
+
+/** Prometheus HTTP API envelope for `/api/v1/query_range`. */
+interface PromRangeResponse {
+  status?: string;
+  data?: {
+    resultType?: string;
+    result?: Array<{ metric?: Record<string, string>; values?: Array<[number, string]> }>;
+  };
 }
 
 interface GroqTranscription {
@@ -216,9 +266,9 @@ function extensionFor(mimeType: string): string {
  *
  * Covers the model catalogue, batch jobs, uploaded files, registered LoRA
  * adapters, and the Speech playground (Whisper transcription + Orpheus
- * synthesis). Groq publishes no usage, cost, or API-key management API: the
- * console is the only surface for those, and the detail views say so rather
- * than rendering an empty chart.
+ * synthesis), plus Enterprise Prometheus metrics per model. Groq publishes no
+ * cost or API-key management API: the console is the only surface for those,
+ * and the detail views say so rather than rendering an empty chart.
  */
 export class GroqClient implements PluginClient {
   private readonly apiKey: string;
@@ -343,6 +393,11 @@ export class GroqClient implements PluginClient {
         totalRequests: batch.request_counts?.total ?? 0,
         completedRequests: batch.request_counts?.completed ?? 0,
         failedRequests: batch.request_counts?.failed ?? 0,
+        errors: (batch.errors?.data ?? [])
+          .map((e) => [e.code, e.message].filter(Boolean).join(": "))
+          .filter(Boolean)
+          .join("; "),
+        metadata: batch.metadata ? JSON.stringify(batch.metadata) : "",
         createdAt: epochToIso(batch.created_at),
         expiresAt: epochToIso(batch.expires_at),
         completedAt: epochToIso(batch.completed_at),
@@ -469,6 +524,7 @@ export class GroqClient implements PluginClient {
   // --------------------------------------------------------------- mutation
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId === "groq-batch") return this.getBatchCreateConfig();
     if (typeId !== "groq-fine-tuning") {
       throw new Error(`Groq plugin: ${typeId} cannot be created through the API`);
     }
@@ -530,12 +586,80 @@ export class GroqClient implements PluginClient {
     };
   }
 
-  /** https://console.groq.com/docs/lora: `POST https://api.groq.com/v1/fine_tunings` */
+  /**
+   * Batch create form. The input file picker only offers `purpose: batch`
+   * uploads: a `batch_output` file is a result, not something to resubmit.
+   */
+  private async getBatchCreateConfig(): Promise<CreateResourceConfig> {
+    const files = await this.fetch<{ data?: GroqFile[] }>("/files").catch(() => ({
+      data: [] as GroqFile[],
+    }));
+    const fileOptions = (files.data ?? [])
+      .filter((file) => Boolean(file.id) && (file.purpose ?? "batch") === "batch")
+      .map((file) => ({
+        id: String(file.id),
+        label: file.filename || String(file.id),
+        ...(file.bytes ? { description: formatBytes(file.bytes) } : {}),
+      }));
+
+    return {
+      fields: [
+        {
+          key: "inputFileId",
+          label: "Input File",
+          kind: "select",
+          required: true,
+          options: fileOptions,
+          description:
+            fileOptions.length > 0
+              ? 'A JSONL file of requests uploaded with purpose "batch" (up to 50,000 lines or 200 MB).'
+              : "No batch files uploaded yet: upload a JSONL request file to Groq first.",
+        },
+        {
+          key: "endpoint",
+          label: "Endpoint",
+          kind: "select",
+          required: true,
+          options: BATCH_ENDPOINTS,
+          defaultValue: BATCH_ENDPOINTS[0]?.id ?? "",
+          description: "The API every line in the input file is sent to.",
+        },
+        {
+          key: "completionWindow",
+          label: "Completion Window",
+          kind: "select",
+          required: true,
+          options: BATCH_COMPLETION_WINDOWS,
+          defaultValue: "24h",
+          description:
+            "How long Groq has to finish the batch. Longer windows complete more reliably under heavy load; unfinished requests expire.",
+        },
+      ],
+    };
+  }
+
+  /**
+   * https://console.groq.com/docs/api-reference: `POST /openai/v1/batches`
+   * https://console.groq.com/docs/lora: `POST https://api.groq.com/v1/fine_tunings`
+   */
   async createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    if (typeId === "groq-batch") {
+      const inputFileId = fields["inputFileId"];
+      if (!inputFileId) throw new Error("Groq plugin: missing batch input file");
+      const created = await this.fetch<GroqBatch>("/batches", {
+        method: "POST",
+        body: JSON.stringify({
+          input_file_id: inputFileId,
+          endpoint: fields["endpoint"] || "/v1/chat/completions",
+          completion_window: fields["completionWindow"] || "24h",
+        }),
+      });
+      return this.mapBatch(accountId, created, new Date().toISOString());
+    }
     if (typeId !== "groq-fine-tuning") {
       throw new Error(`Groq plugin: ${typeId} cannot be created through the API`);
     }
@@ -601,6 +725,116 @@ export class GroqClient implements PluginClient {
       return;
     }
     throw new Error(`Groq plugin: unknown action "${actionId}" for ${typeId}`);
+  }
+
+  // ---------------------------------------------------------------- metrics
+
+  /**
+   * Per-model request, token, latency and prompt-cache series from Groq's
+   * Prometheus endpoint (`GET /v1/metrics/prometheus/api/v1/query_range`).
+   * https://console.groq.com/docs/prometheus-metrics
+   *
+   * The metrics are pre-aggregated `rate5m` recording rules labelled by
+   * `model` and `project_id`. The endpoint is Enterprise-only: any other key
+   * gets a 401/403/404, which is reported as "no series" rather than an
+   * error, so the tab stays empty instead of failing on every refresh.
+   */
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "groq-model") return [];
+    const modelId = resourceId.slice(`${accountId}:${resourceTypeId}:`.length);
+    if (!modelId) return [];
+
+    const endMs = timeRange?.endMs ?? Date.now();
+    const startMs = timeRange?.startMs ?? endMs - DEFAULT_METRICS_WINDOW_MS;
+    // ~120 points per chart, never finer than the 5-minute rate window's
+    // useful resolution of one minute.
+    const stepSeconds = Math.max(60, Math.round((endMs - startMs) / 1000 / 120));
+    const sel = `model=${JSON.stringify(modelId)}`;
+    const quantile = (q: number, metric: string) =>
+      `histogram_quantile(${q}, sum by (le) (le_model_project_id:${metric}_bucket:rate5m{${sel}}))`;
+
+    const queries: Array<{ label: string; unit: string; query: string; byLabel?: string }> = [
+      {
+        label: "Requests/s",
+        unit: "req/s",
+        query: `sum by (status_code) (model_project_id_status_code:requests:rate5m{${sel}})`,
+        byLabel: "status_code",
+      },
+      {
+        label: "Input tokens/s",
+        unit: "tokens/s",
+        query: `sum(model_project_id:tokens_in:rate5m{${sel}})`,
+      },
+      {
+        label: "Output tokens/s",
+        unit: "tokens/s",
+        query: `sum(model_project_id:tokens_out:rate5m{${sel}})`,
+      },
+      { label: "Queue latency p99", unit: "s", query: quantile(0.99, "queue_latency_seconds") },
+      { label: "Time to first token p50", unit: "s", query: quantile(0.5, "ttft_latency_seconds") },
+      {
+        label: "Time to first token p99",
+        unit: "s",
+        query: quantile(0.99, "ttft_latency_seconds"),
+      },
+      { label: "End-to-end latency p50", unit: "s", query: quantile(0.5, "e2e_latency_seconds") },
+      { label: "End-to-end latency p99", unit: "s", query: quantile(0.99, "e2e_latency_seconds") },
+      {
+        label: "Prompt cache hit rate",
+        unit: "%",
+        query: `100 * sum(model_project_id:prompt_cache_hits:rate5m{${sel}}) / (sum(model_project_id:prompt_cache_hits:rate5m{${sel}}) + sum(model_project_id:prompt_cache_misses:rate5m{${sel}}))`,
+      },
+    ];
+
+    const start = Math.floor(startMs / 1000);
+    const end = Math.floor(endMs / 1000);
+    const run = async (query: string): Promise<PromRangeResponse> => {
+      const qs = new URLSearchParams({
+        query,
+        start: String(start),
+        end: String(end),
+        step: `${stepSeconds}s`,
+      });
+      return this.fetchAt<PromRangeResponse>(METRICS_BASE, `/api/v1/query_range?${qs.toString()}`);
+    };
+
+    // Probe with the first query so a non-Enterprise key costs one request,
+    // not nine.
+    const [first, ...rest] = queries;
+    if (!first) return [];
+    let firstResult: PromRangeResponse;
+    try {
+      firstResult = await run(first.query);
+    } catch (err) {
+      if (/API error (401|403|404)\b/.test(String((err as Error).message))) return [];
+      throw err;
+    }
+    const results = [
+      firstResult,
+      ...(await Promise.all(rest.map((q) => run(q.query).catch(() => ({}) as PromRangeResponse)))),
+    ];
+
+    const series: MetricSeries[] = [];
+    queries.forEach((q, index) => {
+      for (const row of results[index]?.data?.result ?? []) {
+        const points = (row.values ?? [])
+          .map(([ts, raw]) => ({ timestamp: Number(ts) * 1000, value: Number(raw) }))
+          .filter((p) => Number.isFinite(p.value));
+        if (points.length === 0) continue;
+        const suffix = q.byLabel ? row.metric?.[q.byLabel] : undefined;
+        series.push({
+          label: suffix ? `${q.label} (${suffix})` : q.label,
+          unit: q.unit,
+          points,
+        });
+      }
+    });
+    return series;
   }
 
   // ------------------------------------------------------------------ audio
@@ -787,7 +1021,12 @@ export class GroqClient implements PluginClient {
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
       case "groq-model":
-        return this.renderModelDetail(resource);
+        return withMetricsCapability(
+          this.renderModelDetail(resource),
+          RESOURCE_TYPES,
+          "groq-model",
+          DEFAULT_METRICS_WINDOW_MS,
+        );
       case "groq-batch":
         return this.renderBatchDetail(resource);
       case "groq-file":
@@ -876,7 +1115,7 @@ export class GroqClient implements PluginClient {
               kind: "text",
               variant: "muted",
               content:
-                "Groq exposes no usage, cost, or API-key management API — spend and rate-limit history live only in the Groq console.",
+                "Groq exposes no cost or API-key management API, so spend lives only in the Groq console. On the Enterprise tier the Metrics tab charts this model's requests, tokens, latency and prompt-cache hits from Groq's Prometheus endpoint.",
             },
           ],
         },
@@ -960,6 +1199,7 @@ export class GroqClient implements PluginClient {
                   key: "Completion Window",
                   value: String(resource.fields["completionWindow"] ?? "—") || "—",
                 },
+                { key: "Metadata", value: String(resource.fields["metadata"] ?? "") || "—" },
               ],
             },
           ],
@@ -978,6 +1218,21 @@ export class GroqClient implements PluginClient {
             },
           ],
         },
+        ...(resource.fields["errors"]
+          ? [
+              {
+                kind: "section" as const,
+                title: "Validation Errors",
+                children: [
+                  {
+                    kind: "text" as const,
+                    variant: "mono" as const,
+                    content: String(resource.fields["errors"]),
+                  },
+                ],
+              },
+            ]
+          : []),
         {
           kind: "section",
           title: "Timeline",

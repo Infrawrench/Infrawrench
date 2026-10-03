@@ -6,6 +6,9 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * Always populated from `GET https://api.groq.com/openai/v1/models`: Groq
  * runs a rolling deprecation schedule (see console.groq.com/docs/deprecations),
  * so a hardcoded catalogue goes stale within weeks.
+ *
+ * Metrics come from Groq's Enterprise-only Prometheus endpoint; other tiers
+ * get an empty Metrics tab.
  */
 export const GroqModelResourceType = rt({
   name: "Model",
@@ -22,5 +25,6 @@ export const GroqModelResourceType = rt({
   ],
   outputs: [o("modelId", "Model ID"), o("baseUrl", "OpenAI-Compatible Base URL")],
   supportsDelete: false,
+  supportsMetrics: true,
   iconKey: "cpu",
 });
