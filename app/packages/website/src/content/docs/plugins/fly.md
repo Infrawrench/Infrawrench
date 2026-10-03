@@ -23,15 +23,16 @@ Fly.io dashboard → **Account → Access Tokens → Create Token**. Tokens are 
 
 ![Fly Add-account form with API token and organization slug fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fly/add-account.png)
 
-Infrawrench uses the token for the Machines API and Fly's Prometheus metrics endpoint.
+Infrawrench uses the token for the Machines API, Fly's Prometheus metrics endpoint, and the logs endpoint `fly logs` reads from.
 
 ## Notable flows
 
 - **SSH terminal** on machines that have `fly ssh` enabled.
 - **Region pickers** read Fly's live region list, so new regions appear and deprecated ones disappear without an update.
 - **Machine sizes**: pick a preset (`shared-cpu-1x` up to `performance-16x`) when creating a machine, and optionally raise its memory.
-- **Machine actions**: Start, Stop, Restart, Suspend (the next start resumes from a memory snapshot), and Cordon / Uncordon (take a machine out of the Fly Proxy's rotation without stopping it). The **Logs** tab lists the machine's lifecycle events, including exit codes.
-- **Metrics** for apps and machines: CPU, memory used and available, load, network, HTTP request rate, 5xx rate, p95 response time, and concurrency. Volumes chart disk usage.
+- **Machine actions**: Start, Stop, Restart, Suspend (the next start resumes from a memory snapshot), and Cordon / Uncordon (take a machine out of the Fly Proxy's rotation without stopping it). The **Logs** tab shows the machine's application output (stdout and stderr); switch it to **events** for its lifecycle events, including exit codes.
+- **App logs**: an app's **Logs** tab shows the latest output from all of its machines, each line tagged with the machine and region.
+- **Metrics** for apps and machines: CPU, CPU throttling, burst balance and baseline, memory used and available, swap, load, network, disk read and write throughput and IOPS, root disk usage, open file descriptors, HTTP request rate, 5xx rate, p95 response time, p95 connect time, TCP connects, and concurrency. Apps also chart the Fly Proxy edge: request rate, 5xx rate, p95 response time, data in and out, and TLS handshake errors. Volumes chart disk usage.
 - **Volumes**: **Edit** grows a volume (volumes cannot shrink) and changes automatic snapshots and snapshot retention. **Snapshot Now** takes a snapshot, and the detail view lists existing snapshots.
 - **App secrets**: create, update (the value is write-only), and delete secrets. Machines pick up a changed secret on their next restart or deploy.
 - **Deploy tokens**: export an app-scoped `FLY_API_TOKEN` for CI from an app's credentials menu.
@@ -46,4 +47,5 @@ Infrawrench uses the token for the Machines API and Fly's Prometheus metrics end
 - Fly apps can be organization-scoped. Tokens scoped to one org will not see apps from another.
 - Machine creation via infrawrench sets only common fields (image, region, size, memory). For complex configs (custom init, services, metadata), use `flyctl` and pull the result back in.
 - Managed Postgres endpoints live on your organization's private network, so they are reachable from your Fly apps or over WireGuard, not from the public internet.
-- Machine logs (stdout) are not part of the Machines API; use `fly logs` or the Fly dashboard for them.
+- Logs come from the endpoint `fly logs` uses, which returns the most recent 100 lines from the last 24 hours. Fly describes it as mostly stable but not officially supported; for search and long retention, [ship logs](https://fly.io/docs/monitoring/exporting-logs/) to an external sink.
+- Metrics come from Fly's managed Prometheus, which keeps about 15 days of data.
