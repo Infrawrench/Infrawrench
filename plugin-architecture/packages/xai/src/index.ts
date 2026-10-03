@@ -6,3 +6,8 @@ export { BatchResourceType } from "./resources/batch.js";
 export { CustomVoiceResourceType } from "./resources/custom-voice.js";
 export { ApiKeyResourceType } from "./resources/api-key.js";
 export { AuditEventResourceType } from "./resources/audit-event.js";
+export { SkillResourceType } from "./resources/skill.js";
+export { CollectionResourceType } from "./resources/collection.js";
+export { CollectionDocumentResourceType } from "./resources/collection-document.js";
+export { InvoiceResourceType } from "./resources/invoice.js";
+export { SpendingLimitResourceType } from "./resources/spending-limit.js";

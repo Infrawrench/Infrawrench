@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, CreditAccessError } from "@infrawrench/plugin-base";
 import { XaiClient } from "../client.js";
 
 const ACCOUNT = "acct-1";
@@ -571,5 +571,452 @@ describe("transcribeAudio", () => {
     )[0]?.[0];
     expect(req?.url).toBe("https://api.x.ai/v1/stt");
     expect(req?.body).toBeInstanceOf(Uint8Array);
+  });
+});
+
+function validation(url: string): Response | undefined {
+  if (url.endsWith("/auth/management-keys/validation")) {
+    return jsonResponse({ scope: "SCOPE_TEAM", scopeId: "team-42" });
+  }
+  return undefined;
+}
+
+describe("models: video generation and capabilities", () => {
+  it("adds video models and the accepted reasoning efforts", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/language-models")) {
+        return jsonResponse({
+          models: [
+            {
+              id: "grok-4.3",
+              capabilities: { reasoning_effort: ["low", "high"], default_reasoning_effort: "high" },
+            },
+          ],
+        });
+      }
+      if (url.endsWith("/v1/image-generation-models")) {
+        return jsonResponse({
+          models: [
+            {
+              id: "grok-imagine-image",
+              image_price: 200000000,
+              pricing: [{ quality: "high", resolution: "2k", price_per_image: 700000000 }],
+            },
+          ],
+        });
+      }
+      if (url.endsWith("/v1/video-generation-models")) {
+        return jsonResponse({
+          models: [
+            {
+              id: "grok-imagine-video",
+              input_modalities: ["text", "image"],
+              output_modalities: ["video"],
+            },
+          ],
+        });
+      }
+      if (url.endsWith("/v1/embedding-models")) return jsonResponse({ models: [] });
+      throw new Error(`unrouted: ${url}`);
+    });
+
+    const rows = await client().listResources("model", ACCOUNT);
+    expect(rows.map((r) => [r.externalId, r.fields["kind"]])).toEqual([
+      ["grok-4.3", "language"],
+      ["grok-imagine-image", "image-generation"],
+      ["grok-imagine-video", "video-generation"],
+    ]);
+    expect(rows[0]?.fields["reasoningEfforts"]).toBe("low, high");
+    expect(rows[0]?.fields["defaultReasoningEffort"]).toBe("high");
+    expect(rows[2]?.fields["outputModalities"]).toBe("video");
+
+    const detail = client().renderDetail(rows[1]!);
+    const pricing = detail.sections.find((s) => s.title === "Pricing");
+    const table = pricing?.children[0];
+    if (table?.kind !== "table") throw new Error("expected a pricing table");
+    expect(table.rows.map((r) => r.cells["meter"])).toContain("Image (high, 2k)");
+    expect(table.rows.find((r) => r.cells["meter"] === "Image (high, 2k)")?.cells["price"]).toBe(
+      "$0.0700",
+    );
+  });
+});
+
+describe("files: public URLs", () => {
+  it("creates and revokes a public URL through plugin actions", async () => {
+    installFetch(() => jsonResponse({ public_url: "https://files-cdn.x.ai/x.png" }));
+    const c = client();
+    await c.invokeAction("file", `${ACCOUNT}:file:file_1`, "create-public-url", ACCOUNT);
+    await c.invokeAction("file", `${ACCOUNT}:file:file_1`, "revoke-public-url", ACCOUNT);
+    expect(calls.map((x) => [x.init?.method, x.url])).toEqual([
+      ["POST", "https://api.x.ai/v1/files/file_1/public-url"],
+      ["POST", "https://api.x.ai/v1/files/file_1/public-url/revoke"],
+    ]);
+  });
+
+  it("offers create when there is no public URL and revoke when there is one", () => {
+    const base = {
+      id: `${ACCOUNT}:file:file_1`,
+      pluginId: "xai",
+      resourceTypeId: "file",
+      accountId: ACCOUNT,
+      displayName: "a.png",
+      externalId: "file_1",
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    };
+    const labels = (publicUrl: string) =>
+      client()
+        .renderDetail({ ...base, fields: { fileId: "file_1", publicUrl } })
+        .headerActions?.map((a) => a.label);
+    expect(labels("")).toContain("Create public URL");
+    expect(labels("https://files-cdn.x.ai/x.png")).toContain("Revoke public URL");
+  });
+});
+
+describe("batches", () => {
+  it("creates a named batch and cancels it with the colon verb", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/batches")) {
+        return jsonResponse({ batch_id: "b1", name: "nightly", state: { num_requests: 0 } });
+      }
+      return jsonResponse({ batch_id: "b1" });
+    });
+    const c = client();
+    const created = await c.createResource("batch", ACCOUNT, { name: "nightly" });
+    expect(created.id).toBe(`${ACCOUNT}:batch:b1`);
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ name: "nightly" });
+
+    await c.invokeAction("batch", `${ACCOUNT}:batch:b1`, "cancel", ACCOUNT);
+    expect(calls[1]?.url).toBe("https://api.x.ai/v1/batches/b1:cancel");
+    expect(calls[1]?.init?.method).toBe("POST");
+  });
+
+  it("stashes the first page of per-request state for the detail view", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/batches?")) {
+        return jsonResponse({
+          batches: [
+            { batch_id: "b1", name: "nightly", state: { num_requests: 1, num_pending: 1 } },
+          ],
+        });
+      }
+      if (url.includes("/v1/batches/b1/requests")) {
+        return jsonResponse({
+          batch_request_metadata: [
+            { batch_request_id: "r1", state: "pending", model: "grok-4", endpoint: "chat" },
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const c = client();
+    const batch = await c.getResource("batch", `${ACCOUNT}:batch:b1`, ACCOUNT);
+    expect(calls[1]?.url).toBe("https://api.x.ai/v1/batches/b1/requests?limit=100");
+    const detail = c.renderDetail(batch);
+    const requests = detail.sections.find((s) => s.title === "Requests");
+    const tables = requests?.children.filter((n) => n.kind === "table") ?? [];
+    expect(tables).toHaveLength(2);
+    expect(detail.headerActions?.map((a) => a.label)).toContain("Cancel batch");
+  });
+});
+
+describe("skills", () => {
+  it("pages with the after cursor and deletes", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "DELETE") return jsonResponse({ id: "s1", deleted: true });
+      if (url.includes("after=s2")) {
+        return jsonResponse({ data: [{ id: "s3", name: "c" }], has_more: false, last_id: "s3" });
+      }
+      return jsonResponse({
+        data: [
+          { id: "s1", name: "a", created_at: 1_700_000_000, latest_version: "1" },
+          { id: "s2", name: "b" },
+        ],
+        has_more: true,
+        last_id: "s2",
+      });
+    });
+    const c = client();
+    const rows = await c.listResources("skill", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["s1", "s2", "s3"]);
+    expect(calls[1]?.url).toBe("https://api.x.ai/v1/skills?limit=100&order=desc&after=s2");
+
+    await c.deleteResource("skill", `${ACCOUNT}:skill:s1`, ACCOUNT);
+    expect(calls[2]?.url).toBe("https://api.x.ai/v1/skills/s1");
+  });
+});
+
+describe("collections", () => {
+  it("lists collections and their documents on the management host", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/collections?")) {
+        return jsonResponse({
+          collections: [
+            {
+              collection_id: "collection_a",
+              collection_name: "SEC Filings",
+              index_configuration: { model_name: "grok-embedding-small" },
+              chunk_configuration: {
+                tokens_configuration: {
+                  max_chunk_size_tokens: 1024,
+                  chunk_overlap_tokens: 200,
+                  encoding_name: "o200k_base",
+                },
+              },
+              documents_count: 1,
+            },
+            { collection_id: "collection_empty", collection_name: "Empty", documents_count: 0 },
+          ],
+        });
+      }
+      if (url.includes("/v1/collections/collection_a/documents?")) {
+        return jsonResponse({
+          documents: [
+            {
+              file_metadata: { file_id: "file_9", name: "q2.txt", size_bytes: "119237" },
+              fields: { type: "10-Q" },
+              status: "DOCUMENT_STATUS_PROCESSED",
+            },
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const c = client("xai-mgmt");
+    const collections = await c.listResources("collection", ACCOUNT);
+    expect(calls[0]?.url).toBe("https://management-api.x.ai/v1/collections?limit=100");
+    expect(collections[0]?.fields["chunking"]).toBe(
+      "Tokens · 1024 tokens per chunk · 200 overlap · o200k_base",
+    );
+
+    calls = [];
+    const docs = await c.listResources("collection-document", ACCOUNT);
+    // The empty collection is skipped by its documents_count.
+    expect(calls.some((x) => x.url.includes("collection_empty"))).toBe(false);
+    expect(docs).toHaveLength(1);
+    expect(docs[0]?.id).toBe(`${ACCOUNT}:collection-document:collection_a/file_9`);
+    expect(docs[0]?.fields).toMatchObject({
+      collectionName: "SEC Filings",
+      sizeBytes: 119237,
+      metadata: "type=10-Q",
+    });
+  });
+
+  it("returns nothing without a management key", async () => {
+    const spy = installFetch(() => jsonResponse({}));
+    expect(await client().listResources("collection", ACCOUNT)).toEqual([]);
+    expect(await client().listResources("collection-document", ACCOUNT)).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("creates a collection with an embedding model and token chunking", async () => {
+    installFetch(() =>
+      jsonResponse({
+        collection_id: "collection_new",
+        collection_name: "Docs",
+        documents_count: 0,
+      }),
+    );
+    await client("xai-mgmt").createResource("collection", ACCOUNT, {
+      name: "Docs",
+      description: "Runbooks",
+      embeddingModel: "grok-embedding-small",
+      maxChunkTokens: "512",
+      chunkOverlapTokens: "64",
+    });
+    expect(calls[0]?.url).toBe("https://management-api.x.ai/v1/collections");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      collection_name: "Docs",
+      collection_description: "Runbooks",
+      index_configuration: { model_name: "grok-embedding-small" },
+      chunk_configuration: {
+        tokens_configuration: { max_chunk_size_tokens: 512, chunk_overlap_tokens: 64 },
+      },
+    });
+  });
+
+  it("renames a collection with PUT", async () => {
+    installFetch(() => jsonResponse({ collection_id: "collection_a", collection_name: "New" }));
+    await client("xai-mgmt").updateResource(
+      "collection",
+      `${ACCOUNT}:collection:collection_a`,
+      ACCOUNT,
+      { name: "New", description: "d" },
+    );
+    expect(calls[0]?.init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      collection_name: "New",
+      collection_description: "d",
+    });
+  });
+
+  it("attaches, re-indexes and removes a document by collection and file", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "GET" || !init?.method) {
+        if (url.endsWith("/documents/file_9")) {
+          return jsonResponse({
+            file_metadata: { file_id: "file_9", name: "q2.txt" },
+            status: "DOCUMENT_STATUS_PROCESSING",
+          });
+        }
+        return jsonResponse({ collection_id: "collection_a", collection_name: "SEC Filings" });
+      }
+      return jsonResponse({});
+    });
+    const c = client("xai-mgmt");
+    const doc = await c.createResource("collection-document", ACCOUNT, {
+      collectionId: "collection_a",
+      fileId: "file_9",
+    });
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect(calls[0]?.url).toBe(
+      "https://management-api.x.ai/v1/collections/collection_a/documents/file_9",
+    );
+    expect(doc.id).toBe(`${ACCOUNT}:collection-document:collection_a/file_9`);
+    expect(doc.fields["collectionName"]).toBe("SEC Filings");
+
+    calls = [];
+    await c.invokeAction("collection-document", doc.id, "reindex", ACCOUNT);
+    await c.deleteResource("collection-document", doc.id, ACCOUNT);
+    expect(calls.map((x) => [x.init?.method, x.url])).toEqual([
+      ["PATCH", "https://management-api.x.ai/v1/collections/collection_a/documents/file_9"],
+      ["DELETE", "https://management-api.x.ai/v1/collections/collection_a/documents/file_9"],
+    ]);
+  });
+});
+
+describe("billing: invoices, spending limit and prepaid credit", () => {
+  it("lists invoices in dollars, newest first", async () => {
+    installFetch((url) => {
+      const v = validation(url);
+      if (v) return v;
+      if (url.includes("/v1/billing/teams/team-42/invoices?")) {
+        return jsonResponse({
+          invoices: [
+            {
+              invoiceId: "i1",
+              invoiceNumber: "111",
+              createTime: "2026-08-01T00:00:00Z",
+              invoiceStatus: "PAID",
+              subtotal: "1000",
+              tax: "200",
+              total: "1200",
+              lines: [
+                { description: "Chat grok-4", unitPrice: "20000", numUnits: "5", amount: "1000" },
+              ],
+              monthly: { billingCycle: { year: 2026, month: 7 } },
+            },
+            {
+              invoiceId: "i2",
+              invoiceNumber: "222",
+              createTime: "2026-09-01T00:00:00Z",
+              invoiceStatus: "PENDING",
+              total: "500",
+            },
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const rows = await client("xai-mgmt").listResources("invoice", ACCOUNT);
+    expect(calls[1]?.url).toMatch(/since\.year=\d{4}&since\.month=\d+$/);
+    expect(rows.map((r) => r.externalId)).toEqual(["i2", "i1"]);
+    expect(rows[1]?.fields).toMatchObject({
+      total: 12,
+      subtotal: 10,
+      tax: 2,
+      billingCycle: "2026-07",
+      lineCount: 1,
+    });
+    const detail = client().renderDetail(rows[1]!);
+    const lines = detail.sections.find((s) => s.title === "Line Items")?.children[0];
+    if (lines?.kind !== "table") throw new Error("expected line items");
+    expect(lines.rows[0]?.cells["unitPrice"]).toBe("$200.0000 / 1M");
+  });
+
+  it("reads the spending limit with this period's preview and sets it in cents", async () => {
+    installFetch((url, init) => {
+      const v = validation(url);
+      if (v) return v;
+      if (url.endsWith("/postpaid/spending-limits") && init?.method === "POST") {
+        return jsonResponse({ thisBpSoftSpendingLimit: { val: "15000" } });
+      }
+      if (url.endsWith("/postpaid/spending-limits")) {
+        return jsonResponse({
+          spendingLimits: {
+            hardSlAuto: { val: "22500" },
+            effectiveHardSl: { val: "22500" },
+            softSl: { val: "20000" },
+            effectiveSl: { val: "20000" },
+          },
+        });
+      }
+      if (url.endsWith("/postpaid/invoice/preview")) {
+        return jsonResponse({
+          coreInvoice: {
+            amountAfterVat: "1234",
+            prepaidCredits: { val: "-4500" },
+            prepaidCreditsUsed: { val: "500" },
+          },
+          billingCycle: { year: 2026, month: 10 },
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const c = client("xai-mgmt");
+    const [row] = await c.listResources("spending-limit", ACCOUNT);
+    expect(row?.fields).toMatchObject({
+      softLimit: 200,
+      effectiveLimit: 200,
+      hardLimit: 225,
+      currentSpend: 12.34,
+      prepaidCredits: 45,
+      prepaidCreditsUsed: 5,
+      billingCycle: "2026-10",
+    });
+
+    calls = [];
+    await c.updateResource("spending-limit", row!.id, ACCOUNT, { softLimit: "150" });
+    const post = calls.find((x) => x.init?.method === "POST");
+    expect(JSON.parse(String(post?.init?.body))).toEqual({
+      desiredSoftSpendingLimit: { val: "15000" },
+    });
+
+    expect(await c.fetchCreditBalance()).toEqual([
+      {
+        key: "prepaid",
+        label: "Prepaid credits",
+        remaining: 40,
+        currency: "USD",
+        granted: 45,
+      },
+    ]);
+  });
+
+  it("rejects a negative spending limit before calling the API", async () => {
+    const spy = installFetch(() => jsonResponse({}));
+    await expect(
+      client("xai-mgmt").updateResource(
+        "spending-limit",
+        `${ACCOUNT}:spending-limit:team`,
+        ACCOUNT,
+        {
+          softLimit: "-5",
+        },
+      ),
+    ).rejects.toThrow(/non-negative/);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("reports no pot for a postpaid team and a CreditAccessError without a management key", async () => {
+    installFetch((url) => {
+      const v = validation(url);
+      if (v) return v;
+      return jsonResponse({ coreInvoice: { prepaidCredits: { val: "0" } } });
+    });
+    expect(await client("xai-mgmt").fetchCreditBalance()).toEqual([]);
+    await expect(client().fetchCreditBalance()).rejects.toBeInstanceOf(CreditAccessError);
   });
 });

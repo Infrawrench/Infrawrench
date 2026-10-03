@@ -3,10 +3,12 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A model served by the xAI inference API.
  *
- * Folded together from three list endpoints so the user sees one "Models"
- * list rather than three near-identical ones:
- *   - GET /v1/language-models        (chat + vision, full pricing/modalities)
- *   - GET /v1/image-generation-models
+ * Folded together from four list endpoints so the user sees one "Models"
+ * list rather than four near-identical ones:
+ *   - GET /v1/language-models        (chat + vision, full pricing/modalities,
+ *                                     accepted reasoning efforts)
+ *   - GET /v1/image-generation-models (per-quality/resolution price tiers)
+ *   - GET /v1/video-generation-models
  *   - GET /v1/embedding-models
  *
  * Docs: https://docs.x.ai/openapi.json
@@ -20,7 +22,7 @@ export const ModelResourceType = rt({
     f("modelId", "Model ID"),
     f("kind", "Kind", {
       kind: "enum",
-      enumValues: ["language", "image-generation", "embedding"],
+      enumValues: ["language", "image-generation", "video-generation", "embedding"],
     }),
     f("ownedBy", "Owned By", { required: false }),
     f("version", "Version", { required: false }),
@@ -31,6 +33,8 @@ export const ModelResourceType = rt({
     f("created", "Created", { required: false }),
     f("longContextThreshold", "Long-Context Threshold", { kind: "number", required: false }),
     f("maxPromptLength", "Max Prompt Length", { kind: "number", required: false }),
+    f("reasoningEfforts", "Reasoning Efforts", { required: false }),
+    f("defaultReasoningEffort", "Default Reasoning Effort", { required: false }),
     // Prices arrive as USD cents per 100 million units: see PRICE_PER_MILLION /
     // PRICE_PER_UNIT in client.ts, which is where the scaling happens. The token
     // rows and the per-image/per-search rows share that denomination; only the
@@ -53,6 +57,8 @@ export const ModelResourceType = rt({
     f("promptImageTokenPrice", "Prompt Image Price", { kind: "number", required: false }),
     f("imagePrice", "Image Price", { kind: "number", required: false }),
     f("searchPrice", "Search Price", { kind: "number", required: false }),
+    // JSON array of `{quality, resolution, price_per_image}`, same 1e8 scale.
+    f("imagePricingTiers", "Image Price Tiers", { required: false }),
   ],
   outputs: [
     o("modelId", "Model ID", { description: "Pass as `model` in inference requests" }),
@@ -63,5 +69,6 @@ export const ModelResourceType = rt({
   // per-model token series from the management API's usage query never
   // reached it.
   supportsMetrics: true,
+  supportsDelete: false,
   iconKey: "cpu",
 });
