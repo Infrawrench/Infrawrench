@@ -36,6 +36,8 @@ import { VectorizeIndexResourceType } from "./resources/vectorize-index.js";
 import { AiGatewayResourceType } from "./resources/ai-gateway.js";
 import { AiSearchResourceType } from "./resources/ai-search.js";
 import { DurableObjectNamespaceResourceType } from "./resources/durable-object-namespace.js";
+import { WorkflowResourceType } from "./resources/workflow.js";
+import { SecretsStoreSecretResourceType } from "./resources/secrets-store-secret.js";
 
 // Deep link to Cloudflare's "Create Token" page (user/profile tokens) with the
 // scopes this plugin uses pre-selected. Format per Cloudflare's token-template
@@ -155,6 +157,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   AiGatewayResourceType,
   AiSearchResourceType,
   DurableObjectNamespaceResourceType,
+  WorkflowResourceType,
+  SecretsStoreSecretResourceType,
 ];
 
 export const plugin: Plugin = {

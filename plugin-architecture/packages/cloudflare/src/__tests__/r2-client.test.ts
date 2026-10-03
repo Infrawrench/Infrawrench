@@ -8,7 +8,12 @@ import {
   deleteR2StorageObject,
   uploadR2StorageObject,
   makeR2StorageFolder,
+  editR2Bucket,
+  getR2DevDomain,
+  setR2DevDomain,
 } from "../clients/r2-client.js";
+import { CloudflareClient } from "../client.js";
+import { plugin } from "../plugin.js";
 import { makeApi } from "./_helpers.js";
 
 function r2Api(over: Record<string, unknown> = {}) {
@@ -165,5 +170,83 @@ describe("r2-client object plane", () => {
   it("makeR2StorageFolder throws on failure", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => "no" });
     await expect(makeR2StorageFolder(makeApi(), "b", "f/")).rejects.toThrow(/500/);
+  });
+});
+
+describe("r2-client storage class and r2.dev access", () => {
+  function api(managed: Record<string, unknown> = { domain: "pub-abc.r2.dev", enabled: true }) {
+    const buckets = {
+      get: vi.fn(async () => ({ name: "b1", storage_class: "Standard", jurisdiction: "eu" })),
+      create: vi.fn(async () => ({ name: "b2", storage_class: "InfrequentAccess" })),
+      edit: vi.fn(async () => ({ name: "b1", storage_class: "InfrequentAccess" })),
+      domains: {
+        managed: {
+          list: vi.fn(async () => managed),
+          update: vi.fn(async () => managed),
+        },
+      },
+    };
+    return makeApi({ cf: { r2: { buckets } } });
+  }
+
+  it("maps storage class and jurisdiction", async () => {
+    const out = await getR2Bucket(api(), "b1", "acct");
+    expect(out.fields.storageClass).toBe("Standard");
+    expect(out.fields.jurisdiction).toBe("eu");
+  });
+
+  it("createR2Bucket forwards a valid storage class only", async () => {
+    const a = api();
+    await createR2Bucket(a, "acct", { name: "b2", storageClass: "InfrequentAccess" });
+    expect(a.cf.r2.buckets.create).toHaveBeenCalledWith(
+      expect.objectContaining({ storageClass: "InfrequentAccess" }),
+    );
+    await createR2Bucket(a, "acct", { name: "b3", storageClass: "Glacier" });
+    expect((a.cf.r2.buckets.create as Mock).mock.calls[1]![0]).not.toHaveProperty("storageClass");
+  });
+
+  it("editR2Bucket patches the storage class and rejects unknown ones", async () => {
+    const a = api();
+    const out = await editR2Bucket(a, "acct", "b1", { storageClass: "InfrequentAccess" });
+    expect(a.cf.r2.buckets.edit).toHaveBeenCalledWith("b1", {
+      account_id: "acct-cf",
+      storage_class: "InfrequentAccess",
+    });
+    expect(out.fields.storageClass).toBe("InfrequentAccess");
+    await expect(editR2Bucket(a, "acct", "b1", { storageClass: "x" })).rejects.toThrow(
+      /storage class/,
+    );
+  });
+
+  it("reads and toggles the r2.dev domain, passing a non-default jurisdiction", async () => {
+    const a = api();
+    expect(await getR2DevDomain(a, "b1")).toEqual({ domain: "pub-abc.r2.dev", enabled: true });
+    expect(a.cf.r2.buckets.domains.managed.list).toHaveBeenCalledWith("b1", {
+      account_id: "acct-cf",
+    });
+    await setR2DevDomain(a, "b1", false, "eu");
+    expect(a.cf.r2.buckets.domains.managed.update).toHaveBeenCalledWith("b1", {
+      account_id: "acct-cf",
+      enabled: false,
+      jurisdiction: "eu",
+    });
+  });
+
+  it("client enriches the detail with r2.dev state and routes the toggle actions", async () => {
+    const c = new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes);
+    const a = api();
+    (c as unknown as { api: unknown }).api = a;
+    const bucket = await c.getResource("r2-bucket", "acct:r2-bucket:b1", "acct");
+    const enriched = await c.enrichDetail(bucket);
+    expect(enriched.resolvedOutputs.publicDevUrl).toBe("https://pub-abc.r2.dev");
+    const json = JSON.stringify(c.renderDetail(enriched));
+    expect(json).toContain("r2dev-disable");
+    expect(json).toContain("https://pub-abc.r2.dev");
+    await c.invokeAction("r2-bucket", "acct:r2-bucket:b1", "r2dev-enable", "acct");
+    expect(a.cf.r2.buckets.domains.managed.update).toHaveBeenCalledWith("b1", {
+      account_id: "acct-cf",
+      enabled: true,
+      jurisdiction: "eu",
+    });
   });
 });

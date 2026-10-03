@@ -5,12 +5,27 @@ export const R2BucketResourceType = rt({
   id: "r2-bucket",
   description: "A Cloudflare R2 object storage bucket",
   fields: [
-    f("name", "Name"),
-    f("location", "Location Hint", { required: false }),
-    f("createdOn", "Created", { required: false }),
+    f("name", "Name", { editable: false }),
+    f("location", "Location Hint", { required: false, editable: false }),
+    f("storageClass", "Default Storage Class", {
+      kind: "enum",
+      required: false,
+      enumValues: ["Standard", "InfrequentAccess"],
+      description:
+        "Storage class new uploads get. Infrequent Access stores data for less but bills retrieval and has a 30-day minimum. Existing objects keep their class.",
+    }),
+    f("jurisdiction", "Jurisdiction", { required: false, editable: false }),
+    f("createdOn", "Created", { required: false, editable: false }),
   ],
-  outputs: [o("bucketName", "Bucket Name"), o("s3Endpoint", "S3-compatible Endpoint")],
+  outputs: [
+    o("bucketName", "Bucket Name"),
+    o("s3Endpoint", "S3-compatible Endpoint"),
+    o("publicDevUrl", "Public r2.dev URL", {
+      description: "The bucket's r2.dev development URL, when public access is enabled",
+    }),
+  ],
   supportsCreate: true,
+  supportsUpdate: true,
   supportsStorageBrowser: true,
   supportsMetrics: true,
   secretExportTemplates: [
