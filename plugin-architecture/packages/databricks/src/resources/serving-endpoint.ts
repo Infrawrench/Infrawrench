@@ -18,5 +18,7 @@ export const ServingEndpointResourceType = rt({
       verb: "Serve model version",
     },
   ],
+  // Health metrics from the endpoint's OpenMetrics export.
+  supportsMetrics: true,
   iconKey: "compute",
 });

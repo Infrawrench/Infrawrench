@@ -71,5 +71,8 @@ export const ClusterResourceType = rt({
   },
   supportsCreate: true,
   supportsUpdate: true,
+  // Worker counts from the cluster event log, plus per-minute CPU, memory and
+  // network from system.compute.node_timeline when a SQL warehouse is running.
+  supportsMetrics: true,
   iconKey: "compute",
 });

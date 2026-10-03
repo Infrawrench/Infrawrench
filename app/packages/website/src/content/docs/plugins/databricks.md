@@ -48,6 +48,21 @@ The Playground is disabled until the endpoint is `READY` — wait for it to come
 
 ![Databricks Model Serving endpoint detail page with the Playground tab open, showing a streamed assistant reply](https://agent-assets.infrawrench.com/docs-screenshots/plugins/databricks/serving-endpoint-playground.png)
 
+## Metrics and logs
+
+| Resource         | Metrics tab                                                                                                                                  | Logs tab                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Cluster          | Workers and target workers over time; CPU, CPU I/O wait and memory used %, network in / out per minute (from `system.compute.node_timeline`) | The cluster event log: creation, resizes, restarts, terminations and why |
+| SQL warehouse    | Queries, failed queries, average query duration and data read per interval (query history API)                                               |                                                                          |
+| Job              | Duration, queue time and failure of each run in the window                                                                                   |                                                                          |
+| Serving endpoint | CPU and memory %, requests, 4xx / 5xx errors, provisioned concurrency, average request latency, inference latency and queue time             | Server logs and build logs for each served model                         |
+| Pipeline         |                                                                                                                                              | The pipeline event log, with error messages under failed events          |
+
+- **Cluster utilisation** comes from the `system.compute.node_timeline` system table, which needs `USE CATALOG system` and `SELECT` on `system.compute`. Infrawrench only reads it on a SQL warehouse that is **already running**, so opening the Metrics tab never wakes a warehouse; with none running, the tab shows the worker count alone. Databricks writes node timeline rows with a delay, so the last few minutes can be missing.
+- **Serving endpoint** metrics come from the endpoint's metrics export, which reports current values only; the chart fills in as Infrawrench samples it.
+- **Query history** reaches back at most 30 days and charts up to the 5,000 most recent queries in the window.
+- Logs for foundation-model and external-model entities are not available; the Logs tab says so instead of failing.
+
 ## Lakebase Postgres
 
 Lakebase projects are managed Postgres databases with autoscaling compute, scale-to-zero and copy-on-write branches, read through the Lakebase Postgres API. Databricks creates every new Lakebase database as a project, and is migrating older provisioned instances to projects.
