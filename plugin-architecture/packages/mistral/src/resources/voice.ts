@@ -9,6 +9,11 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * `total`/`total_pages`. Neither scheme matches `/models` (none) or the admin
  * API, which is why this plugin has no single shared paginator.
  * https://docs.mistral.ai/api/endpoint/audio/voices
+ *
+ * The OpenAPI document now marks this listing deprecated ("offset pagination
+ * will not be supported anymore") in favour of `GET /v2/audio/voices`, but
+ * that replacement is not documented anywhere yet, so the listing stays on
+ * v1 until it is.
  */
 export const MistralVoiceResourceType = rt({
   name: "Voice",

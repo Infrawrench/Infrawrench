@@ -7,6 +7,11 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * `GET https://api.mistral.ai/v1/models`: note there are **no pagination
  * parameters** on this endpoint; the full catalogue comes back in one call.
  * https://docs.mistral.ai/api/endpoint/models
+ *
+ * Fine-tuned checkpoints carry header actions rather than type-level
+ * edit/delete, because base models can be neither: archive and unarchive
+ * (`POST`/`DELETE /v1/fine_tuning/models/{model_id}/archive`) and delete
+ * (`DELETE /v1/models/{model_id}`).
  */
 export const MistralModelResourceType = rt({
   name: "Model",

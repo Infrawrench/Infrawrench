@@ -375,3 +375,241 @@ describe("transcribeAudio", () => {
     expect((form.get("file") as Blob & { name?: string }).name).toBe("clip.mp4");
   });
 });
+
+describe("agents", () => {
+  it("pages GET /v1/agents/pages by cursor and maps tools, libraries and versions", async () => {
+    installFetch((url) => {
+      if (url.includes("page_token=t2")) {
+        return jsonResponse({
+          data: [{ id: "ag_2", name: "Second", model: "mistral-small-latest" }],
+        });
+      }
+      return jsonResponse({
+        data: [
+          {
+            id: "ag_1",
+            name: "Support",
+            model: "mistral-medium-latest",
+            instructions: "Be terse.",
+            tools: [
+              { type: "web_search" },
+              { type: "function", function: { name: "lookup_order" } },
+              { type: "document_library", library_ids: ["lib_a", "lib_b"] },
+            ],
+            completion_args: { temperature: 0.3 },
+            version: 3,
+            versions: [1, 2, 3],
+            deployment_chat: true,
+          },
+        ],
+        next_page_token: "t2",
+      });
+    });
+
+    const rows = await client().listResources("mistral-agent", ACCOUNT);
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.mistral.ai/v1/agents/pages?page_size=100",
+      "https://api.mistral.ai/v1/agents/pages?page_size=100&page_token=t2",
+    ]);
+    expect(rows.map((r) => r.externalId)).toEqual(["ag_1", "ag_2"]);
+    expect(rows[0]?.fields).toMatchObject({
+      tools: "web_search, function:lookup_order, document_library",
+      libraries: "lib_a, lib_b",
+      version: 3,
+      versionCount: 3,
+      deploymentChat: true,
+    });
+    const detail = client().renderDetail(rows[0]!);
+    expect(detail.sections.map((s) => s.title)).toEqual([
+      "Agent",
+      "Instructions",
+      "Completion Arguments",
+    ]);
+  });
+
+  it("creates with a picked model, edits with PATCH and deletes", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/models")) {
+        return jsonResponse({
+          data: [
+            { id: "mistral-medium-latest", capabilities: { completion_chat: true } },
+            { id: "mistral-embed", capabilities: { completion_chat: false } },
+            { id: "old-model", archived: true },
+          ],
+        });
+      }
+      if (init?.method === "DELETE") return jsonResponse({});
+      return jsonResponse({
+        id: "ag_new",
+        name: "Bot",
+        model: "mistral-medium-latest",
+        version: 1,
+      });
+    });
+    const c = client();
+    const config = await c.getCreateConfig("mistral-agent");
+    expect(config.fields.find((f) => f.key === "model")?.options?.map((o) => o.id)).toEqual([
+      "mistral-medium-latest",
+    ]);
+
+    calls = [];
+    const created = await c.createResource("mistral-agent", ACCOUNT, {
+      name: "Bot",
+      model: "mistral-medium-latest",
+      instructions: "Hi",
+    });
+    expect(calls[0]?.url).toBe("https://api.mistral.ai/v1/agents");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      name: "Bot",
+      model: "mistral-medium-latest",
+      instructions: "Hi",
+    });
+    expect(created.id).toBe(`${ACCOUNT}:mistral-agent:ag_new`);
+
+    await c.updateResource("mistral-agent", created.id, ACCOUNT, { description: "New" });
+    expect(calls[1]?.init?.method).toBe("PATCH");
+    expect(calls[1]?.url).toBe("https://api.mistral.ai/v1/agents/ag_new");
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({ description: "New" });
+
+    await c.deleteResource("mistral-agent", created.id, ACCOUNT);
+    expect(calls[2]?.init?.method).toBe("DELETE");
+  });
+});
+
+describe("libraries", () => {
+  it("lists by page_token, creates, renames and deletes", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "POST" || init?.method === "PATCH" || init?.method === "DELETE") {
+        return jsonResponse({ id: "lib_1", name: "Runbooks", nb_documents: 0, total_size: 0 });
+      }
+      return jsonResponse({
+        data: [
+          {
+            id: "lib_1",
+            name: "Runbooks",
+            nb_documents: 4,
+            total_size: 2048,
+            owner_type: "Workspace",
+          },
+        ],
+        next_page_token: null,
+      });
+    });
+    const c = client();
+    const [library] = await c.listResources("mistral-library", ACCOUNT);
+    expect(calls[0]?.url).toBe("https://api.mistral.ai/v1/libraries?page_size=100");
+    expect(library?.fields).toMatchObject({
+      documents: 4,
+      totalSize: 2048,
+      ownerType: "Workspace",
+    });
+
+    await c.createResource("mistral-library", ACCOUNT, { name: "Runbooks", description: "Ops" });
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+      name: "Runbooks",
+      description: "Ops",
+    });
+
+    await c.updateResource("mistral-library", library!.id, ACCOUNT, { name: "Ops runbooks" });
+    expect(calls[2]?.init?.method).toBe("PATCH");
+    expect(calls[2]?.url).toBe("https://api.mistral.ai/v1/libraries/lib_1");
+
+    await c.deleteResource("mistral-library", library!.id, ACCOUNT);
+    expect(calls[3]?.init?.method).toBe("DELETE");
+  });
+});
+
+describe("batch job creation", () => {
+  it("offers only batch-purpose files and posts a single input file", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/models")) return jsonResponse({ data: [{ id: "mistral-small-latest" }] });
+      if (url.includes("/files?")) {
+        return jsonResponse({
+          data: [
+            { id: "f-batch", filename: "requests.jsonl", purpose: "batch" },
+            { id: "f-ft", filename: "train.jsonl", purpose: "fine-tune" },
+          ],
+        });
+      }
+      if (init?.method === "POST") {
+        return jsonResponse({ id: "job-1", status: "QUEUED", endpoint: "/v1/chat/completions" });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const c = client();
+    const config = await c.getCreateConfig("mistral-batch-job");
+    expect(config.fields.find((f) => f.key === "inputFile")?.options?.map((o) => o.id)).toEqual([
+      "f-batch",
+    ]);
+
+    calls = [];
+    const job = await c.createResource("mistral-batch-job", ACCOUNT, {
+      inputFile: "f-batch",
+      endpoint: "/v1/chat/completions",
+      model: "mistral-small-latest",
+      timeoutHours: "12",
+    });
+    expect(calls[0]?.url).toBe("https://api.mistral.ai/v1/batch/jobs");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      input_files: ["f-batch"],
+      endpoint: "/v1/chat/completions",
+      model: "mistral-small-latest",
+      timeout_hours: 12,
+    });
+    expect(job.id).toBe(`${ACCOUNT}:mistral-batch-job:job-1`);
+  });
+});
+
+describe("fine-tuned model actions", () => {
+  const base = {
+    pluginId: "mistral",
+    resourceTypeId: "mistral-model",
+    accountId: ACCOUNT,
+    resolvedOutputs: {},
+    secretStates: [],
+    createdAt: "",
+    updatedAt: "",
+  };
+
+  it("offers archive and delete only on fine-tuned models", () => {
+    const labels = (fields: Record<string, string | boolean>, id: string) =>
+      client()
+        .renderDetail({
+          ...base,
+          id: `${ACCOUNT}:mistral-model:${id}`,
+          displayName: id,
+          externalId: id,
+          fields,
+        })
+        .headerActions?.map((a) => a.label);
+    expect(
+      labels({ modelId: "mistral-large-latest", type: "base" }, "mistral-large-latest"),
+    ).toEqual(["Refresh"]);
+    expect(labels({ modelId: "ft:a:b", type: "fine-tuned" }, "ft:a:b")).toEqual([
+      "Refresh",
+      "Archive",
+      "Delete model",
+    ]);
+    expect(labels({ modelId: "ft:a:b", type: "fine-tuned", archived: true }, "ft:a:b")).toContain(
+      "Unarchive",
+    );
+  });
+
+  it("archives, unarchives and deletes through the documented routes", async () => {
+    installFetch((_url, init) =>
+      init?.method === "DELETE" && _url.includes("/models/ft")
+        ? jsonResponse({ id: "ft:a:b", deleted: true })
+        : jsonResponse({ id: "ft:a:b", archived: true }),
+    );
+    const c = client();
+    const id = `${ACCOUNT}:mistral-model:ft:a:b`;
+    await c.invokeAction("mistral-model", id, "archive", ACCOUNT);
+    await c.invokeAction("mistral-model", id, "unarchive", ACCOUNT);
+    await c.invokeAction("mistral-model", id, "delete-model", ACCOUNT);
+    expect(calls.map((x) => [x.init?.method, x.url])).toEqual([
+      ["POST", "https://api.mistral.ai/v1/fine_tuning/models/ft%3Aa%3Ab/archive"],
+      ["DELETE", "https://api.mistral.ai/v1/fine_tuning/models/ft%3Aa%3Ab/archive"],
+      ["DELETE", "https://api.mistral.ai/v1/models/ft%3Aa%3Ab"],
+    ]);
+  });
+});

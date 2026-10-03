@@ -6,3 +6,5 @@ export { MistralFileResourceType } from "./resources/file.js";
 export { MistralFineTuningJobResourceType } from "./resources/fine-tuning-job.js";
 export { MistralBatchJobResourceType } from "./resources/batch-job.js";
 export { MistralApiKeyResourceType } from "./resources/api-key.js";
+export { MistralAgentResourceType } from "./resources/agent.js";
+export { MistralLibraryResourceType } from "./resources/library.js";
