@@ -3,6 +3,12 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AssemblyAIClient } from "./client.js";
 import { AccountResourceType } from "./resources/account.js";
 import { TranscriptResourceType } from "./resources/transcript.js";
+import {
+  AgentSessionResourceType,
+  LlmModelResourceType,
+  VoiceAgentResourceType,
+  WebhookSubscriptionResourceType,
+} from "./resources/voice-agent.js";
 
 /**
  * The official AssemblyAI "A" mark, lifted verbatim from the two symbol paths
@@ -25,7 +31,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "AssemblyAI",
   description:
-    "Async speech-to-text. Lists the account's transcripts and provides a Speech tab that uploads a clip, submits a job, and polls it to completion in one step.",
+    "Speech-to-text and voice agents. Lists the account's transcripts, manages Voice Agent API agents, their sessions and webhooks, browses the LLM Gateway catalogue, and provides a Speech tab that uploads a clip, submits a job, and polls it to completion in one step.",
   logoSvg,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -34,7 +40,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your AssemblyAI API key, from the dashboard's API Keys page. AssemblyAI has only one kind of key — the same key both submits and reads transcripts — but keys are scoped to a project: a transcript submitted with one project's key cannot be read with another's.",
+        "Your AssemblyAI API key, from the dashboard's API Keys page. AssemblyAI has only one kind of key — the same key submits and reads transcripts and manages voice agents — but keys are scoped to a project: a transcript submitted with one project's key cannot be read with another's.",
       sensitive: true,
       placeholder: "0123456789abcdef0123456789abcdef",
       helpLink: { label: "Get an API key", url: "https://www.assemblyai.com/app/api-keys" },
@@ -63,7 +69,14 @@ const manifest: PluginManifest = {
 
 // Account first: it is the singleton that always exists, and the one that
 // carries the Speech tab on an account that has not transcribed anything yet.
-const resourceTypes: ResourceTypeDefinition[] = [AccountResourceType, TranscriptResourceType];
+const resourceTypes: ResourceTypeDefinition[] = [
+  AccountResourceType,
+  TranscriptResourceType,
+  VoiceAgentResourceType,
+  AgentSessionResourceType,
+  WebhookSubscriptionResourceType,
+  LlmModelResourceType,
+];
 
 export const plugin: Plugin = {
   manifest,

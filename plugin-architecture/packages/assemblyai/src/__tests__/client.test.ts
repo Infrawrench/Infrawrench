@@ -480,3 +480,242 @@ describe("error handling", () => {
     await expect(client().listResources("transcript", ACCOUNT)).rejects.toThrow(/^(?!.*not 429)/s);
   });
 });
+
+describe("voice agents", () => {
+  const AGENT = {
+    id: "agent-1",
+    name: "Support",
+    system_prompt: "Be brief.",
+    greeting: "Hi!",
+    voice: { voice_id: "anna" },
+    tools: [{ name: "get_weather" }],
+    llm: [{ base_url: "https://llm.example.com", model: "my-model" }],
+    created_at: "2026-09-01T00:00:00Z",
+    updated_at: "2026-09-02T00:00:00Z",
+  };
+
+  it("lists live agents on the agents host with the bare key, skipping deleted ones", async () => {
+    installFetch(() =>
+      jsonResponse([
+        { id: "agent-1", name: "Support" },
+        { id: "agent-0", name: "Old", deleted_at: "2026-08-01T00:00:00Z" },
+      ]),
+    );
+    const agents = await client().listResources("voice-agent", ACCOUNT);
+    expect(calls[0]?.url).toBe("https://agents.assemblyai.com/v1/agents");
+    expect(calls[0]?.headers["authorization"]).toBe("test-key");
+    expect(agents.map((a) => a.id)).toEqual([`${ACCOUNT}:voice-agent:agent-1`]);
+  });
+
+  it("reads one agent with its voice, tools and LLM", async () => {
+    installFetch(() => jsonResponse(AGENT));
+    const agent = await client().getResource(
+      "voice-agent",
+      `${ACCOUNT}:voice-agent:agent-1`,
+      ACCOUNT,
+    );
+    expect(agent.fields["voiceId"]).toBe("anna");
+    expect(agent.fields["tools"]).toBe("get_weather");
+    expect(agent.fields["llmModel"]).toBe("my-model");
+    const detail = client().renderDetail(agent);
+    expect(detail.metricsCapability).toBeDefined();
+    expect(JSON.stringify(detail.sections)).toContain("Anna (English (British))");
+  });
+
+  it("creates an agent with a voice, greeting and key terms", async () => {
+    installFetch(() => jsonResponse(AGENT, 201));
+    await client().createResource("voice-agent", ACCOUNT, {
+      name: "Support",
+      systemPrompt: "Be brief.",
+      voiceId: "anna",
+      greeting: "Hi!",
+      keyterms: "Infrawrench, AssemblyAI",
+    });
+    expect(calls[0]?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]?.body))).toEqual({
+      name: "Support",
+      system_prompt: "Be brief.",
+      voice: { voice_id: "anna" },
+      greeting: "Hi!",
+      input: { keyterms: ["Infrawrench", "AssemblyAI"] },
+    });
+  });
+
+  it("updates only what changed with PUT", async () => {
+    installFetch(() => jsonResponse({ ...AGENT, voice: { voice_id: "paul" } }));
+    const updated = await client().updateResource(
+      "voice-agent",
+      `${ACCOUNT}:voice-agent:agent-1`,
+      ACCOUNT,
+      { voiceId: "paul" },
+    );
+    expect(calls[0]?.url).toBe("https://agents.assemblyai.com/v1/agents/agent-1");
+    expect(calls[0]?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[0]?.body))).toEqual({ voice: { voice_id: "paul" } });
+    expect(updated.fields["voiceId"]).toBe("paul");
+  });
+
+  it("buckets an agent's sessions into daily metrics", async () => {
+    const day = Date.UTC(2026, 8, 10);
+    installFetch(() =>
+      jsonResponse({
+        sessions: [
+          {
+            id: "s1",
+            agent_id: "agent-1",
+            created_at: new Date(day + 1000).toISOString(),
+            duration_seconds: 60,
+          },
+          {
+            id: "s2",
+            agent_id: "agent-1",
+            created_at: new Date(day + 2000).toISOString(),
+            duration_seconds: 30,
+          },
+        ],
+        has_more: false,
+        response_metadata: { next_cursor: "" },
+      }),
+    );
+    const series = await client().fetchMetricSeries(
+      "voice-agent",
+      `${ACCOUNT}:voice-agent:agent-1`,
+      ACCOUNT,
+      { startMs: day, endMs: day + 86_400_000 - 1 },
+    );
+    expect(calls[0]?.url).toBe(
+      "https://agents.assemblyai.com/v1/sessions?limit=200&agent_id=agent-1",
+    );
+    expect(series[0]?.points[0]).toEqual({ timestamp: day, value: 2 });
+    expect(series[1]?.points[0]).toEqual({ timestamp: day, value: 1.5 });
+  });
+
+  it("names sessions after their agent and deletes them", async () => {
+    installFetch((url, init) => {
+      if (init.method === "DELETE") return jsonResponse("", 204);
+      if (url.includes("/sessions")) {
+        return jsonResponse({
+          sessions: [
+            {
+              id: "sess_1",
+              agent_id: "agent-1",
+              status: "completed",
+              created_at: "2026-09-01T10:00:00Z",
+            },
+          ],
+          has_more: false,
+        });
+      }
+      return jsonResponse([{ id: "agent-1", name: "Support" }]);
+    });
+    const [session] = await client().listResources("agent-session", ACCOUNT);
+    expect(session?.displayName).toBe("Support · 2026-09-01 10:00:00");
+    await client().deleteResource("agent-session", session!.id, ACCOUNT);
+    expect(calls.at(-1)?.url).toBe("https://agents.assemblyai.com/v1/sessions/sess_1");
+    expect(calls.at(-1)?.method).toBe("DELETE");
+  });
+});
+
+describe("voice agent webhooks", () => {
+  it("creates a subscription with picked events and a generated secret shown once", async () => {
+    installFetch(() =>
+      jsonResponse(
+        {
+          id: "wh_1",
+          url: "https://example.com/hook",
+          events: ["session.completed"],
+          enabled: true,
+          secret_version: 1,
+        },
+        201,
+      ),
+    );
+    const sub = await client().createResource("webhook-subscription", ACCOUNT, {
+      url: "https://example.com/hook",
+      events: JSON.stringify(["session.completed", "bogus"]),
+      agentId: "",
+      secret: "",
+    });
+    const body = JSON.parse(String(calls[0]?.body));
+    expect(calls[0]?.url).toBe("https://agents.assemblyai.com/v1/webhook-subscriptions");
+    expect(body.events).toEqual(["session.completed"]);
+    expect(body.secret).toHaveLength(48);
+    expect(body.agent_id).toBeUndefined();
+    expect(sub.resolvedOutputs["signingSecret"]).toBe(body.secret);
+    expect(sub.fields["eventSessionCompleted"]).toBe(true);
+    expect(sub.fields["eventCallFailed"]).toBe(false);
+  });
+
+  it("rejects a non-HTTPS delivery URL before calling the API", async () => {
+    const spy = installFetch(() => jsonResponse({}));
+    await expect(
+      client().createResource("webhook-subscription", ACCOUNT, {
+        url: "http://example.com",
+        events: '["call.ended"]',
+      }),
+    ).rejects.toThrow(/HTTPS/);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("patches toggled events merged with the current set", async () => {
+    installFetch((url, init) => {
+      if (init.method === "PATCH") {
+        return jsonResponse({
+          id: "wh_1",
+          url: "https://e.com",
+          events: ["session.started", "call.ended"],
+        });
+      }
+      if (url.includes("/webhook-subscriptions")) {
+        return jsonResponse({
+          subscriptions: [
+            { id: "wh_1", url: "https://e.com", events: ["session.started"], enabled: true },
+          ],
+          has_more: false,
+        });
+      }
+      return jsonResponse([]);
+    });
+    await client().updateResource(
+      "webhook-subscription",
+      `${ACCOUNT}:webhook-subscription:wh_1`,
+      ACCOUNT,
+      {
+        eventCallEnded: "true",
+      },
+    );
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(patch?.url).toBe("https://agents.assemblyai.com/v1/webhook-subscriptions/wh_1");
+    expect(JSON.parse(String(patch?.body))).toEqual({ events: ["session.started", "call.ended"] });
+  });
+});
+
+describe("LLM Gateway catalogue", () => {
+  it("lists models from the regional gateway with global prices", async () => {
+    installFetch(() =>
+      jsonResponse({
+        data: [
+          {
+            id: "claude-sonnet-4-6",
+            name: "Sonnet 4.6",
+            creator: "Claude",
+            context_length: 200000,
+            top_provider: { max_completion_tokens: 128000 },
+            pricing: {
+              global: { prompt: 3, completions: 15, input_cache_read: 0.3 },
+              regional_increase_percent: 0.1,
+            },
+            retirement_date: 0,
+            available_regions: ["us", "eu", "global"],
+          },
+        ],
+      }),
+    );
+    const [model] = await client({ region: "eu" }).listResources("llm-model", ACCOUNT);
+    expect(calls[0]?.url).toBe("https://llm-gateway.eu.assemblyai.com/v1/models");
+    expect(model?.fields["promptPrice"]).toBe(3);
+    expect(model?.fields["completionPrice"]).toBe(15);
+    expect(model?.fields["retirementDate"]).toBe("");
+    expect(model?.fields["regions"]).toBe("us, eu, global");
+  });
+});

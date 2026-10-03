@@ -1,7 +1,9 @@
 import type {
+  CreateResourceConfig,
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  MetricSeries,
   PluginClient,
   ResourceInstance,
   SectionNode,
@@ -13,6 +15,7 @@ import type {
   TranscriptWord,
 } from "@infrawrench/plugin-base";
 import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
+import { VOICE_AGENT_TYPE, VOICE_AGENT_TYPES, VoiceAgentSurface } from "./voice-agents.js";
 
 const PLUGIN_ID = "assemblyai";
 const TRANSCRIPT_TYPE = "transcript";
@@ -204,6 +207,8 @@ export class AssemblyAIClient implements PluginClient {
   private readonly region: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  /** Voice agents, their sessions and webhooks, and the LLM Gateway catalogue. */
+  private readonly voice: VoiceAgentSurface;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -213,6 +218,12 @@ export class AssemblyAIClient implements PluginClient {
     this.region = region in HOSTS ? region : "us";
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
+    this.voice = new VoiceAgentSurface({
+      apiKey,
+      region: this.region,
+      caCert: this.caCert,
+      services,
+    });
   }
 
   private get baseUrl(): string {
@@ -291,6 +302,7 @@ export class AssemblyAIClient implements PluginClient {
     // Exactly one account, always, including on a key that has never
     // transcribed anything. That is the point of it.
     if (typeId === ACCOUNT_TYPE) return [await this.buildAccount(accountId)];
+    if (VOICE_AGENT_TYPES.has(typeId)) return this.voice.list(typeId, accountId);
     if (typeId !== TRANSCRIPT_TYPE) {
       throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
     }
@@ -318,6 +330,7 @@ export class AssemblyAIClient implements PluginClient {
     accountId: string,
   ): Promise<ResourceInstance> {
     if (typeId === ACCOUNT_TYPE) return this.buildAccount(accountId);
+    if (VOICE_AGENT_TYPES.has(typeId)) return this.voice.get(typeId, resourceId, accountId);
     if (typeId !== TRANSCRIPT_TYPE) {
       throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
     }
@@ -332,7 +345,7 @@ export class AssemblyAIClient implements PluginClient {
     outputKey: string,
     accountId: string,
   ): Promise<string> {
-    if (typeId !== TRANSCRIPT_TYPE && typeId !== ACCOUNT_TYPE) {
+    if (typeId !== TRANSCRIPT_TYPE && typeId !== ACCOUNT_TYPE && !VOICE_AGENT_TYPES.has(typeId)) {
       throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
     }
     const resource = await this.getResource(typeId, resourceId, accountId);
@@ -351,6 +364,7 @@ export class AssemblyAIClient implements PluginClient {
    * https://www.assemblyai.com/docs/api-reference/transcripts/delete
    */
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+    if (VOICE_AGENT_TYPES.has(typeId)) return this.voice.remove(typeId, resourceId);
     if (typeId !== TRANSCRIPT_TYPE) {
       throw new Error(`AssemblyAI plugin: deleteResource not supported for type "${typeId}"`);
     }
@@ -365,6 +379,8 @@ export class AssemblyAIClient implements PluginClient {
   ): Promise<DashboardStat[]> {
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     const fields = resource.fields;
+
+    if (VOICE_AGENT_TYPES.has(resourceTypeId)) return this.voice.stats(resource);
 
     if (resourceTypeId === ACCOUNT_TYPE) {
       const failed = Number(fields["erroredTranscripts"] ?? 0);
@@ -427,7 +443,43 @@ export class AssemblyAIClient implements PluginClient {
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     if (resource.resourceTypeId === ACCOUNT_TYPE) return this.renderAccountDetail(resource);
+    if (VOICE_AGENT_TYPES.has(resource.resourceTypeId)) return this.voice.render(resource);
     return this.renderTranscriptDetail(resource);
+  }
+
+  // -------------------------------------------------------------------------
+  // Voice agents and webhooks: create, edit, metrics
+  // -------------------------------------------------------------------------
+
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    return this.voice.createConfig(typeId);
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    return this.voice.create(typeId, accountId, fields);
+  }
+
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    return this.voice.update(typeId, resourceId, accountId, fields);
+  }
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== VOICE_AGENT_TYPE) return [];
+    return this.voice.metrics(resourceId, timeRange);
   }
 
   /**
@@ -632,6 +684,7 @@ export class AssemblyAIClient implements PluginClient {
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
+    if (VOICE_AGENT_TYPES.has(resource.resourceTypeId)) return this.voice.sidebar(resource);
     if (resource.resourceTypeId === ACCOUNT_TYPE) {
       return {
         id: resource.id,
