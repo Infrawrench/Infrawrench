@@ -154,6 +154,50 @@ const METRICS_BY_TYPE: Record<string, MetricDescriptor[]> = {
     { name: "IngestionLatency", label: "Ingestion latency" },
     { name: "DailyQuotaUsedPercentage", label: "Daily quota used" },
   ],
+  "azure-container-app": [
+    { name: "CpuPercentage", label: "CPU" },
+    { name: "MemoryPercentage", label: "Memory" },
+    { name: "UsageNanoCores", label: "CPU usage" },
+    { name: "WorkingSetBytes", label: "Memory working set" },
+    { name: "Requests", label: "Requests" },
+    { name: "ResponseTime", label: "Response time" },
+    { name: "Replicas", label: "Replicas" },
+    { name: "RestartCount", label: "Restarts" },
+    { name: "RxBytes", label: "Network in" },
+    { name: "TxBytes", label: "Network out" },
+  ],
+  "azure-managed-redis": [
+    { name: "percentProcessorTime", label: "CPU" },
+    { name: "serverLoad", label: "Server load" },
+    { name: "usedmemorypercentage", label: "Used memory %" },
+    { name: "usedmemory", label: "Used memory" },
+    { name: "operationsPerSecond", label: "Operations/sec" },
+    { name: "cachehits", label: "Cache hits" },
+    { name: "cachemisses", label: "Cache misses" },
+    { name: "cacheLatency", label: "Latency" },
+    { name: "connectedclients", label: "Connected clients" },
+    { name: "evictedkeys", label: "Evicted keys" },
+    { name: "totalkeys", label: "Total keys" },
+  ],
+  // Azure OpenAI / Foundry model metrics first; the classic Cognitive
+  // Services request counters cover the non-OpenAI kinds (Speech, Vision,
+  // ...). Names a given account kind doesn't emit come back empty and are
+  // dropped, so one list serves every kind.
+  "azure-ai-services": [
+    { name: "AzureOpenAIRequests", label: "Requests" },
+    { name: "ProcessedPromptTokens", label: "Prompt tokens" },
+    { name: "GeneratedTokens", label: "Completion tokens" },
+    { name: "TokenTransaction", label: "Total tokens" },
+    { name: "AzureOpenAITimeToResponse", label: "Time to response" },
+    { name: "AzureOpenAIAvailabilityRate", label: "Availability" },
+    { name: "AzureOpenAIProvisionedManagedUtilizationV2", label: "Provisioned utilization" },
+    { name: "ModelRequests", label: "Model requests" },
+    { name: "InputTokens", label: "Input tokens" },
+    { name: "OutputTokens", label: "Output tokens" },
+    { name: "TotalCalls", label: "Calls" },
+    { name: "TotalErrors", label: "Errors" },
+    { name: "Latency", label: "Latency" },
+  ],
 };
 
 interface AzureMetricsResponse {

@@ -1,14 +1,17 @@
 ---
 title: Azure
-description: Manage VMs, AKS, App Service, SQL Database, CosmosDB, and storage.
+description: Manage VMs, AKS, Container Apps, App Service, SQL Database, CosmosDB, Managed Redis, Azure OpenAI, and storage.
 sidebar_order: 2
 ---
 
 ## What you can manage
 
-- **Compute** — Virtual Machines, App Service, Function Apps, App Service Plans.
+- **Compute** — Virtual Machines, App Service, Function Apps, App Service Plans, Container Instances.
+- **Container Apps** — container apps, Container Apps jobs, and the Container Apps environments they run in.
 - **Kubernetes** — AKS clusters (links to the [Kubernetes plugin](./kubernetes.md)).
-- **Databases** — SQL Database, CosmosDB.
+- **Databases** — SQL Database, CosmosDB, PostgreSQL and MySQL flexible servers.
+- **Caches** — Azure Cache for Redis and its successor, Azure Managed Redis.
+- **AI** — Azure AI Foundry, Azure OpenAI and Azure AI services accounts, with their model deployments.
 - **Storage** — Storage accounts (Blob, File, Queue, Table).
 - **Networking** — VNets, Subnets, NSGs, Load Balancers, Public IPs.
 - **Security** — Key Vault (keys, secrets, certificates).
@@ -26,7 +29,9 @@ Create a service principal (Azure Portal → Microsoft Entra ID → App registra
 
 ## Notable flows
 
-- **Create resources in-app** — 25 resource types can be provisioned from the create form: resource groups, VMs (the form auto-creates the VNet, NIC, public IP, and an NSG if you don't pick an existing one), managed disks, VNets (with a default subnet), NSGs, public IPs, load balancers, AKS clusters, storage accounts, SQL Database (on a new or existing server), Cosmos DB, PostgreSQL and MySQL flexible servers, Redis Cache, App Service, Function Apps, container instances, container registries, Key Vaults, Service Bus and Event Hub namespaces, Log Analytics workspaces, managed identities, DNS zones, and Entra ID app registrations (which also mint the matching service principal).
+- **Create resources in-app** — 26 resource types can be provisioned from the create form: container apps, resource groups, VMs (the form auto-creates the VNet, NIC, public IP, and an NSG if you don't pick an existing one), managed disks, VNets (with a default subnet), NSGs, public IPs, load balancers, AKS clusters, storage accounts, SQL Database (on a new or existing server), Cosmos DB, PostgreSQL and MySQL flexible servers, Redis Cache, App Service, Function Apps, container instances, container registries, Key Vaults, Service Bus and Event Hub namespaces, Log Analytics workspaces, managed identities, DNS zones, and Entra ID app registrations (which also mint the matching service principal).
+- **Start, stop and restart** from the detail page header, with the buttons matching the resource's current state: VMs (stop deallocates, restart reboots), AKS clusters, App Service and Function Apps, container instances, PostgreSQL and MySQL flexible servers, application gateways, and container apps. Container Apps jobs get a **Run now** button that starts one execution.
+- **Sleep schedules** for every type above except jobs; see [Sleep schedules](../features/sleep-schedules.md). The stop each one uses is the one that halts compute billing, and what keeps billing is spelled out in the confirmation.
 - **SSH terminal** on Linux VMs.
 - **SQL editor** on Azure SQL Database.
 - **File browser** on Blob Storage.
@@ -43,6 +48,38 @@ Web apps and function apps link to the plan they run on in the [dependency graph
 A **Metrics** tab reports the plan-wide CPU and memory percentage, disk and HTTP queue length, and data in/out — these are the numbers to scale on, since an individual app's metrics don't show plan-level saturation.
 
 ![Azure App Service Plan detail page showing the SKU, tier and instance-count fields, with a Dependencies tab listing the web apps that run on the plan](https://agent-assets.infrawrench.com/docs-screenshots/plugins/azure/app-service-plan-detail.png)
+
+## Container Apps
+
+Container apps, Container Apps jobs and Container Apps environments are listed from the subscription. An app shows its image, CPU and memory, replica bounds, ingress (external, internal or disabled), target port, revisions mode and latest revision, and links to its environment, the container registry it pulls from, and its managed identities in the [dependency graph](../features/dependency-graph.md). Its public URL is an output.
+
+**Creating an app** asks for a resource group, an environment (picked from the environments in the subscription; the app is created in the environment's region), an image, a CPU and memory pair from the Consumption sizes Azure accepts, ingress, target port, and the replica range. Pick an **Azure Container Registry** to pull a private image: Infrawrench reads the registry's admin credentials and stores the password as an app secret, so the registry needs its admin user enabled. Leave it empty for public images, or when the app pulls with a managed identity that has AcrPull.
+
+**Editing an app** changes the image, CPU, memory, and minimum or maximum replicas of its first container. Every other container, probe, volume and scale rule is kept as it is, and Azure rolls the change out as a new revision. Setting min replicas to 0 lets the app scale to zero.
+
+The **Metrics** tab shows CPU and memory (as a percentage of the limit and in absolute terms), requests, response time, replica count, restarts, and network in and out.
+
+Jobs show their trigger (manual, schedule with its cron expression, or event), parallelism, timeout and retry limit. Environments show their default domain, static IP, workload profiles, zone redundancy, whether they are internal-only, and their infrastructure subnet.
+
+<insert [Azure Container App detail page showing the image, CPU/memory, replica and ingress fields, the URL output, and Stop in the header] here>
+
+## Azure Managed Redis
+
+Azure Managed Redis clusters (`Microsoft.Cache/redisEnterprise`) are listed alongside Azure Cache for Redis, which Microsoft is retiring in favour of them. Each cluster shows its SKU, Redis version, high availability and redundancy, minimum TLS version and public network access, plus the settings of its database: client protocol, clustering and eviction policies, modules, persistence, and whether access keys are accepted.
+
+The hostname, port, primary key and a `rediss://` connection string are outputs, so the **Redis** tab, Kubernetes secret export and output references work as they do for Azure Cache for Redis. New clusters have **access keys disabled** by default (Microsoft Entra ID only); the key outputs then explain that instead of failing silently. Turn on access keys authentication on the cluster's database to use them.
+
+The **Metrics** tab shows CPU, server load, memory used, operations per second, cache hits and misses, latency, connected clients, evictions and key count.
+
+[Posture checks](../features/posture-checks.md) flag a database that accepts plaintext connections, and a cluster with high availability disabled.
+
+## AI services and Azure OpenAI
+
+Azure AI Foundry, Azure OpenAI and other Azure AI services accounts (`Microsoft.CognitiveServices/accounts`) are listed with their kind, SKU, endpoint, custom subdomain, network access, and every **model deployment** on the account (deployment name, model and version, deployment SKU and capacity).
+
+The endpoint and an **API key** are outputs, and an **Azure OpenAI** secret export template writes them as `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY`. Accounts with key authentication disabled are Entra ID only, and the key output says so.
+
+The **Metrics** tab shows requests, prompt, completion and total tokens, time to response, availability and provisioned (PTU) utilization for OpenAI and Foundry models, and calls, errors and latency for the other kinds. Posture checks flag accounts that still accept API keys.
 
 ## Tips & limits
 
@@ -105,10 +142,12 @@ Earlier builds documented a manual `ALTER TABLE cost_daily DELETE` here. It is n
 
 ## Commitments
 
-Azure accounts feed the [Commitments](../features/commitments.md) section with **reservations**, listed daily from the tenant-level `Microsoft.Capacity/reservations` API.
+Azure accounts feed the [Commitments](../features/commitments.md) section with **reservations** and **savings plans**, listed daily from the tenant-level `Microsoft.Capacity/reservations` and `Microsoft.BillingBenefits/savingsPlans` APIs.
 
-- The service principal needs **Reader** on the reservations (or the **Reservations Reader** role at tenant scope) — reservation access is granted separately from subscription roles.
+- The service principal needs **Reader** on the reservations (or the **Reservations Reader** role at tenant scope) — reservation access is granted separately from subscription roles. Savings plans likewise need **Reader** on them (or **Savings plan Reader**); without it they are simply not listed, and reservations still are.
+- **Savings plans report their hourly commitment**, so unlike reservations they show a dollar figure, and utilization is measured against it.
 - Azure's list API reports **no purchase price**, so reservation rows show "price not reported" rather than a dollar figure — the price lives on the reservation order's billing records, not here.
 - Azure is the only provider that reports its **own utilization** (1, 7 and 30-day figures). Those are shown labelled as provider-reported, alongside — never blended with — the utilization Infrawrench derives from your cost rows.
+- Savings plans apply across regions, so they show "All regions".
 - **Coverage is measured on amortized figures**, because on the cash figures Azure reports, usage covered by a reservation costs nothing and every account would read 0% however well covered it is. See [Amortized cost, and how coverage is measured](#amortized-cost-and-how-coverage-is-measured) above. Subscriptions that do not serve amortized data contribute no covered spend, and are named as excluded rather than counted as 0%.
 - **Per-reservation utilization needs an Enterprise Agreement or Microsoft Customer Agreement**, because the benefit column that names the specific reservation only exists there. Coverage does not — it only asks whether an hour was covered. The provider-reported utilization figures above are always available.

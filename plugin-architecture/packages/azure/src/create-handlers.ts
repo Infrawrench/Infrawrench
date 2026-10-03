@@ -25,3 +25,4 @@ export { getSimpleCreateConfig } from "./simple-create-handlers.js";
 export { getVNetCreateConfig } from "./vnet-create-handlers.js";
 export { getKeyVaultCreateConfig } from "./key-vault-create-handlers.js";
 export { getContainerRegistryCreateConfig } from "./container-registry-create-handlers.js";
+export { getContainerAppCreateConfig } from "./container-app-create-handlers.js";

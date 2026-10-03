@@ -13,6 +13,7 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
+import { azureActionButtons } from "./actions.js";
 import {
   joinSubtitle,
   labeledFieldItems,
@@ -28,6 +29,8 @@ const DETAIL_STATUS_MAP: Record<string, ResourceStatus> = {
   available: "healthy",
   ready: "healthy",
   creating: "provisioning",
+  inprogress: "provisioning",
+  progressing: "provisioning",
   updating: "provisioning",
   provisioning: "provisioning",
   starting: "provisioning",
@@ -118,38 +121,10 @@ export function renderAzureDetail(
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 
-  if (resource.resourceTypeId === "azure-vm") {
-    const power = String(fields["powerState"] ?? "");
-    if (power === "VM running") {
-      detail.headerActions = [
-        {
-          kind: "action",
-          label: "Stop",
-          action: {
-            type: "plugin-action",
-            actionId: "deallocate",
-            confirmMessage:
-              "Stop this VM? Deallocating releases the compute so VM billing stops; disks and public IPs keep billing.",
-            successMessage: "Deallocate requested.",
-          },
-          variant: "danger",
-        },
-        ...(detail.headerActions ?? []),
-      ];
-    } else if (power === "VM deallocated" || power === "VM stopped") {
-      detail.headerActions = [
-        {
-          kind: "action",
-          label: "Start",
-          action: {
-            type: "plugin-action",
-            actionId: "start",
-            successMessage: "Start requested.",
-          },
-        },
-        ...(detail.headerActions ?? []),
-      ];
-    }
+  // Start/stop/restart (and the job's "Run now"), filtered by current state.
+  const actionButtons = azureActionButtons(resource);
+  if (actionButtons.length > 0) {
+    detail.headerActions = [...actionButtons, ...(detail.headerActions ?? [])];
   }
 
   if (resource.resourceTypeId === "azure-storage-account") {

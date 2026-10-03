@@ -71,6 +71,15 @@ export const AKSClusterResourceType = rt({
     },
   ],
   iconKey: "kubernetes",
+  // Sleep/wake schedules: managedClusters start / stop. Stop deallocates the
+  // control plane and every node pool, so compute billing stops; state is kept.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "powerState",
+    runningValues: ["Running"],
+    stoppedValues: ["Stopped"],
+  },
   supportsCreate: true,
   supportsMetrics: true,
   peerIntegrations: [

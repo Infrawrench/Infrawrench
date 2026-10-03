@@ -34,6 +34,11 @@ import { LogAnalyticsWorkspaceResourceType } from "./resources/log-analytics.js"
 import { ManagedIdentityResourceType } from "./resources/managed-identity.js";
 import { AppRegistrationResourceType } from "./resources/app-registration.js";
 import { FirewallResourceType } from "./resources/firewall.js";
+import { ContainerAppResourceType } from "./resources/container-app.js";
+import { ContainerAppEnvironmentResourceType } from "./resources/container-app-environment.js";
+import { ContainerAppJobResourceType } from "./resources/container-app-job.js";
+import { ManagedRedisResourceType } from "./resources/managed-redis.js";
+import { AIServicesAccountResourceType } from "./resources/ai-services.js";
 
 const manifest: PluginManifest = {
   id: "azure",
@@ -103,10 +108,11 @@ const manifest: PluginManifest = {
     chargeTypes: true,
     amortization: true,
   },
-  // Tenant-level Microsoft.Capacity reservation list. Needs the service
-  // principal to hold Reader (or Reservations Reader) on the reservations:
+  // Tenant-level Microsoft.Capacity reservation list and
+  // Microsoft.BillingBenefits savings-plan list. Needs the service principal
+  // to hold Reader (or Reservations Reader / Savings plan Reader) on them:
   // surfaced in the plugin docs.
-  commitments: { kinds: ["reservation"] },
+  commitments: { kinds: ["reservation", "savings_plan"] },
   statusFeed,
 };
 
@@ -143,6 +149,11 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ManagedIdentityResourceType,
   AppRegistrationResourceType,
   FirewallResourceType,
+  ContainerAppResourceType,
+  ContainerAppEnvironmentResourceType,
+  ContainerAppJobResourceType,
+  ManagedRedisResourceType,
+  AIServicesAccountResourceType,
 ];
 
 export const plugin: Plugin = {

@@ -180,6 +180,19 @@ const CASES: Array<{
     fields: { ...BASE, name: "lb1", sku: "Standard" },
     urlFragment: "Microsoft.Network/loadBalancers/lb1?api-version=2023-09-01",
   },
+  {
+    typeId: "azure-container-app",
+    fields: {
+      resourceGroup: "rg1",
+      name: "ca1",
+      environmentId:
+        "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.App/managedEnvironments/env1",
+      image: "mcr.microsoft.com/k8se/quickstart:latest",
+      size: "0.5|1Gi",
+      ingress: "external",
+    },
+    urlFragment: "Microsoft.App/containerApps/ca1?api-version=2025-07-01",
+  },
 ];
 
 describe("createAzureResource dispatch", () => {

@@ -58,6 +58,15 @@ export const PostgresFlexibleServerResourceType = rt({
     },
   ],
   iconKey: "database",
+  // Sleep/wake schedules: flexibleServers start / stop. Compute stops billing;
+  // Azure restarts a stopped server by itself after 7 days.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "state",
+    runningValues: ["Ready"],
+    stoppedValues: ["Stopped"],
+  },
   supportsCreate: true,
   supportsMetrics: true,
   peerIntegrations: [

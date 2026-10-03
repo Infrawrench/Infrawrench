@@ -27,6 +27,7 @@ import {
   getVNetCreateConfig,
   getKeyVaultCreateConfig,
   getContainerRegistryCreateConfig,
+  getContainerAppCreateConfig,
 } from "./create-handlers.js";
 import { AZURE_REGIONS } from "./regions.js";
 
@@ -116,5 +117,6 @@ export async function getAzureCreateConfig(
   if (typeId === "azure-function-app") return getFunctionAppCreateConfig(ctx);
   if (typeId === "azure-sql-database") return getSQLDatabaseCreateConfig(ctx);
   if (typeId === "azure-load-balancer") return getLoadBalancerCreateConfig(ctx);
+  if (typeId === "azure-container-app") return getContainerAppCreateConfig(ctx);
   throw new Error(`Azure plugin: create not supported for type "${typeId}"`);
 }

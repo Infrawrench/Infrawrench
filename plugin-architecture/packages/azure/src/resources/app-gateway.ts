@@ -39,6 +39,15 @@ export const AppGatewayResourceType = rt({
       label: "certificates from",
     },
   ],
+  // Sleep/wake schedules: applicationGateways start / stop. A stopped gateway
+  // stops instance billing; its public IP keeps billing.
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "operationalState",
+    runningValues: ["Running"],
+    stoppedValues: ["Stopped"],
+  },
   supportsMetrics: true,
   iconKey: "network",
   attachTargets: [
