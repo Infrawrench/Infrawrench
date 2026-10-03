@@ -142,4 +142,4 @@
 // 1.40.0: Tailscale plugin, cross-provider SSH service enrollment, and
 // `supportsSshInstall` on resource detail, and agent service accounts plus
 // T3 Code access over Tailscale. Additive.
-export const API_VERSION = "1.40.0";
+export const API_VERSION = "1.41.0";
