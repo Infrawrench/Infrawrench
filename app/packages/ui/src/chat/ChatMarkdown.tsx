@@ -1,10 +1,45 @@
+import { createContext, useContext } from "react";
+import { useGT } from "gt-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+/** True inside a rendered link, so an image there does not nest a second `<a>`. */
+const InsideLink = createContext(false);
+
+/**
+ * Stand-in for a markdown image. An `<img>` would be fetched the moment the
+ * message renders, and its URL is chosen by the model: a prompt-injected reply
+ * can put a secret it just read into the query string and leak it with no
+ * click at all, on web and desktop alike. So an image renders as a link to its
+ * URL instead, labelled with its alt text, and nothing is requested until the
+ * user chooses to open it.
+ */
+function ImagePlaceholder({ src, alt }: { src?: string | undefined; alt?: string | undefined }) {
+  const gt = useGT();
+  const insideLink = useContext(InsideLink);
+  const label = gt("Image: {label}", { label: alt || src || gt("untitled") });
+  // react-markdown's default urlTransform has already blanked any src that is
+  // not http(s), mailto or relative, so an empty src means "nothing to open".
+  if (insideLink || !src) {
+    return <span className="text-on-surface-muted italic">[{label}]</span>;
+  }
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer"
+      title={src}
+      className="text-info hover:underline"
+    >
+      [{label}]
+    </a>
+  );
+}
+
 /**
  * Markdown renderer for assistant chat messages, styled to the app's chat
- * scale. react-markdown emits no raw HTML by default, so model output is safe
- * to render directly.
+ * scale. react-markdown emits no raw HTML by default, and images never load
+ * (see {@link ImagePlaceholder}), so model output is safe to render directly.
  */
 export function ChatMarkdown({ text }: { text: string }): React.ReactElement {
   return (
@@ -17,8 +52,11 @@ export function ChatMarkdown({ text }: { text: string }): React.ReactElement {
           ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1">{children}</ol>,
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noreferrer" className="text-info hover:underline">
-              {children}
+              <InsideLink.Provider value={true}>{children}</InsideLink.Provider>
             </a>
+          ),
+          img: ({ src, alt }) => (
+            <ImagePlaceholder src={typeof src === "string" ? src : undefined} alt={alt} />
           ),
           strong: ({ children }) => (
             <strong className="font-semibold text-on-surface">{children}</strong>

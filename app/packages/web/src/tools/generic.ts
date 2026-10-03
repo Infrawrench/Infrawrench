@@ -36,6 +36,7 @@ import {
 import {
   evaluatePeerIntegrationUnreachable,
   normalizeResourceCreateResult,
+  type ResourceOutput,
 } from "@infrawrench/plugin-base";
 import { ok, okText, err, type ToolDefinition } from "./types";
 
@@ -54,6 +55,25 @@ const resourceTargetSchema = {
   resourceId: z.string(),
   parentResourceId: parentResourceIdField,
 };
+
+/** The outputs a resource type declares, or null when the plugin or type is unknown. */
+async function declaredOutputs(
+  pluginId: string,
+  resourceTypeId: string,
+): Promise<ResourceOutput[] | null> {
+  const loaded = await getPlugin(pluginId);
+  const typeDef = loaded?.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
+  return typeDef ? typeDef.outputs : null;
+}
+
+/**
+ * True for an output that is safe to hand the model unprompted: declared, not
+ * sensitive, and not `hidden` (hidden outputs are the large blobs, such as a
+ * kubeconfig, which tend to embed credentials whatever their flag says).
+ */
+function isPlainOutput(output: ResourceOutput | undefined): boolean {
+  return output !== undefined && !output.sensitive && !output.hidden;
+}
 
 export function genericTools(): ToolDefinition[] {
   return [
@@ -842,6 +862,15 @@ export function genericTools(): ToolDefinition[] {
         if (!ctx) return err("Account or peer resource not found");
         try {
           const inst = await ctx.client.getResource(resourceTypeId, resourceId, accountId);
+          // The description promises non-secret outputs; hold a plugin that
+          // pre-populates a sensitive one to that, so the only way a secret
+          // reaches the model is get_resource_outputs and its approval.
+          const outputs =
+            ctx.plugin.resourceTypes.find((t) => t.id === resourceTypeId)?.outputs ?? [];
+          const withheld = new Set(outputs.filter((o) => !isPlainOutput(o)).map((o) => o.key));
+          const resolvedOutputs = Object.fromEntries(
+            Object.entries(inst.resolvedOutputs ?? {}).filter(([key]) => !withheld.has(key)),
+          );
           return ok({
             id: inst.id,
             displayName: inst.displayName,
@@ -851,7 +880,7 @@ export function genericTools(): ToolDefinition[] {
             externalId: inst.externalId,
             parentResourceId: inst.parentResourceId,
             fields: inst.fields,
-            resolvedOutputs: inst.resolvedOutputs,
+            resolvedOutputs,
             createdAt: inst.createdAt,
             updatedAt: inst.updatedAt,
           });
@@ -865,7 +894,7 @@ export function genericTools(): ToolDefinition[] {
       name: "get_resource_outputs",
       title: "Get resource outputs",
       description:
-        "Resolve a list of output keys for a resource (e.g. connectionString, ipv4). Outputs marked sensitive are returned in plaintext — handle with care.",
+        "Resolve a list of output keys for a resource (e.g. connectionString, ipv4). Outputs marked sensitive are returned in plaintext — handle with care. In chat, a call that includes any sensitive output (or omits outputKeys on a type that has one) waits for the user to approve it; ask only for the non-sensitive keys you need to avoid that.",
       inputSchema: {
         ...resourceTargetSchema,
         outputKeys: z
@@ -875,6 +904,21 @@ export function genericTools(): ToolDefinition[] {
       },
       risk: "read",
       permission: "secrets:read",
+      // A secret in the model's context is one prompt injection away from a
+      // URL or an image, so resolving one is a decision for the user. Keys the
+      // type does not declare are treated as sensitive: the plugin may still
+      // resolve them, and nothing says what they hold.
+      requiresApproval: async (input) => {
+        const { pluginId, resourceTypeId, outputKeys } = input as {
+          pluginId: string;
+          resourceTypeId: string;
+          outputKeys?: string[];
+        };
+        const outputs = await declaredOutputs(pluginId, resourceTypeId);
+        if (!outputs) return true;
+        const keys = outputKeys ?? outputs.map((o) => o.key);
+        return keys.some((key) => !isPlainOutput(outputs.find((o) => o.key === key)));
+      },
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId, outputKeys } =
           input as {

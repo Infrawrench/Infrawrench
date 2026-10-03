@@ -75,11 +75,14 @@ export interface ToolDefinition {
    * target. When it resolves true the chat surface queues the call for
    * approval exactly as it would a `destructive` tool; a throw is treated as
    * true (see `needsApproval` in `./approval`). Only ever widens the gate: a
-   * `destructive` tool always needs approval. Used by `sql_query`, which is
-   * only a guaranteed read on engines that can run it in a read-only
-   * transaction, and by `write` tools where one argument turns the call into
-   * running code (`launch_app` with `exec`, `write_workflow` saving source or
-   * arming a trigger, `write_custom_graph` saving source).
+   * `destructive` tool always needs approval. Chat-only, like `risk`; MCP
+   * ignores it. Used by `sql_query`, which is only a guaranteed read on
+   * engines that can run it in a read-only transaction; by `write` tools
+   * where one argument turns the call into running code (`launch_app` with
+   * `exec`, `write_workflow` saving source or arming a trigger,
+   * `write_custom_graph` saving source); by `get_resource_outputs` when it
+   * would return a sensitive, hidden or undeclared output; and by
+   * `web_fetch` of a URL the user never supplied.
    */
   requiresApproval?(input: Record<string, unknown>, auth: ToolAuthContext): Promise<boolean>;
   /**

@@ -56,12 +56,15 @@ Two tools let the agent look things up instead of guessing from training data. L
 - **`web_search`** — asks a question and gets back a summary with source links. Use it for anything that changes: current provider pricing and quotas, a changelog or deprecation notice, an unfamiliar error string, the present shape of a third-party API.
 - **`web_fetch`** — reads one URL as text. HTML is converted to Markdown and JSON is pretty-printed. It is **GET only** and cannot submit anything.
 
-Both are `read`-tier, so they run without an approval prompt. Ask "is the instance type I'm using still current?" and the agent searches, reads the page it finds, and answers with links you can check.
+Both are `read`-tier, so they usually run without an approval prompt. Ask "is the instance type I'm using still current?" and the agent searches, reads the page it finds, and answers with links you can check.
 
-Two limits are deliberate:
+`web_fetch` runs straight away only for a URL you typed into the conversation or one a `web_search` returned as a source. Any other URL, such as a link the agent found on a fetched page or one it put together itself, waits on an Approve / Reject card that shows the exact address. A URL can carry data in its path or query string, so this is what stops a hostile log line or resource tag from getting the agent to send something it read to a server of the attacker's choosing.
+
+Three limits are deliberate:
 
 - **Only public addresses are reachable.** `web_fetch` goes out through an egress proxy that runs outside the cluster and refuses private, loopback, link-local and cluster-internal addresses, re-checking every redirect hop. The agent cannot be talked into probing your internal network with it. To reach something private, give it an [SSH](./ssh-terminal.md) route or a workflow instead.
-- **Fetched pages are data, never instructions.** Web content arrives fenced and labelled as untrusted, and the agent is told to treat a page that says "run this command" as something to report to you rather than obey. Combined with the approval prompt on every destructive tool, that means a hostile page cannot get infrastructure deleted without you clicking Approve on a card that says so. Read those cards.
+- **Fetched pages are data, never instructions.** Web content arrives fenced and labelled as untrusted, and the agent is told to treat a page that says "run this command" as something to report to you rather than obey. Combined with the approval prompt on every destructive tool, that means a hostile page cannot get infrastructure deleted without you clicking Approve on a card that says so. Read those cards. The same fence wraps every other tool result too: resource names and tags, log lines, SQL rows and provider error messages are written by whoever controls those systems, so they get the same treatment as a web page.
+- **Images in replies are never loaded.** An image in the assistant's Markdown shows up as a link labelled with its description, and nothing is requested until you click it. In the web app the page's content security policy also limits images to Infrawrench itself and the profile-picture hosts.
 
 Searches cost a small amount per query on top of tokens, and show up in your [chat usage](#billing) like any other spend.
 
@@ -86,12 +89,16 @@ The agent can mix both in one form. Submit sends every answer together and the c
 
 Every tool is tagged with a risk tier: `read`, `write`, or `destructive`. Read and write tools auto-run inside the model loop. Destructive tools (deletes, drops, exec, manifest applies, write SQL, KV writes, Docker stop/restart, adding or destroying a secret version, credential export, typing or pressing keys in a [Linux application](./linux-apps.md) window, creating a [sleep/wake schedule](./sleep-schedules.md)) **suspend the loop** and write a pending-action row.
 
-A few tools need approval only for some inputs or targets, because one argument turns them into running code or writing data:
+A few tools need approval only for some inputs or targets, because one argument turns them into running code, writing data, or reading a secret the agent could send somewhere:
 
 - `sql_query` auto-runs where the database enforces read-only and needs approval everywhere else.
 - `launch_app` when it is given a raw `exec` command rather than an installed application.
 - `write_workflow` when the call sets the source, the trigger or the assigned secrets, or enables the workflow. A saved cron workflow runs within the minute, so saving it is as consequential as running it. Renaming, redescribing, editing metrics or disabling still auto-run.
 - `write_custom_graph` when the call sets the source, since a graph script can run SSH commands every time a dashboard renders it.
+- `get_resource_outputs` whenever the call would return a sensitive output (a password, a connection string, a kubeconfig) or doesn't name its outputs on a type that has one. Asking for non-sensitive outputs such as an IP address still runs straight away, and `get_resource` leaves sensitive outputs out.
+- `web_fetch` for any URL that didn't come from you or from a search, as described in [Reading the web](#reading-the-web).
+
+The [MCP server](./mcp.md) has no approval step; these rules apply to in-app chat.
 
 The UI surfaces these as Approve / Reject cards inline in the conversation. Approving runs the tool and resumes the model with the result; rejecting feeds the model an error message it can react to.
 

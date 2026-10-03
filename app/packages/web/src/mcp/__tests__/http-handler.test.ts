@@ -183,7 +183,7 @@ describe("handleMcpHttp", () => {
       const res = makeRes();
       await handleMcpHttp(makeReq({ authorization: null }) as never, res as never);
       expect(res.statusCode).toBe(401);
-      expect(res.headers["content-security-policy"]).toBe("frame-ancestors 'none'");
+      expect(res.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
       expect(res.headers["x-frame-options"]).toBe("DENY");
       expect(res.headers["x-content-type-options"]).toBe("nosniff");
       // The 401 still has to carry its own auth-discovery header.
@@ -211,7 +211,7 @@ describe("handleMcpHttp", () => {
       });
       await handleMcpHttp(req as never, res as never);
       expect(res.statusCode).toBe(200);
-      expect(res.headers["content-security-policy"]).toBe("frame-ancestors 'none'");
+      expect(res.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
       expect(res.headers["x-frame-options"]).toBe("DENY");
     });
   });

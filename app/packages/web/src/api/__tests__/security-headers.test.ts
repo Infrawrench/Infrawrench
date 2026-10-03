@@ -43,7 +43,7 @@ describe("security headers", () => {
     app.get("/", (c) => c.text("hi"));
 
     const res = await app.request("/");
-    expect(res.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+    expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     expect(res.headers.get("x-frame-options")).toBe("DENY");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
@@ -95,6 +95,21 @@ describe("security headers", () => {
     applySecurityHeaders(res as never);
     expect(res.headers["strict-transport-security"]).toContain("max-age=63072000");
     expect(res.headers["strict-transport-security"]).toContain("includeSubDomains");
+  });
+
+  it("restricts images to known hosts, so a rendered image cannot carry data anywhere", () => {
+    const csp = new Map(securityHeaderEntries()).get("content-security-policy") ?? "";
+    const imgSrc = csp
+      .split(";")
+      .map((d) => d.trim())
+      .find((d) => d.startsWith("img-src "));
+    expect(imgSrc).toBeDefined();
+    const sources = imgSrc!.split(/\s+/).slice(1);
+    expect(sources).toEqual(expect.arrayContaining(["'self'", "data:", "blob:"]));
+    // No scheme-wide or wildcard source: either would admit any host.
+    expect(sources).not.toContain("*");
+    expect(sources).not.toContain("https:");
+    expect(sources).not.toContain("http:");
   });
 
   it("does not ship a script-src that would be theatre", () => {
