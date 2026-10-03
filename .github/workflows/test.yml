@@ -12,9 +12,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             .turbo
@@ -23,7 +23,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
 
@@ -41,9 +41,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             .turbo
@@ -52,7 +52,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
 
@@ -69,9 +69,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             .turbo
@@ -80,7 +80,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
 
@@ -93,9 +93,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             .turbo
@@ -104,7 +104,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
 
@@ -141,9 +141,9 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             .turbo
@@ -152,7 +152,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
 
@@ -190,7 +190,7 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       # Not a service container: those start before checkout, and ClickHouse
       # needs the repo's listen.xml (the image's default "::" listen leaves it
@@ -204,7 +204,7 @@ jobs:
             -v "$PWD/infra/docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/zz-listen.xml:ro" \
             clickhouse/clickhouse-server:24.8-alpine
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             .turbo
@@ -213,7 +213,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24
 

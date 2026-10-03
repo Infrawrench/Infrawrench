@@ -161,7 +161,7 @@ jobs:
           EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_TEAM_TYPE }}
         run: |
-          npx eas-cli build --platform ios --profile production --non-interactive --auto-submit
+          npx -y eas-cli@24.10.0 build --platform ios --profile production --non-interactive --auto-submit
 
       # Last, so a failed build or submit can simply be re-run: the tag is what
       # makes the next push a no-op, and writing it early would strand a release
