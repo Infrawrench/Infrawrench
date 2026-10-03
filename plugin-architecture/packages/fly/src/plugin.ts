@@ -7,6 +7,8 @@ import { MachineResourceType } from "./resources/machine.js";
 import { VolumeResourceType } from "./resources/volume.js";
 import { CertificateResourceType } from "./resources/certificate.js";
 import { IpAllocationResourceType } from "./resources/ip-allocation.js";
+import { AppSecretResourceType } from "./resources/app-secret.js";
+import { PostgresClusterResourceType } from "./resources/postgres-cluster.js";
 import { flyTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
@@ -52,6 +54,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   VolumeResourceType,
   CertificateResourceType,
   IpAllocationResourceType,
+  AppSecretResourceType,
+  PostgresClusterResourceType,
 ];
 
 export const plugin: Plugin = {

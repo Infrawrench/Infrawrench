@@ -27,6 +27,15 @@ export const MachineResourceType = rt({
       required: false,
       description: "Current instance version identifier",
     }),
+    f("cpuKind", "CPU Kind", { required: false, description: "shared or performance" }),
+    f("cpus", "vCPUs", { kind: "number", required: false }),
+    f("memoryMb", "Memory (MB)", { kind: "number", required: false }),
+    f("cordoned", "Cordoned", {
+      kind: "boolean",
+      required: false,
+      description: "Services disabled: the Fly Proxy is not routing requests to this machine",
+    }),
+    f("hostStatus", "Host Status", { required: false }),
   ],
   outputs: [o("privateIp", "Private IPv6 (6PN)")],
   // `appName` is the app's own name, which is also the app resource's external

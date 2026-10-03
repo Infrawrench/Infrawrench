@@ -5,11 +5,16 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   CreateResourceConfig,
+  CredentialExport,
   ResourceStatus,
   ResourceTypeDefinition,
   DashboardStat,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
   MetricSeries,
+  RegionOption,
+  SectionNode,
 } from "@infrawrench/plugin-base";
 import {
   joinSubtitle,
@@ -17,6 +22,55 @@ import {
   labeledFieldItems,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
+import {
+  formatRegion,
+  regionOptionsFrom,
+  staticRegionOptions,
+  type FlyPlatformRegion,
+} from "./regions.js";
+import {
+  MPG_PLANS,
+  mapPostgresCluster,
+  postgresStatusDot,
+  renderPostgresClusterDetail,
+  type FlyPostgresCluster,
+} from "./postgres.js";
+
+/**
+ * Machine size presets, as listed on Fly's pricing page. Memory is the
+ * preset's default; the create form lets the user raise it.
+ */
+const MACHINE_SIZES: Array<{ id: string; cpuKind: string; cpus: number; memoryMb: number }> = [
+  { id: "shared-cpu-1x", cpuKind: "shared", cpus: 1, memoryMb: 256 },
+  { id: "shared-cpu-2x", cpuKind: "shared", cpus: 2, memoryMb: 512 },
+  { id: "shared-cpu-4x", cpuKind: "shared", cpus: 4, memoryMb: 1024 },
+  { id: "shared-cpu-8x", cpuKind: "shared", cpus: 8, memoryMb: 2048 },
+  { id: "performance-1x", cpuKind: "performance", cpus: 1, memoryMb: 2048 },
+  { id: "performance-2x", cpuKind: "performance", cpus: 2, memoryMb: 4096 },
+  { id: "performance-4x", cpuKind: "performance", cpus: 4, memoryMb: 8192 },
+  { id: "performance-8x", cpuKind: "performance", cpus: 8, memoryMb: 16384 },
+  { id: "performance-16x", cpuKind: "performance", cpus: 16, memoryMb: 32768 },
+];
+
+/** Parameterless machine lifecycle routes: `POST /v1/apps/{app}/machines/{id}/{action}`. */
+const MACHINE_ACTIONS = new Set(["start", "stop", "restart", "suspend", "cordon", "uncordon"]);
+
+/** `IPAssignmentType` values `POST /ip_assignments` accepts. */
+const IP_TYPES: Array<{ id: string; label: string; description: string }> = [
+  { id: "shared_v4", label: "Shared IPv4", description: "Free; shared with other apps" },
+  { id: "v4", label: "Dedicated IPv4", description: "Billed monthly" },
+  { id: "v6", label: "Dedicated IPv6", description: "Free" },
+  {
+    id: "private_v6",
+    label: "Private IPv6 (Flycast)",
+    description: "Reachable only on the org's private network",
+  },
+  {
+    id: "egress_pair",
+    label: "Static egress (IPv4 + IPv6)",
+    description: "Fixed outbound addresses for one region",
+  },
+];
 
 /**
  * Fly.io plugin client.
@@ -27,44 +81,6 @@ export class FlyClient implements PluginClient {
   private readonly orgSlug: string;
   private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly baseUrl = "https://api.machines.dev";
-
-  private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
-    ams: { location: "Amsterdam, Netherlands", flag: "\u{1F1F3}\u{1F1F1}" },
-    arn: { location: "Stockholm, Sweden", flag: "\u{1F1F8}\u{1F1EA}" },
-    atl: { location: "Atlanta, Georgia (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    bog: { location: "Bogot\u00e1, Colombia", flag: "\u{1F1E8}\u{1F1F4}" },
-    bom: { location: "Mumbai, India", flag: "\u{1F1EE}\u{1F1F3}" },
-    bos: { location: "Boston, Massachusetts (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    cdg: { location: "Paris, France", flag: "\u{1F1EB}\u{1F1F7}" },
-    den: { location: "Denver, Colorado (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    dfw: { location: "Dallas, Texas (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    ewr: { location: "Secaucus, NJ (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    eze: { location: "Buenos Aires, Argentina", flag: "\u{1F1E6}\u{1F1F7}" },
-    fra: { location: "Frankfurt, Germany", flag: "\u{1F1E9}\u{1F1EA}" },
-    gdl: { location: "Guadalajara, Mexico", flag: "\u{1F1F2}\u{1F1FD}" },
-    gig: { location: "Rio de Janeiro, Brazil", flag: "\u{1F1E7}\u{1F1F7}" },
-    gru: { location: "S\u00e3o Paulo, Brazil", flag: "\u{1F1E7}\u{1F1F7}" },
-    hkg: { location: "Hong Kong", flag: "\u{1F1ED}\u{1F1F0}" },
-    iad: { location: "Ashburn, Virginia (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    jnb: { location: "Johannesburg, South Africa", flag: "\u{1F1FF}\u{1F1E6}" },
-    lax: { location: "Los Angeles, California (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    lhr: { location: "London, United Kingdom", flag: "\u{1F1EC}\u{1F1E7}" },
-    mad: { location: "Madrid, Spain", flag: "\u{1F1EA}\u{1F1F8}" },
-    mia: { location: "Miami, Florida (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    nrt: { location: "Tokyo, Japan", flag: "\u{1F1EF}\u{1F1F5}" },
-    ord: { location: "Chicago, Illinois (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    otp: { location: "Bucharest, Romania", flag: "\u{1F1F7}\u{1F1F4}" },
-    phx: { location: "Phoenix, Arizona (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    qro: { location: "Quer\u00e9taro, Mexico", flag: "\u{1F1F2}\u{1F1FD}" },
-    scl: { location: "Santiago, Chile", flag: "\u{1F1E8}\u{1F1F1}" },
-    sea: { location: "Seattle, Washington (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    sin: { location: "Singapore", flag: "\u{1F1F8}\u{1F1EC}" },
-    sjc: { location: "San Jose, California (US)", flag: "\u{1F1FA}\u{1F1F8}" },
-    syd: { location: "Sydney, Australia", flag: "\u{1F1E6}\u{1F1FA}" },
-    waw: { location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
-    yul: { location: "Montreal, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
-    yyz: { location: "Toronto, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
-  };
 
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
@@ -103,6 +119,27 @@ export class FlyClient implements PluginClient {
     });
   }
 
+  private regionCache: FlyPlatformRegion[] | null = null;
+
+  /**
+   * Live region list from `GET /v1/platform/regions`, cached per client.
+   * Falls back to the static table when the call fails, so the create forms
+   * never lose their picker.
+   */
+  private async regionOptions(opts: { requireMpg?: boolean } = {}): Promise<RegionOption[]> {
+    try {
+      if (!this.regionCache) {
+        const data = await this.fetch<{ regions?: FlyPlatformRegion[] }>("/v1/platform/regions");
+        this.regionCache = data.regions ?? [];
+      }
+      const options = regionOptionsFrom(this.regionCache, opts);
+      if (options.length > 0) return options;
+    } catch {
+      /* fall through to the static table */
+    }
+    return staticRegionOptions();
+  }
+
   /* ------------------------------------------------------------------ */
   /*  PluginClient: core contract                                       */
   /* ------------------------------------------------------------------ */
@@ -119,6 +156,10 @@ export class FlyClient implements PluginClient {
         return this.listAllCertificates(accountId);
       case "ip-allocation":
         return this.listAllIpAllocations(accountId);
+      case "app-secret":
+        return this.listAllSecrets(accountId);
+      case "postgres-cluster":
+        return this.listPostgresClusters(accountId);
       default:
         throw new Error(`Fly plugin: unknown resource type "${typeId}"`);
     }
@@ -160,9 +201,27 @@ export class FlyClient implements PluginClient {
       return this.mapCertificate(data, parts.appName, accountId);
     }
 
+    if (typeId === "app-secret") {
+      const parts = parseAppChildId(resourceId);
+      const data = await this.fetch<FlyAppSecret>(
+        `/v1/apps/${parts.appName}/secrets/${encodeURIComponent(parts.childId)}`,
+      );
+      return this.mapSecret(data, parts.appName, accountId);
+    }
+
+    if (typeId === "postgres-cluster") {
+      const clusterId = resourceId.split(":").slice(2).join(":");
+      const data = await this.fetch<{ data: FlyPostgresCluster }>(
+        `/v1/postgres/${encodeURIComponent(clusterId)}`,
+      );
+      return mapPostgresCluster(data.data, accountId);
+    }
+
     if (typeId === "ip-allocation") {
-      const all = await this.listResources(typeId, accountId);
-      const found = all.find((r) => r.id === resourceId);
+      const { appName } = parseAppChildId(resourceId);
+      const found = (await this.listIpAllocationsForApp(appName, accountId)).find(
+        (r) => r.id === resourceId,
+      );
       if (found) return found;
       throw new Error(`Fly plugin: resource ${typeId}/${resourceId} not found`);
     }
@@ -194,10 +253,34 @@ export class FlyClient implements PluginClient {
     if (typeId === "ip-allocation" && outputKey === "address") {
       return parseAppChildId(resourceId).childId;
     }
+    if (typeId === "app-secret" && outputKey === "secretName") {
+      return parseAppChildId(resourceId).childId;
+    }
+    if (typeId === "postgres-cluster") {
+      const cluster = await this.getResource(typeId, resourceId, accountId);
+      const value = cluster.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+    }
     throw new Error(`Fly plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
+    const appPicker = (description: string): CreateResourceConfig["fields"] =>
+      parentResourceId
+        ? []
+        : [
+            {
+              key: "appName",
+              label: "App",
+              kind: "resource-picker",
+              required: true,
+              description,
+              associationSources: [
+                { pluginId: "fly", resourceTypeId: "app", outputKey: "appName" },
+              ],
+            },
+          ];
+
     if (typeId === "app") {
       return {
         fields: [
@@ -214,121 +297,247 @@ export class FlyClient implements PluginClient {
     }
 
     if (typeId === "machine") {
-      const regions = Object.entries(FlyClient.REGION_INFO).map(([code, info]) => ({
-        id: code,
-        label: code.toUpperCase(),
-        location: info.location,
-        flag: info.flag,
-      }));
-
-      const fields: CreateResourceConfig["fields"] = [];
-      if (!parentResourceId) {
-        fields.push({
-          key: "appName",
-          label: "App",
-          kind: "resource-picker",
-          required: true,
-          description: "Fly app to create the machine in",
-          associationSources: [{ pluginId: "fly", resourceTypeId: "app", outputKey: "appName" }],
-        });
-      }
-      fields.push(
-        { key: "name", label: "Machine Name", kind: "text", required: false },
-        {
-          key: "region",
-          label: "Region",
-          kind: "region-picker",
-          required: true,
-          regions,
-          defaultValue: "iad",
-        },
-        {
-          key: "image",
-          label: "Docker Image",
-          kind: "text",
-          required: true,
-        },
-      );
-      return { fields };
+      const regions = await this.regionOptions();
+      return {
+        fields: [
+          ...appPicker("Fly app to create the machine in"),
+          { key: "name", label: "Machine Name", kind: "text", required: false },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            defaultValue: "iad",
+          },
+          {
+            key: "image",
+            label: "Docker Image",
+            kind: "text",
+            required: true,
+            description: "e.g. registry.fly.io/my-app:latest or nginx:alpine",
+          },
+          {
+            key: "size",
+            label: "Size",
+            kind: "select",
+            required: true,
+            defaultValue: "shared-cpu-1x",
+            options: MACHINE_SIZES.map((s) => ({
+              id: s.id,
+              label: s.id,
+              description: `${s.cpus} ${s.cpuKind} vCPU, ${s.memoryMb} MB`,
+            })),
+          },
+          {
+            key: "memoryMb",
+            label: "Memory (MB)",
+            kind: "number",
+            required: false,
+            description:
+              "Override the preset's memory, in 256 MB steps. Leave blank for the preset default.",
+            minValue: 256,
+          },
+        ],
+      };
     }
 
     if (typeId === "volume") {
-      const regions = Object.entries(FlyClient.REGION_INFO).map(([code, info]) => ({
-        id: code,
-        label: code.toUpperCase(),
-        location: info.location,
-        flag: info.flag,
-      }));
-
-      const fields: CreateResourceConfig["fields"] = [];
-      if (!parentResourceId) {
-        let appOptions: { id: string; label: string }[] = [];
-        try {
-          const apps = await this.fetch<FlyApp[]>("/v1/apps?org_slug=" + this.orgSlug);
-          appOptions = apps.map((a) => ({ id: a.name, label: a.name }));
-        } catch {
-          /* fall back to text input */
-        }
-        if (appOptions.length > 0) {
-          fields.push({
-            key: "appName",
-            label: "App",
+      const regions = await this.regionOptions();
+      return {
+        fields: [
+          ...appPicker("Fly app the volume belongs to"),
+          { key: "name", label: "Volume Name", kind: "text", required: true },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            defaultValue: "iad",
+          },
+          {
+            key: "sizeGb",
+            label: "Size (GB)",
+            kind: "number",
+            required: true,
+            defaultValue: "1",
+            minValue: 1,
+            maxValue: 500,
+          },
+          {
+            key: "autoBackupEnabled",
+            label: "Automatic Snapshots",
             kind: "select",
-            required: true,
-            options: appOptions,
-            ...(appOptions[0] ? { defaultValue: appOptions[0].id } : {}),
-          });
-        } else {
-          fields.push({
-            key: "appName",
-            label: "App Name",
-            kind: "text",
-            required: true,
-          });
-        }
-      }
-      fields.push(
-        { key: "name", label: "Volume Name", kind: "text", required: true },
-        {
-          key: "region",
-          label: "Region",
-          kind: "region-picker",
-          required: true,
-          regions,
-          defaultValue: "iad",
-        },
-        {
-          key: "sizeGb",
-          label: "Size (GB)",
-          kind: "number",
-          required: true,
-          defaultValue: "1",
-          minValue: 1,
-          maxValue: 500,
-        },
-      );
-      return { fields };
+            required: false,
+            defaultValue: "true",
+            options: [
+              { id: "true", label: "Enabled (daily)" },
+              { id: "false", label: "Disabled" },
+            ],
+          },
+          {
+            key: "snapshotRetention",
+            label: "Snapshot Retention (days)",
+            kind: "number",
+            required: false,
+            defaultValue: "5",
+            minValue: 1,
+            maxValue: 60,
+          },
+        ],
+      };
     }
 
     if (typeId === "certificate") {
-      const fields: CreateResourceConfig["fields"] = [];
-      if (!parentResourceId) {
-        fields.push({
-          key: "appName",
-          label: "App",
-          kind: "resource-picker",
-          required: true,
-          description: "Fly app to request the certificate for",
-          associationSources: [{ pluginId: "fly", resourceTypeId: "app", outputKey: "appName" }],
-        });
-      }
-      fields.push({
-        key: "hostname",
-        label: "Hostname",
-        kind: "text",
-        required: true,
-      });
-      return { fields };
+      return {
+        fields: [
+          ...appPicker("Fly app to request the certificate for"),
+          {
+            key: "hostname",
+            label: "Hostname",
+            kind: "text",
+            required: true,
+            description: "A custom domain pointed at the app, e.g. www.example.com",
+          },
+        ],
+      };
+    }
+
+    if (typeId === "ip-allocation") {
+      const regions = await this.regionOptions();
+      return {
+        fields: [
+          ...appPicker("Fly app to assign the address to"),
+          {
+            key: "type",
+            label: "Type",
+            kind: "select",
+            required: true,
+            defaultValue: "shared_v4",
+            options: IP_TYPES.map((t) => ({
+              id: t.id,
+              label: t.label,
+              description: t.description,
+            })),
+          },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: false,
+            regions,
+            description: "Static egress addresses are allocated per region",
+            showWhen: { fieldKey: "type", fieldValues: ["egress_pair"] },
+          },
+          {
+            key: "network",
+            label: "Private Network",
+            kind: "text",
+            required: false,
+            description: "Custom 6PN network for a Flycast address. Leave blank for the default.",
+            showWhen: { fieldKey: "type", fieldValues: ["private_v6"] },
+          },
+          {
+            key: "serviceName",
+            label: "Service Name",
+            kind: "text",
+            required: false,
+            description: "Optional: bind the address to one service of the app",
+          },
+        ],
+      };
+    }
+
+    if (typeId === "app-secret") {
+      return {
+        fields: [
+          ...appPicker("Fly app the secret belongs to"),
+          {
+            key: "name",
+            label: "Name",
+            kind: "text",
+            required: true,
+            description:
+              "Exposed to Machines as an environment variable of the same name, e.g. DATABASE_URL",
+          },
+          { key: "value", label: "Value", kind: "password", required: true },
+        ],
+      };
+    }
+
+    if (typeId === "postgres-cluster") {
+      const regions = await this.regionOptions({ requireMpg: true });
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Cluster Name",
+            kind: "text",
+            required: false,
+            description: "Leave blank to have Fly generate one",
+          },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            defaultValue: "iad",
+          },
+          {
+            key: "plan",
+            label: "Plan",
+            kind: "select",
+            required: true,
+            defaultValue: "basic",
+            options: MPG_PLANS,
+            description: "Selects CPU, memory, and high-availability sizing",
+          },
+          {
+            key: "pgMajorVersion",
+            label: "Postgres Version",
+            kind: "select",
+            required: false,
+            defaultValue: "17",
+            options: [
+              { id: "17", label: "Postgres 17" },
+              { id: "16", label: "Postgres 16" },
+            ],
+          },
+          {
+            key: "diskSizeGb",
+            label: "Disk (GB)",
+            kind: "number",
+            required: false,
+            defaultValue: "10",
+            minValue: 10,
+            maxValue: 1000,
+          },
+          {
+            key: "poolMode",
+            label: "Pooler Mode",
+            kind: "select",
+            required: false,
+            defaultValue: "transaction",
+            options: [
+              { id: "transaction", label: "Transaction" },
+              { id: "session", label: "Session" },
+            ],
+          },
+          {
+            key: "postgisEnabled",
+            label: "PostGIS",
+            kind: "select",
+            required: false,
+            defaultValue: "false",
+            options: [
+              { id: "false", label: "Disabled" },
+              { id: "true", label: "Enabled" },
+            ],
+          },
+        ],
+      };
     }
 
     throw new Error(`No create config for type "${typeId}"`);
@@ -354,17 +563,40 @@ export class FlyClient implements PluginClient {
       return this.mapApp(app, accountId);
     }
 
+    if (typeId === "postgres-cluster") {
+      const body: Record<string, unknown> = {
+        org_slug: this.orgSlug,
+        region: fields["region"],
+        plan: fields["plan"] || "basic",
+      };
+      if (fields["name"]) body["name"] = fields["name"];
+      if (fields["pgMajorVersion"]) body["pg_major_version"] = fields["pgMajorVersion"];
+      if (fields["diskSizeGb"]) body["disk_size_gb"] = Number(fields["diskSizeGb"]);
+      if (fields["poolMode"]) body["pool_mode"] = fields["poolMode"];
+      if (fields["postgisEnabled"]) body["postgis_enabled"] = fields["postgisEnabled"] === "true";
+      const data = await this.fetch<{ data: FlyPostgresCluster }>("/v1/postgres", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return mapPostgresCluster(data.data, accountId);
+    }
+
     const parentAppName = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
+    const appName = fields["appName"] || parentAppName;
 
     if (typeId === "machine") {
-      const appName = fields["appName"] || parentAppName;
       if (!appName) throw new Error("Fly plugin: appName is required to create a machine");
-      const body: Record<string, unknown> = {
-        region: fields["region"],
-        config: {
-          image: fields["image"],
-        },
-      };
+      const config: Record<string, unknown> = { image: fields["image"] };
+      const size = MACHINE_SIZES.find((s) => s.id === fields["size"]);
+      if (size) {
+        const memory = Number(fields["memoryMb"]);
+        config["guest"] = {
+          cpu_kind: size.cpuKind,
+          cpus: size.cpus,
+          memory_mb: Number.isFinite(memory) && memory > 0 ? memory : size.memoryMb,
+        };
+      }
+      const body: Record<string, unknown> = { region: fields["region"], config };
       if (fields["name"]) body["name"] = fields["name"];
 
       const data = await this.fetch<FlyMachine>(`/v1/apps/${appName}/machines`, {
@@ -375,15 +607,21 @@ export class FlyClient implements PluginClient {
     }
 
     if (typeId === "volume") {
-      const appName = fields["appName"] || parentAppName;
       if (!appName) throw new Error("Fly plugin: appName is required to create a volume");
+      const body: Record<string, unknown> = {
+        name: fields["name"],
+        region: fields["region"],
+        size_gb: Number(fields["sizeGb"] || 1),
+      };
+      if (fields["autoBackupEnabled"]) {
+        body["auto_backup_enabled"] = fields["autoBackupEnabled"] === "true";
+      }
+      if (fields["snapshotRetention"]) {
+        body["snapshot_retention"] = Number(fields["snapshotRetention"]);
+      }
       const data = await this.fetch<Record<string, unknown>>(`/v1/apps/${appName}/volumes`, {
         method: "POST",
-        body: JSON.stringify({
-          name: fields["name"],
-          region: fields["region"],
-          size_gb: Number(fields["sizeGb"] || 1),
-        }),
+        body: JSON.stringify(body),
       });
       const now = new Date().toISOString();
       return {
@@ -411,7 +649,6 @@ export class FlyClient implements PluginClient {
     }
 
     if (typeId === "certificate") {
-      const appName = fields["appName"] || parentAppName;
       const hostname = fields["hostname"];
       if (!appName) throw new Error("Fly plugin: appName is required to create a certificate");
       if (!hostname) throw new Error("Fly plugin: hostname is required to create a certificate");
@@ -423,7 +660,86 @@ export class FlyClient implements PluginClient {
       return this.mapCertificate(data, appName, accountId);
     }
 
+    if (typeId === "ip-allocation") {
+      if (!appName) throw new Error("Fly plugin: appName is required to assign an IP");
+      const type = fields["type"] || "shared_v4";
+      const body: Record<string, unknown> = { type, org_slug: this.orgSlug };
+      if (fields["region"] && type.startsWith("egress")) body["region"] = fields["region"];
+      if (fields["network"] && type === "private_v6") body["network"] = fields["network"];
+      if (fields["serviceName"]) body["service_name"] = fields["serviceName"];
+      const data = await this.fetch<FlyIpAssignment & { ip_pair?: { v4?: string; v6?: string } }>(
+        `/v1/apps/${appName}/ip_assignments`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
+      // An egress pair comes back as `ip_pair` with `ip` null; the v4 half
+      // stands in for the pair (both are listed separately afterwards).
+      const ip = data.ip || data.ip_pair?.v4 || data.ip_pair?.v6 || "";
+      return this.mapIpAllocation({ ...data, ip }, appName, accountId);
+    }
+
+    if (typeId === "app-secret") {
+      const name = fields["name"];
+      if (!appName) throw new Error("Fly plugin: appName is required to create a secret");
+      if (!name) throw new Error("Fly plugin: name is required to create a secret");
+      const data = await this.fetch<FlyAppSecret>(
+        `/v1/apps/${appName}/secrets/${encodeURIComponent(name)}`,
+        { method: "POST", body: JSON.stringify({ value: fields["value"] ?? "" }) },
+      );
+      return this.mapSecret({ ...data, name: data.name || name }, appName, accountId);
+    }
+
     throw new Error(`Fly plugin: createResource not supported for type "${typeId}"`);
+  }
+
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId === "volume") {
+      const parts = parseVolumeId(resourceId);
+      const base = `/v1/apps/${parts.appName}/volumes/${parts.volumeId}`;
+      if (fields["sizeGb"] !== undefined && fields["sizeGb"] !== "") {
+        const current = await this.fetch<FlyVolume>(base);
+        const target = Number(fields["sizeGb"]);
+        if (!Number.isFinite(target) || target < (current.size_gb ?? 0)) {
+          throw new Error(
+            `Fly volumes can only grow: ${parts.volumeId} is ${String(current.size_gb)} GB.`,
+          );
+        }
+        if (target > (current.size_gb ?? 0)) {
+          await this.fetch<unknown>(`${base}/extend`, {
+            method: "PUT",
+            body: JSON.stringify({ size_gb: target }),
+          });
+        }
+      }
+      const settings: Record<string, unknown> = {};
+      if (fields["autoBackupEnabled"] !== undefined) {
+        settings["auto_backup_enabled"] = fields["autoBackupEnabled"] === "true";
+      }
+      if (fields["snapshotRetention"] !== undefined && fields["snapshotRetention"] !== "") {
+        settings["snapshot_retention"] = Number(fields["snapshotRetention"]);
+      }
+      if (Object.keys(settings).length > 0) {
+        await this.fetch<unknown>(base, { method: "PUT", body: JSON.stringify(settings) });
+      }
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
+    if (typeId === "app-secret") {
+      const parts = parseAppChildId(resourceId);
+      if (fields["value"]) {
+        await this.fetch<FlyAppSecret>(
+          `/v1/apps/${parts.appName}/secrets/${encodeURIComponent(parts.childId)}`,
+          { method: "POST", body: JSON.stringify({ value: fields["value"] }) },
+        );
+      }
+      return this.getResource(typeId, resourceId, accountId);
+    }
+
+    throw new Error(`Fly plugin: updateResource not supported for type "${typeId}"`);
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
@@ -461,6 +777,32 @@ export class FlyClient implements PluginClient {
       return;
     }
 
+    if (typeId === "ip-allocation") {
+      const parts = parseAppChildId(resourceId);
+      await this.fetch<unknown>(
+        `/v1/apps/${parts.appName}/ip_assignments/${encodeURIComponent(parts.childId)}`,
+        { method: "DELETE" },
+      );
+      return;
+    }
+
+    if (typeId === "app-secret") {
+      const parts = parseAppChildId(resourceId);
+      await this.fetch<unknown>(
+        `/v1/apps/${parts.appName}/secrets/${encodeURIComponent(parts.childId)}`,
+        { method: "DELETE" },
+      );
+      return;
+    }
+
+    if (typeId === "postgres-cluster") {
+      const clusterId = resourceId.split(":").slice(2).join(":");
+      await this.fetch<unknown>(`/v1/postgres/${encodeURIComponent(clusterId)}`, {
+        method: "DELETE",
+      });
+      return;
+    }
+
     throw new Error(`Fly plugin: deleteResource not supported for type "${typeId}"`);
   }
 
@@ -470,7 +812,7 @@ export class FlyClient implements PluginClient {
     actionId: string,
     _accountId: string,
   ): Promise<void> {
-    if (typeId === "machine" && (actionId === "start" || actionId === "stop")) {
+    if (typeId === "machine" && MACHINE_ACTIONS.has(actionId)) {
       const parts = parseMachineId(resourceId);
       await this.fetch<unknown>(
         `/v1/apps/${parts.appName}/machines/${parts.machineId}/${actionId}`,
@@ -478,7 +820,85 @@ export class FlyClient implements PluginClient {
       );
       return;
     }
+    if (typeId === "volume" && actionId === "snapshot") {
+      const parts = parseVolumeId(resourceId);
+      await this.fetch<unknown>(`/v1/apps/${parts.appName}/volumes/${parts.volumeId}/snapshots`, {
+        method: "POST",
+      });
+      return;
+    }
+    if (typeId === "certificate" && actionId === "check") {
+      const parts = parseAppChildId(resourceId);
+      await this.fetch<unknown>(
+        `/v1/apps/${parts.appName}/certificates/${encodeURIComponent(parts.childId)}/check`,
+        { method: "POST" },
+      );
+      return;
+    }
+    if (typeId === "postgres-cluster" && actionId === "backup") {
+      const clusterId = resourceId.split(":").slice(2).join(":");
+      await this.fetch<unknown>(`/v1/postgres/${encodeURIComponent(clusterId)}/backups`, {
+        method: "POST",
+        body: JSON.stringify({ type: "full" }),
+      });
+      return;
+    }
     throw new Error(`Fly plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+  }
+
+  async exportCredential(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    formatId: string,
+  ): Promise<CredentialExport> {
+    if (typeId !== "app" || formatId !== "deploy-token") {
+      throw new Error(`Fly plugin: credential format "${formatId}" not supported for "${typeId}"`);
+    }
+    const appName = resourceId.split(":").pop() ?? "";
+    const data = await this.fetch<{ token?: string }>(`/v1/apps/${appName}/deploy_token`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    const token = data.token ?? "";
+    return {
+      content: token,
+      filename: `${appName}-deploy-token.txt`,
+      mimeType: "text/plain",
+      fields: [{ label: "FLY_API_TOKEN", value: token, sensitive: true }],
+      warning:
+        "Save this token now: Fly does not show it again. Revoke it from the app's Tokens page in the Fly dashboard.",
+    };
+  }
+
+  /**
+   * The Machines API has no log endpoint, but it records every lifecycle
+   * event (launch, start, stop, exit with code, restart) per machine; the
+   * Logs tab shows those, newest last.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    if (typeId !== "machine") return { text: "", containers: [], activeContainer: "" };
+    const parts = parseMachineId(resourceId);
+    const limit = Math.min(Math.max(params.tailLines ?? 50, 1), 50);
+    const events = await this.fetch<FlyMachineEvent[]>(
+      `/v1/apps/${parts.appName}/machines/${parts.machineId}/events?limit=${limit}`,
+    );
+    const lines = [...(events ?? [])]
+      .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+      .map((e) => {
+        const ts = e.timestamp ? new Date(e.timestamp).toISOString() : "?";
+        const exit = (e.request as { exit_event?: { exit_code?: number } } | undefined)?.exit_event;
+        const exitNote = exit?.exit_code != null ? `  exit_code=${exit.exit_code}` : "";
+        return `${ts}  ${e.type ?? "event"}  ${e.status ?? ""}  (${e.source ?? "?"})${exitNote}`;
+      });
+    const text =
+      lines.length > 0 ? lines.join("\n") + "\n" : "No events recorded for this machine yet.\n";
+    return { text, containers: ["events"], activeContainer: "events" };
   }
 
   async attachResource(
@@ -528,9 +948,71 @@ export class FlyClient implements PluginClient {
       });
       return;
     }
+    if (sourceTypeId === "postgres-cluster" && targetTypeId === "app") {
+      // Records the cluster/app relationship only: it sets no DATABASE_URL
+      // secret. Idempotent (200 when already attached).
+      const clusterId = sourceResourceId.split(":").slice(2).join(":");
+      const appName = targetResourceId.split(":").slice(2).join(":");
+      if (!clusterId || !appName) {
+        throw new Error("Cannot determine the Postgres cluster or app to attach");
+      }
+      await this.fetch<unknown>(`/v1/postgres/${encodeURIComponent(clusterId)}/attachments`, {
+        method: "POST",
+        body: JSON.stringify({ app_name: appName }),
+      });
+      return;
+    }
     throw new Error(
       `Fly plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
     );
+  }
+
+  /**
+   * Volumes: list snapshots. Managed Postgres: databases, users, and
+   * backups. Each list is stashed as JSON under a `__…__` field for the
+   * synchronous renderer, and dropped silently when its call fails (a
+   * cluster that is still provisioning answers 503 on the pg-admin routes).
+   */
+  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    const extra: Record<string, string> = {};
+    const stash = async (key: string, load: () => Promise<unknown[] | undefined>) => {
+      try {
+        const rows = await load();
+        if (rows) extra[key] = JSON.stringify(rows);
+      } catch {
+        /* optional panel */
+      }
+    };
+
+    if (resource.resourceTypeId === "volume") {
+      const parts = parseVolumeId(resource.id);
+      await stash("__snapshots__", () =>
+        this.fetch<FlyVolumeSnapshot[]>(
+          `/v1/apps/${parts.appName}/volumes/${parts.volumeId}/snapshots`,
+        ),
+      );
+    } else if (resource.resourceTypeId === "postgres-cluster") {
+      const base = `/v1/postgres/${encodeURIComponent(resource.externalId ?? "")}`;
+      if (resource.fields["status"] === "ready") {
+        await Promise.all([
+          stash(
+            "__databases__",
+            async () => (await this.fetch<{ data?: unknown[] }>(`${base}/databases`)).data,
+          ),
+          stash(
+            "__users__",
+            async () => (await this.fetch<{ data?: unknown[] }>(`${base}/users`)).data,
+          ),
+          stash(
+            "__backups__",
+            async () => (await this.fetch<{ data?: unknown[] }>(`${base}/backups`)).data,
+          ),
+        ]);
+      }
+    } else {
+      return resource;
+    }
+    return { ...resource, fields: { ...resource.fields, ...extra } };
   }
 
   async fetchDashboardStats(
@@ -578,6 +1060,25 @@ export class FlyClient implements PluginClient {
       ];
     }
 
+    if (resourceTypeId === "postgres-cluster") {
+      const status = String(f["status"] ?? "unknown");
+      const dot = postgresStatusDot(status);
+      return [
+        {
+          label: "Status",
+          value: status,
+          variant:
+            dot === "healthy"
+              ? "status-healthy"
+              : dot === "error"
+                ? "status-error"
+                : "status-degraded",
+        },
+        ...(f["plan"] ? [{ label: "Plan", value: String(f["plan"]) }] : []),
+        ...(f["region"] ? [{ label: "Region", value: formatRegion(String(f["region"])) }] : []),
+      ];
+    }
+
     if (resourceTypeId === "ip-allocation") {
       return [
         { label: "Address", value: String(f["address"] ?? "") },
@@ -595,18 +1096,15 @@ export class FlyClient implements PluginClient {
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "machine" && resourceTypeId !== "app") return [];
+    if (resourceTypeId !== "machine" && resourceTypeId !== "app" && resourceTypeId !== "volume") {
+      return [];
+    }
 
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     const appName = String(
       resourceTypeId === "app" ? resource.fields["name"] : resource.fields["appName"],
     );
     if (!appName) return [];
-
-    const machineFilter =
-      resourceTypeId === "machine"
-        ? `,instance="${String(resource.fields["instanceId"] ?? resource.externalId ?? "")}"`
-        : "";
 
     const now = Date.now();
     const start = Math.floor((timeRange?.startMs ?? now - 3_600_000) / 1000);
@@ -651,8 +1149,10 @@ export class FlyClient implements PluginClient {
         const points = new Map<number, number>();
         for (const series of data.data?.result ?? []) {
           for (const [ts, v] of series.values) {
+            const value = Number(v);
+            if (!Number.isFinite(value)) continue;
             const tsMs = Math.round(ts * 1000);
-            points.set(tsMs, (points.get(tsMs) ?? 0) + Number(v));
+            points.set(tsMs, (points.get(tsMs) ?? 0) + value);
           }
         }
         if (points.size === 0) return null;
@@ -668,29 +1168,60 @@ export class FlyClient implements PluginClient {
       }
     };
 
+    // Metric names and units per https://fly.io/docs/monitoring/metrics/.
+    if (resourceTypeId === "volume") {
+      const volumeId = parseVolumeId(resource.id).volumeId;
+      const labels = `app="${appName}",id="${volumeId}"`;
+      const series = await Promise.all([
+        fetchPromql(`max(fly_volume_used_pct{${labels}})`, "Disk Used", "%"),
+        fetchPromql(`max(fly_volume_size_bytes{${labels}})`, "Volume Size", "bytes"),
+      ]);
+      return series.filter((s): s is MetricSeries => s != null);
+    }
+
+    const machineFilter =
+      resourceTypeId === "machine"
+        ? `,instance="${String(resource.fields["instanceId"] ?? resource.externalId ?? "")}"`
+        : "";
     const labels = `app="${appName}"${machineFilter}`;
-    const series = await Promise.all([
-      fetchPromql(
-        `sum(rate(fly_instance_cpu{${labels},mode="user"}[1m])) by (instance)`,
-        "CPU (user)",
+    // `fly_instance_cpu` counts centiseconds, so its per-second rate / 100 is cores.
+    const queries: Array<[string, string, string]> = [
+      [
+        `sum(rate(fly_instance_cpu{${labels},mode!="idle"}[1m])) by (instance) / 100`,
+        "CPU",
         "cores",
-      ),
-      fetchPromql(
+      ],
+      [
+        `avg(fly_instance_memory_mem_total{${labels}} - fly_instance_memory_mem_available{${labels}}) by (instance)`,
+        "Memory Used",
+        "bytes",
+      ],
+      [
         `avg(fly_instance_memory_mem_available{${labels}}) by (instance)`,
         "Available Memory",
         "bytes",
-      ),
-      fetchPromql(
+      ],
+      [`avg(fly_instance_load_average{${labels},minutes="1"}) by (instance)`, "Load (1m)", ""],
+      [
         `sum(rate(fly_instance_net_recv_bytes{${labels}}[1m])) by (instance)`,
         "Network In",
         "bytes/s",
-      ),
-      fetchPromql(
+      ],
+      [
         `sum(rate(fly_instance_net_sent_bytes{${labels}}[1m])) by (instance)`,
         "Network Out",
         "bytes/s",
-      ),
-    ]);
+      ],
+      [`sum(rate(fly_app_http_responses_count{${labels}}[1m]))`, "HTTP Requests", "req/s"],
+      [`sum(rate(fly_app_http_responses_count{${labels},status=~"5.."}[1m]))`, "HTTP 5xx", "req/s"],
+      [
+        `histogram_quantile(0.95, sum(rate(fly_app_http_response_time_seconds_bucket{${labels}}[1m])) by (le))`,
+        "Response Time p95",
+        "s",
+      ],
+      [`sum(fly_app_concurrency{${labels}})`, "Concurrency", "requests"],
+    ];
+    const series = await Promise.all(queries.map(([q, l, u]) => fetchPromql(q, l, u)));
     return series.filter((s): s is MetricSeries => s != null);
   }
 
@@ -736,6 +1267,9 @@ export class FlyClient implements PluginClient {
                   ...(fields["network"]
                     ? [{ key: "Network", value: String(fields["network"]) }]
                     : []),
+                  ...(fields["networkCidr"]
+                    ? [{ key: "Network CIDR", value: String(fields["networkCidr"]) }]
+                    : []),
                 ],
               },
             ],
@@ -747,22 +1281,61 @@ export class FlyClient implements PluginClient {
 
     if (resource.resourceTypeId === "machine") {
       const state = String(fields["state"] ?? "unknown");
+      const cordoned = fields["cordoned"] === true;
       // Stop/Start header actions for the lifecycle pair (see the type's
       // `lifecycle` declaration); Start also resumes a suspended machine.
       const lifecycleActions: ActionNode[] = [];
       if (state === "started") {
-        lifecycleActions.push({
-          kind: "action",
-          label: "Stop",
-          action: {
-            type: "plugin-action",
-            actionId: "stop",
-            confirmMessage:
-              "Stop this machine? Compute billing stops while it is stopped; rootfs storage keeps billing.",
-            successMessage: "Stop requested.",
+        lifecycleActions.push(
+          {
+            kind: "action",
+            label: "Restart",
+            action: {
+              type: "plugin-action",
+              actionId: "restart",
+              confirmMessage: "Restart this machine? In-flight requests to it will be dropped.",
+              successMessage: "Restart requested.",
+            },
           },
-          variant: "danger",
-        });
+          {
+            kind: "action",
+            label: "Suspend",
+            action: {
+              type: "plugin-action",
+              actionId: "suspend",
+              confirmMessage:
+                "Suspend this machine? Its memory is snapshotted so the next start can resume instead of cold-booting.",
+              successMessage: "Suspend requested.",
+            },
+          },
+          {
+            kind: "action",
+            label: cordoned ? "Uncordon" : "Cordon",
+            action: {
+              type: "plugin-action",
+              actionId: cordoned ? "uncordon" : "cordon",
+              ...(cordoned
+                ? {}
+                : {
+                    confirmMessage:
+                      "Cordon this machine? The Fly Proxy stops routing requests to it until it is uncordoned.",
+                  }),
+              successMessage: cordoned ? "Services re-enabled." : "Machine cordoned.",
+            },
+          },
+          {
+            kind: "action",
+            label: "Stop",
+            action: {
+              type: "plugin-action",
+              actionId: "stop",
+              confirmMessage:
+                "Stop this machine? Compute billing stops while it is stopped; rootfs storage keeps billing.",
+              successMessage: "Stop requested.",
+            },
+            variant: "danger",
+          },
+        );
       } else if (state === "stopped" || state === "suspended") {
         lifecycleActions.push({
           kind: "action",
@@ -774,6 +1347,10 @@ export class FlyClient implements PluginClient {
           },
         });
       }
+      const compute =
+        fields["cpus"] !== undefined && fields["cpus"] !== ""
+          ? `${String(fields["cpus"])} ${String(fields["cpuKind"] ?? "")} vCPU, ${String(fields["memoryMb"] ?? "?")} MB`
+          : "";
       return {
         title: resource.displayName,
         subtitle: joinSubtitle("machine", formatRegion(String(fields["region"] ?? ""))),
@@ -790,12 +1367,17 @@ export class FlyClient implements PluginClient {
                   { key: "State", value: state },
                   { key: "Region", value: formatRegion(String(fields["region"] ?? "")) },
                   ...(fields["image"] ? [{ key: "Image", value: String(fields["image"]) }] : []),
+                  ...(compute ? [{ key: "Compute", value: compute }] : []),
                   { key: "App", value: String(fields["appName"] ?? "") },
                   ...(fields["instanceId"]
                     ? [{ key: "Instance ID", value: String(fields["instanceId"]) }]
                     : []),
                   ...(resource.resolvedOutputs["privateIp"]
                     ? [{ key: "Private IP", value: resource.resolvedOutputs["privateIp"] }]
+                    : []),
+                  ...(cordoned ? [{ key: "Cordoned", value: "Yes (not receiving traffic)" }] : []),
+                  ...(fields["hostStatus"] && fields["hostStatus"] !== "ok"
+                    ? [{ key: "Host Status", value: String(fields["hostStatus"]) }]
                     : []),
                 ],
               },
@@ -806,6 +1388,7 @@ export class FlyClient implements PluginClient {
           ...lifecycleActions,
           { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
         ],
+        logs: { defaultTailLines: 50 },
       };
     }
 
@@ -829,11 +1412,92 @@ export class FlyClient implements PluginClient {
             ],
           },
         ],
+        headerActions: [
+          {
+            kind: "action",
+            label: "Check DNS",
+            action: {
+              type: "plugin-action",
+              actionId: "check",
+              successMessage: "DNS re-checked. Refresh to see the validation result.",
+            },
+          },
+          { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        ],
+      };
+    }
+
+    if (resource.resourceTypeId === "postgres-cluster") {
+      return renderPostgresClusterDetail(resource);
+    }
+
+    if (resource.resourceTypeId === "app-secret" || resource.resourceTypeId === "ip-allocation") {
+      const isSecret = resource.resourceTypeId === "app-secret";
+      return {
+        title: resource.displayName,
+        subtitle: joinSubtitle(isSecret ? "secret" : "IP address", fields["appName"]),
+        status: { kind: "status-dot", status: "healthy" },
+        sections: [
+          {
+            kind: "section",
+            title: "Details",
+            children: [
+              {
+                kind: "key-value-list",
+                items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
+              },
+            ],
+          },
+        ],
         headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
       };
     }
 
     // volume or fallback
+    const sections: SectionNode[] = [
+      {
+        kind: "section",
+        title: "Details",
+        children: [
+          {
+            kind: "key-value-list",
+            items: labeledFieldItems(
+              Object.fromEntries(Object.entries(fields).filter(([k]) => !k.startsWith("__"))),
+              this.resourceTypes,
+              resource.resourceTypeId,
+            ),
+          },
+        ],
+      },
+    ];
+    const snapshots = parseJsonList<FlyVolumeSnapshot>(fields["__snapshots__"]);
+    if (snapshots.length > 0) {
+      sections.push({
+        kind: "section",
+        title: "Snapshots",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "id", label: "Snapshot", mono: true },
+              { key: "status", label: "Status" },
+              { key: "size", label: "Size (bytes)" },
+              { key: "created", label: "Created" },
+              { key: "retention", label: "Retention (days)" },
+            ],
+            rows: snapshots.map((snap) => ({
+              cells: {
+                id: snap.id ?? "",
+                status: snap.status ?? "",
+                size: snap.size != null ? String(snap.size) : "",
+                created: snap.created_at ?? "",
+                retention: snap.retention_days != null ? String(snap.retention_days) : "",
+              },
+            })),
+          },
+        ],
+      });
+    }
     return {
       title: resource.displayName,
       subtitle: joinSubtitle("volume", formatRegion(String(fields["region"] ?? ""))),
@@ -841,19 +1505,23 @@ export class FlyClient implements PluginClient {
         kind: "status-dot",
         status: fields["state"] === "created" ? "healthy" : "error",
       },
-      sections: [
-        {
-          kind: "section",
-          title: "Details",
-          children: [
-            {
-              kind: "key-value-list",
-              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
-            },
-          ],
-        },
+      sections,
+      headerActions: [
+        ...(resource.resourceTypeId === "volume"
+          ? [
+              {
+                kind: "action" as const,
+                label: "Snapshot Now",
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "snapshot",
+                  successMessage: "Snapshot requested.",
+                },
+              },
+            ]
+          : []),
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -867,6 +1535,13 @@ export class FlyClient implements PluginClient {
       status = resource.fields["state"] === "created" ? "healthy" : "error";
     } else if (resource.resourceTypeId === "certificate") {
       status = resource.fields["configured"] === true ? "healthy" : "degraded";
+    } else if (resource.resourceTypeId === "postgres-cluster") {
+      status = postgresStatusDot(String(resource.fields["status"] ?? ""));
+    } else if (
+      resource.resourceTypeId === "app-secret" ||
+      resource.resourceTypeId === "ip-allocation"
+    ) {
+      status = "healthy";
     }
 
     return {
@@ -881,82 +1556,98 @@ export class FlyClient implements PluginClient {
   /* ------------------------------------------------------------------ */
 
   private async listApps(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<{ apps: FlyAppListEntry[]; total_apps: number }>(
+    // Without `limit` the endpoint returns every app in one response.
+    const data = await this.fetch<{ apps: FlyApp[]; total_apps: number }>(
       `/v1/apps?org_slug=${encodeURIComponent(this.orgSlug)}`,
     );
-    return (data.apps ?? []).map((app) => this.mapAppListEntry(app, accountId));
+    // Older list responses omit `status`; treat a listed app as deployed
+    // rather than flagging every row as pending.
+    return (data.apps ?? []).map((app) =>
+      this.mapApp({ ...app, status: app.status ?? "deployed" }, accountId),
+    );
+  }
+
+  /** Run `load` for every app in the org, dropping apps whose call fails. */
+  private async perApp(
+    accountId: string,
+    load: (appName: string) => Promise<ResourceInstance[]>,
+  ): Promise<ResourceInstance[]> {
+    const apps = await this.listApps(accountId);
+    const batches = await Promise.all(
+      apps.map(async (app) => {
+        try {
+          return await load(String(app.fields["name"]));
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return batches.flat();
   }
 
   private async listAllMachines(accountId: string): Promise<ResourceInstance[]> {
-    const apps = await this.listApps(accountId);
-    const results: ResourceInstance[] = [];
-    // Fetch machines for each app in parallel
-    const batches = await Promise.all(
-      apps.map(async (app) => {
-        const appName = String(app.fields["name"]);
-        try {
-          const machines = await this.fetch<FlyMachine[]>(`/v1/apps/${appName}/machines`);
-          return (machines ?? []).map((m) => this.mapMachine(m, appName, accountId));
-        } catch {
-          return [];
-        }
-      }),
-    );
-    for (const batch of batches) results.push(...batch);
-    return results;
+    return this.perApp(accountId, async (appName) => {
+      const machines = await this.fetch<FlyMachine[]>(`/v1/apps/${appName}/machines`);
+      return (machines ?? []).map((m) => this.mapMachine(m, appName, accountId));
+    });
   }
 
   private async listAllVolumes(accountId: string): Promise<ResourceInstance[]> {
-    const apps = await this.listApps(accountId);
-    const results: ResourceInstance[] = [];
-    const batches = await Promise.all(
-      apps.map(async (app) => {
-        const appName = String(app.fields["name"]);
-        try {
-          const volumes = await this.fetch<FlyVolume[]>(`/v1/apps/${appName}/volumes`);
-          return (volumes ?? []).map((v) => this.mapVolume(v, appName, accountId));
-        } catch {
-          return [];
-        }
-      }),
-    );
-    for (const batch of batches) results.push(...batch);
-    return results;
+    return this.perApp(accountId, async (appName) => {
+      const volumes = await this.fetch<FlyVolume[]>(`/v1/apps/${appName}/volumes`);
+      return (volumes ?? []).map((v) => this.mapVolume(v, appName, accountId));
+    });
   }
 
   private async listAllCertificates(accountId: string): Promise<ResourceInstance[]> {
-    const apps = await this.listApps(accountId);
-    const batches = await Promise.all(
-      apps.map(async (app) => {
-        const appName = String(app.fields["name"]);
-        try {
-          const data = await this.fetch<FlyCertificate[] | FlyCertificateListResponse>(
-            `/v1/apps/${appName}/certificates`,
-          );
-          const certs = Array.isArray(data) ? data : (data.certificates ?? []);
-          return (certs ?? []).map((cert) => this.mapCertificate(cert, appName, accountId));
-        } catch {
-          return [];
+    return this.perApp(accountId, async (appName) => {
+      const certs: FlyCertificate[] = [];
+      let cursor = "";
+      // `limit` caps at 500; follow `next_cursor` for apps with more hostnames.
+      for (let page = 0; page < 20; page++) {
+        const qs = `limit=500${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+        const data = await this.fetch<FlyCertificate[] | FlyCertificateListResponse>(
+          `/v1/apps/${appName}/certificates?${qs}`,
+        );
+        if (Array.isArray(data)) {
+          certs.push(...data);
+          break;
         }
-      }),
+        certs.push(...(data.certificates ?? []));
+        if (!data.next_cursor) break;
+        cursor = data.next_cursor;
+      }
+      return certs.map((cert) => this.mapCertificate(cert, appName, accountId));
+    });
+  }
+
+  private async listIpAllocationsForApp(
+    appName: string,
+    accountId: string,
+  ): Promise<ResourceInstance[]> {
+    const data = await this.fetch<{ ips?: FlyIpAssignment[] }>(
+      `/v1/apps/${appName}/ip_assignments`,
     );
-    return batches.flat();
+    return (data.ips ?? []).map((ip) => this.mapIpAllocation(ip, appName, accountId));
   }
 
   private async listAllIpAllocations(accountId: string): Promise<ResourceInstance[]> {
-    const apps = await this.listApps(accountId);
-    const batches = await Promise.all(
-      apps.map(async (app) => {
-        const appName = String(app.fields["name"]);
-        try {
-          const ips = await this.fetch<FlyIpAllocation[]>(`/v1/apps/${appName}/ips`);
-          return (ips ?? []).map((ip) => this.mapIpAllocation(ip, appName, accountId));
-        } catch {
-          return [];
-        }
-      }),
+    return this.perApp(accountId, (appName) => this.listIpAllocationsForApp(appName, accountId));
+  }
+
+  private async listAllSecrets(accountId: string): Promise<ResourceInstance[]> {
+    // Values are never requested (`show_secrets` stays off): only names and digests.
+    return this.perApp(accountId, async (appName) => {
+      const data = await this.fetch<{ secrets?: FlyAppSecret[] }>(`/v1/apps/${appName}/secrets`);
+      return (data.secrets ?? []).map((sec) => this.mapSecret(sec, appName, accountId));
+    });
+  }
+
+  private async listPostgresClusters(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetch<{ data?: FlyPostgresCluster[] }>(
+      `/v1/postgres?org_slug=${encodeURIComponent(this.orgSlug)}`,
     );
-    return batches.flat();
+    return (data.data ?? []).map((c) => mapPostgresCluster(c, accountId));
   }
 
   /* ------------------------------------------------------------------ */
@@ -964,20 +1655,22 @@ export class FlyClient implements PluginClient {
   /* ------------------------------------------------------------------ */
 
   private mapApp(app: FlyApp, accountId: string): ResourceInstance {
+    const fields: Record<string, string | number | boolean> = {
+      name: app.name,
+      status: app.status ?? "pending",
+      organization: app.organization?.slug ?? "",
+      machineCount: app.machine_count ?? 0,
+      volumeCount: app.volume_count ?? 0,
+      network: app.network ?? "",
+    };
+    if (app.network_cidr) fields["networkCidr"] = app.network_cidr;
     return {
       id: `${accountId}:app:${app.name}`,
       pluginId: "fly",
       resourceTypeId: "app",
       accountId,
       displayName: app.name,
-      fields: {
-        name: app.name,
-        status: app.status ?? "pending",
-        organization: app.organization?.slug ?? "",
-        machineCount: app.machine_count ?? 0,
-        volumeCount: app.volume_count ?? 0,
-        network: app.network ?? "",
-      },
+      fields,
       resolvedOutputs: { appName: app.name },
       secretStates: [],
       externalId: app.name,
@@ -986,44 +1679,28 @@ export class FlyClient implements PluginClient {
     };
   }
 
-  private mapAppListEntry(app: FlyAppListEntry, accountId: string): ResourceInstance {
-    return {
-      id: `${accountId}:app:${app.name}`,
-      pluginId: "fly",
-      resourceTypeId: "app",
-      accountId,
-      displayName: app.name,
-      fields: {
-        name: app.name,
-        status: "deployed",
-        organization: "",
-        machineCount: app.machine_count ?? 0,
-        volumeCount: app.volume_count ?? 0,
-        network: app.network ?? "",
-      },
-      resolvedOutputs: { appName: app.name },
-      secretStates: [],
-      externalId: app.name,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
   private mapMachine(m: FlyMachine, appName: string, accountId: string): ResourceInstance {
+    const fields: Record<string, string | number | boolean> = {
+      name: m.name ?? "",
+      state: m.state ?? "created",
+      region: m.region ?? "",
+      image: m.config?.image ?? m.image_ref?.repository ?? "",
+      appName,
+      instanceId: m.instance_id ?? "",
+    };
+    const guest = m.config?.guest;
+    if (guest?.cpu_kind) fields["cpuKind"] = guest.cpu_kind;
+    if (guest?.cpus != null) fields["cpus"] = guest.cpus;
+    if (guest?.memory_mb != null) fields["memoryMb"] = guest.memory_mb;
+    if (m.cordoned != null) fields["cordoned"] = m.cordoned;
+    if (m.host_status) fields["hostStatus"] = m.host_status;
     return {
       id: `${accountId}:machine:${appName}/${m.id}`,
       pluginId: "fly",
       resourceTypeId: "machine",
       accountId,
       displayName: m.name || m.id,
-      fields: {
-        name: m.name ?? "",
-        state: m.state ?? "created",
-        region: m.region ?? "",
-        image: m.config?.image ?? m.image_ref?.repository ?? "",
-        appName,
-        instanceId: m.instance_id ?? "",
-      },
+      fields,
       resolvedOutputs: {
         privateIp: m.private_ip ?? "",
       },
@@ -1035,21 +1712,28 @@ export class FlyClient implements PluginClient {
   }
 
   private mapVolume(v: FlyVolume, appName: string, accountId: string): ResourceInstance {
+    const fields: Record<string, string | number | boolean> = {
+      name: v.name ?? "",
+      state: v.state ?? "created",
+      sizeGb: v.size_gb ?? 0,
+      region: v.region ?? "",
+      encrypted: v.encrypted ?? true,
+      attachedMachineId: v.attached_machine_id ?? "",
+      appName,
+    };
+    if (v.zone) fields["zone"] = v.zone;
+    if (v.auto_backup_enabled != null) fields["autoBackupEnabled"] = v.auto_backup_enabled;
+    if (v.snapshot_retention != null) fields["snapshotRetention"] = v.snapshot_retention;
+    if (v.bytes_used != null) fields["bytesUsed"] = v.bytes_used;
+    if (v.bytes_total != null) fields["bytesTotal"] = v.bytes_total;
+    if (v.host_status) fields["hostStatus"] = v.host_status;
     return {
       id: `${accountId}:volume:${appName}/${v.id}`,
       pluginId: "fly",
       resourceTypeId: "volume",
       accountId,
       displayName: v.name || v.id,
-      fields: {
-        name: v.name ?? "",
-        state: v.state ?? "created",
-        sizeGb: v.size_gb ?? 0,
-        region: v.region ?? "",
-        encrypted: v.encrypted ?? true,
-        attachedMachineId: v.attached_machine_id ?? "",
-        appName,
-      },
+      fields,
       resolvedOutputs: {},
       secretStates: [],
       externalId: `${appName}/${v.id}`,
@@ -1058,28 +1742,56 @@ export class FlyClient implements PluginClient {
     };
   }
 
+  /**
+   * Handles both the list shape (`CertificateSummary`: flat `acme_*` flags)
+   * and the detail shape (`CertificateDetail`: `certificates[]` entries with
+   * issuer and expiry, plus `validation` / `validation_errors`).
+   */
   private mapCertificate(
     cert: FlyCertificate,
     appName: string,
     accountId: string,
   ): ResourceInstance {
     const hostname = cert.hostname ?? cert.id ?? "";
+    const entries = cert.certificates ?? [];
+    const active = entries.find((e) => e.status === "active") ?? entries[0];
+    const issued = active?.issued ?? [];
+    const expiries = [active?.expires_at, ...issued.map((i) => i.expires_at)].filter(
+      (x): x is string => Boolean(x),
+    );
+    const fields: Record<string, string | number | boolean> = {
+      hostname,
+      appName,
+      status: cert.status ?? "",
+      configured: cert.configured ?? false,
+      acmeDnsConfigured: cert.acme_dns_configured ?? cert.validation?.dns_configured ?? false,
+      certificateAuthority:
+        issued.find((i) => i.certificate_authority)?.certificate_authority ?? active?.issuer ?? "",
+      expires: expiries.sort()[0] ?? "",
+      dnsProvider: cert.dns_provider ?? "",
+    };
+    const alpn = cert.acme_alpn_configured ?? cert.validation?.alpn_configured;
+    if (alpn != null) fields["acmeAlpnConfigured"] = alpn;
+    const http = cert.acme_http_configured ?? cert.validation?.http_configured;
+    if (http != null) fields["acmeHttpConfigured"] = http;
+    const ownership = cert.ownership_txt_configured ?? cert.validation?.ownership_txt_configured;
+    if (ownership != null) fields["ownershipTxtConfigured"] = ownership;
+    if (active?.source) {
+      fields["source"] = active.source;
+    } else if (cert.has_custom_certificate || cert.has_fly_certificate) {
+      fields["source"] = cert.has_custom_certificate ? "custom" : "fly";
+    }
+    const errors = (cert.validation_errors ?? [])
+      .map((e) => e.message ?? e.code ?? "")
+      .filter(Boolean);
+    if (errors.length > 0) fields["validationErrors"] = errors.join("; ");
     return {
       id: `${accountId}:certificate:${appName}/${hostname}`,
       pluginId: "fly",
       resourceTypeId: "certificate",
       accountId,
       displayName: hostname,
-      fields: {
-        hostname,
-        appName,
-        configured: cert.configured ?? false,
-        acmeDnsConfigured: cert.acme_dns_configured ?? false,
-        certificateAuthority: cert.certificate_authority ?? "",
-        issued: cert.issued?.["not_before"] ?? "",
-        expires: cert.issued?.["not_after"] ?? "",
-        dnsProvider: cert.dns_provider ?? "",
-      },
+      fields,
       resolvedOutputs: { hostname },
       secretStates: [],
       externalId: `${appName}/${hostname}`,
@@ -1089,32 +1801,77 @@ export class FlyClient implements PluginClient {
     };
   }
 
+  /**
+   * `IPAssignment` carries no type, so it is derived: a network marks a
+   * Flycast address, `egress` / `shared` flag those kinds, and the address
+   * family settles the rest.
+   */
   private mapIpAllocation(
-    ip: FlyIpAllocation,
+    ip: FlyIpAssignment,
     appName: string,
     accountId: string,
   ): ResourceInstance {
-    const address = ip.address ?? ip.ip ?? "";
+    const address = ip.ip ?? "";
+    const isPrivate = ip.network != null;
+    const type = isPrivate
+      ? "private_v6"
+      : ip.egress
+        ? address.includes(":")
+          ? "egress_v6"
+          : "egress_v4"
+        : ip.shared
+          ? "shared_v4"
+          : address.includes(":")
+            ? "v6"
+            : "v4";
+    const fields: Record<string, string | number | boolean> = {
+      address,
+      appName,
+      type,
+      region: ip.region ?? "",
+      network: ip.network?.name ?? "",
+      shared: ip.shared ?? false,
+      egress: ip.egress ?? false,
+      private: isPrivate,
+    };
+    if (ip.service_name) fields["serviceName"] = ip.service_name;
+    if (ip.created_at) fields["createdAt"] = ip.created_at;
     return {
       id: `${accountId}:ip-allocation:${appName}/${address}`,
       pluginId: "fly",
       resourceTypeId: "ip-allocation",
       accountId,
       displayName: address,
-      fields: {
-        address,
-        appName,
-        type: ip.type ?? "",
-        region: ip.region ?? "",
-        network: ip.network ?? "",
-        private: ip.private ?? false,
-      },
+      fields,
       resolvedOutputs: { address },
       secretStates: [],
       externalId: `${appName}/${address}`,
       parentResourceId: `${accountId}:app:${appName}`,
       createdAt: ip.created_at ?? new Date().toISOString(),
       updatedAt: ip.created_at ?? new Date().toISOString(),
+    };
+  }
+
+  private mapSecret(sec: FlyAppSecret, appName: string, accountId: string): ResourceInstance {
+    const name = sec.name ?? "";
+    const fields: Record<string, string | number | boolean> = { name, appName };
+    if (sec.digest) fields["digest"] = sec.digest;
+    if (sec.created_at) fields["createdAt"] = sec.created_at;
+    if (sec.updated_at) fields["updatedAt"] = sec.updated_at;
+    const created = sec.created_at ?? new Date().toISOString();
+    return {
+      id: `${accountId}:app-secret:${appName}/${name}`,
+      pluginId: "fly",
+      resourceTypeId: "app-secret",
+      accountId,
+      displayName: name,
+      fields,
+      resolvedOutputs: { secretName: name },
+      secretStates: [],
+      externalId: `${appName}/${name}`,
+      parentResourceId: `${accountId}:app:${appName}`,
+      createdAt: created,
+      updatedAt: sec.updated_at ?? created,
     };
   }
 }
@@ -1156,12 +1913,6 @@ function machineStateToDashboardVariant(
   }
 }
 
-function formatRegion(code: string): string {
-  const info = FlyClient["REGION_INFO"][code];
-  if (!info) return code;
-  return `${code} (${info.location})`;
-}
-
 /** Parse `accountId:machine:appName/machineId` */
 function parseMachineId(resourceId: string): { appName: string; machineId: string } {
   const externalId = resourceId.split(":").slice(2).join(":");
@@ -1201,20 +1952,13 @@ function parseAppChildId(resourceId: string): { appName: string; childId: string
 interface FlyApp {
   id: string;
   name: string;
-  status: string;
+  status?: string;
   organization?: { name: string; slug: string };
   machine_count?: number;
   volume_count?: number;
   network?: string;
+  network_cidr?: string;
   created_at?: string;
-}
-
-interface FlyAppListEntry {
-  id: string;
-  name: string;
-  machine_count?: number;
-  volume_count?: number;
-  network?: string;
 }
 
 interface FlyMachine {
@@ -1224,11 +1968,25 @@ interface FlyMachine {
   region: string;
   instance_id?: string;
   private_ip?: string;
-  config?: { image?: string };
+  cordoned?: boolean;
+  host_status?: string;
+  config?: {
+    image?: string;
+    guest?: { cpu_kind?: string; cpus?: number; memory_mb?: number };
+  };
   image_ref?: { repository?: string; tag?: string };
   created_at?: string;
   updated_at?: string;
   events?: unknown[];
+}
+
+interface FlyMachineEvent {
+  id?: string;
+  type?: string;
+  status?: string;
+  source?: string;
+  timestamp?: number;
+  request?: unknown;
 }
 
 interface FlyVolume {
@@ -1243,38 +2001,87 @@ interface FlyVolume {
   blocks?: number;
   block_size?: number;
   blocks_free?: number;
+  bytes_used?: number;
+  bytes_total?: number;
+  host_status?: string;
   snapshot_retention?: number;
   auto_backup_enabled?: boolean;
   created_at?: string;
 }
 
+interface FlyVolumeSnapshot {
+  id?: string;
+  status?: string;
+  size?: number;
+  volume_size?: number;
+  retention_days?: number;
+  created_at?: string;
+}
+
+/**
+ * Union of the Machines API's `CertificateSummary` (list) and
+ * `CertificateDetail` (get / create / check) shapes.
+ */
 interface FlyCertificate {
   id?: string;
   hostname?: string;
   status?: string;
   configured?: boolean;
   acme_dns_configured?: boolean;
+  acme_alpn_configured?: boolean;
+  acme_http_configured?: boolean;
+  ownership_txt_configured?: boolean;
   acme_requested?: boolean;
-  certificate_authority?: string;
+  has_custom_certificate?: boolean;
+  has_fly_certificate?: boolean;
   dns_provider?: string;
-  issued?: {
-    not_before?: string;
-    not_after?: string;
+  certificates?: Array<{
+    source?: string;
+    status?: string;
+    issuer?: string;
+    expires_at?: string;
+    created_at?: string;
+    issued?: Array<{ certificate_authority?: string; expires_at?: string; type?: string }>;
+  }>;
+  validation?: {
+    alpn_configured?: boolean;
+    dns_configured?: boolean;
+    http_configured?: boolean;
+    ownership_txt_configured?: boolean;
   };
+  validation_errors?: Array<{ code?: string; message?: string }>;
   created_at?: string;
   updated_at?: string;
 }
 
 interface FlyCertificateListResponse {
   certificates?: FlyCertificate[];
+  next_cursor?: string;
 }
 
-interface FlyIpAllocation {
-  address?: string;
-  ip?: string;
-  type?: string;
+interface FlyIpAssignment {
+  ip?: string | null;
   region?: string;
-  network?: string;
-  private?: boolean;
+  shared?: boolean;
+  egress?: boolean;
+  service_name?: string;
+  network?: { name?: string; org_slug?: string } | null;
   created_at?: string;
+}
+
+interface FlyAppSecret {
+  name?: string;
+  digest?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+function parseJsonList<T>(raw: unknown): T[] {
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
 }
