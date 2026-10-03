@@ -719,3 +719,94 @@ describe("LLM Gateway catalogue", () => {
     expect(model?.fields["regions"]).toBe("us, eu, global");
   });
 });
+
+describe("account metrics", () => {
+  const day = Date.UTC(2026, 8, 1);
+  const range = { startMs: day, endMs: day + 2 * 86_400_000 - 1 };
+
+  it("charts daily jobs, failures and turnaround from the transcript list", async () => {
+    installFetch((url) => {
+      if (url.includes("/sessions")) {
+        return jsonResponse({
+          sessions: [{ id: "s1", created_at: "2026-09-02T09:00:00Z", duration_seconds: 120 }],
+          has_more: false,
+        });
+      }
+      return jsonResponse({
+        transcripts: [
+          // Zone-less, microsecond timestamps, exactly as the API returns them.
+          {
+            id: "t3",
+            status: "completed",
+            created: "2026-09-02T10:00:00.000000",
+            completed: "2026-09-02T10:00:30.000000",
+          },
+          { id: "t2", status: "error", created: "2026-09-01T10:00:00.000000", completed: null },
+          {
+            id: "t1",
+            status: "completed",
+            created: "2026-09-01T09:00:00.000000",
+            completed: "2026-09-01T09:01:30.000000",
+          },
+        ],
+      });
+    });
+    const series = await client().fetchMetricSeries(
+      "account",
+      `${ACCOUNT}:account:${ACCOUNT}`,
+      ACCOUNT,
+      range,
+    );
+    expect(calls.find((c) => c.url.includes("/v2/transcript"))?.url).toBe(
+      "https://api.assemblyai.com/v2/transcript?limit=200",
+    );
+    expect(series.map((s) => s.label)).toEqual([
+      "Transcripts",
+      "Failed transcripts",
+      "Avg turnaround",
+      "Voice agent sessions",
+      "Voice agent minutes",
+    ]);
+    expect(series[0]!.points).toEqual([
+      { timestamp: day, value: 2 },
+      { timestamp: day + 86_400_000, value: 1 },
+    ]);
+    expect(series[1]!.points[0]).toEqual({ timestamp: day, value: 1 });
+    expect(series[2]!.points).toEqual([
+      { timestamp: day, value: 90 },
+      { timestamp: day + 86_400_000, value: 30 },
+    ]);
+    expect(series[4]!.points[1]).toEqual({ timestamp: day + 86_400_000, value: 2 });
+  });
+
+  it("pages older jobs with before_id and keeps transcripts when sessions fail", async () => {
+    const full = Array.from({ length: 200 }, (_, i) => ({
+      id: `p1-${i}`,
+      status: "completed",
+      created: "2026-09-02T12:00:00",
+      completed: "2026-09-02T12:00:10",
+    }));
+    installFetch((url) => {
+      if (url.includes("/sessions")) return jsonResponse({ error: "forbidden" }, 403);
+      if (url.includes("before_id=p1-199")) {
+        return jsonResponse({
+          transcripts: [{ id: "old", status: "completed", created: "2026-08-01T00:00:00" }],
+        });
+      }
+      return jsonResponse({ transcripts: full });
+    });
+    const series = await client().fetchMetricSeries(
+      "account",
+      `${ACCOUNT}:account:${ACCOUNT}`,
+      ACCOUNT,
+      range,
+    );
+    expect(calls.filter((c) => c.url.includes("/v2/transcript"))).toHaveLength(2);
+    expect(series.map((s) => s.label)).toEqual([
+      "Transcripts",
+      "Failed transcripts",
+      "Avg turnaround",
+    ]);
+    expect(series[0]!.points[1]).toEqual({ timestamp: day + 86_400_000, value: 200 });
+  });
+});

@@ -772,10 +772,27 @@ export class VoiceAgentSurface {
     resourceId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
+    return this.sessionSeries(externalOf(resourceId), timeRange, "Sessions", "Session minutes");
+  }
+
+  /**
+   * The same two series across every agent (and inline-configured sessions,
+   * which belong to no stored agent): `GET /v1/sessions` without `agent_id`.
+   */
+  async accountMetrics(timeRange?: { startMs: number; endMs: number }): Promise<MetricSeries[]> {
+    return this.sessionSeries(undefined, timeRange, "Voice agent sessions", "Voice agent minutes");
+  }
+
+  private async sessionSeries(
+    agentId: string | undefined,
+    timeRange: { startMs: number; endMs: number } | undefined,
+    countLabel: string,
+    minutesLabel: string,
+  ): Promise<MetricSeries[]> {
     const dayMs = 86_400_000;
     const endMs = timeRange?.endMs ?? Date.now();
     const startMs = timeRange?.startMs ?? endMs - 30 * dayMs;
-    const sessions = await this.fetchSessions(externalOf(resourceId), startMs);
+    const sessions = await this.fetchSessions(agentId, startMs);
     const buckets = new Map<number, { count: number; minutes: number }>();
     for (let t = Math.floor(startMs / dayMs) * dayMs; t <= endMs; t += dayMs) {
       buckets.set(t, { count: 0, minutes: 0 });
@@ -791,12 +808,12 @@ export class VoiceAgentSurface {
     const stamps = [...buckets.keys()].sort((a, b) => a - b);
     return [
       {
-        label: "Sessions",
+        label: countLabel,
         unit: "count",
         points: stamps.map((t) => ({ timestamp: t, value: buckets.get(t)!.count })),
       },
       {
-        label: "Session minutes",
+        label: minutesLabel,
         unit: "minutes",
         points: stamps.map((t) => ({
           timestamp: t,
