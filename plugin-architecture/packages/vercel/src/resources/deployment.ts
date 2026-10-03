@@ -20,6 +20,7 @@ export const VercelDeploymentResourceType = rt({
     f("createdAt", "Created At", { required: false }),
     f("readyAt", "Ready At", { required: false }),
     f("framework", "Framework", { required: false }),
+    f("errorMessage", "Error", { required: false }),
   ],
   outputs: [
     o("deploymentId", "Deployment ID"),

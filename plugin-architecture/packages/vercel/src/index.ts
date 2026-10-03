@@ -4,4 +4,6 @@ export { VercelDeploymentResourceType } from "./resources/deployment.js";
 export { VercelDomainResourceType } from "./resources/domain.js";
 export { VercelEnvironmentVariableResourceType } from "./resources/environment-variable.js";
 export { VercelTeamResourceType } from "./resources/team.js";
+export { VercelDnsRecordResourceType } from "./resources/dns-record.js";
+export { VercelWebhookResourceType } from "./resources/webhook.js";
 export { VercelClient } from "./client.js";
