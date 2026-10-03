@@ -1,5 +1,6 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { asRecord, type CloudflareApi } from "./clients/shared.js";
+import { rangeLimitFromError } from "./graphql-range.js";
 import { fetchWorkerMetricSeries } from "./worker-metrics.js";
 
 /**
@@ -24,6 +25,19 @@ function analyticsWindow(timeRange?: { startMs: number; endMs: number }): {
     to: new Date(endMs).toISOString(),
     useHourly: endMs - startMs >= 6 * 3_600_000,
   };
+}
+
+/**
+ * Time bucket for an adaptive dataset, aliased back to `datetime` in queries
+ * so the parsing stays the same. Grouping by the raw `datetime` makes one row
+ * per distinct second, which runs into the row limit on any busy resource and
+ * leaves the chart showing only the oldest slice of the window.
+ */
+function adaptiveBucket(from: string, to: string, longest: "date" | "datetimeSixHours"): string {
+  const span = new Date(to).getTime() - new Date(from).getTime();
+  if (span <= 6 * 3_600_000) return "datetimeFiveMinutes";
+  if (span <= 8 * 24 * 3_600_000) return "datetimeHour";
+  return longest;
 }
 
 /** Timestamp-keyed accumulator → a chronologically ordered `MetricSeries`. */
@@ -110,7 +124,8 @@ export async function fetchMetricSeries(
   const zoneId = resourceId.split(":").pop();
   if (!zoneId) return [];
 
-  const { from, to, useHourly } = analyticsWindow(timeRange);
+  const window = analyticsWindow(timeRange);
+  const { useHourly } = window;
   const groupName = useHourly ? "httpRequests1hGroups" : "httpRequests1mGroups";
   const dimKey = useHourly ? "datetime" : "datetimeMinute";
 
@@ -139,6 +154,7 @@ export async function fetchMetricSeries(
         }>;
       };
     };
+    errors?: Array<{ message?: string }>;
   }
   interface GraphGroup {
     dimensions: { datetimeMinute?: string; datetime?: string };
@@ -152,22 +168,29 @@ export async function fetchMetricSeries(
     uniq: { uniques?: number };
   }
 
-  let groups: GraphGroup[] = [];
-  try {
+  const run = async (from: string, to: string): Promise<GraphResp | undefined> => {
     const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        query,
-        variables: { zone: zoneId, from, to },
-      }),
+      body: JSON.stringify({ query, variables: { zone: zoneId, from, to } }),
     });
-    if (!res.ok) return [];
-    const json = (await res.json()) as GraphResp;
-    const zoneGroups = json.data?.viewer?.zones?.[0];
+    return res.ok ? ((await res.json()) as GraphResp) : undefined;
+  };
+
+  let groups: GraphGroup[] = [];
+  try {
+    let json = await run(window.from, window.to);
+    // The aggregated zone datasets cap the range by plan (3 days on Free).
+    // Rather than an empty chart, show the most recent range the plan allows.
+    const limit = rangeLimitFromError(json?.errors?.[0]?.message ?? "");
+    if (limit) {
+      const toMs = new Date(window.to).getTime();
+      json = await run(new Date(toMs - limit + 60_000).toISOString(), window.to);
+    }
+    const zoneGroups = json?.data?.viewer?.zones?.[0];
     groups =
       (useHourly ? zoneGroups?.httpRequests1hGroups : zoneGroups?.httpRequests1mGroups) ?? [];
   } catch {
@@ -234,24 +257,25 @@ async function fetchR2MetricSeries(
   }
 
   const { from, to } = analyticsWindow(timeRange);
+  const bucket = adaptiveBucket(from, to, "date");
 
   const query = `query R($account: String!, $bucket: String!, $from: Time!, $to: Time!) {
       viewer {
         accounts(filter: { accountTag: $account }) {
           r2OperationsAdaptiveGroups(
-            limit: 1000
+            limit: 10000
             filter: { bucketName: $bucket, datetime_geq: $from, datetime_lt: $to }
-            orderBy: [datetime_ASC]
+            orderBy: [${bucket}_ASC]
           ) {
-            dimensions { datetime actionType }
+            dimensions { datetime: ${bucket} actionType }
             sum { requests responseObjectSize }
           }
           r2StorageAdaptiveGroups(
-            limit: 1000
+            limit: 10000
             filter: { bucketName: $bucket, datetime_geq: $from, datetime_lt: $to }
-            orderBy: [datetime_ASC]
+            orderBy: [${bucket}_ASC]
           ) {
-            dimensions { datetime }
+            dimensions { datetime: ${bucket} }
             max { metadataSize payloadSize objectCount uploadCount }
           }
         }
@@ -379,39 +403,30 @@ async function fetchDurableObjectMetricSeries(
   }
 
   const { from, to } = analyticsWindow(timeRange);
+  const bucket = adaptiveBucket(from, to, "datetimeSixHours");
 
-  // Pull from three DO datasets in one query: invocations (requests +
-  // response bytes), periodic (CPU time), and storage (stored bytes; the
-  // actual on-disk size, the headline number the dashboard shows). Field
-  // names below are the ones Cloudflare documents explicitly; other fields
-  // (errors, wallTime, websocket counts) exist but need schema introspection
-  // to confirm exact spelling, so they're left out to keep the query valid.
+  // Invocations (requests + response bytes) and periodic (CPU time), both
+  // filtered to the namespace. `durableObjectsStorageGroups` has no
+  // `namespaceId` filter (it is account-wide), and asking for one fails the
+  // whole query, which is why this chart used to be empty.
   const query = `query D($account: String!, $ns: String!, $from: Time!, $to: Time!) {
       viewer {
         accounts(filter: { accountTag: $account }) {
           durableObjectsInvocationsAdaptiveGroups(
-            limit: 1000
+            limit: 10000
             filter: { namespaceId: $ns, datetime_geq: $from, datetime_lt: $to }
-            orderBy: [datetime_ASC]
+            orderBy: [${bucket}_ASC]
           ) {
-            dimensions { datetime }
+            dimensions { datetime: ${bucket} }
             sum { requests responseBodySize }
           }
           durableObjectsPeriodicGroups(
-            limit: 1000
+            limit: 10000
             filter: { namespaceId: $ns, datetime_geq: $from, datetime_lt: $to }
-            orderBy: [datetime_ASC]
+            orderBy: [${bucket}_ASC]
           ) {
-            dimensions { datetime }
+            dimensions { datetime: ${bucket} }
             sum { cpuTime }
-          }
-          durableObjectsStorageGroups(
-            limit: 1000
-            filter: { namespaceId: $ns, datetime_geq: $from, datetime_lt: $to }
-            orderBy: [datetime_ASC]
-          ) {
-            dimensions { datetime }
-            max { storedBytes }
           }
         }
       }
@@ -425,17 +440,12 @@ async function fetchDurableObjectMetricSeries(
     dimensions: { datetime: string };
     sum: { cpuTime?: number };
   }
-  interface StorageGroup {
-    dimensions: { datetime: string };
-    max: { storedBytes?: number };
-  }
   interface Resp {
     data?: {
       viewer?: {
         accounts?: Array<{
           durableObjectsInvocationsAdaptiveGroups?: InvGroup[];
           durableObjectsPeriodicGroups?: PeriodicGroup[];
-          durableObjectsStorageGroups?: StorageGroup[];
         }>;
       };
     };
@@ -443,7 +453,6 @@ async function fetchDurableObjectMetricSeries(
 
   let inv: InvGroup[] = [];
   let periodic: PeriodicGroup[] = [];
-  let storage: StorageGroup[] = [];
   try {
     const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
@@ -461,7 +470,6 @@ async function fetchDurableObjectMetricSeries(
     const acc = json.data?.viewer?.accounts?.[0];
     inv = acc?.durableObjectsInvocationsAdaptiveGroups ?? [];
     periodic = acc?.durableObjectsPeriodicGroups ?? [];
-    storage = acc?.durableObjectsStorageGroups ?? [];
   } catch {
     return [];
   }
@@ -486,11 +494,6 @@ async function fetchDurableObjectMetricSeries(
       label: "CPU Time",
       unit: "μs",
       points: periodic.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.cpuTime ?? 0) })),
-    },
-    {
-      label: "Stored Bytes",
-      unit: "bytes",
-      points: storage.map((g) => ({ timestamp: tsOf(g), value: Number(g.max.storedBytes ?? 0) })),
     },
   ];
   return series.filter((s) => s.points.some((p) => p.value > 0));
@@ -577,8 +580,11 @@ async function fetchTurnstileMetricSeries(
 }
 
 /**
- * Spectrum application metrics via GraphQL
- * `spectrumNetworkAnalyticsAdaptiveGroups` (zone-scoped, filter by `appID`).
+ * Spectrum application metrics via the REST analytics endpoint
+ * `GET /zones/{zone_id}/spectrum/analytics/events/bytime`, filtered to the app.
+ * Spectrum has no GraphQL dataset: `spectrumNetworkAnalyticsAdaptiveGroups` is
+ * an account-level Magic Transit dataset (packets and bits), not Spectrum app
+ * events, and the zone object has no Spectrum field at all.
  * Resource id: `${infrawrenchAccountId}:spectrum-application:${zoneId}/${appId}`.
  */
 async function fetchSpectrumMetricSeries(
@@ -586,7 +592,6 @@ async function fetchSpectrumMetricSeries(
   resourceId: string,
   timeRange?: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
-  // Last colon-segment is "${zoneId}/${appId}"
   const lastSegment = resourceId.split(":").pop();
   if (!lastSegment) return [];
   const slashIdx = lastSegment.indexOf("/");
@@ -596,86 +601,67 @@ async function fetchSpectrumMetricSeries(
   if (!zoneId || !appId) return [];
 
   const { from, to } = analyticsWindow(timeRange);
+  const span = new Date(to).getTime() - new Date(from).getTime();
+  const timeDelta =
+    span <= 3_600_000
+      ? "minute"
+      : span <= 12 * 3_600_000
+        ? "dekaminute"
+        : span <= 8 * 24 * 3_600_000
+          ? "hour"
+          : "day";
 
-  const query = `query S($zone: String!, $app: String!, $from: Time!, $to: Time!) {
-      viewer {
-        zones(filter: { zoneTag: $zone }) {
-          spectrumNetworkAnalyticsAdaptiveGroups(
-            limit: 1000
-            filter: { appID: $app, datetime_geq: $from, datetime_lt: $to }
-            orderBy: [datetime_ASC]
-          ) {
-            dimensions { datetime }
-            sum { events bytesIngress bytesEgress connections }
-          }
-        }
-      }
-    }`;
-
-  interface Group {
-    dimensions: { datetime: string };
-    sum: { events?: number; bytesIngress?: number; bytesEgress?: number; connections?: number };
-  }
-  interface Resp {
-    data?: {
-      viewer?: { zones?: Array<{ spectrumNetworkAnalyticsAdaptiveGroups?: Group[] }> };
-    };
-  }
-
-  let groups: Group[] = [];
-  try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${api.apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        variables: { zone: zoneId, app: appId, from, to },
-      }),
+  const METRICS = ["count", "bytesIngress", "bytesEgress", "duration90th"] as const;
+  const byTime = (filters: string, metrics: readonly string[]) =>
+    api.cf.spectrum.analytics.events.bytimes.get({
+      zone_id: zoneId,
+      time_delta: timeDelta,
+      metrics: metrics as (typeof METRICS)[number][],
+      filters,
+      since: from,
+      until: to,
     });
-    if (!res.ok) return [];
-    const json = (await res.json()) as Resp;
-    groups = json.data?.viewer?.zones?.[0]?.spectrumNetworkAnalyticsAdaptiveGroups ?? [];
+
+  let all: Awaited<ReturnType<typeof byTime>>;
+  let connects: Awaited<ReturnType<typeof byTime>> | undefined;
+  try {
+    [all, connects] = await Promise.all([
+      byTime(`appID==${appId}`, METRICS),
+      byTime(`appID==${appId};event==connect`, ["count"]).catch(() => undefined),
+    ]);
   } catch {
     return [];
   }
-  if (groups.length === 0) return [];
 
-  const tsOf = (g: Group): number => new Date(g.dimensions.datetime).getTime();
+  // With no dimensions there is one data row whose `metrics` holds one array
+  // per requested metric, aligned with `time_intervals`.
+  const toSeries = (
+    resp: Awaited<ReturnType<typeof byTime>> | undefined,
+    index: number,
+    label: string,
+    unit: string,
+  ): MetricSeries => {
+    const intervals = resp?.time_intervals ?? [];
+    const values = (resp?.data?.[0]?.metrics?.[index] ?? []) as unknown;
+    const list = Array.isArray(values) ? (values as number[]) : [];
+    return {
+      label,
+      unit,
+      points: intervals.map((iv, i) => ({
+        timestamp: new Date(iv[0] ?? "").getTime(),
+        value: Number(list[i] ?? 0),
+      })),
+    };
+  };
+
   const series: MetricSeries[] = [
-    {
-      label: "Events",
-      unit: "events",
-      points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.events ?? 0) })),
-    },
-    {
-      label: "Bytes Ingress",
-      unit: "bytes",
-      points: groups.map((g) => ({
-        timestamp: tsOf(g),
-        value: Number(g.sum.bytesIngress ?? 0),
-      })),
-    },
-    {
-      label: "Bytes Egress",
-      unit: "bytes",
-      points: groups.map((g) => ({
-        timestamp: tsOf(g),
-        value: Number(g.sum.bytesEgress ?? 0),
-      })),
-    },
-    {
-      label: "Connections",
-      unit: "connections",
-      points: groups.map((g) => ({
-        timestamp: tsOf(g),
-        value: Number(g.sum.connections ?? 0),
-      })),
-    },
+    toSeries(all, 0, "Events", "events"),
+    toSeries(all, 1, "Bytes Ingress", "bytes"),
+    toSeries(all, 2, "Bytes Egress", "bytes"),
+    toSeries(all, 3, "Connection Duration p90", "ms"),
+    toSeries(connects, 0, "Connections", "connections"),
   ];
-  return series.filter((s) => s.points.some((p) => p.value > 0));
+  return series.filter((x) => x.points.some((p) => Number.isFinite(p.timestamp) && p.value > 0));
 }
 
 /**

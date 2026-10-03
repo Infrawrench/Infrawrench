@@ -65,6 +65,7 @@ import {
 } from "./detail-renderers.js";
 import { CloudflareApi, withCloudflareErrors } from "./clients/shared.js";
 import { runCloudflarePreflight } from "./preflight.js";
+import { clampGraphqlRange } from "./graphql-range.js";
 import { fetchCloudflareCostData } from "./cost-data.js";
 import { getCreateConfig as getCreateConfigImpl } from "./create-configs.js";
 import { fetchMetricSeries as fetchMetricSeriesImpl } from "./metric-series.js";
@@ -1398,10 +1399,11 @@ export class CloudflareClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
+    const range = clampGraphqlRange(resourceTypeId, timeRange);
     if (dataPlatform.isDataPlatformType(resourceTypeId)) {
-      return dataPlatform.fetchDataPlatformMetrics(this.api, resourceTypeId, resourceId, timeRange);
+      return dataPlatform.fetchDataPlatformMetrics(this.api, resourceTypeId, resourceId, range);
     }
-    return fetchMetricSeriesImpl(this.api, resourceTypeId, resourceId, _accountId, timeRange);
+    return fetchMetricSeriesImpl(this.api, resourceTypeId, resourceId, _accountId, range);
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
