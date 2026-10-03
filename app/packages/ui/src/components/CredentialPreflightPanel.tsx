@@ -12,6 +12,7 @@ import {
 import { formatErrorMessage } from "../utils.js";
 import { Modal } from "./Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
+import { ExternalLinkIcon } from "./icons/ChromeIcons.js";
 
 export interface CredentialPreflightPanelProps {
   /** The plugin's declared capabilities (from the plugin catalog). */
@@ -91,7 +92,7 @@ function ExternalLink({
       className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong"
     >
       {gtData(link.label)}
-      <span aria-hidden="true">↗</span>
+      <ExternalLinkIcon size={12} />
     </a>
   );
 }

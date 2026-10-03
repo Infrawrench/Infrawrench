@@ -6,6 +6,7 @@ import type {
   SecretVersionsCapability,
 } from "@infrawrench/plugin-base";
 import { Modal } from "../Modal.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 interface Props {
   capability: SecretVersionsCapability;
@@ -306,7 +307,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 className="text-on-surface-faint hover:text-on-surface-tertiary text-sm"
                 aria-label={gt("Close")}
               >
-                ✕
+                <CloseIcon size={14} />
               </button>
             </div>
             <pre className="max-h-80 overflow-auto rounded border border-border bg-surface-sunken/60 text-xs font-mono p-3 whitespace-pre-wrap break-all text-on-surface">

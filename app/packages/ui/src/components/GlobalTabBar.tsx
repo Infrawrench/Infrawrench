@@ -2,6 +2,7 @@ import { useRef, type KeyboardEvent } from "react";
 import { T, useGT } from "gt-react";
 import type { WorkspaceTab } from "../store/ui.store.js";
 import { workspaceTabDomId, workspaceTabPanelDomId } from "../workspace/tab-dom-ids.js";
+import { CloseIcon } from "./icons/ChromeIcons.js";
 
 export interface GlobalTabBarProps {
   tabs: WorkspaceTab[];
@@ -179,7 +180,7 @@ function TabBarItem({
         aria-label={gt("Close tab {title}", { title: tab.title })}
         title={gt("Close {title}", { title: tab.title })}
       >
-        &times;
+        <CloseIcon size={12} />
       </button>
     </div>
   );

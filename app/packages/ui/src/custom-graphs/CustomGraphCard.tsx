@@ -9,6 +9,7 @@ import type {
 import { CustomGraphChart } from "./CustomGraphChart.js";
 import { CustomGraphControls, controlStateOf } from "./CustomGraphControls.js";
 import { useStableGT } from "../i18n/stable-gt.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export interface CustomGraphCardProps {
   title: string;
@@ -109,7 +110,7 @@ export function CustomGraphCard({
             aria-label={gt("Remove from dashboard")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         )}
       </div>

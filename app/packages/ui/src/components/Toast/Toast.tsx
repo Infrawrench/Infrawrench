@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import type { Toast as ToastT } from "./types.js";
 import { useToastStore } from "./useToast.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 const variantStyles = {
   success: {
@@ -100,7 +101,7 @@ export function ToastRow({ toast }: ToastRowProps) {
         aria-label={gt("Dismiss")}
         className="shrink-0 text-on-surface-tertiary hover:text-on-surface transition-colors text-sm leading-none"
       >
-        ✕
+        <CloseIcon size={14} />
       </button>
     </output>
   );

@@ -3,6 +3,7 @@ import { T, Var, useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
 import { formatErrorMessage } from "../utils.js";
 import type { IacImportPlanResponse } from "./types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export interface IacImportPlanModalProps {
   /** How many resources the plan was asked for, for the header line. */
@@ -101,7 +102,7 @@ export function IacImportPlanModal({
             className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
             aria-label={gt("Close")}
           >
-            &times;
+            <CloseIcon size={18} />
           </button>
         </div>
 

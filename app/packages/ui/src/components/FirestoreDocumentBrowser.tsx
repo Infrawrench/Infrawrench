@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import { formatErrorMessage } from "../utils.js";
 import { CollectionListItem, DocumentRow, InsertDocumentPanel } from "./document-browser-shared.js";
+import { RefreshIcon } from "./icons/ChromeIcons.js";
 
 export interface FirestoreDocumentBrowserProps {
   databaseLabel: string;
@@ -214,8 +215,9 @@ export function FirestoreDocumentBrowser({
                 onClick={() => void refreshCollections()}
                 className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-xs leading-none"
                 title={gt("Refresh")}
+                aria-label={gt("Refresh")}
               >
-                ↻
+                <RefreshIcon size={12} />
               </button>
               <button
                 type="button"

@@ -9,6 +9,7 @@ import { Modal } from "./Modal.js";
 import { RegionPicker } from "./create-resource/RegionPicker.js";
 import { CredentialPreflightPanel } from "./CredentialPreflightPanel.js";
 import { formatErrorMessage } from "../utils.js";
+import { ExternalLinkIcon } from "./icons/ChromeIcons.js";
 
 export interface PluginInfo {
   id: string;
@@ -339,7 +340,7 @@ export function AddAccountModal({
                             className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong mb-1"
                           >
                             {f.helpLink.label}
-                            <span aria-hidden="true">↗</span>
+                            <ExternalLinkIcon size={12} />
                           </a>
                         )}
                         {f.accountReference ? (

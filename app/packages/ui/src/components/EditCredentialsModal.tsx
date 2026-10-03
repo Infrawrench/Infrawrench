@@ -5,6 +5,7 @@ import { RegionPicker } from "./create-resource/RegionPicker.js";
 import { formatErrorMessage } from "../utils.js";
 import { useDataString } from "../i18n/data-strings.js";
 import type { PluginInfo } from "./AddAccountModal.js";
+import { ExternalLinkIcon } from "./icons/ChromeIcons.js";
 
 interface EditCredentialsModalProps {
   /** Plugin manifest fragment: same shape used by AddAccountModal. */
@@ -153,7 +154,7 @@ export function EditCredentialsModal({
                     className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong mb-1"
                   >
                     {gtData(f.helpLink.label)}
-                    <span aria-hidden="true">↗</span>
+                    <ExternalLinkIcon size={12} />
                   </a>
                 )}
                 {f.regions && f.regions.length > 0 ? (

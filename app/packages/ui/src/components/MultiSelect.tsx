@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
+import { ChevronIcon, CloseIcon } from "./icons/ChromeIcons.js";
 
 export interface MultiSelectOption {
   value: string;
@@ -195,7 +196,7 @@ export function MultiSelect({
               className="text-on-surface-faint hover:text-on-surface"
               onClick={() => onChange(value.filter((x) => x !== v))}
             >
-              ✕
+              <CloseIcon size={12} />
             </button>
           </span>
         ))}
@@ -216,7 +217,9 @@ export function MultiSelect({
           {value.length === 0 && (
             <span className="text-on-surface-faint">{effectivePlaceholder}</span>
           )}
-          <span className="ml-auto pl-1 text-on-surface-faint">▾</span>
+          <span className="ml-auto pl-1 flex items-center text-on-surface-faint">
+            <ChevronIcon size={12} />
+          </span>
         </button>
       </div>
 

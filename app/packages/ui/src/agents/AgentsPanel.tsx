@@ -26,6 +26,7 @@ import type {
   AgentVmAccount,
   T3CodeAccess,
 } from "./types.js";
+import { ChevronIcon } from "../components/icons/ChromeIcons.js";
 
 type RepoSource = "git-url" | "local-path";
 
@@ -468,9 +469,11 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                   {configSummary || gt("Choose defaults")}
                 </span>
               </span>
-              <span className="shrink-0 text-xs text-on-surface-faint">
-                {configOpen ? "\u25B2" : "\u25BC"}
-              </span>
+              <ChevronIcon
+                direction={configOpen ? "up" : "down"}
+                size={12}
+                className="shrink-0 text-on-surface-faint"
+              />
             </button>
 
             {configOpen && (

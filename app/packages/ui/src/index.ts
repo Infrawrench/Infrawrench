@@ -607,6 +607,21 @@ export {
 export { ChangesIcon } from "./components/icons/ChangesIcon.js";
 export { IacIcon } from "./components/icons/IacIcon.js";
 export { LogsIcon } from "./components/icons/LogsIcon.js";
+export {
+  ArrowIcon,
+  ChevronIcon,
+  CloseIcon,
+  CloudIcon,
+  DownloadIcon,
+  ExternalLinkIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  RefreshIcon,
+  SettingsIcon,
+  UploadIcon,
+  type ChromeIconProps,
+  type IconDirection,
+} from "./components/icons/ChromeIcons.js";
 
 /**
  * Expiry radar: the pure contract (feed computation, wire types, settings

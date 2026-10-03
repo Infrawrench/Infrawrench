@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import { Modal } from "../Modal.js";
 import { ErrorNotice } from "../ErrorNotice.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 export interface TunnelSshAttachStep {
   label: string;
@@ -147,7 +148,7 @@ export function TunnelSshAttachModal({
             className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
             aria-label={gt("Close")}
           >
-            &times;
+            <CloseIcon size={18} />
           </button>
         </div>
 

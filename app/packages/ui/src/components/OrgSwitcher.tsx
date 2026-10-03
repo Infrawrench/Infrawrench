@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useId } from "react";
 import { useGT } from "gt-react";
 import type { CloudOrg } from "@infrawrench/client-core";
+import { ChevronIcon } from "./icons/ChromeIcons.js";
 
 /** One organization the user belongs to (`GET /api/auth/orgs`). */
 export type OrgEntry = CloudOrg;
@@ -104,9 +105,11 @@ export function OrgSwitcher({
         className="w-full flex items-center justify-between px-3 py-2 text-sm font-semibold text-on-surface-secondary hover:bg-surface-overlay transition-colors rounded-md"
       >
         <span className="truncate">{label}</span>
-        <span aria-hidden="true" className="text-on-surface-faint text-xs ml-2">
-          {open ? "\u25B2" : "\u25BC"}
-        </span>
+        <ChevronIcon
+          direction={open ? "up" : "down"}
+          size={12}
+          className="text-on-surface-faint ml-2 flex-shrink-0"
+        />
       </button>
 
       {open && (

@@ -1,5 +1,6 @@
 import { useGT } from "gt-react";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export interface DroppableDashboardItemProps {
   dashboardId: string;
@@ -87,7 +88,7 @@ export function DroppableDashboardItem({
             aria-label={gt("Delete dashboard")}
             className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 mr-1.5 w-5 h-5 flex items-center justify-center rounded text-on-surface-faint hover:text-danger hover:bg-red-500/10 transition-all flex-shrink-0"
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         )}
       </div>

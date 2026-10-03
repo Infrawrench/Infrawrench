@@ -11,6 +11,7 @@ import type {
   CustomGraphRenderResult,
   CustomGraphsClient,
 } from "./types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export interface CustomGraphEditorModalProps {
   client: CustomGraphsClient;
@@ -142,7 +143,7 @@ export function CustomGraphEditorModal({
             aria-label={gt("Close editor")}
             className="size-7 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-sm"
           >
-            ✕
+            <CloseIcon size={14} />
           </button>
         </div>
 

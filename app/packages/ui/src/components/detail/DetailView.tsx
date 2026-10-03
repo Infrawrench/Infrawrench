@@ -61,6 +61,7 @@ import type {
   ProviderResource,
   RerollSelection,
 } from "./detail-types.js";
+import { ArrowIcon } from "../icons/ChromeIcons.js";
 
 export type { ChildResource, ChildResourceGroup, PeerPaneData, ProviderResource, RerollSelection };
 
@@ -1352,9 +1353,11 @@ function ChildResourcePill({
       {statusDot}
       <span className="text-sm font-medium text-on-surface-secondary">{child.displayName}</span>
       {child.subtitle && <span className="text-xs text-on-surface-muted">{child.subtitle}</span>}
-      <span className="text-on-surface-faint group-hover:text-on-surface-tertiary transition-colors text-xs ml-1">
-        &rarr;
-      </span>
+      <ArrowIcon
+        direction="right"
+        size={12}
+        className="text-on-surface-faint group-hover:text-on-surface-tertiary transition-colors ml-1"
+      />
     </button>
   );
 }

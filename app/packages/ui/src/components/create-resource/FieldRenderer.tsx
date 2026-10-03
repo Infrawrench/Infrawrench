@@ -21,6 +21,7 @@ import { PolicyPicker } from "./PolicyPicker.js";
 import { KeyValueListPicker } from "./KeyValueListPicker.js";
 import { StringListPicker } from "./StringListPicker.js";
 import { JsonSchemaEditor } from "./JsonSchemaEditor.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 // Monaco is heavy and browser-only; load it lazily so it splits out of the
 // main bundle and only ships when a "code" field is actually rendered.
@@ -621,7 +622,7 @@ function ActionFormPanel({
           className="text-on-surface-faint hover:text-on-surface-secondary text-xs"
           aria-label={gt("Close")}
         >
-          &times;
+          <CloseIcon size={12} />
         </button>
       </div>
       {action.description && (

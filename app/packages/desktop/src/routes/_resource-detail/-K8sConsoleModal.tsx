@@ -1,6 +1,7 @@
 import { useGT } from "gt-react";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { K8sExecPanel } from "../../components/K8sExecPanel";
+import { CloseIcon } from "@infrawrench/ui";
 
 interface K8sConsoleModalProps {
   resource: ResourceInstance;
@@ -35,7 +36,7 @@ export function K8sConsoleModal({
             title={gt("Close console for {name}", { name: resource.displayName })}
             className="text-on-surface-muted hover:text-on-surface-secondary text-xl leading-none"
           >
-            ×
+            <CloseIcon size={18} />
           </button>
         </div>
         <div className="flex-1 min-h-0">

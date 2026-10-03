@@ -3,6 +3,7 @@ import { useGT } from "gt-react";
 
 import { useDataString } from "../i18n/data-strings.js";
 import type { WorkflowRunLog, WorkflowRunResult, WorkflowRunRow } from "./types.js";
+import { ChevronIcon } from "../components/icons/ChromeIcons.js";
 
 /**
  * How many rows the history shows before the "show all" toggle. The server
@@ -270,7 +271,7 @@ export function WorkflowRunHistory({
           aria-expanded={!collapsed}
           className="flex items-center gap-1.5 opacity-70 hover:opacity-100"
         >
-          <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+          <ChevronIcon direction={collapsed ? "right" : "down"} size={12} />
           <span className="font-semibold">{gt("Run history")}</span>
           <span className="opacity-60">
             {/* The API returns at most 50 rows, so say "latest" once we're at

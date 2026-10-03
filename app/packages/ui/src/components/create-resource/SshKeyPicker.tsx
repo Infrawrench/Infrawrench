@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useGT } from "gt-react";
 import { formatErrorMessage } from "../../utils.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 export interface SshKeyEntry {
   id: string;
@@ -309,7 +310,7 @@ export function SshKeyPicker({
                           title={gt("Remove key")}
                           aria-label={gt("Remove SSH key {name}", { name: k.name })}
                         >
-                          ✕
+                          <CloseIcon size={12} />
                         </button>
                       )}
                     </div>

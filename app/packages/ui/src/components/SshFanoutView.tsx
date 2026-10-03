@@ -8,6 +8,7 @@ import {
   type FanoutOutputGroup,
 } from "@infrawrench/client-core";
 import { formatErrorMessage } from "../utils.js";
+import { ArrowIcon } from "./icons/ChromeIcons.js";
 
 /**
  * Fan-out SSH: shared web/desktop surface for running one command across a
@@ -546,7 +547,10 @@ function FanoutResults({
     <div className="flex flex-col gap-3 p-3 h-full overflow-y-auto">
       <div className="flex items-center gap-3">
         <button type="button" onClick={onBack} className={BTN_SECONDARY}>
-          {gt("← New run")}
+          <span className="inline-flex items-center gap-1">
+            <ArrowIcon direction="left" size={12} />
+            {gt("New run")}
+          </span>
         </button>
         <div className="min-w-0">
           <div className="text-sm font-mono text-on-surface truncate">{command}</div>

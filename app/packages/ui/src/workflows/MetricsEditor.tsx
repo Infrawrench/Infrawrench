@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useGT } from "gt-react";
 
 import type { WorkflowMetricDef, WorkflowMetricRow } from "./types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export function MetricsEditor({
   defs,
@@ -86,7 +87,7 @@ export function MetricsEditor({
             title={gt("Remove metric {name}", { name: d.key || d.label || String(i + 1) })}
             className="px-1 opacity-60 hover:opacity-100"
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         </div>
       ))}

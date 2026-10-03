@@ -7,6 +7,7 @@ import type { CreateResourceFormState } from "../hooks/useCreateResourceForm.js"
 import { Modal } from "./Modal.js";
 import { CostEstimateChip } from "./CostEstimateChip.js";
 import { ErrorNotice } from "./ErrorNotice.js";
+import { CloseIcon } from "./icons/ChromeIcons.js";
 
 export interface CreateResourceModalProps {
   displayName: string;
@@ -97,7 +98,7 @@ export function CreateResourceModal({
               className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
               aria-label={gt("Close")}
             >
-              &times;
+              <CloseIcon size={18} />
             </button>
           </div>
         </div>

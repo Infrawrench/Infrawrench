@@ -2,6 +2,7 @@ import { useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
 import { formatErrorMessage } from "../utils.js";
+import { ChevronIcon, CloseIcon } from "./icons/ChromeIcons.js";
 
 /**
  * The pieces the Mongo and Firestore document browsers render identically.
@@ -85,7 +86,7 @@ export function CollectionListItem({
             title={gt("{verb} collection", { verb: gtData(verb) })}
             aria-label={gt("{verb} collection", { verb: gtData(verb) })}
           >
-            ×
+            <CloseIcon size={12} />
           </button>
         </>
       )}
@@ -234,12 +235,11 @@ export function DocumentRow({
           aria-controls={panelId}
           className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
         >
-          <span
-            aria-hidden="true"
-            className={`text-on-surface-faint text-xs transition-transform flex-shrink-0 ${expanded ? "rotate-90" : ""}`}
-          >
-            &#9654;
-          </span>
+          <ChevronIcon
+            direction="right"
+            size={12}
+            className={`text-on-surface-faint transition-transform flex-shrink-0 ${expanded ? "rotate-90" : ""}`}
+          />
           <span className="text-xs text-on-surface-muted w-8 flex-shrink-0 text-right font-mono">
             {index}
           </span>

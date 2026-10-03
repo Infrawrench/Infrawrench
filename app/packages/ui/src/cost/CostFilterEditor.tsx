@@ -17,6 +17,7 @@ import type { CostApi } from "./types.js";
 import { MultiSelect, type MultiSelectStatus } from "../components/MultiSelect.js";
 
 import { selectBaseClass, selectClass, tabClass } from "./form-styles.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export const DIMENSION_LABELS = COST_DIMENSION_LABELS;
 
@@ -172,7 +173,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
               className="mt-1.5 text-on-surface-faint hover:text-on-surface-secondary text-xs"
               title={gt("Remove filter")}
             >
-              ✕
+              <CloseIcon size={12} />
             </button>
           </div>
         );
@@ -307,7 +308,7 @@ function SavedFilterPicker({
               )}
               aria-label={gt("Remove saved filter")}
             >
-              ✕
+              <CloseIcon size={12} />
             </button>
           </span>
         </div>

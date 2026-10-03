@@ -52,6 +52,7 @@ import {
 } from "./transform.js";
 import type { CostApi } from "./types.js";
 import { UnitCostCard } from "./UnitCostCard.js";
+import { ArrowIcon, CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export interface CostGraphCardProps {
   title: string;
@@ -601,7 +602,7 @@ function SpendGraphCard({
             aria-label={gt("Remove from dashboard")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         )}
       </div>
@@ -632,12 +633,13 @@ function SpendGraphCard({
           )}
           {deltaPct !== null && (
             <span
-              className={`text-xs flex-shrink-0 ${deltaPct > 0 ? "text-danger" : "text-success"}`}
+              className={`inline-flex items-center gap-0.5 text-xs flex-shrink-0 ${deltaPct > 0 ? "text-danger" : "text-success"}`}
               title={
                 previousTotal ? gt("Previous period: {total}", { total: previousTotal }) : undefined
               }
             >
-              {deltaPct > 0 ? "▲" : "▼"} {Math.abs(deltaPct).toFixed(1)}%
+              <ArrowIcon direction={deltaPct > 0 ? "up" : "down"} size={11} />
+              {Math.abs(deltaPct).toFixed(1)}%
             </span>
           )}
         </div>

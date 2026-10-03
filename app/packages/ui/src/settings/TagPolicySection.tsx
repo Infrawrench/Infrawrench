@@ -11,6 +11,7 @@ import type {
   TagPolicy,
 } from "@infrawrench/client-core";
 import { useSettingsHost, type SettingsApi } from "./host.js";
+import { ArrowIcon } from "../components/icons/ChromeIcons.js";
 
 /** One editable policy row: the key plus allowed values as a comma list. */
 interface PolicyRow {
@@ -485,7 +486,7 @@ function AllocationSection({
                       aria-label={gt("Move rule up")}
                       className="text-xs text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-30 disabled:hover:text-on-surface-muted px-1"
                     >
-                      ↑
+                      <ArrowIcon direction="up" size={12} />
                     </button>
                     <button
                       type="button"
@@ -494,7 +495,7 @@ function AllocationSection({
                       aria-label={gt("Move rule down")}
                       className="text-xs text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-30 disabled:hover:text-on-surface-muted px-1"
                     >
-                      ↓
+                      <ArrowIcon direction="down" size={12} />
                     </button>
                     <button
                       type="button"

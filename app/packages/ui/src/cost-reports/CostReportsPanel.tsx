@@ -19,6 +19,7 @@ import { Modal } from "../components/Modal.js";
 import type { CostsPanelDashboard } from "../cost/types.js";
 import { ReportDeliverySection } from "./ReportDeliverySection.js";
 import type { CostReportsClient } from "./types.js";
+import { ArrowIcon } from "../components/icons/ChromeIcons.js";
 
 function toInput(report: CostReport): CostReportInput {
   return {
@@ -698,7 +699,10 @@ function ReportDetail({
             onClick={onBack}
             className="text-xs text-on-surface-faint hover:text-on-surface-secondary underline"
           >
-            {gt("← All reports")}
+            <span className="inline-flex items-center gap-1">
+              <ArrowIcon direction="left" size={12} />
+              {gt("All reports")}
+            </span>
           </button>
           {folderPath && (
             <span className="ml-2 text-xs text-on-surface-faint" title={gt("Folder")}>

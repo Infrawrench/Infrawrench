@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import type { SizeOption } from "@infrawrench/plugin-base";
 import { SizeCard } from "./SizeCard.js";
+import { ChevronIcon } from "../icons/ChromeIcons.js";
 
 export function SizePicker({
   sizes,
@@ -92,15 +93,11 @@ export function SizePicker({
                 className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-surface-overlay/60 transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="text-on-surface-faint text-[10px] transition-transform flex-shrink-0"
-                    style={{
-                      transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
-                      display: "inline-block",
-                    }}
-                  >
-                    ▶
-                  </span>
+                  <ChevronIcon
+                    direction="right"
+                    size={10}
+                    className={`text-on-surface-faint transition-transform flex-shrink-0 ${isOpen ? "rotate-90" : ""}`}
+                  />
                   <span className="text-xs font-medium text-on-surface-tertiary">{cat}</span>
                 </div>
                 {hasSelection && !isOpen && selectedInCat && (

@@ -5,6 +5,7 @@ import {
   failingCostAccounts,
   type CostAccountStatus,
 } from "@infrawrench/client-core";
+import { ExternalLinkIcon } from "../components/icons/ChromeIcons.js";
 
 export interface CostCollectionNoticeProps {
   /** Rows from GET /costs/status: the component picks out the ones to explain. */
@@ -81,7 +82,7 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
                       className="inline-flex items-center gap-1 text-info hover:text-info-strong whitespace-nowrap"
                     >
                       {s.costPollError!.helpLink!.label}
-                      <span aria-hidden="true">↗</span>
+                      <ExternalLinkIcon size={12} />
                     </a>
                   </>
                 )}

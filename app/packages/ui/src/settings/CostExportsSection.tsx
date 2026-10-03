@@ -21,6 +21,7 @@ import { parseNumericInputValue } from "../form-values.js";
 import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost } from "./host.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 /**
  * Scheduled cost exports: a recurring dump of the org's raw cost rows into a
@@ -675,7 +676,7 @@ function ColumnPicker({
                 }
                 className="ml-1.5 text-on-surface-faint hover:text-danger"
               >
-                ×
+                <CloseIcon size={12} />
               </button>
             </span>
           ))}

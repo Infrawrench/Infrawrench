@@ -4,6 +4,7 @@ import { Modal } from "../components/Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
 import type { OrgRole as Role } from "@infrawrench/client-core";
 import { useSettingsHost, type SettingsApi } from "./host.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 interface PermissionGroup {
   category: string;
@@ -355,7 +356,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
                       title={gt("Remove permission {permission}", { permission: p })}
                       className="text-on-surface-tertiary hover:text-on-surface"
                     >
-                      ×
+                      <CloseIcon size={12} />
                     </button>
                   </span>
                 ))}

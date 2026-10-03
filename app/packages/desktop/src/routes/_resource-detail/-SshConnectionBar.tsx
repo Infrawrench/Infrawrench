@@ -1,4 +1,5 @@
 import { useGT } from "gt-react";
+import { CloseIcon } from "@infrawrench/ui";
 import type { QuickSshConnection, SshConfig } from "./-types";
 
 interface SshConnectionBarProps {
@@ -32,9 +33,10 @@ export function SshConnectionBar({
         <button
           type="button"
           onClick={onDisconnect}
-          className="ml-auto text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
+          className="ml-auto inline-flex items-center gap-1 text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
         >
-          {gt("Disconnect ✕")}
+          {gt("Disconnect")}
+          <CloseIcon size={12} />
         </button>
       )}
     </div>

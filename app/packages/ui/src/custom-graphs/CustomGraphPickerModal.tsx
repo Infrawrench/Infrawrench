@@ -5,6 +5,7 @@ import { DEFAULT_CUSTOM_GRAPH_SOURCE } from "@infrawrench/client-core";
 
 import { Modal } from "../components/Modal.js";
 import type { CustomGraphSummary, CustomGraphsClient } from "./types.js";
+import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 export interface CustomGraphPickerModalProps {
   client: CustomGraphsClient;
@@ -175,7 +176,7 @@ export function CustomGraphPickerModal({
                     aria-label={gt("Delete {name}", { name: g.name })}
                     className="size-6 flex-shrink-0 mr-1 rounded-full text-on-surface-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-danger hover:bg-surface-raised text-xs flex items-center justify-center disabled:opacity-50"
                   >
-                    ✕
+                    <CloseIcon size={12} />
                   </button>
                 )}
               </li>

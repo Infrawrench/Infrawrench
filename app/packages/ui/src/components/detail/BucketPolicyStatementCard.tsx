@@ -10,6 +10,7 @@ import {
   S3_ACTION_CATALOG,
   summarizeStatement,
 } from "../../bucket-policy.js";
+import { ArrowIcon, ChevronIcon, CloseIcon } from "../icons/ChromeIcons.js";
 
 /* -------------------------------------------------------------------------- */
 /* Statement card                                                             */
@@ -85,7 +86,7 @@ export function StatementCard({
             className="relative text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
             title={gt("Move up")}
           >
-            ↑
+            <ArrowIcon direction="up" size={12} />
           </button>
           <button
             type="button"
@@ -97,7 +98,7 @@ export function StatementCard({
             className="relative text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
             title={gt("Move down")}
           >
-            ↓
+            <ArrowIcon direction="down" size={12} />
           </button>
           <button
             type="button"
@@ -108,9 +109,13 @@ export function StatementCard({
             className="relative text-on-surface-faint hover:text-danger px-1 text-xs"
             title={gt("Delete")}
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
-          <span className="text-on-surface-faint text-xs">{expanded ? "▾" : "▸"}</span>
+          <ChevronIcon
+            direction={expanded ? "down" : "right"}
+            size={12}
+            className="text-on-surface-faint"
+          />
         </span>
       </div>
 
@@ -301,7 +306,7 @@ function ActionPicker({
               className="text-on-surface-faint hover:text-danger"
               title={gt("Remove")}
             >
-              ×
+              <CloseIcon size={12} />
             </button>
           </span>
         ))}
@@ -428,7 +433,7 @@ function ResourceEditor({
             className="text-on-surface-faint hover:text-danger text-xs px-1"
             title={gt("Remove")}
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         </div>
       ))}
@@ -567,7 +572,7 @@ function ConditionEditor({
             className="text-on-surface-faint hover:text-danger text-xs px-1"
             title={gt("Remove")}
           >
-            ✕
+            <CloseIcon size={12} />
           </button>
         </div>
       ))}

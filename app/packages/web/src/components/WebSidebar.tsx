@@ -13,6 +13,11 @@ import {
   type Account,
   type Dashboard,
   type OrgEntry,
+  ChevronIcon,
+  CloseIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  SettingsIcon,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
@@ -441,7 +446,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
         aria-label={gt("Expand sidebar")}
       >
-        &#9654;
+        <PanelLeftOpenIcon />
       </button>
     );
   }
@@ -465,7 +470,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors text-xs px-2"
             aria-label={gt("Collapse sidebar")}
           >
-            &#9664;
+            <PanelLeftCloseIcon />
           </button>
         </div>
 
@@ -804,7 +809,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                     aria-label={gt("Archive chat")}
                     className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-danger text-xs px-2 py-1.5 transition-opacity"
                   >
-                    ×
+                    <CloseIcon size={12} />
                   </button>
                 </div>
               );
@@ -859,13 +864,11 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                         aria-label={isExpanded ? gt("Collapse account") : gt("Expand account")}
                         className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
                       >
-                        <span
-                          aria-hidden="true"
-                          className="inline-block transition-transform text-xs"
-                          style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
-                        >
-                          &#9654;
-                        </span>
+                        <ChevronIcon
+                          direction="right"
+                          size={12}
+                          className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        />
                       </button>
                       <button
                         type="button"
@@ -964,7 +967,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             onClick={() => void navigate({ to: "/org/$orgId/settings", params: { orgId: orgId! } })}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
           >
-            <span className="text-base leading-none">&#9881;</span>
+            <SettingsIcon />
             {gt("Settings")}
           </button>
         </div>

@@ -34,6 +34,7 @@ import {
   useUIStore,
   type ConversationSummary,
   type SidebarToolDef,
+  CloseIcon,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
@@ -620,7 +621,7 @@ export function SidebarDashboards() {
                   aria-label={gt("Archive chat")}
                   className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-danger text-xs px-2 py-1.5 transition-opacity"
                 >
-                  ×
+                  <CloseIcon size={12} />
                 </button>
               </div>
             );

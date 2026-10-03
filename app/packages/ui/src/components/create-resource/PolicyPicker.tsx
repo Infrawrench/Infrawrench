@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useGT } from "gt-react";
 import type { PolicyOption } from "@infrawrench/plugin-base";
 import { useDataString } from "../../i18n/data-strings.js";
+import { CloseIcon } from "../icons/ChromeIcons.js";
 
 function parseSelection(value: string): string[] {
   if (!value) return [];
@@ -90,7 +91,7 @@ export function PolicyPicker({
                   className="text-accent-on-muted/70 hover:text-accent-on-muted"
                   aria-label={gt("Remove {label}", { label: gtData(label) })}
                 >
-                  ×
+                  <CloseIcon size={12} />
                 </button>
               </span>
             );

@@ -22,7 +22,7 @@ The **desktop app** additionally puts a 📌 **Pin to dashboard** button on each
 
 - **Drag** a card to move it. Other cards reflow.
 - **Resize** from the bottom-right corner.
-- **Unpin** with the **✕** in the card's top-right corner — it appears on hover, and its tooltip reads "Remove from dashboard".
+- **Unpin** with the **X** icon in the card's top-right corner — it appears on hover, and its tooltip reads "Remove from dashboard".
 
 Every kind of card is draggable and they all share one order, so a cost graph or budget can sit between two resource cards rather than being stuck at the end of the grid. New cards are added at the end. The order is per dashboard and shared with everyone in the org.
 
