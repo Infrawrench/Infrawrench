@@ -194,12 +194,15 @@ function defaultSleep(ms: number): Promise<void> {
  * uses. The batch spec's `JobMode` enum only lists `batch`, but `/usage` is
  * account-wide and reports real-time consumption too.
  */
-function normalizeMode(mode: string | undefined): string {
+export function normalizeMode(mode: string | undefined): string {
   const value = (mode ?? "").trim().toLowerCase().replace(/_/g, "-");
   return value === "realtime" ? "real-time" : value;
 }
 
-function normalizeOperatingPoint(entry: UsageDetails): string {
+export function normalizeOperatingPoint(entry: {
+  operating_point?: string;
+  model?: string;
+}): string {
   return (entry.operating_point ?? entry.model ?? "").trim().toLowerCase();
 }
 

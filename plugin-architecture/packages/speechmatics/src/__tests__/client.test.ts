@@ -610,13 +610,21 @@ describe("fetchMetricSeries", () => {
       return response({
         summary: [{ mode: "batch", type: "transcription", count: 2, duration_hrs: 0.5 }],
         details: [
-          { mode: "batch", type: "transcription", language: "en", model: "enhanced", count: 1 },
+          {
+            mode: "batch",
+            type: "transcription",
+            language: "en",
+            model: "enhanced",
+            count: 1,
+            duration_hrs: 0.2,
+          },
           {
             mode: "batch",
             type: "transcription",
             language: "de",
             operating_point: "standard",
             count: 1,
+            duration_hrs: 0.3,
           },
         ],
       });
@@ -630,10 +638,42 @@ describe("fetchMetricSeries", () => {
 
     expect(calls).toHaveLength(5);
     expect(calls[0]?.url).toContain("since=2026-07-23&until=2026-07-23");
-    expect(series.map((s) => s.label)).toEqual(["Transcription hours", "Billable jobs"]);
+    // One mode only, so no batch/real-time split; two operating points, so
+    // that split is drawn, with both spellings (`model`, `operating_point`).
+    expect(series.map((s) => s.label)).toEqual([
+      "Transcription hours",
+      "Billable jobs",
+      "Transcription hours: enhanced",
+      "Transcription hours: standard",
+    ]);
     expect(series[0]?.points).toHaveLength(5);
     expect(series[0]?.points[0]?.value).toBe(0.5);
     expect(series[1]?.points[0]?.value).toBe(2);
+    expect(series[2]?.points[0]?.value).toBe(0.2);
+    expect(series[3]?.points).toHaveLength(5);
+  });
+
+  it("splits hours into batch and real-time when both appear", async () => {
+    installFetch(() =>
+      response({
+        details: [
+          { mode: "batch", operating_point: "enhanced", count: 3, duration_hrs: 1 },
+          { mode: "realtime", operating_point: "enhanced", count: 2, duration_hrs: 0.5 },
+        ],
+      }),
+    );
+    const endMs = Date.parse("2026-07-28T00:00:00Z");
+    const series = await client().fetchMetricSeries("account", "res", ACCOUNT, {
+      startMs: endMs,
+      endMs,
+    });
+    expect(series.map((s) => s.label)).toEqual([
+      "Transcription hours",
+      "Billable jobs",
+      "Transcription hours: batch",
+      "Transcription hours: real-time",
+    ]);
+    expect(series[3]?.points[0]?.value).toBe(0.5);
   });
 
   it("returns nothing for types that have no usage dimension", async () => {

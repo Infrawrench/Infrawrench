@@ -41,7 +41,7 @@ The **Synthesize** half calls Speechmatics' text-to-speech preview (`POST https:
 
 ## Metrics
 
-The account and each job get a **Metrics** tab over the last 30 days charting **transcription hours** and **billable jobs**, read from `GET /v2/usage`. The endpoint is account-wide rather than per-job, so both tabs show the same series. The window is split into at most ten buckets, each fetched as its own `since`/`until` range, because the usage endpoint takes calendar dates rather than a granularity parameter.
+The account and each job get a **Metrics** tab over the last 30 days charting **transcription hours** and **billable jobs**, read from `GET /v2/usage`. Hours are also split by mode (batch versus real-time) and by operating point (standard versus enhanced), the two axes the rate card prices on, whenever more than one side of a split shows up in the range. The endpoint is account-wide rather than per-job, so both tabs show the same series. The window is split into at most ten buckets, each fetched as its own `since`/`until` range, because the usage endpoint takes calendar dates rather than a granularity parameter.
 
 ## Cost
 

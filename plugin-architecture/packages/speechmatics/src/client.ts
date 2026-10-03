@@ -21,7 +21,7 @@ import type {
   TranscriptWord,
 } from "@infrawrench/plugin-base";
 import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
-import { fetchSpeechmaticsCostData } from "./cost-data.js";
+import { fetchSpeechmaticsCostData, normalizeMode, normalizeOperatingPoint } from "./cost-data.js";
 
 /* -------------------------------------------------------------------------- */
 /* Wire shapes                                                                 */
@@ -1036,9 +1036,22 @@ export class SpeechmaticsClient implements PluginClient {
 
     const hours: MetricSeries = { label: "Transcription hours", unit: "h", points: [] };
     const counts: MetricSeries = { label: "Billable jobs", unit: "jobs", points: [] };
+    // Hours split by `mode` (batch vs real-time) and by operating point
+    // (standard vs enhanced), the two axes the rate card prices on. Read from
+    // `details`, the per-language rows that carry both.
+    const byMode = new Map<string, Map<number, number>>();
+    const byOperatingPoint = new Map<string, Map<number, number>>();
+    const add = (into: Map<string, Map<number, number>>, key: string, at: number, v: number) => {
+      if (!key) return;
+      const points = into.get(key) ?? new Map<number, number>();
+      points.set(at, (points.get(at) ?? 0) + v);
+      into.set(key, points);
+    };
+    const answered: number[] = [];
     responses.forEach((usage, i) => {
       const window = windows[i];
       if (!window || !usage) return;
+      answered.push(window.startMs);
       const rows = usage.summary?.length ? usage.summary : (usage.details ?? []);
       let totalHours = 0;
       let totalCount = 0;
@@ -1048,9 +1061,27 @@ export class SpeechmaticsClient implements PluginClient {
       }
       hours.points.push({ timestamp: window.startMs, value: Number(totalHours.toFixed(3)) });
       counts.points.push({ timestamp: window.startMs, value: totalCount });
+      for (const row of usage.details ?? []) {
+        const h = row.duration_hrs ?? 0;
+        add(byMode, normalizeMode(row.mode), window.startMs, h);
+        add(byOperatingPoint, normalizeOperatingPoint(row), window.startMs, h);
+      }
     });
 
-    return [hours, counts];
+    // A split only adds information when it has more than one side.
+    const splits = (into: Map<string, Map<number, number>>): MetricSeries[] =>
+      into.size < 2
+        ? []
+        : [...into.keys()].sort().map((key) => ({
+            label: `Transcription hours: ${key}`,
+            unit: "h",
+            points: answered.map((timestamp) => ({
+              timestamp,
+              value: Number((into.get(key)!.get(timestamp) ?? 0).toFixed(3)),
+            })),
+          }));
+
+    return [hours, counts, ...splits(byMode), ...splits(byOperatingPoint)];
   }
 
   /* ---------------------------------------------------------------------- */
