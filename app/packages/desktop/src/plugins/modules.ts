@@ -28,6 +28,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-postgres"),
   () => import("@infrawrench/plugin-redis"),
   () => import("@infrawrench/plugin-scaleway"),
+  () => import("@infrawrench/plugin-sentry"),
   () => import("@infrawrench/plugin-ssh"),
   () => import("@infrawrench/plugin-tailscale"),
   () => import("@infrawrench/plugin-cloudflare"),

@@ -178,6 +178,7 @@ export const typewriterStrings: string[] = [
   "Gemini Context Caches",
   "ElevenLabs Voices",
   "Deepgram Projects",
+  "Sentry Cron Monitors",
   "Coralogix TCO Policies",
   "Twilio Phone Numbers",
   "Confluent Kafka Clusters",

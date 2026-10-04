@@ -22,6 +22,7 @@ import { plugin as ovhPlugin } from "@infrawrench/plugin-ovh";
 import { plugin as postgresPlugin } from "@infrawrench/plugin-postgres";
 import { plugin as redisPlugin } from "@infrawrench/plugin-redis";
 import { plugin as scalewayPlugin } from "@infrawrench/plugin-scaleway";
+import { plugin as sentryPlugin } from "@infrawrench/plugin-sentry";
 import { plugin as sshPlugin } from "@infrawrench/plugin-ssh";
 import { plugin as tailscalePlugin } from "@infrawrench/plugin-tailscale";
 import { plugin as snowflakePlugin } from "@infrawrench/plugin-snowflake";
@@ -99,6 +100,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   postgresPlugin,
   redisPlugin,
   scalewayPlugin,
+  sentryPlugin,
   sshPlugin,
   tailscalePlugin,
   databricksPlugin,

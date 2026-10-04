@@ -284,6 +284,7 @@
     "@infrawrench/plugin-replicate": "workspace:*",
     "@infrawrench/plugin-revai": "workspace:*",
     "@infrawrench/plugin-scaleway": "workspace:*",
+    "@infrawrench/plugin-sentry": "workspace:*",
     "@infrawrench/plugin-speechmatics": "workspace:*",
     "@infrawrench/plugin-ssh": "workspace:*",
     "@infrawrench/plugin-tailscale": "workspace:*",
