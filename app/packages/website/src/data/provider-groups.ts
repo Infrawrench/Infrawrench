@@ -342,6 +342,23 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Developer Tools",
+    providers: [
+      {
+        name: "Cursor",
+        detail: "Seats, spend limits, usage by model and member",
+        resources: [
+          "Team",
+          "Team Member",
+          "Model",
+          "Billing Group",
+          "Member Group",
+          "Repository Blocklist",
+        ],
+      },
+    ],
+  },
+  {
     name: "Identity & Auth",
     providers: [
       {

@@ -108,6 +108,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   assemblyai: ["api.assemblyai.com", "api.eu.assemblyai.com"],
   cartesia: ["api.cartesia.ai"],
   cohere: ["api.cohere.com"],
+  cursor: ["api.cursor.com"],
   deepgram: ["api.deepgram.com"],
   deepseek: ["api.deepseek.com"],
   elevenlabs: [

@@ -48,6 +48,7 @@ A resource is flagged when the provider plugin's heuristic matches the resource'
 | AWS          | EBS volumes in `available` state (detached but still billed); Elastic IPs with no association                      |
 | Google Cloud | Persistent disks attached to no instance; static external IPs in `RESERVED` (unused) state — internal IPs are free |
 | Azure        | App Service Plans with no web app or function app assigned — Free and consumption tiers are not flagged            |
+| Cursor       | Paid seats whose member has had no editor, agent or Bugbot activity in 30 days                                     |
 
 Heuristics are declared by each plugin, so coverage grows as plugins do — a provider that knows another "this is idle" signal can add it without any host changes.
 
