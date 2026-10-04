@@ -92,6 +92,9 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   digitalocean: ["api.digitalocean.com"],
   hetzner: ["api.hetzner.cloud", "robot-ws.your-server.de"],
+  // The REST API, Cloud Pulse metrics, and the pre-signed Object Storage
+  // URLs the bucket browser uploads to and deletes through.
+  linode: ["api.linode.com", "monitor-api.linode.com", "*.linodeobjects.com"],
   fly: ["api.machines.dev", "api.fly.io"],
   vercel: ["api.vercel.com"],
   netlify: ["api.netlify.com"],

@@ -63,6 +63,8 @@ export const typewriterStrings: string[] = [
   "AWS Auto Scaling Groups",
   "GCP Cloud Routers",
   "Hetzner Servers",
+  "Linodes",
+  "LKE Clusters",
   "Scaleway Instances",
   "Oracle Cloud Compute Instances",
   "Oracle Autonomous Databases",

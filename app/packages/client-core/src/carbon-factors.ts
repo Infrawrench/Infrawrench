@@ -336,6 +336,45 @@ export const PROVIDER_REGION_ZONES: Record<string, Record<string, Zone>> = {
     "pl-waw": "PL",
     "it-mil": "IT",
   },
+  // Akamai Cloud (Linode) core regions, placed by the city each region id
+  // names in `GET /v4/regions` (2026-10). `us-iad`/`us-iad-2` are the
+  // Washington DC metro (Ashburn, SERC, matching DigitalOcean `ric1` and
+  // Hetzner `ash`); `us-east` is Newark, New Jersey (RFC). Jakarta (`id-cgk`)
+  // is left out: Indonesia has no Ember 2024 figure in this table.
+  linode: {
+    "us-east": "US-RFC",
+    "us-central": "US-TRE",
+    "us-west": "US-WECC",
+    "us-southeast": "US-SERC",
+    "us-iad": "US-SERC",
+    "us-iad-2": "US-SERC",
+    "us-ord": "US-RFC",
+    "us-sea": "US-WECC",
+    "us-mia": "US-SERC",
+    "us-lax": "US-WECC",
+    "ca-central": "CA",
+    "eu-west": "GB",
+    "gb-lon": "GB",
+    "eu-central": "DE",
+    "de-fra-2": "DE",
+    "fr-par": "FR",
+    "fr-par-2": "FR",
+    "se-sto": "SE",
+    "es-mad": "ES",
+    "it-mil": "IT",
+    "nl-ams": "NL",
+    "ap-south": "SG",
+    "sg-sin-2": "SG",
+    "ap-northeast": "JP",
+    "jp-tyo-3": "JP",
+    "jp-osa": "JP",
+    "ap-west": "IN",
+    "in-bom-2": "IN",
+    "in-maa": "IN",
+    "ap-southeast": "AU",
+    "au-mel": "AU",
+    "br-gru": "BR",
+  },
   // Keyed on the site prefix; `normalizeCarbonRegion` folds GRA11 → gra.
   ovh: {
     gra: "FR",
@@ -463,8 +502,8 @@ export function allGridFigures(): GridFigure[] {
  * - Scaleway: per availability zone from Scaleway's environmental-footprint
  *   calculation reference (validated June 2025); 1.375 fleet average for a
  *   zone it does not list.
- * - DigitalOcean and Fly publish no figure and run in colocation, so they read
- *   `COLOCATION_PUE`.
+ * - DigitalOcean, Fly and Linode publish no figure and run in colocation, so
+ *   they read `COLOCATION_PUE`.
  */
 export const PROVIDER_PUE: Record<string, number> = {
   aws: 1.135,
@@ -475,6 +514,7 @@ export const PROVIDER_PUE: Record<string, number> = {
   scaleway: 1.375,
   digitalocean: 1.54,
   fly: 1.54,
+  linode: 1.54,
 };
 
 /**

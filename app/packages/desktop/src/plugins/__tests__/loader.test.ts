@@ -47,6 +47,7 @@ vi.mock("@infrawrench/plugin-docker", () => stub("docker"));
 vi.mock("@infrawrench/plugin-gcp", () => stub("gcp"));
 vi.mock("@infrawrench/plugin-hetzner", () => stub("hetzner"));
 vi.mock("@infrawrench/plugin-kafka", () => stub("kafka"));
+vi.mock("@infrawrench/plugin-linode", () => stub("linode"));
 vi.mock("@infrawrench/plugin-kubernetes", () => stub("kubernetes"));
 vi.mock("@infrawrench/plugin-memcached", () => stub("memcached"));
 vi.mock("@infrawrench/plugin-mongodb", () => stub("mongodb"));

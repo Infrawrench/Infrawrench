@@ -27,6 +27,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   digitalocean: { apiToken: "dop_v1_test" },
   hetzner: { apiToken: "test-token" },
+  linode: { apiToken: "test-linode-token" },
   scaleway: { accessKey: "SCWTEST", secretKey: "test-uuid", defaultProjectId: "test-project-id" },
   ovh: {
     applicationKey: "test",

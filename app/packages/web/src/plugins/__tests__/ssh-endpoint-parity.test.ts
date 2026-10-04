@@ -52,6 +52,12 @@ describe("SSH endpoint parity", () => {
       privateHostOutputKey: "ipv4Private",
     },
     {
+      pluginId: "linode",
+      resourceTypeId: "linode",
+      hostOutputKey: "ipv4",
+      privateHostOutputKey: "ipv4Private",
+    },
+    {
       pluginId: "gcp",
       resourceTypeId: "gce-instance",
       hostOutputKey: "externalIp",

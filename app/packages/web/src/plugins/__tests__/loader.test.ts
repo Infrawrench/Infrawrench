@@ -58,6 +58,7 @@ describe("plugin loader", () => {
       "planetscale",
       "azure",
       "kafka",
+      "linode",
       "opensearch",
       "anthropic",
       "assemblyai",
