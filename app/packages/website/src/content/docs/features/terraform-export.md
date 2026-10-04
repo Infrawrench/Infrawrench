@@ -29,23 +29,24 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 
 ## Supported providers
 
-| Plugin       | Terraform provider          | Exported resource types                                                                                                                                |
-| ------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| AWS          | `hashicorp/aws`             | EC2, S3, VPC, subnet, security group, EBS, RDS, SQS, SNS, Route 53 zones, EFS                                                                          |
-| GCP          | `hashicorp/google`          | GCS, VPC, subnet, GKE, Pub/Sub, Cloud DNS zones, BigQuery datasets, Artifact Registry, service accounts, Cloud Run jobs, Memorystore for Valkey        |
-| Azure        | `hashicorp/azurerm`         | Resource groups, VNets, subnets, NSGs, storage accounts, DNS zones, Key Vault, Redis, Managed Redis, Container Apps environments, AI services accounts |
-| Hetzner      | `hetznercloud/hcloud`       | Servers, volumes, networks, load balancers, floating IPs, placement groups                                                                             |
-| DigitalOcean | `digitalocean/digitalocean` | Droplets, Volumes, Domains, DNS records                                                                                                                |
-| Cloudflare   | `cloudflare/cloudflare` v5  | Zones (`cloudflare_zone`), DNS records (`cloudflare_dns_record`)                                                                                       |
-| Vercel       | `vercel/vercel`             | Projects, project domains, environment variables                                                                                                       |
-| Neon         | `kislerdm/neon`             | Projects, branches, endpoints, databases, roles                                                                                                        |
-| Fly.io       | `stategraph/fly`            | Apps, machines, volumes, certificates                                                                                                                  |
-| Scaleway     | `scaleway/scaleway`         | Instances, block volumes, Object Storage buckets, RDB, Kapsule clusters                                                                                |
-| OVHcloud     | `ovh/ovh`                   | Instances, volumes, private networks, managed DBs, Object Storage buckets                                                                              |
-| PlanetScale  | `planetscale/planetscale`   | Vitess branches and branch passwords                                                                                                                   |
-| ClickHouse   | `ClickHouse/clickhouse`     | Cloud services (`clickhouse_service`)                                                                                                                  |
-| Databricks   | `databricks/databricks`     | Clusters, SQL warehouses, catalogs, schemas                                                                                                            |
-| Netlify      | `netlify/netlify`           | DNS zones, DNS records, environment variables                                                                                                          |
+| Plugin          | Terraform provider          | Exported resource types                                                                                                                                |
+| --------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AWS             | `hashicorp/aws`             | EC2, S3, VPC, subnet, security group, EBS, RDS, SQS, SNS, Route 53 zones, EFS                                                                          |
+| GCP             | `hashicorp/google`          | GCS, VPC, subnet, GKE, Pub/Sub, Cloud DNS zones, BigQuery datasets, Artifact Registry, service accounts, Cloud Run jobs, Memorystore for Valkey        |
+| Azure           | `hashicorp/azurerm`         | Resource groups, VNets, subnets, NSGs, storage accounts, DNS zones, Key Vault, Redis, Managed Redis, Container Apps environments, AI services accounts |
+| Hetzner         | `hetznercloud/hcloud`       | Servers, volumes, networks, load balancers, floating IPs, placement groups                                                                             |
+| DigitalOcean    | `digitalocean/digitalocean` | Droplets, Volumes, Domains, DNS records                                                                                                                |
+| Cloudflare      | `cloudflare/cloudflare` v5  | Zones (`cloudflare_zone`), DNS records (`cloudflare_dns_record`)                                                                                       |
+| Vercel          | `vercel/vercel`             | Projects, project domains, environment variables                                                                                                       |
+| Neon            | `kislerdm/neon`             | Projects, branches, endpoints, databases, roles                                                                                                        |
+| Fly.io          | `stategraph/fly`            | Apps, machines, volumes, certificates                                                                                                                  |
+| Scaleway        | `scaleway/scaleway`         | Instances, block volumes, Object Storage buckets, RDB, Kapsule clusters                                                                                |
+| OVHcloud        | `ovh/ovh`                   | Instances, volumes, private networks, managed DBs, Object Storage buckets                                                                              |
+| PlanetScale     | `planetscale/planetscale`   | Vitess branches and branch passwords                                                                                                                   |
+| ClickHouse      | `ClickHouse/clickhouse`     | Cloud services (`clickhouse_service`)                                                                                                                  |
+| Databricks      | `databricks/databricks`     | Clusters, SQL warehouses, catalogs, schemas                                                                                                            |
+| Netlify         | `netlify/netlify`           | DNS zones, DNS records, environment variables                                                                                                          |
+| Confluent Cloud | `confluentinc/confluent`    | Environments, Kafka clusters (with CKUs or eCKU ceiling), Flink compute pools, service accounts                                                        |
 
 Coverage is per resource type: types that need nested blocks or credentials Infrawrench doesn't store (for example Azure VMs, AWS Lambda packages, Netlify sites) stay in the unsupported list with a reason. A plugin declares its own mapping, so coverage grows type by type.
 

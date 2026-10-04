@@ -131,6 +131,7 @@ describe("SSH endpoint parity", () => {
     "deepseek",
     "elevenlabs",
     "fireworks",
+    "confluent-cloud",
     "gemini",
     "gladia",
     "groq",

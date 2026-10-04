@@ -104,6 +104,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     chPassword: "test-password",
   },
   fireworks: { apiKey: "fw_test_fireworks_key", accountId: "test-account" },
+  "confluent-cloud": { apiKey: "TESTCCLOUDKEY123", apiSecret: "test-confluent-secret" },
   replicate: { apiToken: "r8_test_replicate_token" },
   revai: { accessToken: "test-revai-access-token", region: "us" },
   together: { apiKey: "test-together-key" },

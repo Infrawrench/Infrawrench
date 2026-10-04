@@ -39,6 +39,7 @@ import { plugin as deepgramPlugin } from "@infrawrench/plugin-deepgram";
 import { plugin as deepseekPlugin } from "@infrawrench/plugin-deepseek";
 import { plugin as elevenlabsPlugin } from "@infrawrench/plugin-elevenlabs";
 import { plugin as fireworksPlugin } from "@infrawrench/plugin-fireworks";
+import { plugin as confluentCloudPlugin } from "@infrawrench/plugin-confluent-cloud";
 import { plugin as geminiPlugin } from "@infrawrench/plugin-gemini";
 import { plugin as gladiaPlugin } from "@infrawrench/plugin-gladia";
 import { plugin as groqPlugin } from "@infrawrench/plugin-groq";
@@ -98,6 +99,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   deepseekPlugin,
   elevenlabsPlugin,
   fireworksPlugin,
+  confluentCloudPlugin,
   geminiPlugin,
   gladiaPlugin,
   groqPlugin,
