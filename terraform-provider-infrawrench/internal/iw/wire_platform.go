@@ -996,6 +996,21 @@ type NetworkFlowSettings struct {
 	InitialLookbackDays int64 `json:"initialLookbackDays"`
 }
 
+// KubernetesNetworkSettings is one Kubernetes account's network cost settings:
+// which billed cost rows are that cluster's data transfer, as cost query
+// language text. A nil BilledQuery means none is set.
+type KubernetesNetworkSettings struct {
+	AccountID   string  `json:"accountId"`
+	BilledQuery *string `json:"billedQuery"`
+	UpdatedAt   *string `json:"updatedAt"`
+}
+
+// KubernetesNetworkSettingsInput is the PUT body. BilledQuery is sent as null
+// (never omitted) to clear it: the route requires the field.
+type KubernetesNetworkSettingsInput struct {
+	BilledQuery *string `json:"billedQuery"`
+}
+
 /* ----------------------------- issue trackers ------------------------------ */
 
 // JiraIntegrationInput is the PUT body.

@@ -281,6 +281,87 @@ ipcMain.handle("cloud_commitments", async (_e, { orgId }: { orgId: string }) => 
   return cloudFetch(orgId, "/commitments");
 });
 
+/**
+ * Network costs: the org-wide pair view and its collection switch, plus one
+ * Kubernetes cluster's report and its billed source. Cloud-only: flows are
+ * collected server-side into the cloud store.
+ */
+ipcMain.handle(
+  "cloud_network_flows",
+  async (
+    _e,
+    {
+      orgId,
+      options,
+    }: { orgId: string; options?: { from?: string; to?: string; scope?: string; limit?: number } },
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.from) params.set("from", options.from);
+    if (options?.to) params.set("to", options.to);
+    if (options?.scope) params.set("scope", options.scope);
+    if (options?.limit !== undefined) params.set("limit", String(options.limit));
+    const qs = params.toString();
+    return cloudFetch(orgId, `/network-flows${qs ? `?${qs}` : ""}`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_network_flow_settings_update",
+  async (_e, { orgId, settings }: { orgId: string; settings: unknown }) => {
+    return cloudFetch(orgId, "/network-flows/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_kubernetes_network",
+  async (
+    _e,
+    {
+      orgId,
+      accountId,
+      options,
+    }: {
+      orgId: string;
+      accountId: string;
+      options?: { from?: string; to?: string; limit?: number };
+    },
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.from) params.set("from", options.from);
+    if (options?.to) params.set("to", options.to);
+    if (options?.limit !== undefined) params.set("limit", String(options.limit));
+    const qs = params.toString();
+    return cloudFetch(
+      orgId,
+      `/network-flows/kubernetes/${encodeURIComponent(accountId)}${qs ? `?${qs}` : ""}`,
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_kubernetes_network_settings_update",
+  async (
+    _e,
+    {
+      orgId,
+      accountId,
+      settings,
+    }: { orgId: string; accountId: string; settings: { billedQuery: string | null } },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/network-flows/kubernetes/${encodeURIComponent(accountId)}/settings`,
+      {
+        method: "PUT",
+        body: JSON.stringify(settings),
+      },
+    );
+  },
+);
+
 ipcMain.handle("cloud_list_budgets", async (_e, { orgId }: { orgId: string }) => {
   return (await cloudFetch(orgId, "/budgets")) ?? [];
 });

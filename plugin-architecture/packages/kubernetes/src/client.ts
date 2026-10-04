@@ -8,6 +8,8 @@ import type {
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
+  NetworkFlowFetchRange,
+  NetworkFlowFetchResult,
   PeerPaneContext,
   PeerPaneSchema,
   PluginClient,
@@ -65,6 +67,7 @@ import {
 } from "./cost-labels.js";
 import { fetchK8sQuotas } from "./quotas.js";
 import { buildCostMetricSeries } from "./metric-series.js";
+import { fetchKubernetesNetworkFlows } from "./network-flows.js";
 
 /**
  * How long a cost snapshot is reused.
@@ -92,6 +95,8 @@ export class KubernetesClient implements PluginClient {
   /** Node and PVC label keys written onto cost rows as tags (`cost-labels.ts`). */
   private readonly nodeLabelKeys: string[];
   private readonly pvcLabelKeys: string[];
+  /** The raw rates field, for the `network/…` transfer-rate overrides. */
+  private readonly ratesField: string | undefined;
   private costCache: { at: number; promise: Promise<ClusterCostResult> } | null = null;
   /**
    * The most recent successful cost index. `renderDetail` is synchronous (it
@@ -120,6 +125,7 @@ export class KubernetesClient implements PluginClient {
       DEFAULT_PVC_LABEL_KEYS,
       "pvc",
     );
+    this.ratesField = credentials["nodeHourlyRates"];
     if (services) this.services = services;
     // When the host k8s driver is available it owns all auth via the
     // official SDK, so the hand-rolled parser's output is unused. Wrap the
@@ -333,6 +339,25 @@ export class KubernetesClient implements PluginClient {
       nodeLabelKeys: this.nodeLabelKeys,
       pvcLabelKeys: this.pvcLabelKeys,
     });
+  }
+
+  /**
+   * Pod-level network attribution for one closed day, through the host's
+   * network-flow pipeline. See `network-flows.ts` for the three sources and
+   * the order they are trusted in.
+   */
+  async fetchNetworkFlows(
+    _accountId: string,
+    range: NetworkFlowFetchRange,
+  ): Promise<NetworkFlowFetchResult> {
+    return fetchKubernetesNetworkFlows(
+      {
+        fetch: this.k8sFetch,
+        fetchText: (path) => this.fetcher.fetchText(path),
+        ratesField: this.ratesField,
+      },
+      range,
+    );
   }
 
   /**

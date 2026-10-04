@@ -208,6 +208,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewPostureAlertSettingsResource,
 		NewSessionRecordingSettingsResource,
 		NewNetworkFlowSettingsResource,
+		NewKubernetesNetworkSettingsResource,
 
 		// Accounts and access.
 		NewAccountResource,

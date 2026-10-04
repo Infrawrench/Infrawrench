@@ -22,6 +22,8 @@ import type {
   EfficiencyAlertKind,
   CommitmentsFeed,
   CostDimensionOption,
+  KubernetesNetworkReport,
+  KubernetesNetworkSettings,
   NetworkFlowFeed,
   CreditBurndown,
   ShowbackReport,
@@ -76,6 +78,10 @@ export type {
   NetworkFlowScopeSummary,
   NetworkFlowAccountStatus,
   NetworkFlowScope,
+  /** One Kubernetes cluster's network costs by namespace, workload and boundary. */
+  KubernetesNetworkReport,
+  KubernetesNetworkRow,
+  KubernetesNetworkSettings,
   CostAnomalyDimension,
   CostAnomalyKind,
   /** One firing of an efficiency detector, as listed on the Costs panel. */
@@ -344,6 +350,24 @@ export interface CostsClient extends CostApi {
     enabled: boolean;
     initialLookbackDays?: number;
   }): Promise<{ enabled: boolean; initialLookbackDays: number }>;
+  /**
+   * One Kubernetes cluster's network costs: bytes by namespace, workload and
+   * boundary, with its billed data transfer apportioned when a billed source is
+   * set. Optional like the rest: an unwired host renders no section.
+   */
+  getKubernetesNetwork?(
+    accountId: string,
+    options?: { from?: string; to?: string; limit?: number },
+  ): Promise<KubernetesNetworkReport>;
+  /**
+   * Save the cluster's billed data-transfer source (cost query text, or null to
+   * clear). Omitted for a viewer without `costs:write`; the editor then renders
+   * read-only.
+   */
+  updateKubernetesNetworkSettings?(
+    accountId: string,
+    settings: { billedQuery: string | null },
+  ): Promise<KubernetesNetworkSettings>;
   /**
    * The three efficiency alerts (commitment expiry, idle commitments,
    * unit-cost regression) in one feed, newest first. Optional the way

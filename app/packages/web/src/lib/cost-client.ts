@@ -45,6 +45,8 @@ import type {
   CostScenarioReferent,
   CommitmentsFeed,
   NetworkFlowFeed,
+  KubernetesNetworkReport,
+  KubernetesNetworkSettings,
   CreditBurndown,
   ShowbackReport,
   TagComplianceReport,
@@ -396,6 +398,29 @@ export function createWebCostsClient(orgId: string): CostsClient {
     updateNetworkFlowSettings: (settings: { enabled: boolean; initialLookbackDays?: number }) =>
       apiPut<{ enabled: boolean; initialLookbackDays: number }>(
         `/api/org/${orgId}/network-flows/settings`,
+        settings,
+      ),
+    getKubernetesNetwork: (
+      accountId: string,
+      options?: { from?: string; to?: string; limit?: number },
+    ) => {
+      const params = new URLSearchParams();
+      if (options?.from) params.set("from", options.from);
+      if (options?.to) params.set("to", options.to);
+      if (options?.limit !== undefined) params.set("limit", String(options.limit));
+      const qs = params.toString();
+      return apiGet<KubernetesNetworkReport>(
+        `/api/org/${orgId}/network-flows/kubernetes/${encodeURIComponent(accountId)}${qs ? `?${qs}` : ""}`,
+      );
+    },
+    // Unconditional like the switch above: the server enforces `costs:write`
+    // and a viewer's 403 surfaces as the editor's error.
+    updateKubernetesNetworkSettings: (
+      accountId: string,
+      settings: { billedQuery: string | null },
+    ) =>
+      apiPut<KubernetesNetworkSettings>(
+        `/api/org/${orgId}/network-flows/kubernetes/${encodeURIComponent(accountId)}/settings`,
         settings,
       ),
     listEfficiencyAlerts: async (options?: { kind?: EfficiencyAlertKind; limit?: number }) => {

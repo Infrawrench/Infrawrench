@@ -301,6 +301,13 @@ infrawrench carbon --days 90
 infrawrench carbon --json
 ```
 
+`k8s-network` prints one Kubernetes cluster's [network costs](./kubernetes-costs.md#network-costs): bytes and money by traffic class, namespace and workload, the top talkers, and the billed data transfer split across them when a billed source is set. With one cluster it needs no argument; with several, name one. Cloud-only.
+
+```
+infrawrench k8s-network
+infrawrench k8s-network prod-cluster --last 30d --json
+```
+
 `oversized` and `estimate` both carry the carbon figure too: a `co2e/mo` column, and a carbon line under the price.
 
 `estimate` prints one resource's [monthly cost estimate](./cost-estimates.md) at the provider's list price, itemized — the same figure the create form and the resource page quote. Cloud-only, and a projection rather than a bill: `costs` is what you were actually charged, this is the run-rate the resource's current shape implies. Pass the compound resource id, or a display name / external id scoped with `--account`:

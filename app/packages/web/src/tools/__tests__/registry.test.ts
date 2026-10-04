@@ -79,6 +79,11 @@ vi.mock("../ai-attribution", () => ({
     { name: "ai1", title: "AI1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../network-costs", () => ({
+  networkCostTools: () => [
+    { name: "nc1", title: "NC1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../moment", () => ({
   momentTools: () => [
     { name: "m1", title: "M1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },

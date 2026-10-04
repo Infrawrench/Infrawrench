@@ -62,6 +62,7 @@ import { HealthCheckResourceType } from "./resources/health-check.js";
 import { SslCertificateResourceType } from "./resources/ssl-certificate.js";
 import { InstanceGroupResourceType } from "./resources/instance-group.js";
 import { InstanceTemplateResourceType } from "./resources/instance-template.js";
+import { GCP_TRANSFER_RATES } from "./transfer-rates.js";
 
 const manifest: PluginManifest = {
   id: "gcp",
@@ -142,6 +143,9 @@ const manifest: PluginManifest = {
   statusFeed,
   priceCatalog: gcpPriceCatalog,
   preflight: gcpPreflight,
+  // Published transfer rates, for pricing a Kubernetes cluster's traffic on
+  // this provider's network. A price list, not a capability: schedules nothing.
+  transferRates: GCP_TRANSFER_RATES,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

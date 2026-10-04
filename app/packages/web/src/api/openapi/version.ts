@@ -236,4 +236,11 @@
 // 1.66.0: `multiple` on a credential field's `providerOptions` (a multi-pick
 // provider-filled choice, first used by the Kubernetes cost label-key
 // pickers). Additive.
-export const API_VERSION = "1.66.0";
+// 1.67.0: Kubernetes network costs. `GET /network-flows/kubernetes/{accountId}`
+// (one cluster's traffic by namespace, workload and boundary, with its billed
+// data transfer apportioned) and `GET`/`PUT .../settings` (the per-cluster
+// billed source). Kubernetes accounts now take part in network flow
+// collection; their rows re-cut node traffic and are left out of the org-wide
+// `GET /network-flows` totals unless that account is asked about by
+// `accountId`. `recut` on NetworkFlowAccountStatus. Additive.
+export const API_VERSION = "1.67.0";

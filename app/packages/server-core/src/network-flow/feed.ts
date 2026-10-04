@@ -82,7 +82,7 @@ function summarizeScopes(
   );
 }
 
-function toPairView(
+export function toPairView(
   row: Awaited<ReturnType<typeof readTopNetworkFlows>>[number],
 ): NetworkFlowPairView {
   return {
@@ -124,7 +124,9 @@ function toPairView(
  * appears in this list saying we cannot see its flows, rather than appearing in
  * the totals contributing 0 bytes, which would read as "Azure sends no traffic".
  */
-async function loadAccountStatuses(organizationId: string): Promise<NetworkFlowAccountStatus[]> {
+export async function loadAccountStatuses(
+  organizationId: string,
+): Promise<NetworkFlowAccountStatus[]> {
   const [rows, polls, loaded] = await Promise.all([
     db
       .select({
@@ -144,6 +146,9 @@ async function loadAccountStatuses(organizationId: string): Promise<NetworkFlowA
   const flowCapable = new Set(
     loaded.filter((l) => l.plugin.manifest.networkFlows).map((l) => l.plugin.manifest.id),
   );
+  const recut = new Set(
+    loaded.filter((l) => l.plugin.manifest.networkFlows?.recut).map((l) => l.plugin.manifest.id),
+  );
   const pollByAccount = new Map(polls.map((p) => [p.accountId, p]));
 
   return rows.map((row) => {
@@ -154,6 +159,7 @@ async function loadAccountStatuses(organizationId: string): Promise<NetworkFlowA
       pluginId: row.pluginId,
       displayName: row.displayName,
       supportsFlows,
+      recut: recut.has(row.pluginId),
       collectedThrough: poll?.collectedThrough ? String(poll.collectedThrough) : null,
       lastPolledAt: poll?.lastPolledAt ? poll.lastPolledAt.toISOString() : null,
       failureCount: poll?.failureCount ?? 0,
@@ -184,7 +190,9 @@ async function loadRateCards(pluginIds: Set<string>): Promise<NetworkFlowRateCar
   const loaded = await loadPlugins();
   return loaded.flatMap((l) => {
     const cap = l.plugin.manifest.networkFlows;
-    if (!cap || !pluginIds.has(l.plugin.manifest.id)) return [];
+    // A re-cut plugin has no card of its own: each account is priced from the
+    // cloud it runs on, which the Kubernetes report shows per cluster.
+    if (!cap || cap.recut || !pluginIds.has(l.plugin.manifest.id)) return [];
     return [
       {
         pluginId: l.plugin.manifest.id,
@@ -202,8 +210,16 @@ export async function getNetworkFlowFeed(
   organizationId: string,
   options: NetworkFlowFeedOptions,
 ): Promise<NetworkFlowFeed> {
+  // Plugins whose flows re-cut another account's traffic stay out of every
+  // cross-account view; asked about one of their accounts by name, they are
+  // that account's whole answer.
+  const recutPluginIds = (await loadPlugins())
+    .filter((l) => l.plugin.manifest.networkFlows?.recut === true)
+    .map((l) => l.plugin.manifest.id);
   const filters: NetworkFlowFilters = {
-    ...(options.accountId ? { accountId: options.accountId } : {}),
+    ...(options.accountId
+      ? { accountId: options.accountId }
+      : { excludePluginIds: recutPluginIds }),
     ...(options.scope ? { scope: options.scope } : {}),
   };
   const range = { from: options.from, to: options.to };

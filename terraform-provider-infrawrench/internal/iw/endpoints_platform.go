@@ -3,6 +3,7 @@ package iw
 import (
 	"context"
 	"net/http"
+	"net/url"
 )
 
 // Typed endpoint wrappers for the monitoring, governance, access and delivery
@@ -896,6 +897,25 @@ func (c *Client) GetNetworkFlowSettings(ctx context.Context) (*NetworkFlowSettin
 func (c *Client) PutNetworkFlowSettings(ctx context.Context, in NetworkFlowSettings) (*NetworkFlowSettings, error) {
 	var out NetworkFlowSettings
 	if err := c.Put(ctx, "/network-flows/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetKubernetesNetworkSettings reads one cluster's settings. The route 404s
+// for an account that does not exist or does not report pod traffic, which is
+// exactly "needs recreating" for Terraform.
+func (c *Client) GetKubernetesNetworkSettings(ctx context.Context, accountID string) (*KubernetesNetworkSettings, error) {
+	var out KubernetesNetworkSettings
+	if err := c.Get(ctx, "/network-flows/kubernetes/"+url.PathEscape(accountID)+"/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutKubernetesNetworkSettings(ctx context.Context, accountID string, in KubernetesNetworkSettingsInput) (*KubernetesNetworkSettings, error) {
+	var out KubernetesNetworkSettings
+	if err := c.Put(ctx, "/network-flows/kubernetes/"+url.PathEscape(accountID)+"/settings", in, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

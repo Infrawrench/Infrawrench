@@ -139,6 +139,32 @@ export interface NetworkFlowEndpoint {
 }
 
 /**
+ * How a record's bytes and boundary were established, strongest first.
+ *
+ * A plugin that only ever reads one kind of source can leave it unset (the
+ * host stores an empty string, read as "the plugin's only method"). A plugin
+ * that degrades between sources must set it, because the three are different
+ * claims and the surface labels them differently:
+ *
+ * - `flow_log`: bytes and boundary both come from a provider flow log. The
+ *   strongest form; what every cloud flow collector reports.
+ * - `in_cluster_flows`: an in-cluster flow source (a CNI's flow metrics) named
+ *   the peers and the plugin weighted a byte counter by them. The boundary is
+ *   derived from where the peers run rather than observed on the wire.
+ * - `counter_estimate`: a per-workload byte counter averaged over its uptime,
+ *   with no peer information at all. The boundary is `unknown` by
+ *   construction and the bytes are a daily average, not a measurement of the
+ *   day. Clearly the weakest; shown as such.
+ */
+export type NetworkFlowMethod = "flow_log" | "in_cluster_flows" | "counter_estimate";
+
+export const NETWORK_FLOW_METHODS: readonly NetworkFlowMethod[] = [
+  "flow_log",
+  "in_cluster_flows",
+  "counter_estimate",
+];
+
+/**
  * One aggregated pair for one UTC day. This is *already aggregated*: a plugin
  * must never return per-packet or per-connection records. See
  * {@link NetworkFlowCapabilityDeclaration.maxPairsPerDay}.
@@ -153,6 +179,8 @@ export interface NetworkFlowRecord {
   attribution: Exclude<NetworkFlowAttribution, "truncated">;
   bytes: number;
   packets?: number;
+  /** How the bytes and boundary were established. See {@link NetworkFlowMethod}. */
+  method?: NetworkFlowMethod;
 }
 
 /**
@@ -274,6 +302,28 @@ export interface NetworkFlowCapabilityDeclaration {
    * estimate of an estimate, and the surface says so.
    */
   sampled?: boolean;
+  /**
+   * True when this plugin's flows **re-cut traffic another account may already
+   * report**. A Kubernetes cluster's pod traffic leaves through the very node
+   * interfaces a cloud account's VPC flow log already counts, so adding the
+   * two together in an org-wide total would count the same bytes twice. The
+   * host keeps a re-cut plugin's rows out of every cross-account total and
+   * shows them only when one of its accounts is asked about by name, the same
+   * rule the Kubernetes cost rows follow against their parent cloud account.
+   */
+  recut?: boolean;
+}
+
+/**
+ * Egress another account's flow collection already observed for one local
+ * endpoint on one day, by boundary. What
+ * {@link NetworkFlowFetchRange.observedEgress} answers with.
+ */
+export interface ObservedEgress {
+  /** The endpoint ref as the other account stored it (`i-0abc…`). */
+  ref: string;
+  scope: NetworkFlowScope;
+  bytes: number;
 }
 
 /** One UTC day. Flow collection is day-at-a-time and forward-only. */
@@ -316,6 +366,20 @@ export interface NetworkFlowFetchRange {
    * host that does not lease.
    */
   signal?: AbortSignal;
+  /**
+   * Ask the host what the org's *other* flow collectors already saw leave a set
+   * of endpoints on this day, by boundary.
+   *
+   * This is how a plugin that sits on top of another provider's network (a
+   * Kubernetes cluster on EC2 nodes) borrows that provider's exact boundary
+   * classification without holding its credentials: the cloud account's own
+   * flow pass already classified every byte leaving `i-0abc…` as same-zone,
+   * cross-zone or internet, and the cluster only has to say which pods were on
+   * that node. Returns only egress, only for the refs asked about, and never
+   * rows from the calling account itself. Resolves to `[]` when nothing was
+   * collected; absent entirely on a host that does not offer the lookup.
+   */
+  observedEgress?: (refs: string[]) => Promise<ObservedEgress[]>;
 }
 
 /**
@@ -344,6 +408,25 @@ export interface NetworkFlowFetchResult {
    * quiet one.
    */
   degraded?: boolean;
+  /**
+   * Price this account's flows from another plugin's published rate card
+   * rather than this plugin's own.
+   *
+   * For a plugin whose accounts run on somebody else's network, where the rate
+   * depends on whose network it is: a Kubernetes cluster on GKE is priced at
+   * GCP's rates and the same plugin on EKS at AWS's. The host resolves the
+   * named plugin's `transferRates` (or, failing that, its `networkFlows.rates`)
+   * and falls back to this plugin's declared card when the named plugin is not
+   * loaded or publishes none.
+   */
+  ratesFromPlugin?: string;
+  /**
+   * Per-account overrides, per GB, applied over whichever card was resolved.
+   * An override replaces the base rate *and* every regional rate for that
+   * scope, because a user who types "cross-zone costs 0.008 here" means here,
+   * not "here unless the provider has a regional exception".
+   */
+  rateOverrides?: Partial<Record<NetworkFlowScope, number>>;
 }
 
 /**
@@ -357,6 +440,8 @@ export function normalizeNetworkFlowResult(value: NetworkFlowRecord[] | NetworkF
   totals: NetworkFlowTotal[] | undefined;
   queryBytesScanned: number | undefined;
   degraded: boolean;
+  ratesFromPlugin: string | undefined;
+  rateOverrides: Partial<Record<NetworkFlowScope, number>> | undefined;
 } {
   if (Array.isArray(value)) {
     return {
@@ -365,6 +450,8 @@ export function normalizeNetworkFlowResult(value: NetworkFlowRecord[] | NetworkF
       totals: undefined,
       queryBytesScanned: undefined,
       degraded: false,
+      ratesFromPlugin: undefined,
+      rateOverrides: undefined,
     };
   }
   return {
@@ -373,7 +460,40 @@ export function normalizeNetworkFlowResult(value: NetworkFlowRecord[] | NetworkF
     totals: value.totals,
     queryBytesScanned: value.queryBytesScanned,
     degraded: value.degraded === true,
+    ratesFromPlugin: value.ratesFromPlugin,
+    rateOverrides: value.rateOverrides,
   };
+}
+
+/**
+ * Apply per-account overrides to a rate card.
+ *
+ * Pure, and in plugin-base rather than the host so a plugin's own tests can
+ * assert the card its overrides produce. Non-finite and negative overrides are
+ * ignored: a typo in a rates field must not turn into negative money.
+ */
+export function applyNetworkRateOverrides(
+  card: NetworkFlowRateCard,
+  overrides: Partial<Record<NetworkFlowScope, number>> | undefined,
+): NetworkFlowRateCard {
+  if (!overrides) return card;
+  const valid = Object.entries(overrides).filter(
+    (entry): entry is [NetworkFlowScope, number] =>
+      typeof entry[1] === "number" && Number.isFinite(entry[1]) && entry[1] >= 0,
+  );
+  if (valid.length === 0) return card;
+  const perGb = { ...card.perGb };
+  for (const [scope, rate] of valid) perGb[scope] = rate;
+  let perRegion: NetworkFlowRateCard["perRegion"];
+  if (card.perRegion) {
+    perRegion = {};
+    for (const [region, rates] of Object.entries(card.perRegion)) {
+      const copy = { ...rates };
+      for (const [scope] of valid) delete copy[scope];
+      perRegion[region] = copy;
+    }
+  }
+  return { ...card, perGb, ...(perRegion ? { perRegion } : {}) };
 }
 
 /**

@@ -15,6 +15,7 @@ import { CronJobResourceType } from "./resources/cronjob.js";
 import { IngressResourceType } from "./resources/ingress.js";
 import { ConfigMapResourceType } from "./resources/configmap.js";
 import { SecretResourceType } from "./resources/secret.js";
+import { KUBERNETES_NETWORK_FLOW_CAPABILITY } from "./network-flows.js";
 
 const manifest: PluginManifest = {
   id: "kubernetes",
@@ -54,9 +55,11 @@ const manifest: PluginManifest = {
         "s-2vcpu-4gb=0.0357, m5.large=0.096. The same field prices the rest of the cluster — " +
         "controlPlane=0.10 for a managed cluster's flat fee, loadBalancer=0.0149 per " +
         "LoadBalancer Service, storage/*=0.10 per provisioned GiB-month (or storage/gp3=0.08 " +
-        "for one class). On GPU nodes, gpu/a100-80gb=3.93 (or gpu/*=2.50) sets the price of one " +
-        "GPU per hour, which decides how much of the node is charged by GPU requests. Left " +
-        "blank, capacity, volume sizes and efficiency are still shown; only the money is omitted.",
+        "for one class), and network/cross_zone=0.01 or network/internet_egress=0.09 to override " +
+        "the cloud's per-GB transfer rates for network costs. On GPU nodes, gpu/a100-80gb=3.93 " +
+        "(or gpu/*=2.50) sets the price of one GPU per hour, which decides how much of the node " +
+        "is charged by GPU requests. Left blank, capacity, volume sizes and efficiency are still " +
+        "shown; only the money is omitted.",
       sensitive: false,
       optional: true,
       multiline: true,
@@ -121,8 +124,10 @@ const manifest: PluginManifest = {
    * real money is invoiced to the cloud account that owns the nodes: summing
    * both accounts double-counts.
    *
-   * Egress is absent by design: the Kubernetes API exposes no per-workload
-   * byte counters, so a per-namespace network figure could only be invented.
+   * Network transfer is deliberately absent from these rows: it is reported
+   * through `networkFlows` below, into the network-flow store, because those
+   * figures re-cut the cloud's own data-transfer line and the cost store must
+   * never hold two opinions of the same bytes.
    *
    * `maxHistoryDays: 1` because a cluster cannot be asked what ran last
    * Tuesday: `/api/v1/pods` describes right now and nothing else. Each daily
@@ -148,6 +153,10 @@ const manifest: PluginManifest = {
     label: "Resource quotas",
     increaseUrl: "https://kubernetes.io/docs/concepts/policy/resource-quotas/",
   },
+  // Pod-level network attribution by traffic class. Re-cuts node traffic the
+  // cloud account's flow logs may already count, so `recut` keeps it out of
+  // every org-wide total. See `network-flows.ts`.
+  networkFlows: KUBERNETES_NETWORK_FLOW_CAPABILITY,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

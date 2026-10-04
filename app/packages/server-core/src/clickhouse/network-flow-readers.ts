@@ -11,7 +11,7 @@
  * day writes a newer `ingested_at` for the same key; without `FINAL` a day
  * collected twice reads as double its traffic until the parts happen to merge.
  */
-import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { strictlyVisibleAccountIds } from "../cost/visibility-context";
 import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
 import { networkFlowDaily as flow } from "./schema";
@@ -41,6 +41,13 @@ export interface NetworkFlowFilters {
    * relative to the pair, not to the resource being asked about.
    */
   ref?: string | undefined;
+  /**
+   * Leave these plugins' rows out. The feed passes the plugins whose flows
+   * re-cut another account's traffic (`networkFlows.recut`) whenever it is not
+   * asked about one of their accounts by name, so an org-wide total never
+   * counts a node's bytes once from the VPC flow log and again from the pods.
+   */
+  excludePluginIds?: string[] | undefined;
 }
 
 /**
@@ -69,6 +76,9 @@ function whereClause(organizationId: string, range: NetworkFlowRange, filters: N
     filters.scope ? eq(flow.scope, filters.scope) : undefined,
     filters.direction ? eq(flow.direction, filters.direction) : undefined,
     filters.ref ? or(eq(flow.src_ref, filters.ref), eq(flow.dst_ref, filters.ref)) : undefined,
+    filters.excludePluginIds && filters.excludePluginIds.length > 0
+      ? notInArray(flow.plugin_id, filters.excludePluginIds)
+      : undefined,
   );
 }
 
@@ -214,6 +224,112 @@ export async function readTopNetworkFlows(
     packets: Number(r.packets),
     estimated_cost: Number(r.estimated_cost),
     days: Number(r.days),
+  }));
+}
+
+/** One endpoint's egress on one day, by boundary, as another account saw it. */
+export interface ObservedEgressRow {
+  ref: string;
+  scope: string;
+  bytes: number;
+}
+
+/**
+ * What the org's flow collection saw leave a set of endpoints on one day.
+ *
+ * Backs `NetworkFlowFetchRange.observedEgress`: a Kubernetes cluster asks for
+ * its nodes' instance ids and gets back the boundary mix the cloud account's
+ * VPC flow log recorded for them. Egress only, `resolved` and `unattributed`
+ * pairs only (a truncation row has no endpoint), and never the asking account's
+ * own rows, so a cluster can never be fed its own previous answer.
+ */
+export async function readObservedEgress(
+  organizationId: string,
+  day: string,
+  refs: string[],
+  excludeAccountId: string,
+): Promise<ObservedEgressRow[]> {
+  if (refs.length === 0) return [];
+  const rows = await query((db) =>
+    db
+      .select({
+        ref: flow.src_ref,
+        scope: flow.scope,
+        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+      })
+      .from(flow)
+      .final()
+      .where(
+        and(
+          flowOrgCondition(organizationId),
+          eq(flow.day, day),
+          eq(flow.direction, "egress"),
+          ne(flow.account_id, excludeAccountId),
+          inArray(flow.src_ref, refs.slice(0, 5000)),
+          sql`${flow.attribution} != 'truncated'`,
+        ),
+      )
+      .groupBy(flow.src_ref, flow.scope),
+  );
+  return rows.map((r) => ({ ref: r.ref, scope: r.scope, bytes: Number(r.bytes) }));
+}
+
+/** One source endpoint's traffic on one day, for the Kubernetes network report. */
+export interface NetworkFlowSourceDayRow {
+  day: string;
+  src_ref: string;
+  src_label: string;
+  scope: string;
+  method: string;
+  attribution: string;
+  bytes: number;
+  estimated_cost: number;
+  currency: string;
+}
+
+/**
+ * Per (day, source, boundary, method) totals for one account.
+ *
+ * Per day because billed money is apportioned day by day: a day where the
+ * billed line came in under the list estimate must scale *that day's* rows,
+ * not the range's. Truncation rows are included under their reserved ref so
+ * the report's total adds up to what was stored.
+ */
+export async function readNetworkFlowSourceDays(
+  organizationId: string,
+  accountId: string,
+  range: NetworkFlowRange,
+): Promise<NetworkFlowSourceDayRow[]> {
+  const rows = await query((db) =>
+    db
+      .select({
+        day: sql<string>`toString(${flow.day})`.as("day"),
+        src_ref: flow.src_ref,
+        src_label: sql<string>`any(${flow.src_label})`.as("src_label"),
+        scope: flow.scope,
+        method: flow.method,
+        attribution: sql<string>`any(${flow.attribution})`.as("attribution"),
+        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+        estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
+        currency: sql<string>`any(${flow.currency})`.as("currency"),
+      })
+      .from(flow)
+      .final()
+      .where(
+        and(
+          flowOrgCondition(organizationId),
+          eq(flow.account_id, accountId),
+          gte(flow.day, range.from),
+          lte(flow.day, range.to),
+        ),
+      )
+      .groupBy(sql`day`, flow.src_ref, flow.scope, flow.method)
+      .orderBy(asc(sql`day`)),
+  );
+  return rows.map((r) => ({
+    ...r,
+    bytes: Number(r.bytes),
+    estimated_cost: Number(r.estimated_cost),
   }));
 }
 

@@ -125,6 +125,7 @@ const flowRow: NetworkFlowClickHouseRow = {
   currency: "USD",
   rate_per_gb: 0.02,
   estimated_cost: 0.02,
+  method: "",
 };
 
 function markup(percent: number, match: BillingRule["match"] = {}): BillingRule {

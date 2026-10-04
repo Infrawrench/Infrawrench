@@ -23,6 +23,7 @@ import { githubIssueTools } from "./github-issues";
 import { carbonTools } from "./carbon";
 import { priceCatalogTools } from "./price-catalog";
 import { aiAttributionTools } from "./ai-attribution";
+import { networkCostTools } from "./network-costs";
 import { momentTools } from "./moment";
 import { customGraphTools } from "./custom-graphs";
 import { workflowTools } from "./workflows";
@@ -53,6 +54,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...carbonTools(),
     ...priceCatalogTools(),
     ...aiAttributionTools(),
+    ...networkCostTools(),
     ...momentTools(),
     ...workflowTools(),
     ...customGraphTools(),

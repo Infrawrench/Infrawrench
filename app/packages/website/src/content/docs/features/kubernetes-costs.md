@@ -14,16 +14,17 @@ So Infrawrench derives it. Node capacity, times what that node costs per hour, t
 
 ## What it needs
 
-| Input                           | Where it comes from                                            | Without it                                                              |
-| ------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Node capacity and pod requests  | The Kubernetes API. Always available.                          | Nothing works; this is the baseline.                                    |
-| A per-node hourly price         | The parent cloud plugin, or the optional field on the account. | Capacity and requests are still shown — the money is omitted.           |
-| Live CPU/memory usage           | `metrics.k8s.io`, served by metrics-server.                    | Allocation falls back to requests alone. Efficiency reads **unknown**.  |
-| PersistentVolumeClaims          | `/api/v1/persistentvolumeclaims`. Optional RBAC.               | Storage is reported as unavailable, not as zero.                        |
-| `LoadBalancer` Services         | `/api/v1/services`. Optional RBAC.                             | Load balancers are reported as unavailable, not as zero.                |
-| GPU utilization                 | NVIDIA's DCGM exporter or AMD's device metrics exporter.       | GPUs are charged by request; requested-but-idle GPUs read **unknown**.  |
-| Per-GiB-month and per-LB prices | The optional rates field (see below).                          | Volume sizes and load-balancer counts are shown with no money attached. |
-| The managed control-plane fee   | The optional rates field.                                      | No control-plane bucket. A self-managed cluster genuinely has none.     |
+| Input                           | Where it comes from                                                       | Without it                                                              |
+| ------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Node capacity and pod requests  | The Kubernetes API. Always available.                                     | Nothing works; this is the baseline.                                    |
+| A per-node hourly price         | The parent cloud plugin, or the optional field on the account.            | Capacity and requests are still shown — the money is omitted.           |
+| Live CPU/memory usage           | `metrics.k8s.io`, served by metrics-server.                               | Allocation falls back to requests alone. Efficiency reads **unknown**.  |
+| PersistentVolumeClaims          | `/api/v1/persistentvolumeclaims`. Optional RBAC.                          | Storage is reported as unavailable, not as zero.                        |
+| `LoadBalancer` Services         | `/api/v1/services`. Optional RBAC.                                        | Load balancers are reported as unavailable, not as zero.                |
+| GPU utilization                 | NVIDIA's DCGM exporter or AMD's device metrics exporter.                  | GPUs are charged by request; requested-but-idle GPUs read **unknown**.  |
+| Per-GiB-month and per-LB prices | The optional rates field (see below).                                     | Volume sizes and load-balancer counts are shown with no money attached. |
+| The managed control-plane fee   | The optional rates field.                                                 | No control-plane bucket. A self-managed cluster genuinely has none.     |
+| Per-pod network bytes           | The kubelet (`nodes/proxy`), Cilium Hubble, or the cloud's VPC flow logs. | No network costs for the cluster; everything else is unaffected.        |
 
 A kubeconfig that may list pods but not PVCs still gets the complete compute allocation. Nothing about the new components is allowed to break what already worked.
 
@@ -228,11 +229,9 @@ Every managed offering charges a flat per-cluster fee, and all three of the big 
 
 A self-managed cluster has no such fee, and correctly gets no bucket: its control plane runs on nodes that are already in `/api/v1/nodes` and already priced as compute. Adding a fee there would count the same machines twice.
 
-### Egress is not allocated, and will not be guessed
+### Network traffic is its own view
 
-The Kubernetes API exposes no per-workload byte counters. `metrics.k8s.io` carries a `ResourceList` of CPU and memory and nothing else, and there is no other source inside the cluster API for how much traffic a namespace sent.
-
-Per-workload egress therefore needs a flow-log source outside the cluster API — a CNI that records it (Cilium's Hubble, Calico), or the cloud's own VPC flow logs. Until one of those is wired in, Infrawrench reports **no** egress figure rather than dividing the cluster's network bill by pod count, or by CPU share, or by any other proxy that would look precise and be wrong.
+Pod traffic is attributed too, but not as one more cost row. See [Network costs](#network-costs) below: it re-cuts the data-transfer line the cloud account already bills, so it lives with the network figures rather than in this partition.
 
 ![Cluster detail view "What the cluster costs" section showing the per-component breakdown — Nodes, Control plane, Persistent volumes, Unattached volumes, Load balancers, Total](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/what-the-cluster-costs.png)
 
@@ -395,6 +394,75 @@ Left blank, each uses a short default: the standard topology and architecture la
 
 **There is no history to backfill.** The Kubernetes API describes what is running right now, not what ran last Tuesday. Each daily collection appends one honest snapshot, and the series builds up from the day you connect the account. Unlike a provider that can restate a week of invoices, there is nothing here to restate.
 
+## Network costs
+
+The **Kubernetes network costs** section on the [Costs panel](./cloud-costs.md#the-costs-panel) answers which workloads are moving bytes across which billing boundary: same zone (usually free), cross-zone, cross-region, and internet egress. Per cluster, it shows:
+
+- **By traffic class**: bytes and money per boundary.
+- **By namespace** and **by workload**: who sent it, with the boundaries each one mostly crossed and how it was measured.
+- **Top talkers**: workload → peer pairs, largest first. A peer is another workload, the internet, or a boundary class when the peer itself was not observed.
+- **Billed data transfer**: the cluster's real data-transfer bill split across the rows, when you have said which cost rows those are.
+
+<insert [Costs panel, Kubernetes network costs section for one cluster: the headline with the estimate, billed and unallocated figures, the by-traffic-class list, and the by-workload table with a cross-zone workload at the top] here>
+
+### Where the bytes come from
+
+Nothing in the Kubernetes API counts bytes per workload, so Infrawrench reads three sources past it, each optional and detected on every collection, and uses the strongest one available for each pod:
+
+| Source                                                                    | What it gives                                                                                                                                                                                                                           | Label             |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| **The cloud's VPC flow logs**, from the cloud account that owns the nodes | The exact boundary every byte leaving each node crossed. Each node's bytes are split across the pods on it by their own counters; bytes the pods do not account for (host-network pods, the kubelet) stay on the node as their own row. | Cloud flow logs   |
+| **Cilium Hubble** flow metrics                                            | Which workload each workload talks to. The boundary follows from where the peer's replicas run: two of three replicas in your zone means two thirds of the traffic is free.                                                             | In-cluster flows  |
+| **The kubelet's per-pod counters** (`/stats/summary`)                     | Bytes per pod, with no destination at all. The boundary is **unknown** and is never priced.                                                                                                                                             | Pod counters only |
+
+The section says how much of the traffic came from each. A cluster where most bytes are "pod counters only" is ranked correctly by volume but cannot tell you which boundary is costing money; add one of the other two sources and the same rows acquire boundaries.
+
+**What each source needs:**
+
+- **Cloud flow logs**: [network flow collection](./network-costs.md) on for the AWS account that owns the nodes. Nothing more on the cluster: the node's `spec.providerID` names the instance the flow log already reports.
+- **Cilium Hubble**: Hubble metrics on (port 9965, the chart default) with the `flow` metric's `labelsContext` including `source_namespace`, `source_workload`, `destination_namespace` and `destination_workload`. Hubble counts flows, not bytes, so its counts weight the kubelet's byte counter. Traffic Hubble reports as leaving the cluster is labelled **outside the cluster** rather than internet: the same label covers a managed database in your own VPC.
+- **Pod counters**: `get` on `nodes/proxy` for the kubeconfig. metrics-server reads the same endpoint, so most clusters already allow it.
+
+Collection runs once a day for the previous closed UTC day, behind the same [organization switch](./network-costs.md#turning-it-on) as VPC flow logs. Reading a cluster's own sources costs nothing on your cloud bill.
+
+### How it is priced
+
+Bytes are priced at the published transfer rates of the cloud the nodes run on (AWS, GCP, Azure or DigitalOcean, detected from the nodes), at the first paid tier, with no free allowance deducted. Azure has not charged for cross-zone transfer since 2024 and DigitalOcean has no zones, so cross-zone is free there.
+
+Override any rate for one cluster in the account's **Cluster hourly rates** field, per GB:
+
+```
+network/cross_zone=0.008, network/internet_egress=0.05
+```
+
+The scopes are `intra_zone`, `cross_zone`, `cross_region`, `internet_egress`, `provider_service`, `nat_gateway` and `private_interconnect`. An override replaces the cloud's rate in every region for that cluster.
+
+### Splitting the real bill
+
+List prices are an estimate. To split the money you were actually billed, open **Billed data transfer** under the cluster and pick the cost rows that are its data transfer: usually the cloud account that owns the nodes and its data-transfer service (on AWS, `AWS Data Transfer`, plus `EC2 - Other` if you narrow it further by tag or region). It uses the same filter editor as cost graphs, so the values come from your own cost data.
+
+Then, every day:
+
+- If the bill is **above** the list estimate, each workload gets its estimate and the rest is shown as **unallocated**: traffic the cluster did not observe, or other resources billed on the same line.
+- If the bill is **below** the estimate (a free allowance, a discount, a pooled bandwidth allowance), every workload is scaled down by the same factor, so the ranking does not change.
+- If nothing in the range had a known boundary (pod counters only), the bill is split by bytes alone, and the section says so.
+
+**The rows never add up to more than was billed**, and the remainder is never spread across workloads. A day with traffic but no billed rows yet (cost collection lags a day or two) allocates nothing rather than guessing.
+
+### Why it is not a cost row
+
+Every other Kubernetes figure on this page is written to the cost store under a `kubernetes-*` service. Network costs deliberately are not: the cloud account already reports the same bytes on its own data-transfer line, and the cluster's pods leave through the node interfaces its VPC flow log counts. For the same reason the cluster's flows are **left out of the org-wide network totals** and shown only per cluster. The dimensions you group and filter by here are the namespace, the workload and the traffic class.
+
+### From the CLI and AI clients
+
+```
+infrawrench k8s-network
+infrawrench k8s-network prod-cluster --last 30d
+infrawrench k8s-network prod-cluster --json
+```
+
+AI clients get `get_kubernetes_network_costs` and `set_kubernetes_network_billed_source` over [MCP](./mcp.md). The billed source is also an [OpenTofu/Terraform resource](./terraform-provider.md), `infrawrench_kubernetes_network_settings`.
+
 ## Limitations
 
 - **Scaleway and OVHcloud supply no node price yet.** Their clusters show capacity and efficiency without money unless you fill in the rates field yourself.
@@ -403,7 +471,7 @@ Left blank, each uses a short default: the standard topology and architecture la
 - **A MIG slice is priced by compute slices**, so a memory-heavy profile such as `1g.10gb` on an A100 40GB pays 1/7 of the card while using a quarter of its memory. Slices nobody configured or requested land in the idle-GPU bucket.
 - **AWS and Azure prices are list prices.** Commitments and Spot are not reflected, so a heavily-committed cluster will read high.
 - **No cloud plugin supplies the storage, load-balancer or control-plane prices automatically yet.** They arrive through the same rates field, so a cluster opened from its cloud account gets node prices for free but needs `storage/*`, `loadBalancer` and `controlPlane` filled in by hand. Until they are, volumes and load balancers are shown as capacity and counts with no money.
-- **Egress is not allocated at all**, and is not guessed. See [above](#egress-is-not-allocated-and-will-not-be-guessed).
+- **Network costs are a daily average for pods running at collection time.** A pod that ran yesterday and is gone now is invisible to the kubelet, and the in-cluster sources are counters since each pod started. See [Network costs](#network-costs).
 - **Volume _utilisation_ is not measured.** Storage is priced on what is provisioned, which is what is billed — but the cluster API cannot tell you how full a 500Gi disk is, so a mostly-empty volume is not flagged the way an over-requested workload is. The kubelet exposes that on its Prometheus endpoint, which is not part of the Kubernetes API.
 - **Volumes and load balancers do not appear as browsable resources.** They are cost objects here, on the cluster's tables and tabs, not entries in the sidebar with their own detail pages.
 - **A pod on a node that has since been drained** is listed with its requests but carries no cost — there is no machine left to take the money from.
