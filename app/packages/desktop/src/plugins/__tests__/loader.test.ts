@@ -110,6 +110,7 @@ vi.mock("@infrawrench/plugin-cohere", () => stub("cohere"));
 vi.mock("@infrawrench/plugin-cursor", () => stub("cursor"));
 vi.mock("@infrawrench/plugin-cartesia", () => stub("cartesia"));
 vi.mock("@infrawrench/plugin-assemblyai", () => stub("assemblyai"));
+vi.mock("@infrawrench/plugin-anyscale", () => stub("anyscale"));
 vi.mock("@infrawrench/plugin-anthropic", () => stub("anthropic"));
 vi.mock("@infrawrench/plugin-workos", () => stub("workos"));
 vi.mock("@infrawrench/plugin-twilio", () => stub("twilio"));

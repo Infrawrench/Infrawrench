@@ -232,6 +232,7 @@
     "@clickhouse/client": "^1.23.1",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-anthropic": "workspace:*",
+    "@infrawrench/plugin-anyscale": "workspace:*",
     "@infrawrench/plugin-assemblyai": "workspace:*",
     "@infrawrench/plugin-aws": "workspace:*",
     "@infrawrench/plugin-azure": "workspace:*",

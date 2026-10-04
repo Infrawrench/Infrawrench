@@ -126,6 +126,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   scaleway: ["api.scaleway.com", "*.scw.cloud"],
   vultr: ["api.vultr.com"],
   anthropic: ["api.anthropic.com"],
+  anyscale: ["console.anyscale.com"],
   assemblyai: ["api.assemblyai.com", "api.eu.assemblyai.com"],
   cartesia: ["api.cartesia.ai"],
   cohere: ["api.cohere.com"],

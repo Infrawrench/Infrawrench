@@ -52,6 +52,7 @@ A resource is flagged when the provider plugin's heuristic matches the resource'
 | GitHub       | Copilot seats with no activity for 30 days; codespaces unused for 14 days; offline self-hosted runners                                   |
 | Crusoe Cloud | Disks attached to no VM; stopped VMs (compute stops billing, but their disks keep billing for storage)                                   |
 | Linode       | Powered-off Linodes (billed in full until deleted); volumes attached to nothing; NodeBalancers with no backends; unassigned reserved IPs |
+| Anyscale     | Workspaces that are running while Anyscale reports them idle (no Ray workload, command or editor activity)                               |
 
 Heuristics are declared by each plugin, so coverage grows as plugins do — a provider that knows another "this is idle" signal can add it without any host changes.
 

@@ -150,6 +150,7 @@ describe("SSH endpoint parity", () => {
     "depot",
     "coreweave",
     "anthropic",
+    "anyscale",
     "assemblyai",
     "cartesia",
     "cohere",

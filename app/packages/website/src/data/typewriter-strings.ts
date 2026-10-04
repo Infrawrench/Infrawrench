@@ -157,6 +157,8 @@ export const typewriterStrings: string[] = [
   "Fly Machines",
   "Fly Volumes",
   "Databricks Jobs",
+  "Anyscale Workspaces",
+  "Anyscale Services",
   "Databricks Pipelines",
   "Databricks Catalogs",
   "Databricks Schemas",

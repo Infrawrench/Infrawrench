@@ -93,6 +93,7 @@ export default defineConfig(({ command }) => ({
       externalizeDepsPlugin({
         exclude: [
           "@infrawrench/plugin-anthropic",
+          "@infrawrench/plugin-anyscale",
           "@infrawrench/plugin-assemblyai",
           "@infrawrench/plugin-cartesia",
           "@infrawrench/plugin-cohere",
@@ -202,6 +203,7 @@ export default defineConfig(({ command }) => ({
       externalizeDepsPlugin({
         exclude: [
           "@infrawrench/plugin-anthropic",
+          "@infrawrench/plugin-anyscale",
           "@infrawrench/plugin-assemblyai",
           "@infrawrench/plugin-base",
           "@infrawrench/plugin-aws",
