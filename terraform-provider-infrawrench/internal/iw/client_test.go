@@ -327,6 +327,32 @@ func TestListAndFilterSynthesisesNotFound(t *testing.T) {
 	}
 }
 
+// Dashboard notifications are read by listing the dashboard's schedules, so the
+// wrapper must hit the nested route and synthesise a 404 for a vanished id.
+func TestGetDashboardNotificationListsAndFilters(t *testing.T) {
+	var gotPath string
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`[{"id":"n1","dashboardId":"d1","cadence":"weekly","attachPdf":false}]`))
+	})
+
+	found, err := client.GetDashboardNotification(context.Background(), "d1", "n1")
+	if err != nil {
+		t.Fatalf("GetDashboardNotification: %v", err)
+	}
+	if !strings.HasSuffix(gotPath, "/dashboards/d1/notifications") {
+		t.Errorf("path = %q, want the dashboard's nested notifications route", gotPath)
+	}
+	if found.DashboardID != "d1" || found.AttachPDF {
+		t.Errorf("notification = %+v", found)
+	}
+
+	_, err = client.GetDashboardNotification(context.Background(), "d1", "gone")
+	if !IsNotFound(err) {
+		t.Fatalf("expected a synthesised 404, got %v", err)
+	}
+}
+
 /* ------------------------- tagged union marshalling ------------------------ */
 
 // The server's date-range schema is strict: an absolute range carrying a stray

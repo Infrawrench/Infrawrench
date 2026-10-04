@@ -449,6 +449,15 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /cost-reports/{id}/notifications/{notificationId}": "org:settings:write",
   "POST /cost-reports/{id}/notifications/{notificationId}/send": "org:settings:write",
   "GET /cost-report-notifications": "costs:read",
+  "GET /cost-reports/{id}/pdf": "costs:read",
+  "GET /dashboards/{id}/pdf": "dashboards:read",
+  "GET /dashboards/{id}/notifications": "dashboards:read",
+  "GET /dashboards/{id}/notifications/targets": "org:settings:write",
+  "POST /dashboards/{id}/notifications": "org:settings:write",
+  "PUT /dashboards/{id}/notifications/{notificationId}": "org:settings:write",
+  "DELETE /dashboards/{id}/notifications/{notificationId}": "org:settings:write",
+  "POST /dashboards/{id}/notifications/{notificationId}/send": "org:settings:write",
+  "GET /dashboard-notifications": "dashboards:read",
   // cost annotations: dated notes drawn over a chart. Reads ride costs:read
   // and writes costs:write, exactly as reports do: a note about spend is cost
   // data with words on it, not dashboard furniture.

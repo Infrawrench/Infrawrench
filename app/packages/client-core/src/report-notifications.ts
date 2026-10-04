@@ -160,3 +160,84 @@ export function describeReportTargets(n: {
   if (n.emailRecipients.length > 0) parts.push(plural(n.emailRecipients.length, "email"));
   return parts.length > 0 ? parts.join(", ") : "no destinations";
 }
+
+/* ------------------------------------------------------------------ *
+ * Dashboard delivery: the same schedule, pointed at a whole dashboard.
+ *
+ * A dashboard schedule is a `report_notifications` row whose
+ * `dashboard_id` is set instead of `cost_report_id`: same cadence fields,
+ * same destinations, same status bookkeeping, same claim protocol. What
+ * differs is the payload: the dashboard is rendered as a PDF (every card:
+ * cost charts, saved reports, budgets, custom graphs including their KPI and
+ * table forms, pinned resources and workflows) and attached to emails and
+ * uploaded to Slack, beside a short text summary and a deep link. Teams
+ * incoming webhooks cannot carry files, so Teams gets the summary and the
+ * link.
+ * ------------------------------------------------------------------ */
+
+/** Bounds the API enforces for dashboard schedules (the report ones, reused). */
+export const DASHBOARD_NOTIFICATION_LIMITS = {
+  ...REPORT_NOTIFICATION_LIMITS,
+  /** Schedules per dashboard. */
+  maxPerDashboard: 10,
+} as const;
+
+/** Create/update payload for a dashboard schedule. A full replace. */
+export interface DashboardNotificationInput extends ReportNotificationInput {
+  /**
+   * Attach the rendered PDF: as a file on every email, and as a file upload
+   * in the Slack message's thread. Absent means `true`: the PDF is the point
+   * of scheduling a dashboard. Teams never gets a file (its webhooks cannot
+   * carry one), only the summary and the link.
+   */
+  attachPdf?: boolean | undefined;
+}
+
+/** A dashboard schedule as returned by the API. */
+export interface DashboardNotification extends Omit<ReportNotification, "costReportId"> {
+  dashboardId: string;
+  attachPdf: boolean;
+}
+
+/**
+ * Per-transport outcome of a dashboard delivery. `pdfAttached` says whether a
+ * PDF was rendered and sent at all; `slackFilesUploaded` counts the Slack
+ * channels that also received the file (an install without the `files:write`
+ * scope still gets the message, without the file).
+ */
+export interface DashboardNotificationSendResult extends ReportNotificationSendResult {
+  pdfAttached: boolean;
+  slackFilesUploaded: number;
+}
+
+/**
+ * Append the caller's IANA zone as `?tz=` to a PDF export path, so the
+ * document's "generated at" line reads in the reader's time rather than UTC.
+ */
+export function withPdfTimezone(path: string): string {
+  let tz = "";
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  } catch {
+    // No Intl zone data (very old runtime): the server writes UTC.
+  }
+  if (!tz) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}tz=${encodeURIComponent(tz)}`;
+}
+
+/**
+ * The download name for an exported PDF: `Monthly spend` becomes
+ * `monthly-spend.pdf`. Shared so the server's Content-Disposition, the
+ * desktop download and the mobile share sheet all agree.
+ */
+export function pdfFileName(name: string, fallback = "infrawrench-export"): string {
+  const slug = name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+    .replace(/-+$/g, "");
+  return `${slug || fallback}.pdf`;
+}

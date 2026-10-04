@@ -18,6 +18,7 @@ import {
   extractHostLabel,
   toast,
   DashboardAddMenu,
+  DashboardExportActions,
   CloseIcon,
 } from "@infrawrench/ui";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
@@ -60,6 +61,8 @@ import {
 import type { DashboardPin, DashboardWorkflowPin } from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete, apiPatch, apiPut } from "@/lib/api";
 import { createWebCostApi } from "@/lib/cost-client";
+import { createWebDashboardExportClient } from "@/lib/dashboard-export-client";
+import { usePermissions } from "@/auth/permissions-context";
 import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
 
@@ -188,6 +191,15 @@ export function DashboardView({
   // render only when their loader is present, so a hand-rolled literal here
   // takes them away from every cost card opened on a dashboard.
   const costApi: CostApi = useMemo(() => createWebCostApi(orgId), [orgId]);
+
+  // PDF export and scheduled delivery. Managing schedules is
+  // `org:settings:write`; without it the dialog lists them read-only.
+  const { has } = usePermissions();
+  const canManageDelivery = has("org:settings:write");
+  const exportClient = useMemo(
+    () => createWebDashboardExportClient(orgId, canManageDelivery),
+    [orgId, canManageDelivery],
+  );
 
   const customGraphsClient: CustomGraphsClient = useMemo(
     () => ({
@@ -518,16 +530,23 @@ export function DashboardView({
           )}
         </div>
 
-        {!isHome && (
-          <button
-            type="button"
-            onClick={() => void deleteDashboard()}
-            title={gt("Delete dashboard")}
-            className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
-          >
-            {gt("Delete")}
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          <DashboardExportActions
+            dashboardId={dashboardId}
+            dashboardName={dashboardName}
+            client={exportClient}
+          />
+          {!isHome && (
+            <button
+              type="button"
+              onClick={() => void deleteDashboard()}
+              title={gt("Delete dashboard")}
+              className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+            >
+              {gt("Delete")}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}

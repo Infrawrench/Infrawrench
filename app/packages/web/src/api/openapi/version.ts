@@ -160,4 +160,9 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-export const API_VERSION = "1.42.3";
+// 1.43.0: PDF export and scheduled dashboard delivery. `GET /dashboards/{id}/pdf`
+// and `GET /cost-reports/{id}/pdf` return a server-rendered PDF;
+// `/dashboards/{id}/notifications` (list, targets, create, update, delete,
+// send) and `GET /dashboard-notifications` manage dashboard delivery
+// schedules (DashboardNotification, with `attachPdf`). Additive.
+export const API_VERSION = "1.43.0";

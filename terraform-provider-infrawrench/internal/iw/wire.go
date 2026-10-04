@@ -669,6 +669,48 @@ type ReportNotification struct {
 	UpdatedAt       string   `json:"updatedAt"`
 }
 
+// DashboardNotificationInput is the POST/PUT body for a dashboard's delivery
+// schedule, a full replace like ReportNotificationInput, which it mirrors.
+//
+// AttachPDF is an omitempty pointer because the server treats an absent key as
+// true. The provider always sets it, so the configured value is explicit.
+type DashboardNotificationInput struct {
+	Cadence         string   `json:"cadence"`
+	SendDay         *int64   `json:"sendDay,omitempty"`
+	SendDayOfMonth  *int64   `json:"sendDayOfMonth,omitempty"`
+	Hour            int64    `json:"hour"`
+	Timezone        string   `json:"timezone"`
+	SlackChannelIDs []string `json:"slackChannelIds"`
+	TeamsWebhookIDs []string `json:"teamsWebhookIds"`
+	EmailRecipients []string `json:"emailRecipients"`
+	Enabled         bool     `json:"enabled"`
+	AttachPDF       *bool    `json:"attachPdf,omitempty"`
+}
+
+// DashboardNotification is a stored delivery schedule for one dashboard,
+// rendered as a PDF.
+type DashboardNotification struct {
+	ID              string   `json:"id"`
+	DashboardID     string   `json:"dashboardId"`
+	Cadence         string   `json:"cadence"`
+	SendDay         int64    `json:"sendDay"`
+	SendDayOfMonth  int64    `json:"sendDayOfMonth"`
+	Hour            int64    `json:"hour"`
+	Timezone        string   `json:"timezone"`
+	SlackChannelIDs []string `json:"slackChannelIds"`
+	TeamsWebhookIDs []string `json:"teamsWebhookIds"`
+	EmailRecipients []string `json:"emailRecipients"`
+	Enabled         bool     `json:"enabled"`
+	AttachPDF       bool     `json:"attachPdf"`
+	NextSendAt      *string  `json:"nextSendAt"`
+	LastSentAt      *string  `json:"lastSentAt"`
+	LastStatus      *string  `json:"lastStatus"`
+	LastError       *string  `json:"lastError"`
+	CreatedByUserID *string  `json:"createdByUserId"`
+	CreatedAt       string   `json:"createdAt"`
+	UpdatedAt       string   `json:"updatedAt"`
+}
+
 /* ------------------------------ cost settings ------------------------------ */
 
 // CostAnomalySettings is the org singleton tuning spike detection. Every field

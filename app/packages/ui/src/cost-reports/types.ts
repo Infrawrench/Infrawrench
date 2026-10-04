@@ -60,6 +60,11 @@ export interface CostReportsClient extends CostApi {
     input: ReportNotificationInput,
   ): Promise<ReportNotification>;
   deleteReportNotification?(reportId: string, notificationId: string): Promise<void>;
+  /**
+   * Render the report server-side as a PDF and save it (`costs:read`). The
+   * host owns the transport and the download; omit it to hide the button.
+   */
+  downloadReportPdf?(reportId: string, reportName: string): Promise<void>;
   /** Run the report and deliver it to this schedule's destinations now. */
   sendReportNotificationNow?(
     reportId: string,

@@ -363,7 +363,9 @@ export async function runReportNotification(
   row: ReportNotificationRecord,
   now = new Date(),
 ): Promise<void> {
-  const report = await loadLiveReport(row.organizationId, row.costReportId);
+  const report = row.costReportId
+    ? await loadLiveReport(row.organizationId, row.costReportId)
+    : null;
   if (!report) {
     // The report was soft-deleted under the schedule (the hard-delete case is
     // the FK cascade). Park the row instead of retrying forever.

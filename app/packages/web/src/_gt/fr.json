@@ -11574,5 +11574,18 @@
   "18afcdb93ecdf4d0": "Toutes les factures",
   "94520dbbca1d7863": "Corrige une facture antérieure, annulée",
   "d6a4cd7075b18c20": "Image : {label}",
-  "bdce93bfb9fe6d14": "sans titre"
+  "bdce93bfb9fe6d14": "sans titre",
+  "356d266f78f6652d": "Préparation du PDF…",
+  "dda86e16901b97e4": "Télécharger le PDF",
+  "27ff6e9f957094c0": "Impossible d’exporter le rapport en PDF : {error}",
+  "4b6cf290dc1a0ecc": "Envoyez ce tableau de bord selon un calendrier vers Slack, Microsoft Teams ou par e-mail. À chaque envoi, il est rendu en PDF, joint aux e-mails et téléversé sur Slack ; Microsoft Teams reçoit un résumé et un lien.",
+  "fdeec995eecb15b9": "À chaque envoi, le tableau de bord est rendu en PDF côté serveur. Le téléverser sur Slack nécessite la portée files:write de l’application Slack ; si le fichier n’arrive pas, reconnectez Slack depuis les Paramètres.",
+  "859d64d84b6e56e0": "Impossible d’exporter le tableau de bord en PDF",
+  "011ea51147bba844": "Planifier l’envoi",
+  "dd9eea3c6b597b77": "Envoi planifié",
+  "032f2f09d87ab3c1": "Le PDF n’a pas atteint {count} canal(aux) Slack ; reconnectez Slack pour autoriser le téléversement de fichiers.",
+  "6b48cdd344365e3a": "PDF joint.",
+  "64015a156944ae8c": "PDF joint",
+  "9e7c7cd1adda1e85": "Joindre le PDF",
+  "d42f2c17613db382": "Joint aux e-mails et téléversé sur Slack. Microsoft Teams reçoit le résumé et un lien."
 }

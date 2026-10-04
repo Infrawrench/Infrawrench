@@ -89,7 +89,7 @@ Each schedule has:
 - **A local hour and time zone** — 08:00 in `Europe/Berlin` stays 08:00 through daylight-saving changes.
 - **Destinations** — any mix of the org's connected Slack channels, its Teams webhooks, and a list of email addresses (which can reach a finance alias with no Infrawrench login). A schedule can only point at Slack and Teams surfaces the org already connected.
 
-What arrives is a composed text summary: the report's total for its window (converted to your [display currency](./cloud-costs.md) where one is configured, with the conversion caveat spelled out), the change against the previous period, the top groups, and a link to the live report. **No chart images** — that is a deliberate scope line, not an omission: the message carries the numbers, and the link carries the picture; an image-rendering pipeline is a feature of its own.
+What arrives is a composed text summary: the report's total for its window (converted to your [display currency](./cloud-costs.md) where one is configured, with the conversion caveat spelled out), the change against the previous period, the top groups, and a link to the live report. The message itself carries no chart: it carries the numbers, and the link carries the picture. For the picture on paper, **Download PDF** on the report page renders the chart and its totals table as a PDF; to send charts on a schedule, put the report on a dashboard and [schedule the dashboard](./dashboard-pdf.md#schedule-a-dashboard), which attaches the whole dashboard as a PDF.
 
 Two behaviours worth knowing:
 
@@ -154,6 +154,7 @@ infrawrench reports                     # every saved report, with its folder, s
 infrawrench reports "Monthly spend"     # run it and chart it in the terminal
 infrawrench reports "Monthly spend" --json
 infrawrench reports send "Monthly spend"  # deliver it to its schedules right now
+infrawrench reports "Monthly spend" --format pdf  # write monthly-spend.pdf (or --out <path>)
 ```
 
 The `delivery` column shows each report's schedules and calls out failing ones; `reports send` is behind an explicit verb because it posts into channels and inboxes.

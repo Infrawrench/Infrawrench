@@ -552,6 +552,52 @@ func (c *Client) DeleteReportNotification(ctx context.Context, reportID, id stri
 	return c.Delete(ctx, "/cost-reports/"+seg(reportID)+"/notifications/"+seg(id))
 }
 
+/* ------------------------- dashboard notifications ------------------------- */
+//
+// The same shape as report notifications, nested under a dashboard instead of
+// a report, so the Terraform resource imports as "dashboardId/notificationId".
+
+func (c *Client) ListDashboardNotifications(ctx context.Context, dashboardID string) ([]DashboardNotification, error) {
+	var out []DashboardNotification
+	err := c.Get(ctx, "/dashboards/"+seg(dashboardID)+"/notifications", &out)
+	return out, err
+}
+
+// GetDashboardNotification lists a dashboard's schedules and filters: there is
+// no single-GET route for one schedule.
+func (c *Client) GetDashboardNotification(ctx context.Context, dashboardID, id string) (*DashboardNotification, error) {
+	all, err := c.ListDashboardNotifications(ctx, dashboardID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/dashboards/"+seg(dashboardID)+"/notifications", id)
+}
+
+func (c *Client) CreateDashboardNotification(ctx context.Context, dashboardID string, in DashboardNotificationInput) (*DashboardNotification, error) {
+	var out DashboardNotification
+	if err := c.Post(ctx, "/dashboards/"+seg(dashboardID)+"/notifications", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateDashboardNotification(ctx context.Context, dashboardID, id string, in DashboardNotificationInput) (*DashboardNotification, error) {
+	var out DashboardNotification
+	if err := c.Put(ctx, "/dashboards/"+seg(dashboardID)+"/notifications/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteDashboardNotification(ctx context.Context, dashboardID, id string) error {
+	return c.Delete(ctx, "/dashboards/"+seg(dashboardID)+"/notifications/"+seg(id))
+}
+
 /* ------------------------------ cost settings ------------------------------ */
 
 func (c *Client) GetAnomalySettings(ctx context.Context) (*CostAnomalySettings, error) {

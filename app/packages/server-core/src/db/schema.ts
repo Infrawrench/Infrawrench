@@ -4078,6 +4078,15 @@ export const costExports = pgTable(
  * and the claim lease; null while disabled, pushed a lease ahead by the
  * claim, replaced with the true next fire (or a bounded retry backoff) when
  * the run records its outcome.
+ *
+ * **Dashboard schedules share this table.** A row targets exactly one of
+ * `cost_report_id` or `dashboard_id` (the `report_notifications_one_target`
+ * check): same cadence, same destinations, same status bookkeeping, same
+ * claim protocol. A dashboard row's payload is the dashboard rendered as a
+ * PDF (attached when `attach_pdf`), and because that renderer needs the web
+ * app's query services the dashboard rows are claimed by the web process's
+ * delivery loop, while the poller keeps claiming the report rows; each claim
+ * filters on its own target column, so the two never contend for a row.
  */
 export const reportNotifications = pgTable(
   "report_notifications",
@@ -4086,10 +4095,24 @@ export const reportNotifications = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** See the table comment: the cascade is the design. */
-    costReportId: text("cost_report_id")
-      .notNull()
-      .references(() => costReports.id, { onDelete: "cascade" }),
+    /**
+     * See the table comment: the cascade is the design. Null on a dashboard
+     * schedule.
+     */
+    costReportId: text("cost_report_id").references(() => costReports.id, {
+      onDelete: "cascade",
+    }),
+    /**
+     * The dashboard a dashboard schedule delivers; null on a report schedule.
+     * Cascades for the same reason `cost_report_id` does (dashboards are hard
+     * deleted, so the FK is the whole cleanup).
+     */
+    dashboardId: text("dashboard_id").references(() => dashboards.id, { onDelete: "cascade" }),
+    /**
+     * Attach the rendered PDF (email attachment, Slack file upload). Only read
+     * for dashboard schedules; report schedules send their text summary.
+     */
+    attachPdf: boolean("attach_pdf").notNull().default(false),
     /** `daily` | `weekly` | `monthly`. */
     cadence: text("cadence").notNull().default("weekly"),
     /** ISO day of week (1 = Monday … 7 = Sunday); read only when `cadence` is weekly. */
@@ -4143,6 +4166,12 @@ export const reportNotifications = pgTable(
     orgIdx: index("report_notifications_org_idx").on(t.organizationId),
     /** The report page lists one report's schedules. */
     reportIdx: index("report_notifications_report_idx").on(t.costReportId),
+    /** The dashboard's delivery modal lists one dashboard's schedules. */
+    dashboardIdx: index("report_notifications_dashboard_idx").on(t.dashboardId),
+    oneTarget: check(
+      "report_notifications_one_target",
+      sql`num_nonnulls(${t.costReportId}, ${t.dashboardId}) = 1`,
+    ),
     /** The poller's due scan. */
     dueIdx: index("report_notifications_due_idx").on(t.nextSendAt),
     hourRange: check("report_notifications_hour_range", sql`${t.hour} >= 0 AND ${t.hour} <= 23`),

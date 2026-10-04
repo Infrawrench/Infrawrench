@@ -51,7 +51,9 @@ function asStringArray(raw: unknown): string[] {
 export function toReportNotificationView(row: ReportNotificationRecord): ReportNotification {
   return {
     id: row.id,
-    costReportId: row.costReportId,
+    // Report rows only reach this view (every caller filters on the report
+    // column); dashboard rows go through `toDashboardNotificationView`.
+    costReportId: row.costReportId ?? "",
     cadence: row.cadence as ReportNotificationCadence,
     sendDay: row.sendDay,
     sendDayOfMonth: row.sendDayOfMonth,
@@ -116,7 +118,7 @@ export async function requireLiveReport(
  * Validation
  * ------------------------------------------------------------------ */
 
-interface NormalizedInput {
+export interface NormalizedInput {
   cadence: ReportNotificationCadence;
   sendDay: number;
   sendDayOfMonth: number;
@@ -128,7 +130,7 @@ interface NormalizedInput {
   enabled: boolean;
 }
 
-async function normalizeInput(
+export async function normalizeInput(
   organizationId: string,
   input: ReportNotificationInput,
 ): Promise<NormalizedInput> {

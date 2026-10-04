@@ -48,6 +48,11 @@ import {
   costReportNotificationRoutes,
   orgReportNotificationRoutes,
 } from "./routes/cost-report-notifications";
+import {
+  costReportPdfRoutes,
+  dashboardNotificationRoutes,
+  orgDashboardNotificationRoutes,
+} from "./routes/dashboard-notifications";
 import { costReportFolderRoutes } from "./routes/cost-report-folders";
 import { costAnnotationRoutes } from "./routes/cost-annotations";
 import { costExportRoutes } from "./routes/cost-exports";
@@ -343,6 +348,12 @@ orgScoped.route("/cost-reports", costReportRoutes);
 // never collide with /cost-reports/:id.
 orgScoped.route("/cost-reports", costReportNotificationRoutes);
 orgScoped.route("/cost-report-notifications", orgReportNotificationRoutes);
+// PDF export (`/:id/pdf`) and dashboard delivery schedules (`/:id/notifications…`)
+// share their parents' prefixes the same way; the org-wide schedule list gets
+// its own.
+orgScoped.route("/cost-reports", costReportPdfRoutes);
+orgScoped.route("/dashboards", dashboardNotificationRoutes);
+orgScoped.route("/dashboard-notifications", orgDashboardNotificationRoutes);
 orgScoped.route("/cost-report-folders", costReportFolderRoutes);
 // Dated notes drawn over cost charts. Its own prefix rather than a child of
 // /cost-reports: an annotation with no report id is org-wide and belongs to

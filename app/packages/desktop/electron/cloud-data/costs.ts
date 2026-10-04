@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { cloudFetch } from "./shared";
+import { cloudFetch, cloudFetchBytes } from "./shared";
 
 // Cost graphs, budgets, and dashboard widgets: cloud-mode only (there is no
 // local-SQLite equivalent; cost data lives in the cloud ClickHouse store).
@@ -491,6 +491,135 @@ ipcMain.handle(
     return cloudFetch(
       orgId,
       `/cost-reports/${encodeURIComponent(reportId)}/notifications/${encodeURIComponent(notificationId)}/send`,
+      { method: "POST" },
+    );
+  },
+);
+
+/* ------------------------------------------------------------------ *
+ * PDF export: a cost report or a dashboard rendered server-side. Bytes,
+ * not JSON; the renderer turns them into a download.
+ * ------------------------------------------------------------------ */
+
+/**
+ * `?tz=` with the local zone, so the PDF's "generated at" line reads in the
+ * user's time. client-core's `withPdfTimezone`, re-derived here: this module
+ * graph is CommonJS and client-core is ESM (see `local-posture.ts`).
+ */
+function withPdfTimezone(path: string): string {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return tz ? `${path}?tz=${encodeURIComponent(tz)}` : path;
+}
+
+ipcMain.handle(
+  "cloud_cost_report_pdf",
+  async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
+    return cloudFetchBytes(
+      orgId,
+      withPdfTimezone(`/cost-reports/${encodeURIComponent(reportId)}/pdf`),
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_dashboard_pdf",
+  async (_e, { orgId, dashboardId }: { orgId: string; dashboardId: string }) => {
+    return cloudFetchBytes(
+      orgId,
+      withPdfTimezone(`/dashboards/${encodeURIComponent(dashboardId)}/pdf`),
+    );
+  },
+);
+
+/* ------------------------------------------------------------------ *
+ * Dashboard delivery schedules: the report-schedule proxy above, keyed by
+ * dashboard, with the PDF attached at each send. Reads dashboards:read,
+ * writes org:settings:write; the server enforces both.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle(
+  "cloud_list_dashboard_notifications",
+  async (_e, { orgId, dashboardId }: { orgId: string; dashboardId: string }) => {
+    return (
+      (await cloudFetch(orgId, `/dashboards/${encodeURIComponent(dashboardId)}/notifications`)) ??
+      []
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_dashboard_delivery_targets",
+  async (_e, { orgId, dashboardId }: { orgId: string; dashboardId: string }) => {
+    return cloudFetch(
+      orgId,
+      `/dashboards/${encodeURIComponent(dashboardId)}/notifications/targets`,
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_create_dashboard_notification",
+  async (
+    _e,
+    { orgId, dashboardId, input }: { orgId: string; dashboardId: string; input: unknown },
+  ) => {
+    return cloudFetch(orgId, `/dashboards/${encodeURIComponent(dashboardId)}/notifications`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_dashboard_notification",
+  async (
+    _e,
+    {
+      orgId,
+      dashboardId,
+      notificationId,
+      input,
+    }: { orgId: string; dashboardId: string; notificationId: string; input: unknown },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/dashboards/${encodeURIComponent(dashboardId)}/notifications/${encodeURIComponent(notificationId)}`,
+      { method: "PUT", body: JSON.stringify(input) },
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_dashboard_notification",
+  async (
+    _e,
+    {
+      orgId,
+      dashboardId,
+      notificationId,
+    }: { orgId: string; dashboardId: string; notificationId: string },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/dashboards/${encodeURIComponent(dashboardId)}/notifications/${encodeURIComponent(notificationId)}`,
+      { method: "DELETE" },
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_send_dashboard_notification",
+  async (
+    _e,
+    {
+      orgId,
+      dashboardId,
+      notificationId,
+    }: { orgId: string; dashboardId: string; notificationId: string },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/dashboards/${encodeURIComponent(dashboardId)}/notifications/${encodeURIComponent(notificationId)}/send`,
       { method: "POST" },
     );
   },

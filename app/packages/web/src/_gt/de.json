@@ -11574,5 +11574,18 @@
   "18afcdb93ecdf4d0": "Alle Rechnungen",
   "94520dbbca1d7863": "Korrigiert eine frühere, stornierte Rechnung",
   "d6a4cd7075b18c20": "Bild: {label}",
-  "bdce93bfb9fe6d14": "ohne Titel"
+  "bdce93bfb9fe6d14": "ohne Titel",
+  "356d266f78f6652d": "PDF wird erstellt…",
+  "dda86e16901b97e4": "PDF herunterladen",
+  "27ff6e9f957094c0": "Der Bericht konnte nicht als PDF exportiert werden: {error}",
+  "4b6cf290dc1a0ecc": "Senden Sie dieses Dashboard nach Zeitplan an Slack, Microsoft Teams oder per E-Mail. Bei jedem Versand wird es als PDF erstellt, an E-Mails angehängt und in Slack hochgeladen; Microsoft Teams erhält eine Zusammenfassung und einen Link.",
+  "fdeec995eecb15b9": "Bei jedem Versand wird das Dashboard serverseitig als PDF erstellt. Für den Upload in Slack benötigt die Slack-App den Scope files:write; kommt die Datei nicht an, verbinden Sie Slack in den Einstellungen erneut.",
+  "859d64d84b6e56e0": "Das Dashboard konnte nicht als PDF exportiert werden",
+  "011ea51147bba844": "Versand planen",
+  "dd9eea3c6b597b77": "Geplanter Versand",
+  "032f2f09d87ab3c1": "Das PDF hat {count} Slack-Kanal/-Kanäle nicht erreicht; verbinden Sie Slack erneut, um Datei-Uploads zu erlauben.",
+  "6b48cdd344365e3a": "PDF angehängt.",
+  "64015a156944ae8c": "PDF angehängt",
+  "9e7c7cd1adda1e85": "PDF anhängen",
+  "d42f2c17613db382": "Wird an E-Mails angehängt und in Slack hochgeladen. Microsoft Teams erhält die Zusammenfassung und einen Link."
 }

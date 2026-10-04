@@ -18,15 +18,18 @@ The install link is tied to you and to the browser that opens it, and it expires
 
 ![Settings → Notifications page showing the Slack section before connecting, with the Add to Slack button visible](https://agent-assets.infrawrench.com/docs-screenshots/features/slack-alerts/slack-before-connect.png)
 
-Infrawrench asks for five scopes and nothing else:
+Infrawrench asks for six scopes and nothing else:
 
-| Scope               | Why                                                         |
-| ------------------- | ----------------------------------------------------------- |
-| `chat:write`        | Post the alert messages                                     |
-| `chat:write.public` | Post to a public channel without having to be invited to it |
-| `channels:read`     | List public channels so you can pick one from a menu        |
-| `groups:read`       | List private channels the app has been invited to           |
-| `commands`          | Register the `/infrawrench` slash command                   |
+| Scope               | Why                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------- |
+| `chat:write`        | Post the alert messages                                                                     |
+| `chat:write.public` | Post to a public channel without having to be invited to it                                 |
+| `channels:read`     | List public channels so you can pick one from a menu                                        |
+| `groups:read`       | List private channels the app has been invited to                                           |
+| `commands`          | Register the `/infrawrench` slash command                                                   |
+| `files:write`       | Upload a [scheduled dashboard's PDF](./dashboard-pdf.md) into the delivery message's thread |
+
+Workspaces connected before `files:write` was added keep working: scheduled dashboard deliveries still post their summary and link, just without the PDF. Disconnect and reconnect Slack to grant the new scope.
 
 It never reads message history and never posts as you — messages come from the Infrawrench app itself.
 

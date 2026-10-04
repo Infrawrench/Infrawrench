@@ -690,6 +690,22 @@ function ReportDetail({
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
   const gt = useGT();
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  async function downloadPdf() {
+    if (!client.downloadReportPdf) return;
+    setPdfBusy(true);
+    setPdfError(null);
+    try {
+      await client.downloadReportPdf(report.id, report.name);
+    } catch (e: unknown) {
+      setPdfError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
@@ -715,6 +731,17 @@ function ReportDetail({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
+          {client.downloadReportPdf && (
+            <button
+              type="button"
+              disabled={pdfBusy}
+              aria-busy={pdfBusy}
+              onClick={() => void downloadPdf()}
+              className="hover:text-on-surface-secondary underline disabled:opacity-50"
+            >
+              {pdfBusy ? gt("Preparing PDF…") : gt("Download PDF")}
+            </button>
+          )}
           {canPlace && (
             <button
               type="button"
@@ -754,6 +781,12 @@ function ReportDetail({
           )}
         </div>
       </div>
+
+      {pdfError !== null && (
+        <div role="alert" className="text-sm text-danger">
+          {gt("Couldn't export the report as a PDF: {error}", { error: pdfError })}
+        </div>
+      )}
 
       {/*
         Same height trick the Costs panel uses: the card draws into a

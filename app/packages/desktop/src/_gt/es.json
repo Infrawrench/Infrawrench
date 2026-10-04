@@ -11361,5 +11361,18 @@
   "94520dbbca1d7863": "Corrige una factura anterior y anulada",
   "3ae5faf47d1cef31": "Se omitieron {count} archivo(s) con nombres que no se pueden guardar localmente de forma segura",
   "d6a4cd7075b18c20": "Imagen: {label}",
-  "bdce93bfb9fe6d14": "sin título"
+  "bdce93bfb9fe6d14": "sin título",
+  "356d266f78f6652d": "Preparando PDF…",
+  "dda86e16901b97e4": "Descargar PDF",
+  "27ff6e9f957094c0": "No se pudo exportar el informe como PDF: {error}",
+  "4b6cf290dc1a0ecc": "Envía este panel de forma programada a Slack, Microsoft Teams o por correo. En cada envío se genera un PDF, que se adjunta a los correos y se sube a Slack; Microsoft Teams recibe un resumen y un enlace.",
+  "fdeec995eecb15b9": "En cada envío, el panel se genera como PDF en el servidor. Subirlo a Slack requiere el permiso files:write de la app de Slack; si el archivo no llega, vuelve a conectar Slack desde Configuración.",
+  "859d64d84b6e56e0": "No se pudo exportar el panel como PDF",
+  "011ea51147bba844": "Programar envío",
+  "dd9eea3c6b597b77": "Envío programado",
+  "032f2f09d87ab3c1": "El PDF no llegó a {count} canal(es) de Slack; vuelve a conectar Slack para permitir la subida de archivos.",
+  "6b48cdd344365e3a": "PDF adjunto.",
+  "64015a156944ae8c": "PDF adjunto",
+  "9e7c7cd1adda1e85": "Adjuntar PDF",
+  "d42f2c17613db382": "Se adjunta a los correos y se sube a Slack. Microsoft Teams recibe el resumen y un enlace."
 }

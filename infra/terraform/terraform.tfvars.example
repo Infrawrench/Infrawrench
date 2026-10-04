@@ -148,7 +148,9 @@ app_env = {
   #
   # The Slack app needs: redirect URL <APP_URL>/api/slack/oauth/callback, bot
   # scopes chat:write / chat:write.public / channels:read / groups:read /
-  # commands, public distribution ON (each org installs into its own
+  # commands / files:write (files:write uploads scheduled dashboard PDFs; an
+  # install without it still gets the message, just not the file), public
+  # distribution ON (each org installs into its own
   # workspace), and token rotation OFF — the bot token is stored once and
   # never refreshed.
   SLACK_CLIENT_ID     = "1234567890.1234567890"
@@ -189,6 +191,14 @@ app_env = {
   MAILGUN_DOMAIN  = "mg.infrawrench.com"
   EMAIL_FROM      = "Infrawrench <digest@mg.infrawrench.com>"
   # MAILGUN_API_BASE = "https://api.eu.mailgun.net"
+
+  # Scheduled dashboard delivery. Optional: the web pods run the delivery loop
+  # (it renders dashboard PDFs with the web app's own query services) unless
+  # this is "1". Leave it unset in production; set it on an environment that
+  # shares a database with production but must never send. Without it set to
+  # "1", due dashboard schedules are delivered by whichever web replica claims
+  # them first.
+  # DASHBOARD_DELIVERY_DISABLED = "1"
 
   # Workflow and chat outbound HTTP. `fetch()` inside a workflow, and the chat
   # agent's `web_fetch` tool, are both performed by the egress proxy Worker

@@ -11361,5 +11361,18 @@
   "94520dbbca1d7863": "更正了之前一张已作废的发票",
   "3ae5faf47d1cef31": "已跳过 {count} 个文件名无法安全保存到本地的文件",
   "d6a4cd7075b18c20": "图片：{label}",
-  "bdce93bfb9fe6d14": "无标题"
+  "bdce93bfb9fe6d14": "无标题",
+  "356d266f78f6652d": "正在准备 PDF…",
+  "dda86e16901b97e4": "下载 PDF",
+  "27ff6e9f957094c0": "无法将报告导出为 PDF：{error}",
+  "4b6cf290dc1a0ecc": "按计划将此仪表板发送到 Slack、Microsoft Teams 或电子邮件。每次发送时都会生成 PDF，附加到电子邮件并上传到 Slack；Microsoft Teams 会收到摘要和链接。",
+  "fdeec995eecb15b9": "每次发送时，仪表板都会在服务器端生成 PDF。上传到 Slack 需要 Slack 应用的 files:write 权限范围；如果文件未送达，请在设置中重新连接 Slack。",
+  "859d64d84b6e56e0": "无法将仪表板导出为 PDF",
+  "011ea51147bba844": "计划发送",
+  "dd9eea3c6b597b77": "定时发送",
+  "032f2f09d87ab3c1": "PDF 未送达 {count} 个 Slack 频道；请重新连接 Slack 以授予文件上传权限。",
+  "6b48cdd344365e3a": "已附加 PDF。",
+  "64015a156944ae8c": "已附加 PDF",
+  "9e7c7cd1adda1e85": "附加 PDF",
+  "d42f2c17613db382": "附加到电子邮件并上传到 Slack。Microsoft Teams 会收到摘要和链接。"
 }

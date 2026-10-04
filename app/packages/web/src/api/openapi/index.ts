@@ -16,6 +16,7 @@ import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerCostReportPaths } from "./paths/cost-reports";
 import { registerCostReportNotificationPaths } from "./paths/cost-report-notifications";
+import { registerDashboardNotificationPaths } from "./paths/dashboard-notifications";
 import { registerCostReportFolderPaths } from "./paths/cost-report-folders";
 import { registerCostAnnotationPaths } from "./paths/cost-annotations";
 import { registerCostExportPaths } from "./paths/cost-exports";
@@ -155,6 +156,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostPaths(ctx);
   registerCostReportPaths(ctx);
   registerCostReportNotificationPaths(ctx);
+  registerDashboardNotificationPaths(ctx);
   registerCostReportFolderPaths(ctx);
   registerCostAnnotationPaths(ctx);
   registerCostExportPaths(ctx);

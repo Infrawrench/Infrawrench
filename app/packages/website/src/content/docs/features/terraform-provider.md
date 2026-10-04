@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 47 resources and 6 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 48 resources and 6 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -383,27 +383,28 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Cost allocation and reporting
 
-| Resource                                | Manages                                                                           |
-| --------------------------------------- | --------------------------------------------------------------------------------- |
-| `infrawrench_budget`                    | [Budgets](./cloud-costs.md#budgets) and their alert thresholds                    |
-| `infrawrench_cost_centre`               | [Cost centres](./tag-policy-and-showback.md)                                      |
-| `infrawrench_allocation_rule`           | The rules that map spend onto cost centres                                        |
-| `infrawrench_tag_policy`                | [Required tags](./tag-policy-and-showback.md) and their enforcement               |
-| `infrawrench_saved_filter`              | [Saved cost filters](./cloud-costs.md)                                            |
-| `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                 |
-| `infrawrench_cost_report_folder`        | Report folders                                                                    |
-| `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                           |
-| `infrawrench_cost_alert`                | [Cost change alerts](./cost-change-alerts.md)                                     |
-| `infrawrench_cost_annotation`           | Notes pinned to a date on cost charts                                             |
-| `infrawrench_scenario_model`            | [Scenario models](./scenario-models.md)                                           |
-| `infrawrench_billing_rule`              | [Billing rules](./billing-rules.md)                                               |
-| `infrawrench_cost_export`               | [Scheduled cost exports](./cost-exports.md)                                       |
-| `infrawrench_business_metric`           | [Unit-cost](./unit-costs.md) denominators — the definition, not the values        |
-| `infrawrench_managed_account`           | [Managed accounts](./managed-accounts.md) an MSP bills                            |
-| `infrawrench_currency_settings`         | The organization's display currency                                               |
-| `infrawrench_exchange_rate`             | One stated rate, effective from a day                                             |
-| `infrawrench_anomaly_settings`          | [Anomaly detection](./cost-anomaly-alerts.md) thresholds                          |
-| `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds |
+| Resource                                | Manages                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------- |
+| `infrawrench_budget`                    | [Budgets](./cloud-costs.md#budgets) and their alert thresholds                        |
+| `infrawrench_cost_centre`               | [Cost centres](./tag-policy-and-showback.md)                                          |
+| `infrawrench_allocation_rule`           | The rules that map spend onto cost centres                                            |
+| `infrawrench_tag_policy`                | [Required tags](./tag-policy-and-showback.md) and their enforcement                   |
+| `infrawrench_saved_filter`              | [Saved cost filters](./cloud-costs.md)                                                |
+| `infrawrench_cost_report`               | [Cost reports](./cost-reports.md)                                                     |
+| `infrawrench_cost_report_folder`        | Report folders                                                                        |
+| `infrawrench_cost_report_notification`  | Scheduled delivery of a report to Slack, Teams or email                               |
+| `infrawrench_dashboard_notification`    | Scheduled delivery of a [dashboard](./dashboard.md) as a PDF to Slack, Teams or email |
+| `infrawrench_cost_alert`                | [Cost change alerts](./cost-change-alerts.md)                                         |
+| `infrawrench_cost_annotation`           | Notes pinned to a date on cost charts                                                 |
+| `infrawrench_scenario_model`            | [Scenario models](./scenario-models.md)                                               |
+| `infrawrench_billing_rule`              | [Billing rules](./billing-rules.md)                                                   |
+| `infrawrench_cost_export`               | [Scheduled cost exports](./cost-exports.md)                                           |
+| `infrawrench_business_metric`           | [Unit-cost](./unit-costs.md) denominators — the definition, not the values            |
+| `infrawrench_managed_account`           | [Managed accounts](./managed-accounts.md) an MSP bills                                |
+| `infrawrench_currency_settings`         | The organization's display currency                                                   |
+| `infrawrench_exchange_rate`             | One stated rate, effective from a day                                                 |
+| `infrawrench_anomaly_settings`          | [Anomaly detection](./cost-anomaly-alerts.md) thresholds                              |
+| `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds     |
 
 ### Monitoring
 

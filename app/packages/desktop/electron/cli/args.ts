@@ -110,9 +110,13 @@ export interface DeployFlags {
   created: boolean;
 }
 
-/** Flags for `export`. */
+/** Flags for `export`, and `--format pdf` on `reports`/`dashboards <name|id>`. */
 interface ExportFlags {
-  /** Export format. Only "terraform" today; validated in the command. */
+  /**
+   * Output format, validated in the command: "terraform" for `export`, "pdf"
+   * for `reports`/`dashboards <name|id>` (which write to `--out`/`--file`,
+   * read from `config`).
+   */
   format?: string | undefined;
 }
 
@@ -169,7 +173,10 @@ export interface DiffFlags {
 export interface ConfigFlags {
   /** `--file <path>`; stdin when omitted (apply/plan), stdout (export). */
   file?: string | undefined;
-  /** `--out <path>` for export: `--file` also works, this is the readable name. */
+  /**
+   * `--out <path>` for export: `--file` also works, this is the readable name.
+   * Also the PDF destination for `reports`/`dashboards <name|id> --format pdf`.
+   */
   out?: string | undefined;
   /** `--sections a,b`: narrow the export, or the document sent to plan/apply. */
   sections?: string | undefined;
