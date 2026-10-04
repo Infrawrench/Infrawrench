@@ -137,6 +137,7 @@ describe("SSH endpoint parity", () => {
     "neon",
     "circleci",
     "planetscale",
+    "redis-cloud",
     "turso",
     "kubernetes",
     "databricks",

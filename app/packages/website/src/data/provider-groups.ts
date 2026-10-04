@@ -283,6 +283,21 @@ export const providerGroups: ProviderGroup[] = [
         resources: ["Database", "Branch"],
       },
       {
+        name: "Redis Cloud",
+        detail: "Subscriptions, databases, billed cost, ACLs",
+        resources: [
+          "Subscription",
+          "Database",
+          "VPC Peering",
+          "Transit Gateway",
+          "Private Service Connect",
+          "ACL Rule",
+          "ACL Role",
+          "ACL User",
+          "Cloud Account",
+        ],
+      },
+      {
         name: "Turso",
         detail: "Groups and databases",
         resources: ["Group", "Database"],

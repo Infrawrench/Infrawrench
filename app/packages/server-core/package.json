@@ -275,6 +275,7 @@
     "@infrawrench/plugin-planetscale": "workspace:*",
     "@infrawrench/plugin-postgres": "workspace:*",
     "@infrawrench/plugin-redis": "workspace:*",
+    "@infrawrench/plugin-redis-cloud": "workspace:*",
     "@infrawrench/plugin-replicate": "workspace:*",
     "@infrawrench/plugin-revai": "workspace:*",
     "@infrawrench/plugin-scaleway": "workspace:*",

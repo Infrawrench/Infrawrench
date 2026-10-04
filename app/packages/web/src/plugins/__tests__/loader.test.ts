@@ -60,6 +60,7 @@ describe("plugin loader", () => {
       "coreweave",
       "turso",
       "planetscale",
+      "redis-cloud",
       "azure",
       "kafka",
       "linode",

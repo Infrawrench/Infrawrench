@@ -164,6 +164,7 @@ export const typewriterStrings: string[] = [
   "Neon Endpoints",
   "Neon Databases",
   "PlanetScale Branches",
+  "Redis Cloud Databases",
   "Turso Groups",
   "OpenAI Fine-tunes",
   "OpenAI Vector Stores",

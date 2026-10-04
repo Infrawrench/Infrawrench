@@ -102,6 +102,8 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   github: ["api.github.com", "*.ghe.com", "*.githubusercontent.com"],
   netlify: ["api.netlify.com"],
   planetscale: ["api.planetscale.com"],
+  // REST API, plus the subscriptions' Prometheus endpoints on the internal network.
+  "redis-cloud": ["api.redislabs.com", "*.rlrcp.com"],
   cloudflare: ["api.cloudflare.com"],
   cloudinary: ["api.cloudinary.com"],
   crusoe: ["api.cloud.crusoe.ai"],

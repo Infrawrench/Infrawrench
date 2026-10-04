@@ -28,6 +28,7 @@ import { plugin as depotPlugin } from "@infrawrench/plugin-depot";
 import { plugin as coreweavePlugin } from "@infrawrench/plugin-coreweave";
 import { plugin as tursoPlugin } from "@infrawrench/plugin-turso";
 import { plugin as planetscalePlugin } from "@infrawrench/plugin-planetscale";
+import { plugin as redisCloudPlugin } from "@infrawrench/plugin-redis-cloud";
 import { plugin as azurePlugin } from "@infrawrench/plugin-azure";
 import { plugin as flyPlugin } from "@infrawrench/plugin-fly";
 import { plugin as githubPlugin } from "@infrawrench/plugin-github";
@@ -98,6 +99,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   coreweavePlugin,
   tursoPlugin,
   planetscalePlugin,
+  redisCloudPlugin,
   azurePlugin,
   flyPlugin,
   githubPlugin,
