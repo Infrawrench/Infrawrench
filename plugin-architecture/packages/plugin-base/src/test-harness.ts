@@ -27,6 +27,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   digitalocean: { apiToken: "dop_v1_test" },
   hetzner: { apiToken: "test-token" },
+  linode: { apiToken: "test-linode-token" },
   scaleway: { accessKey: "SCWTEST", secretKey: "test-uuid", defaultProjectId: "test-project-id" },
   ovh: {
     applicationKey: "test",
@@ -34,6 +35,13 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     consumerKey: "test",
     endpoint: "eu",
     projectId: "12345678-abcd-1234-abcd-1234567890ab",
+  },
+  "oracle-cloud": {
+    tenancyOcid: "ocid1.tenancy.oc1..aaaaaaaatest",
+    userOcid: "ocid1.user.oc1..aaaaaaaatest",
+    fingerprint: "12:34:56:78:9a:bc:de:f0:12:34:56:78:9a:bc:de:f0",
+    privateKey: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----",
+    region: "us-ashburn-1",
   },
   kubernetes: { kubeconfig: "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []" },
   postgres: { connectionString: "postgresql://user:pass@localhost:5432/db" },
@@ -50,6 +58,10 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   openrouter: { managementKey: "sk-or-v1-test-management", apiKey: "sk-or-v1-test-inference" },
   opensearch: { endpoint: "https://search.example.com:9200", authMode: "basic" },
   neon: { apiKey: "neon_test_key" },
+  circleci: {
+    apiToken: "test-circleci-token",
+    organization: "00000000-0000-0000-0000-000000000001",
+  },
   planetscale: {
     serviceTokenId: "test-id",
     serviceTokenSecret: "test-secret",
@@ -71,7 +83,12 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   tailscale: { apiKey: "tskey-api-test", tailnet: "-" },
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
+  depot: { token: "test-depot-org-token", plan: "startup" },
   deepgram: { apiKey: "test-deepgram-key" },
+  github: { token: "github_pat_test", host: "github.com", owner: "org:octo-org" },
+  crusoe: { accessKeyId: "TESTACCESSKEY", secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM" },
+  coreweave: { apiToken: "CW-SECRET-test" },
+  modal: { tokenId: "ak-test-modal", tokenSecret: "as-test-modal" },
   azure: {
     tenantId: "test-tenant-id",
     clientId: "test-client-id",
@@ -90,6 +107,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   cohere: { apiKey: "test-cohere-key" },
   cursor: { apiKey: "crsr_test" },
   deepseek: { apiKey: "sk-test-deepseek-key" },
+  devin: { apiKey: "cog_test_devin_key" },
   elevenlabs: { apiKey: "sk_test_elevenlabs_key" },
   gemini: { apiKey: "AIzaSyTestGeminiApiKey0000000000000000000" },
   gladia: { apiKey: "test-gladia-key" },

@@ -4,7 +4,7 @@ description: Open a shell in any VM you can reach over SSH, without leaving the 
 sidebar_order: 3
 ---
 
-Any resource that represents a VM — EC2 instance, GCP instance, DigitalOcean Droplet, Hetzner server, Scaleway instance, Fly machine, generic SSH host — has an **Open SSH tab** button on its detail page. Clicking it opens a terminal (xterm.js) in a workspace tab of its own, titled `SSH: <resource>`, alongside the resource's own tab in the strip. The terminal fills that tab; it is not a panel beside the resource view.
+Any resource that represents a VM — EC2 instance, GCP instance, DigitalOcean Droplet, Hetzner server, Crusoe VM, Scaleway instance, Fly machine, generic SSH host — has an **Open SSH tab** button on its detail page. Clicking it opens a terminal (xterm.js) in a workspace tab of its own, titled `SSH: <resource>`, alongside the resource's own tab in the strip. The terminal fills that tab; it is not a panel beside the resource view.
 
 ![The Droplet's resource tab and its SSH tab side by side in the tab strip, with a live terminal session open on api-prod-1](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-terminal/live-session.png)
 
