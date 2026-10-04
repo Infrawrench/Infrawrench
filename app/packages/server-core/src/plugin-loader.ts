@@ -33,6 +33,7 @@ import { plugin as flyPlugin } from "@infrawrench/plugin-fly";
 import { plugin as vercelPlugin } from "@infrawrench/plugin-vercel";
 import { plugin as netlifyPlugin } from "@infrawrench/plugin-netlify";
 import { plugin as cloudinaryPlugin } from "@infrawrench/plugin-cloudinary";
+import { plugin as circleciPlugin } from "@infrawrench/plugin-circleci";
 import { plugin as clickhousePlugin } from "@infrawrench/plugin-clickhouse";
 import { plugin as crusoePlugin } from "@infrawrench/plugin-crusoe";
 import { plugin as opensearchPlugin } from "@infrawrench/plugin-opensearch";
@@ -99,6 +100,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   vercelPlugin,
   netlifyPlugin,
   cloudinaryPlugin,
+  circleciPlugin,
   clickhousePlugin,
   crusoePlugin,
   opensearchPlugin,

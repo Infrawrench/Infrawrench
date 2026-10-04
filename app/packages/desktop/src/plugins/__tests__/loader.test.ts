@@ -71,6 +71,7 @@ vi.mock("@infrawrench/plugin-fly", () => stub("fly"));
 vi.mock("@infrawrench/plugin-vercel", () => stub("vercel"));
 vi.mock("@infrawrench/plugin-netlify", () => stub("netlify"));
 vi.mock("@infrawrench/plugin-cloudinary", () => stub("cloudinary"));
+vi.mock("@infrawrench/plugin-circleci", () => stub("circleci"));
 vi.mock("@infrawrench/plugin-clickhouse", () => stub("clickhouse"));
 vi.mock("@infrawrench/plugin-crusoe", () => stub("crusoe"));
 vi.mock("@infrawrench/plugin-opensearch", () => stub("opensearch"));

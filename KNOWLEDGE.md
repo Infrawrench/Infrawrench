@@ -63,6 +63,8 @@ infrawrench/
 │   ├── oracle-cloud/         # @infrawrench/plugin-oracle-cloud
 │   ├── planetscale/          # @infrawrench/plugin-planetscale
 │   ├── workos/               # @infrawrench/plugin-workos
+│   ├── circleci/             # @infrawrench/plugin-circleci
+
 │   ├── devin/                # @infrawrench/plugin-devin (Devin AI engineer: ACU cost, sessions)
 │   │                         # AI / speech providers — see that section below
 │   ├── anthropic/            # @infrawrench/plugin-anthropic
@@ -129,7 +131,8 @@ pnpm workspaces + Turborepo. All package references use `workspace:*`.
 
 Key manifest fields:
 
-- `credentialFields` — what the host asks the user for when adding an account. Fields can be text, password (`sensitive: true`), multiline (`multiline: true`), region-pickers (`regions: …`), or account references (`accountReference: { pluginId }` — rendered as a dropdown of existing accounts of that plugin; used by the SSH plugin's "Connect through" jumpbox field). Set `optional: true` on fields the user may leave empty.
+- `credentialFields` — what the host asks the user for when adding an account. Fields can be text, password (`sensitive: true`), multiline (`multiline: true`), region-pickers (`regions: …`), or account references (`accountReference: { pluginId }` — rendered as a dropdown of existing accounts of that plugin; used by the SSH plugin's "Connect through" jumpbox field), or provider-filled pickers (`providerOptions: { dependsOn, emptyLabel? }` — the plugin's `Plugin.listCredentialOptions(fieldKey, credentials, services)` lists the choices once every `dependsOn` field has a value; used by CircleCI's organization picker, filled from the personal token). Set `optional: true` on fields the user may leave empty.
+  - **Provider-filled pickers** (`ProviderOptionsField` in `ui/src/components/`, used by both `AddAccountModal` and `EditCredentialsModal`): `listCredentialOptions` lives on the `Plugin`, not the client, because it runs before an account exists and `createClient` may require the very field being picked. Web loads through `POST /accounts/credential-options` (same server-credential policy and bastion validation as `/accounts/preflight`; when editing, `accountId` makes it egress through that account's own bastion binding, and the call runs inside `runInEgressScope`), desktop calls the plugin in the renderer like preflight. The field debounces on its dependencies, auto-picks a lone option, keeps an unknown current value selectable, and always falls back to a text input (on error, or via "Enter manually"), so a key that cannot list still saves. Mobile and the CLI do not add accounts, so they have nothing to mirror. The mechanism is copied verbatim from the New Relic branch so the two merge as a duplicate.
 - `sqlDriver?: SqlDriverDeclaration` — opts in to SQL editor; host routes IPC to the right SQL node driver
 - `kvDriver?: KvDriverDeclaration` — opts in to Redis-style KV console
 - `dockerDriver?: DockerDriverDeclaration` — opts in to Docker container management
@@ -1031,6 +1034,20 @@ Verified against Crusoe's published Swagger spec (`https://api.crusoecloud.com/v
 - Rate limit: 10 requests per 10 seconds per API key; max 100 API keys per org
 
 ---
+
+### CircleCI (`@infrawrench/plugin-circleci`)
+
+Verified against the v2 OpenAPI document (`circleci.com/api/v2/openapi.json`), the v3 spec (`circleci.com/fullopenapi.yaml`), the runner API reference and circleci-cli's `internal/apiclient/runner.go` (2026-10). Things the code does not make obvious:
+
+- **Three APIs, two auth headers.** v2 (`circleci.com/api/v2`) and the runner API (`runner.circleci.com/api/v3`) take the personal token as `Circle-Token`; v3 (`circleci.com/api/v3`) only accepts `Authorization: Bearer`, wraps everything in `{data}` and pages with `page[cursor]`. `api.ts` picks the header from the base URL. Project API tokens do not work on v2 at all, and personal tokens carry no scopes, so there is no preflight template.
+- **The organization picker stores the collaboration UUID** (`/me/collaborations` `id`, falling back to the slug when it is null), because the Usage API wants the UUID while Insights, pipelines and contexts want the slug; the client resolves the slug from the same list. `providerOptions` mechanism, see plugin-base above.
+- **v2 cannot list projects.** v3 `GET /projects?filter[org_id]=` gives ids and names but no slug. For `gh/`/`bb/` organizations the slug is the org slug plus the name; for GitHub App and standalone organizations (`circleci/<id>`) it is opaque, so it is learned from `GET /pipeline?org-slug=` and matched by name through `GET /project/{slug}`, falling back to `<org slug>/<project id>`. Without v3, Insights' `all_projects` names stand in.
+- **Cost is the Usage API, asynchronous**: POST an export job (≤ 31 days, ≤ 1 year back), poll, then download one or more presigned gzip CSVs (magic-byte checked, `DecompressionStream`, so it runs in both the renderer and Node) with UPPERCASE headers. Both endpoints are limited to about 10 calls an hour per organization (sources disagree: 10/hour vs 10/minute for GET), and the cost collector re-runs every month chunk when a backfill fails, so `maxHistoryDays: 180` keeps the first pass at seven exports; anything longer would 429 at the same chunk forever. Polls back off from 5 s to 4 min within a 20-minute budget, inside the poller's 30-minute lease.
+- **Credits, never money.** Rows are credits per day × kind (compute, DLC, storage, network, IP ranges, leases, users, plus `Other` for a total no known column explains) × project, resource class and executor tags, priced at the editable `pricePerCredit` credential ($0.0006 published). `includedCreditsPerMonth` (Free plan: 30,000) applies month-to-date differencing, which is why exports start on the 1st and `restatementDays` is 35. `estimated: true`.
+- **No credit balance and no rightsizing, both on purpose.** No public v2 or v3 endpoint exposes plan or remaining credits (open feature requests on ideas.circleci.com), so there is no `credits` capability. Per-job CPU/RAM utilisation does exist (usage CSV columns, experimental v3 `analysis/usage`), but the host's rightsizing contract needs an editable size field applied through `updateResource`, and a job's resource class lives in the repository's `config.yml`.
+- **Insights is daily-refreshed and 90 days deep**; workflow metrics come from the individual runs endpoint (bucketed to p50/p95/success/credits per day or hour), project metrics from summing the busiest ten workflows' job time series. No queue time anywhere; the runner API's unclaimed task count is the queue for self-hosted classes.
+- **Schedules vs triggers**: the schedule API covers GitHub OAuth and Bitbucket projects only; GitHub App and CircleCI projects use pipeline-definition triggers (`/projects/{project_id}/…`, UUID not slug), where a cron schedule is `event_source.provider: "schedule"`. Both are modelled, each with create/edit/delete. Runner resource classes and tokens are v3; `DELETE ?force=true` also revokes the class's tokens, and "Get credentials" mints a token through `exportCredential`.
+- **Trigger a pipeline** goes to `POST /project/{provider}/{org}/{project}/pipeline/run` and falls back to the legacy `POST /project/{slug}/pipeline` on a 400/404; a 200 with `{message}` means nothing was triggered and is surfaced as an error.
 
 ### Depot (`@infrawrench/plugin-depot`)
 
@@ -2864,6 +2881,8 @@ Two parallel integrations (`jira_*` / `linear_*` tables — deliberately not gen
 **devin** (Oct 2026) estimates cost from ACU consumption at a user-editable price per ACU, by product, with sessions as resources and user/playbook/session tag as tags; see the Devin section for why there is no billed-cost path.
 
 Cost collection added for **deepgram** (real USD daily), **elevenlabs** (money; successor endpoint is POST with an array `group_by`, so product type and region arrive together — on the deprecated fallback only _one_ breakdown is requested, since each is a complete decomposition and emitting both double-counts), **cartesia** (credits → money at the lowest published tier, `estimated`), **speechmatics** (hours → money; the endpoint returns a window aggregate with no buckets so daily rows are one request per day, `maxHistoryDays: 90` because history costs _requests_ here, `estimated`) and **hetzner** (inventory × `/v1/pricing`, `estimated`; emits rows **only for the day it runs** because a past month rebuilt from today's inventory omits everything deleted since — and traffic counters are _cumulative per billing period_, so those rows are dated to the period's first day and restated in place, `restatementDays: 31`; all money is scaled-integer, never float).
+
+**circleci** (Oct 2026) estimates cost from the Usage API's credits at a user-editable price per credit, by kind of credit with project, resource class and executor tags; see the CircleCI section for the export rate limit that caps the backfill at six months.
 
 **depot** (Oct 2026): usage × the plan picked on the account (fee + included minutes pool per cycle) × user-editable rates, `estimated`, by product, project resource and repo/workflow/runner tags; see the Depot section.
 **crusoe** (Oct 2026) reads billed spend: the per-resource on-demand/spot billing CSV plus Intelligence Billing JSON, by product line, region, resource and `project`/`model` tags; reservations surface as unit-only commitments (see the Crusoe Cloud section).

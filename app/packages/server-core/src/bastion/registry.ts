@@ -105,6 +105,9 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
   depot: ["api.depot.dev"],
   neon: ["console.neon.tech"],
+  // Usage export files download from presigned S3 links (bucket and region
+  // are CircleCI's choice, so the whole S3 suffix).
+  circleci: ["circleci.com", "runner.circleci.com", "*.amazonaws.com"],
   turso: ["api.turso.tech"],
   ovh: ["*.ovh.com"],
   // Every OCI service host sits under oraclecloud.com (identity, iaas,

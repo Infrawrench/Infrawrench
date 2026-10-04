@@ -43,6 +43,7 @@ describe("plugin loader", () => {
       "kubernetes",
       "memcached",
       "neon",
+      "circleci",
       "mongodb",
       "mysql",
       "postgres",

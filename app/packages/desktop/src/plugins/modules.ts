@@ -42,6 +42,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-vercel"),
   () => import("@infrawrench/plugin-netlify"),
   () => import("@infrawrench/plugin-cloudinary"),
+  () => import("@infrawrench/plugin-circleci"),
   () => import("@infrawrench/plugin-clickhouse"),
   () => import("@infrawrench/plugin-crusoe"),
   () => import("@infrawrench/plugin-opensearch"),
