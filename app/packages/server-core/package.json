@@ -239,6 +239,7 @@
     "@infrawrench/plugin-crusoe": "workspace:*",
     "@infrawrench/plugin-coreweave": "workspace:*",
     "@infrawrench/plugin-databricks": "workspace:*",
+    "@infrawrench/plugin-depot": "workspace:*",
     "@infrawrench/plugin-deepgram": "workspace:*",
     "@infrawrench/plugin-deepseek": "workspace:*",
     "@infrawrench/plugin-devin": "workspace:*",

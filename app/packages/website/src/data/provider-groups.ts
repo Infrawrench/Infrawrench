@@ -212,6 +212,18 @@ export const providerGroups: ProviderGroup[] = [
         detail: "Any Linux server",
         resources: ["SSH Terminal", "SSH Tunnel", "SFTP Browser"],
       },
+      {
+        name: "Depot",
+        detail: "Build spend by project, runner minutes by repo, cache resets",
+        resources: [
+          "Project",
+          "Build",
+          "Project Token",
+          "Trust Relationship",
+          "Registry Image",
+          "GitHub Actions Repository",
+        ],
+      },
     ],
   },
   {

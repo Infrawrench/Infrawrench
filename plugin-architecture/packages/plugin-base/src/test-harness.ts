@@ -79,6 +79,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   tailscale: { apiKey: "tskey-api-test", tailnet: "-" },
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
+  depot: { token: "test-depot-org-token", plan: "startup" },
   deepgram: { apiKey: "test-deepgram-key" },
   crusoe: { accessKeyId: "TESTACCESSKEY", secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM" },
   coreweave: { apiToken: "CW-SECRET-test" },

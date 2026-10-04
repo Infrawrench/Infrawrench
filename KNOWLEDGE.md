@@ -43,6 +43,7 @@ infrawrench/
 │   ├── docker/               # @infrawrench/plugin-docker
 │   ├── azure/                # @infrawrench/plugin-azure
 │   ├── databricks/           # @infrawrench/plugin-databricks
+│   ├── depot/                # @infrawrench/plugin-depot
 │   ├── turso/                # @infrawrench/plugin-turso
 │   ├── ssh/                  # @infrawrench/plugin-ssh
 │   ├── fly/                  # @infrawrench/plugin-fly
@@ -1031,6 +1032,16 @@ Verified against Crusoe's published Swagger spec (`https://api.crusoecloud.com/v
 
 ---
 
+### Depot (`@infrawrench/plugin-depot`)
+
+Verified against the generated Connect client in `github.com/depot/sdk-node` (`src/gen/depot/**`), depot.dev/pricing and the runner-types docs, 2026-10. Things the code does not make obvious:
+
+- **The API is Connect RPC, spoken as plain JSON.** `POST https://api.depot.dev/{package}.{Service}/{Method}` with a JSON body; no SDK dependency. Canonical proto3 JSON means camelCase names, RFC 3339 timestamps, enum value names (`STATUS_SUCCESS`, `HARDWARE_8X16`), uint64 as a string, and **default-valued fields omitted**, so every wire field is optional. All method names live in `RPC` in `api.ts`.
+- **Usage, never money.** `UsageService/GetUsage` answers one aggregate per `[start_at, end_at]` window (container build minutes per project _name_, Actions minutes per repo by workflow and runner, storage per type, sandbox minutes) with no daily buckets, so a cost day is a request (`maxHistoryDays: 90`). Depot's own example treats the end as inclusive, so `getUsage` sends `endMs - 1`. The plan is not exposed either: the account carries a **plan picker** (it reuses the credential field's `regions` list, the only static picker a credential field has) and a `key=value` **rate overrides** field, both editable from Edit credentials (`rates.ts`).
+- **Included minutes are a per-cycle pool**, so the collector always reads from the start of the cycle containing `fromDate` and accumulates; the billable part of a day is shared pro rata across that day's rows so per-project/repo amounts still sum. `minutes_billed` already includes the runner-size multiplier; macOS runners are priced from elapsed minutes at their flat rate and kept out of the pool. The plan fee is spread per day, only in cycles with any usage.
+- **Child resources carry their project in the external id** (`projectId/childId`) because builds, tokens, trust policies and image tags are addressed by project; build rows join cost by project id, mapped from the usage's project name via ListProjects.
+- **GitHub Actions repositories are not Depot objects**; they are listed from the current cycle's usage, because that is how the API attributes runner minutes.
+- Status: incident.io page (`/api/v2/incidents.json`, filtered to unresolved like Groq); the `us-east-1`/`eu-central-1` components map to project regions.
 ### Devin (`@infrawrench/plugin-devin`)
 
 Verified against the Devin v3 OpenAPI document (`https://docs.devin.ai/v3-openapi.json`) and the billing docs (2026-10). Things the code does not make obvious:
@@ -2854,6 +2865,7 @@ Two parallel integrations (`jira_*` / `linear_*` tables — deliberately not gen
 
 Cost collection added for **deepgram** (real USD daily), **elevenlabs** (money; successor endpoint is POST with an array `group_by`, so product type and region arrive together — on the deprecated fallback only _one_ breakdown is requested, since each is a complete decomposition and emitting both double-counts), **cartesia** (credits → money at the lowest published tier, `estimated`), **speechmatics** (hours → money; the endpoint returns a window aggregate with no buckets so daily rows are one request per day, `maxHistoryDays: 90` because history costs _requests_ here, `estimated`) and **hetzner** (inventory × `/v1/pricing`, `estimated`; emits rows **only for the day it runs** because a past month rebuilt from today's inventory omits everything deleted since — and traffic counters are _cumulative per billing period_, so those rows are dated to the period's first day and restated in place, `restatementDays: 31`; all money is scaled-integer, never float).
 
+**depot** (Oct 2026): usage × the plan picked on the account (fee + included minutes pool per cycle) × user-editable rates, `estimated`, by product, project resource and repo/workflow/runner tags; see the Depot section.
 **crusoe** (Oct 2026) reads billed spend: the per-resource on-demand/spot billing CSV plus Intelligence Billing JSON, by product line, region, resource and `project`/`model` tags; reservations surface as unit-only commitments (see the Crusoe Cloud section).
 
 **modal** (Oct 2026) reads the workspace billing report over Modal's gRPC API: daily cost per app/sandbox/volume by resource type (each GPU type, CPU, memory) with user tags, plus each cycle's credits and plan adjustments as charge-typed rows on the 1st, so months sum to the invoice (Team/Enterprise plans; see the Modal section).

@@ -69,6 +69,7 @@ export const typewriterStrings: string[] = [
   "Oracle Cloud Compute Instances",
   "Oracle Autonomous Databases",
   "Netlify Sites",
+  "Depot Projects",
   "Fly Apps",
   "Databricks Clusters",
   "Databricks SQL Warehouses",
