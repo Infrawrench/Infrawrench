@@ -29,6 +29,7 @@ The same panel generates the exact credential template for the capabilities you 
 - **AWS** — an IAM policy JSON document. Attach it as an inline policy on the IAM user or role whose keys you entered.
 - **GCP** — a custom role definition in YAML for `gcloud iam roles create --file`, then grant the role to the service account. (Cost reporting also needs the role, or BigQuery Data Viewer, on the billing export dataset.)
 - **Cloudflare** — a token template: the permission-group list plus a link that opens Cloudflare's token creator with those scopes pre-filled.
+- **Sentry**: the list of scopes to grant an internal integration (Settings, Developer Settings) or a personal token. Leave out the `:write` scopes for a read-only connection.
 
 ![Least-privilege template generator with the costs capability deselected and the generated AWS IAM policy JSON shown with a Copy button](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/credential-preflight/policy-template-generator.png)
 
@@ -36,10 +37,10 @@ Deselecting a capability removes its permissions from the template — least pri
 
 ## Which plugins support it
 
-[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), and [Cloudflare](../plugins/cloudflare.md) ship full support (checklist + generator) today. Each plugin page lists the exact permissions behind every capability. Other plugins simply don't show the panel — nothing changes for them until they declare their permission metadata.
+[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), [Cloudflare](../plugins/cloudflare.md) and [Sentry](../plugins/sentry.md) ship full support (checklist + generator) today. Each plugin page lists the exact permissions behind every capability. Other plugins simply don't show the panel — nothing changes for them until they declare their permission metadata.
 
 ## How it works
 
-- Probes are **read-only**: AWS uses `sts:GetCallerIdentity` plus `iam:SimulatePrincipalPolicy` (falling back to cheap sample reads when the simulator isn't allowed), GCP uses `projects.testIamPermissions`, Cloudflare verifies the token and issues one minimal read per capability.
+- Probes are **read-only**: AWS uses `sts:GetCallerIdentity` plus `iam:SimulatePrincipalPolicy` (falling back to cheap sample reads when the simulator isn't allowed), GCP uses `projects.testIamPermissions`, Cloudflare verifies the token and issues one minimal read per capability. Sentry reads the organization, then issues one minimal read per capability.
 - On the web app the probe runs server-side against the submitted or stored credentials — credentials never round-trip back to the browser. On desktop it runs locally, in-process, exactly like resource listing does.
 - Preflight results are computed on demand and not stored.

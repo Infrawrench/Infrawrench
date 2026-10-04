@@ -10,6 +10,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /accounts/plugins": "accounts:read",
   "GET /accounts/plugins/{pluginId}/policy-template": "accounts:read",
   "POST /accounts/preflight": "accounts:write",
+  "POST /accounts/credential-options": "accounts:write",
   "POST /accounts/{id}/preflight": "accounts:write",
   "GET /accounts": "accounts:read",
   "POST /accounts": "accounts:write",
