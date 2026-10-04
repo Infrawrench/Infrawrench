@@ -92,23 +92,35 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   digitalocean: ["api.digitalocean.com"],
   hetzner: ["api.hetzner.cloud", "robot-ws.your-server.de"],
+  // The REST API, Cloud Pulse metrics, and the pre-signed Object Storage
+  // URLs the bucket browser uploads to and deletes through.
+  linode: ["api.linode.com", "monitor-api.linode.com", "*.linodeobjects.com"],
   fly: ["api.machines.dev", "api.fly.io"],
   vercel: ["api.vercel.com"],
   netlify: ["api.netlify.com"],
   planetscale: ["api.planetscale.com"],
   cloudflare: ["api.cloudflare.com"],
   cloudinary: ["api.cloudinary.com"],
+  crusoe: ["api.cloud.crusoe.ai"],
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
   neon: ["console.neon.tech"],
   turso: ["api.turso.tech"],
   ovh: ["*.ovh.com"],
+  // Every OCI service host sits under oraclecloud.com (identity, iaas,
+  // database, objectstorage, telemetry, usageapi, usage, limits, query,
+  // containerengine); the public price list is on apexapps.oracle.com.
+  "oracle-cloud": ["*.oraclecloud.com", "apexapps.oracle.com"],
   scaleway: ["api.scaleway.com", "*.scw.cloud"],
   vultr: ["api.vultr.com"],
   anthropic: ["api.anthropic.com"],
   assemblyai: ["api.assemblyai.com", "api.eu.assemblyai.com"],
   cartesia: ["api.cartesia.ai"],
   cohere: ["api.cohere.com"],
+  // Cloud API, observability API and every CKS cluster API server
+  // (`{org}-{hash}.k8s.{zone}.coreweave.com`); bucket data is on cwobject.com.
+  coreweave: ["*.coreweave.com", "cwobject.com", "*.cwobject.com"],
   deepgram: ["api.deepgram.com"],
+  modal: ["api.modal.com"],
   deepseek: ["api.deepseek.com"],
   devin: ["api.devin.ai"],
   elevenlabs: [

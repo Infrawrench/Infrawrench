@@ -49,7 +49,7 @@ const manifest: PluginManifest = {
       description:
         "Optional. What this cluster costs, so workload costs can be derived. " +
         "Clusters opened from their cloud account (DigitalOcean, GCP, AWS, Azure, Scaleway, " +
-        "OVHcloud) get their node prices automatically. Otherwise list instance types: " +
+        "OVHcloud, CoreWeave) get their node prices automatically. Otherwise list instance types: " +
         "s-2vcpu-4gb=0.0357, m5.large=0.096. The same field prices the rest of the cluster — " +
         "controlPlane=0.10 for a managed cluster's flat fee, loadBalancer=0.0149 per " +
         "LoadBalancer Service, storage/*=0.10 per provisioned GiB-month (or storage/gp3=0.08 " +

@@ -52,6 +52,16 @@ describe("SSH endpoint parity", () => {
       privateHostOutputKey: "ipv4Private",
     },
     {
+      pluginId: "crusoe",
+      resourceTypeId: "vm",
+      hostOutputKey: "publicIp",
+      privateHostOutputKey: "privateIp",
+      pluginId: "linode",
+      resourceTypeId: "linode",
+      hostOutputKey: "ipv4",
+      privateHostOutputKey: "ipv4Private",
+    },
+    {
       pluginId: "gcp",
       resourceTypeId: "gce-instance",
       hostOutputKey: "externalIp",
@@ -68,6 +78,12 @@ describe("SSH endpoint parity", () => {
       resourceTypeId: "instance",
       hostOutputKey: "ipv4",
       privateHostOutputKey: "ipv4Private",
+    },
+    {
+      pluginId: "oracle-cloud",
+      resourceTypeId: "instance",
+      hostOutputKey: "publicIp",
+      privateHostOutputKey: "privateIp",
     },
   ];
 
@@ -123,6 +139,7 @@ describe("SSH endpoint parity", () => {
     "turso",
     "kubernetes",
     "databricks",
+    "coreweave",
     "anthropic",
     "assemblyai",
     "cartesia",
@@ -136,6 +153,7 @@ describe("SSH endpoint parity", () => {
     "gladia",
     "groq",
     "mistral",
+    "modal",
     "openai",
     "openrouter",
     "replicate",
