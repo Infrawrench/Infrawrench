@@ -53,7 +53,9 @@ import type {
   ReportNotificationInput,
   ReportNotificationSendResult,
 } from "@infrawrench/client-core";
-import { apiDelete, apiGet, apiPost, apiPut } from "./api";
+import { pdfFileName, withPdfTimezone } from "@infrawrench/client-core";
+import { downloadBlob } from "@infrawrench/ui";
+import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut } from "./api";
 
 /**
  * The read-only cost calls, shared by the dashboard's cost cards, the Costs
@@ -368,6 +370,12 @@ export function createWebCostReportsClient(orgId: string): CostReportsClient {
       ),
     deleteReportNotification: async (reportId: string, notificationId: string) => {
       await apiDelete(`/api/org/${orgId}/cost-reports/${reportId}/notifications/${notificationId}`);
+    },
+    downloadReportPdf: async (reportId: string, reportName: string) => {
+      const blob = await apiGetBlob(
+        withPdfTimezone(`/api/org/${orgId}/cost-reports/${reportId}/pdf`),
+      );
+      downloadBlob(blob, pdfFileName(reportName));
     },
     sendReportNotificationNow: (reportId: string, notificationId: string) =>
       apiPost<ReportNotificationSendResult>(

@@ -26,9 +26,13 @@ import {
   type CustomGraphSummary,
   type CustomGraphWidgetConfig,
   DashboardAddMenu,
+  DashboardExportActions,
 } from "@infrawrench/ui";
+import { hasPermission } from "@infrawrench/client-core";
 import { createCloudCustomGraphsClient } from "../lib/cloud-custom-graphs";
 import { createDesktopCostApi } from "../lib/cost-api";
+import { createDesktopDashboardExportClient } from "../lib/dashboard-export-client";
+import { createDesktopSettingsApi } from "../lib/settings-client";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import {
@@ -160,6 +164,37 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
+
+  // PDF export and scheduled delivery: cloud mode only, since the PDF is
+  // rendered server-side and a local dashboard has no server. Managing
+  // schedules is `org:settings:write`; `null` (not loaded, or the lookup
+  // failed) keeps the controls and lets the server answer.
+  const [orgPermissions, setOrgPermissions] = useState<readonly string[] | null>(null);
+  useEffect(() => {
+    setOrgPermissions(null);
+    if (!activeCloudOrgId) return;
+    let cancelled = false;
+    createDesktopSettingsApi()
+      .get<{ permissions: string[] }>(`/api/org/${activeCloudOrgId}/team/me`)
+      .then((me) => {
+        if (!cancelled) setOrgPermissions(me.permissions);
+      })
+      .catch(() => {
+        /* unknown: leave the manage controls to the server's 403 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCloudOrgId]);
+  const canManageDelivery =
+    orgPermissions === null || hasPermission(orgPermissions, "org:settings:write");
+  const exportClient = useMemo(
+    () =>
+      activeCloudOrgId
+        ? createDesktopDashboardExportClient(activeCloudOrgId, canManageDelivery)
+        : null,
+    [activeCloudOrgId, canManageDelivery],
+  );
 
   /**
    * One card per grid slot, whichever table it came from: the three kinds are
@@ -1042,33 +1077,42 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           )}
         </div>
 
-        {activeCloudOrgId && (
-          <button
-            type="button"
-            onClick={() => setSharingOpen(true)}
-            title={gt("Share dashboard")}
-            className="text-xs text-on-surface-faint hover:text-on-surface-muted transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
-          >
-            {gt("Share")}
-          </button>
-        )}
-        {sharingOpen && (
-          <ShareDialog
-            client={sharingClient}
-            target={{ objectType: "dashboard", objectId: dashboardId, name: dashboardName }}
-            onClose={() => setSharingOpen(false)}
-          />
-        )}
-        {!isHome && (
-          <button
-            type="button"
-            onClick={() => void deleteDashboard()}
-            title={gt("Delete dashboard")}
-            className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
-          >
-            {gt("Delete")}
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {exportClient && (
+            <DashboardExportActions
+              dashboardId={dashboardId}
+              dashboardName={dashboardName}
+              client={exportClient}
+            />
+          )}
+          {activeCloudOrgId && (
+            <button
+              type="button"
+              onClick={() => setSharingOpen(true)}
+              title={gt("Share dashboard")}
+              className="text-xs text-on-surface-faint hover:text-on-surface-muted transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+            >
+              {gt("Share")}
+            </button>
+          )}
+          {sharingOpen && (
+            <ShareDialog
+              client={sharingClient}
+              target={{ objectType: "dashboard", objectId: dashboardId, name: dashboardName }}
+              onClose={() => setSharingOpen(false)}
+            />
+          )}
+          {!isHome && (
+            <button
+              type="button"
+              onClick={() => void deleteDashboard()}
+              title={gt("Delete dashboard")}
+              className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+            >
+              {gt("Delete")}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">

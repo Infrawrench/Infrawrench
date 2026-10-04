@@ -41,7 +41,10 @@ const SLACK_REQUEST_TIMEOUT_MS = 10_000;
  * a public channel it hasn't been invited to: without it every channel the
  * org picks would need a manual `/invite`. Private channels still require an
  * invite; the settings UI says so. `commands` registers the `/infrawrench`
- * slash command in the workspace.
+ * slash command in the workspace. `files:write` uploads a scheduled
+ * dashboard's PDF into its delivery message's thread; installs that predate
+ * it still get the message, and the upload fails soft (see
+ * {@link sendSlackToChannelsWithFile}).
  */
 export const SLACK_SCOPES = [
   "chat:write",
@@ -49,6 +52,7 @@ export const SLACK_SCOPES = [
   "channels:read",
   "groups:read",
   "commands",
+  "files:write",
 ];
 
 export function slackClientId(): string | null {
@@ -758,6 +762,109 @@ export async function sendSlackToChannelsTracked(
   } catch (err) {
     console.error("[slack] fan-out failed:", err);
     return { ...NO_DELIVERY, messages: [] };
+  }
+}
+
+/** A file to upload beside a message. */
+export interface SlackFile {
+  filename: string;
+  title: string;
+  content: Uint8Array;
+}
+
+export interface SlackFileFanOutResult extends SlackFanOutResult {
+  /** Channels whose message also got the file as a thread reply. */
+  filesUploaded: number;
+}
+
+interface UploadUrlResponse extends SlackEnvelope {
+  upload_url?: string;
+  file_id?: string;
+}
+
+/**
+ * Upload one file into a thread, the three-step external upload flow that
+ * replaced `files.upload`: `files.getUploadURLExternal` for a one-time URL,
+ * a POST of the raw bytes to it, then `files.completeUploadExternal` naming
+ * the channel and thread. Both API calls go up form-encoded (see
+ * {@link slackCall}); `files` is a JSON array inside the form.
+ */
+async function uploadSlackFile(
+  token: string,
+  channelId: string,
+  threadTs: string,
+  file: SlackFile,
+): Promise<void> {
+  const ticket = await slackCall<UploadUrlResponse>(
+    "files.getUploadURLExternal",
+    token,
+    { filename: file.filename, length: file.content.byteLength },
+    "form",
+  );
+  if (!ticket.upload_url || !ticket.file_id) {
+    throw new Error("Slack files.getUploadURLExternal returned no upload URL");
+  }
+  const res = await fetch(ticket.upload_url, {
+    method: "POST",
+    signal: AbortSignal.timeout(SLACK_REQUEST_TIMEOUT_MS * 3),
+    headers: { "Content-Type": "application/octet-stream" },
+    body: new Uint8Array(file.content),
+  });
+  if (!res.ok) throw new Error(`Slack file upload HTTP ${res.status}`);
+  await slackCall(
+    "files.completeUploadExternal",
+    token,
+    {
+      files: [{ id: ticket.file_id, title: file.title }],
+      channel_id: channelId,
+      thread_ts: threadTs,
+    },
+    "form",
+  );
+}
+
+/**
+ * Post a message to each channel, then upload `file` as a reply in each
+ * message's thread. Never throws.
+ *
+ * The message is the delivery and the file is a bonus, deliberately: an
+ * install that predates the `files:write` scope still gets the summary and
+ * the link, and the upload failure is logged rather than turning a delivered
+ * message into a failed one. `filesUploaded` lets the caller say how many
+ * channels got the file. Threaded rather than in-channel so one delivery
+ * stays one channel entry.
+ */
+export async function sendSlackToChannelsWithFile(
+  organizationId: string,
+  rowIds: string[],
+  alert: SlackAlert,
+  file: SlackFile | null,
+): Promise<SlackFileFanOutResult> {
+  const posted = await sendSlackToChannelsTracked(organizationId, rowIds, alert);
+  const base = { attempted: posted.attempted, succeeded: posted.succeeded, failed: posted.failed };
+  if (!file || posted.messages.length === 0) return { ...base, filesUploaded: 0 };
+  try {
+    const tokens = await loadOrgSlackTokens(organizationId);
+    const settled = await Promise.allSettled(
+      posted.messages.map(async (m) => {
+        const token = tokens.get(m.installationId);
+        if (!token) throw new Error("no live install");
+        await uploadSlackFile(token, m.channelId, m.ts, file);
+      }),
+    );
+    for (const s of settled) {
+      if (s.status === "rejected") {
+        const reason = s.reason instanceof Error ? s.reason.message : String(s.reason);
+        const hint = reason.includes("missing_scope")
+          ? " (the install predates the files:write scope; reconnect Slack to grant it)"
+          : "";
+        console.warn(`[slack] file upload failed${hint}:`, reason);
+      }
+    }
+    return { ...base, filesUploaded: settled.filter((s) => s.status === "fulfilled").length };
+  } catch (err) {
+    console.error("[slack] file fan-out failed:", err);
+    return { ...base, filesUploaded: 0 };
   }
 }
 

@@ -115,9 +115,18 @@ infrawrench costs --anomalies --days 7      # 1-90; --last 2w says the same thin
 infrawrench reports
 infrawrench reports "Monthly spend"
 infrawrench reports "Monthly spend" --json
+infrawrench reports "Monthly spend" --format pdf --out monthly.pdf
 ```
 
 The name is matched exactly first, then as a substring; an ambiguous query lists the candidates rather than picking one, since running the wrong cost report gives a wrong answer that looks right. An id works anywhere a name does.
+
+`--format pdf` downloads the server-rendered [PDF](./dashboard-pdf.md) instead of charting in the terminal, to `--out <path>` (or `--file`) or to the report's name as a file in the current directory. `dashboards` does the same for whole dashboards, and lists them with their delivery schedules:
+
+```
+infrawrench dashboards
+infrawrench dashboards "Platform" --format pdf
+infrawrench dashboards send "Platform"     # deliver it to its schedules right now, PDF attached
+```
 
 <insert [Terminal showing `infrawrench reports` listing three saved reports, then `infrawrench reports "Monthly spend"` with its sparkline and per-service bar chart] here>
 

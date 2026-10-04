@@ -49,6 +49,9 @@ import type {
   CostEfficiencySettings,
   EfficiencyAlertEvent,
   EfficiencyAlertKind,
+  DashboardNotification,
+  DashboardNotificationInput,
+  DashboardNotificationSendResult,
   ReportDeliveryTargets,
   ReportNotification,
   ReportNotificationInput,
@@ -417,6 +420,79 @@ export async function sendCloudReportNotificationNow(
   notificationId: string,
 ): Promise<ReportNotificationSendResult> {
   return invoke("cloud_send_report_notification", { orgId, reportId, notificationId });
+}
+
+/* ------------------------------------------------------------------ *
+ * PDF export and dashboard delivery schedules. The PDFs come back as raw
+ * bytes over IPC; the caller turns them into a download.
+ * ------------------------------------------------------------------ */
+
+export async function loadCloudCostReportPdf(orgId: string, reportId: string): Promise<Uint8Array> {
+  return invoke("cloud_cost_report_pdf", { orgId, reportId });
+}
+
+export async function loadCloudDashboardPdf(
+  orgId: string,
+  dashboardId: string,
+): Promise<Uint8Array> {
+  return invoke("cloud_dashboard_pdf", { orgId, dashboardId });
+}
+
+export async function listCloudDashboardNotifications(
+  orgId: string,
+  dashboardId: string,
+): Promise<DashboardNotification[]> {
+  return (
+    (await invoke<DashboardNotification[]>("cloud_list_dashboard_notifications", {
+      orgId,
+      dashboardId,
+    })) ?? []
+  );
+}
+
+export async function loadCloudDashboardDeliveryTargets(
+  orgId: string,
+  dashboardId: string,
+): Promise<ReportDeliveryTargets> {
+  return invoke("cloud_dashboard_delivery_targets", { orgId, dashboardId });
+}
+
+export async function createCloudDashboardNotification(
+  orgId: string,
+  dashboardId: string,
+  input: DashboardNotificationInput,
+): Promise<DashboardNotification> {
+  return invoke("cloud_create_dashboard_notification", { orgId, dashboardId, input });
+}
+
+export async function updateCloudDashboardNotification(
+  orgId: string,
+  dashboardId: string,
+  notificationId: string,
+  input: DashboardNotificationInput,
+): Promise<DashboardNotification> {
+  return invoke("cloud_update_dashboard_notification", {
+    orgId,
+    dashboardId,
+    notificationId,
+    input,
+  });
+}
+
+export async function deleteCloudDashboardNotification(
+  orgId: string,
+  dashboardId: string,
+  notificationId: string,
+): Promise<void> {
+  await invoke("cloud_delete_dashboard_notification", { orgId, dashboardId, notificationId });
+}
+
+export async function sendCloudDashboardNotificationNow(
+  orgId: string,
+  dashboardId: string,
+  notificationId: string,
+): Promise<DashboardNotificationSendResult> {
+  return invoke("cloud_send_dashboard_notification", { orgId, dashboardId, notificationId });
 }
 
 /* ------------------------------------------------------------------ *

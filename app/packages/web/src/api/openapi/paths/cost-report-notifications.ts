@@ -2,11 +2,11 @@ import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
 
-const Cadence = z
+export const Cadence = z
   .enum(["daily", "weekly", "monthly"])
   .describe("How often the schedule fires. The report itself decides what window it charts.");
 
-const ScheduleFields = {
+export const ScheduleFields = {
   cadence: Cadence,
   sendDay: z
     .number()
@@ -82,7 +82,7 @@ const ReportDeliveryTargetOption = strict({
   label: z.string().describe("Display label: `#channel` for Slack, the saved label for Teams."),
 }).openapi("ReportDeliveryTargetOption");
 
-const ReportDeliveryTargets = strict({
+export const ReportDeliveryTargets = strict({
   slackChannels: z.array(ReportDeliveryTargetOption),
   teamsWebhooks: z.array(ReportDeliveryTargetOption),
   emailAvailable: z
@@ -93,7 +93,7 @@ const ReportDeliveryTargets = strict({
     ),
 }).openapi("ReportDeliveryTargets");
 
-const TransportOutcome = strict({
+export const TransportOutcome = strict({
   attempted: z.number().int(),
   succeeded: z.number().int(),
 });

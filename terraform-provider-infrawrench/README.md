@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 47 resources and 6 data sources, each with its own
+control, and alert delivery. 48 resources and 6 data sources, each with its own
 plan, its own drift detection and a real `terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
@@ -259,6 +259,7 @@ permissions.
 | Probes, status pages, sleep schedules, log queries                                                                                        | `resources:read`            | `resources:write`                                                          |
 | Metric alerts                                                                                                                             | `metric-alerts:read`        | `metric-alerts:write`                                                      |
 | Custom graphs                                                                                                                             | `dashboards:read`           | `dashboards:write`                                                         |
+| Dashboard notifications                                                                                                                   | `dashboards:read`           | `org:settings:write`                                                       |
 | Network flow collection                                                                                                                   | `costs:read`                | `org:settings:write`                                                       |
 | Change freezes                                                                                                                            | `freezes:read`              | `freezes:write`                                                            |
 | Accounts                                                                                                                                  | `accounts:read`             | `accounts:write` (credentials: `secrets:write`; delete: `accounts:delete`) |
@@ -598,6 +599,12 @@ build a URL. They import under a composite address:
 terraform import infrawrench_cost_report_notification.weekly <report-id>/<notification-id>
 ```
 
+**Dashboard notifications** work the same way, nested under the dashboard:
+
+```sh
+terraform import infrawrench_dashboard_notification.weekly <dashboard-id>/<notification-id>
+```
+
 **Workflow schedules** are addressed by the workflow they belong to:
 
 ```sh
@@ -649,6 +656,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_cost_report`               | by id     |                                                      |
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
 | `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
+| `infrawrench_dashboard_notification`    | composite | `<dashboard-id>/<notification-id>`; dashboard as PDF |
 | `infrawrench_cost_alert`                | by id     | Needs at least one threshold                         |
 | `infrawrench_cost_annotation`           | by id     | An end equal to the start is stored as null          |
 | `infrawrench_scenario_model`            | by id     | Adjustment `key` is caller-assigned                  |

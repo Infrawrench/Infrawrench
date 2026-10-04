@@ -119,6 +119,41 @@ export function matchCostReport<T extends { id: string; name: string }>(
 }
 
 /* ------------------------------------------------------------------ *
+ * PDF export (`reports --format pdf`, `dashboards --format pdf`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The download name for an exported PDF: `Monthly spend` becomes
+ * `monthly-spend.pdf`. A local re-derivation of client-core's `pdfFileName`
+ * (the CLI keeps its client-core imports type-only), so the file the CLI
+ * writes is named the same as the one the browser downloads.
+ */
+export function pdfFileName(name: string, fallback = "infrawrench-export"): string {
+  const slug = name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+    .replace(/-+$/g, "");
+  return `${slug || fallback}.pdf`;
+}
+
+/** `1.4 MB`: a byte count, the way a file manager says it. */
+export function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = value;
+  let u = 0;
+  while (v >= 1024 && u < units.length - 1) {
+    v /= 1024;
+    u++;
+  }
+  return `${v >= 10 || u === 0 ? Math.round(v) : v.toFixed(1)} ${units[u]}`;
+}
+
+/* ------------------------------------------------------------------ *
  * Change timeline
  * ------------------------------------------------------------------ */
 

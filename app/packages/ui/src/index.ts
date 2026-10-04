@@ -1066,6 +1066,9 @@ export * from "./cost/index.js";
 // `cost/` because the panel is its own org-level page, but it renders the very
 // same CostGraphCard/CostGraphConfigModal a dashboard cost card uses.
 export * from "./cost-reports/index.js";
+// Scheduled delivery and PDF export: the schedule list/editor shared by cost
+// reports and dashboards, and the dashboard header's export actions.
+export * from "./delivery/index.js";
 export * from "./invoices/index.js";
 
 // Org/user settings: shared sections rendered by the web settings routes and

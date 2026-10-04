@@ -23,6 +23,10 @@ import { handleAppsSession } from "./src/services/apps-proxy";
 import { handleMcpHttp } from "./src/mcp/http-handler";
 import { migrateMetrics } from "@infrawrench/server-core/clickhouse/migrate";
 import { authenticateBastionAgent, handleBastionAgentUpgrade } from "./src/services/bastion-ws";
+import {
+  startDashboardDeliveryLoop,
+  stopDashboardDeliveryLoop,
+} from "./src/services/dashboard-delivery-loop";
 
 const dev = process.env["NODE_ENV"] !== "production";
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
@@ -530,6 +534,14 @@ async function start() {
   });
 
   console.log(`> Ready on http://localhost:${port}`);
+
+  // Scheduled dashboard delivery renders with this app's services, so it runs
+  // here (see the module header). SIGTERM drains an in-flight send, bounded at
+  // 30s, so a rolling deploy does not cut a delivery off halfway through.
+  startDashboardDeliveryLoop();
+  process.once("SIGTERM", () => {
+    void stopDashboardDeliveryLoop().finally(() => process.exit(0));
+  });
 }
 
 start().catch((err) => {

@@ -113,6 +113,8 @@ func specChecks() []specCheck {
 
 		{schema: "ReportNotification", value: ReportNotification{}},
 		{schema: "ReportNotificationInput", value: ReportNotificationInput{}},
+		{schema: "DashboardNotification", value: DashboardNotification{}},
+		{schema: "DashboardNotificationInput", value: DashboardNotificationInput{}},
 
 		{schema: "CostAnomalySettings", value: CostAnomalySettings{}},
 		{schema: "CostEfficiencySettings", value: CostEfficiencySettings{}},

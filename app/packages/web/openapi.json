@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.44.0",
+    "version": "1.45.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5118,6 +5118,291 @@
           "slack",
           "teams",
           "email"
+        ],
+        "additionalProperties": false
+      },
+      "DashboardNotification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "How often the schedule fires. The report itself decides what window it charts."
+          },
+          "sendDay": {
+            "type": "integer"
+          },
+          "sendDayOfMonth": {
+            "type": "integer"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "attachPdf": {
+            "type": "boolean",
+            "description": "Attach the rendered PDF: as a file on every email, and uploaded into the Slack message's thread (needs the Slack app's `files:write` scope; without it the message still posts). Teams incoming webhooks cannot carry files, so Teams always gets the summary and a link."
+          },
+          "nextSendAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the next scheduled send is due; null while disabled."
+          },
+          "lastSentAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a delivery last actually reached at least one destination."
+          },
+          "lastStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending",
+              "succeeded",
+              "partial",
+              "failed",
+              "no_targets"
+            ],
+            "description": "What the last attempt did. `partial` is never retried automatically."
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "dashboardId",
+          "cadence",
+          "sendDay",
+          "sendDayOfMonth",
+          "hour",
+          "timezone",
+          "slackChannelIds",
+          "teamsWebhookIds",
+          "emailRecipients",
+          "enabled",
+          "attachPdf",
+          "nextSendAt",
+          "lastSentAt",
+          "lastStatus",
+          "lastError",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "DashboardNotificationInput": {
+        "type": "object",
+        "properties": {
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "How often the schedule fires. The report itself decides what window it charts."
+          },
+          "sendDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO day of week (1 = Monday … 7 = Sunday); read only when cadence is weekly."
+          },
+          "sendDayOfMonth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "description": "Day of month; read only when cadence is monthly. A day the month doesn't have clamps to its last day, so 31 means month end everywhere."
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23,
+            "description": "Local hour in `timezone` the delivery fires at."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA zone, e.g. `Europe/Berlin`. Validated server-side."
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored Slack channel row ids (from the targets endpoint) to post to."
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored Teams webhook row ids (from the targets endpoint) to post to."
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Email addresses; normalized (lowercased) server-side. At most 20."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "attachPdf": {
+            "type": "boolean",
+            "description": "Absent means `true`."
+          }
+        },
+        "required": [
+          "cadence",
+          "hour",
+          "timezone",
+          "slackChannelIds",
+          "teamsWebhookIds",
+          "emailRecipients",
+          "enabled"
+        ],
+        "additionalProperties": false,
+        "description": "A full replace. At least one destination is required. The same schedule shape as a cost report's delivery schedule, plus `attachPdf`."
+      },
+      "DashboardNotificationSendResult": {
+        "type": "object",
+        "properties": {
+          "attempted": {
+            "type": "integer"
+          },
+          "succeeded": {
+            "type": "integer"
+          },
+          "slack": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "teams": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "email": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "pdfAttached": {
+            "type": "boolean",
+            "description": "Whether a PDF was rendered and sent."
+          },
+          "slackFilesUploaded": {
+            "type": "integer",
+            "description": "Slack channels that also received the PDF. Lower than `slack.succeeded` when the Slack install predates the `files:write` scope."
+          }
+        },
+        "required": [
+          "attempted",
+          "succeeded",
+          "slack",
+          "teams",
+          "email",
+          "pdfAttached",
+          "slackFilesUploaded"
         ],
         "additionalProperties": false
       },
@@ -38655,6 +38940,594 @@
         },
         "operationId": "getOrgOrgIdCostReportNotifications",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/pdf": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Export a dashboard as a PDF",
+        "description": "Renders every card server-side: cost graphs and saved reports (chart plus a totals table, converted to the org's display currency where configured), budgets (spend against the amount, forecast and thresholds), custom graphs (including their KPI and table forms) and pinned resources and workflows. Cost cards need `costs:read` as well and are replaced by a note without it. A card that fails renders its error in place.\n\n_Requires permission: `dashboards:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown."
+            },
+            "required": false,
+            "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown.",
+            "name": "tz",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The PDF, as an attachment",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardsIdPdf",
+        "x-required-permission": "dashboards:read"
+      }
+    },
+    "/api/org/{orgId}/cost-reports/{id}/pdf": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Export a saved cost report as a PDF",
+        "description": "The report's chart and totals table for its saved window, rendered server-side and converted to the org's display currency where configured.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown."
+            },
+            "required": false,
+            "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown.",
+            "name": "tz",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The PDF, as an attachment",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportsIdPdf",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/notifications": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "List a dashboard's delivery schedules",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DashboardNotification"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardsIdNotifications",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
+      },
+      "post": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Create a dashboard delivery schedule",
+        "description": "On its cadence the server renders the dashboard as a PDF and sends a short summary (one line per card with a figure to quote) and a deep link to the schedule's destinations, with the PDF attached to emails and uploaded to Slack when `attachPdf` is on.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardNotificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardNotification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDashboardsIdNotifications",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/notifications/targets": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "List the destinations a dashboard schedule can deliver to",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDeliveryTargets"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardsIdNotificationsTargets",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/notifications/{notificationId}": {
+      "put": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Update a dashboard delivery schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardNotificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardNotification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdDashboardsIdNotificationsNotificationId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Delete a dashboard delivery schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdDashboardsIdNotificationsNotificationId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/notifications/{notificationId}/send": {
+      "post": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Send a dashboard schedule now",
+        "description": "Renders and delivers immediately, ignoring the schedule and its enabled flag. Fails with a 400 naming the reason when nothing could be delivered.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardNotificationSendResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDashboardsIdNotificationsNotificationIdSend",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/dashboard-notifications": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "List every dashboard delivery schedule in the organization",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DashboardNotification"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardNotifications",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
       }
     },
     "/api/org/{orgId}/cost-report-folders": {

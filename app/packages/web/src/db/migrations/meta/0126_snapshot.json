@@ -1,6 +1,6 @@
 {
-  "id": "39f91e5d-1db1-454f-9388-0d79b11913c2",
-  "prevId": "298ac765-7619-4673-87c7-8c098eed891d",
+  "id": "e193ba3c-d43c-4f16-bbdf-0de3b026fe20",
+  "prevId": "39f91e5d-1db1-454f-9388-0d79b11913c2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1316,12 +1316,6 @@
           "notNull": true,
           "default": false
         },
-        "visibility_user_id": {
-          "name": "visibility_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_by_user_id": {
           "name": "created_by_user_id",
           "type": "text",
@@ -1347,6 +1341,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "visibility_user_id": {
+          "name": "visibility_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -3160,12 +3160,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "visibility_user_id": {
-          "name": "visibility_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_by_user_id": {
           "name": "created_by_user_id",
           "type": "text",
@@ -3191,6 +3185,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "visibility_user_id": {
+          "name": "visibility_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -8984,6 +8984,19 @@
           "primaryKey": false,
           "notNull": true
         },
+        "dashboard_id": {
+          "name": "dashboard_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attach_pdf": {
+          "name": "attach_pdf",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "cadence": {
           "name": "cadence",
           "type": "text",
@@ -9084,12 +9097,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "visibility_user_id": {
-          "name": "visibility_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_by_user_id": {
           "name": "created_by_user_id",
           "type": "text",
@@ -9109,6 +9116,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "visibility_user_id": {
+          "name": "visibility_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -9132,6 +9145,21 @@
           "columns": [
             {
               "expression": "cost_report_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "report_notifications_dashboard_idx": {
+          "name": "report_notifications_dashboard_idx",
+          "columns": [
+            {
+              "expression": "dashboard_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -9184,12 +9212,29 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "report_notifications_dashboard_id_dashboards_id_fk": {
+          "name": "report_notifications_dashboard_id_dashboards_id_fk",
+          "tableFrom": "report_notifications",
+          "tableTo": "dashboards",
+          "columnsFrom": [
+            "dashboard_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "report_notifications_one_target": {
+          "name": "report_notifications_one_target",
+          "value": "num_nonnulls(\"report_notifications\".\"cost_report_id\", \"report_notifications\".\"dashboard_id\") = 1"
+        },
         "report_notifications_hour_range": {
           "name": "report_notifications_hour_range",
           "value": "\"report_notifications\".\"hour\" >= 0 AND \"report_notifications\".\"hour\" <= 23"

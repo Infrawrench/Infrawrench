@@ -136,6 +136,54 @@ func TestReportNotificationInputSendsOnlyTheRelevantDay(t *testing.T) {
 	}
 }
 
+// Dashboard notifications follow the same day-field rule as report
+// notifications, and carry attach_pdf through in both directions.
+func TestDashboardNotificationMapping(t *testing.T) {
+	ctx := context.Background()
+
+	weekly, diags := dashboardNotificationStateFrom(ctx, &iw.DashboardNotification{
+		ID: "n1", DashboardID: "d1", Cadence: "weekly",
+		SendDay: 3, SendDayOfMonth: 1, Hour: 9, Timezone: "Europe/Berlin",
+		EmailRecipients: []string{"a@example.com"}, Enabled: true, AttachPDF: false,
+	})
+	if diags.HasError() {
+		t.Fatalf("dashboardNotificationStateFrom: %v", diags)
+	}
+	if weekly.SendDay.ValueInt64() != 3 || !weekly.SendDayOfMonth.IsNull() {
+		t.Errorf("weekly cadence must keep send_day only, got %v / %v", weekly.SendDay, weekly.SendDayOfMonth)
+	}
+	if weekly.DashboardID.ValueString() != "d1" {
+		t.Errorf("dashboard_id = %v", weekly.DashboardID)
+	}
+	if weekly.AttachPDF.IsNull() || weekly.AttachPDF.ValueBool() {
+		t.Errorf("attach_pdf must read back false, got %v", weekly.AttachPDF)
+	}
+
+	model := dashboardNotificationResourceModel{
+		DashboardID:    types.StringValue("d1"),
+		Cadence:        types.StringValue("monthly"),
+		SendDay:        types.Int64Value(3),
+		SendDayOfMonth: types.Int64Value(28),
+		Hour:           types.Int64Value(9),
+		Timezone:       types.StringValue("UTC"),
+		Enabled:        types.BoolValue(true),
+		AttachPDF:      types.BoolValue(false),
+	}
+	input, diags := dashboardNotificationInputFrom(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("dashboardNotificationInputFrom: %v", diags)
+	}
+	if input.SendDay != nil || input.SendDayOfMonth == nil || *input.SendDayOfMonth != 28 {
+		t.Errorf("a monthly cadence must send only send_day_of_month, got %+v", input)
+	}
+	if input.AttachPDF == nil || *input.AttachPDF {
+		t.Errorf("attach_pdf = false must be sent explicitly, got %v", input.AttachPDF)
+	}
+	if input.SlackChannelIDs == nil || input.TeamsWebhookIDs == nil || input.EmailRecipients == nil {
+		t.Error("destination lists must marshal as [] rather than being omitted")
+	}
+}
+
 // A rate the server padded to ten decimal places is the same rate the
 // practitioner wrote. Keeping their spelling is what stops a permanent diff.
 func TestExchangeRateStateKeepsTheConfiguredSpelling(t *testing.T) {

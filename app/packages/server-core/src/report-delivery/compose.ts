@@ -12,10 +12,10 @@
  * routing table answers "where do alerts of this kind go", which is a
  * different question from "who asked for this report, when".
  *
- * No chart images, deliberately: the digest ships none either, and a rendering
- * pipeline (headless browser, image hosting, dark-mode variants) is a feature
- * of its own, not a side effect of this one. The message carries the numbers
- * and a deep link to the live chart.
+ * No chart images in a report delivery: the message carries the numbers and a
+ * deep link to the live chart. The picture on paper is the PDF renderer's job
+ * (`../pdf`), which dashboard schedules (`./dashboard.ts`) attach; a report
+ * reaches a schedule as a PDF by sitting on a scheduled dashboard.
  */
 import type { CostConversion, ReportNotificationCadence } from "@infrawrench/client-core";
 import {

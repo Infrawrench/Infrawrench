@@ -19,6 +19,8 @@ import { cmdCosts, cmdCostAnomalies, cmdCostAlerts } from "./commands/costs";
 import { cmdBusinessMetrics, cmdUnitCosts } from "./commands/unit-costs";
 import { cmdScenarios, cmdApplyScenario } from "./commands/scenarios";
 import { cmdReports, cmdRunReport, cmdSendReport } from "./commands/reports";
+import { cmdDashboards, cmdSendDashboard, cmdShowDashboard } from "./commands/dashboards";
+import { pdfFlags } from "./pdf-export";
 import { cmdExports, cmdRunExport } from "./commands/exports";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdBillingRules, cmdBillingRule } from "./commands/billing-rules";
@@ -87,7 +89,12 @@ COMMANDS
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
   reports             the org's saved cost reports (named cost graphs)
   reports <name|id>   run one saved report and chart it
+                      [--format pdf [--out <path>]  save the rendered PDF instead]
   reports send <n|id> deliver a report to its schedules (Slack/Teams/email) right now
+  dashboards          the org's dashboards and their scheduled PDF deliveries
+  dashboards <n|id>   one dashboard's delivery schedules
+                      [--format pdf [--out <path>]  save the rendered dashboard as a PDF]
+  dashboards send <n> deliver a dashboard to its schedules now (PDF attached to email/Slack)
   exports             scheduled cost exports (raw rows → warehouse/object store), with the
                       last run's status and error
   exports run <n|id>  run one export now and list the objects it wrote
@@ -208,7 +215,7 @@ FLAGS
   --resource <id>     focus one resource (graph) / filter to it (changes)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
-  --format <fmt>      export format (default: terraform)
+  --format <fmt>      export format (default: terraform); pdf for reports/dashboards <name|id>
   --reason <text>     posture dismiss: why the finding is an accepted risk
   --where <query>     costs: filter in the cost query language — terms joined by AND, each
                       dimension = 'v' | != 'v' | IN ('a','b') | NOT IN ('a','b'), plus
@@ -224,7 +231,8 @@ FLAGS
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
   -f, --file <path>   JSON rows for costs push / config document (stdin when omitted)
-  --out <path>        config export: write the document here instead of stdout
+  --out <path>        config export: write the document here instead of stdout; reports/
+                      dashboards --format pdf: the PDF's path (default: <name>.pdf here)
   --sections <a,b>    config: limit to these sections (budgets, workflows, dashboards, …)
   --prune             config apply: also delete what the document doesn't name
   -e, --env <name>    environment to deploy (optional when the Infrafile has one)
@@ -413,10 +421,29 @@ export async function runCli(): Promise<void> {
           break;
         }
         if (rest.length > 0) {
-          await cmdRunReport(ctx, rest.join(" "));
+          await cmdRunReport(ctx, rest.join(" "), pdfFlags(parsed));
           break;
         }
+        if (parsed.exportFlags.format) {
+          throw new CliError("Which report? `infrawrench reports <name|id> --format pdf`.");
+        }
         await cmdReports(ctx);
+        break;
+      case "dashboards":
+        // Same shape as `reports`: `send` is the explicit verb that posts
+        // into channels, a positional names one, bare lists them all.
+        if (rest[0] === "send") {
+          await cmdSendDashboard(ctx, rest.slice(1).join(" "));
+          break;
+        }
+        if (rest.length > 0) {
+          await cmdShowDashboard(ctx, rest.join(" "), pdfFlags(parsed));
+          break;
+        }
+        if (parsed.exportFlags.format) {
+          throw new CliError("Which dashboard? `infrawrench dashboards <name|id> --format pdf`.");
+        }
+        await cmdDashboards(ctx);
         break;
       case "exports":
         // `exports run <name|id>` forces one; bare `exports` lists them with

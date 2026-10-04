@@ -203,6 +203,27 @@ describe("CostReportsPanel", () => {
     expect(await screen.findByText("All reports")).toBeTruthy();
   });
 
+  it("hides Download PDF when the host has no PDF export", async () => {
+    render(<CostReportsPanel client={makeClient([report()])} reportId="r1" />);
+    await screen.findByText("All reports");
+    expect(screen.queryByText("Download PDF")).toBeNull();
+  });
+
+  it("downloads the report PDF through the host and shows a failure", async () => {
+    const downloadReportPdf = vi
+      .fn<(id: string, name: string) => Promise<void>>()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("render failed"));
+    render(
+      <CostReportsPanel client={makeClient([report()], { downloadReportPdf })} reportId="r1" />,
+    );
+    fireEvent.click(await screen.findByText("Download PDF"));
+    await waitFor(() => expect(downloadReportPdf).toHaveBeenCalledWith("r1", "Monthly spend"));
+    await screen.findByText("Download PDF");
+    fireEvent.click(screen.getByText("Download PDF"));
+    expect(await screen.findByText(/render failed/)).toBeTruthy();
+  });
+
   it("surfaces a failed list rather than looking empty", async () => {
     const client = makeClient([], {
       listReports: vi.fn(async () => {

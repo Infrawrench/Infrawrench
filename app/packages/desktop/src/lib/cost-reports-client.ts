@@ -2,12 +2,15 @@ import type { CostsPanelDashboard } from "@infrawrench/ui/cost";
 import { createSharingClient, type SharingClient } from "@infrawrench/ui";
 import { createDesktopSettingsApi } from "./settings-client";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
-import type {
-  CostReportFolderInput,
-  CostReportInput,
-  ReportNotificationInput,
-} from "@infrawrench/client-core";
 import {
+  pdfFileName,
+  type CostReportFolderInput,
+  type CostReportInput,
+  type ReportNotificationInput,
+} from "@infrawrench/client-core";
+import { downloadPdfBytes } from "@infrawrench/ui";
+import {
+  loadCloudCostReportPdf,
   createCloudCostReport,
   createCloudCostReportFolder,
   createCloudReportNotification,
@@ -85,6 +88,10 @@ export function createDesktopCostReportsClient(): CostReportsClient {
       deleteCloudReportNotification(requireOrgId(), reportId, notificationId),
     sendReportNotificationNow: (reportId: string, notificationId: string) =>
       sendCloudReportNotificationNow(requireOrgId(), reportId, notificationId),
+    downloadReportPdf: async (reportId: string, reportName: string) => {
+      const bytes = await loadCloudCostReportPdf(requireOrgId(), reportId);
+      downloadPdfBytes(bytes, pdfFileName(reportName));
+    },
   };
 }
 

@@ -56,6 +56,8 @@ describe("SSH endpoint parity", () => {
       resourceTypeId: "vm",
       hostOutputKey: "publicIp",
       privateHostOutputKey: "privateIp",
+    },
+    {
       pluginId: "linode",
       resourceTypeId: "linode",
       hostOutputKey: "ipv4",
