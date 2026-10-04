@@ -15,6 +15,7 @@ Eligibility is discovered from each provider plugin, never hard-coded: a resourc
 - **Azure** — Virtual machines (stop = deallocate, the one that stops billing), AKS clusters, App Service and Function Apps, container instances, PostgreSQL and MySQL flexible servers, application gateways, Container Apps
 - **DigitalOcean** — Droplets
 - **Hetzner Cloud** — Servers
+- **Crusoe Cloud** — VMs (stop ends compute billing; attached disks keep billing)
 - **Scaleway** — Instances
 - **Fly.io** — Machines
 - **Neon** — Compute endpoints (stop = suspend; note any incoming connection also wakes a suspended endpoint)
@@ -22,6 +23,7 @@ Eligibility is discovered from each provider plugin, never hard-coded: a resourc
 - **ClickHouse Cloud** — Services
 - **Databricks** — Clusters, SQL warehouses, apps
 - **OVHcloud** — Public Cloud instances
+- **CoreWeave**: CKS Node Pools (stop = scale to zero Nodes, start = restore the size it had)
 
 The same start/stop actions appear as buttons on each resource's detail page, so you can always override a schedule by hand.
 
