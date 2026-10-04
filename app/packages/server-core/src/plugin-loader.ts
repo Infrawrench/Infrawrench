@@ -24,6 +24,7 @@ import { plugin as tailscalePlugin } from "@infrawrench/plugin-tailscale";
 import { plugin as databricksPlugin } from "@infrawrench/plugin-databricks";
 import { plugin as tursoPlugin } from "@infrawrench/plugin-turso";
 import { plugin as planetscalePlugin } from "@infrawrench/plugin-planetscale";
+import { plugin as redisCloudPlugin } from "@infrawrench/plugin-redis-cloud";
 import { plugin as azurePlugin } from "@infrawrench/plugin-azure";
 import { plugin as flyPlugin } from "@infrawrench/plugin-fly";
 import { plugin as vercelPlugin } from "@infrawrench/plugin-vercel";
@@ -83,6 +84,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   databricksPlugin,
   tursoPlugin,
   planetscalePlugin,
+  redisCloudPlugin,
   azurePlugin,
   flyPlugin,
   vercelPlugin,

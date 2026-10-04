@@ -44,6 +44,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   mongodb: { connectionString: "mongodb://localhost:27017/test" },
   redis: { connectionString: "redis://localhost:6379" },
+  "redis-cloud": { accountKey: "test-account-key", userKey: "test-user-key" },
   memcached: { connectionString: "localhost:11211" },
   kafka: { connectionString: "kafka://localhost:9092" },
   openai: { apiKey: "sk-proj-test", adminApiKey: "sk-admin-test" },

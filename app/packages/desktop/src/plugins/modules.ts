@@ -33,6 +33,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-databricks"),
   () => import("@infrawrench/plugin-turso"),
   () => import("@infrawrench/plugin-planetscale"),
+  () => import("@infrawrench/plugin-redis-cloud"),
   () => import("@infrawrench/plugin-azure"),
   () => import("@infrawrench/plugin-fly"),
   () => import("@infrawrench/plugin-vercel"),
