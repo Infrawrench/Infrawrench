@@ -219,6 +219,10 @@ export type {
   AccountReferenceOption,
 } from "./components/AddAccountModal.js";
 export { EditCredentialsModal } from "./components/EditCredentialsModal.js";
+export type {
+  CredentialFieldOption,
+  LoadCredentialOptions,
+} from "./components/ProviderOptionsField.js";
 export {
   CredentialPreflightPanel,
   CredentialPreflightModal,

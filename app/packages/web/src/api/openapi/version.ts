@@ -160,6 +160,5 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-// 1.43.0: Elastic Cloud plugin; `elastic-cloud` on the `pluginId` enum and its
-// resource type ids on the `resourceTypeId` enum. Additive.
+// 1.43.0: Elastic Cloud, Sentry, Coralogix, Twilio, Fastly, MongoDB Atlas, Confluent Cloud, Snowflake, Redis Cloud, Temporal Cloud, Cursor, GitHub, CircleCI, Depot, Devin, Modal, Oracle Cloud, Linode, CoreWeave and Crusoe Cloud plugin ids and their resource type ids. Additive.
 export const API_VERSION = "1.43.0";

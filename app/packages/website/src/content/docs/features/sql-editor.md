@@ -1,6 +1,6 @@
 ---
 title: SQL editor
-description: Run queries against Postgres, MySQL, Turso, Databricks, ClickHouse, and more.
+description: Run queries against Postgres, MySQL, Turso, Databricks, Snowflake, ClickHouse, and more.
 sidebar_order: 4
 ---
 
@@ -30,6 +30,7 @@ The editor itself is a plain text area — there is no autocomplete, and no quer
 - **MySQL / PlanetScale** — PlanetScale uses Vitess, so cross-shard joins can fail; infrawrench surfaces the raw error.
 - **Turso** — libsql dialect. Edge-replicated, so some writes lag on reads until replication catches up.
 - **Databricks** — runs against a SQL warehouse; results are fetched via REST, not a long-lived connection.
+- **Snowflake**: every Snowflake resource has a SQL tab, sent through the SQL API with no driver. A warehouse runs queries on itself; a database or schema runs them in that context, with tables and columns listed from `SHOW COLUMNS`. Results stop at 10,000 rows.
 - **ClickHouse** — HTTP interface. Large result sets stream into the grid.
 - **MongoDB** — not SQL; uses a separate collection browser instead (see the [MongoDB plugin](../plugins/mongodb.md)).
 
