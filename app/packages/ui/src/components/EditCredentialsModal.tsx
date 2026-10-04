@@ -6,6 +6,7 @@ import { formatErrorMessage } from "../utils.js";
 import { useDataString } from "../i18n/data-strings.js";
 import type { PluginInfo } from "./AddAccountModal.js";
 import { ExternalLinkIcon } from "./icons/ChromeIcons.js";
+import { ProviderOptionsField, type CredentialFieldOption } from "./ProviderOptionsField.js";
 
 interface EditCredentialsModalProps {
   /** Plugin manifest fragment: same shape used by AddAccountModal. */
@@ -23,6 +24,15 @@ interface EditCredentialsModalProps {
    * anchor's native new-tab behavior.
    */
   onOpenExternal?: (url: string) => void;
+  /**
+   * Loads the choices for a field that declares `providerOptions`, with the
+   * credentials as they would be saved (blank sensitive fields filled from
+   * the current values). Hosts that omit it render such fields as text.
+   */
+  loadCredentialOptions?: (
+    fieldKey: string,
+    credentials: Record<string, string>,
+  ) => Promise<CredentialFieldOption[]>;
 }
 
 /**
@@ -41,6 +51,7 @@ export function EditCredentialsModal({
   onSave,
   onClose,
   onOpenExternal,
+  loadCredentialOptions,
 }: EditCredentialsModalProps) {
   const gt = useGT();
   const gtData = useDataString();
@@ -59,10 +70,10 @@ export function EditCredentialsModal({
     );
   }, [plugin, currentCredentials]);
 
-  async function save() {
-    // Sensitive fields left blank keep their current value; non-sensitive
-    // fields submit whatever's in the input (including blank, so the user
-    // can clear an optional field).
+  // Sensitive fields left blank keep their current value; non-sensitive
+  // fields submit whatever's in the input (including blank, so the user
+  // can clear an optional field).
+  function mergedCredentials(): Record<string, string> {
     const next: Record<string, string> = {};
     for (const f of plugin.credentialFields) {
       const entered = fieldValues[f.key] ?? "";
@@ -72,6 +83,11 @@ export function EditCredentialsModal({
         next[f.key] = entered;
       }
     }
+    return next;
+  }
+
+  async function save() {
+    const next = mergedCredentials();
     for (const f of plugin.credentialFields) {
       if (f.optional) continue;
       if (!next[f.key]?.trim()) {
@@ -157,7 +173,33 @@ export function EditCredentialsModal({
                     <ExternalLinkIcon size={12} />
                   </a>
                 )}
-                {f.regions && f.regions.length > 0 ? (
+                {f.providerOptions ? (
+                  (() => {
+                    const deps = f.providerOptions.dependsOn;
+                    const merged = mergedCredentials();
+                    const depsReady = deps.every((k) => !!merged[k]?.trim());
+                    return (
+                      <ProviderOptionsField
+                        fieldId={fieldId}
+                        label={gtData(f.label)}
+                        value={fieldValues[f.key] ?? ""}
+                        onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
+                        placeholder={f.placeholder ? gtData(f.placeholder) : undefined}
+                        emptyLabel={
+                          f.providerOptions.emptyLabel !== undefined
+                            ? gtData(f.providerOptions.emptyLabel)
+                            : undefined
+                        }
+                        load={
+                          loadCredentialOptions && depsReady
+                            ? () => loadCredentialOptions(f.key, mergedCredentials())
+                            : undefined
+                        }
+                        reloadKey={JSON.stringify(deps.map((k) => merged[k] ?? ""))}
+                      />
+                    );
+                  })()
+                ) : f.regions && f.regions.length > 0 ? (
                   <RegionPicker
                     regions={f.regions}
                     value={fieldValues[f.key] ?? ""}

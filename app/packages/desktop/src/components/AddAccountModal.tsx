@@ -73,6 +73,7 @@ export function AddAccountModal({
         ...(f.regions !== undefined ? { regions: f.regions } : {}),
         ...(f.optional !== undefined ? { optional: f.optional } : {}),
         ...(f.accountReference !== undefined ? { accountReference: f.accountReference } : {}),
+        ...(f.providerOptions !== undefined ? { providerOptions: f.providerOptions } : {}),
         ...(f.helpLink !== undefined ? { helpLink: f.helpLink } : {}),
       })),
     }));
@@ -110,6 +111,25 @@ export function AddAccountModal({
     [],
   );
 
+  // Provider-filled credential pickers run in the renderer too, the same way
+  // preflight does: the plugin is bundled locally.
+  const loadCredentialOptions = useCallback(
+    async (
+      pluginId: string,
+      fieldKey: string,
+      credentials: Record<string, string>,
+      _bastionId: string | null,
+    ) => {
+      const loaded = await getPlugin(pluginId);
+      if (!loaded?.plugin.listCredentialOptions) {
+        throw new Error(`Plugin "${pluginId}" cannot list credential options`);
+      }
+      const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
+      return loaded.plugin.listCredentialOptions(fieldKey, credentials, services);
+    },
+    [],
+  );
+
   const fetchPolicyTemplate = useCallback(
     async (pluginId: string, capabilityIds: string[]): Promise<PolicyTemplate> => {
       const loaded = await getPlugin(pluginId);
@@ -129,6 +149,7 @@ export function AddAccountModal({
       saveAccount={saveAccount}
       runPreflight={runPreflight}
       fetchPolicyTemplate={fetchPolicyTemplate}
+      loadCredentialOptions={loadCredentialOptions}
       accounts={accounts}
       onOpenExternal={(url) => void invoke("open_external_url", { url })}
       {...(prefilledPluginId ? { prefilledPluginId } : {})}

@@ -3,6 +3,7 @@ export type {
   PluginClient,
   PluginManifest,
   CredentialField,
+  CredentialFieldOption,
   CredentialFieldRegion,
   CredentialExport,
   CredentialExportField,
