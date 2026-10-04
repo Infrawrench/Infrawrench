@@ -38,6 +38,7 @@ import { plugin as coherePlugin } from "@infrawrench/plugin-cohere";
 import { plugin as deepgramPlugin } from "@infrawrench/plugin-deepgram";
 import { plugin as deepseekPlugin } from "@infrawrench/plugin-deepseek";
 import { plugin as elevenlabsPlugin } from "@infrawrench/plugin-elevenlabs";
+import { plugin as fastlyPlugin } from "@infrawrench/plugin-fastly";
 import { plugin as fireworksPlugin } from "@infrawrench/plugin-fireworks";
 import { plugin as geminiPlugin } from "@infrawrench/plugin-gemini";
 import { plugin as gladiaPlugin } from "@infrawrench/plugin-gladia";
@@ -97,6 +98,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   deepgramPlugin,
   deepseekPlugin,
   elevenlabsPlugin,
+  fastlyPlugin,
   fireworksPlugin,
   geminiPlugin,
   gladiaPlugin,

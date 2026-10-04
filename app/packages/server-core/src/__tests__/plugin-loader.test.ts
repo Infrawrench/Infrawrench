@@ -680,6 +680,7 @@ describe("principalRole declarations", () => {
     expect(declared.sort()).toEqual([
       "anthropic/api-key:deactivate-key",
       "clickhouse/ch-api-key:disable",
+      "fastly/api-token:revoke",
       "tailscale/user:suspend",
       "workos/organization-api-key:expire",
       "workos/organization-membership:deactivate",

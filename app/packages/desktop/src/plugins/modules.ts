@@ -47,6 +47,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-deepgram"),
   () => import("@infrawrench/plugin-deepseek"),
   () => import("@infrawrench/plugin-elevenlabs"),
+  () => import("@infrawrench/plugin-fastly"),
   () => import("@infrawrench/plugin-fireworks"),
   () => import("@infrawrench/plugin-gemini"),
   () => import("@infrawrench/plugin-gladia"),
