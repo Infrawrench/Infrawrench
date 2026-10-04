@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 51 resources and 6 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 64 resources and 7 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -329,6 +329,36 @@ resource "infrawrench_alert_routing" "org" {
 
 Connecting the Slack workspace itself is an OAuth flow, which a Terraform provider cannot perform. Install the app once on **Settings → Alerts**, then read the installation with `data.infrawrench_slack_installations`.
 
+### Alert email
+
+[Email alerts](./email-alerts.md) reach people two ways, and both are configured here. A routing rule can name an `email-member` destination (a member, by `user_id`) or an `email-address` destination (a literal `address`). Budgets, cost change alerts, and the anomaly and efficiency alert settings also take `email_member_ids` and `email_addresses`, which are emailed **in addition to** whatever the routing rules decide, whether or not a rule matched, and never held by quiet hours. Read member ids from `data.infrawrench_members` rather than pasting them; a member named by id is reached at their current login address, so an address change follows them.
+
+```hcl
+data "infrawrench_members" "finance_lead" {
+  email = "dana@example.com"
+}
+
+resource "infrawrench_alert_email_settings" "this" {
+  external_policy = "member-domains"
+  allowed_domains = ["partner-agency.com"]
+}
+
+resource "infrawrench_budget" "platform" {
+  name         = "Platform"
+  amount_cents = 500000
+
+  threshold {
+    type    = "actual"
+    percent = 90
+  }
+
+  email_member_ids = [data.infrawrench_members.finance_lead.members[0].id]
+  email_addresses  = ["finance@partner-agency.com"]
+}
+```
+
+A literal address has to pass the organization's external-address policy, which `infrawrench_alert_email_settings` manages: under `member-domains` (the default) it must be on a domain a member signs in with or one in `allowed_domains`. The recipient attributes are optional and computed, so leaving them out of a configuration leaves whatever the app holds; write `[]` to clear a list. Email has no acknowledge button, so a rule routed only to email always escalates.
+
 Because the write replaces the whole table, the resource has to carry **every** field a rule can hold — including quiet hours and escalation policies you may have set up in the app before adopting Terraform. Import the resource first and read what comes back: whatever the configuration does not say, the next apply clears.
 
 ## Adopting what you already have
@@ -351,7 +381,7 @@ terraform import infrawrench_tag_policy.this       org_01HXYZABCDEF
 terraform import infrawrench_alert_routing.org     org_01HXYZABCDEF
 ```
 
-That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, [realized savings](./realized-savings.md) measurement, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
+That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, [realized savings](./realized-savings.md) measurement, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [alert email](./email-alerts.md) policy, the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
 
 Two resources import under something other than their own id. A [report notification](./cost-reports.md) hangs off its report, so it takes `<report-id>/<notification-id>`; a workflow schedule takes the id of the [workflow](./workflows.md) it belongs to.
 
@@ -463,6 +493,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_on_call_schedule`      | An [on-call rotation](./on-call.md) a routing rule can name as a destination                                                             |
 | `infrawrench_slack_channel`         | [Slack](./slack-alerts.md) channels as destinations                                                                                      |
 | `infrawrench_msteams_webhook`       | [Teams](./teams-alerts.md) webhooks as destinations                                                                                      |
+| `infrawrench_alert_email_settings`  | The external-address policy for [alert email](./email-alerts.md)                                                                         |
 | `infrawrench_digest_settings`       | When the [weekly digest](./weekly-digest.md) is sent                                                                                     |
 | `infrawrench_digest_recipient`      | An email address the digest goes to                                                                                                      |
 | `infrawrench_jira_integration`      | The [Jira](./jira.md) connection                                                                                                         |
@@ -479,6 +510,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_resources`           | Synced resources — for resolving a probe or schedule target |
 | `infrawrench_permissions`         | The permission catalogue roles and keys grant from          |
 | `infrawrench_slack_installations` | Connected Slack workspaces                                  |
+| `infrawrench_members`             | Current members and their login addresses, for alert email  |
 
 ## Things worth knowing
 
@@ -492,7 +524,8 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 - Currency settings **clear the display currency** and turn automatic rates off, which turns conversion off. Your stated exchange rates survive, so you can turn it back on without re-entering them.
 - [Session recording](./session-recording.md) is deliberately **left running**. Silently disabling an audit control because someone deleted a resource block is not a safe default.
 - The drift, expiry and posture alert settings are **left alone** — they have no documented shipped values to restore to.
-- [Network flow collection](./network-costs.md) is **turned off**, and it's the one singleton where destroy deliberately changes something. Collection runs queries your cloud provider bills to your own account; leaving it running for a resource you deleted would keep spending your money with nothing in Terraform left to explain why.
+- The [alert email](./email-alerts.md) policy **goes back to `member-domains`** with no extra domains. Of the two ways to be wrong, the one that sends mail to fewer outside mailboxes is the safer.
+- [Network flow collection](./network-costs.md) is **turned off**, and it's the singleton where destroy most deliberately changes something. Collection runs queries your cloud provider bills to your own account; leaving it running for a resource you deleted would keep spending your money with nothing in Terraform left to explain why.
 
 **Deletes can be refused.** Saved filters and scenario models something still points at return a conflict rather than being deleted, and the error names what's referencing them. A role members still hold, and a managed account with invoices against it, are refused the same way. Repoint or reassign first — Terraform won't decide for you which permission set those people should get instead.
 

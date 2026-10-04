@@ -551,7 +551,12 @@ export async function detectCostAnomaliesForOrg(
               appUrl: url,
             },
           },
-          { slackButtons: anomalyFeedbackButtons(organizationId, anomaly.id) },
+          {
+            slackButtons: anomalyFeedbackButtons(organizationId, anomaly.id),
+            ...(settings.emailRecipients ? { emailRecipients: settings.emailRecipients } : {}),
+            emailReason: "you are on the recipient list for cost anomaly alerts",
+            emailManageUrl: url,
+          },
         );
         // `alertReached`, not `succeeded > 0`: a quiet-hours hold is a delivery
         // that has not happened yet, and stamping `notifiedAt` is what keeps

@@ -134,11 +134,13 @@ func TestDocumentedRangesAreValidated(t *testing.T) {
 				validated = len(a.Validators) > 0
 			case schema.ListAttribute:
 				validated = len(a.Validators) > 0
+			case schema.SetAttribute:
+				validated = len(a.Validators) > 0
 			case schema.StringAttribute:
 				validated = len(a.Validators) > 0
 			default:
-				// Bools, maps and sets carry no ranges worth bounding; a number
-				// in their description is prose.
+				// Bools and maps carry no ranges worth bounding; a number in
+				// their description is prose.
 				continue
 			}
 			if !validated {
@@ -172,7 +174,7 @@ func TestDocumentedRangesAreValidated(t *testing.T) {
 	if len(offenders) > 0 {
 		t.Errorf("these attributes document a range and do not enforce it:\n  %s\n\n"+
 			"Add a validator from validators.go — between, betweenFloat, elementsBetween, "+
-			"sizeBetween, sizeAtMost — or reword the description if the bound is not real. "+
+			"sizeBetween, sizeAtMost, setSizeAtMost — or reword the description if the bound is not real. "+
 			"An unenforced bound fails at apply, as an HTTP 400, after other resources "+
 			"in the graph have already been created.",
 			strings.Join(offenders, "\n  "))

@@ -818,6 +818,41 @@ func (c *Client) AdoptAlertRuleDefaults(ctx context.Context) error {
 	return c.Post(ctx, "/alert-rules/adopt-defaults", nil, nil)
 }
 
+/* ------------------------------- alert email ------------------------------- */
+
+// GetAlertEmailOptions reads the recipient picker: current members with their
+// login addresses, the external-address policy and whether this deployment can
+// send email at all. It needs only costs:read.
+func (c *Client) GetAlertEmailOptions(ctx context.Context) (*AlertEmailOptions, error) {
+	var out AlertEmailOptions
+	if err := c.Get(ctx, "/alert-email", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetAlertEmailSettings(ctx context.Context) (*AlertEmailSettingsView, error) {
+	var out AlertEmailSettingsView
+	if err := c.Get(ctx, "/alert-email/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PutAlertEmailSettings replaces the external-address policy as a whole. It
+// never edits a stored recipient list: an address the new policy refuses is
+// skipped at send time, and loosening the policy again brings it back.
+func (c *Client) PutAlertEmailSettings(ctx context.Context, in AlertEmailSettings) (*AlertEmailSettingsView, error) {
+	if in.AllowedDomains == nil {
+		in.AllowedDomains = []string{}
+	}
+	var out AlertEmailSettingsView
+	if err := c.Put(ctx, "/alert-email/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 /* ------------------------- resource alert settings ------------------------- */
 
 func (c *Client) GetDriftAlertSettings(ctx context.Context) (*DriftAlertSettings, error) {

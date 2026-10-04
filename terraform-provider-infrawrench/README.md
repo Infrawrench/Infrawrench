@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 51 resources and 6 data sources, each with its own
+control, and alert delivery. 64 resources and 7 data sources, each with its own
 plan, its own drift detection and a real `terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
@@ -591,7 +591,7 @@ terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 The full list: `tag_policy`, `tag_key_settings`, `alert_routing`, `currency_settings`,
 `anomaly_settings`, `efficiency_alert_settings`, `realized_savings_settings`,
 `drift_alert_settings`, `expiry_alert_settings`, `extended_support_settings`, `posture_alert_settings`,
-`session_recording_settings`, `network_flow_settings`, `digest_settings`, `jira_integration`,
+`session_recording_settings`, `network_flow_settings`, `alert_email_settings`, `digest_settings`, `jira_integration`,
 `linear_integration`, `github_issue_settings`.
 
 **Report notifications** hang off a report, so the notification's own id cannot
@@ -734,6 +734,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_on_call_schedule`      | by id     | Rotation order is the list order; covers stay in the app    |
 | `infrawrench_slack_channel`         | by id     | The workspace connection is an OAuth flow, read not written |
 | `infrawrench_msteams_webhook`       | by id     | URL is write-only and Microsoft-host-restricted             |
+| `infrawrench_alert_email_settings`  | by org id | Org singleton; destroy restores `member-domains`            |
 | `infrawrench_digest_settings`       | by org id | Org singleton; destinations come from the routing table     |
 | `infrawrench_digest_recipient`      | by id     | Address is normalized server-side                           |
 | `infrawrench_jira_integration`      | by org id | Org singleton; omitting the token keeps the stored one      |
@@ -750,6 +751,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_resources`           | Resolve a synced resource id for a probe or schedule |
 | `infrawrench_permissions`         | The catalogue roles and API keys grant from          |
 | `infrawrench_slack_installations` | Resolve the workspace a channel belongs to           |
+| `infrawrench_members`             | Resolve member ids for alert email recipients        |
 
 ## Testing
 

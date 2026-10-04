@@ -249,4 +249,11 @@
 //         sleep-schedule and idle-commitment findings. Additive.
 // 1.71.0: realized savings. `GET /savings/realized`, `/savings/events` CRUD, `GET`/`PUT /savings/settings`, and the `realized_savings` dashboard widget kind. Additive.
 // 1.72.0: extended-support findings (`/extended-support` + settings), the `extendedSupportAlerts` alert trigger, `extended_support` issue-filing kind, and `extended-support` (plus the already-emitted `lease`) on the expiry kind enum. Additive.
-export const API_VERSION = "1.72.0";
+// 1.73.0: email alerts. `email-member` / `email-address` alert routing
+// destinations (plus `members`, `emailAvailable`, `emailSettings` and
+// `memberDomains` on the alert-rules response); an optional
+// `emailRecipients` on budgets, cost change alerts, the anomaly settings and
+// the efficiency alert settings (absent on a write means unchanged); and
+// `GET /alert-email`, `GET|PUT /alert-email/settings` and
+// `DELETE /alert-email/suppressions/{id}`. All additive.
+export const API_VERSION = "1.73.0";

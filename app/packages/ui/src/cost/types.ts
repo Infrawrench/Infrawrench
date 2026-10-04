@@ -1,4 +1,5 @@
 import type {
+  AlertEmailOptions,
   BillingRule,
   BudgetAlertEvent,
   BudgetAlertNoteResult,
@@ -111,6 +112,15 @@ export interface CostApi {
   loadDimensionValues(dimension: string, tagKey?: string): Promise<CostDimensionOption[]>;
   /** Per-account collection state: backs {@link CostAccountStatus} notices. */
   loadCostStatus(): Promise<CostAccountStatus[]>;
+  /**
+   * Members, the external-address policy and whether email is available: the
+   * options behind every alert editor's email recipients field (budgets,
+   * change alerts, anomaly and efficiency tuning). On the base `CostApi`
+   * because the budget editor only receives a `CostApi`. Optional on the usual
+   * rule: a host that hasn't wired it simply doesn't show the field, and
+   * whatever recipients the object already has are left untouched on save.
+   */
+  getAlertEmailOptions?(): Promise<AlertEmailOptions>;
   /**
    * The org's saved cost filters, for the picker in {@link CostFilterEditor}.
    * Optional the way the mutating budget calls are: a host that hasn't wired

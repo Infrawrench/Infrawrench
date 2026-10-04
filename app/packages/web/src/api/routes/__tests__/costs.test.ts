@@ -120,6 +120,12 @@ vi.mock("@infrawrench/server-core/twilio-pager", () => ({
   isSmsPagingConfigured: (...args: unknown[]) => mockIsSmsPagingConfigured(...args),
 }));
 
+// Same reason: the alert email module reads members and the address policy
+// from the database. A body with no `emailRecipients` passes straight through.
+vi.mock("@infrawrench/server-core/alerts/email", () => ({
+  validateAlertEmailRecipients: async (_orgId: string, r: unknown) => r,
+}));
+
 // Same reason again: the tag-policy modules reach the db client at import
 // time via the services/tag-policy chain.
 const mockGetTagKeySettings = vi.fn();

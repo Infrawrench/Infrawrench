@@ -21,6 +21,7 @@ import {
   DEFAULT_COST_ANOMALY_SETTINGS,
   type CostAnomalySettings,
   type CostAnomalySmsMode,
+  normalizeAlertEmailRecipients,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { orgCostAnomalySettings } from "../db/schema";
@@ -73,6 +74,9 @@ export function normalizeAnomalySettings(input: CostAnomalySettings): CostAnomal
     ),
     smsAlerts: normalizeSmsMode(input.smsAlerts),
     feedbackTuning: input.feedbackTuning !== false,
+    ...(input.emailRecipients !== undefined
+      ? { emailRecipients: normalizeAlertEmailRecipients(input.emailRecipients) }
+      : {}),
   };
 }
 
@@ -105,13 +109,15 @@ export async function getOrgAnomalySettings(organizationId: string): Promise<Cos
     .select()
     .from(orgCostAnomalySettings)
     .where(eq(orgCostAnomalySettings.organizationId, organizationId));
-  if (!row) return { ...DEFAULT_COST_ANOMALY_SETTINGS };
+  if (!row)
+    return { ...DEFAULT_COST_ANOMALY_SETTINGS, emailRecipients: { userIds: [], addresses: [] } };
   return normalizeAnomalySettings({
     sigmas: row.sigmas,
     minDeltaCents: row.minDeltaCents,
     newSourceMinCents: row.newSourceMinCents,
     smsAlerts: row.smsAlerts,
     feedbackTuning: row.feedbackTuning,
+    emailRecipients: normalizeAlertEmailRecipients(row.emailRecipients),
   });
 }
 
@@ -122,10 +128,18 @@ export async function setOrgAnomalySettings(
   now = new Date(),
 ): Promise<CostAnomalySettings> {
   const safe = normalizeAnomalySettings(settings);
-  // An omitted `feedbackTuning` keeps whatever is stored: a client that
-  // predates the setting must not switch it off by saving the thresholds.
-  const { feedbackTuning, ...thresholds } = safe;
-  const tuning = feedbackTuning !== false;
+  // Built field by field, and both opt-ins are "absent means unchanged": an
+  // omitted `feedbackTuning` keeps what is stored and an omitted
+  // `emailRecipients` is left out of the UPDATE, so a client that predates
+  // either setting cannot switch it off or clear it by saving the thresholds.
+  const thresholds = {
+    sigmas: safe.sigmas,
+    minDeltaCents: safe.minDeltaCents,
+    newSourceMinCents: safe.newSourceMinCents,
+    smsAlerts: safe.smsAlerts,
+    ...(safe.emailRecipients ? { emailRecipients: safe.emailRecipients } : {}),
+  };
+  const tuning = safe.feedbackTuning !== false;
   const [row] = await db
     .insert(orgCostAnomalySettings)
     .values({ organizationId, ...thresholds, feedbackTuning: tuning })
@@ -144,6 +158,7 @@ export async function setOrgAnomalySettings(
     newSourceMinCents: row.newSourceMinCents,
     smsAlerts: normalizeSmsMode(row.smsAlerts),
     feedbackTuning: row.feedbackTuning,
+    emailRecipients: normalizeAlertEmailRecipients(row.emailRecipients),
   };
 }
 

@@ -74,6 +74,20 @@ func TestAlertDestinationMarshalsOnlyItsBranch(t *testing.T) {
 		}
 	})
 
+	t.Run("email-member carries userId", func(t *testing.T) {
+		got := decode(t, AlertDestination{Kind: "email-member", UserID: strptr("u1"), Address: strptr("a@example.com")})
+		if len(got) != 2 || got["userId"] != "u1" {
+			t.Errorf("email-member destination must be exactly {kind, userId}, got %v", got)
+		}
+	})
+
+	t.Run("email-address carries address", func(t *testing.T) {
+		got := decode(t, AlertDestination{Kind: "email-address", Address: strptr("finance@example.com"), UserID: strptr("u1")})
+		if len(got) != 2 || got["address"] != "finance@example.com" {
+			t.Errorf("email-address destination must be exactly {kind, address}, got %v", got)
+		}
+	})
+
 	t.Run("an unknown kind fails loudly", func(t *testing.T) {
 		if _, err := json.Marshal(AlertDestination{Kind: "email"}); err == nil {
 			t.Error("an unknown destination kind must be an error, not a silently dropped destination")

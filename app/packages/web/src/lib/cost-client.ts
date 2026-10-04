@@ -67,6 +67,7 @@ import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import type {
   BudgetAlertEvent,
   BudgetAlertNoteResult,
+  AlertEmailOptions,
   CostReport,
   CostReportBulkRequest,
   CostReportBulkResult,
@@ -122,6 +123,9 @@ export function createWebCostApi(orgId: string): CostApi {
     listSavedFilters: () => apiGet<SavedCostFilter[]>(`/api/org/${orgId}/saved-cost-filters`),
     createSavedFilter: (input: SavedCostFilterInput) =>
       apiPost<SavedCostFilter>(`/api/org/${orgId}/saved-cost-filters`, input),
+    // The alert email recipients field rides the base CostApi because the budget
+    // editor, which only receives a CostApi, carries one.
+    getAlertEmailOptions: () => apiGet<AlertEmailOptions>(`/api/org/${orgId}/alert-email`),
     // Scenario models ride the base CostApi for the same reason saved filters
     // do: every surface that can author or draw a cost graph needs the list;
     // the picker in the editor, and the card that labels an applied scenario.

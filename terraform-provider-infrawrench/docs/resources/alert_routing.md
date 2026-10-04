@@ -3,7 +3,7 @@
 page_title: "infrawrench_alert_routing Resource - infrawrench"
 subcategory: ""
 description: |-
-  The organization's alert routing table: which alerts go to which Slack channels, Teams webhooks, phones, on-call rotations and GitHub issues.
+  The organization's alert routing table: which alerts go to which Slack channels, Teams webhooks, phones, on-call rotations, GitHub issues and email recipients.
   One resource holds every rule, in order, because order is the semantics. The list is evaluated top to bottom and is first-match-wins unless a rule sets continue_on_match, which is what lets a narrow rule sit above a broad one. A rule cannot meaningfully be written without saying where it sits, so per-rule resources would have had to invent a position attribute and then defend it against two configurations claiming the same slot.
   An organization singleton. terraform destroy restores the built-in default ruleset rather than leaving the organization with no rules at all — an organization that routes nothing is a worse state than the default, and is not what removing a resource block should mean.
   An organization that has saved nothing still reads back a full synthesized rule list, so a first terraform plan against a fresh organization shows your rules replacing the defaults rather than being added to an empty table.
@@ -11,7 +11,7 @@ description: |-
 
 # infrawrench_alert_routing (Resource)
 
-The organization's alert routing table: which alerts go to which Slack channels, Teams webhooks, phones, on-call rotations and GitHub issues.
+The organization's alert routing table: which alerts go to which Slack channels, Teams webhooks, phones, on-call rotations, GitHub issues and email recipients.
 
 **One resource holds every rule, in order**, because order is the semantics. The list is evaluated top to bottom and is first-match-wins unless a rule sets `continue_on_match`, which is what lets a narrow rule sit above a broad one. A rule cannot meaningfully be written without saying where it sits, so per-rule resources would have had to invent a position attribute and then defend it against two configurations claiming the same slot.
 
@@ -45,6 +45,14 @@ resource "infrawrench_alert_routing" "org" {
     destination {
       kind       = "slack"
       channel_id = infrawrench_slack_channel.platform.id
+    }
+
+    # A literal address must pass the external-address policy in
+    # infrawrench_alert_email_settings. Use kind = "email-member" with a
+    # user_id from data.infrawrench_members to reach a member instead.
+    destination {
+      kind    = "email-address"
+      address = "finance@example.com"
     }
   }
 
@@ -126,7 +134,7 @@ A condition on a fact the alert does not carry never matches — in either direc
 - `enabled` (Boolean) A disabled rule is skipped entirely — it neither delivers nor shadows the rules below it.
 - `escalation` (Block, Optional) Notify a second set of destinations if nobody acknowledges within `after_minutes`.
 
-Acknowledgement comes from the button on the Slack message, so a rule routed only to Teams or to push will **always** escalate. Omit the block for a rule that never escalates. (see [below for nested schema](#nestedblock--rule--escalation))
+Acknowledgement comes from the button on the Slack message, so a rule routed only to Teams, to push or to email will **always** escalate. Omit the block for a rule that never escalates. (see [below for nested schema](#nestedblock--rule--escalation))
 - `quiet_hours` (Block, Optional) A recurring local-time window during which the rule **holds** its alerts. Held, not dropped: a held alert is queued and delivered when the window closes.
 
 Omit the block for a rule that never holds anything. (see [below for nested schema](#nestedblock--rule--quiet_hours))
@@ -158,14 +166,16 @@ Optional:
 
 Required:
 
-- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.
+- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`, `email-member`, `email-address`. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.
 
-`github-issues` files the alert's finding as a GitHub issue, in the repository `infrawrench_github_issue_settings` routes it to, and comments on the open issue instead when one already exists for that finding. It takes no id. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for any other trigger the destination is skipped, and it does nothing while GitHub issue filing is disabled.
+`github-issues` files the alert's finding as a GitHub issue, in the repository `infrawrench_github_issue_settings` routes it to, and comments on the open issue instead when one already exists for that finding. It takes no id. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for any other trigger the destination is skipped, and it does nothing while GitHub issue filing is disabled. `email-member` and `email-address` send an email; email has no acknowledge button, so a rule routed only to email always escalates.
 
 Optional:
 
+- `address` (String) Required when `kind` is `email-address`: a literal address such as a `finance@` alias. It must pass the organization's external-address policy (`infrawrench_alert_email_settings`), checked when the rules are saved and again when the alert is sent.
 - `channel_id` (String) Required when `kind` is `slack`: the `id` of an `infrawrench_slack_channel`.
 - `schedule_id` (String) Required when `kind` is `on-call`: the `id` of an `infrawrench_on_call_schedule`. The rule then reaches whoever is holding that rotation when the alert fires, rather than a person named when the rule was written. A disabled rotation contributes nobody and the rule's other destinations still deliver.
+- `user_id` (String) Required when `kind` is `email-member`: a member's `id` from the `infrawrench_members` data source. The member's current login address is resolved when the alert is sent, so an address change follows them and a member who leaves stops receiving.
 - `webhook_id` (String) Required when `kind` is `msteams`: the `id` of an `infrawrench_msteams_webhook`.
 
 
@@ -182,12 +192,14 @@ Optional:
 
 Required:
 
-- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`.
+- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`, `github-issues`, `email-member`, `email-address`.
 
 Optional:
 
+- `address` (String) Required when `kind` is `email-address`. Must pass the organization's external-address policy.
 - `channel_id` (String) Required when `kind` is `slack`.
 - `schedule_id` (String) Required when `kind` is `on-call`.
+- `user_id` (String) Required when `kind` is `email-member`: a member's `id` from `infrawrench_members`, resolved to their current login address at send time.
 - `webhook_id` (String) Required when `kind` is `msteams`.
 
 

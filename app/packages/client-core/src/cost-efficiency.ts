@@ -1,6 +1,7 @@
 import type { FindingRemediation } from "@infrawrench/plugin-base";
 
 import type { CloudFetch } from "./fetch";
+import type { AlertEmailRecipients } from "./alert-email";
 
 /* ------------------------------------------------------------------ *
  * Efficiency alerts: GET/PUT /costs/efficiency-alert-settings and
@@ -100,6 +101,14 @@ export interface CostEfficiencySettings {
   unitCostMinReportedDays: number;
   /** Least spend in the current window before alerting, USD cents. */
   unitCostMinSpendCents: number;
+
+  /* --- Delivery --- */
+  /**
+   * Who is emailed about all three (commitment expiry, idle commitments,
+   * unit-cost regressions), besides the routing rules. Optional on the PUT:
+   * omitting it leaves the stored list alone. The GET always carries it.
+   */
+  emailRecipients?: AlertEmailRecipients | undefined;
 }
 
 /**

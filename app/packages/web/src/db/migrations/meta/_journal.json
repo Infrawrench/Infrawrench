@@ -1009,6 +1009,13 @@
       "when": 1791238489913,
       "tag": "0143_extended_support",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1791239116057,
+      "tag": "0144_alert_email",
+      "breakpoints": true
     }
   ]
 }

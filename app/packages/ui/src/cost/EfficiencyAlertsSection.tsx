@@ -10,6 +10,7 @@ import { parseNumericInputValue } from "../form-values.js";
 import { useDataString } from "../i18n/data-strings.js";
 import { formatMoney } from "./transform.js";
 import { RemediateToggle, RemediationPanel } from "../savings/RemediationPanel.js";
+import { LoadedAlertEmailRecipientsField } from "./AlertEmailRecipientsField.js";
 import type { CostEfficiencySettings } from "./config.js";
 import type { CostsClient, EfficiencyAlertEvent, EfficiencyAlertKind } from "./types.js";
 
@@ -439,7 +440,10 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
   const dirty = (Object.keys(draft) as Array<keyof CostEfficiencySettings>).some((key) =>
     key === "commitmentExpiryHorizonDays"
       ? draft.commitmentExpiryHorizonDays.join(",") !== saved.commitmentExpiryHorizonDays.join(",")
-      : draft[key] !== saved[key],
+      : key === "emailRecipients"
+        ? JSON.stringify(draft.emailRecipients ?? null) !==
+          JSON.stringify(saved.emailRecipients ?? null)
+        : draft[key] !== saved[key],
   );
 
   function set(patch: Partial<CostEfficiencySettings>) {
@@ -654,6 +658,18 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
           />
         </div>
       </div>
+
+      {client.getAlertEmailOptions && (
+        <LoadedAlertEmailRecipientsField
+          load={client.getAlertEmailOptions.bind(client)}
+          value={draft.emailRecipients ?? { userIds: [], addresses: [] }}
+          onChange={(emailRecipients) => set({ emailRecipients })}
+          disabled={disabled}
+          description={gt(
+            "Emailed about commitment expiry, idle commitments and unit-cost regressions, in addition to your alert routing rules.",
+          )}
+        />
+      )}
 
       {saveError !== null && (
         <div role="alert" className="text-sm text-danger">

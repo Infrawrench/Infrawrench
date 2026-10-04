@@ -720,7 +720,7 @@ type DigestRecipient struct {
 
 /* ------------------------------ alert routing ------------------------------ */
 
-// AlertDestination is a tagged union over the five delivery targets. It
+// AlertDestination is a tagged union over the seven delivery targets. It
 // marshals to exactly the branch its Kind names, because the server's schema is
 // a strict oneOf and a push destination carrying a stray channelId is rejected.
 type AlertDestination struct {
@@ -730,6 +730,12 @@ type AlertDestination struct {
 	// ScheduleID names an on-call rotation rather than a person: who it reaches
 	// is decided when the alert fires, not when the rule is written.
 	ScheduleID *string `json:"scheduleId,omitempty"`
+	// UserID names an organization member for `email-member`. The member's
+	// current login address is read at send time, not stored on the rule.
+	UserID *string `json:"userId,omitempty"`
+	// Address is a literal mailbox for `email-address`. It must pass the
+	// organization's external-address policy when saved and again when sent.
+	Address *string `json:"address,omitempty"`
 }
 
 // MarshalJSON emits only the keys belonging to the named branch.
@@ -772,8 +778,26 @@ func (d AlertDestination) MarshalJSON() ([]byte, error) {
 		return json.Marshal(struct {
 			Kind string `json:"kind"`
 		}{Kind: "github-issues"})
+	case "email-member":
+		id := ""
+		if d.UserID != nil {
+			id = *d.UserID
+		}
+		return json.Marshal(struct {
+			Kind   string `json:"kind"`
+			UserID string `json:"userId"`
+		}{Kind: "email-member", UserID: id})
+	case "email-address":
+		address := ""
+		if d.Address != nil {
+			address = *d.Address
+		}
+		return json.Marshal(struct {
+			Kind    string `json:"kind"`
+			Address string `json:"address"`
+		}{Kind: "email-address", Address: address})
 	default:
-		return nil, fmt.Errorf("unknown alert destination kind %q (want \"push\", \"slack\", \"msteams\", \"on-call\" or \"github-issues\")", d.Kind)
+		return nil, fmt.Errorf("unknown alert destination kind %q (want \"push\", \"slack\", \"msteams\", \"on-call\", \"github-issues\", \"email-member\" or \"email-address\")", d.Kind)
 	}
 }
 
@@ -853,7 +877,7 @@ type QuietHours struct {
 
 // EscalationPolicy notifies a second set of destinations when nobody
 // acknowledges in time. Acknowledgement comes from the button on the Slack
-// message, so a rule routed only to Teams or push always escalates.
+// message, so a rule routed only to Teams, push or email always escalates.
 type EscalationPolicy struct {
 	AfterMinutes int64              `json:"afterMinutes"`
 	Destinations []AlertDestination `json:"destinations"`
@@ -905,6 +929,69 @@ type AlertRulesResponse struct {
 	MSTeamsWebhooks []json.RawMessage `json:"msTeamsWebhooks,omitempty"`
 	Accounts        []json.RawMessage `json:"accounts,omitempty"`
 	OnCallSchedules []json.RawMessage `json:"onCallSchedules,omitempty"`
+	// Email picker data. `infrawrench_members` and
+	// `infrawrench_alert_email_settings` surface the same facts from their own
+	// routes, so these stay raw here too.
+	Members        []json.RawMessage `json:"members,omitempty"`
+	EmailAvailable *bool             `json:"emailAvailable,omitempty"`
+	EmailSettings  json.RawMessage   `json:"emailSettings,omitempty"`
+	MemberDomains  []string          `json:"memberDomains,omitempty"`
+}
+
+/* ------------------------------- alert email ------------------------------- */
+
+// AlertEmailRecipients is who a budget, cost change alert, anomaly setting or
+// efficiency setting emails directly, on top of the routing rules.
+//
+// On a write the whole object is optional and its absence means "leave the
+// stored list alone"; empty arrays clear it. That is why every input struct
+// carries it as a pointer with omitempty, and why both arrays are always sent
+// together once it is present: the schema requires both keys.
+type AlertEmailRecipients struct {
+	UserIDs   []string `json:"userIds"`
+	Addresses []string `json:"addresses"`
+}
+
+// AlertEmailMember is one organization member as the recipient picker sees
+// them. Name is nullable: a member who never set one has only an address.
+type AlertEmailMember struct {
+	UserID string  `json:"userId"`
+	Name   *string `json:"name"`
+	Email  string  `json:"email"`
+}
+
+// AlertEmailSettings is the external-address policy, and the PUT body for it.
+// The PUT is a whole-object replace, so neither field is omitempty.
+type AlertEmailSettings struct {
+	ExternalPolicy string   `json:"externalPolicy"`
+	AllowedDomains []string `json:"allowedDomains"`
+}
+
+// AlertEmailSuppression is an address that used an alert email's unsubscribe
+// link. Recipients control these, not the organization's configuration.
+type AlertEmailSuppression struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// AlertEmailSettingsView is what GET and PUT /alert-email/settings return.
+type AlertEmailSettingsView struct {
+	ExternalPolicy string                  `json:"externalPolicy"`
+	AllowedDomains []string                `json:"allowedDomains"`
+	EmailAvailable bool                    `json:"emailAvailable"`
+	MemberDomains  []string                `json:"memberDomains"`
+	Suppressions   []AlertEmailSuppression `json:"suppressions"`
+}
+
+// AlertEmailOptions is what GET /alert-email returns: the recipient picker.
+// It needs only costs:read, which is why the members data source reads it
+// rather than the settings route.
+type AlertEmailOptions struct {
+	EmailAvailable bool               `json:"emailAvailable"`
+	Members        []AlertEmailMember `json:"members"`
+	Settings       AlertEmailSettings `json:"settings"`
+	MemberDomains  []string           `json:"memberDomains"`
 }
 
 /* ------------------------- resource alert settings ------------------------- */

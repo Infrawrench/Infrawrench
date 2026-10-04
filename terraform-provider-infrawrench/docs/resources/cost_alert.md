@@ -29,6 +29,12 @@ When the alert last ran and when it last fired are evaluation state, not configu
 
 ### Optional
 
+- `email_addresses` (Set of String) Extra addresses to email when the alert fires: a `finance@` alias, or someone without a login. At most 20. Each must pass the organization's external-address policy (`infrawrench_alert_email_settings`), checked when saved and again when sent. Emailed **in addition to** whatever the organization's `infrawrench_alert_routing` rules decide, whether or not a rule matched, and never held by quiet hours.
+
+Optional and computed: leave it out and the list is managed elsewhere (removing it from configuration leaves the stored list unchanged); set `[]` to clear it.
+- `email_member_ids` (Set of String) Organization members to email when the alert fires, by user id from the `infrawrench_members` data source. At most 50. The member's current login address is read when the alert is sent, so an address change follows them and a member who leaves stops receiving. Emailed **in addition to** whatever the organization's `infrawrench_alert_routing` rules decide, whether or not a rule matched, and never held by quiet hours.
+
+Optional and computed: leave it out and the list is managed elsewhere (removing it from configuration leaves the stored list unchanged); set `[]` to clear it.
 - `enabled` (Boolean) Whether the alert is evaluated. Defaults to `true`. Set it to `false` to silence an alert without losing its definition.
 - `filter` (Block List) Restricts the alert to matching spend. Clauses are ANDed. (see [below for nested schema](#nestedblock--filter))
 - `group_by` (String) Evaluate the thresholds per value of this dimension rather than against the total, so a spike in one account or service is not diluted by the rest. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`. Leave unset to alert on the total.

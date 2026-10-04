@@ -174,6 +174,7 @@ const INVOKE_CHANNELS = [
   "cloud_costs_efficiency_alerts",
   "cloud_costs_efficiency_settings",
   "cloud_costs_update_efficiency_settings",
+  "cloud_alert_email_options",
   "cloud_tag_policy",
   "cloud_tag_compliance",
   "cloud_costs_untagged",

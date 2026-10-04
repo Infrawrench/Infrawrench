@@ -10,6 +10,7 @@ import {
   listCloudCostAnnotations,
   listCloudCostScenarioModels,
   listCloudSavedCostFilters,
+  loadCloudAlertEmailOptions,
   loadCloudCostDimensionValues,
   loadCloudCarbonEstimate,
   loadCloudCostStatus,
@@ -77,6 +78,9 @@ export function createDesktopCostApi(): CostApi {
     },
     createSavedFilter: (input: SavedCostFilterInput) =>
       createCloudSavedCostFilter(requireCloudOrgId(), input),
+    // The alert email recipients field rides the base cost API because the
+    // budget editor, which only receives a CostApi, carries one.
+    getAlertEmailOptions: () => loadCloudAlertEmailOptions(requireCloudOrgId()),
     // Scenario models ride the base cost API for the same reason: the picker in
     // the graph editor needs the list, and so does the card that labels an
     // applied scenario.

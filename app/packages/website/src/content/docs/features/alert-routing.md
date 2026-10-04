@@ -12,12 +12,12 @@ Every alert Infrawrench raises — a sync failure, a budget crossing, a cost ano
 
 A rule has four parts:
 
-| Part            | What it says                                                                                    |
-| --------------- | ----------------------------------------------------------------------------------------------- |
-| **When**        | Conditions the alert must satisfy. All of them must match — "or" is a second rule.              |
-| **Send to**     | Slack channels, Teams channels, mobile push, on-call rotations and GitHub issues, in any mix.   |
-| **Quiet hours** | Optional. A recurring local-time window during which matching alerts are held rather than sent. |
-| **Escalation**  | Optional. Extra destinations to notify if nobody acknowledges within N minutes.                 |
+| Part            | What it says                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **When**        | Conditions the alert must satisfy. All of them must match — "or" is a second rule.                                        |
+| **Send to**     | Slack channels, Teams channels, mobile push, on-call rotations, GitHub issues and [email](./email-alerts.md), in any mix. |
+| **Quiet hours** | Optional. A recurring local-time window during which matching alerts are held rather than sent.                           |
+| **Escalation**  | Optional. Extra destinations to notify if nobody acknowledges within N minutes.                                           |
 
 Rules are a **list, evaluated top to bottom**, and the first one that matches decides where the alert goes. That ordering is what makes the common ask expressible:
 

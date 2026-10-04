@@ -259,12 +259,14 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
     });
     expect(routeAlert).toHaveBeenCalledWith(
       expect.objectContaining({ trigger: "anomalyAlerts" }),
-      // Expected / Unexpected ride every anomaly alert into Slack.
+      // Expected / Unexpected ride every anomaly alert into Slack, beside the
+      // anomaly settings' own email recipients.
       expect.objectContaining({
         slackButtons: [
           expect.objectContaining({ actionId: "infrawrench_anomaly_expected" }),
           expect.objectContaining({ actionId: "infrawrench_anomaly_unexpected" }),
         ],
+        emailReason: expect.any(String),
       }),
     );
   });

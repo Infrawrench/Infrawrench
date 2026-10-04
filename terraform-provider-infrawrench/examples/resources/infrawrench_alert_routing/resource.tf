@@ -22,6 +22,14 @@ resource "infrawrench_alert_routing" "org" {
       kind       = "slack"
       channel_id = infrawrench_slack_channel.platform.id
     }
+
+    # A literal address must pass the external-address policy in
+    # infrawrench_alert_email_settings. Use kind = "email-member" with a
+    # user_id from data.infrawrench_members to reach a member instead.
+    destination {
+      kind    = "email-address"
+      address = "finance@example.com"
+    }
   }
 
   rule {

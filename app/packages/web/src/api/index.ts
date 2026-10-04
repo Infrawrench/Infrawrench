@@ -156,6 +156,7 @@ import { githubIssuesRoutes } from "./routes/github-issues";
 import { digestRoutes } from "./routes/digest";
 import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
 import alertRuleRoutes from "./routes/alert-rules";
+import { alertEmailPublicRoutes, alertEmailRoutes } from "./routes/alert-email";
 
 // API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
@@ -203,6 +204,8 @@ api.route("/api", slackOauthRoute);
 api.route("/api", slackInboundRoutes);
 // The page behind the Expected/Unexpected links on Teams anomaly cards.
 api.route("/api", anomalyFeedbackLinkRoutes);
+// Public alert-email unsubscribe (no session; HMAC-signed token in the URL).
+api.route("/api", alertEmailPublicRoutes);
 api.route("/.well-known", wellKnownRoutes);
 // `auth.md` at the domain root: the agent-registration skill document the
 // `agent_auth` discovery block points at.
@@ -492,6 +495,7 @@ orgScoped.route("/github-issues", githubIssuesRoutes);
 orgScoped.route("/digest", digestRoutes);
 orgScoped.route("/push", pushOrgRoutes);
 orgScoped.route("/alert-rules", alertRuleRoutes);
+orgScoped.route("/alert-email", alertEmailRoutes);
 
 api.route("/api/org/:orgId", orgScoped);
 

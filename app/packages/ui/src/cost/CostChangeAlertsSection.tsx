@@ -7,6 +7,7 @@ import {
   COST_CHANGE_DIRECTION_LABELS,
   COST_DIMENSION_LABELS,
   DEFAULT_COST_ALERT_INPUT,
+  alertEmailRecipientCount,
   costAlertEventDeltaLabel,
   type CostAlert,
   type CostAlertEvent,
@@ -25,6 +26,7 @@ import { formatMoney } from "./transform.js";
 import { TagKeyInput, useTagKeyOptions } from "./TagKeyPicker.js";
 import { Modal } from "../components/Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
+import { LoadedAlertEmailRecipientsField } from "./AlertEmailRecipientsField.js";
 import type { CostsClient } from "./types.js";
 
 const inputClass =
@@ -251,6 +253,14 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
                 <p className="text-xs text-on-surface-faint">
                   {describeThreshold(alert, gt)} · {describeScope(alert, gt, gtData)} ·{" "}
                   {gtData(COST_CHANGE_CADENCE_DESCRIPTIONS[alert.cadence]).toLowerCase()}
+                  {alertEmailRecipientCount(alert.emailRecipients) > 0 && (
+                    <>
+                      {" · "}
+                      {gt("emails {count}", {
+                        count: alertEmailRecipientCount(alert.emailRecipients),
+                      })}
+                    </>
+                  )}
                 </p>
               </div>
               <span className="whitespace-nowrap text-xs text-on-surface-faint">
@@ -356,6 +366,7 @@ export function alertToInput(alert: CostAlert): CostAlertInput {
     thresholdAmountCents: alert.thresholdAmountCents,
     direction: alert.direction,
     enabled: alert.enabled,
+    ...(alert.emailRecipients ? { emailRecipients: alert.emailRecipients } : {}),
   };
 }
 
@@ -612,6 +623,17 @@ export function CostChangeAlertConfigModal({
             />
             {gt("Enabled")}
           </label>
+
+          {client.getAlertEmailOptions && (
+            <LoadedAlertEmailRecipientsField
+              load={client.getAlertEmailOptions.bind(client)}
+              value={input.emailRecipients ?? { userIds: [], addresses: [] }}
+              onChange={(emailRecipients) => set({ emailRecipients })}
+              description={gt(
+                "Emailed each time this alert fires, in addition to your alert routing rules.",
+              )}
+            />
+          )}
 
           {error && <p className="text-sm text-danger">{error}</p>}
 

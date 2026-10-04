@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.72.0",
+    "version": "1.73.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -4315,6 +4315,36 @@
         ],
         "additionalProperties": false
       },
+      "AlertEmailRecipients": {
+        "type": "object",
+        "properties": {
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "description": "Organization members, by user id (from GET /alert-email). The member's current login address is read when the alert is sent, so an email change follows them and a member who leaves stops receiving."
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "description": "Extra addresses (a `finance@` alias, someone without a login). Each must pass the organization's external-address policy (GET /alert-email/settings), checked when saved and again when sent.",
+            "example": [
+              "finance@example.com"
+            ]
+          }
+        },
+        "required": [
+          "userIds",
+          "addresses"
+        ],
+        "additionalProperties": false,
+        "description": "Who is emailed when this object fires, **in addition to** whatever the organization's alert routing rules decide. Delivered whether or not a rule matched and not held by quiet hours. On a write, omitting the field leaves the stored list unchanged; send empty arrays to clear it."
+      },
       "CostAnomalySettings": {
         "type": "object",
         "properties": {
@@ -4348,6 +4378,9 @@
           "feedbackTuning": {
             "type": "boolean",
             "description": "Whether repeated `expected` feedback on a provider or service raises its spike threshold: half a standard deviation per expected verdict after the first within 90 days, at most +2σ and never past 10σ, cancelled by any `unexpected` verdict on the same key. Defaults to true. Optional on PUT: omitting it keeps the stored value. Always present on a read."
+          },
+          "emailRecipients": {
+            "$ref": "#/components/schemas/AlertEmailRecipients"
           }
         },
         "required": [
@@ -4703,6 +4736,9 @@
             "minimum": 100,
             "maximum": 100000000,
             "description": "Least spend in the current window before alerting, in USD cents, restated per currency. Defaults to 10000 ($100)."
+          },
+          "emailRecipients": {
+            "$ref": "#/components/schemas/AlertEmailRecipients"
           }
         },
         "required": [
@@ -8418,6 +8454,9 @@
             ],
             "format": "date-time"
           },
+          "emailRecipients": {
+            "$ref": "#/components/schemas/AlertEmailRecipients"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -8440,6 +8479,7 @@
           "enabled",
           "lastEvaluatedAt",
           "lastFiredAt",
+          "emailRecipients",
           "createdAt",
           "updatedAt"
         ],
@@ -8606,6 +8646,9 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "emailRecipients": {
+            "$ref": "#/components/schemas/AlertEmailRecipients"
           }
         },
         "required": [
@@ -11892,6 +11935,9 @@
             "type": "boolean",
             "description": "Measure this budget against billing-rule-adjusted spend — the internal figure — instead of what the providers charged. False by default, and for every budget nobody opted in. The default is a deliberate refusal: a markup is organisation policy and a budget threshold pages a real person, so adding one settings row must not be able to move every on-call rota at once. Unlike a scenario this affects `actual` thresholds too — an opted-in budget is measuring the internal number, and month-to-date internal spend is as marked up as the forecast is. The alert body says the figure is adjusted and names the collected one. Updates are full replaces, so omitting it on PUT clears the opt-in."
           },
+          "emailRecipients": {
+            "$ref": "#/components/schemas/AlertEmailRecipients"
+          },
           "rawActualCents": {
             "type": [
               "integer",
@@ -12081,6 +12127,7 @@
           "scenarioModelId",
           "scenarioModelName",
           "useAdjustedSpend",
+          "emailRecipients",
           "rawActualCents",
           "month",
           "actualCents",
@@ -12166,6 +12213,9 @@
             "type": "boolean",
             "description": "Measure this budget against billing-rule-adjusted spend — the internal figure — instead of what the providers charged. False by default, and for every budget nobody opted in. The default is a deliberate refusal: a markup is organisation policy and a budget threshold pages a real person, so adding one settings row must not be able to move every on-call rota at once. Unlike a scenario this affects `actual` thresholds too — an opted-in budget is measuring the internal number, and month-to-date internal spend is as marked up as the forecast is. The alert body says the figure is adjusted and names the collected one. Updates are full replaces, so omitting it on PUT clears the opt-in."
           },
+          "emailRecipients": {
+            "$ref": "#/components/schemas/AlertEmailRecipients"
+          },
           "createdByUserId": {
             "type": [
               "string",
@@ -12231,6 +12281,7 @@
           "thresholds",
           "costBasis",
           "useAdjustedSpend",
+          "emailRecipients",
           "createdByUserId",
           "deletedAt",
           "createdAt",
@@ -12339,6 +12390,9 @@
           "parentBudgetId": {
             "type": "string",
             "description": "The budget this one rolls up into. A parent's actual and forecast are the sum of its children's, each measured over the parent's period; parent and children must count the same thing (one currency, or one usage unit). Hierarchies are at most 4 levels deep. Deleting a budget moves its children up to its own parent. Updates are full replaces, so omitting it on PUT makes the budget a root."
+          },
+          "emailRecipients": {
+            "$ref": "#/components/schemas/AlertEmailRecipients"
           }
         },
         "required": [
@@ -40824,6 +40878,7 @@
           "postureAlerts",
           "probeAlerts",
           "quotaAlerts",
+          "extendedSupportAlerts",
           "incidentAlerts",
           "weeklyDigest"
         ],
@@ -41257,9 +41312,50 @@
               "kind"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "email-member"
+                ]
+              },
+              "userId": {
+                "type": "string",
+                "description": "An organization member's user id (from `members` in this response, or GET /alert-email). Their current login address is read at send time."
+              }
+            },
+            "required": [
+              "kind",
+              "userId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "email-address"
+                ]
+              },
+              "address": {
+                "type": "string",
+                "description": "An extra address. Must pass the organization's external-address policy (GET /alert-email/settings).",
+                "example": "finance@example.com"
+              }
+            },
+            "required": [
+              "kind",
+              "address"
+            ],
+            "additionalProperties": false
           }
         ],
-        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n`on-call` resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule's **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped."
+        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n`on-call` resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule's **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped.\n\n`email-member` and `email-address` send an HTML and plain-text email with a link back into the app and a one-click unsubscribe link. Email carries no acknowledge button, so a rule routed only to email always escalates."
       },
       "QuietHours": {
         "type": [
@@ -41492,6 +41588,68 @@
               "additionalProperties": false
             },
             "description": "Live on-call rotations, so the editor can offer 'whoever is on call' as a destination. Disabled rotations are omitted for the same reason a disconnected Slack install is: offering one would let the editor build a rule that routes nowhere."
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "email": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "userId",
+                "name",
+                "email"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Current members, for the email destination picker."
+          },
+          "emailAvailable": {
+            "type": "boolean",
+            "description": "Whether this deployment has a mail provider configured."
+          },
+          "emailSettings": {
+            "type": "object",
+            "properties": {
+              "externalPolicy": {
+                "type": "string",
+                "enum": [
+                  "member-domains",
+                  "any"
+                ]
+              },
+              "allowedDomains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "externalPolicy",
+              "allowedDomains"
+            ],
+            "additionalProperties": false,
+            "description": "The external-address policy an `email-address` destination must pass."
+          },
+          "memberDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Domains the organization's members sign in with: the implicit allowlist."
           }
         },
         "required": [
@@ -41500,7 +41658,11 @@
           "slackChannels",
           "msTeamsWebhooks",
           "accounts",
-          "onCallSchedules"
+          "onCallSchedules",
+          "members",
+          "emailAvailable",
+          "emailSettings",
+          "memberDomains"
         ],
         "additionalProperties": false
       },
@@ -41623,6 +41785,154 @@
           "escalateAt",
           "acknowledgedAt",
           "acknowledgedByUserId"
+        ],
+        "additionalProperties": false
+      },
+      "AlertEmailMember": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "AlertEmailSettings": {
+        "type": "object",
+        "properties": {
+          "externalPolicy": {
+            "type": "string",
+            "enum": [
+              "member-domains",
+              "any"
+            ],
+            "description": "`member-domains` (the default): an extra address must be on a domain one of the organization's members signs in with, or one listed in `allowedDomains`. `any`: no restriction."
+          },
+          "allowedDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "description": "Extra domains accepted under `member-domains`, without the `@`.",
+            "example": [
+              "partner-agency.com"
+            ]
+          }
+        },
+        "required": [
+          "externalPolicy",
+          "allowedDomains"
+        ],
+        "additionalProperties": false
+      },
+      "AlertEmailOptions": {
+        "type": "object",
+        "properties": {
+          "emailAvailable": {
+            "type": "boolean",
+            "description": "Whether this deployment has a mail provider configured. False means alert email is never sent."
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertEmailMember"
+            }
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AlertEmailSettings"
+          },
+          "memberDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Domains the organization's members sign in with: the implicit allowlist."
+          }
+        },
+        "required": [
+          "emailAvailable",
+          "members",
+          "settings",
+          "memberDomains"
+        ],
+        "additionalProperties": false
+      },
+      "AlertEmailSuppression": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "AlertEmailSettingsView": {
+        "type": "object",
+        "properties": {
+          "externalPolicy": {
+            "type": "string",
+            "enum": [
+              "member-domains",
+              "any"
+            ],
+            "description": "`member-domains` (the default): an extra address must be on a domain one of the organization's members signs in with, or one listed in `allowedDomains`. `any`: no restriction."
+          },
+          "allowedDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "emailAvailable": {
+            "type": "boolean"
+          },
+          "memberDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "suppressions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertEmailSuppression"
+            },
+            "description": "Addresses that used the unsubscribe link in an alert email. They receive no alert email from this organization until an admin removes the entry."
+          }
+        },
+        "required": [
+          "externalPolicy",
+          "allowedDomains",
+          "emailAvailable",
+          "memberDomains",
+          "suppressions"
         ],
         "additionalProperties": false
       },
@@ -42995,6 +43305,7 @@
           "posture_finding",
           "expiring",
           "probe",
+          "extended_support",
           "commitment_idle"
         ],
         "description": "Which detector produced the finding the issue was filed from."
@@ -82853,6 +83164,272 @@
           }
         },
         "operationId": "postOrgOrgIdAlertRulesDeliveriesCancel"
+      }
+    },
+    "/api/org/{orgId}/alert-email": {
+      "get": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Recipient picker options for alert email",
+        "description": "Current members (with their login address), the external-address policy and whether email is available on this deployment: everything a client needs to edit the `emailRecipients` on a budget, cost change alert, anomaly settings or efficiency alert settings, or an email destination on an alert routing rule. Requires `costs:read`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Picker options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertEmailOptions"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAlertEmail"
+      }
+    },
+    "/api/org/{orgId}/alert-email/settings": {
+      "get": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Get the alert email policy and suppression list",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Policy, availability and suppressions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertEmailSettingsView"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAlertEmailSettings"
+      },
+      "put": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Set the alert email external-address policy",
+        "description": "Whole object. Tightening the policy does not edit any stored recipient list: an address that no longer passes is skipped at send time, and loosening the policy again brings it back.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertEmailSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertEmailSettingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdAlertEmailSettings"
+      }
+    },
+    "/api/org/{orgId}/alert-email/suppressions/{id}": {
+      "delete": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Resume alert email to an unsubscribed address",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdAlertEmailSuppressionsId"
+      }
+    },
+    "/api/alert-email/unsubscribe": {
+      "get": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Unsubscribe confirmation page (from an alert email)",
+        "security": [],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "t",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "An HTML page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid token",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getAlertEmailUnsubscribe",
+        "x-internal": true
+      },
+      "post": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Unsubscribe an address from alert email (RFC 8058 one-click)",
+        "security": [],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "t",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "An HTML page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid token",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postAlertEmailUnsubscribe",
+        "x-internal": true
       }
     },
     "/api/org/{orgId}/slack/status": {

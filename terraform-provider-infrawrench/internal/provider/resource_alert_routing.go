@@ -63,6 +63,8 @@ type alertDestinationModel struct {
 	ChannelID  types.String `tfsdk:"channel_id"`
 	WebhookID  types.String `tfsdk:"webhook_id"`
 	ScheduleID types.String `tfsdk:"schedule_id"`
+	UserID     types.String `tfsdk:"user_id"`
+	Address    types.String `tfsdk:"address"`
 }
 
 type alertQuietHoursModel struct {
@@ -92,6 +94,8 @@ var alertDestinationAttrTypes = map[string]attr.Type{
 	"channel_id":  types.StringType,
 	"webhook_id":  types.StringType,
 	"schedule_id": types.StringType,
+	"user_id":     types.StringType,
+	"address":     types.StringType,
 }
 
 var (
@@ -138,7 +142,7 @@ var (
 		"in", "notIn", "gte", "eq", "lt", "contains", "notContains",
 	}
 	alertSeverities      = []string{"info", "warning", "critical"}
-	alertDestinationKind = []string{"push", "slack", "msteams", "on-call", "github-issues"}
+	alertDestinationKind = []string{"push", "slack", "msteams", "on-call", "github-issues", "email-member", "email-address"}
 	alertTriggers        = []string{
 		"syncIncidents", "budgetAlerts", "anomalyAlerts", "costChangeAlerts", "commitmentExpiryAlerts",
 		"commitmentIdleAlerts", "unitCostRegressionAlerts", "savingsFindings", "metricAlerts", "resourceDrift", "workflowPages",
@@ -153,7 +157,7 @@ func (r *alertRoutingResource) Metadata(_ context.Context, req resource.Metadata
 func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "The organization's alert routing table: which alerts go to which Slack channels, " +
-			"Teams webhooks, phones, on-call rotations and GitHub issues.\n\n" +
+			"Teams webhooks, phones, on-call rotations, GitHub issues and email recipients.\n\n" +
 			"**One resource holds every rule, in order**, because order is the semantics. The list is " +
 			"evaluated top to bottom and is first-match-wins unless a rule sets `continue_on_match`, which " +
 			"is what lets a narrow rule sit above a broad one. A rule cannot meaningfully be written " +
@@ -276,7 +280,9 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 											"finding. It takes no id. Only alerts that carry a finding (savings " +
 											"findings, cost anomalies, idle commitments) can be filed; for any other " +
 											"trigger the destination is skipped, and it does nothing while GitHub " +
-											"issue filing is disabled.",
+											"issue filing is disabled. `email-member` and `email-address` send an " +
+											"email; email has no acknowledge button, so a rule routed only to email " +
+											"always escalates.",
 										Validators: []validatorString{oneOfValidator(alertDestinationKind...)},
 									},
 									"channel_id": schema.StringAttribute{
@@ -296,6 +302,20 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 											"holding that rotation when the alert fires, rather than a person " +
 											"named when the rule was written. A disabled rotation contributes " +
 											"nobody and the rule's other destinations still deliver.",
+									},
+									"user_id": schema.StringAttribute{
+										Optional: true,
+										MarkdownDescription: "Required when `kind` is `email-member`: a member's `id` " +
+											"from the `infrawrench_members` data source. The member's current " +
+											"login address is resolved when the alert is sent, so an address " +
+											"change follows them and a member who leaves stops receiving.",
+									},
+									"address": schema.StringAttribute{
+										Optional: true,
+										MarkdownDescription: "Required when `kind` is `email-address`: a literal " +
+											"address such as a `finance@` alias. It must pass the organization's " +
+											"external-address policy (`infrawrench_alert_email_settings`), checked " +
+											"when the rules are saved and again when the alert is sent.",
 									},
 								},
 							},
@@ -340,7 +360,7 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 							MarkdownDescription: "Notify a second set of destinations if nobody acknowledges within " +
 								"`after_minutes`.\n\n" +
 								"Acknowledgement comes from the button on the Slack message, so a rule routed only " +
-								"to Teams or to push will **always** escalate. Omit the block for a rule that " +
+								"to Teams, to push or to email will **always** escalate. Omit the block for a rule that " +
 								"never escalates.",
 							Attributes: map[string]schema.Attribute{
 								"after_minutes": schema.Int64Attribute{
@@ -371,6 +391,17 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 											"schedule_id": schema.StringAttribute{
 												Optional:            true,
 												MarkdownDescription: "Required when `kind` is `on-call`.",
+											},
+											"user_id": schema.StringAttribute{
+												Optional: true,
+												MarkdownDescription: "Required when `kind` is `email-member`: a member's " +
+													"`id` from `infrawrench_members`, resolved to their current login " +
+													"address at send time.",
+											},
+											"address": schema.StringAttribute{
+												Optional: true,
+												MarkdownDescription: "Required when `kind` is `email-address`. Must pass " +
+													"the organization's external-address policy.",
 											},
 										},
 									},
@@ -618,6 +649,8 @@ func alertDestinationsFrom(ctx context.Context, list types.List) ([]iw.AlertDest
 			ChannelID:  stringPtr(b.ChannelID),
 			WebhookID:  stringPtr(b.WebhookID),
 			ScheduleID: stringPtr(b.ScheduleID),
+			UserID:     stringPtr(b.UserID),
+			Address:    stringPtr(b.Address),
 		})
 	}
 	return out, diags
@@ -658,6 +691,8 @@ func alertRoutingStateFrom(ctx context.Context, orgID string, rules []iw.AlertRu
 				ChannelID:  stringValue(dest.ChannelID),
 				WebhookID:  stringValue(dest.WebhookID),
 				ScheduleID: stringValue(dest.ScheduleID),
+				UserID:     stringValue(dest.UserID),
+				Address:    stringValue(dest.Address),
 			})
 		}
 		destinationList, d := types.ListValueFrom(ctx, alertDestinationObjectType, destinations)
@@ -732,6 +767,8 @@ func alertEscalationTo(ctx context.Context, escalation *iw.EscalationPolicy) (ty
 			ChannelID:  stringValue(dest.ChannelID),
 			WebhookID:  stringValue(dest.WebhookID),
 			ScheduleID: stringValue(dest.ScheduleID),
+			UserID:     stringValue(dest.UserID),
+			Address:    stringValue(dest.Address),
 		})
 	}
 	list, d := types.ListValueFrom(ctx, alertDestinationObjectType, destinations)

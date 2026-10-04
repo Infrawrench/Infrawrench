@@ -58,6 +58,7 @@ import { resolveSavedCostFilters } from "./saved-filters";
 import { forecastWithScenario, resolveCostScenarioModel } from "./scenario-forecast";
 import { sendBudgetAlertPage } from "../twilio-pager";
 import { alertReached, routeAlert, type AlertRouteResult } from "../alerts/route";
+import { storedAlertEmailRecipients } from "../alerts/email";
 import {
   fireBudgetTriggerWorkflows,
   listBudgetTriggerWorkflows,
@@ -955,7 +956,12 @@ export async function evaluateBudgetsForOrg(
             // reply in each Slack message's thread, and as a follow-up to the
             // same Teams webhooks (see `budget_alert_events.slack_messages`).
           },
-          { track: true },
+          {
+            track: true,
+            emailRecipients: storedAlertEmailRecipients(budget.emailRecipients),
+            emailReason: `you are on the recipient list of the budget "${budget.name}"`,
+            emailManageUrl: url,
+          },
         );
         const delivered = budgetAlertDeliveredTo(routed);
         if (paged || alertReached(routed) || delivered) {

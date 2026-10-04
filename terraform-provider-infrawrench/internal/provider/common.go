@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -276,6 +277,136 @@ func singletonIDAttribute(what string) schema.StringAttribute {
 			"the only value it ever takes and it is what `terraform import` addresses.",
 		PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 	}
+}
+
+/* ---------------------------- email recipients ----------------------------- */
+//
+// Budgets, cost change alerts, anomaly settings and efficiency settings each
+// carry an optional `emailRecipients` object, with one rule that shapes the
+// mapping: on a write, an absent object leaves the stored list as it is, and
+// empty arrays clear it. Both attributes are Optional+Computed sets with
+// UseStateForUnknown, so:
+//
+//   - On create, an attribute left out of configuration is unknown. If both are
+//     unknown the object is omitted and the server keeps its default (nobody).
+//     If either is configured, both are sent and the unconfigured one goes as
+//     `[]`, because the wire requires both keys and a new object has no list
+//     to preserve.
+//   - On update, an attribute left out of configuration plans as its prior
+//     state, so the write echoes back what the server already holds. Removing
+//     the attribute from configuration therefore leaves the list alone; write
+//     `[]` to clear it. That matches the API's own reading of an omission.
+//
+// Either way the plan never shows a diff Terraform cannot resolve, and a list
+// edited in the UI is reported as drift rather than silently overwritten.
+
+// emailRecipientMaxMembers and emailRecipientMaxAddresses are the API's caps.
+const (
+	emailRecipientMaxMembers   = 50
+	emailRecipientMaxAddresses = 20
+)
+
+// emailRecipientAttributes returns the `email_member_ids` and
+// `email_addresses` attributes. `what` names the object for the descriptions,
+// e.g. "the budget crosses a threshold".
+func emailRecipientAttributes(what string) map[string]schema.Attribute {
+	common := " Emailed **in addition to** whatever the organization's `infrawrench_alert_routing` rules " +
+		"decide, whether or not a rule matched, and never held by quiet hours.\n\n" +
+		"Optional and computed: leave it out and the list is managed elsewhere (removing it from " +
+		"configuration leaves the stored list unchanged); set `[]` to clear it."
+	return map[string]schema.Attribute{
+		"email_member_ids": schema.SetAttribute{
+			Optional:    true,
+			Computed:    true,
+			ElementType: types.StringType,
+			MarkdownDescription: "Organization members to email when " + what + ", by user id from the " +
+				"`infrawrench_members` data source. At most 50. The member's current login address is read " +
+				"when the alert is sent, so an address change follows them and a member who leaves stops " +
+				"receiving." + common,
+			Validators:    []validatorSet{setSizeAtMost(emailRecipientMaxMembers)},
+			PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()},
+		},
+		"email_addresses": schema.SetAttribute{
+			Optional:    true,
+			Computed:    true,
+			ElementType: types.StringType,
+			MarkdownDescription: "Extra addresses to email when " + what + ": a `finance@` alias, or " +
+				"someone without a login. At most 20. Each must pass the organization's external-address " +
+				"policy (`infrawrench_alert_email_settings`), checked when saved and again when sent." + common,
+			Validators:    []validatorSet{setSizeAtMost(emailRecipientMaxAddresses)},
+			PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()},
+		},
+	}
+}
+
+// withEmailRecipientAttributes merges the two recipient attributes into a
+// resource's attribute map.
+func withEmailRecipientAttributes(attrs map[string]schema.Attribute, what string) map[string]schema.Attribute {
+	for name, attribute := range emailRecipientAttributes(what) {
+		attrs[name] = attribute
+	}
+	return attrs
+}
+
+// emailRecipientsFrom builds the wire object from the two planned sets, or nil
+// to leave the stored list unchanged. See the section comment for the rules.
+func emailRecipientsFrom(ctx context.Context, memberIDs, addresses types.Set) (*iw.AlertEmailRecipients, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if memberIDs.IsUnknown() && addresses.IsUnknown() {
+		return nil, diags
+	}
+	out := &iw.AlertEmailRecipients{UserIDs: []string{}, Addresses: []string{}}
+	if !memberIDs.IsNull() && !memberIDs.IsUnknown() {
+		diags.Append(memberIDs.ElementsAs(ctx, &out.UserIDs, false)...)
+	}
+	if !addresses.IsNull() && !addresses.IsUnknown() {
+		diags.Append(addresses.ElementsAs(ctx, &out.Addresses, false)...)
+	}
+	if out.UserIDs == nil {
+		out.UserIDs = []string{}
+	}
+	if out.Addresses == nil {
+		out.Addresses = []string{}
+	}
+	return out, diags
+}
+
+// clearedEmailRecipients is what a singleton's destroy writes: the shipped
+// default is nobody.
+func clearedEmailRecipients() *iw.AlertEmailRecipients {
+	return &iw.AlertEmailRecipients{UserIDs: []string{}, Addresses: []string{}}
+}
+
+// emailRecipientsTo renders the stored lists into the two sets.
+//
+// The API always returns the object, so the fallback only matters against a
+// server older than email alerting: there it keeps the prior known value (or
+// an empty set in place of an unknown) so an apply is never inconsistent.
+func emailRecipientsTo(ctx context.Context, remote *iw.AlertEmailRecipients, priorMemberIDs, priorAddresses types.Set) (types.Set, types.Set, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if remote == nil {
+		empty := types.SetValueMust(types.StringType, []attr.Value{})
+		if priorMemberIDs.IsUnknown() || priorMemberIDs.IsNull() {
+			priorMemberIDs = empty
+		}
+		if priorAddresses.IsUnknown() || priorAddresses.IsNull() {
+			priorAddresses = empty
+		}
+		return priorMemberIDs, priorAddresses, diags
+	}
+	userIDs := remote.UserIDs
+	if userIDs == nil {
+		userIDs = []string{}
+	}
+	addresses := remote.Addresses
+	if addresses == nil {
+		addresses = []string{}
+	}
+	members, d := types.SetValueFrom(ctx, types.StringType, userIDs)
+	diags.Append(d...)
+	extra, d := types.SetValueFrom(ctx, types.StringType, addresses)
+	diags.Append(d...)
+	return members, extra, diags
 }
 
 /* ------------------------------- cost filters ------------------------------ */

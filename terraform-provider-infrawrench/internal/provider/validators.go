@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 )
@@ -21,6 +22,7 @@ type (
 	validatorInt64   = validator.Int64
 	validatorFloat64 = validator.Float64
 	validatorList    = validator.List
+	validatorSet     = validator.Set
 )
 
 // oneOfValidator is the enum check used throughout the schemas.
@@ -87,6 +89,12 @@ func sizeBetween(minimum, maximum int) validator.List {
 // minimum, which is most of them: an empty list is usually meaningful.
 func sizeAtMost(maximum int) validator.List {
 	return listvalidator.SizeAtMost(maximum)
+}
+
+// setSizeAtMost is sizeAtMost for a set-typed attribute: the email recipient
+// lists and the allowed-domain list, where order carries no meaning.
+func setSizeAtMost(maximum int) validator.Set {
+	return setvalidator.SizeAtMost(maximum)
 }
 
 // elementsLengthBetween bounds the length of every string in a list, for the

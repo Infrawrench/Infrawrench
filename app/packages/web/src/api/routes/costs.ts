@@ -2,8 +2,11 @@ import { Hono } from "hono";
 import {
   COST_EFFICIENCY_LIMITS,
   EFFICIENCY_ALERT_KINDS,
+  type AlertEmailRecipients,
   type EfficiencyAlertKind,
 } from "@infrawrench/client-core";
+import { validateAlertEmailRecipients } from "@infrawrench/server-core/alerts/email";
+import { AlertEmailRecipientsError } from "@infrawrench/server-core/alerts/email-errors";
 import {
   costAnomalyAcknowledgeSchema,
   costAnomalySettingsSchema,
@@ -281,6 +284,25 @@ app.get("/anomaly-settings", async (c) => {
 });
 
 /**
+ * Check (and normalize, in place) a settings body's optional email
+ * recipients: members must be members, extra addresses must pass the org's
+ * external-address policy. Null when fine or absent.
+ */
+async function recipientsError(
+  organizationId: string,
+  body: { emailRecipients?: AlertEmailRecipients | undefined },
+): Promise<string | null> {
+  try {
+    const normalized = await validateAlertEmailRecipients(organizationId, body.emailRecipients);
+    if (normalized !== undefined) body.emailRecipients = normalized;
+    return null;
+  } catch (e) {
+    if (e instanceof AlertEmailRecipientsError) return e.message;
+    throw e;
+  }
+}
+
+/**
  * PUT /api/org/:orgId/costs/anomaly-settings: retune detection.
  *
  * Gated on `costs:write`, the permission the other mutating cost route
@@ -295,6 +317,8 @@ app.put("/anomaly-settings", async (c) => {
   if (!parsed.success) {
     return c.json({ error: "Invalid anomaly settings", issues: parsed.error.issues }, 400);
   }
+  const emailError = await recipientsError(organizationId, parsed.data);
+  if (emailError) return c.json({ error: emailError }, 400);
 
   const [settings, smsConfigured] = await Promise.all([
     setOrgAnomalySettings(organizationId, parsed.data),
@@ -371,6 +395,8 @@ app.put("/efficiency-alert-settings", async (c) => {
   if (!parsed.success) {
     return c.json({ error: "Invalid efficiency alert settings", issues: parsed.error.issues }, 400);
   }
+  const emailError = await recipientsError(organizationId, parsed.data);
+  if (emailError) return c.json({ error: emailError }, 400);
 
   return c.json(await setOrgEfficiencySettings(organizationId, parsed.data));
 });

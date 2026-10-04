@@ -378,7 +378,7 @@ describe("failure containment", () => {
     routeAlert.mockResolvedValue(
       routed({
         succeeded: 0,
-        byTransport: { push: 0, slack: 0, msTeams: 0 },
+        byTransport: { push: 0, slack: 0, msTeams: 0, email: 0 },
         held: 1,
       }),
     );

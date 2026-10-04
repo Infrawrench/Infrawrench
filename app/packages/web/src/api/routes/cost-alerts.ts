@@ -24,6 +24,7 @@ import {
   updateCostAlert,
 } from "../../services/cost-alerts";
 import { logAudit } from "../../services/audit";
+import { AlertEmailRecipientsError } from "@infrawrench/server-core/alerts/email-errors";
 import type { AuthSession } from "../auth-middleware";
 import { requirePermission } from "../../auth/permissions";
 
@@ -89,6 +90,7 @@ app.post("/", async (c) => {
     return c.json(created);
   } catch (e) {
     if (e instanceof CostAlertLimitError) return c.json({ error: e.message }, 400);
+    if (e instanceof AlertEmailRecipientsError) return c.json({ error: e.message }, 400);
     throw e;
   }
 });
@@ -101,7 +103,13 @@ app.put("/:id", async (c) => {
   if (!parsed.success) {
     return c.json({ error: "Invalid cost alert", issues: parsed.error.issues }, 400);
   }
-  const updated = await updateCostAlert(organizationId, c.req.param("id"), parsed.data);
+  let updated;
+  try {
+    updated = await updateCostAlert(organizationId, c.req.param("id"), parsed.data);
+  } catch (e) {
+    if (e instanceof AlertEmailRecipientsError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
   if (!updated) return c.json({ error: "Not found" }, 404);
   void logAudit({
     organizationId,

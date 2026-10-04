@@ -11,7 +11,9 @@ import { Hono } from "hono";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   ALERT_RULE_LIMITS,
+  isAlertEmailAddressAllowed,
   isAlertTrigger,
+  normalizeAlertEmailAddress,
   validateAlertRule,
   type AlertCondition,
   type AlertDestination,
@@ -25,6 +27,7 @@ import {
   replaceAlertRules,
   resolveRoutingRules,
 } from "@infrawrench/server-core/alerts/rules";
+import { getAlertEmailOptions } from "@infrawrench/server-core/alerts/email";
 import {
   acknowledgeAlert,
   cancelAlertDeliveries,
@@ -56,46 +59,56 @@ app.get("/", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
 
-  const [{ rules, usingDefaults }, channels, webhooks, accountRows, rotations] = await Promise.all([
-    resolveRoutingRules(organizationId),
-    db
-      .select({
-        id: slackChannels.id,
-        name: slackChannels.channelName,
-        isPrivate: slackChannels.isPrivate,
-      })
-      .from(slackChannels)
-      .innerJoin(slackInstallations, eq(slackInstallations.id, slackChannels.installationId))
-      // Disconnected installations are filtered out, exactly as
-      // `resolveSlackChannels` does at delivery time. Offering a channel the
-      // sender can no longer reach would let the editor build a rule that
-      // silently routes nowhere.
-      .where(
-        and(eq(slackChannels.organizationId, organizationId), isNull(slackInstallations.deletedAt)),
-      ),
-    db
-      .select({ id: msteamsWebhooks.id, label: msteamsWebhooks.label })
-      .from(msteamsWebhooks)
-      .where(eq(msteamsWebhooks.organizationId, organizationId)),
-    db
-      .select({
-        id: accounts.id,
-        displayName: accounts.displayName,
-        pluginId: accounts.pluginId,
-      })
-      .from(accounts)
-      .where(eq(accounts.organizationId, organizationId)),
-    // Live rotations only, matching the reason disconnected Slack installs are
-    // filtered out above: offering a disabled rotation would let the editor
-    // build a rule that resolves to nobody.
-    db
-      .select({ id: onCallSchedules.id, name: onCallSchedules.name })
-      .from(onCallSchedules)
-      .where(
-        and(eq(onCallSchedules.organizationId, organizationId), eq(onCallSchedules.enabled, true)),
-      )
-      .orderBy(onCallSchedules.name),
-  ]);
+  const [{ rules, usingDefaults }, channels, webhooks, accountRows, rotations, email] =
+    await Promise.all([
+      resolveRoutingRules(organizationId),
+      db
+        .select({
+          id: slackChannels.id,
+          name: slackChannels.channelName,
+          isPrivate: slackChannels.isPrivate,
+        })
+        .from(slackChannels)
+        .innerJoin(slackInstallations, eq(slackInstallations.id, slackChannels.installationId))
+        // Disconnected installations are filtered out, exactly as
+        // `resolveSlackChannels` does at delivery time. Offering a channel the
+        // sender can no longer reach would let the editor build a rule that
+        // silently routes nowhere.
+        .where(
+          and(
+            eq(slackChannels.organizationId, organizationId),
+            isNull(slackInstallations.deletedAt),
+          ),
+        ),
+      db
+        .select({ id: msteamsWebhooks.id, label: msteamsWebhooks.label })
+        .from(msteamsWebhooks)
+        .where(eq(msteamsWebhooks.organizationId, organizationId)),
+      db
+        .select({
+          id: accounts.id,
+          displayName: accounts.displayName,
+          pluginId: accounts.pluginId,
+        })
+        .from(accounts)
+        .where(eq(accounts.organizationId, organizationId)),
+      // Live rotations only, matching the reason disconnected Slack installs are
+      // filtered out above: offering a disabled rotation would let the editor
+      // build a rule that resolves to nobody.
+      db
+        .select({ id: onCallSchedules.id, name: onCallSchedules.name })
+        .from(onCallSchedules)
+        .where(
+          and(
+            eq(onCallSchedules.organizationId, organizationId),
+            eq(onCallSchedules.enabled, true),
+          ),
+        )
+        .orderBy(onCallSchedules.name),
+      // Members and the external-address policy, for the email destination
+      // picker. Same reasoning as the lists above: one round trip.
+      getAlertEmailOptions(organizationId),
+    ]);
 
   const payload: AlertRulesResponse = {
     rules,
@@ -104,6 +117,10 @@ app.get("/", async (c) => {
     msTeamsWebhooks: webhooks,
     accounts: accountRows,
     onCallSchedules: rotations,
+    members: email.members,
+    emailAvailable: email.emailAvailable,
+    emailSettings: email.settings,
+    memberDomains: email.memberDomains,
   };
   return c.json(payload);
 });
@@ -131,7 +148,15 @@ const CONDITION_FIELDS = new Set([
   "text",
 ]);
 
-const DESTINATION_KINDS = new Set(["push", "slack", "msteams", "on-call", "github-issues"]);
+const DESTINATION_KINDS = new Set([
+  "push",
+  "slack",
+  "msteams",
+  "on-call",
+  "github-issues",
+  "email-member",
+  "email-address",
+]);
 
 /**
  * Structural check before the semantic one.
@@ -167,7 +192,23 @@ function destinationError(dest: AlertDestination | null | undefined, what: strin
   if (dest.kind === "on-call" && (typeof dest.scheduleId !== "string" || !dest.scheduleId)) {
     return `An on-call ${what} needs a scheduleId`;
   }
+  if (dest.kind === "email-member" && (typeof dest.userId !== "string" || !dest.userId)) {
+    return `A member email ${what} needs a userId`;
+  }
+  if (
+    dest.kind === "email-address" &&
+    (typeof dest.address !== "string" || !normalizeAlertEmailAddress(dest.address))
+  ) {
+    return `An email ${what} needs a valid address`;
+  }
   return null;
+}
+
+/** Lowercase an extra address so dedupe and the policy check see one spelling. */
+function canonicalDestination(d: AlertDestination): AlertDestination {
+  return d.kind === "email-address"
+    ? { kind: "email-address", address: normalizeAlertEmailAddress(d.address) ?? d.address }
+    : d;
 }
 
 function structuralError(rule: RuleBody): string | null {
@@ -231,7 +272,7 @@ app.put("/", async (c) => {
     return c.json({ error: `At most ${ALERT_RULE_LIMITS.maxRulesPerOrg} rules per org` }, 400);
   }
 
-  const [ownChannels, ownWebhooks, ownRules, ownSchedules] = await Promise.all([
+  const [ownChannels, ownWebhooks, ownRules, ownSchedules, emailOptions] = await Promise.all([
     // Live installations only, matching the GET list and `resolveSlackChannels`.
     // A channel whose install was disconnected is still a row in this org's
     // table, so ownership alone would accept it, and it would then be dropped
@@ -255,7 +296,12 @@ app.put("/", async (c) => {
       .select({ id: onCallSchedules.id })
       .from(onCallSchedules)
       .where(eq(onCallSchedules.organizationId, organizationId)),
+    // Email destinations are checked the same way: a member id must be a
+    // current member and an extra address must pass the org's policy, or the
+    // rule would save and then deliver nothing.
+    getAlertEmailOptions(organizationId),
   ]);
+  const memberIds = new Set(emailOptions.members.map((m) => m.userId));
   const channelIds = new Set(ownChannels.map((r) => r.id));
   const webhookIds = new Set(ownWebhooks.map((r) => r.id));
   const scheduleIds = new Set(ownSchedules.map((r) => r.id));
@@ -281,6 +327,19 @@ app.put("/", async (c) => {
       if (d.kind === "on-call" && !scheduleIds.has(d.scheduleId)) {
         return "That on-call rotation does not belong to this organization";
       }
+      if (d.kind === "email-member" && !memberIds.has(d.userId)) {
+        return "That person is no longer a member of this organization; remove their email destination";
+      }
+      if (
+        d.kind === "email-address" &&
+        !isAlertEmailAddressAllowed(
+          d.address.toLowerCase(),
+          emailOptions.settings,
+          emailOptions.memberDomains,
+        )
+      ) {
+        return `${d.address} is outside the domains this organization allows for alert email`;
+      }
     }
     return null;
   }
@@ -296,10 +355,15 @@ app.put("/", async (c) => {
       enabled: rule.enabled !== false,
       position: i,
       conditions: rule.conditions ?? [],
-      destinations: rule.destinations ?? [],
+      destinations: (rule.destinations ?? []).map(canonicalDestination),
       continueOnMatch: rule.continueOnMatch === true,
       quietHours: rule.quietHours ?? null,
-      escalation: rule.escalation ?? null,
+      escalation: rule.escalation
+        ? {
+            ...rule.escalation,
+            destinations: rule.escalation.destinations.map(canonicalDestination),
+          }
+        : null,
     };
 
     const semantic = validateAlertRule(normalized);

@@ -368,13 +368,82 @@ func TestAnomalySuppressionRoundTrip(t *testing.T) {
 }
 
 func TestAnomalySettingsFeedbackTuningDefaultsOn(t *testing.T) {
-	state := anomalySettingsStateFrom("org", &iw.CostAnomalySettings{Sigmas: 3, MinDeltaCents: 1000, NewSourceMinCents: 2500, SMSAlerts: "off"})
+	state, d := anomalySettingsStateFrom(context.Background(), "org", &iw.CostAnomalySettings{Sigmas: 3, MinDeltaCents: 1000, NewSourceMinCents: 2500, SMSAlerts: "off"}, anomalySettingsResourceModel{})
+	if d.HasError() {
+		t.Fatalf("mapping: %v", d)
+	}
 	if !state.FeedbackTuning.ValueBool() {
 		t.Error("a read without feedbackTuning must default to true")
 	}
-	if anomalyDefaults.FeedbackTuning == nil || !*anomalyDefaults.FeedbackTuning {
+	if defaults := anomalyDefaults(); defaults.FeedbackTuning == nil || !*defaults.FeedbackTuning {
 		t.Error("destroy must restore feedback tuning to on")
 	}
+}
+
+// The email recipient object is omit-to-keep on the wire, so the mapping has
+// exactly one job: never send a list the practitioner did not state, and never
+// send half the object, since the schema requires both keys once it is present.
+func TestEmailRecipientsMapping(t *testing.T) {
+	ctx := context.Background()
+	unknown := types.SetUnknown(types.StringType)
+	set := func(values ...string) types.Set {
+		if values == nil {
+			values = []string{}
+		}
+		s, d := types.SetValueFrom(ctx, types.StringType, values)
+		if d.HasError() {
+			t.Fatalf("building set: %v", d)
+		}
+		return s
+	}
+
+	t.Run("both unknown omits the object", func(t *testing.T) {
+		got, d := emailRecipientsFrom(ctx, unknown, unknown)
+		if d.HasError() || got != nil {
+			t.Errorf("want nil so the stored list is kept, got %+v (%v)", got, d)
+		}
+	})
+
+	t.Run("one configured sends both keys", func(t *testing.T) {
+		got, d := emailRecipientsFrom(ctx, unknown, set("finance@example.com"))
+		if d.HasError() || got == nil {
+			t.Fatalf("want an object, got nil (%v)", d)
+		}
+		if got.UserIDs == nil || len(got.UserIDs) != 0 {
+			t.Errorf("the unconfigured list must go as [], got %#v", got.UserIDs)
+		}
+		if len(got.Addresses) != 1 || got.Addresses[0] != "finance@example.com" {
+			t.Errorf("addresses lost: %#v", got.Addresses)
+		}
+	})
+
+	t.Run("empty sets clear", func(t *testing.T) {
+		got, _ := emailRecipientsFrom(ctx, set(), set())
+		if got == nil || got.UserIDs == nil || got.Addresses == nil {
+			t.Errorf("empty sets must send empty arrays, got %+v", got)
+		}
+	})
+
+	t.Run("a response always yields known sets", func(t *testing.T) {
+		members, addresses, d := emailRecipientsTo(ctx, &iw.AlertEmailRecipients{UserIDs: []string{"u1"}}, unknown, unknown)
+		if d.HasError() || members.IsUnknown() || addresses.IsUnknown() || addresses.IsNull() {
+			t.Errorf("want known sets, got %v / %v (%v)", members, addresses, d)
+		}
+		if len(members.Elements()) != 1 || len(addresses.Elements()) != 0 {
+			t.Errorf("unexpected sets: %v / %v", members, addresses)
+		}
+	})
+
+	t.Run("a server without the field keeps the prior value", func(t *testing.T) {
+		prior := set("u1")
+		members, addresses, _ := emailRecipientsTo(ctx, nil, prior, unknown)
+		if !members.Equal(prior) {
+			t.Errorf("prior members lost: %v", members)
+		}
+		if addresses.IsUnknown() || len(addresses.Elements()) != 0 {
+			t.Errorf("an unknown prior must settle to an empty set, got %v", addresses)
+		}
+	})
 }
 
 /* --------------------------------- helpers -------------------------------- */

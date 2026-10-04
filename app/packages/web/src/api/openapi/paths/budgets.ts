@@ -1,6 +1,7 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
+import { AlertEmailRecipients } from "./alert-email";
 
 const Month = z
   .string()
@@ -187,6 +188,7 @@ const BudgetInput = strict({
   usageAmount: BudgetUsageAmount.optional(),
   period: BudgetPeriod.optional(),
   parentBudgetId: BudgetParentId.optional(),
+  emailRecipients: AlertEmailRecipients.optional(),
 }).openapi("BudgetInput");
 
 const BudgetFull = strict({
@@ -201,6 +203,7 @@ const BudgetFull = strict({
   thresholds: z.array(BudgetThreshold),
   costBasis: BudgetCostBasis,
   useAdjustedSpend: BudgetUseAdjustedSpend,
+  emailRecipients: AlertEmailRecipients,
   createdByUserId: z.string().nullable(),
   deletedAt: IsoDateTime.nullable(),
   createdAt: IsoDateTime,
@@ -294,6 +297,7 @@ const BudgetWithStatus = strict({
       "The opted-into model's name, so a card can say whose assumptions are in the number.",
     ),
   useAdjustedSpend: BudgetUseAdjustedSpend,
+  emailRecipients: AlertEmailRecipients,
   rawActualCents: z
     .number()
     .int()

@@ -91,6 +91,8 @@ type BudgetInput struct {
 	UsageAmount      *float64          `json:"usageAmount,omitempty"`
 	Period           *BudgetPeriod     `json:"period,omitempty"`
 	ParentBudgetID   *string           `json:"parentBudgetId,omitempty"`
+	// EmailRecipients is nil to leave the stored list unchanged.
+	EmailRecipients *AlertEmailRecipients `json:"emailRecipients,omitempty"`
 }
 
 // Budget is the union of the two shapes this endpoint returns.
@@ -101,23 +103,24 @@ type BudgetInput struct {
 // does not look like drift: the fields the write response omits stay nil and
 // the Read fills them in.
 type Budget struct {
-	ID                string            `json:"id"`
-	OrganizationID    string            `json:"organizationId,omitempty"`
-	Name              string            `json:"name"`
-	AmountCents       int64             `json:"amountCents"`
-	Currency          string            `json:"currency"`
-	Filters           []CostFilter      `json:"filters"`
-	SavedFilterID     *string           `json:"savedFilterId"`
-	ScenarioModelID   *string           `json:"scenarioModelId"`
-	ScenarioModelName *string           `json:"scenarioModelName,omitempty"`
-	Thresholds        []BudgetThreshold `json:"thresholds"`
-	CostBasis         *string           `json:"costBasis"`
-	UseAdjustedSpend  *bool             `json:"useAdjustedSpend"`
-	Measure           *string           `json:"measure"`
-	UsageUnit         *string           `json:"usageUnit"`
-	UsageAmount       *float64          `json:"usageAmount"`
-	Period            *BudgetPeriod     `json:"period"`
-	ParentBudgetID    *string           `json:"parentBudgetId"`
+	ID                string                `json:"id"`
+	OrganizationID    string                `json:"organizationId,omitempty"`
+	Name              string                `json:"name"`
+	AmountCents       int64                 `json:"amountCents"`
+	Currency          string                `json:"currency"`
+	Filters           []CostFilter          `json:"filters"`
+	SavedFilterID     *string               `json:"savedFilterId"`
+	ScenarioModelID   *string               `json:"scenarioModelId"`
+	ScenarioModelName *string               `json:"scenarioModelName,omitempty"`
+	Thresholds        []BudgetThreshold     `json:"thresholds"`
+	CostBasis         *string               `json:"costBasis"`
+	UseAdjustedSpend  *bool                 `json:"useAdjustedSpend"`
+	Measure           *string               `json:"measure"`
+	UsageUnit         *string               `json:"usageUnit"`
+	UsageAmount       *float64              `json:"usageAmount"`
+	Period            *BudgetPeriod         `json:"period"`
+	ParentBudgetID    *string               `json:"parentBudgetId"`
+	EmailRecipients   *AlertEmailRecipients `json:"emailRecipients"`
 
 	// Status fields: present on GET only.
 	Month                 *string     `json:"month,omitempty"`
@@ -378,24 +381,27 @@ type CostAlertInput struct {
 	ThresholdAmountCents *int64       `json:"thresholdAmountCents"`
 	Direction            string       `json:"direction"`
 	Enabled              bool         `json:"enabled"`
+	// EmailRecipients is nil to leave the stored list unchanged.
+	EmailRecipients *AlertEmailRecipients `json:"emailRecipients,omitempty"`
 }
 
 // CostAlert is a stored change-based alert.
 type CostAlert struct {
-	ID                   string       `json:"id"`
-	Name                 string       `json:"name"`
-	Filters              []CostFilter `json:"filters"`
-	GroupBy              *string      `json:"groupBy"`
-	GroupByTagKey        *string      `json:"groupByTagKey"`
-	Cadence              string       `json:"cadence"`
-	ThresholdPercent     *int64       `json:"thresholdPercent"`
-	ThresholdAmountCents *int64       `json:"thresholdAmountCents"`
-	Direction            string       `json:"direction"`
-	Enabled              bool         `json:"enabled"`
-	LastEvaluatedAt      *string      `json:"lastEvaluatedAt"`
-	LastFiredAt          *string      `json:"lastFiredAt"`
-	CreatedAt            string       `json:"createdAt"`
-	UpdatedAt            string       `json:"updatedAt"`
+	ID                   string                `json:"id"`
+	Name                 string                `json:"name"`
+	Filters              []CostFilter          `json:"filters"`
+	GroupBy              *string               `json:"groupBy"`
+	GroupByTagKey        *string               `json:"groupByTagKey"`
+	Cadence              string                `json:"cadence"`
+	ThresholdPercent     *int64                `json:"thresholdPercent"`
+	ThresholdAmountCents *int64                `json:"thresholdAmountCents"`
+	Direction            string                `json:"direction"`
+	Enabled              bool                  `json:"enabled"`
+	LastEvaluatedAt      *string               `json:"lastEvaluatedAt"`
+	LastFiredAt          *string               `json:"lastFiredAt"`
+	EmailRecipients      *AlertEmailRecipients `json:"emailRecipients"`
+	CreatedAt            string                `json:"createdAt"`
+	UpdatedAt            string                `json:"updatedAt"`
 }
 
 /* ----------------------------- scenario models ----------------------------- */
@@ -1062,6 +1068,10 @@ type CostAnomalySettings struct {
 	// strict, so it must never be sent back. Its json tag has omitempty and the
 	// input path builds a fresh struct rather than echoing this one.
 	SMSConfigured *bool `json:"smsConfigured,omitempty"`
+
+	// EmailRecipients is nil on a write to leave the stored list unchanged;
+	// the view returned by GET and PUT always carries it.
+	EmailRecipients *AlertEmailRecipients `json:"emailRecipients,omitempty"`
 }
 
 /* --------------------------- anomaly suppressions -------------------------- */
@@ -1130,6 +1140,9 @@ type CostEfficiencySettings struct {
 	UnitCostWindowDays             int64   `json:"unitCostWindowDays"`
 	UnitCostMinReportedDays        int64   `json:"unitCostMinReportedDays"`
 	UnitCostMinSpendCents          int64   `json:"unitCostMinSpendCents"`
+
+	// EmailRecipients is nil on a write to leave the stored list unchanged.
+	EmailRecipients *AlertEmailRecipients `json:"emailRecipients,omitempty"`
 }
 
 /* --------------------------------- currency -------------------------------- */

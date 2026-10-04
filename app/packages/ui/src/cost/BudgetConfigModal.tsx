@@ -22,6 +22,8 @@ import {
   useCostBasisChoice,
 } from "./CostGraphConfigModal.js";
 import { Modal } from "../components/Modal.js";
+import type { AlertEmailRecipients } from "@infrawrench/client-core";
+import { LoadedAlertEmailRecipientsField } from "./AlertEmailRecipientsField.js";
 import type { BudgetWithStatus, CostApi } from "./types.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
@@ -407,6 +409,14 @@ export function BudgetConfigModal({
               )}
             </div>
           </div>
+
+          {api.getAlertEmailOptions && (
+            <BudgetEmailField
+              api={api}
+              value={input.emailRecipients ?? { userIds: [], addresses: [] }}
+              onChange={(emailRecipients) => set({ emailRecipients })}
+            />
+          )}
 
           {error && <p className="text-sm text-danger">{error}</p>}
 
@@ -896,5 +906,32 @@ function BudgetParentField({
             )}
       </p>
     </div>
+  );
+}
+
+/**
+ * Who this budget emails when a threshold fires, on top of the org's routing
+ * rules. Its own component so the options load only when the host wired them.
+ */
+function BudgetEmailField({
+  api,
+  value,
+  onChange,
+}: {
+  api: CostApi;
+  value: AlertEmailRecipients;
+  onChange: (next: AlertEmailRecipients) => void;
+}) {
+  const gt = useGT();
+  if (!api.getAlertEmailOptions) return null;
+  return (
+    <LoadedAlertEmailRecipientsField
+      load={api.getAlertEmailOptions.bind(api)}
+      value={value}
+      onChange={onChange}
+      description={gt(
+        "Emailed each time a threshold fires, in addition to your alert routing rules.",
+      )}
+    />
   );
 }

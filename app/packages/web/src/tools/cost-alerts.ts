@@ -23,11 +23,33 @@ import {
   softDeleteCostAlert,
 } from "../services/cost-alerts";
 import { logAudit } from "../services/audit";
+import {
+  AlertEmailRecipientsError,
+  getAlertEmailOptions,
+} from "@infrawrench/server-core/alerts/email";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
 
 export function costAlertTools(): ToolDefinition[] {
   return [
+    {
+      name: "list_alert_email_options",
+      title: "List alert email recipients",
+      description:
+        "Who can be put on an alert's emailRecipients: the organization's members (user id, " +
+        "name, login address), the external-address policy extra addresses must pass, and " +
+        "whether this deployment can send email at all. Use the user ids in emailRecipients." +
+        "userIds on create_budget, update_budget or create_cost_alert.",
+      inputSchema: {},
+      risk: "read",
+      permission: "costs:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        return ok(await getAlertEmailOptions(auth.organizationId));
+      },
+    },
+
     {
       name: "list_cost_alerts",
       title: "List cost change alerts",
@@ -97,6 +119,7 @@ export function costAlertTools(): ToolDefinition[] {
           created = await createCostAlert(auth.organizationId, parsed.data, auth.userId);
         } catch (e) {
           if (e instanceof CostAlertLimitError) return err(e.message);
+          if (e instanceof AlertEmailRecipientsError) return err(e.message);
           throw e;
         }
         void logAudit({

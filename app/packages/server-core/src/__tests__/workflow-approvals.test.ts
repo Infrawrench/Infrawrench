@@ -104,8 +104,8 @@ function routed(over: Record<string, unknown> = {}) {
   return {
     attempted: 2,
     succeeded: 2,
-    byTransport: { push: 1, slack: 1, msTeams: 0 },
-    attemptedByTransport: { push: 1, slack: 1, msTeams: 0 },
+    byTransport: { push: 1, slack: 1, msTeams: 0, email: 0 },
+    attemptedByTransport: { push: 1, slack: 1, msTeams: 0, email: 0 },
     held: 0,
     unrouted: false,
     matchedRuleIds: ["rule1"],
@@ -123,8 +123,8 @@ function unroutedResult() {
   return routed({
     attempted: 0,
     succeeded: 0,
-    byTransport: { push: 0, slack: 0, msTeams: 0 },
-    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    byTransport: { push: 0, slack: 0, msTeams: 0, email: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0, email: 0 },
     matchedRuleIds: [],
     slackMessages: [],
     unrouted: true,

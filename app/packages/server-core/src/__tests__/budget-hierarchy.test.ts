@@ -83,6 +83,7 @@ function budget(over: Row = {}): Record<string, unknown> {
     scenarioModelId: null,
     useAdjustedSpend: false,
     visibilityUserId: null,
+    emailRecipients: { userIds: [], addresses: [] },
     createdByUserId: null,
     deletedAt: null,
     createdAt: "2026-07-01T00:00:00.000Z",

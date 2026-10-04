@@ -63,8 +63,8 @@ function routed(over: Record<string, unknown> = {}) {
   return {
     attempted: 2,
     succeeded: 2,
-    byTransport: { push: 1, slack: 1, msTeams: 0 },
-    attemptedByTransport: { push: 1, slack: 1, msTeams: 0 },
+    byTransport: { push: 1, slack: 1, msTeams: 0, email: 0 },
+    attemptedByTransport: { push: 1, slack: 1, msTeams: 0, email: 0 },
     held: 0,
     unrouted: false,
     matchedRuleIds: ["rule1"],
@@ -82,8 +82,8 @@ function unroutedResult() {
   return routed({
     attempted: 0,
     succeeded: 0,
-    byTransport: { push: 0, slack: 0, msTeams: 0 },
-    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    byTransport: { push: 0, slack: 0, msTeams: 0, email: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0, email: 0 },
     matchedRuleIds: [],
     slackMessages: [],
     unrouted: true,
@@ -145,8 +145,9 @@ describe("evaluateBudgetsForOrg — notification fan-out", () => {
         // fact rather than only inside the sentence.
         facts: expect.objectContaining({ amountCents: expect.any(Number) }),
       }),
-      // Tracked, so a note written later can follow the alert into its threads.
-      { track: true },
+      // Tracked, so a note written later can follow the alert into its
+      // threads; the budget's own email recipients ride beside the event.
+      expect.objectContaining({ track: true, emailReason: expect.stringContaining("budget") }),
     );
     expect(sendBudgetAlertPage).toHaveBeenCalledTimes(1);
   });
@@ -195,7 +196,7 @@ describe("evaluateBudgetsForOrg — notification fan-out", () => {
     arrange([budget()], [{ id: "evt1" }]);
     sendBudgetAlertPage.mockResolvedValueOnce(false);
     routeAlert.mockResolvedValueOnce(
-      routed({ succeeded: 0, byTransport: { push: 0, slack: 0, msTeams: 0 }, held: 1 }),
+      routed({ succeeded: 0, byTransport: { push: 0, slack: 0, msTeams: 0, email: 0 }, held: 1 }),
     );
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
     expect(notifiedUpdates().some((q) => q.sql.includes('"notified_at"'))).toBe(true);

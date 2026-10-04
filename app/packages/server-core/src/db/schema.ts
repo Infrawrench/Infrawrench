@@ -18,6 +18,7 @@ import { sql } from "drizzle-orm";
 import type {
   AlertCondition,
   AlertDestination,
+  AlertEmailRecipients,
   BillingRuleAdjustment,
   ManagedAccountPricing,
   BillingRuleMatch,
@@ -459,6 +460,16 @@ export const budgets = pgTable(
      * `ON DELETE SET NULL` would quietly widen it to the whole org.
      */
     visibilityUserId: text("visibility_user_id"),
+    /**
+     * Who is emailed when a threshold fires, on top of the routing rules:
+     * `{ userIds, addresses }` (`AlertEmailRecipients` in client-core).
+     * Members by id so the address is read at send time; addresses re-checked
+     * against `org_alert_email_settings` at send time too.
+     */
+    emailRecipients: jsonb("email_recipients")
+      .$type<AlertEmailRecipients>()
+      .notNull()
+      .default({ userIds: [], addresses: [] }),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -1770,6 +1781,11 @@ export const costAlerts = pgTable(
      * `ON DELETE SET NULL` would quietly widen it to the whole org.
      */
     visibilityUserId: text("visibility_user_id"),
+    /** Email recipients beside the routing rules; same contract as `budgets.email_recipients`. */
+    emailRecipients: jsonb("email_recipients")
+      .$type<AlertEmailRecipients>()
+      .notNull()
+      .default({ userIds: [], addresses: [] }),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -2925,6 +2941,11 @@ export const orgCostAnomalySettings = pgTable("org_cost_anomaly_settings", {
    * says which keys moved and why.
    */
   feedbackTuning: boolean("feedback_tuning").notNull().default(true),
+  /** Who is emailed about each anomaly, beside the routing rules. */
+  emailRecipients: jsonb("email_recipients")
+    .$type<AlertEmailRecipients>()
+    .notNull()
+    .default({ userIds: [], addresses: [] }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -2989,9 +3010,65 @@ export const orgCostEfficiencySettings = pgTable("org_cost_efficiency_settings",
   /** Least current-window spend before alerting, USD cents. */
   unitCostMinSpendCents: integer("unit_cost_min_spend_cents").notNull().default(10000),
 
+  /** Who is emailed about all three detectors, beside the routing rules. */
+  emailRecipients: jsonb("email_recipients")
+    .$type<AlertEmailRecipients>()
+    .notNull()
+    .default({ userIds: [], addresses: [] }),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * Per-org policy for alert email: which *extra* addresses (ones that are not a
+ * member's own login) alert recipients may name. No row means
+ * `DEFAULT_ALERT_EMAIL_SETTINGS`: an address must share a domain with one of
+ * the org's members. The point of the default is that `budgets:write` or
+ * `costs:write` is a much lower bar than `org:settings:write`, and without it
+ * anyone who can edit a budget could mail the org's spend to any inbox.
+ */
+export const orgAlertEmailSettings = pgTable("org_alert_email_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** `'member-domains'` (default) | `'any'`. */
+  externalPolicy: text("external_policy", { enum: ["member-domains", "any"] })
+    .notNull()
+    .default("member-domains"),
+  /** Extra domains accepted under `member-domains`, lowercased. */
+  allowedDomains: jsonb("allowed_domains").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Addresses that unsubscribed from an org's alert email, through the signed
+ * link in every message (or the RFC 8058 one-click header). Checked at send
+ * time against every recipient, member or extra address, so it is the one
+ * thing a recipient controls without a login. An admin can lift one from
+ * Settings → Alert routing. Scoped per org: unsubscribing from one org's
+ * alerts says nothing about another's. The weekly digest has its own address
+ * list and is not affected.
+ */
+export const alertEmailSuppressions = pgTable(
+  "alert_email_suppressions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Lowercased, so the unique index also dedupes case variants. */
+    email: text("email").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgEmailUnique: uniqueIndex("alert_email_suppressions_org_email_unique").on(
+      t.organizationId,
+      t.email,
+    ),
+  }),
+);
 
 /**
  * Fired unit-cost regressions: one row per (metric, currency, window end).

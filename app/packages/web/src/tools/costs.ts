@@ -40,6 +40,7 @@ import { BudgetAlertNoteError, noteBudgetAlertEvent } from "../services/budget-a
 import { listSavedCostFilters as listSavedCostFiltersForOrg } from "../services/saved-cost-filters";
 import { listCostScenarioModels as listCostScenarioModelsForOrg } from "../services/cost-scenarios";
 import { logAudit } from "../services/audit";
+import { AlertEmailRecipientsError } from "@infrawrench/server-core/alerts/email-errors";
 import { getAccountTagCompliance, getUntaggedSpendReport } from "../services/tag-policy";
 import { getShowbackReport } from "../services/showback";
 import {
@@ -810,7 +811,9 @@ export function costTools(): ToolDefinition[] {
         "period. parentBudgetId nests it under a parent that rolls up its children (same " +
         "currency or usage unit). Thresholds fire once per period when actual or forecast " +
         "crosses the given percent of the period's limit. Filters (same shape as query_costs) " +
-        "scope the budget; empty filters cover the whole organization. Audit-logged.",
+        "scope the budget; empty filters cover the whole organization. emailRecipients (member " +
+        "user ids and extra addresses, from list_alert_email_options) are emailed when a " +
+        "threshold fires, besides the alert routing rules. Audit-logged.",
       inputSchema: budgetInputSchema.shape,
       risk: "write",
       permission: "budgets:write",
@@ -824,6 +827,7 @@ export function costTools(): ToolDefinition[] {
           created = await createBudget(auth.organizationId, parsed.data, auth.userId);
         } catch (e) {
           if (e instanceof BudgetValidationError) return err(`Invalid budget: ${e.message}`);
+          if (e instanceof AlertEmailRecipientsError) return err(e.message);
           throw e;
         }
         void logAudit({
@@ -844,7 +848,8 @@ export function costTools(): ToolDefinition[] {
       description:
         "Replace a budget: name, amount, currency, filters, thresholds, measure, usage unit and " +
         "amount, period and parent (same fields as create_budget). A full replace: omitted " +
-        "optional fields are cleared. Alert history is kept. Audit-logged.",
+        "optional fields are cleared, except emailRecipients, which an omission leaves unchanged. " +
+        "Alert history is kept. Audit-logged.",
       inputSchema: { budgetId: z.string(), ...budgetInputSchema.shape },
       risk: "write",
       permission: "budgets:write",
@@ -859,6 +864,7 @@ export function costTools(): ToolDefinition[] {
           updated = await updateBudget(auth.organizationId, budgetId, parsed.data);
         } catch (e) {
           if (e instanceof BudgetValidationError) return err(`Invalid budget: ${e.message}`);
+          if (e instanceof AlertEmailRecipientsError) return err(e.message);
           throw e;
         }
         if (!updated) return err(`Budget not found: ${budgetId}`);

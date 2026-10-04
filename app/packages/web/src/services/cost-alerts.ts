@@ -21,6 +21,10 @@ import {
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { costAlertEvents, costAlerts } from "../db/schema";
+import {
+  storedAlertEmailRecipients,
+  validateAlertEmailRecipients,
+} from "@infrawrench/server-core/alerts/email";
 
 type CostAlertRow = typeof costAlerts.$inferSelect;
 
@@ -46,6 +50,7 @@ function toWire(row: CostAlertRow, lastFiredAt: Date | null): CostAlert {
     enabled: row.enabled,
     lastEvaluatedAt: row.lastEvaluatedAt?.toISOString() ?? null,
     lastFiredAt: lastFiredAt?.toISOString() ?? null,
+    emailRecipients: storedAlertEmailRecipients(row.emailRecipients),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -117,6 +122,8 @@ export async function createCostAlert(
     { n: number },
   ];
   if (Number(n) >= COST_ALERT_LIMITS.maxAlertsPerOrg) throw new CostAlertLimitError();
+  // AlertEmailRecipientsError → 400 in the route.
+  const emailRecipients = await validateAlertEmailRecipients(organizationId, input.emailRecipients);
 
   const [created] = await db
     .insert(costAlerts)
@@ -140,6 +147,7 @@ export async function createCostAlert(
       enabled: input.enabled,
       // A cost-scoped creator's alert compares only what they can see.
       visibilityUserId: visibilityUserIdForCreate(organizationId),
+      emailRecipients: emailRecipients ?? { userIds: [], addresses: [] },
       createdByUserId,
     })
     .returning();
@@ -152,6 +160,7 @@ export async function updateCostAlert(
   alertId: string,
   input: CostAlertInput,
 ): Promise<CostAlert | null> {
+  const emailRecipients = await validateAlertEmailRecipients(organizationId, input.emailRecipients);
   const [updated] = await db
     .update(costAlerts)
     .set({
@@ -167,6 +176,8 @@ export async function updateCostAlert(
       thresholdAmountCents: input.thresholdAmountCents,
       direction: input.direction,
       enabled: input.enabled,
+      // Absent leaves the stored list alone; an empty list clears it.
+      ...(emailRecipients !== undefined ? { emailRecipients } : {}),
       updatedAt: new Date(),
     })
     .where(
