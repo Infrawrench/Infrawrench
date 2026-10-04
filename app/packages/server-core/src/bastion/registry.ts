@@ -107,6 +107,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   cloudflare: ["api.cloudflare.com"],
   cloudinary: ["api.cloudinary.com"],
   crusoe: ["api.cloud.crusoe.ai"],
+  baseten: ["api.baseten.co"],
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
   depot: ["api.depot.dev"],
   neon: ["console.neon.tech"],

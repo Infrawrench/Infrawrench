@@ -20,6 +20,7 @@ Eligibility is discovered from each provider plugin, never hard-coded: a resourc
 - **Fly.io** — Machines
 - **Neon** — Compute endpoints (stop = suspend; note any incoming connection also wakes a suspended endpoint)
 - **Together AI** — Dedicated inference endpoints
+- **Baseten** — Deployments and environments (stop = deactivate; replicas stop and requests fail until reactivated)
 - **ClickHouse Cloud** — Services
 - **Databricks** — Clusters, SQL warehouses, apps
 - **OVHcloud** — Public Cloud instances

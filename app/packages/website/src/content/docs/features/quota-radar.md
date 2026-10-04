@@ -89,6 +89,7 @@ The weekly digest carries a **Quotas** line with the same count.
 | **Crusoe Cloud**     | Every organization quota Crusoe reports with a maximum (GPUs per instance type, CPUs, disks and the rest), against its own usage figure.                                                                        | Every quota with a limit   |
 | **Turso**            | The organization's plan allowances against its current usage: rows read and written and replica sync this billing cycle, storage, databases, groups and locations. Dimensions the plan doesn't cap are skipped. | Every capped allowance     |
 | **Modal**            | Each environment's running containers and GPUs against its concurrency caps, and its spend this cycle against its spend limit. Caps that are not set are skipped; workspace-wide plan limits are not exposed.   | Subset                     |
+| **Baseten**          | Training GPU capacity: concurrent GPUs of each type in use by training jobs, against the organization and per-team limits.                                                                                      | Training GPUs only         |
 
 The "subset" rows are marked on the page too, under the table: AWS publishes thousands of
 quotas and Infrawrench asks about the handful that actually stop deploys, while DigitalOcean's

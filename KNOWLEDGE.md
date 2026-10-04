@@ -87,6 +87,7 @@ infrawrench/
 │   ├── deepgram/             # @infrawrench/plugin-deepgram
 │   ├── deepseek/             # @infrawrench/plugin-deepseek
 │   ├── elevenlabs/           # @infrawrench/plugin-elevenlabs
+│   ├── baseten/              # @infrawrench/plugin-baseten
 │   ├── fireworks/            # @infrawrench/plugin-fireworks
 │   ├── gemini/               # @infrawrench/plugin-gemini
 │   ├── gladia/               # @infrawrench/plugin-gladia
@@ -834,6 +835,18 @@ Verified against Crusoe's published Swagger spec (`https://api.crusoecloud.com/v
 - **Reservations are commitments with units and no money**: the API's `price` string carries no unit or period, so it is deliberately not turned into an hourly amount ("omit, never substitute").
 - **Metrics** are PromQL over `/projects/{id}/metrics/timeseries/api/v1/query-range`, keyed by the `vm_id` label every Crusoe Watch Agent series carries. Crusoe documents a separate monitoring token for this API; it is an optional credential, and without it the request is HMAC-signed. Refusals yield no series.
 - VM `STATE_*` values are folded into running/stopped/provisioning/degraded/paused/crashed (raw kept in `rawState`); the lifecycle, orphan rule (stopped VMs keep billing for disks) and status dot all read the folded value. Disk sizes arrive as `100GiB`/`1TiB` strings, snapshot sizes as bytes.
+
+### Baseten (`@infrawrench/plugin-baseten`)
+
+Verified against Baseten's published management API spec (`https://api.baseten.co/v1/spec`, host `api.baseten.co`, Bearer auth; the legacy `Api-Key` scheme still works but is not used) and the docs at docs.baseten.co, 2026-10. Things the code does not make obvious:
+
+- **External ids are scope-qualified where the API is.** Deployments are `<modelId>/<deploymentId>` and environments `<modelId>/<envName>`, because every route lives under `/v1/models/{id}`; secrets are `<teamName>/<name>` because they are addressed by name within a team (the list returns `team_name`, so writes resolve the team id through `/v1/teams`). Training jobs use the bare job id: `POST /v1/training_jobs/search` lists them org-wide, and the project id needed by stop/delete/logs/metrics is kept in `fields.projectId`.
+- **Cost is billed, from one endpoint.** `GET /v1/billing/usage_summary` returns dedicated (per billable resource: deployment, chainlet, Loops), training (per job) and Model APIs (per model) usage with `daily` arrays. Windows may not exceed 31 days and nothing before 2026-01-01 is queryable, so `cost-data.ts` clamps and chunks to 30 days; an item with spend but no `daily` makes that chunk re-ask one day at a time rather than spreading a total. `credits_used` is only a window total, so rows are pre-credit. Billed resource ids are rewritten to inventory externalIds (`<model_id>/<id>` for deployments, the chain id for chainlets) so the orphan finder's trailing-cost join works. `/v1/billing/model_apis` exists too but only from 2026-08-05; the summary covers Model APIs from January.
+- **The idle orphan rule rides on a synced field.** Orphan rules can only compare fields, so the deployment lister reads one 7-day usage summary (cached 5 minutes) and writes `requests7d`/`minutes7d`/`cost7d` plus `idle` = `yes` when min replicas > 0, the deployment is switched on, and it billed zero requests. **When billing is unreadable none of those fields are written**, so a key without billing access never flags a busy deployment as idle. Over-provisioned-but-busy min replicas are not modelled: the host's `rightsizing` contract is a size catalogue applied through `updateResource`, and Baseten has no API to change a deployment's instance type.
+- **Autoscaling edits are validated before the PATCH** (`autoscaling.ts`) against the documented bounds (min ≥ 0, max ≥ 1, window 10–3600 s, delay 0–3600 s, utilization 1–100, concurrency ≥ 1) and min ≤ max using the stored value for whichever side was not edited; development deployments are pinned to 0–1 replica.
+- **Promote-to-environment uses `prompt-nosql-command`** so the user picks an environment (from a deployment) or a deployment (from an environment) in a select; `enrichDetail` fetches the options and passes them to `renderDetail` in `__`-prefixed JSON fields that the renderer never shows.
+- **Metrics are columnar.** `GET .../metrics?mode=SERIES` returns `metric_descriptors[i].label_sets` and `metric_values[t].values[i][j]`; histograms become one series per quantile plus avg, by-status counters a total plus one series per status. Windows are capped at 7 days. Unknown metric names 4xx, so a rejected request is retried with Baseten's default set.
+- Logs come from the deployment/environment/training-job logs endpoints, newest first over 24 hours (Baseten's default is 30 minutes, which is empty for anything idle), with the level filter exposed through `LogsFetchResult.containers`.
 
 ### Kubernetes (`@infrawrench/plugin-kubernetes`)
 
@@ -3141,6 +3154,8 @@ Cost collection added for **deepgram** (real USD daily), **elevenlabs** (money; 
 **twilio** (Oct 2026) reads billed usage-record prices by leaf usage category, reconciled to `totalprice` daily, split per subaccount with the auth token (see the Twilio section); the account balance is a `credits` pot.
 **fastly** (Oct 2026) reads invoices for closed months and the month-to-date invoice for the current one, monthly and dated to the 1st, by product, region and `productLine`/`productGroup` tags with charge types (see the Fastly section).
 **datadog** (Oct 2026) reads Datadog's own contracted-rate cost: daily from estimated cost for the current and previous month, finalised monthly totals before that, by product, region, `org` and `pricing` tags; projected month-end cost and tag attribution are on the organization detail (see the Datadog section).
+
+**baseten** (Oct 2026) reads billed spend from `/v1/billing/usage_summary`: dedicated inference per deployment and chainlet, training per job and Model APIs per model, daily, tagged by model/deployment/environment/instance type/team (see the Baseten section).
 
 **Verified as having no usable billing API** (do not retry without new evidence): assemblyai, gladia, revai, cohere, deepseek, gemini (route via `gcp`), workos, groq, together, replicate, fly (GraphQL billing is undocumented), netlify. **Cloudinary was declined deliberately** — it is a flat subscription with an included allowance, so credits are not proportional to money and no rate makes the series correct. `mongodb`/`redis`/`kafka` are connection-string protocol plugins here, not SaaS clients, so they have no account to bill; Atlas spend comes from the separate `mongodb-atlas` plugin (billed invoice line items, Oct 2026).
 **confluent-cloud** (Oct 2026) reads the Billing Costs API daily by product, with resource ids, region joined from inventory, and environment, line type, network and cloud tags; promotional credits and support are charge types (see the Confluent Cloud section).

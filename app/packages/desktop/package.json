@@ -124,6 +124,7 @@
     "@infrawrench/plugin-base": "workspace:*",
     "@infrawrench/plugin-cartesia": "workspace:*",
     "@infrawrench/plugin-circleci": "workspace:*",
+    "@infrawrench/plugin-baseten": "workspace:*",
     "@infrawrench/plugin-clickhouse": "workspace:*",
     "@infrawrench/plugin-cloudflare": "workspace:*",
     "@infrawrench/plugin-cloudinary": "workspace:*",

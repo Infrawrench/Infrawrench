@@ -830,6 +830,19 @@ export const providerGroups: ProviderGroup[] = [
         ],
       },
       {
+        name: "Baseten",
+        detail: "Deployments, autoscaling, environments, training, billed spend",
+        resources: [
+          "Model",
+          "Deployment",
+          "Environment",
+          "Chain",
+          "Model API",
+          "Training Job",
+          "Secret",
+        ],
+      },
+      {
         name: "Fireworks AI",
         detail: "Dedicated deployments, quotas, real per-day spend",
         resources: [

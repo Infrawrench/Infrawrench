@@ -168,4 +168,6 @@
 // 1.48.0: the Anyscale plugin. Adds `anyscale` to the pluginId enum and its
 // resource types (organization, cloud, project, workspace, job, service,
 // compute-config, budget) to the resourceTypeId enum.
-export const API_VERSION = "1.48.0";
+// 1.49.0: Baseten plugin; `baseten` on the `pluginId` enum and its resource
+// type ids on the `resourceTypeId` enum. Additive.
+export const API_VERSION = "1.49.0";

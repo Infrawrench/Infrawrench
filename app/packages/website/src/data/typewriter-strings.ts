@@ -205,6 +205,7 @@ export const typewriterStrings: string[] = [
   "Modal Apps",
   "Modal GPU Functions",
   "Replicate Predictions",
+  "Baseten Deployments",
   "OpenRouter Model Endpoints",
   "Cohere Datasets",
   "xAI Grok Models",
