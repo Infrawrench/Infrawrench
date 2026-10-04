@@ -365,6 +365,18 @@ export const providerGroups: ProviderGroup[] = [
         detail: "Instances, volumes, K8s clusters",
         resources: ["Instance", "Volume", "Kubernetes Cluster"],
       },
+      {
+        name: "Crusoe Cloud",
+        detail: "GPU VMs, disks, VPC networking, managed Kubernetes, billed spend",
+        resources: [
+          "VM",
+          "Disk",
+          "VPC Network",
+          "Firewall Rule",
+          "Kubernetes Cluster",
+          "Node Pool",
+        ],
+      },
     ],
   },
   {

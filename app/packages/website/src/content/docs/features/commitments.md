@@ -12,17 +12,18 @@ The **Commitments** section on the Costs panel makes the holdings first-class: e
 
 ## What's collected
 
-| Provider  | What appears                                                  | Source                                                                                               |
-| --------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **AWS**   | EC2 Reserved Instances, RDS Reserved Instances, Savings Plans | `DescribeReservedInstances`, `DescribeReservedDBInstances`, `DescribeSavingsPlans`                   |
-| **GCP**   | Committed-use discounts                                       | `compute.regionCommitments`                                                                          |
-| **Azure** | Reservations, Savings Plans                                   | the tenant-level `Microsoft.Capacity/reservations` list and `Microsoft.BillingBenefits/savingsPlans` |
+| Provider         | What appears                                                  | Source                                                                                               |
+| ---------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **AWS**          | EC2 Reserved Instances, RDS Reserved Instances, Savings Plans | `DescribeReservedInstances`, `DescribeReservedDBInstances`, `DescribeSavingsPlans`                   |
+| **GCP**          | Committed-use discounts                                       | `compute.regionCommitments`                                                                          |
+| **Azure**        | Reservations, Savings Plans                                   | the tenant-level `Microsoft.Capacity/reservations` list and `Microsoft.BillingBenefits/savingsPlans` |
+| **Crusoe Cloud** | Reserved capacity contracts per instance type                 | `GET /organizations/{id}/reservations`                                                               |
 
 Expired and queued commitments are collected too — expired records are what close out the history, and a queued purchase is a fact worth seeing before it starts billing.
 
 A few provider quirks are deliberately preserved rather than papered over:
 
-- **Azure reports no purchase price** on its list API, and **GCP reports no money at all** (a committed-use discount is denominated in vCPUs and GB, not dollars). Those rows say **"price not reported"** — never $0, because "free" and "not reported" are different facts and only one of them belongs in a finance review.
+- **Azure reports no purchase price** on its list API, **GCP reports no money at all** (a committed-use discount is denominated in vCPUs and GB, not dollars), and **Crusoe reports the reserved quantity of an instance type** rather than a price. Those rows say **"price not reported"** — never $0, because "free" and "not reported" are different facts and only one of them belongs in a finance review.
 - **A missing region means "applies across regions"** — an AWS Compute Savings Plan genuinely follows your compute wherever it runs, and the UI says "All regions" rather than leaving a blank.
 - **Azure reservations carry Azure's own utilization figures** (1/7/30-day). They're shown as provider-reported and never blended with the utilization Infrawrench derives — the two are computed against different meters.
 

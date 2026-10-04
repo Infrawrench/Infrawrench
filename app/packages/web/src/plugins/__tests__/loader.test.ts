@@ -51,6 +51,7 @@ describe("plugin loader", () => {
       "ssh",
       "tailscale",
       "cloudflare",
+      "crusoe",
       "ovh",
       "oracle-cloud",
       "databricks",

@@ -57,6 +57,8 @@ infrawrench/
 │   ├── mssql/                # @infrawrench/plugin-mssql
 │   ├── opensearch/           # @infrawrench/plugin-opensearch
 │   ├── ovh/                  # @infrawrench/plugin-ovh
+│   ├── crusoe/               # @infrawrench/plugin-crusoe
+
 │   ├── oracle-cloud/         # @infrawrench/plugin-oracle-cloud
 │   ├── planetscale/          # @infrawrench/plugin-planetscale
 │   ├── workos/               # @infrawrench/plugin-workos
@@ -788,6 +790,18 @@ All reuse the DO SSE-parsing structure; the chat-capable resource sets `detail.c
 - Object Storage uses S3-compatible API at `s3.{region}.scw.cloud` with path-style addressing; storage browser + bucket policy editor wired via `plugin-base/s3-storage-helpers.ts`
 - Commercial types fetched from `/instance/v1/zones/{zone}/products/servers` for create form
 - Instance status mapping: running/ready→healthy, starting/stopping/provisioning/creating→provisioning, stopped/error/locked/deleting→error
+
+### Crusoe Cloud (`@infrawrench/plugin-crusoe`)
+
+Verified against Crusoe's published Swagger spec (`https://api.crusoecloud.com/v1/openapi.json`, host `api.cloud.crusoe.ai`, basePath `/v1`; the old `api.crusoecloud.com/v1alpha5` host is what Crusoe's own Terraform provider migrates away from) and the provider source (`crusoecloud/terraform-provider-crusoe`, 2026-10). Things the code does not make obvious:
+
+- **Every request is HMAC-signed** (`signing.ts`): payload `"/v1" + path \n canonical query \n VERB \n timestamp \n`, key = base64url-decoded secret, signature unpadded base64url, headers `X-Crusoe-Timestamp` (RFC 3339, seconds) and `Authorization: Bearer 1.0:<access key>:<sig>`. The canonical query is Go's `url.Values.Encode()` (sorted keys, `QueryEscape`, space as `+`) and `api.ts` sends exactly that string, so the signed and sent queries cannot disagree. Web Crypto, not `node:crypto`, because the client also runs in the renderer. The test vector was computed independently in Python.
+- **A key is a user, not a project.** `/organizations/entities` and `/organizations/projects` enumerate everything the user belongs to, and every project-scoped lister fans out across all projects (a 403/404 on one project lists it empty). Project-scoped externalIds are `<projectId>/<id>` because the API addresses everything under `/projects/{id}/`; reservations are `<orgId>/<id>`; projects and SSH keys (user-scoped) are bare. Dependency rules use `matchTemplate: "{projectId}/{field}"` for the same reason.
+- **Mutations are async operations.** `awaitOperation` polls `/projects/{id}/<collection>/operations/{op}` (2 s, 120 s cap) and throws the operation's `result.message` on `FAILED`; on success `result` is the affected object, which is how creates find the new id. A timeout is not an error, matching the GCP create lesson.
+- **Cost is billed, not estimated, from two endpoints.** `billing/export-productline` is a CSV of on-demand/spot costs per resource (data from 2025-05-01; reservations and tax excluded, as on the console's Billing page). **Its columns are undocumented**, so `cost-data.ts` finds them by normalised header aliases and throws a `CostSetupError` naming the headers it saw when no cost column matches; with no date column it re-asks one day at a time. A billed resource id is rewritten to `<projectId>/<id>` when the project column holds a known project id, so per-resource spend matches inventory externalIds (the orphan finder's cost annotation joins on that). `billing/costs` (Intelligence Billing, i.e. serverless inference) takes no date range, so rows are filtered client-side. A 401/403 on every org is a `CostSetupError` (billing needs an admin/billing-role key); anything else throws so the pass retries. `billing/options` is misleadingly summarised as "recent non-reservation costs" but returns only filter options.
+- **Reservations are commitments with units and no money**: the API's `price` string carries no unit or period, so it is deliberately not turned into an hourly amount ("omit, never substitute").
+- **Metrics** are PromQL over `/projects/{id}/metrics/timeseries/api/v1/query-range`, keyed by the `vm_id` label every Crusoe Watch Agent series carries. Crusoe documents a separate monitoring token for this API; it is an optional credential, and without it the request is HMAC-signed. Refusals yield no series.
+- VM `STATE_*` values are folded into running/stopped/provisioning/degraded/paused/crashed (raw kept in `rawState`); the lifecycle, orphan rule (stopped VMs keep billing for disks) and status dot all read the folded value. Disk sizes arrive as `100GiB`/`1TiB` strings, snapshot sizes as bytes.
 
 ### Kubernetes (`@infrawrench/plugin-kubernetes`)
 
@@ -2824,6 +2838,8 @@ Two parallel integrations (`jira_*` / `linear_*` tables — deliberately not gen
 ## Provider cost coverage (Aug 2026 sweep)
 
 Cost collection added for **deepgram** (real USD daily), **elevenlabs** (money; successor endpoint is POST with an array `group_by`, so product type and region arrive together — on the deprecated fallback only _one_ breakdown is requested, since each is a complete decomposition and emitting both double-counts), **cartesia** (credits → money at the lowest published tier, `estimated`), **speechmatics** (hours → money; the endpoint returns a window aggregate with no buckets so daily rows are one request per day, `maxHistoryDays: 90` because history costs _requests_ here, `estimated`) and **hetzner** (inventory × `/v1/pricing`, `estimated`; emits rows **only for the day it runs** because a past month rebuilt from today's inventory omits everything deleted since — and traffic counters are _cumulative per billing period_, so those rows are dated to the period's first day and restated in place, `restatementDays: 31`; all money is scaled-integer, never float).
+
+**crusoe** (Oct 2026) reads billed spend: the per-resource on-demand/spot billing CSV plus Intelligence Billing JSON, by product line, region, resource and `project`/`model` tags; reservations surface as unit-only commitments (see the Crusoe Cloud section).
 
 **modal** (Oct 2026) reads the workspace billing report over Modal's gRPC API: daily cost per app/sandbox/volume by resource type (each GPU type, CPU, memory) with user tags, plus each cycle's credits and plan adjustments as charge-typed rows on the 1st, so months sum to the invoice (Team/Enterprise plans; see the Modal section).
 
