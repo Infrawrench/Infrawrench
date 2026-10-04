@@ -22727,6 +22727,7 @@
           "fly",
           "gcp",
           "gemini",
+          "github",
           "gladia",
           "groq",
           "hetzner",
@@ -26171,6 +26172,7 @@
           "access-policy",
           "account",
           "acm-certificate",
+          "actions-cache",
           "admin-api-key",
           "agent",
           "agent-api-key",
@@ -26249,6 +26251,7 @@
           "bigquery-dataset",
           "bigquery-table",
           "bigtable-instance",
+          "billing-account",
           "block-volume",
           "boot-volume",
           "bucket",
@@ -26287,6 +26290,7 @@
           "cloudwatch-log-group",
           "codebuild-project",
           "codepipeline-pipeline",
+          "codespace",
           "cognito-user-pool",
           "collection",
           "collection-document",
@@ -26297,6 +26301,8 @@
           "container-registry",
           "context",
           "context-variable",
+          "copilot-seat",
+          "cost-center",
           "custom-hostname",
           "custom-voice",
           "d1-database",
@@ -26414,6 +26420,7 @@
           "health-check",
           "healthcheck",
           "history-item",
+          "hosted-runner",
           "hyperdrive",
           "iam-role",
           "iam-user",
@@ -33120,8 +33127,8 @@
           },
           "bastionId": {
             "type": [
-              "string",
-              "null"
+              "null",
+              "string"
             ],
             "format": "uuid",
             "description": "Look up through this bastion, matching how the account will egress once created.",
@@ -33129,8 +33136,8 @@
           },
           "accountId": {
             "type": [
-              "string",
-              "null"
+              "null",
+              "string"
             ],
             "format": "uuid",
             "description": "When editing an existing account, its id; the lookup then egresses through that account's bastion binding.",
@@ -33138,9 +33145,9 @@
           }
         },
         "required": [
-          "pluginId",
+          "credentials",
           "fieldKey",
-          "credentials"
+          "pluginId"
         ],
         "additionalProperties": false
       }

@@ -68,6 +68,7 @@ vi.mock("@infrawrench/plugin-turso", () => stub("turso"));
 vi.mock("@infrawrench/plugin-planetscale", () => stub("planetscale"));
 vi.mock("@infrawrench/plugin-azure", () => stub("azure"));
 vi.mock("@infrawrench/plugin-fly", () => stub("fly"));
+vi.mock("@infrawrench/plugin-github", () => stub("github"));
 vi.mock("@infrawrench/plugin-vercel", () => stub("vercel"));
 vi.mock("@infrawrench/plugin-netlify", () => stub("netlify"));
 vi.mock("@infrawrench/plugin-cloudinary", () => stub("cloudinary"));

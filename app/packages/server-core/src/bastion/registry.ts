@@ -97,6 +97,9 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   linode: ["api.linode.com", "monitor-api.linode.com", "*.linodeobjects.com"],
   fly: ["api.machines.dev", "api.fly.io"],
   vercel: ["api.vercel.com"],
+  // api.github.com, or api.<subdomain>.ghe.com for data residency. Copilot
+  // metrics reports are signed download links on GitHub-owned hosts.
+  github: ["api.github.com", "*.ghe.com", "*.githubusercontent.com"],
   netlify: ["api.netlify.com"],
   planetscale: ["api.planetscale.com"],
   cloudflare: ["api.cloudflare.com"],

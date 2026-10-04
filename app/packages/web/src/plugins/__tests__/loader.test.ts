@@ -74,6 +74,7 @@ describe("plugin loader", () => {
       "elevenlabs",
       "fireworks",
       "gemini",
+      "github",
       "gladia",
       "groq",
       "mistral",
