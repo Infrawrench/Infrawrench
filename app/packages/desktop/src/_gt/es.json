@@ -15461,5 +15461,48 @@
   "2269bf38f20e0b7b": "Suscripción cancelada",
   "84415b072529062d": "Nadie ha cancelado la suscripción al correo de alertas de esta organización.",
   "f120de8a004177a1": "Reanudar correo",
-  "bfd6ea86ab2fd6b3": "Reanude el envío solo a quien lo haya pedido: canceló la suscripción con el enlace de una de sus alertas."
+  "bfd6ea86ab2fd6b3": "Reanude el envío solo a quien lo haya pedido: canceló la suscripción con el enlace de una de sus alertas.",
+  "ec7fdc8afc85f777": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Las direcciones adicionales deben pertenecer a ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "5527d97523dc7617": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Avisa a tu equipo cuando un tipo de recurso no se sincroniza repetidamente, se supera un umbral de presupuesto, tu infraestructura deriva o un flujo de trabajo llama a ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "infra.page()"
+      },
+      " o",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "infra.waitForApproval()"
+      },
+      ". Los incidentes los activa el sondeo en segundo plano; las sincronizaciones manuales desde la interfaz nunca envían avisos. La entrega se hace por push móvil (la app de Infrawrench), en los canales de Slack o Microsoft Teams que conectes abajo, por correo electrónico y (cuando hay credenciales de Twilio configuradas) por SMS y llamadas de voz."
+    ]
+  },
+  "4c576c506a970c8b": {
+    "t": "p",
+    "i": 1,
+    "c": "Añade Slack, Teams, correo electrónico, notificaciones push móviles o números de teléfono y luego enruta las alertas hacia ellos con las reglas de abajo."
+  },
+  "29016a8e1eaa050c": {
+    "t": "p",
+    "i": 1,
+    "c": "Envía correos a miembros o a direcciones adicionales desde las reglas de enrutamiento de abajo, o directamente desde un presupuesto, una alerta de cambio de costes o la configuración de alertas de anomalías y compromisos en la página Costes. Cada mensaje tiene una parte de texto sin formato y otra HTML, un enlace de vuelta a Infrawrench y un enlace para darse de baja con un clic."
+  }
 }

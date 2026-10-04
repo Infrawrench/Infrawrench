@@ -15659,5 +15659,48 @@
   "2269bf38f20e0b7b": "Désabonné",
   "84415b072529062d": "Personne ne s'est désabonné des e-mails d'alerte de cette organisation.",
   "f120de8a004177a1": "Reprendre l'envoi",
-  "bfd6ea86ab2fd6b3": "Ne reprenez l'envoi que pour une personne qui l'a demandé : elle s'est désabonnée via le lien d'une de vos alertes."
+  "bfd6ea86ab2fd6b3": "Ne reprenez l'envoi que pour une personne qui l'a demandé : elle s'est désabonnée via le lien d'une de vos alertes.",
+  "ec7fdc8afc85f777": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Les adresses supplémentaires doivent appartenir à ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "5527d97523dc7617": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Alertez votre équipe lorsqu'un type de ressource échoue à se synchroniser de façon répétée, qu'un seuil de budget est franchi, que votre infrastructure dérive ou qu'un workflow appelle ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "infra.page()"
+      },
+      " ou",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "infra.waitForApproval()"
+      },
+      ". Les incidents sont déclenchés par le poller en arrière-plan ; les synchronisations manuelles depuis l'interface n'envoient jamais d'alerte. La diffusion se fait par push mobile (l'application Infrawrench), dans les canaux Slack ou Microsoft Teams que vous connectez ci-dessous, par e-mail et (lorsque des identifiants Twilio sont configurés) par SMS et appels vocaux."
+    ]
+  },
+  "4c576c506a970c8b": {
+    "t": "p",
+    "i": 1,
+    "c": "Ajoutez Slack, Teams, l'e-mail, les notifications push mobiles ou des numéros de téléphone, puis acheminez les alertes vers eux avec les règles ci-dessous."
+  },
+  "29016a8e1eaa050c": {
+    "t": "p",
+    "i": 1,
+    "c": "Envoyez des e-mails à des membres ou à des adresses supplémentaires depuis les règles de routage ci-dessous, ou directement depuis un budget, une alerte de variation des coûts ou les paramètres d'alerte d'anomalies et d'engagements de la page Coûts. Chaque message comporte une partie texte brut et une partie HTML, un lien vers Infrawrench et un lien de désabonnement en un clic."
+  }
 }

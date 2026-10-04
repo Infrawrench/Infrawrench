@@ -15655,5 +15655,48 @@
   "2269bf38f20e0b7b": "Abgemeldet",
   "84415b072529062d": "Niemand hat die Alert-E-Mails dieser Organisation abbestellt.",
   "f120de8a004177a1": "E-Mail fortsetzen",
-  "bfd6ea86ab2fd6b3": "Setzen Sie die Zustellung nur für Personen fort, die dies wünschen: Sie haben sich über den Link in einem Ihrer Alerts abgemeldet."
+  "bfd6ea86ab2fd6b3": "Setzen Sie die Zustellung nur für Personen fort, die dies wünschen: Sie haben sich über den Link in einem Ihrer Alerts abgemeldet.",
+  "ec7fdc8afc85f777": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Zusätzliche Adressen müssen zu ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " gehören."
+    ]
+  },
+  "5527d97523dc7617": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Benachrichtigen Sie Ihr Team, wenn ein Ressourcentyp wiederholt nicht synchronisiert, ein Budgetschwellenwert überschritten wird, Ihre Infrastruktur abweicht oder ein Workflow ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "infra.page()"
+      },
+      " oder",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "infra.waitForApproval()"
+      },
+      " aufruft. Vorfälle werden vom Hintergrund-Poller ausgelöst; manuelle Synchronisierungen in der Oberfläche lösen nie eine Benachrichtigung aus. Die Zustellung erfolgt per mobilem Push (die Infrawrench-App), in alle unten verbundenen Slack- oder Microsoft-Teams-Kanäle, per E-Mail und (wenn Twilio-Zugangsdaten konfiguriert sind) per SMS und Sprachanruf."
+    ]
+  },
+  "4c576c506a970c8b": {
+    "t": "p",
+    "i": 1,
+    "c": "Fügen Sie Slack, Teams, E-Mail, mobile Push-Benachrichtigungen oder Telefonnummern hinzu und leiten Sie Warnungen dann mit den Regeln unten dorthin weiter."
+  },
+  "29016a8e1eaa050c": {
+    "t": "p",
+    "i": 1,
+    "c": "Senden Sie E-Mails an Mitglieder oder zusätzliche Adressen über die Routing-Regeln unten oder direkt aus einem Budget, einer Kostenänderungswarnung oder den Warneinstellungen für Anomalien und Commitments auf der Seite Kosten. Jede Nachricht enthält einen Klartext- und einen HTML-Teil, einen Link zurück zu Infrawrench und einen Link zum Abmelden mit einem Klick."
+  }
 }
