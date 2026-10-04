@@ -31,6 +31,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-cloudflare"),
   () => import("@infrawrench/plugin-ovh"),
   () => import("@infrawrench/plugin-databricks"),
+  () => import("@infrawrench/plugin-depot"),
   () => import("@infrawrench/plugin-turso"),
   () => import("@infrawrench/plugin-planetscale"),
   () => import("@infrawrench/plugin-azure"),

@@ -60,6 +60,7 @@ vi.mock("@infrawrench/plugin-tailscale", () => stub("tailscale"));
 vi.mock("@infrawrench/plugin-cloudflare", () => stub("cloudflare"));
 vi.mock("@infrawrench/plugin-ovh", () => stub("ovh"));
 vi.mock("@infrawrench/plugin-databricks", () => stub("databricks"));
+vi.mock("@infrawrench/plugin-depot", () => stub("depot"));
 vi.mock("@infrawrench/plugin-turso", () => stub("turso"));
 vi.mock("@infrawrench/plugin-planetscale", () => stub("planetscale"));
 vi.mock("@infrawrench/plugin-azure", () => stub("azure"));

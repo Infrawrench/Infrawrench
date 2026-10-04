@@ -65,6 +65,7 @@ export const typewriterStrings: string[] = [
   "Hetzner Servers",
   "Scaleway Instances",
   "Netlify Sites",
+  "Depot Projects",
   "Fly Apps",
   "Databricks Clusters",
   "Databricks SQL Warehouses",

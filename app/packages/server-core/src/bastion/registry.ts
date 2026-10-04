@@ -99,6 +99,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   cloudflare: ["api.cloudflare.com"],
   cloudinary: ["api.cloudinary.com"],
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
+  depot: ["api.depot.dev"],
   neon: ["console.neon.tech"],
   turso: ["api.turso.tech"],
   ovh: ["*.ovh.com"],

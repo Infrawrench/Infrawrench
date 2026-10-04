@@ -160,4 +160,7 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-export const API_VERSION = "1.42.3";
+// 1.43.0: the Depot plugin (`depot`) joins the `pluginId` enum, with resource
+// types `depot-project`, `depot-build`, `depot-token`, `depot-trust-policy`,
+// `depot-registry-image` and `depot-actions-repo`. Additive.
+export const API_VERSION = "1.43.0";
