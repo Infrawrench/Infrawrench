@@ -494,6 +494,10 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Communications",
+    providers: [{ name: "Twilio", detail: "Spend by product and subaccount, balance, numbers, usage triggers", resources: ["Account", "Subaccount", "Phone Number", "Messaging Service", "Verify Service", "TwiML App", "Usage Trigger", "API Key"] }],
+  },
+  {
     name: "Developer Tools",
     providers: [{ name: "Cursor", detail: "Seats, spend limits, usage by model and member", resources: ["Team", "Team Member", "Model", "Billing Group", "Member Group", "Repository Blocklist"] }],
   },
@@ -504,8 +508,6 @@ export const providerGroups: ProviderGroup[] = [
   {
     name: "CI/CD",
     providers: [{ name: "CircleCI", detail: "Credits and spend by project, resource class and executor, workflow insights, runners", resources: ["Organization", "Project", "Workflow", "Pipeline", "Context", "Context Variable", "Project Variable", "Schedule", "Trigger", "Runner Resource Class", "Runner"] }],
-      },
-    ],
   },
   {
     name: "Identity & Auth",

@@ -178,6 +178,7 @@
     "@infrawrench/plugin-tailscale": "workspace:*",
     "@infrawrench/plugin-temporal-cloud": "workspace:*",
     "@infrawrench/plugin-together": "workspace:*",
+    "@infrawrench/plugin-twilio": "workspace:*",
     "@infrawrench/plugin-turso": "workspace:*",
     "@infrawrench/plugin-uploadthing": "workspace:*",
     "@infrawrench/plugin-vercel": "workspace:*",

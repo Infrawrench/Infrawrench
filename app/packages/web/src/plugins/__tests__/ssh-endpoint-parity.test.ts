@@ -171,6 +171,7 @@ describe("SSH endpoint parity", () => {
     "temporal-cloud",
     "together",
     "xai",
+    "twilio",
   ];
 
   for (const pluginId of NO_SSH_PLUGINS) {

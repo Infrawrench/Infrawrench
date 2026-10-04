@@ -77,4 +77,5 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-xai"),
   () => import("@infrawrench/plugin-uploadthing"),
   () => import("@infrawrench/plugin-workos"),
+  () => import("@infrawrench/plugin-twilio"),
 ];

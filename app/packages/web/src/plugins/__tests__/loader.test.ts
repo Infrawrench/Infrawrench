@@ -95,6 +95,7 @@ describe("plugin loader", () => {
       "xai",
       "uploadthing",
       "workos",
+      "twilio",
     ];
     for (const id of expected) {
       expect(ids).toContain(id);
