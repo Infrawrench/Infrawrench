@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.43.0",
+    "version": "1.46.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -1207,28 +1207,43 @@
           "aws",
           "azure",
           "cartesia",
+          "circleci",
           "clickhouse",
           "cloudflare",
           "cloudinary",
           "cohere",
+          "confluent-cloud",
+          "coralogix",
+          "coreweave",
+          "crusoe",
+          "cursor",
           "databricks",
           "deepgram",
           "deepseek",
+          "depot",
+          "devin",
           "digitalocean",
           "docker",
+          "elastic-cloud",
           "elevenlabs",
+          "fastly",
           "fireworks",
           "fly",
           "gcp",
           "gemini",
+          "github",
           "gladia",
+          "grafana-cloud",
           "groq",
           "hetzner",
           "kafka",
           "kubernetes",
+          "linode",
           "memcached",
           "mistral",
+          "modal",
           "mongodb",
+          "mongodb-atlas",
           "mssql",
           "mysql",
           "neon",
@@ -1237,18 +1252,24 @@
           "openai",
           "openrouter",
           "opensearch",
+          "oracle-cloud",
           "ovh",
           "planetscale",
           "postgres",
           "redis",
+          "redis-cloud",
           "replicate",
           "revai",
           "scaleway",
+          "sentry",
+          "snowflake",
           "speechmatics",
           "ssh",
           "tailscale",
+          "temporal-cloud",
           "together",
           "turso",
+          "twilio",
           "uploadthing",
           "vercel",
           "workos",
@@ -1924,9 +1945,12 @@
         "type": "string",
         "enum": [
           "access-application",
+          "access-key",
           "access-policy",
+          "access-policy-token",
           "account",
           "acm-certificate",
+          "actions-cache",
           "admin-api-key",
           "agent",
           "agent-api-key",
@@ -1936,14 +1960,18 @@
           "ai-gateway",
           "ai-search",
           "alb",
+          "alert",
           "alert-condition",
+          "alert-configuration",
           "alert-policy",
+          "alert-rule",
           "alignment-job",
           "alloydb-cluster",
           "alloydb-instance",
           "analytics-engine-dataset",
           "api-gateway",
           "api-key",
+          "api-token",
           "apm-application",
           "app",
           "app-engine-service",
@@ -1952,6 +1980,8 @@
           "artifact-registry-repo",
           "audit-event",
           "auto-scaling-group",
+          "automation",
+          "autonomous-database",
           "autoscale-pool",
           "azure-ai-services",
           "azure-aks-cluster",
@@ -1990,7 +2020,10 @@
           "azure-subnet",
           "azure-vm",
           "azure-vnet",
+          "backend",
           "backend-service",
+          "backup-policy",
+          "backup-snapshot",
           "backup-vault",
           "balance",
           "basin-catalog",
@@ -2005,8 +2038,14 @@
           "bigquery-dataset",
           "bigquery-table",
           "bigtable-instance",
+          "billing-account",
+          "billing-group",
           "block-volume",
+          "boot-volume",
           "browser-application",
+          "bucket",
+          "budget",
+          "budget-alert-rule",
           "byok-credential",
           "cache-rule",
           "cached-content",
@@ -2019,6 +2058,8 @@
           "ch-member",
           "ch-postgres",
           "ch-service",
+          "cks-cluster",
+          "client-key",
           "cloud-armor-policy",
           "cloud-build-trigger",
           "cloud-deploy-pipeline",
@@ -2037,19 +2078,34 @@
           "cloudtrail-trail",
           "cloudwatch-alarm",
           "cloudwatch-log-group",
+          "cluster",
           "codebuild-project",
           "codepipeline-pipeline",
+          "codespace",
           "cognito-user-pool",
           "collection",
           "collection-document",
+          "compartment",
           "composer-environment",
+          "config-store",
           "connection",
+          "connectivity-rule",
+          "connector",
+          "contact-point",
           "container",
           "container-registry",
+          "context",
+          "context-variable",
+          "copilot-seat",
+          "cost-center",
+          "cron-monitor",
+          "custom-enrichment",
           "custom-hostname",
           "custom-voice",
           "d1-database",
           "dashboard",
+          "database",
+          "database-user",
           "databricks-app",
           "databricks-catalog",
           "databricks-cluster",
@@ -2076,15 +2132,25 @@
           "databricks-workspace-object",
           "dataflow-job",
           "dataset",
+          "datasource",
           "db-subnet-group",
           "db-user",
           "dedicated-inference",
           "deployed-model",
           "deployment",
+          "depot-actions-repo",
+          "depot-build",
+          "depot-project",
+          "depot-registry-image",
+          "depot-token",
+          "depot-trust-policy",
           "device",
+          "dict",
+          "dictionary",
           "directory",
           "directory-group",
           "directory-user",
+          "disk",
           "distribution-credential",
           "dns-record",
           "dns-zone",
@@ -2095,6 +2161,7 @@
           "documentdb-cluster",
           "doks-cluster",
           "domain",
+          "domain-record",
           "dpo-job",
           "droplet",
           "durable-object-namespace",
@@ -2110,12 +2177,18 @@
           "elasticache-serverless-cache",
           "email-routing-rule",
           "embed-job",
+          "encryption-key",
           "endpoint",
+          "enrichment",
+          "environment",
           "eval",
           "evaluation",
           "evaluation-job",
           "evaluator",
           "eventbridge-rule",
+          "events2metrics",
+          "export-sink",
+          "extension",
           "feature-flag",
           "file",
           "file-search-document",
@@ -2126,10 +2199,13 @@
           "firestore-database",
           "firewall",
           "firewall-rule",
+          "flex-cluster",
           "flexible-ip",
+          "flink-compute-pool",
           "floating-ip",
           "folder",
           "forwarding-rule",
+          "function",
           "gateway",
           "gce-disk",
           "gce-instance",
@@ -2153,6 +2229,7 @@
           "healthcheck",
           "history-item",
           "host",
+          "hosted-runner",
           "hyperdrive",
           "iam-role",
           "iam-user",
@@ -2161,12 +2238,15 @@
           "instance",
           "instance-group",
           "instance-template",
+          "instance-type",
           "internet-gateway",
           "invitation",
           "invite",
           "invoice",
+          "ip-access-entry",
           "ip-access-rule",
           "ip-allocation",
+          "issue",
           "job",
           "k8s-cluster",
           "k8s-configmap",
@@ -2190,13 +2270,21 @@
           "kms-key",
           "kms-key-ring",
           "knowledge-base-document",
+          "knowledge-note",
+          "ksqldb-cluster",
+          "kubernetes-cluster",
           "kv-namespace",
+          "kv-store",
           "lambda-function",
           "language-id-job",
+          "linode",
           "live-session",
+          "lke-cluster",
+          "lke-node-pool",
           "llm-model",
           "load-balancer",
           "log-sink",
+          "logging-endpoint",
           "logpush-job",
           "machine",
           "managed-database",
@@ -2210,6 +2298,7 @@
           "memorystore-redis",
           "memorystore-valkey",
           "message-batch",
+          "messaging-service",
           "mistral-agent",
           "mistral-api-key",
           "mistral-batch-job",
@@ -2223,10 +2312,12 @@
           "model-endpoint",
           "model-version",
           "mongodb-database",
+          "monitor",
           "mq-broker",
           "msk-cluster",
           "mssql-database",
           "mysql-database",
+          "namespace",
           "nat-gateway",
           "neon-ai-gateway",
           "neon-auth",
@@ -2254,10 +2345,16 @@
           "netlify-site",
           "netlify-snippet",
           "network",
+          "network-connection",
+          "nexus-endpoint",
           "nfs-share",
+          "node-pool",
+          "nodebalancer",
           "notification-policy",
           "object-storage-bucket",
           "octavia-load-balancer",
+          "oke-cluster",
+          "online-archive",
           "opensearch-cluster",
           "opensearch-domain",
           "organization",
@@ -2266,16 +2363,21 @@
           "organization-membership",
           "organization-role",
           "organization-user",
+          "outgoing-webhook",
           "page-rule",
+          "parsing-rule-group",
           "permission",
           "pg-database",
           "pg-schema",
           "phone-number",
+          "pipeline",
           "placement-group",
+          "playbook",
           "postgres-cluster",
           "posture-integration",
           "prediction",
           "primary-ip",
+          "private-endpoint-service",
           "private-network",
           "product-environment",
           "project",
@@ -2283,6 +2385,7 @@
           "project-rate-limit",
           "project-service-account",
           "project-user",
+          "project-variable",
           "pronunciation-dict",
           "pronunciation-dictionary",
           "provider",
@@ -2298,9 +2401,20 @@
           "purchase",
           "queue",
           "quota",
+          "quota-rule",
           "r2-bucket",
           "rate-limit",
           "rate-limit-rule",
+          "rc-account",
+          "rc-acl-role",
+          "rc-acl-rule",
+          "rc-acl-user",
+          "rc-cloud-account",
+          "rc-database",
+          "rc-psc-endpoint",
+          "rc-subscription",
+          "rc-transit-gateway",
+          "rc-vpc-peering",
           "rdb-instance",
           "rds-cluster",
           "rds-instance",
@@ -2309,6 +2423,9 @@
           "redshift-cluster",
           "registry-namespace",
           "reinforcement-fine-tuning-job",
+          "release",
+          "repo-blocklist",
+          "reservation",
           "reserved-ip",
           "role",
           "route-table",
@@ -2316,21 +2433,44 @@
           "route53-hosted-zone",
           "route53-record-set",
           "router",
+          "runner",
+          "runner-resource-class",
           "s3-bucket",
           "sagemaker-endpoint",
+          "schedule",
+          "scheduled-function",
+          "schema-registry",
+          "search-index",
           "secret",
           "secret-manager-secret",
+          "secret-store",
           "secrets-manager-secret",
           "secrets-store-secret",
           "security-group",
+          "security-list",
           "sentiment-job",
           "server",
           "serverless-container",
           "serverless-function",
+          "serverless-instance",
+          "serverless-traffic-filter",
           "service",
+          "service-account",
+          "service-version",
+          "session",
           "shared-volume",
           "skill",
           "snapshot",
+          "snowflake-account",
+          "snowflake-database",
+          "snowflake-dynamic-table",
+          "snowflake-pipe",
+          "snowflake-resource-monitor",
+          "snowflake-role",
+          "snowflake-schema",
+          "snowflake-task",
+          "snowflake-user",
+          "snowflake-warehouse",
           "sns-topic",
           "spaces-bucket",
           "spanner-backup",
@@ -2345,15 +2485,27 @@
           "ssh-target",
           "ssl-certificate",
           "ssm-parameter",
+          "stack",
+          "stack-plugin",
+          "stackscript",
           "static-ip",
           "step-function",
           "storage-box",
+          "subaccount",
           "subnet",
           "supervised-fine-tuning-job",
+          "synthetic-check",
           "synthetic-monitor",
           "tailnet",
           "target-group",
+          "tco-policy",
+          "team",
+          "team-member",
+          "tenancy",
+          "tls-certificate",
+          "tls-subscription",
           "topic-job",
+          "traffic-filter",
           "training",
           "transcript",
           "transcription",
@@ -2369,13 +2521,17 @@
           "turso-location",
           "turso-organization-invite",
           "turso-organization-member",
+          "twiml-app",
           "upload-mapping",
           "upload-preset",
           "uptime-check",
+          "uptime-monitor",
+          "usage-trigger",
           "user",
           "user-invite",
           "ut-app",
           "ut-file",
+          "vcn",
           "vector-store",
           "vectorize-index",
           "vercel-deployment",
@@ -2385,8 +2541,10 @@
           "vercel-project",
           "vercel-team",
           "vercel-webhook",
+          "verify-service",
           "vertex-ai-endpoint",
           "vertex-gemini-model",
+          "vm",
           "vocabulary",
           "voice",
           "voice-agent",
@@ -2396,6 +2554,7 @@
           "vpc-nat-gateway",
           "vpc-network",
           "vpc-peering",
+          "vpc-subnet",
           "waf-web-acl",
           "waiting-room",
           "webhook",
@@ -4969,6 +5128,291 @@
         ],
         "additionalProperties": false
       },
+      "DashboardNotification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "How often the schedule fires. The report itself decides what window it charts."
+          },
+          "sendDay": {
+            "type": "integer"
+          },
+          "sendDayOfMonth": {
+            "type": "integer"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "attachPdf": {
+            "type": "boolean",
+            "description": "Attach the rendered PDF: as a file on every email, and uploaded into the Slack message's thread (needs the Slack app's `files:write` scope; without it the message still posts). Teams incoming webhooks cannot carry files, so Teams always gets the summary and a link."
+          },
+          "nextSendAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the next scheduled send is due; null while disabled."
+          },
+          "lastSentAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a delivery last actually reached at least one destination."
+          },
+          "lastStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending",
+              "succeeded",
+              "partial",
+              "failed",
+              "no_targets"
+            ],
+            "description": "What the last attempt did. `partial` is never retried automatically."
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "dashboardId",
+          "cadence",
+          "sendDay",
+          "sendDayOfMonth",
+          "hour",
+          "timezone",
+          "slackChannelIds",
+          "teamsWebhookIds",
+          "emailRecipients",
+          "enabled",
+          "attachPdf",
+          "nextSendAt",
+          "lastSentAt",
+          "lastStatus",
+          "lastError",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "DashboardNotificationInput": {
+        "type": "object",
+        "properties": {
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "How often the schedule fires. The report itself decides what window it charts."
+          },
+          "sendDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO day of week (1 = Monday … 7 = Sunday); read only when cadence is weekly."
+          },
+          "sendDayOfMonth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "description": "Day of month; read only when cadence is monthly. A day the month doesn't have clamps to its last day, so 31 means month end everywhere."
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23,
+            "description": "Local hour in `timezone` the delivery fires at."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA zone, e.g. `Europe/Berlin`. Validated server-side."
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored Slack channel row ids (from the targets endpoint) to post to."
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored Teams webhook row ids (from the targets endpoint) to post to."
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Email addresses; normalized (lowercased) server-side. At most 20."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "attachPdf": {
+            "type": "boolean",
+            "description": "Absent means `true`."
+          }
+        },
+        "required": [
+          "cadence",
+          "hour",
+          "timezone",
+          "slackChannelIds",
+          "teamsWebhookIds",
+          "emailRecipients",
+          "enabled"
+        ],
+        "additionalProperties": false,
+        "description": "A full replace. At least one destination is required. The same schedule shape as a cost report's delivery schedule, plus `attachPdf`."
+      },
+      "DashboardNotificationSendResult": {
+        "type": "object",
+        "properties": {
+          "attempted": {
+            "type": "integer"
+          },
+          "succeeded": {
+            "type": "integer"
+          },
+          "slack": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "teams": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "email": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "pdfAttached": {
+            "type": "boolean",
+            "description": "Whether a PDF was rendered and sent."
+          },
+          "slackFilesUploaded": {
+            "type": "integer",
+            "description": "Slack channels that also received the PDF. Lower than `slack.succeeded` when the Slack install predates the `files:write` scope."
+          }
+        },
+        "required": [
+          "attempted",
+          "succeeded",
+          "slack",
+          "teams",
+          "email",
+          "pdfAttached",
+          "slackFilesUploaded"
+        ],
+        "additionalProperties": false
+      },
       "CostReportFolder": {
         "type": "object",
         "properties": {
@@ -6084,7 +6528,8 @@
             "enum": [
               "budget",
               "cost_report",
-              "cost_graph_widget"
+              "cost_graph_widget",
+              "cost_visibility_scope"
             ]
           },
           "id": {
@@ -23801,6 +24246,290 @@
         ],
         "additionalProperties": false
       },
+      "CostVisibilityPrincipalKind": {
+        "type": "string",
+        "enum": [
+          "role",
+          "member",
+          "api_key"
+        ],
+        "description": "What a cost visibility scope attaches to."
+      },
+      "CostVisibilityScope": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "principalKind": {
+            "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Role id, member user id, or API key id."
+          },
+          "principalLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Role name, member email or key name; null when the principal no longer exists."
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "principalKind",
+          "principalId",
+          "principalLabel",
+          "costCentreIds",
+          "accountIds",
+          "savedFilterId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CostVisibilityScopeInput": {
+        "type": "object",
+        "properties": {
+          "principalKind": {
+            "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+          },
+          "principalId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "description": "Rows the allocation rules assign to these cost centres (or their children)."
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Rows on these connected accounts."
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A saved filter ANDed onto the scope. With no centres and no accounts it decides alone; a scope with nothing at all matches no rows."
+          }
+        },
+        "required": [
+          "principalKind",
+          "principalId",
+          "costCentreIds",
+          "accountIds",
+          "savedFilterId"
+        ],
+        "additionalProperties": false
+      },
+      "ShareableObjectType": {
+        "type": "string",
+        "enum": [
+          "cost_report",
+          "cost_report_folder",
+          "dashboard"
+        ]
+      },
+      "OrgAccessLevel": {
+        "type": "string",
+        "enum": [
+          "editor",
+          "viewer",
+          "none"
+        ],
+        "description": "What everyone in the organization can do with the object. `editor` is the default for an object nobody has shared."
+      },
+      "ObjectAccessLevel": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "editor",
+          "viewer"
+        ]
+      },
+      "ObjectAccessGrant": {
+        "type": "object",
+        "properties": {
+          "principalKind": {
+            "type": "string",
+            "enum": [
+              "member",
+              "role"
+            ]
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "principalLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "level": {
+            "$ref": "#/components/schemas/ObjectAccessLevel"
+          },
+          "implicit": {
+            "type": "boolean",
+            "description": "The report creator's ownership, implied rather than stored. Never send it back."
+          }
+        },
+        "required": [
+          "principalKind",
+          "principalId",
+          "principalLabel",
+          "level",
+          "implicit"
+        ],
+        "additionalProperties": false
+      },
+      "ObjectSharing": {
+        "type": "object",
+        "properties": {
+          "objectType": {
+            "$ref": "#/components/schemas/ShareableObjectType"
+          },
+          "objectId": {
+            "type": "string"
+          },
+          "orgAccess": {
+            "$ref": "#/components/schemas/OrgAccessLevel"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObjectAccessGrant"
+            }
+          },
+          "callerLevel": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "editor",
+              "viewer",
+              "none"
+            ],
+            "description": "What the caller can do with this object."
+          },
+          "inheritedFrom": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "folderId": {
+                "type": "string"
+              },
+              "folderName": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string",
+                "enum": [
+                  "owner",
+                  "editor",
+                  "viewer",
+                  "none"
+                ]
+              }
+            },
+            "required": [
+              "folderId",
+              "folderName",
+              "level"
+            ],
+            "additionalProperties": false,
+            "description": "Access the containing folder's explicit sharing already gives the caller."
+          }
+        },
+        "required": [
+          "objectType",
+          "objectId",
+          "orgAccess",
+          "grants",
+          "callerLevel",
+          "inheritedFrom"
+        ],
+        "additionalProperties": false
+      },
+      "ObjectSharingInput": {
+        "type": "object",
+        "properties": {
+          "orgAccess": {
+            "$ref": "#/components/schemas/OrgAccessLevel"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "principalKind": {
+                  "type": "string",
+                  "enum": [
+                    "member",
+                    "role"
+                  ]
+                },
+                "principalId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "level": {
+                  "$ref": "#/components/schemas/ObjectAccessLevel"
+                }
+              },
+              "required": [
+                "principalKind",
+                "principalId",
+                "level"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "orgAccess",
+          "grants"
+        ],
+        "additionalProperties": false
+      },
       "CommitmentUnitAmount": {
         "type": "object",
         "properties": {
@@ -30032,9 +30761,72 @@
           "invoices:write",
           "invoices:issue",
           "pages:write",
+          "sharing:override",
           "org:settings:write"
         ],
         "description": "A permission string. Roles may grant exact permissions like the entries in this enum, or wildcards (e.g. `resources:*:read`, `*`)."
+      },
+      "CostVisibilitySource": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "costCentreIds",
+          "accountIds",
+          "savedFilterId"
+        ],
+        "additionalProperties": false
+      },
+      "CostVisibilitySummary": {
+        "type": "object",
+        "properties": {
+          "restricted": {
+            "type": "boolean",
+            "description": "False means the caller sees every cost row the organization holds."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostVisibilitySource"
+            },
+            "description": "Every scope that applies to the caller. A cost row must match all of them."
+          }
+        },
+        "required": [
+          "restricted",
+          "sources"
+        ],
+        "additionalProperties": false,
+        "description": "The caller's cost visibility scope. Every cost read enforces it server-side."
       },
       "MeResponse": {
         "type": "object",
@@ -30054,6 +30846,9 @@
             "items": {
               "$ref": "#/components/schemas/Permission"
             }
+          },
+          "costVisibility": {
+            "$ref": "#/components/schemas/CostVisibilitySummary"
           }
         },
         "required": [
@@ -38152,6 +38947,594 @@
         },
         "operationId": "getOrgOrgIdCostReportNotifications",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/pdf": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Export a dashboard as a PDF",
+        "description": "Renders every card server-side: cost graphs and saved reports (chart plus a totals table, converted to the org's display currency where configured), budgets (spend against the amount, forecast and thresholds), custom graphs (including their KPI and table forms) and pinned resources and workflows. Cost cards need `costs:read` as well and are replaced by a note without it. A card that fails renders its error in place.\n\n_Requires permission: `dashboards:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown."
+            },
+            "required": false,
+            "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown.",
+            "name": "tz",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The PDF, as an attachment",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardsIdPdf",
+        "x-required-permission": "dashboards:read"
+      }
+    },
+    "/api/org/{orgId}/cost-reports/{id}/pdf": {
+      "get": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Export a saved cost report as a PDF",
+        "description": "The report's chart and totals table for its saved window, rendered server-side and converted to the org's display currency where configured.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown."
+            },
+            "required": false,
+            "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown.",
+            "name": "tz",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The PDF, as an attachment",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostReportsIdPdf",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/notifications": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "List a dashboard's delivery schedules",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DashboardNotification"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardsIdNotifications",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
+      },
+      "post": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Create a dashboard delivery schedule",
+        "description": "On its cadence the server renders the dashboard as a PDF and sends a short summary (one line per card with a figure to quote) and a deep link to the schedule's destinations, with the PDF attached to emails and uploaded to Slack when `attachPdf` is on.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardNotificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardNotification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDashboardsIdNotifications",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/notifications/targets": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "List the destinations a dashboard schedule can deliver to",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDeliveryTargets"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardsIdNotificationsTargets",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/notifications/{notificationId}": {
+      "put": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Update a dashboard delivery schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardNotificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardNotification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdDashboardsIdNotificationsNotificationId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Delete a dashboard delivery schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdDashboardsIdNotificationsNotificationId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/dashboards/{id}/notifications/{notificationId}/send": {
+      "post": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Send a dashboard schedule now",
+        "description": "Renders and delivers immediately, ignoring the schedule and its enabled flag. Fails with a 400 naming the reason when nothing could be delivered.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardNotificationSendResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDashboardsIdNotificationsNotificationIdSend",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/dashboard-notifications": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "List every dashboard delivery schedule in the organization",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DashboardNotification"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardNotifications",
+        "x-required-permission": "dashboards:read",
+        "description": "_Requires permission: `dashboards:read`._"
       }
     },
     "/api/org/{orgId}/cost-report-folders": {
@@ -56389,6 +57772,427 @@
         },
         "operationId": "getOrgOrgIdCredits",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-visibility": {
+      "get": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "List cost visibility scopes",
+        "description": "Every scope narrowing which cost rows a role, member or API key can see. Scopes that apply to one caller are intersected.\n\n_Requires permission: `team:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostVisibilityScope"
+                      }
+                    }
+                  },
+                  "required": [
+                    "scopes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostVisibility",
+        "x-required-permission": "team:read"
+      },
+      "put": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Create or replace a cost visibility scope",
+        "description": "Upserts the scope of one principal. Roles and members need `team:role:write`; an API key's owner may also scope their own key with `apikeys:write`. Owners cannot be scoped, and cost-scoped callers cannot change scopes.\n\n_Requires permission: `team:role:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostVisibilityScopeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostVisibilityScope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostVisibility",
+        "x-required-permission": "team:role:write"
+      }
+    },
+    "/api/org/{orgId}/cost-visibility/{principalKind}/{principalId}": {
+      "delete": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Remove a cost visibility scope",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+            },
+            "required": true,
+            "name": "principalKind",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "principalId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostVisibilityPrincipalKindPrincipalId",
+        "x-required-permission": "team:role:write",
+        "description": "_Requires permission: `team:role:write`._"
+      }
+    },
+    "/api/org/{orgId}/sharing/{objectType}/{objectId}": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Get an object's sharing",
+        "description": "Who can open or edit a cost report, report folder or dashboard. Needs viewer on the object and the family's read permission (`costs:read` / `dashboards:read`).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ShareableObjectType"
+            },
+            "required": true,
+            "name": "objectType",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "objectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sharing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectSharing"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSharingObjectTypeObjectId"
+      },
+      "put": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Replace an object's sharing",
+        "description": "Replaces the org-wide default and every grant. Owner on the object plus the family's write permission. At least one owner must remain.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ShareableObjectType"
+            },
+            "required": true,
+            "name": "objectType",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "objectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectSharingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sharing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectSharing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSharingObjectTypeObjectId"
+      },
+      "delete": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Reset an object's sharing to the default",
+        "description": "Removes every grant and the org-wide setting, so everyone in the organization can edit again. Owner only. A report's creator remains its owner.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ShareableObjectType"
+            },
+            "required": true,
+            "name": "objectType",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "objectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSharingObjectTypeObjectId"
       }
     },
     "/api/org/{orgId}/commitments": {

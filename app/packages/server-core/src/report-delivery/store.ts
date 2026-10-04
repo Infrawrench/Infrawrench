@@ -8,6 +8,7 @@
  * whole trust story: a Slack channel or Teams webhook id must be a row the
  * org already connected, and email addresses are normalized and bounded.
  */
+import { scopedViewerUserId } from "../cost/visibility-context";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import {
@@ -51,7 +52,9 @@ function asStringArray(raw: unknown): string[] {
 export function toReportNotificationView(row: ReportNotificationRecord): ReportNotification {
   return {
     id: row.id,
-    costReportId: row.costReportId,
+    // Report rows only reach this view (every caller filters on the report
+    // column); dashboard rows go through `toDashboardNotificationView`.
+    costReportId: row.costReportId ?? "",
     cadence: row.cadence as ReportNotificationCadence,
     sendDay: row.sendDay,
     sendDayOfMonth: row.sendDayOfMonth,
@@ -116,7 +119,7 @@ export async function requireLiveReport(
  * Validation
  * ------------------------------------------------------------------ */
 
-interface NormalizedInput {
+export interface NormalizedInput {
   cadence: ReportNotificationCadence;
   sendDay: number;
   sendDayOfMonth: number;
@@ -128,7 +131,7 @@ interface NormalizedInput {
   enabled: boolean;
 }
 
-async function normalizeInput(
+export async function normalizeInput(
   organizationId: string,
   input: ReportNotificationInput,
 ): Promise<NormalizedInput> {
@@ -279,6 +282,12 @@ export async function getReportNotificationRow(
     )
     .limit(1);
   if (!row) throw new ReportNotificationInputError("Schedule not found", 404);
+  // A cost-scoped caller can change or trigger only the schedules that
+  // deliver within their own scope; anyone else's are not theirs to touch.
+  const viewer = scopedViewerUserId(organizationId);
+  if (viewer !== undefined && row.visibilityUserId !== viewer) {
+    throw new ReportNotificationInputError("Schedule not found", 404);
+  }
   return row;
 }
 
@@ -313,6 +322,9 @@ export async function createReportNotification(
       // creating a schedule at 07:59 for 08:00 sends at 08:00, and creating
       // one at 08:01 sends tomorrow. "Send now" exists for immediacy.
       nextSendAt: normalized.enabled ? nextReportSendAt(scheduleOf(normalized), now) : null,
+      // A schedule a cost-scoped member creates delivers only what they can
+      // see; the delivery pass resolves this user's scope on every send.
+      visibilityUserId: scopedViewerUserId(organizationId) ?? null,
       createdByUserId,
     })
     .returning();
@@ -361,6 +373,7 @@ export async function deleteReportNotification(
   reportId: string,
   notificationId: string,
 ): Promise<void> {
+  await getReportNotificationRow(organizationId, reportId, notificationId);
   const [deleted] = await db
     .delete(reportNotifications)
     .where(

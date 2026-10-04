@@ -52,6 +52,10 @@ Budget cards are views onto a budget, not the budget itself: removing one leaves
 
 ![Dashboard "+" tile menu open showing Pin a resource, Cost graph, Saved report, New budget, Existing budget, and Custom graph entries](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/dash-add-menu.png)
 
+## Export and schedule
+
+**Download PDF** in a dashboard's header renders every card as a PDF, and **Schedule delivery** sends it daily, weekly or monthly to Slack, Microsoft Teams or email with the PDF attached. See [PDF export and scheduled dashboards](./dashboard-pdf.md).
+
 ## Multiple dashboards
 
 You can create additional dashboards from **Dashboards → New**. Useful for splitting by environment (prod, staging) or by responsibility (mine vs team).

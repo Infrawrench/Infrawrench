@@ -58,7 +58,7 @@
  */
 import { and, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
-import { amortizedAmountExpr, dayRange } from "./cost-readers";
+import { amortizedAmountExpr, costDailyOrgCondition, dayRange } from "./cost-readers";
 import { costDaily } from "./schema";
 
 async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
@@ -149,7 +149,7 @@ export async function getCommitmentCoverageCells(
       .final()
       .where(
         and(
-          eq(costDaily.organization_id, organizationId),
+          costDailyOrgCondition(organizationId),
           dayRange(from, to),
           consumptionCondition(),
           inArray(costDaily.account_id, accountIds),
@@ -192,7 +192,7 @@ export async function getAccountDataDays(
       .from(costDaily)
       .where(
         and(
-          eq(costDaily.organization_id, organizationId),
+          costDailyOrgCondition(organizationId),
           dayRange(from, to),
           inArray(costDaily.account_id, accountIds),
         ),
@@ -244,7 +244,7 @@ export async function getCommitmentDeliveredTotals(
       .final()
       .where(
         and(
-          eq(costDaily.organization_id, organizationId),
+          costDailyOrgCondition(organizationId),
           dayRange(from, to),
           consumptionCondition(),
           ne(costDaily.commitment_id, ""),
@@ -298,7 +298,7 @@ export async function getUncoveredDailySpend(
       .final()
       .where(
         and(
-          eq(costDaily.organization_id, organizationId),
+          costDailyOrgCondition(organizationId),
           dayRange(from, to),
           consumptionCondition(),
           uncoveredCondition(),

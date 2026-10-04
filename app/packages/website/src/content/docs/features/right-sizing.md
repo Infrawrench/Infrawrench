@@ -37,6 +37,7 @@ Right-sizing is declared by each provider plugin, never hard-coded. It ships for
 - **AWS** — EC2 instances (live per-region on-demand prices from the AWS Price List API; needs the `pricing:GetProducts` permission)
 - **Azure** — Virtual machines (keyless Retail Prices API; memory from the platform's Available Memory Bytes metric)
 - **Google Cloud** — Compute Engine VM instances (Cloud Billing catalog prices)
+- **Linode (Akamai Cloud)**: Linodes (regional USD prices from the live plan catalog; CPU only, as Linode's statistics have no memory series; LKE worker nodes are resized through their node pool instead)
 
 ## Applying a resize
 
@@ -44,6 +45,7 @@ Right-sizing is declared by each provider plugin, never hard-coded. It ships for
 
 - Hetzner, EC2 and Compute Engine only resize a **stopped** machine — stop it first (or let a [sleep schedule](./sleep-schedules.md) window do it), apply, then start it again.
 - DigitalOcean powers the Droplet off for the resize automatically and boots it afterwards.
+- Linode powers the instance off, migrates it to the new plan and boots it again; a smaller plan only works when the data fits on its disk.
 - Azure resizes a running VM but **restarts** it during the change.
 
 <insert [Apply resize confirm dialog quoting the change — current and recommended size with vCPU/RAM, p95 figures, monthly saving, and the provider note that the server must be powered off first] here>

@@ -1,14 +1,11 @@
 import { Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import {
-  describeReportSchedule,
-  describeReportTargets,
-  type ReportNotification,
-} from "@infrawrench/client-core";
-import { Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
+import { Button, Card, ErrorView, LoadingView, Row, Screen, SectionTitle } from "@/components/ui";
 import { CostGraphCard } from "@/features/dashboard/CostGraphCard";
 import { useCostReports } from "@/features/cost-reports/useCostReports";
 import { useReportNotifications } from "@/features/cost-reports/useReportNotifications";
+import { NotificationRow } from "@/features/delivery/NotificationRow";
+import { useSharePdf } from "@/features/pdf/sharePdf";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { colors, spacing } from "@/lib/theme";
 
@@ -35,6 +32,7 @@ export default function CostReportDetailRoute() {
   const { reportId } = useLocalSearchParams<{ reportId: string }>();
   const reports = useCostReports();
   const notifications = useReportNotifications(reportId);
+  const pdf = useSharePdf();
 
   if (reports.isLoading) return <LoadingView />;
   if (reports.isError) {
@@ -63,6 +61,17 @@ export default function CostReportDetailRoute() {
         {report.description ? (
           <Text style={{ color: colors.textMuted, fontSize: 13 }}>{report.description}</Text>
         ) : null}
+      </View>
+
+      <View style={{ flexDirection: "row" }}>
+        <Button
+          label={pdf.busy ? "Preparing PDF…" : "Share PDF"}
+          variant="secondary"
+          disabled={pdf.busy}
+          onPress={() =>
+            void pdf.share(`/cost-reports/${encodeURIComponent(report.id)}/pdf`, report.name)
+          }
+        />
       </View>
 
       <CostGraphCard title={report.name} config={report.config} annotationReportId={report.id} />
@@ -104,42 +113,5 @@ export default function CostReportDetailRoute() {
         </Card>
       )}
     </Screen>
-  );
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "Sending…",
-  succeeded: "Delivered",
-  partial: "Partially delivered",
-  failed: "Failed",
-  no_targets: "No live destinations",
-};
-
-/** One schedule, read-only: when it fires, where it goes, how the last send went. */
-function NotificationRow({ notification: n }: { notification: ReportNotification }) {
-  const failed =
-    n.lastStatus === "failed" || n.lastStatus === "partial" || n.lastStatus === "no_targets";
-  const status = n.lastStatus ? (STATUS_LABELS[n.lastStatus] ?? n.lastStatus) : "Not sent yet";
-  const lastSent = n.lastSentAt
-    ? new Date(n.lastSentAt).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-      })
-    : null;
-  return (
-    <View style={{ paddingVertical: spacing.xs, gap: 2 }}>
-      <Text style={{ color: colors.text, fontSize: 14 }}>
-        {describeReportSchedule(n)}
-        {n.enabled ? "" : " · paused"}
-      </Text>
-      <Text style={{ color: colors.textMuted, fontSize: 12 }}>To {describeReportTargets(n)}</Text>
-      <Text style={{ color: failed ? colors.danger : colors.textMuted, fontSize: 12 }}>
-        {status}
-        {lastSent && !failed ? ` · last sent ${lastSent}` : ""}
-      </Text>
-      {n.lastError ? (
-        <Text style={{ color: colors.danger, fontSize: 12 }}>{n.lastError}</Text>
-      ) : null}
-    </View>
   );
 }

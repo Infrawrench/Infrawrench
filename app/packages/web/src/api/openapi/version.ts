@@ -160,8 +160,8 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-// 1.43.0: New Relic plugin; `newrelic` on the `pluginId` enum and its
-// resource type ids on the `resourceTypeId` enum. Credential fields may
-// declare `providerOptions`, and `POST /accounts/credential-options` returns
-// the provider's choices for them (the New Relic account picker). Additive.
-export const API_VERSION = "1.43.0";
+// 1.43.0: Grafana Cloud and the October 2026 provider batch plugin IDs and resource type IDs. Additive.
+// 1.44.0: cost visibility scopes and per-object sharing. Adds cost-visibility and sharing routes, costVisibility on /team/me, and sharing:override.
+// 1.45.0: PDF export and scheduled dashboard delivery routes and schemas. Additive.
+// 1.46.0: New Relic plugin and resource type IDs, plus provider-filled credential choices. Additive.
+export const API_VERSION = "1.46.0";

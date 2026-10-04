@@ -1,4 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
+import { ShareDialog } from "@infrawrench/ui";
+import { createWebSharingClient } from "../lib/cost-client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useGT } from "gt-react";
 import {
@@ -18,6 +20,7 @@ import {
   extractHostLabel,
   toast,
   DashboardAddMenu,
+  DashboardExportActions,
   CloseIcon,
 } from "@infrawrench/ui";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
@@ -60,6 +63,8 @@ import {
 import type { DashboardPin, DashboardWorkflowPin } from "@infrawrench/client-core";
 import { apiGet, apiPost, apiDelete, apiPatch, apiPut } from "@/lib/api";
 import { createWebCostApi } from "@/lib/cost-client";
+import { createWebDashboardExportClient } from "@/lib/dashboard-export-client";
+import { usePermissions } from "@/auth/permissions-context";
 import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
 
@@ -139,6 +144,8 @@ export function DashboardView({
   const [costStatus, setCostStatus] = useState<CostAccountStatus[]>([]);
   const [dashboardName, setDashboardName] = useState(initialName);
   const [editingName, setEditingName] = useState(false);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const sharingClient = useMemo(() => createWebSharingClient(orgId), [orgId]);
 
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
 
@@ -188,6 +195,15 @@ export function DashboardView({
   // render only when their loader is present, so a hand-rolled literal here
   // takes them away from every cost card opened on a dashboard.
   const costApi: CostApi = useMemo(() => createWebCostApi(orgId), [orgId]);
+
+  // PDF export and scheduled delivery. Managing schedules is
+  // `org:settings:write`; without it the dialog lists them read-only.
+  const { has } = usePermissions();
+  const canManageDelivery = has("org:settings:write");
+  const exportClient = useMemo(
+    () => createWebDashboardExportClient(orgId, canManageDelivery),
+    [orgId, canManageDelivery],
+  );
 
   const customGraphsClient: CustomGraphsClient = useMemo(
     () => ({
@@ -518,16 +534,40 @@ export function DashboardView({
           )}
         </div>
 
-        {!isHome && (
-          <button
-            type="button"
-            onClick={() => void deleteDashboard()}
-            title={gt("Delete dashboard")}
-            className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
-          >
-            {gt("Delete")}
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          <DashboardExportActions
+            dashboardId={dashboardId}
+            dashboardName={dashboardName}
+            client={exportClient}
+          />
+          {dashboardId && (
+            <button
+              type="button"
+              onClick={() => setSharingOpen(true)}
+              title={gt("Share dashboard")}
+              className="text-xs text-on-surface-faint hover:text-on-surface-muted transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+            >
+              {gt("Share")}
+            </button>
+          )}
+          {sharingOpen && (
+            <ShareDialog
+              client={sharingClient}
+              target={{ objectType: "dashboard", objectId: dashboardId, name: dashboardName }}
+              onClose={() => setSharingOpen(false)}
+            />
+          )}
+          {!isHome && (
+            <button
+              type="button"
+              onClick={() => void deleteDashboard()}
+              title={gt("Delete dashboard")}
+              className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+            >
+              {gt("Delete")}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}

@@ -270,6 +270,24 @@ export const ALERT_TRIGGERS = [
 
 export type AlertTrigger = (typeof ALERT_TRIGGERS)[number]["id"];
 
+/**
+ * Triggers whose message carries cost figures. A member whose cost visibility
+ * is scoped never receives these on their phone for spend computed outside
+ * their scope (the push fan-out excludes them), because a lock-screen
+ * "Budget X at 92% of $40,000" would hand them exactly the totals the scope
+ * withholds. Channel destinations are org-level and chosen by whoever
+ * configured them, so they are unaffected.
+ */
+export const COST_FIGURE_TRIGGERS: readonly AlertTrigger[] = [
+  "budgetAlerts",
+  "anomalyAlerts",
+  "costChangeAlerts",
+  "commitmentExpiryAlerts",
+  "commitmentIdleAlerts",
+  "unitCostRegressionAlerts",
+  "weeklyDigest",
+];
+
 const TRIGGER_BY_ID = new Map<string, AlertTriggerDef>(ALERT_TRIGGERS.map((t) => [t.id, t]));
 
 export function alertTriggerDef(trigger: AlertTrigger): AlertTriggerDef {

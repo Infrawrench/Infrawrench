@@ -6,6 +6,17 @@
  * routes: `pnpm --filter @infrawrench/web generate:openapi` will pick them up.
  */
 export const REQUIRED_PERMISSION: Record<string, string | null> = {
+  // cost visibility scopes; PUT/DELETE depend on the principal (an API key's
+  // owner may scope their own key with apikeys:write), so the handler owns
+  // the check and the map records the common case.
+  "GET /cost-visibility": "team:read",
+  "PUT /cost-visibility": "team:role:write",
+  "DELETE /cost-visibility/{principalKind}/{principalId}": "team:role:write",
+  // object sharing; the permission depends on the object type in the path
+  // (costs:* for reports and folders, dashboards:* for dashboards).
+  "GET /sharing/{objectType}/{objectId}": null,
+  "PUT /sharing/{objectType}/{objectId}": null,
+  "DELETE /sharing/{objectType}/{objectId}": null,
   // accounts
   "GET /accounts/plugins": "accounts:read",
   "GET /accounts/plugins/{pluginId}/policy-template": "accounts:read",
@@ -450,6 +461,15 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /cost-reports/{id}/notifications/{notificationId}": "org:settings:write",
   "POST /cost-reports/{id}/notifications/{notificationId}/send": "org:settings:write",
   "GET /cost-report-notifications": "costs:read",
+  "GET /cost-reports/{id}/pdf": "costs:read",
+  "GET /dashboards/{id}/pdf": "dashboards:read",
+  "GET /dashboards/{id}/notifications": "dashboards:read",
+  "GET /dashboards/{id}/notifications/targets": "org:settings:write",
+  "POST /dashboards/{id}/notifications": "org:settings:write",
+  "PUT /dashboards/{id}/notifications/{notificationId}": "org:settings:write",
+  "DELETE /dashboards/{id}/notifications/{notificationId}": "org:settings:write",
+  "POST /dashboards/{id}/notifications/{notificationId}/send": "org:settings:write",
+  "GET /dashboard-notifications": "dashboards:read",
   // cost annotations: dated notes drawn over a chart. Reads ride costs:read
   // and writes costs:write, exactly as reports do: a note about spend is cost
   // data with words on it, not dashboard furniture.

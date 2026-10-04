@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, View } from "react-native";
+import { Alert, Text, View } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -26,9 +26,20 @@ import { CostGraphSheet } from "@/features/dashboard/CostGraphSheet";
 import { PinResourceSheet } from "@/features/dashboard/PinResourceSheet";
 import { useBudgets } from "@/features/dashboard/useBudgets";
 import { useDashboardEditing } from "@/features/dashboard/useDashboardEditing";
+import { useDashboardNotifications } from "@/features/dashboard/useDashboardNotifications";
+import { NotificationRow } from "@/features/delivery/NotificationRow";
+import { useSharePdf } from "@/features/pdf/sharePdf";
 import { Sheet, TextField } from "@/components/form";
-import { Button, Card, EmptyView, ErrorView, LoadingView, Screen } from "@/components/ui";
-import { spacing } from "@/lib/theme";
+import {
+  Button,
+  Card,
+  EmptyView,
+  ErrorView,
+  LoadingView,
+  Screen,
+  SectionTitle,
+} from "@/components/ui";
+import { colors, spacing } from "@/lib/theme";
 
 /** Which sheet is open, if any. `configure` carries the widget being edited. */
 type OpenSheet =
@@ -64,6 +75,9 @@ export default function DashboardScreen() {
   // Budget widgets need their row to be configurable; the cards fetch the same
   // query, so this is the cache they already filled.
   const budgets = useBudgets(editing);
+  // Read-only, like a report's schedules: created and edited on web/desktop.
+  const notifications = useDashboardNotifications(dashboardId);
+  const pdf = useSharePdf();
 
   const name = detail.data?.dashboard.name;
   useEffect(() => {
@@ -180,7 +194,20 @@ export default function DashboardScreen() {
               <Button label="Done" variant="secondary" onPress={() => setEditing(false)} />
             </>
           ) : (
-            <Button label="Edit" variant="secondary" onPress={() => setEditing(true)} />
+            <>
+              <Button label="Edit" variant="secondary" onPress={() => setEditing(true)} />
+              <Button
+                label={pdf.busy ? "Preparing PDF…" : "Share PDF"}
+                variant="secondary"
+                disabled={pdf.busy}
+                onPress={() =>
+                  void pdf.share(
+                    `/dashboards/${encodeURIComponent(dashboardId)}/pdf`,
+                    data.dashboard.name,
+                  )
+                }
+              />
+            </>
           )}
         </View>
 
@@ -220,6 +247,26 @@ export default function DashboardScreen() {
               : null
           }
         />
+
+        <SectionTitle>Delivery</SectionTitle>
+        {notifications.isLoading ? (
+          <Text style={{ color: colors.textMuted, fontSize: 13 }}>Loading schedules…</Text>
+        ) : notifications.isError ? (
+          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+            Couldn&rsquo;t load delivery schedules.
+          </Text>
+        ) : (notifications.data ?? []).length === 0 ? (
+          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+            No scheduled delivery. Schedules that email or post this dashboard as a PDF are managed
+            on web or desktop.
+          </Text>
+        ) : (
+          <Card list>
+            {(notifications.data ?? []).map((n) => (
+              <NotificationRow key={n.id} notification={n} />
+            ))}
+          </Card>
+        )}
       </Screen>
 
       {sheet?.kind === "add" ? (

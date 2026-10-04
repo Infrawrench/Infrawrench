@@ -54,7 +54,7 @@ const SavedCostFilter = strict({
 }).openapi("SavedCostFilter");
 
 const SavedCostFilterReferent = strict({
-  kind: z.enum(["budget", "cost_report", "cost_graph_widget"]),
+  kind: z.enum(["budget", "cost_report", "cost_graph_widget", "cost_visibility_scope"]),
   id: Uuid.describe("Budget id, report id, or dashboard-widget id."),
   name: z.string().describe("Budget name, report name, or the widget's title."),
   dashboardId: Uuid.optional().describe("Set for `cost_graph_widget` referents."),

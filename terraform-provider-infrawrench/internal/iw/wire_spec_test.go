@@ -113,6 +113,8 @@ func specChecks() []specCheck {
 
 		{schema: "ReportNotification", value: ReportNotification{}},
 		{schema: "ReportNotificationInput", value: ReportNotificationInput{}},
+		{schema: "DashboardNotification", value: DashboardNotification{}},
+		{schema: "DashboardNotificationInput", value: DashboardNotificationInput{}},
 
 		{schema: "CostAnomalySettings", value: CostAnomalySettings{}},
 		{schema: "CostEfficiencySettings", value: CostEfficiencySettings{}},
@@ -151,6 +153,12 @@ func specChecks() []specCheck {
 		{schema: "LogWorkspaceQueryCreate", value: LogWorkspaceQueryInput{}},
 		{schema: "LogWorkspaceQueryUpdate", value: LogWorkspaceQueryInput{}},
 		{schema: "LogStreamSelector", value: LogStreamSelector{}},
+
+		{schema: "CostVisibilityScope", value: CostVisibilityScope{}},
+		{schema: "CostVisibilityScopeInput", value: CostVisibilityScopeInput{}},
+		{schema: "ObjectAccessGrant", value: ObjectAccessGrant{}},
+		{schema: "ObjectSharing", value: ObjectSharing{}},
+		{schema: "ObjectSharingInput", value: ObjectSharingInput{}},
 
 		{schema: "RoleSummary", value: Role{}},
 		{schema: "RoleCreateRequest", value: RoleInput{}},

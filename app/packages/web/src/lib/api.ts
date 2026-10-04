@@ -173,6 +173,33 @@ export async function apiGetText(path: string): Promise<string> {
   return text;
 }
 
+/**
+ * GET a binary document (an exported PDF) as a Blob. Same auth as
+ * `apiFetch`: a 401 bounces through sign-in with a `return_to`, and an error
+ * response's JSON `{ error }` envelope becomes the thrown message.
+ */
+export async function apiGetBlob(path: string): Promise<Blob> {
+  const res = await fetch(path, { credentials: "include" });
+  if (res.status === 401) {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.href = `${SIGN_IN_URL}?return_to=${encodeURIComponent(returnTo)}`;
+    return new Promise(() => {});
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let message = text;
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown };
+      if (typeof parsed.error === "string") message = parsed.error;
+    } catch {
+      /* not a JSON error envelope */
+    }
+    if (res.status === 402) throw new PlanRequiredClientError(message);
+    throw new Error(message || `Request failed (${res.status})`);
+  }
+  return res.blob();
+}
+
 export function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return apiFetch<T>(path, {
     method: "POST",

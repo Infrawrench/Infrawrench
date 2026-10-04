@@ -98,6 +98,12 @@ export interface AlertEvent {
    */
   pushData?: PushData;
   facts?: AlertFacts;
+  /**
+   * For cost-figure triggers raised by an object a cost-scoped member created:
+   * that member. Push delivery excludes every other scoped member (see
+   * `COST_FIGURE_TRIGGERS`); null means the figures are org-wide.
+   */
+  costVisibilityUserId?: string | null;
 }
 
 /**
@@ -288,11 +294,16 @@ async function deliverDestinations(
 
   const [push, slack, teams, onCall] = await Promise.all([
     wantsPush
-      ? sendPushToOrg(event.organizationId, event.trigger, {
-          title: event.title,
-          body: event.pushBody ?? event.body,
-          data: event.pushData as PushData,
-        })
+      ? sendPushToOrg(
+          event.organizationId,
+          event.trigger,
+          {
+            title: event.title,
+            body: event.pushBody ?? event.body,
+            data: event.pushData as PushData,
+          },
+          { costVisibilityUserId: event.costVisibilityUserId ?? null },
+        )
       : Promise.resolve({ attempted: 0, succeeded: 0 }),
     slackIds.length > 0
       ? options.track || buttons.length > 0
@@ -313,11 +324,17 @@ async function deliverDestinations(
     onCallUserIds.size > 0
       ? Promise.all(
           [...onCallUserIds].map((userId) =>
-            sendPushToOrgUser(event.organizationId, userId, event.trigger, {
-              title: event.title,
-              body: event.pushBody ?? event.body,
-              data: event.pushData as PushData,
-            }),
+            sendPushToOrgUser(
+              event.organizationId,
+              userId,
+              event.trigger,
+              {
+                title: event.title,
+                body: event.pushBody ?? event.body,
+                data: event.pushData as PushData,
+              },
+              { costVisibilityUserId: event.costVisibilityUserId ?? null },
+            ),
           ),
         ).then((results) => ({
           // Counted per *person*, not per device: a rule names "whoever is on

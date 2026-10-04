@@ -1,4 +1,12 @@
 import { Hono } from "hono";
+import { costVisibilityRoutes } from "./routes/cost-visibility";
+import { sharingRoutes } from "./routes/sharing";
+import {
+  ObjectAccessDeniedError,
+  ObjectNotVisibleError,
+  SharingInputError,
+} from "../services/object-sharing";
+import { costVisibilityMiddleware } from "../auth/cost-visibility";
 import workflowRoutes from "./routes/workflows.js";
 import workflowApprovalRoutes from "./routes/workflow-approvals.js";
 import { workflowSecretRoutes } from "./routes/workflow-secrets.js";
@@ -48,6 +56,11 @@ import {
   costReportNotificationRoutes,
   orgReportNotificationRoutes,
 } from "./routes/cost-report-notifications";
+import {
+  costReportPdfRoutes,
+  dashboardNotificationRoutes,
+  orgDashboardNotificationRoutes,
+} from "./routes/dashboard-notifications";
 import { costReportFolderRoutes } from "./routes/cost-report-folders";
 import { costAnnotationRoutes } from "./routes/cost-annotations";
 import { costExportRoutes } from "./routes/cost-exports";
@@ -149,6 +162,12 @@ api.use("*", securityHeaders());
 
 api.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
+  // Object sharing (services/object-sharing.ts) throws from the services the
+  // routes and tools share; an object below `viewer` is a 404 so its
+  // existence does not leak, one the caller can see but not change a 403.
+  if (err instanceof ObjectNotVisibleError) return c.json({ error: "Not found" }, 404);
+  if (err instanceof ObjectAccessDeniedError) return c.json({ error: err.message }, 403);
+  if (err instanceof SharingInputError) return c.json({ error: err.message }, 400);
   // In production we don't echo the message/stack: they leak schema, paths, secrets.
   const correlationId = randomUUID();
   console.error(`[api] uncaught error correlationId=${correlationId}:`, err);
@@ -334,6 +353,10 @@ orgScoped.use("*", unlessApiKey(agentOrgMiddleware));
 orgScoped.use("*", unlessApiKey(sessionMiddleware));
 orgScoped.use("*", unlessApiKey(orgMiddleware));
 orgScoped.use("*", unlessApiKey(permissionsMiddleware));
+// Cost visibility scopes: runs for every principal (session, key, agent), last
+// in the chain, so the whole handler executes inside the caller's scope and
+// every ClickHouse cost read is narrowed by it. See auth/cost-visibility.ts.
+orgScoped.use("*", costVisibilityMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/costs", costRoutes);
@@ -343,6 +366,12 @@ orgScoped.route("/cost-reports", costReportRoutes);
 // never collide with /cost-reports/:id.
 orgScoped.route("/cost-reports", costReportNotificationRoutes);
 orgScoped.route("/cost-report-notifications", orgReportNotificationRoutes);
+// PDF export (`/:id/pdf`) and dashboard delivery schedules (`/:id/notifications…`)
+// share their parents' prefixes the same way; the org-wide schedule list gets
+// its own.
+orgScoped.route("/cost-reports", costReportPdfRoutes);
+orgScoped.route("/dashboards", dashboardNotificationRoutes);
+orgScoped.route("/dashboard-notifications", orgDashboardNotificationRoutes);
 orgScoped.route("/cost-report-folders", costReportFolderRoutes);
 // Dated notes drawn over cost charts. Its own prefix rather than a child of
 // /cost-reports: an annotation with no report id is org-wide and belongs to
@@ -376,6 +405,8 @@ orgScoped.route("/accounts", accountRoutes);
 orgScoped.route("/api-keys", apiKeyRoutes);
 orgScoped.route("/agent-registrations", agentRegistrationRoutes);
 orgScoped.route("/team", teamRoutes);
+orgScoped.route("/cost-visibility", costVisibilityRoutes);
+orgScoped.route("/sharing", sharingRoutes);
 orgScoped.route("/billing", billingRoutes);
 orgScoped.route("/audit-logs", auditRoutes);
 orgScoped.route("/", connectionFeatureRoutes);

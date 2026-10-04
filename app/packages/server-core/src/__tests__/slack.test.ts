@@ -611,3 +611,79 @@ describe("sendSlackToChannelsTracked", () => {
     });
   });
 });
+
+describe("sendSlackToChannelsWithFile", () => {
+  const file = {
+    filename: "platform.pdf",
+    title: "Platform (PDF)",
+    content: new Uint8Array([37, 80]),
+  };
+
+  it("posts the message, then uploads the file into its thread", async () => {
+    queueChannels([{ channelId: "C1", channelName: "finance", installationId: "inst1" }]);
+    queueInstallations([installation()]);
+    // loadOrgSlackTokens re-reads the installs for the upload.
+    queueInstallations([installation()]);
+    fetchSpy.mockImplementation(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("chat.postMessage")) {
+        return jsonResponse({ ok: true, ts: "1.2", channel: "C1" });
+      }
+      if (url.endsWith("files.getUploadURLExternal")) {
+        return jsonResponse({ ok: true, upload_url: "https://files.slack.test/up", file_id: "F1" });
+      }
+      return jsonResponse({ ok: true });
+    });
+    const { sendSlackToChannelsWithFile } = await import("../slack");
+    const result = await sendSlackToChannelsWithFile(
+      ORG,
+      ["row1"],
+      { title: "t", body: "b" },
+      file,
+    );
+    expect(result).toEqual({ attempted: 1, succeeded: 1, failed: 0, filesUploaded: 1 });
+
+    const calls = fetchSpy.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls.map(([u]) => String(u))).toEqual([
+      "https://slack.com/api/chat.postMessage",
+      "https://slack.com/api/files.getUploadURLExternal",
+      "https://files.slack.test/up",
+      "https://slack.com/api/files.completeUploadExternal",
+    ]);
+    // Both file methods go up form-encoded; `files` is JSON inside the form.
+    const ticket = new URLSearchParams(String(calls[1]![1].body));
+    expect(ticket.get("filename")).toBe("platform.pdf");
+    expect(ticket.get("length")).toBe("2");
+    const complete = new URLSearchParams(String(calls[3]![1].body));
+    expect(complete.get("channel_id")).toBe("C1");
+    expect(complete.get("thread_ts")).toBe("1.2");
+    expect(JSON.parse(complete.get("files") ?? "[]")).toEqual([
+      { id: "F1", title: "Platform (PDF)" },
+    ]);
+  });
+
+  it("keeps the delivered message when the install lacks files:write", async () => {
+    queueChannels([{ channelId: "C1", channelName: "finance", installationId: "inst1" }]);
+    queueInstallations([installation()]);
+    queueInstallations([installation()]);
+    fetchSpy.mockImplementation(async (input: string | URL | Request) =>
+      String(input).endsWith("chat.postMessage")
+        ? jsonResponse({ ok: true, ts: "1.2", channel: "C1" })
+        : jsonResponse({ ok: false, error: "missing_scope" }),
+    );
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { sendSlackToChannelsWithFile } = await import("../slack");
+    const result = await sendSlackToChannelsWithFile(
+      ORG,
+      ["row1"],
+      { title: "t", body: "b" },
+      file,
+    );
+    expect(result).toEqual({ attempted: 1, succeeded: 1, failed: 0, filesUploaded: 0 });
+  });
+
+  it("requests the files:write scope at install", async () => {
+    const { SLACK_SCOPES } = await import("../slack");
+    expect(SLACK_SCOPES).toContain("files:write");
+  });
+});

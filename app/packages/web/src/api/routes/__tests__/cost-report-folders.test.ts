@@ -14,9 +14,24 @@ const mockUpdate = vi.fn();
 const mockDelete = vi.fn();
 
 class FakeCostReportFolderError extends Error {}
+vi.mock("@/services/object-sharing", () => ({
+  // Sharing is covered by its own suite; here every object is visible.
+  filterVisibleObjects: async (_o: string, _t: string, items: unknown[]) => items,
+  resolveSharingPrincipal: async () => ({ override: true }),
+  runWithSharingPrincipal: (_p: unknown, fn: () => unknown) => fn(),
+  grantCreatorOwnership: async () => undefined,
+  deleteObjectSharing: async () => undefined,
+  requireObjectAccess: async () => "owner",
+  loadObjectMeta: async () => ({ name: "x" }),
+  listVisibleCostReportFolders: undefined,
+  ObjectNotVisibleError: class extends Error {},
+  ObjectAccessDeniedError: class extends Error {},
+  SharingInputError: class extends Error {},
+}));
 vi.mock("../../../services/cost-report-folders", () => ({
   CostReportFolderError: FakeCostReportFolderError,
   listCostReportFolders: (...args: unknown[]) => mockList(...args),
+  listVisibleCostReportFolders: (...args: unknown[]) => mockList(...args),
   createCostReportFolder: (...args: unknown[]) => mockCreate(...args),
   updateCostReportFolder: (...args: unknown[]) => mockUpdate(...args),
   deleteCostReportFolder: (...args: unknown[]) => mockDelete(...args),

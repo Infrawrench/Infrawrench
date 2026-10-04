@@ -159,6 +159,29 @@ func TestReportNotificationEmptyListsMarshalAsArrays(t *testing.T) {
 	}
 }
 
+// Dashboard notifications share the report notification's required destination
+// lists, and add attachPdf, which must reach the wire as an explicit false when
+// the practitioner turns it off: the server reads an absent key as true.
+func TestDashboardNotificationMarshalsListsAndExplicitAttachPdf(t *testing.T) {
+	off := false
+	got := decode(t, DashboardNotificationInput{
+		Cadence: "daily", Hour: 9, Timezone: "UTC",
+		SlackChannelIDs: []string{}, TeamsWebhookIDs: []string{}, EmailRecipients: []string{"a@example.com"},
+		AttachPDF: &off,
+	})
+	for _, key := range []string{"slackChannelIds", "teamsWebhookIds", "emailRecipients"} {
+		if _, ok := got[key].([]any); !ok {
+			t.Errorf("%s must marshal as an array, got %#v", key, got[key])
+		}
+	}
+	if v, present := got["attachPdf"]; !present || v != false {
+		t.Errorf("attachPdf = false must be sent explicitly, got %#v", got["attachPdf"])
+	}
+	if _, present := got["sendDay"]; present {
+		t.Errorf("sendDay must be omitted when the cadence does not read it: %v", got)
+	}
+}
+
 // BastionID is tri-state on the wire: absent leaves the binding alone, null
 // unbinds. A Terraform attribute set to null means the second thing, so the
 // field must marshal as an explicit null rather than being omitted.

@@ -132,6 +132,49 @@ export async function orgFetchText(
   return body;
 }
 
+/**
+ * Same as {@link orgFetchText}, for a binary download: the server-rendered
+ * PDF of a cost report or a dashboard. The body is returned as raw bytes; a
+ * body that turns out to be a web page is the SPA catch-all answering for a
+ * route this server does not have, and is reported as such rather than
+ * written to disk as a broken PDF.
+ */
+export async function orgFetchBytes(
+  orgId: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<Uint8Array> {
+  let token = await getAccessToken();
+  if (!token) throw notSignedInError();
+  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
+  const buildInit = (t: string): RequestInit => ({
+    ...init,
+    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}` },
+  });
+  let res = await fetch(url, buildInit(token));
+  if (res.status === 401) {
+    const refreshed = await forceRefreshAccessToken();
+    if (!refreshed) throw notSignedInError();
+    token = refreshed;
+    res = await fetch(url, buildInit(token));
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new CliError(`Cloud request failed: ${res.status} ${path}${describeBody(body)}`);
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const contentType = res.headers.get("content-type") ?? "";
+  const head = new TextDecoder().decode(bytes.subarray(0, 200));
+  if (contentType.includes("text/html") || looksLikeHtml(head)) {
+    throw new CliError(
+      `${path} is not available on ${CLOUD_URL}.\n` +
+        `The server answered with a web page instead of a file, which usually means it is ` +
+        `running a version without this endpoint.`,
+    );
+  }
+  return bytes;
+}
+
 /** True for a response body that is a web page rather than data. */
 function looksLikeHtml(body: string): boolean {
   const head = body.slice(0, 200).trimStart().toLowerCase();

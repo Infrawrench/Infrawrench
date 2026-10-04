@@ -22,6 +22,7 @@ import type {
 import { matchCostReport } from "../format";
 import { c, printJson, println, printTable, formatMoney, seriesColor } from "../output";
 import { barChart, sparkline } from "../charts";
+import { exportPdf, wantsPdf, type PdfExportFlags } from "../pdf-export";
 
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
@@ -65,7 +66,9 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
  * `folderPathsById` re-derives paths: the CLI keeps its client-core imports
  * type-only (zero runtime dependencies).
  */
-function describeSchedule(n: ReportNotification): string {
+export function describeSchedule(
+  n: Pick<ReportNotification, "cadence" | "hour" | "sendDay" | "sendDayOfMonth" | "timezone">,
+): string {
   const hour = `${String(n.hour).padStart(2, "0")}:00`;
   const when =
     n.cadence === "weekly"
@@ -76,8 +79,13 @@ function describeSchedule(n: ReportNotification): string {
   return `${n.cadence} ${when} ${n.timezone}`;
 }
 
-/** The "delivery" column: schedule count, with failures called out. */
-function deliverySummary(schedules: ReportNotification[]): string {
+/**
+ * The "delivery" column: schedule count, with failures called out. Shared
+ * with `dashboards`, whose schedules are the same rows pointed elsewhere.
+ */
+export function deliverySummary(
+  schedules: Array<Parameters<typeof describeSchedule>[0] & Pick<ReportNotification, "lastStatus">>,
+): string {
   if (schedules.length === 0) return c.dim("—");
   const failing = schedules.filter(
     (n) => n.lastStatus === "failed" || n.lastStatus === "partial" || n.lastStatus === "no_targets",
@@ -260,9 +268,19 @@ export async function cmdSendReport(ctx: CliContext, query: string): Promise<voi
   }
 }
 
-/** `infrawrench reports <name|id>`: run a saved report and chart it. */
-export async function cmdRunReport(ctx: CliContext, query: string): Promise<void> {
+/**
+ * `infrawrench reports <name|id>`: run a saved report and chart it. With
+ * `--format pdf`, download the server-rendered PDF instead (the same document
+ * the web "Export PDF" button produces) and write it to `--out`, or to the
+ * report's slugged name in the current directory.
+ */
+export async function cmdRunReport(
+  ctx: CliContext,
+  query: string,
+  pdfFlags: PdfExportFlags = {},
+): Promise<void> {
   requireCloud(ctx);
+  const pdf = wantsPdf(pdfFlags, "reports");
   const org = await resolveOrg(ctx);
   const reports = await orgFetch<CostReport[]>(org.id, "/cost-reports");
 
@@ -280,6 +298,16 @@ export async function cmdRunReport(ctx: CliContext, query: string): Promise<void
     );
   }
   const report = found.match;
+
+  if (pdf) {
+    await exportPdf(ctx, {
+      orgId: org.id,
+      path: `/cost-reports/${encodeURIComponent(report.id)}/pdf`,
+      flags: pdfFlags,
+      subject: { kind: "report", id: report.id, name: report.name },
+    });
+    return;
+  }
 
   // Run server-side by id: the report is the query, so the CLI never
   // reassembles its config and can never drift from what the dashboard draws.

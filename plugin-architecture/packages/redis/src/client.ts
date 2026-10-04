@@ -7,7 +7,11 @@ import type {
   DashboardStat,
   PeerPaneContext,
   PeerPaneSchema,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
+import { withMetricsCapability } from "@infrawrench/plugin-base";
+import { infoSeries } from "./metrics.js";
+import { RedisInstanceResourceType } from "./resources/redis-instance.js";
 
 export class RedisClient implements PluginClient {
   private readonly connectionString: string;
@@ -79,7 +83,7 @@ export class RedisClient implements PluginClient {
     const db = resource.fields["db"] != null ? Number(resource.fields["db"]) : 0;
     const hasConnection = !!this.connectionString;
 
-    return {
+    const schema: DetailViewSchema = {
       title: resource.displayName,
       subtitle: host ? `${host} · DB ${db}` : `DB ${db}`,
       status: { kind: "status-dot", status: hasConnection ? "healthy" : "info" },
@@ -134,6 +138,14 @@ export class RedisClient implements PluginClient {
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
+    // Declared unconditionally: the host shows its own empty state until
+    // samples arrive (see `withMetricsCapability`).
+    return withMetricsCapability(
+      schema,
+      [RedisInstanceResourceType],
+      resource.resourceTypeId,
+      24 * 60 * 60 * 1000,
+    );
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
@@ -164,6 +176,23 @@ export class RedisClient implements PluginClient {
         },
       ],
     };
+  }
+
+  /**
+   * One INFO reading as single-point series. The type/resource ids are
+   * ignored: when a managed database (Redis Cloud) exposes this peer's
+   * metrics, the host passes the parent's ids, and this client is already
+   * bound to that database's connection string.
+   */
+  async fetchMetricSeries(
+    _resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+  ): Promise<MetricSeries[]> {
+    const kv = this.services?.kv;
+    if (!kv) return [];
+    const raw = await kv.command("INFO", "all");
+    return infoSeries(parseRedisInfo(String(raw)), Date.now());
   }
 
   async fetchDashboardStats(

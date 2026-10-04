@@ -8,6 +8,7 @@ import type {
   ReportNotificationInput,
   ReportNotificationSendResult,
 } from "@infrawrench/client-core";
+import type { SharingClient } from "../sharing/ShareDialog.js";
 import type { CostApi, CostsPanelDashboard } from "../cost/types.js";
 
 /**
@@ -21,6 +22,12 @@ import type { CostApi, CostsPanelDashboard } from "../cost/types.js";
  * `listFolders` sits with the reads: grouping the list is part of reading it.
  */
 export interface CostReportsClient extends CostApi {
+  /**
+   * Per-object sharing for reports and folders. Optional: the Share action
+   * renders only when the host wires it (both web and desktop do; mobile,
+   * which is read-only here, does not).
+   */
+  sharing?: SharingClient;
   listReports(): Promise<CostReport[]>;
   getReport(reportId: string): Promise<CostReport>;
   listFolders(): Promise<CostReportFolder[]>;
@@ -60,6 +67,11 @@ export interface CostReportsClient extends CostApi {
     input: ReportNotificationInput,
   ): Promise<ReportNotification>;
   deleteReportNotification?(reportId: string, notificationId: string): Promise<void>;
+  /**
+   * Render the report server-side as a PDF and save it (`costs:read`). The
+   * host owns the transport and the download; omit it to hide the button.
+   */
+  downloadReportPdf?(reportId: string, reportName: string): Promise<void>;
   /** Run the report and deliver it to this schedule's destinations now. */
   sendReportNotificationNow?(
     reportId: string,

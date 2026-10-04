@@ -26,6 +26,11 @@ vi.mock("@/db/schema", () => ({
     roleId: "role_id",
   },
   roles: { id: "id", organizationId: "org", systemKey: "system_key" },
+  costVisibilityScopes: {
+    organizationId: "org",
+    principalKind: "principal_kind",
+    principalId: "principal_id",
+  },
 }));
 
 vi.mock("@/services/audit", () => ({ logAudit: vi.fn() }));

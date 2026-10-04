@@ -59,6 +59,9 @@ export async function claimDueReportNotifications(
     WHERE id IN (
       SELECT id FROM report_notifications
       WHERE enabled = true
+        -- Report rows only: dashboard rows are claimed by the web process's
+        -- loop (report-delivery/dashboard.ts), which can render their PDF.
+        AND cost_report_id IS NOT NULL
         AND next_send_at IS NOT NULL
         AND next_send_at <= now()
       ORDER BY next_send_at ASC, id ASC
@@ -75,6 +78,8 @@ export async function claimDueReportNotifications(
     id: String(r["id"]),
     organizationId: String(r["organization_id"]),
     costReportId: String(r["cost_report_id"]),
+    dashboardId: null,
+    attachPdf: r["attach_pdf"] === true,
     cadence: String(r["cadence"]),
     sendDay: Number(r["send_day"]),
     sendDayOfMonth: Number(r["send_day_of_month"]),
@@ -90,6 +95,7 @@ export async function claimDueReportNotifications(
     lastAttemptAt: r["last_attempt_at"] ? new Date(r["last_attempt_at"] as string) : null,
     lastStatus: (r["last_status"] as string | null) ?? null,
     lastError: (r["last_error"] as string | null) ?? null,
+    visibilityUserId: (r["visibility_user_id"] as string | null) ?? null,
     createdByUserId: (r["created_by_user_id"] as string | null) ?? null,
     createdAt: new Date(r["created_at"] as string),
     updatedAt: new Date(r["updated_at"] as string),

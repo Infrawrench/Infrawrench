@@ -8,6 +8,7 @@
  * balance on its own is not actionable. "You have $42" tells you nothing;
  * "$42, six days left at your current burn" is a decision.
  */
+import { strictlyVisibleAccountIds } from "../cost/visibility-context";
 import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
 import type { CreditBurndown, CreditPollFailure, CreditPot } from "@infrawrench/client-core";
 
@@ -68,7 +69,12 @@ export async function getCreditBurndown(
     })
     .from(accounts)
     .where(eq(accounts.organizationId, organizationId));
-  const relevant = orgAccounts.filter((a) => creditPlugins.has(a.pluginId));
+  // Cost visibility: per-account figures are shown only for accounts a scoped
+  // caller may see in full (no row to test a cost centre or filter against).
+  const visibleAccounts = strictlyVisibleAccountIds(organizationId);
+  const relevant = orgAccounts.filter(
+    (a) => creditPlugins.has(a.pluginId) && (!visibleAccounts || visibleAccounts.has(a.id)),
+  );
   if (relevant.length === 0) {
     return { pots: [], failures: [], pendingAccountIds: [], burnWindowDays: BURN_WINDOW_DAYS };
   }

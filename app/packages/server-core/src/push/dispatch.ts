@@ -1,7 +1,12 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { DEFAULT_MUTED_TRIGGERS } from "@infrawrench/client-core";
+import { COST_FIGURE_TRIGGERS, DEFAULT_MUTED_TRIGGERS } from "@infrawrench/client-core";
 import { db } from "../db/client";
-import { organizationMembers, pushDevices, pushPreferences } from "../db/schema";
+import {
+  costVisibilityScopes,
+  organizationMembers,
+  pushDevices,
+  pushPreferences,
+} from "../db/schema";
 import { sendExpoPush, type ExpoPushMessage, type ExpoTicket } from "./expo-client";
 import type { PushMessage, PushResult, PushTrigger } from "./types";
 
@@ -50,10 +55,39 @@ interface TargetDevice {
  * replacement for it: a user who has left the org must stop receiving its
  * alerts even if something still records them as an owner.
  */
+export interface PushTargetOptions {
+  /**
+   * For a cost-figure trigger: the user whose cost visibility the figures were
+   * computed in (an object a scoped member created). That member still gets
+   * the push; every *other* scoped member is excluded. Null/absent means the
+   * figures are org-wide and every scoped member is excluded.
+   */
+  costVisibilityUserId?: string | null;
+}
+
+/**
+ * Members with any cost visibility scope (their own or their role's) are
+ * left out of cost-figure pushes; see `COST_FIGURE_TRIGGERS`.
+ */
+function excludeCostScopedMembers(costVisibilityUserId: string | null | undefined) {
+  const scoped = sql`EXISTS (
+    SELECT 1 FROM ${costVisibilityScopes}
+    WHERE ${costVisibilityScopes.organizationId} = ${organizationMembers.organizationId}
+      AND (
+        (${costVisibilityScopes.principalKind} = 'member' AND ${costVisibilityScopes.principalId} = ${organizationMembers.userId})
+        OR (${costVisibilityScopes.principalKind} = 'role' AND ${costVisibilityScopes.principalId} = ${organizationMembers.roleId})
+      )
+  )`;
+  return costVisibilityUserId
+    ? sql`(NOT ${scoped} OR ${organizationMembers.userId} = ${costVisibilityUserId})`
+    : sql`NOT ${scoped}`;
+}
+
 async function resolveTargets(
   organizationId: string,
   trigger: PushTrigger,
   userId?: string,
+  opts: PushTargetOptions = {},
 ): Promise<TargetDevice[]> {
   const muted = sql`${pushPreferences.mutedTriggers} @> ARRAY[${trigger}]::text[]`;
   const wanted = DEFAULT_MUTED_TRIGGERS.includes(trigger)
@@ -77,6 +111,9 @@ async function resolveTargets(
         isNull(pushDevices.disabledAt),
         wanted,
         ...(userId ? [eq(organizationMembers.userId, userId)] : []),
+        ...(COST_FIGURE_TRIGGERS.includes(trigger)
+          ? [excludeCostScopedMembers(opts.costVisibilityUserId)]
+          : []),
       ),
     );
 }
@@ -194,9 +231,10 @@ export async function sendPushToOrg(
   organizationId: string,
   trigger: PushTrigger,
   msg: PushMessage,
+  opts: PushTargetOptions = {},
 ): Promise<PushResult> {
   try {
-    const devices = await resolveTargets(organizationId, trigger);
+    const devices = await resolveTargets(organizationId, trigger, undefined, opts);
     if (devices.length === 0) return { attempted: 0, succeeded: 0 };
     const level = interruptionLevelFor(trigger);
     const tickets = await sendExpoPush(devices.map((d) => toExpoMessage(d, msg, level)));
@@ -226,9 +264,10 @@ export async function sendPushToOrgUser(
   userId: string,
   trigger: PushTrigger,
   msg: PushMessage,
+  opts: PushTargetOptions = {},
 ): Promise<PushResult> {
   try {
-    const devices = await resolveTargets(organizationId, trigger, userId);
+    const devices = await resolveTargets(organizationId, trigger, userId, opts);
     if (devices.length === 0) return { attempted: 0, succeeded: 0 };
     const level = interruptionLevelFor(trigger);
     const tickets = await sendExpoPush(devices.map((d) => toExpoMessage(d, msg, level)));

@@ -30,7 +30,14 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
-import { budgets, costReports, dashboardWidgets, dashboards, savedCostFilters } from "../db/schema";
+import {
+  budgets,
+  costReports,
+  dashboardWidgets,
+  dashboards,
+  savedCostFilters,
+  costVisibilityScopes,
+} from "../db/schema";
 
 type SavedCostFilterRow = typeof savedCostFilters.$inferSelect;
 
@@ -269,6 +276,26 @@ export async function listSavedCostFilterReferents(
       name: row.title,
       dashboardId: row.dashboardId,
       dashboardName: row.dashboardName,
+    });
+  }
+
+  // A cost visibility scope that loses its filter would match nothing (the
+  // resolver fails closed), silently hiding a team's spend from them; refuse
+  // like every other referent instead.
+  const scopeRows = await db
+    .select({ id: costVisibilityScopes.id, kind: costVisibilityScopes.principalKind })
+    .from(costVisibilityScopes)
+    .where(
+      and(
+        eq(costVisibilityScopes.organizationId, organizationId),
+        eq(costVisibilityScopes.savedFilterId, savedFilterId),
+      ),
+    );
+  for (const row of scopeRows) {
+    referents.push({
+      kind: "cost_visibility_scope",
+      id: row.id,
+      name: row.kind.replace("_", " "),
     });
   }
 

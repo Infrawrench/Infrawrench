@@ -41,6 +41,7 @@ import type {
   TagComplianceReport,
   UntaggedSpendReport,
 } from "@infrawrench/ui/cost";
+import { createSharingClient, type SharingClient } from "@infrawrench/ui";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import type {
   CostReport,
@@ -52,7 +53,9 @@ import type {
   ReportNotificationInput,
   ReportNotificationSendResult,
 } from "@infrawrench/client-core";
-import { apiDelete, apiGet, apiPost, apiPut } from "./api";
+import { pdfFileName, withPdfTimezone } from "@infrawrench/client-core";
+import { downloadBlob } from "@infrawrench/ui";
+import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut } from "./api";
 
 /**
  * The read-only cost calls, shared by the dashboard's cost cards, the Costs
@@ -311,6 +314,7 @@ export function createWebCostsClient(orgId: string): CostsClient {
 export function createWebCostReportsClient(orgId: string): CostReportsClient {
   return {
     ...createWebCostApi(orgId),
+    sharing: createWebSharingClient(orgId),
     listReports: () => apiGet<CostReport[]>(`/api/org/${orgId}/cost-reports`),
     getReport: (reportId: string) =>
       apiGet<CostReport>(`/api/org/${orgId}/cost-reports/${reportId}`),
@@ -367,6 +371,12 @@ export function createWebCostReportsClient(orgId: string): CostReportsClient {
     deleteReportNotification: async (reportId: string, notificationId: string) => {
       await apiDelete(`/api/org/${orgId}/cost-reports/${reportId}/notifications/${notificationId}`);
     },
+    downloadReportPdf: async (reportId: string, reportName: string) => {
+      const blob = await apiGetBlob(
+        withPdfTimezone(`/api/org/${orgId}/cost-reports/${reportId}/pdf`),
+      );
+      downloadBlob(blob, pdfFileName(reportName));
+    },
     sendReportNotificationNow: (reportId: string, notificationId: string) =>
       apiPost<ReportNotificationSendResult>(
         `/api/org/${orgId}/cost-reports/${reportId}/notifications/${notificationId}/send`,
@@ -381,4 +391,12 @@ function rangeQuery(from?: string, to?: string): string {
   if (to) params.set("to", to);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
+}
+
+/** Object sharing (reports, folders, dashboards) over cookie-authenticated fetch. */
+export function createWebSharingClient(orgId: string): SharingClient {
+  return createSharingClient(orgId, {
+    get: <T>(path: string) => apiGet<T>(path),
+    put: <T>(path: string, body: unknown) => apiPut<T>(path, body),
+  });
 }

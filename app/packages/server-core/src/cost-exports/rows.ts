@@ -24,7 +24,12 @@ import type { CostBasis, CostChargeType, CostFilter } from "@infrawrench/client-
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { QueryBuilder } from "drizzle-orm/clickhouse-core";
 import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client";
-import { amortizedAmountExpr, dayRange, membershipCondition } from "../clickhouse/cost-readers";
+import {
+  amortizedAmountExpr,
+  costDailyOrgCondition,
+  dayRange,
+  membershipCondition,
+} from "../clickhouse/cost-readers";
 import { costDaily } from "../clickhouse/schema";
 
 /** The column set an export emits, in order. Drives both the header and each row. */
@@ -180,7 +185,7 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
     .final()
     .where(
       and(
-        eq(costDaily.organization_id, q.organizationId),
+        costDailyOrgCondition(q.organizationId),
         dayRange(q.from, q.to),
         ...q.filters.flatMap((f) => {
           const expr = f.dimension === "tag" ? tagExpr(f.tagKey ?? "") : dimensionExpr(f.dimension);
