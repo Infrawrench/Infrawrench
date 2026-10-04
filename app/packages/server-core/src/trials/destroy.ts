@@ -61,6 +61,8 @@ export const ORG_SCOPED_CLICKHOUSE_TABLES = [
   "poll_outcomes",
   "cost_daily",
   "network_flow_daily",
+  "ai_request_daily",
+  "ai_cost_attributed",
 ] as const;
 
 export interface DestroyOrganizationResult {

@@ -294,6 +294,15 @@ infrawrench tags --last 90d --json
 infrawrench showback              # spend by cost centre; unmatched spend is "unallocated"
 ```
 
+`ai-spend` is [AI spend by caller](./ai-attribution.md): billed versus attributed AI spend per provider, each request-log source's match rate, and spend split by a caller dimension (the first one mapped, or the one you name):
+
+```
+infrawrench ai-spend              # coverage, match rates, spend by the first dimension
+infrawrench ai-spend feature --last 90d
+infrawrench ai-spend sources      # request-log sources and their collection state
+infrawrench ai-spend team --json
+```
+
 <insert [Terminal showing `infrawrench tags` output with the compliance table (green/yellow/red score column) and the untagged-spend bar chart below] here>
 
 And the organization's own adjustments to collected spend — the answer to "why doesn't this total match the invoice":

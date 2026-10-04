@@ -67,7 +67,14 @@ async function signRequest(req: SignRequestArgs): Promise<Record<string, string>
  * Throws on non-2xx status with the response body included in the message.
  */
 export async function fetchSigned(
-  req: Omit<SignRequestArgs, "body"> & { body?: string | ArrayBuffer | Uint8Array },
+  req: Omit<SignRequestArgs, "body"> & {
+    body?: string | ArrayBuffer | Uint8Array;
+    /**
+     * The response is bytes (a gzip object), not text. Only matters on the
+     * host-routed path, whose default decoding is UTF-8 and would corrupt it.
+     */
+    binary?: boolean;
+  },
 ): Promise<Response> {
   const bodyForSig = typeof req.body === "string" ? req.body : "";
   const headers = await signRequest({ ...req, body: bodyForSig });
@@ -90,6 +97,7 @@ export async function fetchSigned(
       method: req.method,
       headers,
       ...(body !== undefined ? { body } : {}),
+      ...(req.binary ? { responseEncoding: "binary" as const } : {}),
     });
     if (result.status < 200 || result.status >= 300) {
       throw new Error(
@@ -101,6 +109,12 @@ export async function fetchSigned(
     // Wrap the buffered response in a real `Response` so downstream
     // `.text()` / `.json()` callers keep working unchanged.
     const responseHeaders = new Headers(result.headers);
+    if (req.binary && result.rawBody) {
+      return new Response(result.rawBody as BodyInit, {
+        status: result.status,
+        headers: responseHeaders,
+      });
+    }
     return new Response(result.body, { status: result.status, headers: responseHeaders });
   }
 

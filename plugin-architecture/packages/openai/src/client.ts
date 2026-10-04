@@ -31,6 +31,7 @@ import {
   jsonRestFetch,
   externalIdOf,
   formatBytes,
+  withAiCostTags,
 } from "@infrawrench/plugin-base";
 import {
   ACCEPTED_AUDIO_TYPES,
@@ -3499,7 +3500,20 @@ export class OpenAIClient implements PluginClient {
     return wrap(lines.length > 0 ? lines : ["No audit log events for this resource."]);
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+  async fetchCostData(accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    // Normalized AI dimensions (`ai:provider`, and `ai:model` /
+    // `ai:token_type` where the billing API says), so request logs can be
+    // reconciled against this bill. See plugin-base `ai-requests.ts`.
+    return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), (row) => {
+      const { model, tokenType } = parseOpenAiLineItem(row.service);
+      return { provider: "openai", model, tokenType };
+    });
+  }
+
+  private async fetchUntaggedCostRows(
+    _accountId: string,
+    range: CostFetchRange,
+  ): Promise<CostRow[]> {
     if (!this.hasAdminKey) {
       throw new CostSetupError(
         "OpenAI cost collection needs an Admin API key. /v1/organization/costs rejects project keys with a 403, so add an admin key (sk-admin-…) to this account.",
@@ -3860,3 +3874,34 @@ const OUTPUT_FIELD_MAP: Record<string, string> = {
   "admin-api-key:redactedValue": "redactedValue",
   "invite:email": "email",
 };
+
+/**
+ * Split an OpenAI cost `line_item` ("gpt-4o-2024-08-06, input",
+ * "gpt-4o-mini, cached input") into a model and a token type. A line item
+ * without the comma form (web search, file storage) is provider-only rather
+ * than guessed.
+ */
+export function parseOpenAiLineItem(lineItem: string | undefined): {
+  model?: string;
+  tokenType?: "input" | "output" | "cache_read" | "cache_write" | "reasoning";
+} {
+  if (!lineItem) return {};
+  const comma = lineItem.lastIndexOf(",");
+  if (comma <= 0) return {};
+  const model = lineItem.slice(0, comma).trim();
+  const kind = lineItem
+    .slice(comma + 1)
+    .trim()
+    .toLowerCase();
+  const tokenType = /cached/.test(kind)
+    ? "cache_read"
+    : /reasoning/.test(kind)
+      ? "reasoning"
+      : /output/.test(kind)
+        ? "output"
+        : /input/.test(kind)
+          ? "input"
+          : undefined;
+  if (!tokenType) return {};
+  return { model, tokenType };
+}

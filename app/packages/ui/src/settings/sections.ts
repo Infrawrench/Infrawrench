@@ -50,6 +50,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "config", label: msg("Config as Code"), requiresPermission: "config:read" },
   { key: "currency", label: msg("Currency") },
   { key: "cost-exports", label: msg("Cost Exports"), requiresPermission: "costs:read" },
+  // AI spend by caller: request-log sources and the metadata-to-dimension
+  // mappings. Visible on `costs:read`; adding a source needs
+  // `org:settings:write` (it authorizes reads, sometimes billed ones),
+  // editing a mapping `costs:write`.
+  { key: "ai-attribution", label: msg("AI Attribution"), requiresPermission: "costs:read" },
   { key: "approvals", label: msg("Approvals"), requiresPermission: "workflows:read" },
   // Beside Notifications: the routing rules there are what consume a rotation,
   // and "who gets woken up" is one question asked in two halves.

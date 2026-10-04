@@ -215,6 +215,20 @@ export interface PluginManifest {
    */
   networkFlows?: NetworkFlowCapabilityDeclaration;
   /**
+   * If present, this plugin can read per-request AI logs (Bedrock invocation
+   * logs, an AI gateway's request log, JSONL in a bucket) for an account via
+   * `fetchAiRequestLogs`, so the host can split billed AI spend by caller.
+   * See `ai-requests.ts`: the logs never become cost rows.
+   */
+  aiRequestLogs?: AiRequestLogsCapabilityDeclaration;
+  /**
+   * Published per-token list rates for the models this plugin bills, used by
+   * the host only to weight requests against each other when a bill line
+   * covers several token types. Absent means the host falls back to
+   * `DEFAULT_TOKEN_WEIGHTS`.
+   */
+  aiModelRates?: AiModelRateCard;
+  /**
    * If present, this plugin's provider publishes a public status feed. The
    * host polls `statusFeed.url` (no credentials: the feed is public) on a
    * low-frequency background pass and hands the raw body to the plugin's
@@ -610,6 +624,25 @@ export interface PluginClient {
    * this needs (no flow logs, an unreadable destination, a missing permission)
    * so the host can stop retrying and show the fix.
    */
+  /**
+   * Options for a request-log source's location picker (log groups, buckets,
+   * gateways), discovered from the provider so nobody types an id. Only called
+   * when the manifest declares `aiRequestLogs`.
+   */
+  listAiRequestLogLocations?(
+    accountId: string,
+    sourceKindId: string,
+  ): Promise<AiRequestLogLocation[]>;
+  /**
+   * Read one closed UTC day of request logs from a configured location and
+   * return it **aggregated** (fold records through `AiRequestAccumulator`;
+   * never return raw requests). Throw `AiRequestLogSetupError` for a setup
+   * gap, and throw rather than return a short day when `range.signal` aborts.
+   */
+  fetchAiRequestLogs?(
+    accountId: string,
+    range: AiRequestLogFetchRange,
+  ): Promise<AiRequestLogFetchResult>;
   fetchNetworkFlows?(
     accountId: string,
     range: NetworkFlowFetchRange,
@@ -1154,6 +1187,13 @@ import type {
   NetworkFlowFetchResult,
   NetworkFlowRecord,
 } from "./network-flow.js";
+import type {
+  AiModelRateCard,
+  AiRequestLogFetchRange,
+  AiRequestLogFetchResult,
+  AiRequestLogLocation,
+  AiRequestLogsCapabilityDeclaration,
+} from "./ai-requests.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
 import type {

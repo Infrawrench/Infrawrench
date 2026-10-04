@@ -213,6 +213,8 @@ describe("fetchCostData", () => {
                   currency: "USD",
                   cost_type: "tokens",
                   description: "Claude Opus 4.6 Usage - Input Tokens",
+                  model: "claude-opus-4-6",
+                  token_type: "uncached_input_tokens",
                   workspace_id: "wrkspc_1",
                 },
                 {
@@ -252,8 +254,11 @@ describe("fetchCostData", () => {
       resourceId: "wrkspc_1",
       currency: "USD",
       amount: 1.2378912,
+      tags: { "ai:provider": "anthropic", "ai:model": "claude-opus-4-6", "ai:token_type": "input" },
     });
     expect(rows[1]!.amount).toBe(0.5);
+    // Non-token costs carry only the provider: no model or token type to name.
+    expect(rows[1]!.tags).toEqual({ "ai:provider": "anthropic" });
     expect(rows[1]!.service).toBe("web_search");
     expect(rows[1]!.resourceId).toBe("default-workspace");
   });

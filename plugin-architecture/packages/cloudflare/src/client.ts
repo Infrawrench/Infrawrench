@@ -1,4 +1,13 @@
 import type {
+  AiRequestLogFetchRange,
+  AiRequestLogFetchResult,
+  AiRequestLogLocation,
+} from "@infrawrench/plugin-base";
+import {
+  fetchCloudflareAiRequestLogs,
+  listCloudflareAiRequestLogLocations,
+} from "./ai-request-logs.js";
+import type {
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -1408,6 +1417,20 @@ export class CloudflareClient implements PluginClient {
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     return fetchCloudflareCostData(this.api, range);
+  }
+
+  async listAiRequestLogLocations(
+    _accountId: string,
+    _sourceKindId: string,
+  ): Promise<AiRequestLogLocation[]> {
+    return withCloudflareErrors(() => listCloudflareAiRequestLogLocations(this.api));
+  }
+
+  async fetchAiRequestLogs(
+    _accountId: string,
+    range: AiRequestLogFetchRange,
+  ): Promise<AiRequestLogFetchResult> {
+    return fetchCloudflareAiRequestLogs(this.api, range);
   }
 
   /**

@@ -190,4 +190,6 @@
 // delivery schedules), a `cost_canvas` dashboard widget kind and sharing
 // object type, `cost-canvases` on the TabTarget kind enum (with `canvasId`),
 // and the `6m` relative date-range preset. All additive.
-export const API_VERSION = "1.55.0";
+// 1.56.0: AI request attribution; /ai-attribution sources, dimensions, locations, stats, spend
+// and reattribute routes. Caller dimensions surface as `caller:<key>` tag keys. Additive.
+export const API_VERSION = "1.56.0";

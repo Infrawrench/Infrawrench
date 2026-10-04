@@ -169,6 +169,30 @@ func specChecks() []specCheck {
 		{schema: "ObjectSharing", value: ObjectSharing{}},
 		{schema: "ObjectSharingInput", value: ObjectSharingInput{}},
 
+		{
+			schema: "AiRequestSource",
+			value:  AIRequestSource{},
+			// Collection telemetry rather than configuration: the metadata keys
+			// the last run saw (with request counts) and the bytes its query
+			// scanned both change on every daily collection of a source nobody
+			// edited. The settings page and the CLI show them.
+			ignored: []string{"observedMetadataKeys", "lastQueryBytesScanned"},
+		},
+		{schema: "AiRequestSourceInput", value: AIRequestSourceInput{}},
+		{
+			schema: "AiRequestSourceKindOption",
+			value:  AIRequestSourceKindOption{},
+			// Picker presentation (labels, help text, the accounts that can
+			// supply the kind). The provider reads this listing only for the
+			// lookback cap, to recognise a clamped lookback_days.
+			ignored: []string{
+				"pluginName", "label", "description", "locationLabel",
+				"queriesBillable", "acceptsPrefix", "helpUrl", "accounts",
+			},
+		},
+		{schema: "AiAttributionDimension", value: AIAttributionDimension{}},
+		{schema: "AiAttributionDimensionInput", value: AIAttributionDimensionInput{}},
+
 		{schema: "RoleSummary", value: Role{}},
 		{schema: "RoleCreateRequest", value: RoleInput{}},
 		{schema: "RoleUpdateRequest", value: RoleInput{}},

@@ -407,6 +407,8 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_exchange_rate`             | One stated rate, effective from a day                                                  |
 | `infrawrench_anomaly_settings`          | [Anomaly detection](./cost-anomaly-alerts.md) thresholds                               |
 | `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds      |
+| `infrawrench_ai_request_source`         | Request-log sources for [AI attribution](./ai-attribution.md)                          |
+| `infrawrench_ai_attribution_dimension`  | The caller dimensions [AI attribution](./ai-attribution.md) splits spend by            |
 
 ### Monitoring
 

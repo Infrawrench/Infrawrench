@@ -28,6 +28,7 @@ import {
   bytesToBase64,
   joinSubtitle,
   jsonRestFetch,
+  withAiCostTags,
 } from "@infrawrench/plugin-base";
 import {
   byokBody,
@@ -869,7 +870,19 @@ export class OpenRouterClient implements PluginClient {
    * GET /activity: daily rows for the last 30 completed UTC days, broken down
    * by model + provider. Management key required; a plain key 403s.
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+  async fetchCostData(accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    // Normalized AI dimensions (`ai:provider`, and `ai:model` /
+    // `ai:token_type` where the billing API says), so request logs can be
+    // reconciled against this bill. See plugin-base `ai-requests.ts`.
+    return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), (row) => {
+      return { provider: "openrouter", model: row.resourceId || undefined };
+    });
+  }
+
+  private async fetchUntaggedCostRows(
+    _accountId: string,
+    range: CostFetchRange,
+  ): Promise<CostRow[]> {
     const items = await this.fetchActivity();
     return items
       .filter((item) => item.date >= range.fromDate && item.date <= range.toDate)

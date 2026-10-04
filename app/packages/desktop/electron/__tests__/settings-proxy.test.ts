@@ -13,6 +13,14 @@ describe("isAllowedSettingsRequest", () => {
     expect(isAllowedSettingsRequest("GET", "/api/profile")).toBe(true);
     expect(isAllowedSettingsRequest("patch", "/api/org/o1/team/m1")).toBe(true);
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/audit-logs?limit=50")).toBe(true);
+    // The AI Attribution section: sources, locations picker, dimensions, stats.
+    expect(
+      isAllowedSettingsRequest(
+        "GET",
+        "/api/org/o1/ai-attribution/locations?accountId=a&sourceKindId=bedrock-s3",
+      ),
+    ).toBe(true);
+    expect(isAllowedSettingsRequest("PUT", "/api/org/o1/ai-attribution/dimensions/d1")).toBe(true);
   });
 
   it("refuses routes off the surface", () => {

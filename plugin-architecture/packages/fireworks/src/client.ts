@@ -16,7 +16,12 @@ import type {
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, jsonRestFetch, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  jsonRestFetch,
+  externalIdOf,
+  withAiCostTags,
+} from "@infrawrench/plugin-base";
 import {
   formatAuditLogEntry,
   histogramQuantile,
@@ -2039,7 +2044,19 @@ export class FireworksClient implements PluginClient {
    * `usageCosts:query` returns google.type.Money: real dollars.
    * https://docs.fireworks.ai/api-reference/query-usage-costs
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+  async fetchCostData(accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    // Normalized AI dimensions (`ai:provider`, and `ai:model` /
+    // `ai:token_type` where the billing API says), so request logs can be
+    // reconciled against this bill. See plugin-base `ai-requests.ts`.
+    return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), (row) => {
+      return { provider: "fireworks", model: row.service || undefined };
+    });
+  }
+
+  private async fetchUntaggedCostRows(
+    _accountId: string,
+    range: CostFetchRange,
+  ): Promise<CostRow[]> {
     const rows: CostRow[] = [];
     // ACCOUNT scope needs account-admin rights; SELF works for any principal
     // but only covers that user's own spend. Try the fuller one first.

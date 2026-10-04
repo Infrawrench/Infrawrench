@@ -32,6 +32,7 @@ import {
   externalIdOf,
   formatBytes,
   withMetricsCapability,
+  withAiCostTags,
 } from "@infrawrench/plugin-base";
 import { ManagedEndpointResourceType } from "./resources/managed-endpoint.js";
 
@@ -2279,7 +2280,19 @@ export class TogetherClient implements PluginClient {
    * for the user rather than a failure to retry.
    * https://docs.together.ai/reference/billing-usage
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+  async fetchCostData(accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    // Normalized AI dimensions (`ai:provider`, and `ai:model` /
+    // `ai:token_type` where the billing API says), so request logs can be
+    // reconciled against this bill. See plugin-base `ai-requests.ts`.
+    return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), () => ({
+      provider: "together",
+    }));
+  }
+
+  private async fetchUntaggedCostRows(
+    _accountId: string,
+    range: CostFetchRange,
+  ): Promise<CostRow[]> {
     const merged = new Map<string, CostRow>();
     const currentMonth = new Date().toISOString().slice(0, 7);
 

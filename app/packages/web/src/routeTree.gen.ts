@@ -62,6 +62,7 @@ import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$org
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsAccessRequestsRouteImport } from './routes/org.$orgId.settings.access-requests'
 import { Route as OrgOrgIdSettingsAgentsRouteImport } from './routes/org.$orgId.settings.agents'
+import { Route as OrgOrgIdSettingsAiAttributionRouteImport } from './routes/org.$orgId.settings.ai-attribution'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$orgId.settings.approvals'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
@@ -362,6 +363,12 @@ const OrgOrgIdSettingsAgentsRoute = OrgOrgIdSettingsAgentsRouteImport.update({
   path: '/agents',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsAiAttributionRoute =
+  OrgOrgIdSettingsAiAttributionRouteImport.update({
+    id: '/ai-attribution',
+    path: '/ai-attribution',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsApiKeysRoute = OrgOrgIdSettingsApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
@@ -560,6 +567,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
+  '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -638,6 +646,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
+  '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -720,6 +729,7 @@ export interface FileRoutesById {
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
+  '/org/$orgId/settings/ai-attribution': typeof OrgOrgIdSettingsAiAttributionRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -803,6 +813,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/agents'
+    | '/org/$orgId/settings/ai-attribution'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
@@ -881,6 +892,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/agents'
+    | '/org/$orgId/settings/ai-attribution'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
@@ -962,6 +974,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/agents'
+    | '/org/$orgId/settings/ai-attribution'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
@@ -1376,6 +1389,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsAgentsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/ai-attribution': {
+      id: '/org/$orgId/settings/ai-attribution'
+      path: '/ai-attribution'
+      fullPath: '/org/$orgId/settings/ai-attribution'
+      preLoaderRoute: typeof OrgOrgIdSettingsAiAttributionRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/api-keys': {
       id: '/org/$orgId/settings/api-keys'
       path: '/api-keys'
@@ -1622,6 +1642,7 @@ const OrgOrgIdInvoicesRouteWithChildren =
 interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsAccessRequestsRoute: typeof OrgOrgIdSettingsAccessRequestsRoute
   OrgOrgIdSettingsAgentsRoute: typeof OrgOrgIdSettingsAgentsRoute
+  OrgOrgIdSettingsAiAttributionRoute: typeof OrgOrgIdSettingsAiAttributionRoute
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
   OrgOrgIdSettingsApprovalsRoute: typeof OrgOrgIdSettingsApprovalsRoute
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
@@ -1652,6 +1673,7 @@ interface OrgOrgIdSettingsRouteChildren {
 const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsAccessRequestsRoute: OrgOrgIdSettingsAccessRequestsRoute,
   OrgOrgIdSettingsAgentsRoute: OrgOrgIdSettingsAgentsRoute,
+  OrgOrgIdSettingsAiAttributionRoute: OrgOrgIdSettingsAiAttributionRoute,
   OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
   OrgOrgIdSettingsApprovalsRoute: OrgOrgIdSettingsApprovalsRoute,
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,

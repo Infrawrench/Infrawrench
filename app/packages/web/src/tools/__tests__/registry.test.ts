@@ -69,6 +69,11 @@ vi.mock("../price-catalog", () => ({
     { name: "pc1", title: "PC1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../ai-attribution", () => ({
+  aiAttributionTools: () => [
+    { name: "ai1", title: "AI1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../moment", () => ({
   momentTools: () => [
     { name: "m1", title: "M1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -140,6 +145,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("cb1");
     expect(names).toContain("pc1");
     expect(names).toContain("gh1");
+    expect(names).toContain("ai1");
     expect(names).toContain("w1");
     expect(names).toContain("cg1");
     expect(names).toContain("d1");

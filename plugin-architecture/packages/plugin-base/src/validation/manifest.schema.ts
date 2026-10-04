@@ -133,6 +133,45 @@ export const pluginManifestSchema = z.object({
         .optional(),
     })
     .optional(),
+  aiRequestLogs: z
+    .object({
+      sourceKinds: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            description: z.string(),
+            locationLabel: z.string().min(1),
+            maxHistoryDays: z.number().int().positive(),
+            queriesBillable: z.boolean().optional(),
+            acceptsPrefix: z.boolean().optional(),
+            helpUrl: z
+              .string()
+              .url()
+              .refine((u) => u.startsWith("https://"), { message: "helpUrl must be https://" })
+              .optional(),
+          }),
+        )
+        .min(1),
+    })
+    .optional(),
+  aiModelRates: z
+    .object({
+      provider: z.string().min(1),
+      currency: z.string().min(1),
+      asOf: z.string().min(1),
+      models: z.record(
+        z.string(),
+        z.object({
+          input: z.number().nonnegative(),
+          output: z.number().nonnegative(),
+          cacheRead: z.number().nonnegative().optional(),
+          cacheWrite: z.number().nonnegative().optional(),
+          reasoning: z.number().nonnegative().optional(),
+        }),
+      ),
+    })
+    .optional(),
   commitments: z
     .object({
       kinds: z.array(z.enum(["reservation", "savings_plan", "committed_use"])).min(1),

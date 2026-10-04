@@ -315,7 +315,7 @@ describe("costs", () => {
               {
                 object: "organization.costs.result",
                 amount: { value: 1.25, currency: "usd" },
-                line_item: "gpt-5, input",
+                line_item: "gpt-4o-2024-08-06, input",
                 project_id: "proj_1",
               },
               { object: "organization.costs.result", amount: { value: 0, currency: "usd" } },
@@ -350,8 +350,13 @@ describe("costs", () => {
         date: "2026-03-01",
         currency: "USD",
         amount: 1.25,
-        service: "gpt-5, input",
-        tags: { project_id: "proj_1" },
+        service: "gpt-4o-2024-08-06, input",
+        tags: {
+          project_id: "proj_1",
+          "ai:provider": "openai",
+          "ai:model": "gpt-4o",
+          "ai:token_type": "input",
+        },
       },
     ]);
   });

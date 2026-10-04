@@ -14341,5 +14341,120 @@
   "924995cec49feef3": "Fuente de métricas de GPU",
   "44024c9a4eb4a978": "Precio por hora en JSON de cada grupo de nodos (máquina más GPU conectadas) y de cada GPU, que se pasa al par de Kubernetes para que pueda derivar el costo por namespace, por carga de trabajo y por GPU. Vacío cuando no hay precio disponible.",
   "5b041bee093b7b32": "Opcional. Lo que cuesta este cluster, para poder derivar los costos de las cargas de trabajo. Los clusters abiertos desde su cuenta de nube (DigitalOcean, GCP, AWS, Azure, Scaleway, OVHcloud, CoreWeave) obtienen automáticamente los precios de sus nodos. De lo contrario, liste los tipos de instancia: s-2vcpu-4gb=0.0357, m5.large=0.096. El mismo campo determina el precio del resto del cluster — controlPlane=0.10 para la tarifa fija de un cluster administrado, loadBalancer=0.0149 por cada Service de tipo LoadBalancer, storage/*=0.10 por GiB-mes aprovisionado (o storage/gp3=0.08 para una clase específica). En nodos con GPU, gpu/a100-80gb=3.93 (o gpu/*=2.50) fija el precio de una GPU por hora, lo que decide qué parte del nodo se cobra según las solicitudes de GPU. Si se deja en blanco, la capacidad, el tamaño de los volúmenes y la eficiencia se siguen mostrando; solo se omite el costo.",
-  "d13dc6c4ffe407c6": "Opcional. De dónde proviene la utilización de las GPU, para el costo de GPU inactivas y el ajuste de tamaño de GPU. Si se deja en blanco, el Prometheus del cluster se detecta automáticamente (o se consultan directamente los pods del exportador NVIDIA DCGM). Indique namespace/service:port para designar un Prometheus que recopile el exportador DCGM o AMD, o none para desactivar las métricas de GPU."
+  "d13dc6c4ffe407c6": "Opcional. De dónde proviene la utilización de las GPU, para el costo de GPU inactivas y el ajuste de tamaño de GPU. Si se deja en blanco, el Prometheus del cluster se detecta automáticamente (o se consultan directamente los pods del exportador NVIDIA DCGM). Indique namespace/service:port para designar un Prometheus que recopile el exportador DCGM o AMD, o none para desactivar las métricas de GPU.",
+  "7f0022920a3a25d2": "Agrega el grupo de registros de invocación con una consulta de Logs Insights. Cada consulta diaria se factura a esta cuenta de AWS por GB analizado.",
+  "c6c27e680bb422fa": "Registros de solicitudes de AI Gateway",
+  "7e875fa38c6354a5": "Registros de invocación de Bedrock (CloudWatch Logs)",
+  "d90f7f6111a166b2": "Registros de invocación de Bedrock (S3)",
+  "8a239f25858e9fad": "Registros de solicitudes personalizados (JSONL en S3)",
+  "cf2c3e4f59c14cb6": "Grupo de registros",
+  "04de2b4322c69a85": "Lee el registro de solicitudes de una pasarela y divide el gasto de los proveedores que hay detrás (OpenAI, Anthropic, Bedrock…) según el cf-aig-metadata que envían sus llamadores.",
+  "98151847c9e54231": "Lee un objeto JSON por solicitud de los archivos bajo un prefijo, en el formato de registro de solicitudes documentado de Infrawrench.",
+  "df1933ff37e11bde": "Lee los objetos comprimidos con gzip del registro de invocación que Bedrock entrega en S3 y divide el gasto de Bedrock según el requestMetadata que adjuntan sus llamadores.",
+  "907ee2d3e66f59bb": "No se pudo cargar la configuración de atribución de IA",
+  "64ef2995ee30d387": "No se pudo eliminar el origen",
+  "804f094278e1d09e": "No se pudo programar la nueva recopilación",
+  "73e55c4152dd0d25": "No se pudo eliminar la dimensión",
+  "52d1f6d5f50d3eab": "Atribución de IA",
+  "3b62f231983d0abc": "Orígenes de registros de solicitudes",
+  "0ad12619c7b2ca99": "Añadir origen",
+  "8fe6b15cc177ba96": "Dimensiones de llamador",
+  "2043977dbe3e3fd1": "Añadir dimensión",
+  "81c62e3bb054b0e2": "Claves de metadatos: {keys}",
+  "b64c79465dd52c6d": "Recopilado hasta {day}",
+  "035cfebde2a43871": "Aún no recopilado",
+  "3c5c36211ef5a0d9": "Las consultas se facturan a esta cuenta",
+  "3ea2478272e57cf3": "Volver a recopilar",
+  "a1bdc8e2a98cee3f": "No se pudieron listar las ubicaciones",
+  "27178cf5d76b9cb4": "No se pudo guardar el origen",
+  "75203fdb6217eef5": "Elija un origen…",
+  "cb920a9246480622": "Guía de configuración",
+  "c4619f878a9e69f6": "Leer este origen ejecuta una consulta diaria que el proveedor factura a esta cuenta por GB analizado.",
+  "22dd1090605ddf25": "Conecte primero una cuenta de este proveedor.",
+  "71907ce403b94ce7": "Todavía no hay nada que elegir en esta cuenta.",
+  "54ea3c162a2b795f": "{label} (recomendado)",
+  "f2a0cbbd8640acd6": "Prefijo de clave (opcional)",
+  "c556bf08149475d4": "URL del proxy",
+  "ab1aa95ade412961": "Clave de administrador",
+  "b47c9177269a7b23": "La primera recopilación abarca hacia atrás (días)",
+  "ee72787f4a10f089": "Recopilar a diario",
+  "384bcb0b5a625bc5": "No se pudo guardar la dimensión",
+  "69f758173c1016b6": "Empezar desde:",
+  "f2aa1c3708a7f921": "Los informes la muestran como la clave de etiqueta {tag}",
+  "58153e5c6ab05272": "Claves de metadatos, gana la primera presente",
+  "810665a4017944a6": "Escriba una clave o elija una vista en sus registros",
+  "c49fd515d5159e4c": "Vistas en sus registros:",
+  "978c109b1e6cb0e9": "No se pudieron cargar las estadísticas",
+  "13e6a3c2d9fd09b4": "Tasa de coincidencia y cobertura",
+  "b5b4531250b1e097": "Intervalo",
+  "837ad0967a7d14bc": "Últimos {days} días",
+  "f17d292b775128fa": "Coincidentes",
+  "27bd5802648c520b": "Ambiguas",
+  "b57b11792fe373d5": "Sin coincidencia",
+  "bb37df47accddecc": "Factura cubierta",
+  "2dbddb02cde20b9c": "parcial en {n} días",
+  "9b88d39f6360d379": "Facturado",
+  "6d4e5e736992a713": "Atribuido",
+  "fcc9eb8f7cc28fe1": "Sin atribuir",
+  "ecc799fba71c9161": "Gasto de IA por llamador",
+  "afc1493db834ebf6": "Dimensión",
+  "decfb9c3912dc6c0": "No hay gasto atribuido en este intervalo.",
+  "e1e4c2af494dee22": "(sin valor)",
+  "77adf9222addde5a": {
+    "t": "p",
+    "i": 1,
+    "c": "Divida el gasto de IA por equipo, usuario, funcionalidad o cliente uniendo los registros por solicitud con las facturas que ya informan sus proveedores de IA. Cada solicitud se valora a precios de lista y se escala para que el reparto sume lo facturado; lo que los registros no explican queda como (unattributed). Los totales facturados nunca cambian."
+  },
+  "e9342a4989f503d1": {
+    "t": "p",
+    "i": 1,
+    "c": "Dónde se encuentran los registros por solicitud. Cada día cerrado se lee una vez y se consolida en totales diarios por modelo y metadatos asignados; las solicitudes sin procesar nunca se almacenan."
+  },
+  "60acc2ecc3ac0c6a": {
+    "t": "p",
+    "i": 1,
+    "c": "Aún no hay orígenes. Añada registros de invocación de Bedrock, un Cloudflare AI Gateway, un proxy de LiteLLM o registros de solicitudes JSONL en S3."
+  },
+  "0a3c2feaa8ed333a": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Asigne claves de metadatos de solicitud a una dimensión; gana la primera clave que lleve una solicitud. Cada dimensión aparece en los informes de costes, presupuestos y reglas de asignación como la clave de etiqueta ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "caller:<key>"
+      },
+      ". Las nuevas asignaciones se aplican desde la siguiente recopilación; vuelva a recopilar un origen para aplicarlas a días anteriores."
+    ]
+  },
+  "6ad00b644d2d8320": {
+    "t": "p",
+    "i": 1,
+    "c": "Aún no hay dimensiones. Sin ninguna, la atribución sigue informando de las tasas de coincidencia y la cobertura, pero no divide nada por llamador."
+  },
+  "22b823ef05156548": {
+    "t": "p",
+    "i": 1,
+    "c": "Las solicitudes coincidentes se asignaron a una línea facturada; las ambiguas coincidieron con varios modelos y se dividieron según el importe facturado; las no coincidentes no tenían dónde asignarse (el proveedor no está conectado o su factura no indica el modelo)."
+  },
+  "6176eb009748ce22": {
+    "t": "p",
+    "i": 1,
+    "c": "Aún no se ha atribuido gasto de IA en este intervalo. La atribución se ejecuta después de cada recopilación de orígenes y de cada recopilación de costes."
+  },
+  "8a2c488ff6f3a83e": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Para obtener una serie temporal, agrupe un informe de costes por la clave de etiqueta",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "."
+    ]
+  }
 }

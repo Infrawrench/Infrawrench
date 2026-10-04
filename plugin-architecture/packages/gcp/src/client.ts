@@ -33,6 +33,7 @@ import { runGcpPreflight } from "./preflight.js";
 import {
   buildCostEstimate,
   streamOpenAiSseChat,
+  withAiCostTags,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import {
@@ -1067,7 +1068,7 @@ export class GcpClient implements PluginClient {
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchGcpCostData(
+    const rows = await fetchGcpCostData(
       {
         project: this.project,
         token: () => this.token(),
@@ -1075,6 +1076,10 @@ export class GcpClient implements PluginClient {
       },
       range,
     );
+    // Normalized AI dimensions on Vertex AI / Gemini API lines, so request
+    // logs routed to Vertex can be reconciled against them (provider level:
+    // the export's service grain does not name the model).
+    return withAiCostTags(rows, (row) => classifyGcpAiService(row.service));
   }
 
   async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {
@@ -1372,4 +1377,12 @@ export class GcpClient implements PluginClient {
   private now(): string {
     return new Date().toISOString();
   }
+}
+
+/** Vertex AI and the Gemini API on the billing export, for the AI cost tags. */
+export function classifyGcpAiService(service: string | undefined): { provider: string } | null {
+  if (!service) return null;
+  if (/vertex ai/i.test(service)) return { provider: "vertex" };
+  if (/gemini api|generative language/i.test(service)) return { provider: "gemini" };
+  return null;
 }

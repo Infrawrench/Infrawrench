@@ -78,6 +78,9 @@ describe("pagination", () => {
   });
 });
 
+/** Normalized AI tags `fetchCostData` stamps on every row (plugin-base `withAiCostTags`). */
+const MISTRAL_TAGS = { "ai:provider": "mistral" };
+
 describe("admin degradation", () => {
   it("returns no api keys instead of failing when there is no admin key", async () => {
     installFetch(() => jsonResponse({}));
@@ -111,9 +114,15 @@ describe("admin degradation", () => {
     expect(calls[0]?.url).toBe("https://api.mistral.ai/v1/admin/usage?year=2026&month=7");
     // Dated to the period *start*, the one day of the month that does not move.
     expect(rows).toEqual([
-      { date: "2026-07-01", service: "chat", currency: "USD", amount: 12.5 },
-      { date: "2026-07-01", service: "audio", currency: "USD", amount: 3.25 },
-      { date: "2026-07-01", service: "fine_tuning", currency: "USD", amount: 2 },
+      { date: "2026-07-01", service: "chat", currency: "USD", amount: 12.5, tags: MISTRAL_TAGS },
+      { date: "2026-07-01", service: "audio", currency: "USD", amount: 3.25, tags: MISTRAL_TAGS },
+      {
+        date: "2026-07-01",
+        service: "fine_tuning",
+        currency: "USD",
+        amount: 2,
+        tags: MISTRAL_TAGS,
+      },
     ]);
   });
 });
@@ -145,9 +154,9 @@ describe("period-native cost dating", () => {
     }
 
     expect(collected).toEqual([
-      [{ date: "2026-08-01", service: "chat", currency: "USD", amount: 12.5 }],
-      [{ date: "2026-08-01", service: "chat", currency: "USD", amount: 40 }],
-      [{ date: "2026-08-01", service: "chat", currency: "USD", amount: 61 }],
+      [{ date: "2026-08-01", service: "chat", currency: "USD", amount: 12.5, tags: MISTRAL_TAGS }],
+      [{ date: "2026-08-01", service: "chat", currency: "USD", amount: 40, tags: MISTRAL_TAGS }],
+      [{ date: "2026-08-01", service: "chat", currency: "USD", amount: 61, tags: MISTRAL_TAGS }],
     ]);
     // One row, one date, every time: the last collection replaces the previous
     // one instead of adding a fourth day's worth of the same money.
@@ -204,8 +213,8 @@ describe("period-native cost dating", () => {
       "https://api.mistral.ai/v1/admin/usage?year=2026&month=8",
     ]);
     expect(rows).toEqual([
-      { date: "2026-07-01", service: "chat", currency: "USD", amount: 10 },
-      { date: "2026-08-01", service: "chat", currency: "USD", amount: 20 },
+      { date: "2026-07-01", service: "chat", currency: "USD", amount: 10, tags: MISTRAL_TAGS },
+      { date: "2026-08-01", service: "chat", currency: "USD", amount: 20, tags: MISTRAL_TAGS },
     ]);
   });
 });

@@ -14341,5 +14341,120 @@
   "924995cec49feef3": "GPU-Metrikquelle",
   "44024c9a4eb4a978": "JSON-Stundenpreis pro Node-Pool (Maschine plus angeschlossene GPUs) und pro GPU, der an den Kubernetes-Peer übergeben wird, damit er Kosten pro Namespace, pro Workload und pro GPU ableiten kann. Leer, wenn kein Preis verfügbar ist.",
   "5b041bee093b7b32": "Optional. Was dieser Cluster kostet, damit sich Workload-Kosten ableiten lassen. Cluster, die über ihr Cloud-Konto geöffnet werden (DigitalOcean, GCP, AWS, Azure, Scaleway, OVHcloud, CoreWeave), erhalten ihre Node-Preise automatisch. Andernfalls listen Sie Instanztypen auf: s-2vcpu-4gb=0.0357, m5.large=0.096. Dasselbe Feld bepreist auch den Rest des Clusters — controlPlane=0.10 für die Pauschalgebühr eines verwalteten Clusters, loadBalancer=0.0149 pro LoadBalancer Service, storage/*=0.10 pro bereitgestelltem GiB-Monat (oder storage/gp3=0.08 für eine Klasse). Auf GPU-Nodes legt gpu/a100-80gb=3.93 (oder gpu/*=2.50) den Preis einer GPU pro Stunde fest; davon hängt ab, wie viel des Nodes über GPU-Anforderungen berechnet wird. Bleibt das Feld leer, werden Kapazität, Volume-Größen und Effizienz weiterhin angezeigt; nur die Kosten werden weggelassen.",
-  "d13dc6c4ffe407c6": "Optional. Woher die GPU-Auslastung stammt, für die Kosten ungenutzter GPUs und das GPU-Rightsizing. Bleibt das Feld leer, wird das Prometheus des Clusters automatisch gefunden (oder die Pods des NVIDIA DCGM Exporters werden direkt abgefragt). Geben Sie namespace/service:port an, um ein Prometheus zu benennen, das den DCGM- oder AMD-Exporter abfragt, oder none, um GPU-Metriken abzuschalten."
+  "d13dc6c4ffe407c6": "Optional. Woher die GPU-Auslastung stammt, für die Kosten ungenutzter GPUs und das GPU-Rightsizing. Bleibt das Feld leer, wird das Prometheus des Clusters automatisch gefunden (oder die Pods des NVIDIA DCGM Exporters werden direkt abgefragt). Geben Sie namespace/service:port an, um ein Prometheus zu benennen, das den DCGM- oder AMD-Exporter abfragt, oder none, um GPU-Metriken abzuschalten.",
+  "7f0022920a3a25d2": "Aggregiert die Aufrufprotokollgruppe mit einer Logs Insights-Abfrage. Jede tägliche Abfrage wird diesem AWS-Konto pro gescanntem GB in Rechnung gestellt.",
+  "c6c27e680bb422fa": "AI Gateway-Anfrageprotokolle",
+  "7e875fa38c6354a5": "Bedrock-Aufrufprotokolle (CloudWatch Logs)",
+  "d90f7f6111a166b2": "Bedrock-Aufrufprotokolle (S3)",
+  "8a239f25858e9fad": "Benutzerdefinierte Anfrageprotokolle (JSONL in S3)",
+  "cf2c3e4f59c14cb6": "Protokollgruppe",
+  "04de2b4322c69a85": "Liest das Anfrageprotokoll eines Gateways und teilt die Ausgaben der dahinterliegenden Anbieter (OpenAI, Anthropic, Bedrock…) nach den cf-aig-metadata auf, die Ihre Aufrufer senden.",
+  "98151847c9e54231": "Liest pro Anfrage ein JSON-Objekt aus Dateien unter einem Präfix, im dokumentierten Infrawrench-Anfrageprotokollformat.",
+  "df1933ff37e11bde": "Liest die gzip-komprimierten Aufrufprotokollobjekte, die Bedrock in S3 ablegt, und teilt die Bedrock-Ausgaben nach den requestMetadata auf, die Ihre Aufrufer anhängen.",
+  "907ee2d3e66f59bb": "KI-Zuordnungseinstellungen konnten nicht geladen werden",
+  "64ef2995ee30d387": "Quelle konnte nicht gelöscht werden",
+  "804f094278e1d09e": "Erneute Erfassung konnte nicht geplant werden",
+  "73e55c4152dd0d25": "Dimension konnte nicht gelöscht werden",
+  "52d1f6d5f50d3eab": "KI-Zuordnung",
+  "3b62f231983d0abc": "Anfrageprotokollquellen",
+  "0ad12619c7b2ca99": "Quelle hinzufügen",
+  "8fe6b15cc177ba96": "Aufruferdimensionen",
+  "2043977dbe3e3fd1": "Dimension hinzufügen",
+  "81c62e3bb054b0e2": "Metadatenschlüssel: {keys}",
+  "b64c79465dd52c6d": "Erfasst bis {day}",
+  "035cfebde2a43871": "Noch nicht erfasst",
+  "3c5c36211ef5a0d9": "Abfragen werden diesem Konto in Rechnung gestellt",
+  "3ea2478272e57cf3": "Erneut erfassen",
+  "a1bdc8e2a98cee3f": "Speicherorte konnten nicht aufgelistet werden",
+  "27178cf5d76b9cb4": "Quelle konnte nicht gespeichert werden",
+  "75203fdb6217eef5": "Quelle auswählen…",
+  "cb920a9246480622": "Einrichtungsanleitung",
+  "c4619f878a9e69f6": "Das Lesen dieser Quelle führt eine tägliche Abfrage aus, die der Anbieter diesem Konto pro gescanntem GB in Rechnung stellt.",
+  "22dd1090605ddf25": "Verbinden Sie zuerst ein Konto dieses Anbieters.",
+  "71907ce403b94ce7": "In diesem Konto gibt es noch nichts zur Auswahl.",
+  "54ea3c162a2b795f": "{label} (empfohlen)",
+  "f2a0cbbd8640acd6": "Schlüsselpräfix (optional)",
+  "c556bf08149475d4": "Proxy-URL",
+  "ab1aa95ade412961": "Admin-Schlüssel",
+  "b47c9177269a7b23": "Erste Erfassung reicht zurück (Tage)",
+  "ee72787f4a10f089": "Täglich erfassen",
+  "384bcb0b5a625bc5": "Dimension konnte nicht gespeichert werden",
+  "69f758173c1016b6": "Ausgehend von:",
+  "f2aa1c3708a7f921": "Berichte zeigen sie als Tag-Schlüssel {tag} an",
+  "58153e5c6ab05272": "Metadatenschlüssel, der erste vorhandene gilt",
+  "810665a4017944a6": "Schlüssel eingeben oder einen aus Ihren Protokollen auswählen",
+  "c49fd515d5159e4c": "In Ihren Protokollen gefunden:",
+  "978c109b1e6cb0e9": "Statistiken konnten nicht geladen werden",
+  "13e6a3c2d9fd09b4": "Trefferquote und Abdeckung",
+  "b5b4531250b1e097": "Zeitraum",
+  "837ad0967a7d14bc": "Letzte {days} Tage",
+  "f17d292b775128fa": "Zugeordnet",
+  "27bd5802648c520b": "Mehrdeutig",
+  "b57b11792fe373d5": "Nicht zugeordnet",
+  "bb37df47accddecc": "Rechnung abgedeckt",
+  "2dbddb02cde20b9c": "teilweise an {n} Tagen",
+  "9b88d39f6360d379": "Abgerechnet",
+  "6d4e5e736992a713": "Zugeordnet",
+  "fcc9eb8f7cc28fe1": "Nicht zugeordnet",
+  "ecc799fba71c9161": "KI-Ausgaben nach Aufrufer",
+  "afc1493db834ebf6": "Dimension",
+  "decfb9c3912dc6c0": "Keine zugeordneten Ausgaben in diesem Zeitraum.",
+  "e1e4c2af494dee22": "(kein Wert)",
+  "77adf9222addde5a": {
+    "t": "p",
+    "i": 1,
+    "c": "Teilen Sie KI-Ausgaben nach Team, Benutzer, Funktion oder Kunde auf, indem Sie Protokolle pro Anfrage mit den Rechnungen verknüpfen, die Ihre KI-Anbieter bereits melden. Jede Anfrage wird zu Listenpreisen bewertet und so skaliert, dass die Aufteilung dem abgerechneten Betrag entspricht; was die Protokolle nicht erklären, bleibt als (unattributed). Abgerechnete Summen ändern sich nie."
+  },
+  "e9342a4989f503d1": {
+    "t": "p",
+    "i": 1,
+    "c": "Wo die Protokolle pro Anfrage liegen. Jeder abgeschlossene Tag wird einmal gelesen und zu Tagessummen pro Modell und zugeordneten Metadaten zusammengefasst; Rohanfragen werden nie gespeichert."
+  },
+  "60acc2ecc3ac0c6a": {
+    "t": "p",
+    "i": 1,
+    "c": "Noch keine Quellen. Fügen Sie Bedrock-Aufrufprotokolle, ein Cloudflare AI Gateway, einen LiteLLM-Proxy oder JSONL-Anfrageprotokolle in S3 hinzu."
+  },
+  "0a3c2feaa8ed333a": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Ordnen Sie Anfrage-Metadatenschlüssel einer Dimension zu; der erste Schlüssel, den eine Anfrage trägt, gilt. Jede Dimension erscheint in Kostenberichten, Budgets und Zuordnungsregeln als Tag-Schlüssel ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "caller:<key>"
+      },
+      ". Neue Zuordnungen gelten ab der nächsten Erfassung; erfassen Sie eine Quelle erneut, um sie auf vergangene Tage anzuwenden."
+    ]
+  },
+  "6ad00b644d2d8320": {
+    "t": "p",
+    "i": 1,
+    "c": "Noch keine Dimensionen. Ohne Dimension meldet die Zuordnung weiterhin Trefferquoten und Abdeckung, teilt aber nichts nach Aufrufer auf."
+  },
+  "22b823ef05156548": {
+    "t": "p",
+    "i": 1,
+    "c": "Zugeordnete Anfragen landeten auf einer abgerechneten Position; mehrdeutige passten zu mehreren Modellen und wurden nach dem abgerechneten Betrag aufgeteilt; nicht zugeordnete konnten nirgends landen (der Anbieter ist nicht verbunden oder seine Rechnung nennt das Modell nicht)."
+  },
+  "6176eb009748ce22": {
+    "t": "p",
+    "i": 1,
+    "c": "In diesem Zeitraum wurden noch keine KI-Ausgaben zugeordnet. Die Zuordnung läuft nach jeder Quellenerfassung und jeder Kostenerfassung."
+  },
+  "8a2c488ff6f3a83e": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Für eine Zeitreihe gruppieren Sie einen Kostenbericht nach dem Tag-Schlüssel",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "."
+    ]
+  }
 }
