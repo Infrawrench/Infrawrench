@@ -17,7 +17,7 @@ import {
   toast,
   useDataString,
 } from "@infrawrench/ui";
-import type { TerraformExportOutcome } from "@infrawrench/plugin-base";
+import type { CredentialFieldOption, TerraformExportOutcome } from "@infrawrench/plugin-base";
 import type {
   PolicyTemplate,
   PreflightDeclaration,
@@ -324,6 +324,13 @@ export function AccountDetailView({
           currentCredentials={editCredsState.current}
           onSave={saveCredentials}
           onClose={() => setEditCredsState(null)}
+          loadCredentialOptions={async (fieldKey, credentials) => {
+            const { options } = await apiPost<{ options: CredentialFieldOption[] }>(
+              `/api/org/${orgId}/accounts/credential-options`,
+              { pluginId: account.pluginId, fieldKey, credentials, accountId: account.id },
+            );
+            return options;
+          }}
         />
       )}
 
