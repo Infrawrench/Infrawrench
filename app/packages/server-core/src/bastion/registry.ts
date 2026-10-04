@@ -110,6 +110,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   cohere: ["api.cohere.com"],
   deepgram: ["api.deepgram.com"],
   deepseek: ["api.deepseek.com"],
+  devin: ["api.devin.ai"],
   elevenlabs: [
     "api.elevenlabs.io",
     "api.us.elevenlabs.io",

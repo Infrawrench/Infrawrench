@@ -396,6 +396,19 @@ export const providerGroups: ProviderGroup[] = [
         ],
       },
       {
+        name: "Devin",
+        detail: "ACU spend by user and playbook, sessions, playbooks",
+        resources: [
+          "Organization",
+          "Session",
+          "Playbook",
+          "Knowledge Note",
+          "Secret",
+          "Member",
+          "Automation",
+        ],
+      },
+      {
         name: "Google Gemini",
         detail: "AI Studio models, caches, batches, File Search",
         resources: [

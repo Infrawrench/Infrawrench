@@ -239,6 +239,7 @@
     "@infrawrench/plugin-databricks": "workspace:*",
     "@infrawrench/plugin-deepgram": "workspace:*",
     "@infrawrench/plugin-deepseek": "workspace:*",
+    "@infrawrench/plugin-devin": "workspace:*",
     "@infrawrench/plugin-digitalocean": "workspace:*",
     "@infrawrench/plugin-docker": "workspace:*",
     "@infrawrench/plugin-elevenlabs": "workspace:*",

@@ -89,6 +89,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   anthropic: { apiKey: "sk-ant-api03-test-key", adminApiKey: "sk-ant-admin01-test-key" },
   cohere: { apiKey: "test-cohere-key" },
   deepseek: { apiKey: "sk-test-deepseek-key" },
+  devin: { apiKey: "cog_test_devin_key" },
   elevenlabs: { apiKey: "sk_test_elevenlabs_key" },
   gemini: { apiKey: "AIzaSyTestGeminiApiKey0000000000000000000" },
   gladia: { apiKey: "test-gladia-key" },
