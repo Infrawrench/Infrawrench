@@ -30,6 +30,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-tailscale"),
   () => import("@infrawrench/plugin-cloudflare"),
   () => import("@infrawrench/plugin-ovh"),
+  () => import("@infrawrench/plugin-oracle-cloud"),
   () => import("@infrawrench/plugin-databricks"),
   () => import("@infrawrench/plugin-turso"),
   () => import("@infrawrench/plugin-planetscale"),

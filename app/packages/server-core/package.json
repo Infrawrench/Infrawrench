@@ -261,6 +261,7 @@
     "@infrawrench/plugin-openai": "workspace:*",
     "@infrawrench/plugin-openrouter": "workspace:*",
     "@infrawrench/plugin-opensearch": "workspace:*",
+    "@infrawrench/plugin-oracle-cloud": "workspace:*",
     "@infrawrench/plugin-ovh": "workspace:*",
     "@infrawrench/plugin-planetscale": "workspace:*",
     "@infrawrench/plugin-postgres": "workspace:*",
