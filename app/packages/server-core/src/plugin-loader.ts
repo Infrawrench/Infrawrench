@@ -43,6 +43,7 @@ import { plugin as geminiPlugin } from "@infrawrench/plugin-gemini";
 import { plugin as gladiaPlugin } from "@infrawrench/plugin-gladia";
 import { plugin as groqPlugin } from "@infrawrench/plugin-groq";
 import { plugin as mistralPlugin } from "@infrawrench/plugin-mistral";
+import { plugin as modalPlugin } from "@infrawrench/plugin-modal";
 import { plugin as openaiPlugin } from "@infrawrench/plugin-openai";
 import { plugin as openrouterPlugin } from "@infrawrench/plugin-openrouter";
 import { plugin as replicatePlugin } from "@infrawrench/plugin-replicate";
@@ -102,6 +103,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   gladiaPlugin,
   groqPlugin,
   mistralPlugin,
+  modalPlugin,
   openaiPlugin,
   openrouterPlugin,
   replicatePlugin,

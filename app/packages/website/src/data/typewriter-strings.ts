@@ -173,6 +173,8 @@ export const typewriterStrings: string[] = [
   "Mistral Batch Jobs",
   "Together Dedicated Endpoints",
   "Fireworks Deployments",
+  "Modal Apps",
+  "Modal GPU Functions",
   "Replicate Predictions",
   "OpenRouter Model Endpoints",
   "Cohere Datasets",

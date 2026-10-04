@@ -471,6 +471,21 @@ export const providerGroups: ProviderGroup[] = [
         ],
       },
       {
+        name: "Modal",
+        detail: "Serverless GPU spend by app and GPU type, functions, schedules",
+        resources: [
+          "Workspace",
+          "Environment",
+          "App",
+          "Function",
+          "Scheduled Function",
+          "Volume",
+          "Secret",
+          "Dict",
+          "Queue",
+        ],
+      },
+      {
         name: "Groq",
         detail: "GroqCloud catalogue, LoRA adapters, Speech tab",
         resources: ["Model", "Fine-Tuning", "Batch", "File"],

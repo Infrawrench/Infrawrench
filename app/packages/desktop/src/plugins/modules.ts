@@ -52,6 +52,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-gladia"),
   () => import("@infrawrench/plugin-groq"),
   () => import("@infrawrench/plugin-mistral"),
+  () => import("@infrawrench/plugin-modal"),
   () => import("@infrawrench/plugin-openai"),
   () => import("@infrawrench/plugin-openrouter"),
   () => import("@infrawrench/plugin-replicate"),

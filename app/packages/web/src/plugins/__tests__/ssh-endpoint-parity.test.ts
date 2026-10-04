@@ -135,6 +135,7 @@ describe("SSH endpoint parity", () => {
     "gladia",
     "groq",
     "mistral",
+    "modal",
     "openai",
     "openrouter",
     "replicate",
