@@ -27,6 +27,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   digitalocean: { apiToken: "dop_v1_test" },
   hetzner: { apiToken: "test-token" },
+  linode: { apiToken: "test-linode-token" },
   scaleway: { accessKey: "SCWTEST", secretKey: "test-uuid", defaultProjectId: "test-project-id" },
   ovh: {
     applicationKey: "test",
@@ -34,6 +35,13 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     consumerKey: "test",
     endpoint: "eu",
     projectId: "12345678-abcd-1234-abcd-1234567890ab",
+  },
+  "oracle-cloud": {
+    tenancyOcid: "ocid1.tenancy.oc1..aaaaaaaatest",
+    userOcid: "ocid1.user.oc1..aaaaaaaatest",
+    fingerprint: "12:34:56:78:9a:bc:de:f0:12:34:56:78:9a:bc:de:f0",
+    privateKey: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----",
+    region: "us-ashburn-1",
   },
   kubernetes: { kubeconfig: "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []" },
   postgres: { connectionString: "postgresql://user:pass@localhost:5432/db" },
@@ -73,6 +81,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
   deepgram: { apiKey: "test-deepgram-key" },
   coreweave: { apiToken: "CW-SECRET-test" },
+  modal: { tokenId: "ak-test-modal", tokenSecret: "as-test-modal" },
   azure: {
     tenantId: "test-tenant-id",
     clientId: "test-client-id",
