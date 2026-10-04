@@ -496,6 +496,78 @@ describe("Account routes", () => {
     });
   });
 
+  describe("POST /credential-options — provider-filled credential pickers", () => {
+    const optionsManifest = {
+      id: "newrelic",
+      displayName: "New Relic",
+      logoSvg: "<svg/>",
+      credentialFields: [
+        { key: "apiKey", label: "Key", sensitive: true },
+        {
+          key: "accountId",
+          label: "Account",
+          sensitive: false,
+          providerOptions: { dependsOn: ["apiKey"] },
+        },
+      ],
+    };
+    const post = (body: unknown) =>
+      buildApp().request("/credential-options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    it("returns the plugin's options for the submitted credentials", async () => {
+      const listCredentialOptions = vi
+        .fn()
+        .mockResolvedValue([{ id: "42", label: "Parent", description: "42" }]);
+      mockGetPlugin.mockResolvedValue({
+        plugin: { manifest: optionsManifest, createClient: vi.fn(), listCredentialOptions },
+      });
+      const res = await post({
+        pluginId: "newrelic",
+        fieldKey: "accountId",
+        credentials: { apiKey: "NRAK-X" },
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).options).toEqual([
+        { id: "42", label: "Parent", description: "42" },
+      ]);
+      expect(listCredentialOptions).toHaveBeenCalledWith(
+        "accountId",
+        { apiKey: "NRAK-X" },
+        expect.anything(),
+      );
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+
+    it("400s with the plugin's message when listing fails", async () => {
+      mockGetPlugin.mockResolvedValue({
+        plugin: {
+          manifest: optionsManifest,
+          createClient: vi.fn(),
+          listCredentialOptions: vi.fn().mockRejectedValue(new Error("New Relic rejected the key")),
+        },
+      });
+      const res = await post({ pluginId: "newrelic", fieldKey: "accountId", credentials: {} });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("rejected the key");
+    });
+
+    it("400s for a field without provider options", async () => {
+      mockGetPlugin.mockResolvedValue({
+        plugin: {
+          manifest: optionsManifest,
+          createClient: vi.fn(),
+          listCredentialOptions: vi.fn(),
+        },
+      });
+      const res = await post({ pluginId: "newrelic", fieldKey: "apiKey", credentials: {} });
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe("server credential policy", () => {
     // A plugin that refuses some credentials on the shared server (the
     // kubernetes plugin refuses kubeconfigs with exec plugins this way).

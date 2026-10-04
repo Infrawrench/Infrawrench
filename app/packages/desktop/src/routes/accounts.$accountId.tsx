@@ -706,6 +706,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
             ...(f.optional !== undefined ? { optional: f.optional } : {}),
             ...(f.regions !== undefined ? { regions: f.regions } : {}),
             ...(f.accountReference !== undefined ? { accountReference: f.accountReference } : {}),
+            ...(f.providerOptions !== undefined ? { providerOptions: f.providerOptions } : {}),
             ...(f.helpLink !== undefined ? { helpLink: f.helpLink } : {}),
           })),
         },
@@ -749,6 +750,19 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
     const client = loaded.plugin.createClient(credentials, services);
     return runAccountPreflight(loaded.plugin, client);
+  }
+
+  /** Provider-filled credential pickers in the edit modal; in-process like preflight. */
+  async function loadCredentialOptionsForAccount(
+    fieldKey: string,
+    credentials: Record<string, string>,
+  ) {
+    const loaded = await getPlugin(account!.plugin_id);
+    if (!loaded?.plugin.listCredentialOptions) {
+      throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account!.plugin_id }));
+    }
+    const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
+    return loaded.plugin.listCredentialOptions(fieldKey, credentials, services);
   }
 
   async function fetchPolicyTemplateForAccount(capabilityIds: string[]) {
@@ -1174,6 +1188,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           onSave={saveCredentials}
           onClose={() => setEditCredsState(null)}
           onOpenExternal={(url) => void invoke("open_external_url", { url })}
+          loadCredentialOptions={loadCredentialOptionsForAccount}
         />
       )}
     </div>

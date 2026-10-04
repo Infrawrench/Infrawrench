@@ -336,6 +336,45 @@ export const PROVIDER_REGION_ZONES: Record<string, Record<string, Zone>> = {
     "pl-waw": "PL",
     "it-mil": "IT",
   },
+  // Akamai Cloud (Linode) core regions, placed by the city each region id
+  // names in `GET /v4/regions` (2026-10). `us-iad`/`us-iad-2` are the
+  // Washington DC metro (Ashburn, SERC, matching DigitalOcean `ric1` and
+  // Hetzner `ash`); `us-east` is Newark, New Jersey (RFC). Jakarta (`id-cgk`)
+  // is left out: Indonesia has no Ember 2024 figure in this table.
+  linode: {
+    "us-east": "US-RFC",
+    "us-central": "US-TRE",
+    "us-west": "US-WECC",
+    "us-southeast": "US-SERC",
+    "us-iad": "US-SERC",
+    "us-iad-2": "US-SERC",
+    "us-ord": "US-RFC",
+    "us-sea": "US-WECC",
+    "us-mia": "US-SERC",
+    "us-lax": "US-WECC",
+    "ca-central": "CA",
+    "eu-west": "GB",
+    "gb-lon": "GB",
+    "eu-central": "DE",
+    "de-fra-2": "DE",
+    "fr-par": "FR",
+    "fr-par-2": "FR",
+    "se-sto": "SE",
+    "es-mad": "ES",
+    "it-mil": "IT",
+    "nl-ams": "NL",
+    "ap-south": "SG",
+    "sg-sin-2": "SG",
+    "ap-northeast": "JP",
+    "jp-tyo-3": "JP",
+    "jp-osa": "JP",
+    "ap-west": "IN",
+    "in-bom-2": "IN",
+    "in-maa": "IN",
+    "ap-southeast": "AU",
+    "au-mel": "AU",
+    "br-gru": "BR",
+  },
   // Keyed on the site prefix; `normalizeCarbonRegion` folds GRA11 → gra.
   ovh: {
     gra: "FR",
@@ -352,6 +391,55 @@ export const PROVIDER_REGION_ZONES: Record<string, Record<string, Zone>> = {
     syd: "AU",
     ynm: "IN",
     "eu-south-mil": "IT",
+  },
+  // OCI region ids, mapped by the country (US: NERC region) each region's
+  // datacentres are in, per Oracle's region table. Regions in a country with
+  // no figure in the Ember table above (South Korea, Switzerland, Saudi
+  // Arabia, Indonesia, Malaysia, Morocco, Ireland, Serbia) and Shawnee,
+  // Kansas (SPP, which CCF has no figure for) are deliberately left out and
+  // produce no estimate. OCI publishes no PUE, so `COLOCATION_PUE` applies.
+  "oracle-cloud": {
+    "us-ashburn-1": "US-SERC",
+    "us-phoenix-1": "US-WECC",
+    "us-sanjose-1": "US-WECC",
+    "us-boardman-1": "US-WECC",
+    "us-chicago-1": "US-RFC",
+    "us-columbus-1": "US-RFC",
+    "ca-montreal-1": "CA",
+    "ca-toronto-1": "CA",
+    "mx-queretaro-1": "MX",
+    "mx-monterrey-1": "MX",
+    "sa-saopaulo-1": "BR",
+    "sa-vinhedo-1": "BR",
+    "sa-riodejaneiro-2": "BR",
+    "sa-santiago-1": "CL",
+    "sa-valparaiso-1": "CL",
+    "sa-bogota-1": "CO",
+    "uk-london-1": "GB",
+    "uk-cardiff-1": "GB",
+    "eu-amsterdam-1": "NL",
+    "eu-frankfurt-1": "DE",
+    "eu-frankfurt-2": "DE",
+    "eu-paris-1": "FR",
+    "eu-marseille-1": "FR",
+    "eu-madrid-1": "ES",
+    "eu-madrid-2": "ES",
+    "eu-madrid-3": "ES",
+    "eu-milan-1": "IT",
+    "eu-turin-1": "IT",
+    "eu-stockholm-1": "SE",
+    "il-jerusalem-1": "IL",
+    "me-abudhabi-1": "AE",
+    "me-dubai-1": "AE",
+    "af-johannesburg-1": "ZA",
+    "ap-mumbai-1": "IN",
+    "ap-hyderabad-1": "IN",
+    "ap-singapore-1": "SG",
+    "ap-singapore-2": "SG",
+    "ap-tokyo-1": "JP",
+    "ap-osaka-1": "JP",
+    "ap-sydney-1": "AU",
+    "ap-melbourne-1": "AU",
   },
 };
 
@@ -414,8 +502,8 @@ export function allGridFigures(): GridFigure[] {
  * - Scaleway: per availability zone from Scaleway's environmental-footprint
  *   calculation reference (validated June 2025); 1.375 fleet average for a
  *   zone it does not list.
- * - DigitalOcean and Fly publish no figure and run in colocation, so they read
- *   `COLOCATION_PUE`.
+ * - DigitalOcean, Fly and Linode publish no figure and run in colocation, so
+ *   they read `COLOCATION_PUE`.
  */
 export const PROVIDER_PUE: Record<string, number> = {
   aws: 1.135,
@@ -426,6 +514,7 @@ export const PROVIDER_PUE: Record<string, number> = {
   scaleway: 1.375,
   digitalocean: 1.54,
   fly: 1.54,
+  linode: 1.54,
 };
 
 /**

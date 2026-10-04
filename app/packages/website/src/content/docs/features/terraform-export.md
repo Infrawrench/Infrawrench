@@ -29,8 +29,8 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 
 ## Supported providers
 
-| Plugin       | Terraform provider          | Exported resource types                                                                                                                                |
-| ------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Plugin           | Terraform provider          | Exported resource types                                                                                                                                |
+| ---------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | AWS          | `hashicorp/aws`             | EC2, S3, VPC, subnet, security group, EBS, RDS, SQS, SNS, Route 53 zones, EFS                                                                          |
 | GCP          | `hashicorp/google`          | GCS, VPC, subnet, GKE, Pub/Sub, Cloud DNS zones, BigQuery datasets, Artifact Registry, service accounts, Cloud Run jobs, Memorystore for Valkey        |
 | Azure        | `hashicorp/azurerm`         | Resource groups, VNets, subnets, NSGs, storage accounts, DNS zones, Key Vault, Redis, Managed Redis, Container Apps environments, AI services accounts |
@@ -45,7 +45,16 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 | PlanetScale  | `planetscale/planetscale`   | Vitess branches and branch passwords                                                                                                                   |
 | ClickHouse   | `ClickHouse/clickhouse`     | Cloud services (`clickhouse_service`)                                                                                                                  |
 | Databricks   | `databricks/databricks`     | Clusters, SQL warehouses, catalogs, schemas                                                                                                            |
+| Snowflake    | `snowflakedb/snowflake`     | Warehouses, databases, schemas, resource monitors                                                                                                      |
 | Netlify      | `netlify/netlify`           | DNS zones, DNS records, environment variables                                                                                                          |
+| Crusoe Cloud | `crusoecloud/crusoe`        | Projects, VMs, disks, VPC networks, subnets, firewall rules, Kubernetes clusters, node pools                                                           |
+| CoreWeave    | `coreweave/coreweave`       | CKS clusters, VPCs, AI Object Storage buckets                                                                                                          |
+| Linode       | `linode/linode`             | Linodes, volumes, NodeBalancers, LKE clusters, buckets, firewalls, domains, DNS records, VPCs, StackScripts, Managed Databases, reserved IPs           |
+| Oracle Cloud | `oracle/oci`                | Compartments, instances, block volumes, VCNs, subnets, reserved IPs, load balancers, buckets, Autonomous Databases, OKE clusters, budgets, alert rules |
+| Temporal Cloud | `temporalio/temporalcloud`  | Namespaces, users, service accounts, Nexus endpoints, connectivity rules                                                                               |
+| Redis Cloud  | `RedisLabs/rediscloud`      | ACL rules, roles and users, Essentials subscriptions, Pro databases (`rediscloud_subscription_database`)                                               |
+| Confluent Cloud | `confluentinc/confluent`    | Environments, Kafka clusters (with CKUs or eCKU ceiling), Flink compute pools, service accounts                                                        |
+| MongoDB Atlas | `mongodb/mongodbatlas`      | Projects (`mongodbatlas_project`), IP access list entries, Flex clusters                                                                               |
 
 Coverage is per resource type: types that need nested blocks or credentials Infrawrench doesn't store (for example Azure VMs, AWS Lambda packages, Netlify sites) stay in the unsupported list with a reason. A plugin declares its own mapping, so coverage grows type by type.
 
