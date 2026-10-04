@@ -10,6 +10,7 @@
  */
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { effectivePermissions } from "../auth/effective-permissions";
+import { withPrincipalCostVisibility } from "../auth/cost-visibility";
 import { err, type ToolAuthContext, type ToolDefinition, type ToolResult } from "./types";
 
 /**
@@ -52,4 +53,31 @@ export async function authorizeToolCall(
 ): Promise<ToolResult | null> {
   if (tool.permission === null) return null;
   return await denyUnlessPermitted(auth, tool.permission);
+}
+
+/**
+ * Invoke a tool's handler inside the caller's cost visibility scope.
+ *
+ * Every dispatch site (MCP and both chat paths) calls this instead of
+ * `tool.handler` directly, after {@link authorizeToolCall}: the HTTP tree gets
+ * its scope from middleware, and this is the tool layer's equivalent, so a
+ * cost tool added later is scoped without knowing scopes exist. Resolved per
+ * call for the same reason permissions are: a chat turn can outlive a scope
+ * change.
+ */
+export async function runToolHandler(
+  tool: Pick<ToolDefinition, "handler">,
+  input: Record<string, unknown>,
+  auth: ToolAuthContext,
+): Promise<ToolResult> {
+  return await withPrincipalCostVisibility(
+    auth.organizationId,
+    {
+      userId: auth.userId,
+      apiKeyId: auth.agentRegistrationId ? null : (auth.apiKeyId ?? null),
+      agentRegistrationId: auth.agentRegistrationId ?? null,
+    },
+    () => tool.handler(input, auth),
+    await effectiveToolPermissions(auth),
+  );
 }

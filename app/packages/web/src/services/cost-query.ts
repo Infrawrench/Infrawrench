@@ -3,6 +3,7 @@
  * (api/routes/costs.ts) and the tool registry (tools/costs.ts) so the graph
  * API and the MCP/chat surface stay behaviourally identical.
  */
+import { strictlyVisibleAccountIds } from "@infrawrench/server-core/cost/visibility-context";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   COST_CHARGE_TYPES,
@@ -646,10 +647,18 @@ export async function getOrgCostStatus(organizationId: string): Promise<CostAcco
     .from(accounts)
     .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)));
 
+  // `getCostCoverage` is scoped by the readers, so for a cost-scoped caller it
+  // lists exactly the accounts with at least one visible row. Status is shown
+  // for those and for accounts the scope grants outright (which may not have
+  // collected yet); every other account is not theirs to see.
   const coverage = await getCostCoverage(organizationId);
+  const strict = strictlyVisibleAccountIds(organizationId);
+  const visibleRows = strict
+    ? rows.filter((row) => coverage.has(row.id) || strict.has(row.id))
+    : rows;
 
   return Promise.all(
-    rows.map(async (row) => {
+    visibleRows.map(async (row) => {
       const loaded = await getPlugin(row.pluginId);
       const capability = loaded?.plugin.manifest.costs ?? null;
       return {

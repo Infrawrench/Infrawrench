@@ -64,6 +64,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     clientId: "mdb_sa_id_test",
     clientSecret: "mdb_sa_sk_test",
     orgId: "5f0000000000000000000001",
+  },
   circleci: {
     apiToken: "test-circleci-token",
     organization: "00000000-0000-0000-0000-000000000001",

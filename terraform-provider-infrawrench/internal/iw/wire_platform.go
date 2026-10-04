@@ -1096,3 +1096,72 @@ type OnCallScheduleUpdate struct {
 	ParticipantUserIDs []string `json:"participantUserIds,omitempty"`
 	Enabled            *bool    `json:"enabled,omitempty"`
 }
+
+/* ---------------------------- cost visibility ----------------------------- */
+
+// CostVisibilityScope is one stored scope: which cost rows a role, member or
+// API key can see.
+type CostVisibilityScope struct {
+	ID             string   `json:"id"`
+	PrincipalKind  string   `json:"principalKind"`
+	PrincipalID    string   `json:"principalId"`
+	PrincipalLabel *string  `json:"principalLabel"`
+	CostCentreIDs  []string `json:"costCentreIds"`
+	AccountIDs     []string `json:"accountIds"`
+	SavedFilterID  *string  `json:"savedFilterId"`
+	CreatedAt      string   `json:"createdAt"`
+	UpdatedAt      string   `json:"updatedAt"`
+}
+
+// CostVisibilityScopeInput is the PUT body, an upsert keyed by principal.
+// SavedFilterID is always sent (null clears it), never omitted.
+type CostVisibilityScopeInput struct {
+	PrincipalKind string   `json:"principalKind"`
+	PrincipalID   string   `json:"principalId"`
+	CostCentreIDs []string `json:"costCentreIds"`
+	AccountIDs    []string `json:"accountIds"`
+	SavedFilterID *string  `json:"savedFilterId"`
+}
+
+/* ------------------------------ object sharing ----------------------------- */
+
+// ObjectAccessGrant is one member or role grant on a shareable object.
+type ObjectAccessGrant struct {
+	PrincipalKind  string  `json:"principalKind"`
+	PrincipalID    string  `json:"principalId"`
+	PrincipalLabel *string `json:"principalLabel"`
+	Level          string  `json:"level"`
+	// Implicit marks a report creator's ownership, which is derived rather
+	// than stored and is never sent back.
+	Implicit bool `json:"implicit"`
+}
+
+// ObjectSharing is the whole sharing document for one object.
+type ObjectSharing struct {
+	ObjectType    string                  `json:"objectType"`
+	ObjectID      string                  `json:"objectId"`
+	OrgAccess     string                  `json:"orgAccess"`
+	Grants        []ObjectAccessGrant     `json:"grants"`
+	CallerLevel   string                  `json:"callerLevel"`
+	InheritedFrom *ObjectSharingInherited `json:"inheritedFrom"`
+}
+
+// ObjectSharingInherited is access the containing folder already gives.
+type ObjectSharingInherited struct {
+	FolderID   string `json:"folderId"`
+	FolderName string `json:"folderName"`
+	Level      string `json:"level"`
+}
+
+// ObjectSharingGrantInput is one grant in the PUT body.
+type ObjectSharingGrantInput struct {
+	PrincipalKind string `json:"principalKind"`
+	PrincipalID   string `json:"principalId"`
+	Level         string `json:"level"`
+}
+
+// ObjectSharingInput replaces the whole document.
+type ObjectSharingInput struct {
+	OrgAccess string                    `json:"orgAccess"`
+	Grants    []ObjectSharingGrantInput `json:"grants"`
+}

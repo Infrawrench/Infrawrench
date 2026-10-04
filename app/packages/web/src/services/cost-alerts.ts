@@ -6,6 +6,7 @@
  * Evaluation itself lives in server-core (`cost/change-eval.ts`) and runs
  * from the poller after cost collection; nothing here fires an alert.
  */
+import { visibilityOwnerCondition, visibilityUserIdForCreate } from "./cost-visibility-filter";
 import { and, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -70,7 +71,13 @@ export async function listCostAlerts(organizationId: string): Promise<CostAlert[
   const rows = await db
     .select()
     .from(costAlerts)
-    .where(and(eq(costAlerts.organizationId, organizationId), isNull(costAlerts.deletedAt)))
+    .where(
+      and(
+        eq(costAlerts.organizationId, organizationId),
+        visibilityOwnerCondition(costAlerts.visibilityUserId, organizationId),
+        isNull(costAlerts.deletedAt),
+      ),
+    )
     .orderBy(costAlerts.createdAt);
   const lastFired = await loadLastFired(rows.map((r) => r.id));
   return rows.map((row) => toWire(row, lastFired.get(row.id) ?? null));
@@ -88,6 +95,7 @@ export async function getCostAlert(
       and(
         eq(costAlerts.id, alertId),
         eq(costAlerts.organizationId, organizationId),
+        visibilityOwnerCondition(costAlerts.visibilityUserId, organizationId),
         isNull(costAlerts.deletedAt),
       ),
     )
@@ -127,6 +135,8 @@ export async function createCostAlert(
       thresholdAmountCents: input.thresholdAmountCents,
       direction: input.direction,
       enabled: input.enabled,
+      // A cost-scoped creator's alert compares only what they can see.
+      visibilityUserId: visibilityUserIdForCreate(organizationId),
       createdByUserId,
     })
     .returning();
@@ -157,6 +167,7 @@ export async function updateCostAlert(
       and(
         eq(costAlerts.id, alertId),
         eq(costAlerts.organizationId, organizationId),
+        visibilityOwnerCondition(costAlerts.visibilityUserId, organizationId),
         isNull(costAlerts.deletedAt),
       ),
     )
@@ -179,6 +190,7 @@ export async function softDeleteCostAlert(
       and(
         eq(costAlerts.id, alertId),
         eq(costAlerts.organizationId, organizationId),
+        visibilityOwnerCondition(costAlerts.visibilityUserId, organizationId),
         isNull(costAlerts.deletedAt),
       ),
     )
@@ -214,6 +226,7 @@ export async function listCostAlertEventsForOrg(
         and(
           eq(costAlerts.id, options.alertId),
           eq(costAlerts.organizationId, organizationId),
+          visibilityOwnerCondition(costAlerts.visibilityUserId, organizationId),
           isNull(costAlerts.deletedAt),
         ),
       )
@@ -228,6 +241,7 @@ export async function listCostAlertEventsForOrg(
     .where(
       and(
         eq(costAlertEvents.organizationId, organizationId),
+        visibilityOwnerCondition(costAlerts.visibilityUserId, organizationId),
         isNull(costAlerts.deletedAt),
         ...(options.alertId ? [eq(costAlertEvents.alertId, options.alertId)] : []),
       ),

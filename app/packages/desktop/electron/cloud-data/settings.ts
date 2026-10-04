@@ -31,7 +31,7 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     pattern: new RegExp(
-      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|currency|cost-centres|billing-rules|cost-exports|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear)(\\/|$|\\?)`,
+      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|currency|cost-centres|cost-visibility|sharing|billing-rules|cost-exports|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear)(\\/|$|\\?)`,
     ),
   },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/audit-logs(\\?|$)`) },
@@ -44,6 +44,8 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   // Drift/expiry alert settings cards on the Notifications page.
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/changes/alert-settings$`) },
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/expiring/settings$`) },
+  // Saved-filter picker on the Cost Visibility page.
+  { methods: ["GET"], pattern: new RegExp(`${ORG}/saved-cost-filters$`) },
   // Drift scope picker (read-only account list).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/accounts$`) },
 ];
