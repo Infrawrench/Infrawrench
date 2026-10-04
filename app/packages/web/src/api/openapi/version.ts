@@ -160,4 +160,4 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-export const API_VERSION = "1.42.3";
+export const API_VERSION = "1.43.0";

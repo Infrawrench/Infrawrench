@@ -132,6 +132,7 @@ describe("SSH endpoint parity", () => {
     "elevenlabs",
     "fireworks",
     "gemini",
+    "github",
     "gladia",
     "groq",
     "mistral",

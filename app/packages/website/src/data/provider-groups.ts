@@ -342,6 +342,25 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Developer Platforms",
+    providers: [
+      {
+        name: "GitHub",
+        detail: "Actions, Copilot and Codespaces spend, seats, runners, caches, budgets",
+        resources: [
+          "Billing Account",
+          "Copilot Seat",
+          "Larger Runner",
+          "Self-Hosted Runner",
+          "Actions Cache",
+          "Codespace",
+          "Budget",
+          "Cost Center",
+        ],
+      },
+    ],
+  },
+  {
     name: "Identity & Auth",
     providers: [
       {

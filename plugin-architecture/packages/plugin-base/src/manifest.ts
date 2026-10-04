@@ -7,6 +7,15 @@ export interface CredentialFieldRegion {
   flag?: string;
 }
 
+/** One choice a plugin offers for a credential field with `providerOptions`. */
+export interface CredentialFieldOption {
+  /** The value stored in the credential when this option is picked. */
+  id: string;
+  label: string;
+  /** Secondary text, e.g. the raw id beside a friendly name. */
+  description?: string;
+}
+
 export interface CredentialField {
   key: string;
   label: string;
@@ -27,6 +36,16 @@ export interface CredentialField {
    * e.g. the SSH plugin's "Connect through" field filters to `ssh`.
    */
   accountReference?: { pluginId: string };
+  /**
+   * When set, the field is rendered as a picker whose options the plugin
+   * loads from the provider with the values already entered in `dependsOn`
+   * (typically the API key and region), via {@link Plugin.listCredentialOptions}.
+   * The user never has to look up an id the key can already enumerate. The
+   * picker loads once every `dependsOn` field has a value and falls back to a
+   * plain text input if loading fails, so a key that cannot list still works.
+   * `emptyLabel` adds a leading option for an empty value on optional fields.
+   */
+  providerOptions?: { dependsOn: string[]; emptyLabel?: string };
   /** Field is optional: the modal accepts an empty value and skips validation. */
   optional?: boolean;
   /**
@@ -1037,6 +1056,21 @@ export interface Plugin {
    * by paths that skip this check.
    */
   validateServerCredentials?(credentials: Record<string, string>): string | null;
+  /**
+   * Options for a credential field that declares `providerOptions`, loaded
+   * from the provider with the (possibly incomplete) credentials entered so
+   * far. Lives on the Plugin rather than the client because it runs before an
+   * account exists, and `createClient` may require the very field being
+   * picked. Throw a user-facing error when the credentials cannot list; the
+   * host shows it and lets the user type the value instead. Hosts route
+   * requests through `services` exactly as they would for an account, so
+   * bastion egress and custom CAs apply.
+   */
+  listCredentialOptions?(
+    fieldKey: string,
+    credentials: Record<string, string>,
+    services?: HostServices,
+  ): Promise<CredentialFieldOption[]>;
 }
 
 // Forward declarations: defined in their own modules but used here

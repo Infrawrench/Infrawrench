@@ -26,6 +26,7 @@ import { plugin as tursoPlugin } from "@infrawrench/plugin-turso";
 import { plugin as planetscalePlugin } from "@infrawrench/plugin-planetscale";
 import { plugin as azurePlugin } from "@infrawrench/plugin-azure";
 import { plugin as flyPlugin } from "@infrawrench/plugin-fly";
+import { plugin as githubPlugin } from "@infrawrench/plugin-github";
 import { plugin as vercelPlugin } from "@infrawrench/plugin-vercel";
 import { plugin as netlifyPlugin } from "@infrawrench/plugin-netlify";
 import { plugin as cloudinaryPlugin } from "@infrawrench/plugin-cloudinary";
@@ -85,6 +86,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   planetscalePlugin,
   azurePlugin,
   flyPlugin,
+  githubPlugin,
   vercelPlugin,
   netlifyPlugin,
   cloudinaryPlugin,

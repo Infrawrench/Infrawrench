@@ -35,6 +35,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-planetscale"),
   () => import("@infrawrench/plugin-azure"),
   () => import("@infrawrench/plugin-fly"),
+  () => import("@infrawrench/plugin-github"),
   () => import("@infrawrench/plugin-vercel"),
   () => import("@infrawrench/plugin-netlify"),
   () => import("@infrawrench/plugin-cloudinary"),
