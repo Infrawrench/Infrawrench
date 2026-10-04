@@ -79,6 +79,7 @@ vi.mock("@infrawrench/plugin-replicate", () => stub("replicate"));
 vi.mock("@infrawrench/plugin-openrouter", () => stub("openrouter"));
 vi.mock("@infrawrench/plugin-openai", () => stub("openai"));
 vi.mock("@infrawrench/plugin-mistral", () => stub("mistral"));
+vi.mock("@infrawrench/plugin-modal", () => stub("modal"));
 vi.mock("@infrawrench/plugin-groq", () => stub("groq"));
 vi.mock("@infrawrench/plugin-gladia", () => stub("gladia"));
 vi.mock("@infrawrench/plugin-gemini", () => stub("gemini"));

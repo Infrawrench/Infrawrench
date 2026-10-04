@@ -71,6 +71,7 @@ describe("plugin loader", () => {
       "gladia",
       "groq",
       "mistral",
+      "modal",
       "openai",
       "openrouter",
       "replicate",
