@@ -68,6 +68,7 @@ import { registerSharedConsolePaths } from "./paths/shared-consoles";
 import { registerAccessRequestPaths } from "./paths/access-requests";
 import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
 import { registerCreditPaths } from "./paths/credits";
+import { registerCostVisibilityPaths } from "./paths/cost-visibility";
 import { registerCommitmentPaths } from "./paths/commitments";
 import { registerNetworkFlowPaths } from "./paths/network-flows";
 import { registerProbePaths } from "./paths/probes";
@@ -208,6 +209,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAccessRequestPaths(ctx);
   registerCredentialHygienePaths(ctx);
   registerCreditPaths(ctx);
+  registerCostVisibilityPaths(ctx);
   registerCommitmentPaths(ctx);
   registerNetworkFlowPaths(ctx);
   registerProbePaths(ctx);

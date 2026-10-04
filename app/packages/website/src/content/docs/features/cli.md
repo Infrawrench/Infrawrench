@@ -180,6 +180,14 @@ infrawrench access active         # only what is in force right now
 infrawrench access --json
 ```
 
+`cost-visibility` lists the organization's [cost visibility scopes](../team-and-billing/cost-visibility.md), and `cost-visibility me` says whether your own cost figures are scoped, which is the first thing to check when your totals disagree with a colleague's. Read-only; scopes are edited in Settings → Cost Visibility. Listing needs `team:read`:
+
+```
+infrawrench cost-visibility
+infrawrench cost-visibility me
+infrawrench cost-visibility --json
+```
+
 `recordings` lists the org's [recorded SSH sessions](./session-recording.md) — who connected, to what, how long for, and each session's status. `recordings get <id>` prints the asciicast itself, which is the point of the subcommand: the format is asciinema's, so a session replays on a machine that has never seen the UI. Needs `session-recordings:read`:
 
 ```

@@ -211,6 +211,13 @@ export type {
 } from "./components/AccountResourceSections.js";
 
 export { Modal } from "./components/Modal.js";
+export {
+  ShareDialog,
+  createSharingClient,
+  type ShareTarget,
+  type SharingClient,
+  type SharingPrincipalOption,
+} from "./sharing/ShareDialog.js";
 export { ConfirmDeleteModal } from "./components/ConfirmDeleteModal.js";
 export { AddAccountModal } from "./components/AddAccountModal.js";
 export type {
@@ -219,6 +226,10 @@ export type {
   AccountReferenceOption,
 } from "./components/AddAccountModal.js";
 export { EditCredentialsModal } from "./components/EditCredentialsModal.js";
+export type {
+  CredentialFieldOption,
+  LoadCredentialOptions,
+} from "./components/ProviderOptionsField.js";
 export {
   CredentialPreflightPanel,
   CredentialPreflightModal,

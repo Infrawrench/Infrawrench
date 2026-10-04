@@ -1,4 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
+import { ShareDialog } from "@infrawrench/ui";
+import { createWebSharingClient } from "../lib/cost-client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useGT } from "gt-react";
 import {
@@ -142,6 +144,8 @@ export function DashboardView({
   const [costStatus, setCostStatus] = useState<CostAccountStatus[]>([]);
   const [dashboardName, setDashboardName] = useState(initialName);
   const [editingName, setEditingName] = useState(false);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const sharingClient = useMemo(() => createWebSharingClient(orgId), [orgId]);
 
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
 
@@ -536,6 +540,23 @@ export function DashboardView({
             dashboardName={dashboardName}
             client={exportClient}
           />
+          {dashboardId && (
+            <button
+              type="button"
+              onClick={() => setSharingOpen(true)}
+              title={gt("Share dashboard")}
+              className="text-xs text-on-surface-faint hover:text-on-surface-muted transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+            >
+              {gt("Share")}
+            </button>
+          )}
+          {sharingOpen && (
+            <ShareDialog
+              client={sharingClient}
+              target={{ objectType: "dashboard", objectId: dashboardId, name: dashboardName }}
+              onClose={() => setSharingOpen(false)}
+            />
+          )}
           {!isHome && (
             <button
               type="button"

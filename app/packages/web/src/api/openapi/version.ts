@@ -160,9 +160,7 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-// 1.43.0: PDF export and scheduled dashboard delivery. `GET /dashboards/{id}/pdf`
-// and `GET /cost-reports/{id}/pdf` return a server-rendered PDF;
-// `/dashboards/{id}/notifications` (list, targets, create, update, delete,
-// send) and `GET /dashboard-notifications` manage dashboard delivery
-// schedules (DashboardNotification, with `attachPdf`). Additive.
-export const API_VERSION = "1.43.0";
+// 1.43.0: Grafana Cloud and the October 2026 provider batch plugin IDs and resource type IDs. Additive.
+// 1.44.0: cost visibility scopes and per-object sharing. Adds cost-visibility and sharing routes, costVisibility on /team/me, and sharing:override.
+// 1.45.0: PDF export and scheduled dashboard delivery routes and schemas. Additive.
+export const API_VERSION = "1.45.0";

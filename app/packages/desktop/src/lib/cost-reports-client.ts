@@ -1,4 +1,6 @@
 import type { CostsPanelDashboard } from "@infrawrench/ui/cost";
+import { createSharingClient, type SharingClient } from "@infrawrench/ui";
+import { createDesktopSettingsApi } from "./settings-client";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import {
   pdfFileName,
@@ -43,6 +45,7 @@ import { createDesktopCostApi, requireCloudOrgId as requireOrgId } from "./cost-
 export function createDesktopCostReportsClient(): CostReportsClient {
   return {
     ...createDesktopCostApi(),
+    sharing: createDesktopSharingClient(),
     listReports: () => listCloudCostReports(requireOrgId()),
     getReport: (reportId: string) => getCloudCostReport(requireOrgId(), reportId),
     createReport: (input: CostReportInput) => createCloudCostReport(requireOrgId(), input),
@@ -89,5 +92,25 @@ export function createDesktopCostReportsClient(): CostReportsClient {
       const bytes = await loadCloudCostReportPdf(requireOrgId(), reportId);
       downloadPdfBytes(bytes, pdfFileName(reportName));
     },
+  };
+}
+
+/**
+ * Object sharing over the allowlisted `cloud_settings_request` channel
+ * (`/sharing` and the Team reads are on its allowlist). The org is resolved
+ * per call, like every other desktop cost client.
+ */
+export function createDesktopSharingClient(): SharingClient {
+  const api = createDesktopSettingsApi();
+  const forOrg = () =>
+    createSharingClient(requireOrgId(), {
+      get: <T>(path: string) => api.get<T>(path),
+      put: <T>(path: string, body: unknown) => api.put<T>(path, body),
+    });
+  return {
+    get: (type, id) => forOrg().get(type, id),
+    put: (type, id, input) => forOrg().put(type, id, input),
+    listMembers: () => forOrg().listMembers(),
+    listRoles: () => forOrg().listRoles(),
   };
 }

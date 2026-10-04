@@ -731,6 +731,7 @@ export {
   type DeployStopSender,
 } from "./deploy-stop";
 export * from "./report-notifications";
+export * from "./cost-visibility";
 export * from "./chat/types";
 export {
   ASK_QUESTION_LIMITS,

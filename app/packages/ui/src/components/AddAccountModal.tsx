@@ -8,6 +8,7 @@ import type {
 import { Modal } from "./Modal.js";
 import { RegionPicker } from "./create-resource/RegionPicker.js";
 import { CredentialPreflightPanel } from "./CredentialPreflightPanel.js";
+import { ProviderOptionsField, type LoadCredentialOptions } from "./ProviderOptionsField.js";
 import { formatErrorMessage } from "../utils.js";
 import { ExternalLinkIcon } from "./icons/ChromeIcons.js";
 
@@ -26,6 +27,8 @@ export interface PluginInfo {
     optional?: boolean;
     regions?: Array<{ id: string; label: string; location?: string; flag?: string }>;
     accountReference?: { pluginId: string };
+    /** Picker filled by the plugin from the provider once `dependsOn` is entered. */
+    providerOptions?: { dependsOn: string[]; emptyLabel?: string };
     helpLink?: { label: string; url: string };
   }>;
   /** Declared when the plugin supports credential preflight; absent otherwise. */
@@ -103,6 +106,12 @@ interface AddAccountModalProps {
   ) => Promise<PreflightReport>;
   /** Builds the least-privilege credential template for the selected capabilities. */
   fetchPolicyTemplate?: (pluginId: string, capabilityIds: string[]) => Promise<PolicyTemplate>;
+  /**
+   * Loads the choices for credential fields that declare `providerOptions`
+   * (an account picker filled from the API key, say). Hosts that omit it
+   * render those fields as plain text inputs.
+   */
+  loadCredentialOptions?: LoadCredentialOptions;
 }
 
 type Step = "pick-plugin" | "enter-credentials";
@@ -120,6 +129,7 @@ export function AddAccountModal({
   onOpenExternal,
   runPreflight,
   fetchPolicyTemplate,
+  loadCredentialOptions,
 }: AddAccountModalProps) {
   const gt = useGT();
   const [step, setStep] = useState<Step>(prefilledPluginId ? "enter-credentials" : "pick-plugin");
@@ -343,7 +353,42 @@ export function AddAccountModal({
                             <ExternalLinkIcon size={12} />
                           </a>
                         )}
-                        {f.accountReference ? (
+                        {f.providerOptions ? (
+                          (() => {
+                            const deps = f.providerOptions.dependsOn;
+                            const depsReady = deps.every(
+                              (k) =>
+                                !!fieldValues[k]?.trim() ||
+                                !!selected.credentialFields.find((c) => c.key === k)?.defaultValue,
+                            );
+                            return (
+                              <ProviderOptionsField
+                                fieldId={fieldId}
+                                label={f.label}
+                                value={fieldValues[f.key] ?? ""}
+                                onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
+                                placeholder={f.placeholder}
+                                emptyLabel={f.providerOptions.emptyLabel}
+                                load={
+                                  loadCredentialOptions && depsReady
+                                    ? () =>
+                                        loadCredentialOptions(
+                                          selected.id,
+                                          f.key,
+                                          buildCredentials(),
+                                          bastionId || null,
+                                        )
+                                    : undefined
+                                }
+                                reloadKey={JSON.stringify([
+                                  selected.id,
+                                  bastionId,
+                                  ...deps.map((k) => fieldValues[k] ?? ""),
+                                ])}
+                              />
+                            );
+                          })()
+                        ) : f.accountReference ? (
                           (() => {
                             const filterPluginId = f.accountReference.pluginId;
                             const candidates = (accounts ?? []).filter(

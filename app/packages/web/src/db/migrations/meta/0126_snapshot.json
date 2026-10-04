@@ -1,6 +1,6 @@
 {
-  "id": "41c6b8c8-ecc3-44bb-bf92-b50d27613dc4",
-  "prevId": "298ac765-7619-4673-87c7-8c098eed891d",
+  "id": "e193ba3c-d43c-4f16-bbdf-0de3b026fe20",
+  "prevId": "39f91e5d-1db1-454f-9388-0d79b11913c2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1341,6 +1341,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "visibility_user_id": {
+          "name": "visibility_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -3179,6 +3185,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "visibility_user_id": {
+          "name": "visibility_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -8970,7 +8982,7 @@
           "name": "cost_report_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "dashboard_id": {
           "name": "dashboard_id",
@@ -9104,6 +9116,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "visibility_user_id": {
+          "name": "visibility_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -22234,6 +22252,304 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cost_visibility_scopes": {
+      "name": "cost_visibility_scopes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_kind": {
+          "name": "principal_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cost_centre_ids": {
+          "name": "cost_centre_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "account_ids": {
+          "name": "account_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "saved_filter_id": {
+          "name": "saved_filter_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cost_visibility_scopes_principal_unique": {
+          "name": "cost_visibility_scopes_principal_unique",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "principal_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "cost_visibility_scopes_org_idx": {
+          "name": "cost_visibility_scopes_org_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cost_visibility_scopes_organization_id_organizations_id_fk": {
+          "name": "cost_visibility_scopes_organization_id_organizations_id_fk",
+          "tableFrom": "cost_visibility_scopes",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "cost_visibility_scopes_kind_check": {
+          "name": "cost_visibility_scopes_kind_check",
+          "value": "\"cost_visibility_scopes\".\"principal_kind\" IN ('role', 'member', 'api_key')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.object_access_grants": {
+      "name": "object_access_grants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_kind": {
+          "name": "principal_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "level": {
+          "name": "level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "object_access_grants_unique": {
+          "name": "object_access_grants_unique",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "object_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "object_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "principal_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "object_access_grants_object_idx": {
+          "name": "object_access_grants_object_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "object_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "object_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "object_access_grants_organization_id_organizations_id_fk": {
+          "name": "object_access_grants_organization_id_organizations_id_fk",
+          "tableFrom": "object_access_grants",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "object_access_grants_kind_check": {
+          "name": "object_access_grants_kind_check",
+          "value": "\"object_access_grants\".\"principal_kind\" IN ('org', 'member', 'role')"
+        },
+        "object_access_grants_level_check": {
+          "name": "object_access_grants_level_check",
+          "value": "(\"object_access_grants\".\"principal_kind\" = 'org' AND \"object_access_grants\".\"level\" IN ('editor', 'viewer', 'none')) OR (\"object_access_grants\".\"principal_kind\" <> 'org' AND \"object_access_grants\".\"level\" IN ('owner', 'editor', 'viewer'))"
+        }
+      },
       "isRLSEnabled": false
     }
   },

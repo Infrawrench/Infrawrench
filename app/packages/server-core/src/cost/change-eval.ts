@@ -33,6 +33,8 @@
  * currency with no rate stays in its own currency and is compared there,
  * never dropped.
  */
+import { resolveObjectCostVisibility } from "./visibility";
+import { runWithCostVisibility } from "./visibility-context";
 import { and, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { CostDimensionId } from "@infrawrench/client-core";
@@ -244,7 +246,11 @@ export async function evaluateCostChangeAlertsForOrg(
       if (alert.thresholdPercent === null && alert.thresholdAmountCents === null) continue;
 
       const windows = changeWindows(alert.cadence, today);
-      const fired = await evaluateAlert(organizationId, alert, windows, displayCurrency, rates);
+      // Scoped creators get alerts over what they can see, never more.
+      const visibility = await resolveObjectCostVisibility(organizationId, row.visibilityUserId);
+      const fired = await runWithCostVisibility(visibility, () =>
+        evaluateAlert(organizationId, alert, windows, displayCurrency, rates),
+      );
 
       for (const { eventId, window, finding } of fired) {
         const subject =
@@ -256,6 +262,7 @@ export async function evaluateCostChangeAlertsForOrg(
           `${formatCents(finding.previousAmountCents, finding.currency)} → ` +
           `${formatCents(finding.currentAmountCents, finding.currency)}`;
         const routed = await routeAlert({
+          costVisibilityUserId: row.visibilityUserId ?? null,
           organizationId,
           trigger: "costChangeAlerts",
           title: `Cost ${verb} ${deltaLabel(finding)}: ${finding.groupKey || alert.name}`,

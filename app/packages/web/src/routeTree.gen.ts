@@ -68,6 +68,7 @@ import { Route as OrgOrgIdSettingsBillingRulesRouteImport } from './routes/org.$
 import { Route as OrgOrgIdSettingsConfigRouteImport } from './routes/org.$orgId.settings.config'
 import { Route as OrgOrgIdSettingsCostCentresRouteImport } from './routes/org.$orgId.settings.cost-centres'
 import { Route as OrgOrgIdSettingsCostExportsRouteImport } from './routes/org.$orgId.settings.cost-exports'
+import { Route as OrgOrgIdSettingsCostVisibilityRouteImport } from './routes/org.$orgId.settings.cost-visibility'
 import { Route as OrgOrgIdSettingsCredentialHygieneRouteImport } from './routes/org.$orgId.settings.credential-hygiene'
 import { Route as OrgOrgIdSettingsCurrencyRouteImport } from './routes/org.$orgId.settings.currency'
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
@@ -392,6 +393,12 @@ const OrgOrgIdSettingsCostExportsRoute =
     path: '/cost-exports',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+const OrgOrgIdSettingsCostVisibilityRoute =
+  OrgOrgIdSettingsCostVisibilityRouteImport.update({
+    id: '/cost-visibility',
+    path: '/cost-visibility',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsCredentialHygieneRoute =
   OrgOrgIdSettingsCredentialHygieneRouteImport.update({
     id: '/credential-hygiene',
@@ -533,6 +540,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/config': typeof OrgOrgIdSettingsConfigRoute
   '/org/$orgId/settings/cost-centres': typeof OrgOrgIdSettingsCostCentresRoute
   '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
+  '/org/$orgId/settings/cost-visibility': typeof OrgOrgIdSettingsCostVisibilityRoute
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
@@ -606,6 +614,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/config': typeof OrgOrgIdSettingsConfigRoute
   '/org/$orgId/settings/cost-centres': typeof OrgOrgIdSettingsCostCentresRoute
   '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
+  '/org/$orgId/settings/cost-visibility': typeof OrgOrgIdSettingsCostVisibilityRoute
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
@@ -683,6 +692,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/config': typeof OrgOrgIdSettingsConfigRoute
   '/org/$orgId/settings/cost-centres': typeof OrgOrgIdSettingsCostCentresRoute
   '/org/$orgId/settings/cost-exports': typeof OrgOrgIdSettingsCostExportsRoute
+  '/org/$orgId/settings/cost-visibility': typeof OrgOrgIdSettingsCostVisibilityRoute
   '/org/$orgId/settings/credential-hygiene': typeof OrgOrgIdSettingsCredentialHygieneRoute
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
@@ -761,6 +771,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/config'
     | '/org/$orgId/settings/cost-centres'
     | '/org/$orgId/settings/cost-exports'
+    | '/org/$orgId/settings/cost-visibility'
     | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/freezes'
@@ -834,6 +845,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/config'
     | '/org/$orgId/settings/cost-centres'
     | '/org/$orgId/settings/cost-exports'
+    | '/org/$orgId/settings/cost-visibility'
     | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/freezes'
@@ -910,6 +922,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/config'
     | '/org/$orgId/settings/cost-centres'
     | '/org/$orgId/settings/cost-exports'
+    | '/org/$orgId/settings/cost-visibility'
     | '/org/$orgId/settings/credential-hygiene'
     | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/freezes'
@@ -1355,6 +1368,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsCostExportsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/cost-visibility': {
+      id: '/org/$orgId/settings/cost-visibility'
+      path: '/cost-visibility'
+      fullPath: '/org/$orgId/settings/cost-visibility'
+      preLoaderRoute: typeof OrgOrgIdSettingsCostVisibilityRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/credential-hygiene': {
       id: '/org/$orgId/settings/credential-hygiene'
       path: '/credential-hygiene'
@@ -1522,6 +1542,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsConfigRoute: typeof OrgOrgIdSettingsConfigRoute
   OrgOrgIdSettingsCostCentresRoute: typeof OrgOrgIdSettingsCostCentresRoute
   OrgOrgIdSettingsCostExportsRoute: typeof OrgOrgIdSettingsCostExportsRoute
+  OrgOrgIdSettingsCostVisibilityRoute: typeof OrgOrgIdSettingsCostVisibilityRoute
   OrgOrgIdSettingsCredentialHygieneRoute: typeof OrgOrgIdSettingsCredentialHygieneRoute
   OrgOrgIdSettingsCurrencyRoute: typeof OrgOrgIdSettingsCurrencyRoute
   OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
@@ -1550,6 +1571,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsConfigRoute: OrgOrgIdSettingsConfigRoute,
   OrgOrgIdSettingsCostCentresRoute: OrgOrgIdSettingsCostCentresRoute,
   OrgOrgIdSettingsCostExportsRoute: OrgOrgIdSettingsCostExportsRoute,
+  OrgOrgIdSettingsCostVisibilityRoute: OrgOrgIdSettingsCostVisibilityRoute,
   OrgOrgIdSettingsCredentialHygieneRoute:
     OrgOrgIdSettingsCredentialHygieneRoute,
   OrgOrgIdSettingsCurrencyRoute: OrgOrgIdSettingsCurrencyRoute,

@@ -7,6 +7,20 @@ const mockSelect = vi.fn();
 const mockUpdate = vi.fn();
 const mockDelete = vi.fn();
 
+vi.mock("@/services/object-sharing", () => ({
+  // Sharing is covered by its own suite; here every object is visible.
+  filterVisibleObjects: async (_o: string, _t: string, items: unknown[]) => items,
+  resolveSharingPrincipal: async () => ({ override: true }),
+  runWithSharingPrincipal: (_p: unknown, fn: () => unknown) => fn(),
+  grantCreatorOwnership: async () => undefined,
+  deleteObjectSharing: async () => undefined,
+  requireObjectAccess: async () => "owner",
+  loadObjectMeta: async () => ({ name: "x" }),
+  listVisibleCostReportFolders: undefined,
+  ObjectNotVisibleError: class extends Error {},
+  ObjectAccessDeniedError: class extends Error {},
+  SharingInputError: class extends Error {},
+}));
 vi.mock("@/db/client", () => ({
   db: {
     insert: (...args: unknown[]) => mockInsert(...args),

@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { CostGraphConfig } from "@infrawrench/client-core";
 import { CostCollectionNotice } from "@/components/CostCollectionNotice";
+import { CostVisibilityNotice } from "@/components/CostVisibilityNotice";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import {
   Card,
@@ -88,6 +89,7 @@ export default function CostsScreen() {
       }}
       refreshing={budgets.isRefetching}
     >
+      <CostVisibilityNotice />
       <CostCollectionNotice statuses={costStatus.data ?? []} />
 
       <SectionTitle>This month</SectionTitle>

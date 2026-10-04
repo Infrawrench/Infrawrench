@@ -17,6 +17,8 @@
  * recorded on the row so the report page can show them, logged with the
  * `[report-delivery]` prefix, and the tick carries on.
  */
+import { resolveObjectCostVisibility } from "../cost/visibility";
+import { runWithCostVisibility } from "../cost/visibility-context";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   COST_DIMENSION_LABELS,
@@ -387,7 +389,12 @@ export async function runReportNotification(
   }
 
   try {
-    const data = await buildReportDelivery(row.organizationId, report, now);
+    // A schedule a cost-scoped member created delivers only what that member
+    // can see, resolved live: see `report_notifications.visibility_user_id`.
+    const visibility = await resolveObjectCostVisibility(row.organizationId, row.visibilityUserId);
+    const data = await runWithCostVisibility(visibility, () =>
+      buildReportDelivery(row.organizationId, report, now),
+    );
     const result = await deliverReportNotification(row.organizationId, row, data);
     const outcome = classifyReportDelivery(result);
     await recordAttempt(row, now, outcome);
@@ -425,7 +432,12 @@ export async function sendReportNotificationNow(
   const report = await loadLiveReport(organizationId, reportId);
   if (!report) throw new ReportNotificationInputError("Report not found", 404);
 
-  const data = await buildReportDelivery(organizationId, report, now);
+  // Same visibility as the scheduled send, whoever clicks "Send now": the
+  // destinations were chosen for this schedule's figures, not the clicker's.
+  const visibility = await resolveObjectCostVisibility(organizationId, row.visibilityUserId);
+  const data = await runWithCostVisibility(visibility, () =>
+    buildReportDelivery(organizationId, report, now),
+  );
   const result = await deliverReportNotification(
     organizationId,
     row,

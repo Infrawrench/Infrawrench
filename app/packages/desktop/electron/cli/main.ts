@@ -41,6 +41,7 @@ import { cmdSchedules } from "./commands/schedules";
 import { cmdLeases } from "./commands/leases";
 import { cmdRecordings } from "./commands/recordings";
 import { cmdAccess } from "./commands/access";
+import { cmdCostVisibility } from "./commands/cost-visibility";
 import { cmdHygiene } from "./commands/hygiene";
 import { cmdAgents } from "./commands/agents";
 import { cmdCredits } from "./commands/credits";
@@ -157,6 +158,8 @@ COMMANDS
   agents              agent credentials that can reach this org: who claimed
                       each one, when it was last used & which are unclaimed
   access active       only the elevations in force right now
+  cost-visibility     cost visibility scopes on roles, members & API keys
+  cost-visibility me  whether your own cost figures are scoped
   recordings          recorded SSH sessions: who connected, to what, for how long
   recordings get <id> print the session's asciicast   [-f/--file <path>]
                       (pipe it: infrawrench recordings get <id> | asciinema play -)
@@ -564,6 +567,9 @@ export async function runCli(): Promise<void> {
         break;
       case "access":
         await cmdAccess(ctx, rest);
+        break;
+      case "cost-visibility":
+        await cmdCostVisibility(ctx, rest);
         break;
       case "hygiene":
         await cmdHygiene(ctx, { days: parsed.range.days });

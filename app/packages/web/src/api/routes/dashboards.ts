@@ -1,4 +1,11 @@
 import { Hono } from "hono";
+import {
+  deleteObjectSharing,
+  filterVisibleObjects,
+  grantCreatorOwnership,
+  loadObjectMeta,
+  requireObjectAccess,
+} from "../../services/object-sharing";
 import { eq, and, inArray, isNull, desc, max } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
@@ -13,6 +20,7 @@ import { db } from "../../db/client";
 import {
   dashboards,
   dashboardPins,
+  costReports,
   dashboardWidgets,
   dashboardWorkflowPins,
   resources,
@@ -181,6 +189,44 @@ async function loadWidgets(dashboardId: string): Promise<DashboardWidget[]> {
   }));
 }
 
+/**
+ * Drop report cards whose report the caller cannot open: the card would
+ * otherwise render the report's figures on a dashboard they *can* open.
+ */
+async function visibleWidgets(
+  organizationId: string,
+  widgets: DashboardWidget[],
+): Promise<DashboardWidget[]> {
+  const reportIds = widgets
+    .filter((w) => w.kind === "cost_report")
+    .map((w) => (w.config as { reportId?: string }).reportId)
+    .filter((id): id is string => typeof id === "string");
+  if (reportIds.length === 0) return widgets;
+  const rows = await db
+    .select({
+      id: costReports.id,
+      createdByUserId: costReports.createdByUserId,
+      folderId: costReports.folderId,
+    })
+    .from(costReports)
+    .where(and(eq(costReports.organizationId, organizationId), inArray(costReports.id, reportIds)));
+  const visible = new Set(
+    (
+      await filterVisibleObjects(
+        organizationId,
+        "cost_report",
+        rows,
+        (r) => r.id,
+        (r) => r,
+      )
+    ).map((r) => r.id),
+  );
+  return widgets.filter(
+    (w) =>
+      w.kind !== "cost_report" || visible.has((w.config as { reportId?: string }).reportId ?? ""),
+  );
+}
+
 /** GET /api/dashboards: list all dashboards */
 app.get("/", async (c) => {
   requirePermission(c, "dashboards:read");
@@ -190,7 +236,8 @@ app.get("/", async (c) => {
     .from(dashboards)
     .where(and(eq(dashboards.organizationId, organizationId), isNull(dashboards.deletedAt)))
     .orderBy(desc(dashboards.isDefault), dashboards.createdAt);
-  return c.json(rows);
+  // Only the dashboards the caller's sharing lets them open.
+  return c.json(await filterVisibleObjects(organizationId, "dashboard", rows, (d) => d.id));
 });
 
 /** POST /api/dashboards: create a dashboard */
@@ -202,6 +249,7 @@ app.post("/", async (c) => {
     .insert(dashboards)
     .values({ id: uuidv4(), organizationId, name, isDefault: false })
     .returning();
+  await grantCreatorOwnership(organizationId, "dashboard", created!.id, c.get("session").userId);
   return c.json(created);
 });
 
@@ -224,6 +272,7 @@ app.get("/:id", async (c) => {
     .limit(1);
 
   if (!dashboard) return c.json({ error: "Not found" }, 404);
+  await requireObjectAccess(organizationId, "dashboard", dashboard.id, {}, "viewer");
 
   const pins = await db
     .select({
@@ -246,7 +295,7 @@ app.get("/:id", async (c) => {
     .orderBy(dashboardPins.gridX, dashboardPins.createdAt);
 
   const workflowPins = await loadWorkflowPins(dashboardId);
-  const widgets = await loadWidgets(dashboardId);
+  const widgets = await visibleWidgets(organizationId, await loadWidgets(dashboardId));
 
   return c.json({ dashboard, pins, workflowPins, widgets });
 });
@@ -275,6 +324,7 @@ app.get("/default/full", async (c) => {
       .returning();
     defaultDashboard = created!;
   }
+  await requireObjectAccess(organizationId, "dashboard", defaultDashboard.id, {}, "viewer");
 
   const pins = await db
     .select({
@@ -297,7 +347,7 @@ app.get("/default/full", async (c) => {
     .orderBy(dashboardPins.gridX, dashboardPins.createdAt);
 
   const workflowPins = await loadWorkflowPins(defaultDashboard.id);
-  const widgets = await loadWidgets(defaultDashboard.id);
+  const widgets = await visibleWidgets(organizationId, await loadWidgets(defaultDashboard.id));
 
   return c.json({ dashboard: defaultDashboard, pins, workflowPins, widgets });
 });
@@ -331,10 +381,21 @@ app.post("/widgets", async (c) => {
     )
     .limit(1);
   if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+  // Sharing: changing what a dashboard shows needs editor on it.
+  await requireObjectAccess(organizationId, "dashboard", dashboard.id, {}, "editor");
 
   const parsed = widgetConfigSchemaFor(kind).safeParse(body.config);
   if (!parsed.success) {
     return c.json({ error: "Invalid widget config", issues: parsed.error.issues }, 400);
+  }
+
+  // A report card shows the report's numbers: only a report the caller can
+  // open may be placed.
+  const reportId = (parsed.data as { reportId?: unknown }).reportId;
+  if (kind === "cost_report" && typeof reportId === "string") {
+    const meta = await loadObjectMeta(organizationId, "cost_report", reportId);
+    if (!meta) return c.json({ error: "Report not found" }, 404);
+    await requireObjectAccess(organizationId, "cost_report", reportId, meta, "viewer");
   }
 
   const [created] = await db
@@ -377,6 +438,7 @@ app.patch("/widgets/:widgetId", async (c) => {
     )
     .limit(1);
   if (!widget) return c.json({ error: "Not found" }, 404);
+  await requireObjectAccess(organizationId, "dashboard", widget.dashboardId, {}, "editor");
 
   const updates: Partial<typeof dashboardWidgets.$inferInsert> = { updatedAt: new Date() };
   if (body.title !== undefined) updates.title = body.title;
@@ -404,6 +466,18 @@ app.patch("/widgets/:widgetId", async (c) => {
 app.delete("/widgets/:widgetId", async (c) => {
   requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
+  const [target] = await db
+    .select({ dashboardId: dashboardWidgets.dashboardId })
+    .from(dashboardWidgets)
+    .where(
+      and(
+        eq(dashboardWidgets.id, c.req.param("widgetId")),
+        eq(dashboardWidgets.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+  if (!target) return c.json({ error: "Not found" }, 404);
+  await requireObjectAccess(organizationId, "dashboard", target.dashboardId, {}, "editor");
 
   const [deleted] = await db
     .update(dashboardWidgets)
@@ -426,6 +500,10 @@ app.post("/:id/rename", async (c) => {
   const organizationId = c.get("organizationId");
   const dashboardId = c.req.param("id");
   const { name } = await c.req.json<{ name: string }>();
+  if (!(await loadObjectMeta(organizationId, "dashboard", dashboardId))) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  await requireObjectAccess(organizationId, "dashboard", dashboardId, {}, "editor");
   await db
     .update(dashboards)
     .set({ name, updatedAt: new Date() })
@@ -447,6 +525,8 @@ app.delete("/:id", async (c) => {
 
   if (!dash) return c.json({ error: "Not found" }, 404);
   if (dash.isDefault) return c.json({ error: "Cannot delete the default dashboard" }, 400);
+  await requireObjectAccess(organizationId, "dashboard", dashboardId, {}, "delete");
+  await deleteObjectSharing(organizationId, "dashboard", dashboardId);
 
   await db.delete(dashboardPins).where(eq(dashboardPins.dashboardId, dashboardId));
   await db
@@ -472,6 +552,8 @@ app.post("/pin", async (c) => {
     .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)))
     .limit(1);
   if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+  // Sharing: changing what a dashboard shows needs editor on it.
+  await requireObjectAccess(organizationId, "dashboard", dashboard.id, {}, "editor");
 
   const [resource] = await db
     .select({ id: resources.id })
@@ -528,6 +610,8 @@ app.post("/:id/reorder", async (c) => {
     .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)))
     .limit(1);
   if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+  // Sharing: changing what a dashboard shows needs editor on it.
+  await requireObjectAccess(organizationId, "dashboard", dashboard.id, {}, "editor");
 
   await Promise.all(
     cards.map(({ kind, id }, index) => {
@@ -573,6 +657,8 @@ app.post("/unpin", async (c) => {
     .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)))
     .limit(1);
   if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+  // Sharing: changing what a dashboard shows needs editor on it.
+  await requireObjectAccess(organizationId, "dashboard", dashboard.id, {}, "editor");
 
   // Hard delete. A tombstone would be what tells a pulling client the pin went
   // away, but desktop sync is push-only (see electron/cloud-sync.ts) so nothing
@@ -601,6 +687,8 @@ app.post("/workflow-pin", async (c) => {
     .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)))
     .limit(1);
   if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+  // Sharing: changing what a dashboard shows needs editor on it.
+  await requireObjectAccess(organizationId, "dashboard", dashboard.id, {}, "editor");
 
   const [workflow] = await db
     .select({ id: workflows.id })
@@ -637,6 +725,8 @@ app.post("/workflow-unpin", async (c) => {
     .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)))
     .limit(1);
   if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+  // Sharing: changing what a dashboard shows needs editor on it.
+  await requireObjectAccess(organizationId, "dashboard", dashboard.id, {}, "editor");
 
   await db
     .delete(dashboardWorkflowPins)
@@ -746,7 +836,13 @@ app.post("/validate-tabs", async (c) => {
           ),
         )
         .limit(1);
-      if (row) validIds.add(tab.id);
+      // A dashboard unshared from the caller drops out of their tabs.
+      if (
+        row &&
+        (await filterVisibleObjects(organizationId, "dashboard", [row], (d) => d.id)).length > 0
+      ) {
+        validIds.add(tab.id);
+      }
     } else if (target.kind === "account" && target.accountId) {
       const [row] = await db
         .select({ id: accounts.id })

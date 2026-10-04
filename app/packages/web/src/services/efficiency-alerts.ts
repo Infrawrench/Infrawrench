@@ -19,6 +19,7 @@
  * already has its own `(organization_id, fired_at)` index to serve its own
  * slice.
  */
+import { withholdOrgWideFindings } from "./cost-visibility-filter";
 import { and, desc, eq } from "drizzle-orm";
 import type { EfficiencyAlertEvent, EfficiencyAlertKind } from "@infrawrench/client-core";
 import { db } from "../db/client";
@@ -46,6 +47,9 @@ export async function listEfficiencyAlerts(
   organizationId: string,
   options: ListEfficiencyAlertsOptions,
 ): Promise<EfficiencyAlertEvent[]> {
+  // Commitment and unit-cost findings are computed org-wide; withheld from a
+  // cost-scoped caller for the same reason as anomalies.
+  if (withholdOrgWideFindings(organizationId)) return [];
   const { kind, limit } = options;
   const wants = (k: EfficiencyAlertKind): boolean => kind === undefined || kind === k;
 

@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { ShareDialog } from "@infrawrench/ui";
+import { createDesktopSharingClient } from "../lib/cost-reports-client";
 import { useNavigate } from "@tanstack/react-router";
 import { T, Var, useGT } from "gt-react";
 import { SpotlightSearch } from "./SpotlightSearch";
@@ -131,6 +133,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [dashboardName, setDashboardName] = useState("");
   const [isHome, setIsHome] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const sharingClient = useMemo(() => createDesktopSharingClient(), []);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1079,6 +1083,23 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               dashboardId={dashboardId}
               dashboardName={dashboardName}
               client={exportClient}
+            />
+          )}
+          {activeCloudOrgId && (
+            <button
+              type="button"
+              onClick={() => setSharingOpen(true)}
+              title={gt("Share dashboard")}
+              className="text-xs text-on-surface-faint hover:text-on-surface-muted transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+            >
+              {gt("Share")}
+            </button>
+          )}
+          {sharingOpen && (
+            <ShareDialog
+              client={sharingClient}
+              target={{ objectType: "dashboard", objectId: dashboardId, name: dashboardName }}
+              onClose={() => setSharingOpen(false)}
             />
           )}
           {!isHome && (

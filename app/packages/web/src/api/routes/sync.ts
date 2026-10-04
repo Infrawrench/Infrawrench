@@ -1,4 +1,10 @@
 import { Hono } from "hono";
+import {
+  filterVisibleObjects,
+  resolveSharingPrincipal,
+  runWithSharingPrincipal,
+} from "../../services/object-sharing";
+import { effectivePermissions } from "../../auth/effective-permissions";
 import { eq, gt, and, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../db/client";
@@ -157,11 +163,28 @@ app.post("/pull", async (c) => {
       ),
   ]);
 
+  // Dashboard sharing applies here too: a dashboard (and its pins) the caller
+  // cannot open is not theirs to pull.
+  const sharing = await resolveSharingPrincipal(
+    orgId,
+    auth.userId,
+    await effectivePermissions({
+      userId: auth.userId,
+      organizationId: orgId,
+      scopes: auth.scopes ?? [],
+      agentRegistrationId: auth.agentRegistrationId,
+    }),
+  );
+  const visibleDashboards = await runWithSharingPrincipal(sharing, () =>
+    filterVisibleObjects(orgId, "dashboard", dashboardRows, (d) => d.id),
+  );
+  const visibleIds = new Set(visibleDashboards.map((d) => d.id));
+
   return c.json({
     accounts: accountRows,
     resources: resourceRows,
-    dashboards: dashboardRows,
-    dashboardPins: pinRows,
+    dashboards: visibleDashboards,
+    dashboardPins: pinRows.filter((pin) => visibleIds.has(pin.dashboardId)),
     associations: assocRows,
   });
 });

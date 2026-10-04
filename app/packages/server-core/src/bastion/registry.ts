@@ -92,24 +92,62 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   digitalocean: ["api.digitalocean.com"],
   hetzner: ["api.hetzner.cloud", "robot-ws.your-server.de"],
+  // The REST API, Cloud Pulse metrics, and the pre-signed Object Storage
+  // URLs the bucket browser uploads to and deletes through.
+  linode: ["api.linode.com", "monitor-api.linode.com", "*.linodeobjects.com"],
   fly: ["api.machines.dev", "api.fly.io"],
   vercel: ["api.vercel.com"],
+  // api.github.com, or api.<subdomain>.ghe.com for data residency. Copilot
+  // metrics reports are signed download links on GitHub-owned hosts.
+  github: ["api.github.com", "*.ghe.com", "*.githubusercontent.com"],
   netlify: ["api.netlify.com"],
   planetscale: ["api.planetscale.com"],
+  // REST API, plus the subscriptions' Prometheus endpoints on the internal network.
+  "redis-cloud": ["api.redislabs.com", "*.rlrcp.com"],
   cloudflare: ["api.cloudflare.com"],
   cloudinary: ["api.cloudinary.com"],
+  crusoe: ["api.cloud.crusoe.ai"],
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
+  depot: ["api.depot.dev"],
   neon: ["console.neon.tech"],
+  sentry: ["sentry.io", "us.sentry.io", "de.sentry.io"],
+  "mongodb-atlas": ["cloud.mongodb.com"],
+  snowflake: ["*.snowflakecomputing.com"],
+  // Usage export files download from presigned S3 links (bucket and region
+  // are CircleCI's choice, so the whole S3 suffix).
+  circleci: ["circleci.com", "runner.circleci.com", "*.amazonaws.com"],
   turso: ["api.turso.tech"],
   ovh: ["*.ovh.com"],
+  // Every OCI service host sits under oraclecloud.com (identity, iaas,
+  // database, objectstorage, telemetry, usageapi, usage, limits, query,
+  // containerengine); the public price list is on apexapps.oracle.com.
+  "oracle-cloud": ["*.oraclecloud.com", "apexapps.oracle.com"],
   scaleway: ["api.scaleway.com", "*.scw.cloud"],
   vultr: ["api.vultr.com"],
   anthropic: ["api.anthropic.com"],
   assemblyai: ["api.assemblyai.com", "api.eu.assemblyai.com"],
   cartesia: ["api.cartesia.ai"],
   cohere: ["api.cohere.com"],
+  coralogix: [
+    "api.eu1.coralogix.com",
+    "api.eu2.coralogix.com",
+    "api.us1.coralogix.com",
+    "api.us2.coralogix.com",
+    "api.us3.coralogix.com",
+    "api.ap1.coralogix.com",
+    "api.ap2.coralogix.com",
+    "api.ap3.coralogix.com",
+    "api.gov1.coralogixgov.us",
+  ],
+  // Cloud API, observability API and every CKS cluster API server
+  // (`{org}-{hash}.k8s.{zone}.coreweave.com`); bucket data is on cwobject.com.
+  coreweave: ["*.coreweave.com", "cwobject.com", "*.cwobject.com"],
+  cursor: ["api.cursor.com"],
   deepgram: ["api.deepgram.com"],
+  "elastic-cloud": ["api.elastic-cloud.com", "billing.elastic-cloud.com"],
+  modal: ["api.modal.com"],
   deepseek: ["api.deepseek.com"],
+  devin: ["api.devin.ai"],
   elevenlabs: [
     "api.elevenlabs.io",
     "api.us.elevenlabs.io",
@@ -117,9 +155,14 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "api.in.residency.elevenlabs.io",
     "api.sg.residency.elevenlabs.io",
   ],
+  fastly: ["api.fastly.com", "rt.fastly.com"],
   fireworks: ["api.fireworks.ai"],
+  "confluent-cloud": ["api.confluent.cloud", "api.telemetry.confluent.cloud"],
   gemini: ["generativelanguage.googleapis.com"],
   gladia: ["api.gladia.io"],
+  // Cloud API on grafana.com; each stack's Grafana, Prometheus and Synthetic
+  // Monitoring APIs live under grafana.net.
+  "grafana-cloud": ["grafana.com", "*.grafana.net"],
   groq: ["api.groq.com"],
   mistral: ["api.mistral.ai"],
   openai: ["api.openai.com", "mtls.api.openai.com", "mtls-eu.api.openai.com"],
@@ -131,12 +174,14 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "mp.api.speechmatics.com",
     "portal.speechmatics.com",
   ],
+  "temporal-cloud": ["saas-api.tmprl.cloud", "metrics.temporal.io"],
   together: ["api.together.ai", "api.together.xyz", "api-inference.together.ai"],
   xai: ["api.x.ai", "management-api.x.ai"],
   // Control plane, the per-app file-serving host, and the regional ingest
   // endpoints presigned uploads PUT to.
   uploadthing: ["api.uploadthing.com", "*.ufs.sh", "*.ingest.uploadthing.com", "utfs.io"],
   workos: ["api.workos.com"],
+  twilio: ["api.twilio.com", "messaging.twilio.com", "verify.twilio.com", "pricing.twilio.com"],
   kubernetes: [], // kubeconfig-relative; v1 doesn't bastion-route Kubernetes
 };
 

@@ -41,6 +41,7 @@ import type {
   TagComplianceReport,
   UntaggedSpendReport,
 } from "@infrawrench/ui/cost";
+import { createSharingClient, type SharingClient } from "@infrawrench/ui";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import type {
   CostReport,
@@ -313,6 +314,7 @@ export function createWebCostsClient(orgId: string): CostsClient {
 export function createWebCostReportsClient(orgId: string): CostReportsClient {
   return {
     ...createWebCostApi(orgId),
+    sharing: createWebSharingClient(orgId),
     listReports: () => apiGet<CostReport[]>(`/api/org/${orgId}/cost-reports`),
     getReport: (reportId: string) =>
       apiGet<CostReport>(`/api/org/${orgId}/cost-reports/${reportId}`),
@@ -389,4 +391,12 @@ function rangeQuery(from?: string, to?: string): string {
   if (to) params.set("to", to);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
+}
+
+/** Object sharing (reports, folders, dashboards) over cookie-authenticated fetch. */
+export function createWebSharingClient(orgId: string): SharingClient {
+  return createSharingClient(orgId, {
+    get: <T>(path: string) => apiGet<T>(path),
+    put: <T>(path: string, body: unknown) => apiPut<T>(path, body),
+  });
 }

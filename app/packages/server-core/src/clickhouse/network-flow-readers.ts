@@ -11,7 +11,8 @@
  * day writes a newer `ingested_at` for the same key; without `FINAL` a day
  * collected twice reads as double its traffic until the parts happen to merge.
  */
-import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
+import { strictlyVisibleAccountIds } from "../cost/visibility-context";
 import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
 import { networkFlowDaily as flow } from "./schema";
 
@@ -42,9 +43,25 @@ export interface NetworkFlowFilters {
   ref?: string | undefined;
 }
 
+/**
+ * The org predicate, narrowed to the accounts a cost-scoped caller may see.
+ *
+ * A flow's estimated cost is per account, not a `cost_daily` row, so there is
+ * no cost centre or saved filter to test it against: only accounts the scope
+ * grants outright are visible (`strictlyVisibleAccountIds`), and a scope that
+ * grants none sees no flows at all rather than all of them.
+ */
+function flowOrgCondition(organizationId: string) {
+  const orgCond = eq(flow.organization_id, organizationId);
+  const visible = strictlyVisibleAccountIds(organizationId);
+  if (!visible) return orgCond;
+  if (visible.size === 0) return and(orgCond, sql`0`);
+  return and(orgCond, inArray(flow.account_id, [...visible]));
+}
+
 function whereClause(organizationId: string, range: NetworkFlowRange, filters: NetworkFlowFilters) {
   return and(
-    eq(flow.organization_id, organizationId),
+    flowOrgCondition(organizationId),
     gte(flow.day, range.from),
     lte(flow.day, range.to),
     filters.accountId ? eq(flow.account_id, filters.accountId) : undefined,

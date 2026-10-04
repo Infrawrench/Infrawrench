@@ -21,6 +21,9 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "", label: msg("General") },
   { key: "team", label: msg("Team") },
   { key: "roles", label: msg("Roles") },
+  // Beside Roles: a scope is part of what a role (or member, or key) grants,
+  // answered for cost rows instead of permissions.
+  { key: "cost-visibility", label: msg("Cost Visibility"), requiresPermission: "team:read" },
   { key: "access-requests", label: msg("Break-glass Access"), requiresPermission: "access:read" },
   { key: "ssh-keys", label: msg("SSH Keys") },
   { key: "ssh-host-keys", label: msg("Trusted SSH Hosts") },

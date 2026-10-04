@@ -79,7 +79,8 @@ export interface SavedCostFilter {
 }
 
 /** What kind of object references a saved filter. */
-export type SavedCostFilterReferentKind = "budget" | "cost_report" | "cost_graph_widget";
+export type SavedCostFilterReferentKind =
+  "budget" | "cost_report" | "cost_graph_widget" | "cost_visibility_scope";
 
 /**
  * One object still pointing at a saved filter: what a refused DELETE lists,
@@ -155,6 +156,7 @@ export function describeSavedCostFilterReferents(referents: SavedCostFilterRefer
     budget: "budget",
     cost_report: "report",
     cost_graph_widget: "dashboard graph",
+    cost_visibility_scope: "cost visibility scope on a",
   };
   return referents
     .map((r) => {
