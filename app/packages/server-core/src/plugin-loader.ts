@@ -16,6 +16,7 @@ import { plugin as mongodbPlugin } from "@infrawrench/plugin-mongodb";
 import { plugin as mysqlPlugin } from "@infrawrench/plugin-mysql";
 import { plugin as mssqlPlugin } from "@infrawrench/plugin-mssql";
 import { plugin as neonPlugin } from "@infrawrench/plugin-neon";
+import { plugin as oracleCloudPlugin } from "@infrawrench/plugin-oracle-cloud";
 import { plugin as ovhPlugin } from "@infrawrench/plugin-ovh";
 import { plugin as postgresPlugin } from "@infrawrench/plugin-postgres";
 import { plugin as redisPlugin } from "@infrawrench/plugin-redis";
@@ -44,6 +45,7 @@ import { plugin as geminiPlugin } from "@infrawrench/plugin-gemini";
 import { plugin as gladiaPlugin } from "@infrawrench/plugin-gladia";
 import { plugin as groqPlugin } from "@infrawrench/plugin-groq";
 import { plugin as mistralPlugin } from "@infrawrench/plugin-mistral";
+import { plugin as modalPlugin } from "@infrawrench/plugin-modal";
 import { plugin as openaiPlugin } from "@infrawrench/plugin-openai";
 import { plugin as openrouterPlugin } from "@infrawrench/plugin-openrouter";
 import { plugin as replicatePlugin } from "@infrawrench/plugin-replicate";
@@ -76,6 +78,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   mysqlPlugin,
   mssqlPlugin,
   neonPlugin,
+  oracleCloudPlugin,
   ovhPlugin,
   postgresPlugin,
   redisPlugin,
@@ -104,6 +107,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   gladiaPlugin,
   groqPlugin,
   mistralPlugin,
+  modalPlugin,
   openaiPlugin,
   openrouterPlugin,
   replicatePlugin,

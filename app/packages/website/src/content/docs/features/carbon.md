@@ -34,9 +34,9 @@ vCPUs × watts-per-vCPU × hours × datacentre overhead ÷ 1000 × grid intensit
   cover use its AWS average, which is what CCF itself does for Alibaba.
 - **Datacentre overhead (PUE)** is each provider's published figure, per region
   where they publish one (Google, Scaleway). Hetzner's own parks are 1.13 and
-  OVHcloud's group average is 1.24. DigitalOcean, Fly.io, Linode and Hetzner's
-  US and Singapore sites run in colocation and publish nothing, so they read
-  the Uptime Institute's 2025 industry average of 1.54.
+  OVHcloud's group average is 1.24. DigitalOcean, Fly.io, Linode, Oracle Cloud and
+  Hetzner's US and Singapore sites publish no figure, so they read the
+  Uptime Institute's 2025 industry average of 1.54.
 
 Grid figures are **location-based**: what the local grid emits, not what a
 provider's renewable contracts offset. That is the like-for-like comparison
@@ -45,18 +45,9 @@ market-based figures would be lower.
 
 ## Which providers are covered
 
-| Provider     | What is estimated                                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| AWS          | EC2 instances, RDS instances, ElastiCache clusters, OpenSearch domains, MSK clusters, Amazon MQ brokers; EKS per cluster |
-| Google Cloud | Compute Engine instances, Memorystore for Memcached; GKE per cluster                                                     |
-| Azure        | Virtual machines, PostgreSQL and MySQL flexible servers; AKS per cluster                                                 |
-| DigitalOcean | Droplets, managed databases; Kubernetes per cluster                                                                      |
-| Hetzner      | Servers                                                                                                                  |
-| Scaleway     | Instances; Kapsule per cluster                                                                                           |
-| OVHcloud     | Public Cloud instances; Managed Kubernetes per cluster                                                                   |
-| Fly.io       | Machines                                                                                                                 |
-| Linode       | Linodes, Managed Databases; LKE per cluster and node pool (Jakarta has no grid figure)                                   |
-| Kubernetes   | Nodes, in any AWS, Google Cloud or Azure region                                                                          |
+  OVHcloud's group average is 1.24. DigitalOcean, Fly.io, Linode, Oracle Cloud and
+  Hetzner's US and Singapore sites publish no figure, so they read the
+  Uptime Institute's 2025 industry average of 1.54.
 
 Types with no processor anyone publishes a figure for (a bucket, a DNS record,
 a serverless function) are outside the scope rather than "not estimated".

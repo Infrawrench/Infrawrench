@@ -47,6 +47,7 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 | Databricks   | `databricks/databricks`     | Clusters, SQL warehouses, catalogs, schemas                                                                                                            |
 | Netlify      | `netlify/netlify`           | DNS zones, DNS records, environment variables                                                                                                          |
 | Linode       | `linode/linode`             | Linodes, volumes, NodeBalancers, LKE clusters, buckets, firewalls, domains, DNS records, VPCs, StackScripts, Managed Databases, reserved IPs           |
+| Oracle Cloud | `oracle/oci`                | Compartments, instances, block volumes, VCNs, subnets, reserved IPs, load balancers, buckets, Autonomous Databases, OKE clusters, budgets, alert rules |
 
 Coverage is per resource type: types that need nested blocks or credentials Infrawrench doesn't store (for example Azure VMs, AWS Lambda packages, Netlify sites) stay in the unsupported list with a reason. A plugin declares its own mapping, so coverage grows type by type.
 

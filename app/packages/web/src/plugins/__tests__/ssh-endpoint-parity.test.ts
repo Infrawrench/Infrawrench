@@ -75,6 +75,12 @@ describe("SSH endpoint parity", () => {
       hostOutputKey: "ipv4",
       privateHostOutputKey: "ipv4Private",
     },
+    {
+      pluginId: "oracle-cloud",
+      resourceTypeId: "instance",
+      hostOutputKey: "publicIp",
+      privateHostOutputKey: "privateIp",
+    },
   ];
 
   for (const {
@@ -141,6 +147,7 @@ describe("SSH endpoint parity", () => {
     "gladia",
     "groq",
     "mistral",
+    "modal",
     "openai",
     "openrouter",
     "replicate",
