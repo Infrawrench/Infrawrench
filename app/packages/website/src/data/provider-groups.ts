@@ -317,6 +317,21 @@ export const providerGroups: ProviderGroup[] = [
         detail: "Groups and databases",
         resources: ["Group", "Database"],
       },
+      {
+        name: "Confluent Cloud",
+        detail: "Kafka spend, clusters, connectors, Flink, CKU right-sizing",
+        resources: [
+          "Environment",
+          "Kafka Cluster",
+          "Connector",
+          "Flink Compute Pool",
+          "ksqlDB Cluster",
+          "Schema Registry",
+          "Service Account",
+          "API Key",
+          "Network",
+        ],
+      },
     ],
   },
   {

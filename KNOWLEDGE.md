@@ -51,6 +51,7 @@ infrawrench/
 │   ├── netlify/              # @infrawrench/plugin-netlify
 │   ├── cloudinary/           # @infrawrench/plugin-cloudinary
 │   ├── clickhouse/           # @infrawrench/plugin-clickhouse
+│   ├── confluent-cloud/      # @infrawrench/plugin-confluent-cloud
 │   ├── kafka/                # @infrawrench/plugin-kafka
 │   ├── aws/                  # @infrawrench/plugin-aws
 │   ├── cloudflare/           # @infrawrench/plugin-cloudflare
@@ -1047,6 +1048,19 @@ Verified against Crusoe's published Swagger spec (`https://api.crusoecloud.com/v
 
 ---
 
+### Confluent Cloud (`@infrawrench/plugin-confluent-cloud`)
+
+Verified against Confluent's published spec (https://docs.confluent.io/cloud/current/openapi.yaml), the Metrics API reference and its public descriptors (`api.telemetry.confluent.cloud/v2/metrics/cloud/descriptors/metrics`), and the billing docs (2026-10). Distinct from the `kafka` protocol plugin: this one manages the Confluent organization. Things the code does not make obvious:
+
+- **One Cloud API key (HTTP Basic) for everything**, management, billing and telemetry; cluster-scoped keys get 401 there. It acts with its owner's RBAC roles: Operator lists, BillingAdmin reads cost, MetricsViewer reads metrics, AccountAdmin manages service accounts, EnvironmentAdmin resizes and pauses. The preflight template is the Confluent CLI role-binding commands.
+- **Most lists are environment-scoped** (`?environment=` is required on cmk, fcpm, ksqldbcm, srcm, networking), so the client lists environments first (60s cache) and fans out; a 403 on one environment lists it empty. Resource ids carry the route (`env/lkc`, `env/lkc/connectorName`, `env/slug/id` for network connections) while `externalId` stays the bare provider id (`lkc-…`, `lcc-…`), because that is the id the Costs API reports, which is what the orphan finder's cost annotation joins on. The host never derives an external id from a resource id, which is what makes the split safe.
+- **Topics cannot be listed with a Cloud key** (Kafka REST wants a cluster key), so topic and partition counts come from the Metrics API: distinct `metric.topic` labels on `retained_bytes` over the last hour, grouped across every cluster in one query. The listing makes five grouped `granularity: ALL` queries total, not per cluster. Usage fields are **absent, never zero, when the Metrics API refused**, which keeps the `idle` orphan rules quiet for keys without MetricsViewer; a successful query with no row for a cluster does mean zero (no traffic produces no rows).
+- **Metrics API limits**: one aggregation per request, seven days of retention (ranges are clamped), granularity bounded by interval length (PT1M to 6h, PT5M to 1d, PT15M to 4d, PT30M to 7d). Counters are 60-second deltas, so a SUM per bucket is divided by the bucket length to chart a rate.
+- **The Kafka tab is the kafka plugin**, via a peer integration on `connectionString`. Confluent shows a cluster key's secret once, so `create-kafka-api-key` (header action and the peer pane's credential-setup action) mints one, stores key and secret with `services.secrets.setPlaintext` against the cluster resource id, and `resolveOutput` builds `kafka://host:9092?sasl=plain&ssl=true&user=…&password=…` (query params so a secret's `+`/`/` survive). With no owner picked the key belongs to the owner of the account's own Cloud key, read from `GET /iam/v2/api-keys/{ownKeyId}`; a picked service account can be granted CloudClusterAdmin on the cluster CRN (`metadata.resource_name`), a 409 meaning it already had it.
+- **Costs**: `start_date` inclusive, `end_date` exclusive, at most one month per request and one year back, so ranges are walked in 28-day windows; 72h latency, `restatementDays: 5`. The Costs API carries no region, so region is joined from inventory (clusters, pools, registries, ksqlDB via its Kafka cluster, connectors via theirs). Organizations created before 2024-05-15 get a legacy shape with the environment at the top level and, per the community forum, sometimes no `amount`; `netAmount` falls back to original minus discount, then quantity times price. `PROMO_CREDIT` rows are `credit`, `SUPPORT` rows `support`. **Unverified**: whether promo credits also show up inside per-line `discount_amount` (which would double-count against the separate credit rows); check against a real invoice. There is no credit-balance or commitment API, so no `credits` capability.
+- **CKU right-sizing reuses the VM contract**: the catalog is a size-picker of 1..24 CKUs with `vcpus = CKUs` (memory scaled alongside, so the unmeasured-memory floor caps a single step at halving), `cpuMetric` is `CKU utilization` (`cluster_load_percent` x100), and `regionFieldKey` is `placement` (`AWS/us-east-1/MULTI_ZONE`) because CKU price depends on cloud, region and availability. Prices come from the org's own billed CKU-hours over the last month (`amount / quantity` of `KAFKA_NUM_CKUS` lines, 6h cache), and a multi-zone placement prices nothing for 1 CKU, which keeps that illegal size out of recommendations. A side effect: the implicit carbon declaration reads the type as `unsupported-provider`, which is the honest answer. Resizes go through `PATCH /cmk/v2/clusters/{id}` with `spec.environment` and `spec.config.kind` on every update.
+- **Pausing a connector does not stop billing** (task hours keep accruing, per Confluent's billing dimensions page), which is why connectors declare no `lifecycle` for sleep schedules and the idle rule says so.
+- **Status feed**: status.confluent.cloud has a single "Confluent Cloud" component, so `parseStatusFeed` lifts regions out of incident titles (`AWS us-east-1`, `GCP us-central1`, `Azure East US` squashed to `eastus`) and stays provider-wide for "All Regions" or no region.
 ### Snowflake (`@infrawrench/plugin-snowflake`)
 
 Verified against docs.snowflake.com (SQL API reference and auth pages, the ACCOUNT_USAGE / ORGANIZATION_USAGE view references, ALTER WAREHOUSE, CREATE / ALTER RESOURCE MONITOR) and the SHOW row structs in the Snowflake Terraform provider's SDK (2026-10). Things the code does not make obvious:
@@ -2956,6 +2970,7 @@ Two parallel integrations (`jira_*` / `linear_*` tables — deliberately not gen
 
 Cost collection added for **deepgram** (real USD daily), **elevenlabs** (money; successor endpoint is POST with an array `group_by`, so product type and region arrive together — on the deprecated fallback only _one_ breakdown is requested, since each is a complete decomposition and emitting both double-counts), **cartesia** (credits → money at the lowest published tier, `estimated`), **speechmatics** (hours → money; the endpoint returns a window aggregate with no buckets so daily rows are one request per day, `maxHistoryDays: 90` because history costs _requests_ here, `estimated`) and **hetzner** (inventory × `/v1/pricing`, `estimated`; emits rows **only for the day it runs** because a past month rebuilt from today's inventory omits everything deleted since — and traffic counters are _cumulative per billing period_, so those rows are dated to the period's first day and restated in place, `restatementDays: 31`; all money is scaled-integer, never float).
 
+**confluent-cloud** (Oct 2026) reads the Billing Costs API daily by product, with resource ids, region joined from inventory, and environment, line type, network and cloud tags; promotional credits and support are charge types (see the Confluent Cloud section).
 **snowflake** (Oct 2026) reports billed amounts from organization usage when the role can read it and credits × user-editable prices otherwise, per service group and warehouse; see the Snowflake section.
 **Verified as having no usable billing API** (do not retry without new evidence): assemblyai, gladia, revai, cohere, deepseek, gemini (route via `gcp`), workos, groq, together, replicate, fly (GraphQL billing is undocumented), netlify. **Cloudinary was declined deliberately** — it is a flat subscription with an included allowance, so credits are not proportional to money and no rate makes the series correct. `mongodb`/`redis`/`kafka` are connection-string protocol plugins here, not SaaS clients, so they have no account to bill; managed Redis Cloud is its own plugin (`redis-cloud`, below).
 
@@ -3991,6 +4006,8 @@ provider's message — a server error is not evidence a scope is granted or miss
 text permission-group list + the documented
 `dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=…` deep link (same mechanism as the
 manifest's create-token helpLink).
+
+**Confluent Cloud** (`confluent-cloud/src/preflight.ts`): `GET /org/v2/organizations` for the identity (a 401 there means a wrong or cluster-scoped key and marks every row unknown), then one minimal read per capability, including a telemetry query filtered to a nonexistent cluster for MetricsViewer. Template: Confluent CLI `role-binding create` lines for the selected roles.
 
 ## UI translations (General Translation / gt-react)
 

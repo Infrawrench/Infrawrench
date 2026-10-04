@@ -29,9 +29,10 @@ The same panel generates the exact credential template for the capabilities you 
 - **AWS** — an IAM policy JSON document. Attach it as an inline policy on the IAM user or role whose keys you entered.
 - **GCP** — a custom role definition in YAML for `gcloud iam roles create --file`, then grant the role to the service account. Cost reporting also needs the role or BigQuery Data Viewer on the billing export dataset.
 - **Cloudflare** — a token template with the permission-group list and a link to Cloudflare's token creator.
-- **GitHub** — fine-grained token permissions for an organization account or classic token scopes for an enterprise account, plus a link to GitHub's token creator.
+- **Confluent Cloud** — Confluent CLI commands that bind selected organization roles (Operator, BillingAdmin, MetricsViewer, AccountAdmin, OrganizationAdmin) to the service account that owns the Cloud API key.
+- **GitHub** — fine-grained token permissions for an organization account or classic token scopes for an enterprise account.
 - **CoreWeave** — IAM roles to grant the token owner in an IAM access policy (CKS Viewer or CKS Admin, Billing Viewer, Object Storage Admin, Observability Viewer).
-- **Linode** — personal access token scopes (for example `linodes:read_write`, `account:read_only`) to select under your profile's API Tokens page.
+- **Linode** — personal access token scopes such as `linodes:read_write` and `account:read_only`.
 
 ![Least-privilege template generator with the costs capability deselected and the generated AWS IAM policy JSON shown with a Copy button](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/credential-preflight/policy-template-generator.png)
 
@@ -39,10 +40,10 @@ Deselecting a capability removes its permissions from the template. The generate
 
 ## Which plugins support it
 
-[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), [Cloudflare](../plugins/cloudflare.md), [GitHub](../plugins/github.md), [CoreWeave](../plugins/coreweave.md) and [Linode](../plugins/linode.md) ship a checklist and policy generator. [Cursor](../plugins/cursor.md) checks whether the key works and whether the plan includes Enterprise Analytics API access. [Temporal Cloud](../plugins/temporal-cloud.md) shows the checklist without a generator because access is granted by account role; each capability names the role it needs.
+[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), [Cloudflare](../plugins/cloudflare.md), [Confluent Cloud](../plugins/confluent-cloud.md), [GitHub](../plugins/github.md), [CoreWeave](../plugins/coreweave.md) and [Linode](../plugins/linode.md) ship a checklist and policy generator. [Cursor](../plugins/cursor.md) checks whether its key works and whether the plan includes Enterprise Analytics API access. [Temporal Cloud](../plugins/temporal-cloud.md) shows the checklist without a generator because access is granted by account role.
 
 ## How it works
 
-- Probes are **read-only**. AWS uses `sts:GetCallerIdentity` plus `iam:SimulatePrincipalPolicy` (falling back to sample reads if simulation is not allowed); GCP uses `projects.testIamPermissions`; Cloudflare verifies the token and issues one minimal read per capability; GitHub reads the token's user then probes the organization or enterprise; CoreWeave probes its Cloud API, usage export and metrics service; Linode reads your profile and issues one minimal list call per capability; Cursor lists team members and makes one Analytics API read; Temporal Cloud checks each namespace, user, service account, Nexus endpoint and connectivity rule against the account role.
+- Probes are **read-only**. AWS uses `sts:GetCallerIdentity` and `iam:SimulatePrincipalPolicy`; GCP uses `projects.testIamPermissions`; Cloudflare verifies the token and issues a minimal read per capability; Confluent Cloud reads the organization with the Cloud API key, then probes each capability; GitHub reads the token's user and probes the organization or enterprise; CoreWeave probes its Cloud API, usage export and metrics service; Linode reads your profile and issues one minimal list call per capability; Cursor lists team members and makes one Analytics API read; Temporal Cloud checks capabilities against the account role.
 - On the web app, probes run server-side against submitted or stored credentials. Credentials never round-trip to the browser. On desktop, probes run locally, in-process.
 - Preflight results are computed on demand and not stored.

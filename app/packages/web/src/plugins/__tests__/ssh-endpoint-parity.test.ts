@@ -154,6 +154,7 @@ describe("SSH endpoint parity", () => {
     "devin",
     "elevenlabs",
     "fireworks",
+    "confluent-cloud",
     "gemini",
     "github",
     "gladia",

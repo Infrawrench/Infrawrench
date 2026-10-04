@@ -250,6 +250,7 @@
     "@infrawrench/plugin-docker": "workspace:*",
     "@infrawrench/plugin-elevenlabs": "workspace:*",
     "@infrawrench/plugin-fireworks": "workspace:*",
+    "@infrawrench/plugin-confluent-cloud": "workspace:*",
     "@infrawrench/plugin-fly": "workspace:*",
     "@infrawrench/plugin-gcp": "workspace:*",
     "@infrawrench/plugin-gemini": "workspace:*",

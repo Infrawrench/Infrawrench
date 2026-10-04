@@ -59,6 +59,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-devin"),
   () => import("@infrawrench/plugin-elevenlabs"),
   () => import("@infrawrench/plugin-fireworks"),
+  () => import("@infrawrench/plugin-confluent-cloud"),
   () => import("@infrawrench/plugin-gemini"),
   () => import("@infrawrench/plugin-gladia"),
   () => import("@infrawrench/plugin-groq"),

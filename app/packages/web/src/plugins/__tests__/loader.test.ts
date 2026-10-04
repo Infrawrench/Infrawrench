@@ -76,6 +76,7 @@ describe("plugin loader", () => {
       "devin",
       "elevenlabs",
       "fireworks",
+      "confluent-cloud",
       "gemini",
       "github",
       "gladia",
