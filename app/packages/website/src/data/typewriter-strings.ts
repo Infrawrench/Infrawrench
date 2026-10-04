@@ -64,6 +64,8 @@ export const typewriterStrings: string[] = [
   "GCP Cloud Routers",
   "Hetzner Servers",
   "Scaleway Instances",
+  "Oracle Cloud Compute Instances",
+  "Oracle Autonomous Databases",
   "Netlify Sites",
   "Fly Apps",
   "Databricks Clusters",

@@ -73,7 +73,7 @@ describe("published coefficients", () => {
   });
 
   it("covers every provider with its own region table", () => {
-    for (const grid of ["digitalocean", "hetzner", "fly", "scaleway", "ovh"]) {
+    for (const grid of ["digitalocean", "hetzner", "fly", "scaleway", "ovh", "oracle-cloud"]) {
       expect(Object.keys(PROVIDER_REGION_ZONES[grid] ?? {}).length, grid).toBeGreaterThan(3);
     }
   });
@@ -105,6 +105,9 @@ describe("gridIntensityFor", () => {
     expect(gridIntensityFor("ovh", "GRA11")).toBeCloseTo(40.5);
     expect(gridIntensityFor("scaleway", "pl-waw-1")).toBeCloseTo(608.2);
     expect(gridIntensityFor("digitalocean", "nyc3")).toBeCloseTo(376.1);
+    expect(gridIntensityFor("oracle-cloud", "eu-frankfurt-1")).toBeCloseTo(336.4);
+    // Seoul: no Ember figure for South Korea, so no estimate rather than a guess.
+    expect(gridIntensityFor("oracle-cloud", "ap-seoul-1")).toBeNull();
   });
 
   it("reads a US site on the same grid as the hyperscaler beside it", () => {

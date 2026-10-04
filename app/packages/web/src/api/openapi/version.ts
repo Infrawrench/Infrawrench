@@ -160,4 +160,8 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-export const API_VERSION = "1.42.3";
+// 1.43.0: new `oracle-cloud` plugin id and its resource type ids (tenancy,
+// compartment, instance, boot-volume, block-volume, vcn, subnet,
+// security-list, reserved-ip, load-balancer, bucket, autonomous-database,
+// oke-cluster, node-pool, budget, budget-alert-rule). Additive.
+export const API_VERSION = "1.43.0";
