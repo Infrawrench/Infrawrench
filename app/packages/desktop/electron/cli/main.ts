@@ -16,6 +16,7 @@ import { cmdMetrics } from "./commands/metrics";
 import { cmdExport } from "./commands/export";
 import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies, cmdCostAlerts } from "./commands/costs";
+import { cmdBudgets } from "./commands/budgets";
 import { cmdBusinessMetrics, cmdUnitCosts } from "./commands/unit-costs";
 import { cmdScenarios, cmdApplyScenario } from "./commands/scenarios";
 import { cmdReports, cmdRunReport, cmdSendReport } from "./commands/reports";
@@ -102,6 +103,9 @@ COMMANDS
   costs --alerts      change-based cost alerts + recent firings ("spend moved >X% vs the
                       prior period" — distinct from budgets and anomalies)   [--limit 20]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
+  budgets             every budget as a tree (a parent is the sum of its children): this
+                      period's actual and forecast vs its limit, in money or a usage unit,
+                      with fired alerts and children that outgrow their parent
   reports             the org's saved cost reports (named cost graphs)
   reports <name|id>   run one saved report and chart it
                       [--format pdf [--out <path>]  save the rendered PDF instead]
@@ -535,6 +539,9 @@ export async function runCli(): Promise<void> {
           break;
         }
         await cmdExports(ctx);
+        break;
+      case "budgets":
+        await cmdBudgets(ctx);
         break;
       case "tags":
         await cmdTags(ctx, parsed.range);

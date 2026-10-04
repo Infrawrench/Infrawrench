@@ -50,10 +50,32 @@ type BudgetThreshold struct {
 	Percent int64  `json:"percent"`
 }
 
+// BudgetExplicitPeriod is one entry of an explicit period list, with its own
+// amount in whichever field the budget's measure uses.
+type BudgetExplicitPeriod struct {
+	Start       string   `json:"start"`
+	End         string   `json:"end"`
+	AmountCents *int64   `json:"amountCents,omitempty"`
+	UsageAmount *float64 `json:"usageAmount,omitempty"`
+}
+
+// BudgetPeriod is the server's `kind`-tagged union: a recurring cadence
+// (Unit, Interval, StartDate) or an explicit list (Periods). Every branch
+// field is omitempty because the server's schema is strict: a recurring
+// period carrying a stray `periods` key is rejected.
+type BudgetPeriod struct {
+	Kind      string                 `json:"kind"`
+	Unit      *string                `json:"unit,omitempty"`
+	Interval  *int64                 `json:"interval,omitempty"`
+	StartDate *string                `json:"startDate,omitempty"`
+	Periods   []BudgetExplicitPeriod `json:"periods,omitempty"`
+}
+
 // BudgetInput is the POST/PUT body.
 //
-// SavedFilterID, ScenarioModelID and UseAdjustedSpend are all "omitted means
-// clear" on PUT, hence omitempty pointers.
+// SavedFilterID, ScenarioModelID, UseAdjustedSpend, Period and
+// ParentBudgetID are all "omitted means clear" on PUT, hence omitempty
+// pointers. AmountCents is 0 for a usage budget or an explicit period list.
 type BudgetInput struct {
 	Name             string            `json:"name"`
 	AmountCents      int64             `json:"amountCents"`
@@ -64,6 +86,11 @@ type BudgetInput struct {
 	Thresholds       []BudgetThreshold `json:"thresholds"`
 	CostBasis        *string           `json:"costBasis,omitempty"`
 	UseAdjustedSpend *bool             `json:"useAdjustedSpend,omitempty"`
+	Measure          *string           `json:"measure,omitempty"`
+	UsageUnit        *string           `json:"usageUnit,omitempty"`
+	UsageAmount      *float64          `json:"usageAmount,omitempty"`
+	Period           *BudgetPeriod     `json:"period,omitempty"`
+	ParentBudgetID   *string           `json:"parentBudgetId,omitempty"`
 }
 
 // Budget is the union of the two shapes this endpoint returns.
@@ -86,6 +113,11 @@ type Budget struct {
 	Thresholds        []BudgetThreshold `json:"thresholds"`
 	CostBasis         *string           `json:"costBasis"`
 	UseAdjustedSpend  *bool             `json:"useAdjustedSpend"`
+	Measure           *string           `json:"measure"`
+	UsageUnit         *string           `json:"usageUnit"`
+	UsageAmount       *float64          `json:"usageAmount"`
+	Period            *BudgetPeriod     `json:"period"`
+	ParentBudgetID    *string           `json:"parentBudgetId"`
 
 	// Status fields: present on GET only.
 	Month                 *string     `json:"month,omitempty"`
@@ -94,6 +126,13 @@ type Budget struct {
 	ForecastCents         *int64      `json:"forecastCents,omitempty"`
 	ScenarioForecastCents *int64      `json:"scenarioForecastCents,omitempty"`
 	Placements            []Placement `json:"placements,omitempty"`
+	PeriodStart           *string     `json:"periodStart,omitempty"`
+	PeriodEnd             *string     `json:"periodEnd,omitempty"`
+	PeriodLimit           *float64    `json:"periodLimit,omitempty"`
+	ActualUsage           *float64    `json:"actualUsage,omitempty"`
+	ForecastUsage         *float64    `json:"forecastUsage,omitempty"`
+	RolledUp              *bool       `json:"rolledUp,omitempty"`
+	ChildCount            *int64      `json:"childCount,omitempty"`
 
 	// Row fields: present on POST/PUT only.
 	CreatedByUserID *string `json:"createdByUserId,omitempty"`

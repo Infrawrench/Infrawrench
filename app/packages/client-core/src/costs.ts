@@ -28,6 +28,7 @@ import type { CostScenarioProjection } from "./cost-scenarios";
 // knows what an adjustment *is*, this one only knows a query can ask for one
 // and a response can come back describing what it did.
 import type { CostAdjustmentSummary } from "./billing-rules";
+import type { BudgetHierarchyWarning, BudgetMeasure, BudgetPeriod } from "./budgets";
 
 /** Why an account's last cost collection failed, as stored by the poller. */
 export interface CostPollError {
@@ -389,6 +390,28 @@ export interface BudgetInput {
    * PUT that omits this clears it.
    */
   useAdjustedSpend?: boolean | undefined;
+  /**
+   * What the budget counts. Absent is `cost` (money, in `currency`); `usage`
+   * sums the cost rows' usage quantity in `usageUnit` instead, against
+   * `usageAmount`. `amountCents` is ignored by a usage budget.
+   */
+  measure?: BudgetMeasure | undefined;
+  /** The usage unit a usage budget counts, exactly as providers report it. */
+  usageUnit?: string | undefined;
+  /** A usage budget's limit per period, in `usageUnit`. */
+  usageAmount?: number | undefined;
+  /**
+   * Which periods the budget covers. Absent is the calendar month. An explicit
+   * period list carries an amount per period, and the top-level amount is then
+   * ignored.
+   */
+  period?: BudgetPeriod | undefined;
+  /**
+   * The budget this one rolls up into. A parent's actual and forecast are the
+   * sum of its children's, measured over the parent's own period; it must
+   * measure the same thing (currency, or usage unit) as its children.
+   */
+  parentBudgetId?: string | undefined;
 }
 
 /** One selectable value in a dimension picker (GET /costs/dimensions). */
@@ -568,6 +591,44 @@ export interface BudgetWithStatus {
    * happens to be shown.
    */
   placements: BudgetPlacement[];
+  /*
+   * Everything below is optional so a client a release ahead of its server
+   * still renders the row; absent reads as a monthly spend budget with no
+   * parent, which is what such a server was measuring.
+   */
+  /** What the budget counts; absent is `cost`. */
+  measure?: BudgetMeasure | undefined;
+  usageUnit?: string | null | undefined;
+  usageAmount?: number | null | undefined;
+  /** The configured periods; null is the calendar month. */
+  period?: BudgetPeriod | null | undefined;
+  parentBudgetId?: string | null | undefined;
+  /**
+   * The period being measured, inclusive `YYYY-MM-DD`. Null when the budget's
+   * periods do not cover today (a cadence not yet started, a gap in an
+   * explicit list): nothing is measured and no threshold can fire.
+   */
+  periodStart?: string | null | undefined;
+  periodEnd?: string | null | undefined;
+  /**
+   * This period's limit in the budget's unit: cents for a spend budget, the
+   * quantity for a usage budget. Differs from `amountCents` for an explicit
+   * period list (each period has its own) and for a usage budget.
+   */
+  periodLimit?: number | null | undefined;
+  /** Period-to-date usage, for a usage budget (null otherwise). */
+  actualUsage?: number | null | undefined;
+  /** Projected period-end usage, for a usage budget (null otherwise). */
+  forecastUsage?: number | null | undefined;
+  /**
+   * True when this budget has children, so its figures are the sum of theirs
+   * over its period rather than a measurement of its own scope.
+   */
+  rolledUp?: boolean | undefined;
+  /** Number of direct child budgets. */
+  childCount?: number | undefined;
+  /** Where this budget's children outgrow it. Empty for a leaf. */
+  hierarchyWarnings?: BudgetHierarchyWarning[] | undefined;
 }
 
 /** One dashboard card pointing at a budget, as listed on `BudgetWithStatus`. */
@@ -937,6 +998,44 @@ export function formatBudgetMonth(month: string): string {
   if (Number.isNaN(d.getTime())) return month;
   return d.toLocaleDateString(undefined, { month: "long", year: "numeric", timeZone: "UTC" });
 }
+
+export {
+  BUDGET_MEASURES,
+  BUDGET_MEASURE_LABELS,
+  BUDGET_PERIOD_UNITS,
+  BUDGET_PERIOD_UNIT_LABELS,
+  BUDGET_LIMITS,
+  BUDGET_HIERARCHY_WARNING_KINDS,
+  addBudgetDays,
+  budgetDaysBetween,
+  budgetDepth,
+  budgetDescendantIds,
+  budgetInputError,
+  budgetLimitForWindow,
+  budgetPeriodsEqual,
+  budgetProgress,
+  budgetSubtreeHeight,
+  budgetWithStatusToInput,
+  buildBudgetTree,
+  formatBudgetPeriodWindow,
+  formatUsageQuantity,
+  isBudgetDay,
+  resolveBudgetPeriod,
+  upcomingBudgetPeriod,
+} from "./budgets";
+export type {
+  BudgetMeasure,
+  BudgetPeriodUnit,
+  BudgetRecurringPeriod,
+  BudgetExplicitPeriod,
+  BudgetExplicitPeriods,
+  BudgetPeriod,
+  BudgetPeriodWindow,
+  BudgetTreeNode,
+  BudgetHierarchyWarningKind,
+  BudgetHierarchyWarning,
+  BudgetProgress,
+} from "./budgets";
 
 export {
   EFFICIENCY_ALERT_KINDS,

@@ -24,6 +24,7 @@
  * configuration: firing history, cooldown claims, run logs, change freezes.
  */
 import type { CostFilter, DashboardWidgetKind } from "./costs";
+import type { BudgetPeriod } from "./budgets";
 import type { TagPolicy } from "./tag-policy";
 
 /** Document format version. Bumped only for a breaking document change. */
@@ -154,10 +155,23 @@ export interface OrgConfigBudgetThreshold {
 export interface OrgConfigBudget {
   key: string;
   name: string;
+  /** 0 for a usage budget or an explicit period list, which do not use it. */
   amountCents: number;
   currency: string;
   filters: CostFilter[];
   thresholds: OrgConfigBudgetThreshold[];
+  /*
+   * The fields below are written only when they differ from the default, so
+   * a monthly spend budget exports exactly as it did before they existed.
+   */
+  /** Absent is spend. */
+  measure?: "usage" | undefined;
+  usageUnit?: string | undefined;
+  usageAmount?: number | undefined;
+  /** Absent is the calendar month. */
+  period?: BudgetPeriod | undefined;
+  /** `key` of the parent budget in this document's `budgets`. */
+  parentKey?: string | undefined;
 }
 
 /** A dashboard card. Order in `cards` is the grid order (`gridX`). */

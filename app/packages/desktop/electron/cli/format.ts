@@ -361,3 +361,134 @@ export function formatInvoiceTotal(
     .map(([code, amount]) => `${amount.toFixed(2)} ${code}`)
     .join(" + ");
 }
+
+/* ------------------------------------------------------------------ *
+ * Budgets (`infrawrench budgets`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The subset of `BudgetWithStatus` the budget tree reads. Restated rather than
+ * imported because this module stays free of client-core (see the header),
+ * and every field past the first few is optional so a CLI a release ahead of
+ * its server still prints an older row as a monthly spend budget.
+ */
+export interface CliBudgetRow {
+  id: string;
+  name: string;
+  amountCents: number;
+  currency: string;
+  month: string;
+  actualCents: number;
+  forecastCents: number | null;
+  scenarioForecastCents?: number | null | undefined;
+  currentMonthEvents: unknown[];
+  measure?: "cost" | "usage" | undefined;
+  usageUnit?: string | null | undefined;
+  parentBudgetId?: string | null | undefined;
+  periodStart?: string | null | undefined;
+  periodEnd?: string | null | undefined;
+  periodLimit?: number | null | undefined;
+  actualUsage?: number | null | undefined;
+  forecastUsage?: number | null | undefined;
+  rolledUp?: boolean | undefined;
+  hierarchyWarnings?: Array<{ kind: string; childTotal: number; parentLimit: number }> | undefined;
+}
+
+/** A budget figure in its own unit: money from cents, or a usage quantity. */
+export function formatBudgetValue(row: CliBudgetRow, value: number): string {
+  if (row.measure === "usage") {
+    const text = new Intl.NumberFormat("en-US", {
+      notation: Math.abs(value) >= 10_000 ? "compact" : "standard",
+      maximumFractionDigits: Math.abs(value) < 10 ? 2 : 1,
+    }).format(value);
+    return row.usageUnit ? `${text} ${row.usageUnit}` : text;
+  }
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: row.currency,
+      maximumFractionDigits: Math.abs(value) < 1000 ? 2 : 0,
+    }).format(value / 100);
+  } catch {
+    return `${(value / 100).toFixed(2)} ${row.currency}`;
+  }
+}
+
+/** The figures a budget row prints, in the API's units (cents or quantity). */
+export function budgetFigures(row: CliBudgetRow): {
+  limit: number | null;
+  actual: number;
+  forecast: number | null;
+  percent: number | null;
+} {
+  const usage = row.measure === "usage";
+  const limit =
+    row.periodLimit !== undefined ? row.periodLimit : row.amountCents > 0 ? row.amountCents : null;
+  const actual = usage ? (row.actualUsage ?? 0) : row.actualCents;
+  const forecast = usage
+    ? (row.forecastUsage ?? null)
+    : (row.scenarioForecastCents ?? row.forecastCents);
+  return {
+    limit,
+    actual,
+    forecast,
+    percent: limit !== null && limit > 0 ? (actual / limit) * 100 : null,
+  };
+}
+
+/** `██████░░░░` for a percentage, capped at the bar's width. */
+export function budgetBar(percent: number | null, width = 16): string {
+  if (percent === null) return c.dim("·".repeat(width));
+  const filled = Math.max(0, Math.min(width, Math.round((percent / 100) * width)));
+  const paint = percent >= 100 ? c.red : percent >= 80 ? c.yellow : c.green;
+  return paint("█".repeat(filled)) + c.dim("░".repeat(width - filled));
+}
+
+/** "2026-07" for a calendar-month budget, "2026-10-05 → 2026-10-18" otherwise. */
+export function formatBudgetPeriod(row: CliBudgetRow): string {
+  if (row.periodStart === null) return "no active period";
+  if (!row.periodStart || !row.periodEnd) return row.month;
+  const monthStart = row.periodStart.endsWith("-01") && row.periodStart.slice(0, 7) === row.month;
+  const monthEnd = new Date(`${row.periodEnd}T00:00:00Z`);
+  monthEnd.setUTCDate(monthEnd.getUTCDate() + 1);
+  if (monthStart && monthEnd.getUTCDate() === 1 && row.periodEnd.slice(0, 7) === row.month) {
+    return row.month;
+  }
+  return `${row.periodStart} → ${row.periodEnd}`;
+}
+
+/**
+ * Depth-first order with each row's depth: parents before their children,
+ * siblings in input order. A row whose parent is missing prints at the top
+ * level rather than vanishing, and a cycle is broken at the first repeat.
+ */
+export function orderBudgetTree<T extends CliBudgetRow>(
+  rows: T[],
+): Array<{ row: T; depth: number }> {
+  const ids = new Set(rows.map((r) => r.id));
+  const out: Array<{ row: T; depth: number }> = [];
+  const seen = new Set<string>();
+  const visit = (row: T, depth: number) => {
+    if (seen.has(row.id)) return;
+    seen.add(row.id);
+    out.push({ row, depth });
+    for (const child of rows) if (child.parentBudgetId === row.id) visit(child, depth + 1);
+  };
+  for (const row of rows) {
+    if (!row.parentBudgetId || !ids.has(row.parentBudgetId)) visit(row, 0);
+  }
+  for (const row of rows) visit(row, 0);
+  return out;
+}
+
+/** One sentence per hierarchy warning, in the parent's unit. */
+export function formatBudgetWarning(
+  row: CliBudgetRow,
+  warning: { kind: string; childTotal: number; parentLimit: number },
+): string {
+  const total = formatBudgetValue(row, warning.childTotal);
+  const limit = formatBudgetValue(row, warning.parentLimit);
+  if (warning.kind === "allocation") return `children allocate ${total}, more than ${limit}`;
+  if (warning.kind === "actual") return `children have reached ${total}, past ${limit}`;
+  return `children are forecast to reach ${total}, past ${limit}`;
+}

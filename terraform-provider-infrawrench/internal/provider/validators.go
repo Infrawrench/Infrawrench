@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
@@ -90,4 +92,31 @@ func elementsLengthBetween(minimum, maximum int) validator.List {
 // joinBackticked renders an enum for a Markdown description.
 func joinBackticked(values []string) string {
 	return strings.Join(values, "`, `")
+}
+
+// positiveFloatAtMost bounds a float attribute to (0, maximum]: the usage
+// amounts the API requires to be strictly positive. float64validator has no
+// exclusive lower bound, so the zero case is checked here.
+func positiveFloatAtMost(maximum float64) validator.Float64 {
+	return positiveFloatValidator{maximum: maximum}
+}
+
+type positiveFloatValidator struct{ maximum float64 }
+
+func (v positiveFloatValidator) Description(_ context.Context) string {
+	return fmt.Sprintf("value must be greater than 0 and at most %g", v.maximum)
+}
+
+func (v positiveFloatValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v positiveFloatValidator) ValidateFloat64(ctx context.Context, req validator.Float64Request, resp *validator.Float64Response) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	value := req.ConfigValue.ValueFloat64()
+	if value <= 0 || value > v.maximum {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid attribute value", v.Description(ctx))
+	}
 }

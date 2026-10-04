@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useGT } from "gt-react";
 
 import { useDataString } from "../i18n/data-strings.js";
@@ -30,12 +30,15 @@ import { CostGraphCard } from "./CostGraphCard.js";
 import { CostCollectionNotice } from "./CostCollectionNotice.js";
 import { CostConversionNotice } from "./CostConversionNotice.js";
 import { DEFAULT_COST_GRAPH_CONFIG, DIMENSION_LABELS } from "./CostGraphConfigModal.js";
-import type {
-  BudgetInput,
-  CostAccountStatus,
-  CostConversion,
-  CostDimensionId,
-  CostGraphConfig,
+import {
+  buildBudgetTree,
+  budgetWithStatusToInput,
+  type BudgetTreeNode,
+  type BudgetInput,
+  type CostAccountStatus,
+  type CostConversion,
+  type CostDimensionId,
+  type CostGraphConfig,
 } from "./config.js";
 import type { BudgetWithStatus, CostsClient, CostsPanelDashboard } from "./types.js";
 
@@ -62,28 +65,12 @@ function overviewConfig(groupBy: CostDimensionId, adjusted: boolean): CostGraphC
   };
 }
 
-function budgetToInput(budget: BudgetWithStatus): BudgetInput {
-  return {
-    name: budget.name,
-    amountCents: budget.amountCents,
-    currency: budget.currency,
-    filters: budget.filters,
-    thresholds: budget.thresholds,
-    // Round-tripped, or editing a budget's name would quietly move it back to
-    // the cash basis it was deliberately taken off.
-    ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
-    // Same rule: a rename must not silently detach the saved filter scoping
-    // this budget; updates are full replaces.
-    ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
-    // Same rule: a rename must not silently detach the scenario model whose
-    // forecast this budget's thresholds were opted into.
-    ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
-    // Same rule: not exposed as a toggle in this editor, but settable via the
-    // API and the Terraform provider; a save here must not silently move a
-    // budget back off the adjusted (billing-rule) figure it was opted into.
-    ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
-  };
-}
+/**
+ * Every field round-trips (client-core owns the mapping), so saving a rename
+ * never resets a setting this editor does not show: the adjusted-spend opt-in
+ * is settable only through the API and the Terraform provider.
+ */
+const budgetToInput = budgetWithStatusToInput;
 
 function placementSummary(gt: ReturnType<typeof useGT>, budget: BudgetWithStatus): string {
   const count = budget.placements.length;
@@ -360,42 +347,46 @@ export function CostsPanel({
           {budgets?.length === 0 && (
             <p className="text-sm text-on-surface-faint">
               {gt(
-                "No budgets yet. A budget tracks a monthly amount against all spend or a filtered slice, and alerts when it crosses a threshold.",
+                "No budgets yet. A budget tracks spend or a usage quantity per period against all costs or a filtered slice, rolls up child budgets, and alerts when it crosses a threshold.",
               )}
             </p>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            {(budgets ?? []).map((budget) => (
-              <div key={budget.id} className="flex flex-col gap-1.5">
-                <BudgetCard
-                  budget={budget}
-                  onEdit={canWrite ? () => setEditing({ budget }) : undefined}
-                />
-                <div className="flex items-center justify-between gap-2 px-1 text-xs text-on-surface-faint">
-                  <PlacementList budget={budget} onOpenDashboard={onOpenDashboard} />
-                  <div className="flex items-center gap-2">
-                    {canPlace && (
-                      <button
-                        type="button"
-                        onClick={() => setPlacing(budget)}
-                        className="hover:text-on-surface-secondary underline"
-                      >
-                        {gt("Dashboards")}
-                      </button>
-                    )}
-                    {canWrite && (
-                      <button
-                        type="button"
-                        onClick={() => void deleteBudget(budget)}
-                        className="hover:text-danger underline"
-                      >
-                        {gt("Delete")}
-                      </button>
-                    )}
+          {/* A tree, not a flat list: a parent's card is the rollup of the
+              cards nested under it, so each level shows its own actual and
+              forecast against its own amount. Roots tile; children stack. */}
+          <div className="grid gap-4 sm:grid-cols-2 items-start">
+            {buildBudgetTree(budgets ?? []).map((node) => (
+              <BudgetTreeItem
+                key={node.budget.id}
+                node={node}
+                renderActions={(budget) => (
+                  <div className="flex items-center justify-between gap-2 px-1 text-xs text-on-surface-faint">
+                    <PlacementList budget={budget} onOpenDashboard={onOpenDashboard} />
+                    <div className="flex items-center gap-2">
+                      {canPlace && (
+                        <button
+                          type="button"
+                          onClick={() => setPlacing(budget)}
+                          className="hover:text-on-surface-secondary underline"
+                        >
+                          {gt("Dashboards")}
+                        </button>
+                      )}
+                      {canWrite && (
+                        <button
+                          type="button"
+                          onClick={() => void deleteBudget(budget)}
+                          className="hover:text-danger underline"
+                        >
+                          {gt("Delete")}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
+                )}
+                onEdit={canWrite ? (budget) => setEditing({ budget }) : undefined}
+              />
             ))}
           </div>
         </section>
@@ -470,6 +461,8 @@ export function CostsPanel({
       {editing && (
         <BudgetConfigModal
           initialInput={editing.budget ? budgetToInput(editing.budget) : DEFAULT_BUDGET_INPUT}
+          budgets={budgets ?? []}
+          budgetId={editing.budget?.id ?? null}
           api={client}
           onSave={saveBudget}
           onClose={() => setEditing(null)}
@@ -483,6 +476,59 @@ export function CostsPanel({
           onClose={() => setPlacing(null)}
           onChanged={refresh}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * One budget in the tree: its card and actions, then its children behind a
+ * disclosure. Expanded by default when a child has fired an alert or the
+ * parent carries a hierarchy warning, so the budget that needs attention is
+ * never hidden behind a collapsed row.
+ */
+function BudgetTreeItem({
+  node,
+  renderActions,
+  onEdit,
+}: {
+  node: BudgetTreeNode;
+  renderActions: (budget: BudgetWithStatus) => ReactNode;
+  onEdit?: ((budget: BudgetWithStatus) => void) | undefined;
+}) {
+  const gt = useGT();
+  const { budget, children } = node;
+  const needsAttention =
+    (budget.hierarchyWarnings?.length ?? 0) > 0 ||
+    children.some((c) => c.budget.currentMonthEvents.length > 0);
+  const [open, setOpen] = useState(needsAttention);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <BudgetCard budget={budget} onEdit={onEdit ? () => onEdit(budget) : undefined} />
+      {renderActions(budget)}
+      {children.length > 0 && (
+        <div className="px-1">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="text-xs text-on-surface-secondary hover:text-on-surface"
+          >
+            {open ? "▾" : "▸"} {gt("{count} child budgets", { count: children.length })}
+          </button>
+          {open && (
+            <div className="mt-2 flex flex-col gap-3 border-l border-border pl-3">
+              {children.map((child) => (
+                <BudgetTreeItem
+                  key={child.budget.id}
+                  node={child}
+                  renderActions={renderActions}
+                  onEdit={onEdit}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

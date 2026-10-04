@@ -192,4 +192,12 @@
 // and the `6m` relative date-range preset. All additive.
 // 1.56.0: AI request attribution; /ai-attribution sources, dimensions, locations, stats, spend
 // and reattribute routes. Caller dimensions surface as `caller:<key>` tag keys. Additive.
-export const API_VERSION = "1.56.0";
+// 1.57.0: budget hierarchies, usage budgets and flexible periods. Budgets gain
+// `measure`, `usageUnit`, `usageAmount`, `period` and `parentBudgetId`;
+// `amountCents` becomes optional (a usage budget and an explicit period list
+// do not use it); `BudgetWithStatus` gains the current period, its limit, the
+// usage figures and the rollup fields; alert events gain the period bounds and
+// usage figures; `GET /costs/dimensions` accepts `dimension=usage-units`; and
+// `GET /budgets/{id}` is documented as the `BudgetWithStatus` it always
+// returned. All additive.
+export const API_VERSION = "1.57.0";

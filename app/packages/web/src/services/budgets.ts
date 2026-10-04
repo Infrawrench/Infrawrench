@@ -6,14 +6,165 @@ import { visibilityOwnerCondition, visibilityUserIdForCreate } from "./cost-visi
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import type { BudgetPlacement, BudgetWithStatus } from "@infrawrench/ui/cost";
-import type { BudgetInput, CostBasis, CostFilter } from "@infrawrench/ui/cost/config";
-import { budgetMonthStatus } from "@infrawrench/server-core/cost/budget-eval";
+import {
+  BUDGET_LIMITS,
+  budgetDepth,
+  budgetDescendantIds,
+  budgetInputError,
+  budgetSubtreeHeight,
+  type BudgetInput,
+  type BudgetPeriod,
+  type CostBasis,
+  type CostFilter,
+} from "@infrawrench/ui/cost/config";
+import {
+  BudgetStatusResolver,
+  type BudgetPeriodStatus,
+} from "@infrawrench/server-core/cost/budget-eval";
 import { resolveCostScenarioModel } from "@infrawrench/server-core/cost/scenario-forecast";
 import { resolveSavedCostFilters } from "@infrawrench/server-core/cost/saved-filters";
 import { db } from "../db/client";
 import { budgetAlertEvents, budgets, dashboardWidgets, dashboards } from "../db/schema";
 
 type BudgetRow = typeof budgets.$inferSelect;
+
+/**
+ * A budget that is well-formed but cannot be saved as asked: an invalid
+ * combination of fields, or a parent that would break the hierarchy. The
+ * route and the MCP tools turn it into a 400 with this message.
+ */
+export class BudgetValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BudgetValidationError";
+  }
+}
+
+/** Every live budget in the org: the hierarchy is only checkable whole. */
+async function loadOrgBudgets(organizationId: string): Promise<BudgetRow[]> {
+  return db
+    .select()
+    .from(budgets)
+    .where(and(eq(budgets.organizationId, organizationId), isNull(budgets.deletedAt)))
+    .orderBy(budgets.createdAt);
+}
+
+/**
+ * The live budgets the caller may see (`visibilityOwnerCondition`): all of them
+ * when unrestricted, only their own when cost-scoped. What a listing shows and
+ * what a parent rolls up, so a scoped member's parent never sums a budget they
+ * cannot read; `budget-eval` applies the same rule per owner.
+ */
+async function loadVisibleBudgets(organizationId: string): Promise<BudgetRow[]> {
+  return db
+    .select()
+    .from(budgets)
+    .where(
+      and(
+        eq(budgets.organizationId, organizationId),
+        visibilityOwnerCondition(budgets.visibilityUserId, organizationId),
+        isNull(budgets.deletedAt),
+      ),
+    )
+    .orderBy(budgets.createdAt);
+}
+
+function measureOf(b: { measure?: string | null | undefined }): "cost" | "usage" {
+  return b.measure === "usage" ? "usage" : "cost";
+}
+
+/** "USD", or "tokens (usage)": what a budget's figures are counted in. */
+function unitLabel(b: {
+  measure?: string | null | undefined;
+  currency: string;
+  usageUnit?: string | null | undefined;
+}): string {
+  return measureOf(b) === "usage" ? `${b.usageUnit ?? ""} (usage)` : b.currency;
+}
+
+function sameUnit(
+  a: {
+    measure?: string | null | undefined;
+    currency: string;
+    usageUnit?: string | null | undefined;
+  },
+  b: {
+    measure?: string | null | undefined;
+    currency: string;
+    usageUnit?: string | null | undefined;
+  },
+): boolean {
+  if (measureOf(a) !== measureOf(b)) return false;
+  return measureOf(a) === "usage" ? a.usageUnit === b.usageUnit : a.currency === b.currency;
+}
+
+/**
+ * Refuse a write that the rollup could not honour. A parent sums its
+ * children, so they must count the same thing (one currency, or one usage
+ * unit); the tree must stay a tree; and it must stay shallow enough to read.
+ * Runs on create (budgetId null) and on update, where a budget that already
+ * has children may not change what it counts out from under them.
+ */
+async function validateBudgetWrite(
+  organizationId: string,
+  input: BudgetInput,
+  budgetId: string | null,
+): Promise<void> {
+  const shapeError = budgetInputError(input);
+  if (shapeError) throw new BudgetValidationError(shapeError);
+
+  const parentId = input.parentBudgetId;
+  const touchesHierarchy = parentId !== undefined || budgetId !== null;
+  if (!touchesHierarchy) return;
+  const all = await loadOrgBudgets(organizationId);
+  const self = { measure: input.measure, currency: input.currency, usageUnit: input.usageUnit };
+
+  if (budgetId) {
+    const mismatched = all.filter((b) => b.parentBudgetId === budgetId && !sameUnit(b, self));
+    if (mismatched.length > 0) {
+      throw new BudgetValidationError(
+        `This budget has child budgets counted in ${unitLabel(mismatched[0]!)}; a parent must count the same thing as its children.`,
+      );
+    }
+  }
+
+  if (!parentId) return;
+  if (parentId === budgetId) throw new BudgetValidationError("A budget cannot be its own parent.");
+  // The parent must be one the caller can see; a hidden one reads as absent.
+  // The structural checks below still run over the whole tree, which is what
+  // has to stay consistent.
+  const visibleIds = new Set((await loadVisibleBudgets(organizationId)).map((b) => b.id));
+  const parent = visibleIds.has(parentId) ? all.find((b) => b.id === parentId) : undefined;
+  if (!parent) throw new BudgetValidationError("Parent budget not found.");
+  if (budgetId && budgetDescendantIds(all, budgetId).has(parentId)) {
+    throw new BudgetValidationError("A budget cannot roll up into one of its own children.");
+  }
+  if (!sameUnit(parent, self)) {
+    throw new BudgetValidationError(
+      `The parent budget counts ${unitLabel(parent)}; a child must count the same thing.`,
+    );
+  }
+  const depth = budgetDepth(all, parentId) + (budgetId ? budgetSubtreeHeight(all, budgetId) : 1);
+  if (depth > BUDGET_LIMITS.maxDepth) {
+    throw new BudgetValidationError(
+      `Budget hierarchies are limited to ${BUDGET_LIMITS.maxDepth} levels.`,
+    );
+  }
+}
+
+/** The new columns of a budget write, shared by create and update. */
+function shapeColumns(input: BudgetInput) {
+  const usage = input.measure === "usage";
+  return {
+    measure: usage ? ("usage" as const) : ("cost" as const),
+    // Absent clears, like every other field of a full-replace PUT: a budget
+    // switched back to spend must not keep a stale unit around.
+    usageUnit: usage ? (input.usageUnit ?? null) : null,
+    usageAmount: usage ? (input.usageAmount ?? null) : null,
+    period: (input.period ?? null) as BudgetPeriod | null,
+    parentBudgetId: input.parentBudgetId ?? null,
+  };
+}
 
 /**
  * Which dashboards carry a card for each of `budgetIds`, keyed by budget id.
@@ -64,28 +215,24 @@ async function loadBudgetPlacements(
 
 /** Assemble the wire row for one budget, given its already-loaded status. */
 async function toBudgetWithStatus(
-  organizationId: string,
+  resolver: BudgetStatusResolver,
   b: BudgetRow,
   placements: BudgetPlacement[],
 ): Promise<BudgetWithStatus> {
   const costBasis = (b.costBasis ?? "cash") as CostBasis;
   // A saved-filter reference that fails to resolve throws out of here rather
   // than evaluating the budget over all spend: the error is the honest answer.
-  const status = await budgetMonthStatus(
-    organizationId,
-    (b.filters ?? []) as CostFilter[],
-    b.currency,
-    undefined,
-    costBasis,
-    b.savedFilterId,
-    b.scenarioModelId,
-    b.useAdjustedSpend,
-  );
-  const events = await db
-    .select()
-    .from(budgetAlertEvents)
-    .where(and(eq(budgetAlertEvents.budgetId, b.id), eq(budgetAlertEvents.month, status.month)))
-    .orderBy(desc(budgetAlertEvents.triggeredAt));
+  const status: BudgetPeriodStatus = await resolver.status(b.id);
+  // Events of the period being shown; none when no period covers today.
+  const events = status.periodKey
+    ? await db
+        .select()
+        .from(budgetAlertEvents)
+        .where(
+          and(eq(budgetAlertEvents.budgetId, b.id), eq(budgetAlertEvents.month, status.periodKey)),
+        )
+        .orderBy(desc(budgetAlertEvents.triggeredAt))
+    : [];
 
   return {
     id: b.id,
@@ -116,30 +263,33 @@ async function toBudgetWithStatus(
       triggeredAt: e.triggeredAt.toISOString(),
     })),
     placements,
+    measure: status.measure,
+    usageUnit: b.usageUnit,
+    usageAmount: b.usageAmount,
+    period: (b.period ?? null) as BudgetPeriod | null,
+    parentBudgetId: b.parentBudgetId,
+    periodStart: status.periodStart,
+    periodEnd: status.periodEnd,
+    periodLimit: status.limit,
+    actualUsage: status.actualUsage,
+    forecastUsage: status.forecastUsage,
+    rolledUp: status.rolledUp,
+    childCount: status.childCount,
+    hierarchyWarnings: status.hierarchyWarnings,
   };
 }
 
 /** List budgets with current-month actual/forecast status and fired events. */
 export async function listBudgetsWithStatus(organizationId: string): Promise<BudgetWithStatus[]> {
-  const rows = await db
-    .select()
-    .from(budgets)
-    .where(
-      and(
-        eq(budgets.organizationId, organizationId),
-        visibilityOwnerCondition(budgets.visibilityUserId, organizationId),
-        isNull(budgets.deletedAt),
-      ),
-    )
-    .orderBy(budgets.createdAt);
+  const rows = await loadVisibleBudgets(organizationId);
 
   const placements = await loadBudgetPlacements(
     organizationId,
     rows.map((b) => b.id),
   );
-  return Promise.all(
-    rows.map((b) => toBudgetWithStatus(organizationId, b, placements.get(b.id) ?? [])),
-  );
+  // One resolver for the whole list, so a parent and its children share reads.
+  const resolver = new BudgetStatusResolver(organizationId, rows);
+  return Promise.all(rows.map((b) => toBudgetWithStatus(resolver, b, placements.get(b.id) ?? [])));
 }
 
 /**
@@ -155,22 +305,15 @@ export async function getBudgetWithStatus(
   organizationId: string,
   budgetId: string,
 ): Promise<BudgetWithStatus | null> {
-  const [budget] = await db
-    .select()
-    .from(budgets)
-    .where(
-      and(
-        eq(budgets.id, budgetId),
-        eq(budgets.organizationId, organizationId),
-        visibilityOwnerCondition(budgets.visibilityUserId, organizationId),
-        isNull(budgets.deletedAt),
-      ),
-    )
-    .limit(1);
+  // The caller's visible budgets, not one row: a parent's figures are its
+  // children's, and only the children the caller can see.
+  const rows = await loadVisibleBudgets(organizationId);
+  const budget = rows.find((b) => b.id === budgetId);
   if (!budget) return null;
 
   const placements = await loadBudgetPlacements(organizationId, [budget.id]);
-  return toBudgetWithStatus(organizationId, budget, placements.get(budget.id) ?? []);
+  const resolver = new BudgetStatusResolver(organizationId, rows);
+  return toBudgetWithStatus(resolver, budget, placements.get(budget.id) ?? []);
 }
 
 export async function createBudget(
@@ -178,6 +321,7 @@ export async function createBudget(
   input: BudgetInput,
   createdByUserId: string | null,
 ): Promise<BudgetRow> {
+  await validateBudgetWrite(organizationId, input, null);
   // Reject a dangling reference at write time (SavedCostFilterResolutionError
   // → 400 in the route): a budget born pointing at nothing would error every
   // evaluation from its first day.
@@ -207,6 +351,7 @@ export async function createBudget(
       useAdjustedSpend: input.useAdjustedSpend ?? false,
       // A cost-scoped creator's budget measures only what they can see.
       visibilityUserId: visibilityUserIdForCreate(organizationId),
+      ...shapeColumns(input),
       createdByUserId,
     })
     .returning();
@@ -219,6 +364,7 @@ export async function updateBudget(
   budgetId: string,
   input: BudgetInput,
 ): Promise<BudgetRow | null> {
+  await validateBudgetWrite(organizationId, input, budgetId);
   if (input.savedFilterId) await resolveSavedCostFilters(organizationId, input.savedFilterId);
   if (input.scenarioModelId) {
     await resolveCostScenarioModel(organizationId, input.scenarioModelId);
@@ -241,6 +387,7 @@ export async function updateBudget(
       // Same rule, same safe direction: absent clears the opt-in and the budget
       // goes back to measuring what the providers actually charged.
       useAdjustedSpend: input.useAdjustedSpend ?? false,
+      ...shapeColumns(input),
       updatedAt: new Date(),
     })
     .where(
@@ -278,8 +425,21 @@ export async function softDeleteBudget(organizationId: string, budgetId: string)
         isNull(budgets.deletedAt),
       ),
     )
-    .returning({ id: budgets.id });
+    .returning({ id: budgets.id, parentBudgetId: budgets.parentBudgetId });
   if (!deleted) return false;
+
+  // Children move up a level rather than becoming roots: they were part of
+  // whatever the deleted budget rolled up into, and still are.
+  await db
+    .update(budgets)
+    .set({ parentBudgetId: deleted.parentBudgetId, updatedAt: now })
+    .where(
+      and(
+        eq(budgets.organizationId, organizationId),
+        eq(budgets.parentBudgetId, budgetId),
+        isNull(budgets.deletedAt),
+      ),
+    );
 
   await db
     .update(dashboardWidgets)
@@ -324,5 +484,9 @@ export async function listBudgetEvents(organizationId: string, budgetId: string)
     actualAmountCents: e.actualAmountCents,
     forecastAmountCents: e.forecastAmountCents,
     triggeredAt: e.triggeredAt.toISOString(),
+    periodStart: e.periodStart,
+    periodEnd: e.periodEnd,
+    actualUsage: e.actualUsage,
+    forecastUsage: e.forecastUsage,
   }));
 }

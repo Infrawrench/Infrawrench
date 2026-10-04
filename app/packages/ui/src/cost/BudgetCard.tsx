@@ -1,5 +1,13 @@
+import { useState } from "react";
 import { useGT } from "gt-react";
 import { formatBudgetMonth, formatMoney } from "./transform.js";
+import {
+  budgetProgress,
+  formatBudgetPeriodWindow,
+  formatUsageQuantity,
+  upcomingBudgetPeriod,
+  type BudgetHierarchyWarning,
+} from "./config.js";
 import type { BudgetWithStatus } from "./types.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
@@ -7,42 +15,56 @@ export interface BudgetCardProps {
   budget: BudgetWithStatus;
   onEdit?: (() => void) | undefined;
   onRemove?: (() => void) | undefined;
+  /**
+   * The budget's direct children, when the host has them: a dashboard card
+   * for a parent lists them (collapsed) so the rollup can be read without
+   * leaving the dashboard. The Costs panel draws the full tree itself and
+   * leaves this off.
+   */
+  childBudgets?: BudgetWithStatus[] | undefined;
+}
+
+/** Formats a value in the budget's own unit: money, or a usage quantity. */
+export function budgetValueFormatter(budget: BudgetWithStatus): (value: number) => string {
+  return budget.measure === "usage"
+    ? (value) => formatUsageQuantity(value, budget.usageUnit)
+    : (value) => formatMoney(value, budget.currency);
+}
+
+/** The period a card is showing: "July 2026", "Oct 5 – Oct 18, 2026". */
+function usePeriodLabel(budget: BudgetWithStatus): string {
+  const gt = useGT();
+  if (!budget.period) return formatBudgetMonth(budget.month);
+  if (budget.periodStart && budget.periodEnd) {
+    return formatBudgetPeriodWindow({ start: budget.periodStart, end: budget.periodEnd });
+  }
+  const next = upcomingBudgetPeriod(budget.period, new Date().toISOString().slice(0, 10));
+  return next
+    ? gt("No active period · next starts {date}", {
+        date: formatBudgetPeriodWindow({ start: next.start, end: next.start }),
+      })
+    : gt("No active period");
 }
 
 /**
- * Budget progress card: month-to-date actual vs the budget amount, a
+ * Budget progress card: period-to-date actual vs the period's limit, a
  * forecast marker, threshold ticks, and an alert badge when a threshold has
- * fired this month. Status colors are reserved for state (on-track /
- * approaching / over), never used as series colors.
+ * fired this period. Spend budgets read in money, usage budgets in their unit;
+ * a parent says it is the sum of its children and flags children that outgrow
+ * it. Status colors are reserved for state (on-track / approaching / over),
+ * never used as series colors.
  */
-export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
+export function BudgetCard({ budget, onEdit, onRemove, childBudgets }: BudgetCardProps) {
   const gt = useGT();
-  const amount = budget.amountCents / 100;
-  const actual = budget.actualCents / 100;
-  /**
-   * The number the budget's forecast thresholds are actually judged against.
-   *
-   * For a budget that opted into a scenario model that is the adjusted figure,
-   * not the bare trend: a marker that showed the trend while the alert fired
-   * on something else would be the single most confusing thing this card could
-   * do. `scenarioForecastCents` is null for every budget that did not opt in,
-   * so this reads as the trend exactly as it always has.
-   */
-  const judgedForecastCents = budget.scenarioForecastCents ?? budget.forecastCents;
-  const forecast = judgedForecastCents === null ? null : judgedForecastCents / 100;
-  /** The unadjusted trend, shown alongside so both numbers stay comparable. */
-  const trendForecast =
-    budget.scenarioForecastCents != null && budget.forecastCents !== null
-      ? budget.forecastCents / 100
-      : null;
-
-  const actualPct = amount > 0 ? (actual / amount) * 100 : 0;
-  const forecastPct = forecast !== null && amount > 0 ? (forecast / amount) * 100 : null;
+  const progress = budgetProgress(budget);
+  const fmt = budgetValueFormatter(budget);
+  const { limit, actual, forecast, trendForecast, actualPercent: actualPct } = progress;
+  const forecastPct = progress.forecastPercent;
   const fired = budget.currentMonthEvents.length > 0;
 
   const barColor =
     actualPct >= 100 ? "bg-red-500" : actualPct >= 80 ? "bg-amber-500" : "bg-emerald-500";
-  const monthLabel = formatBudgetMonth(budget.month);
+  const periodLabel = usePeriodLabel(budget);
 
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden">
@@ -79,6 +101,11 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
           >
             {budget.name}
           </h3>
+          {budget.measure === "usage" && (
+            <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-surface-sunken text-on-surface-secondary">
+              {gt("Usage")}
+            </span>
+          )}
           {fired && (
             <span
               className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-500/15 text-danger"
@@ -97,15 +124,14 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
         </div>
 
         <div>
-          <div className="flex items-baseline justify-between mb-1.5">
+          <div className="flex items-baseline justify-between gap-2 mb-1.5">
             <span className="text-xl font-semibold text-on-surface">
-              {formatMoney(actual, budget.currency)}
+              {progress.active ? fmt(actual) : "—"}
             </span>
-            <span className="text-xs text-on-surface-faint">
-              {gt("of {amount} · {month}", {
-                amount: formatMoney(amount, budget.currency),
-                month: monthLabel,
-              })}
+            <span className="text-xs text-on-surface-faint text-right">
+              {limit !== null
+                ? gt("of {amount} · {month}", { amount: fmt(limit), month: periodLabel })
+                : periodLabel}
             </span>
           </div>
 
@@ -114,13 +140,11 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
               className={`absolute inset-y-0 left-0 rounded-full ${barColor}`}
               style={{ width: `${Math.min(100, actualPct)}%` }}
             />
-            {forecastPct !== null && forecastPct > actualPct && (
+            {forecastPct !== null && forecast !== null && forecastPct > actualPct && (
               <div
                 className="absolute inset-y-0 border-r-2 border-dashed border-on-surface-faint"
                 style={{ left: `${Math.min(100, forecastPct)}%` }}
-                title={gt("Forecast: {amount}", {
-                  amount: formatMoney(forecast!, budget.currency),
-                })}
+                title={gt("Forecast: {amount}", { amount: fmt(forecast) })}
               />
             )}
             {budget.thresholds.map((t, i) => (
@@ -136,7 +160,7 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
             ))}
           </div>
 
-          <div className="flex items-center justify-between mt-1.5 text-[11px] text-on-surface-faint">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 mt-1.5 text-[11px] text-on-surface-faint">
             <span>{gt("{percent}% used", { percent: actualPct.toFixed(0) })}</span>
             {forecast !== null && (
               <span
@@ -146,18 +170,16 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
                         'Projected month-end total, including scenario "{scenario}". Trend alone: {trend}',
                         {
                           scenario: budget.scenarioModelName,
-                          trend:
-                            trendForecast !== null
-                              ? formatMoney(trendForecast, budget.currency)
-                              : "—",
+                          trend: trendForecast !== null ? fmt(trendForecast) : "—",
                         },
                       )
-                    : gt("Projected month-end total based on the recent trend")
+                    : budget.period
+                      ? gt("Projected period-end total based on the recent trend")
+                      : gt("Projected month-end total based on the recent trend")
                 }
               >
-                {gt("Forecast {amount}", { amount: formatMoney(forecast, budget.currency) })}
-                {amount > 0 &&
-                  gt(" ({percent}%)", { percent: ((forecast / amount) * 100).toFixed(0) })}
+                {gt("Forecast {amount}", { amount: fmt(forecast) })}
+                {forecastPct !== null && gt(" ({percent}%)", { percent: forecastPct.toFixed(0) })}
               </span>
             )}
             {/* Named on the card, not just in the tooltip: the figure the
@@ -166,16 +188,107 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
             {budget.scenarioModelName && (
               <span className="text-warning">
                 {gt("incl. scenario “{scenario}”", { scenario: budget.scenarioModelName })}
-                {trendForecast !== null &&
-                  gt(" · trend {amount}", {
-                    amount: formatMoney(trendForecast, budget.currency),
-                  })}
+                {trendForecast !== null && gt(" · trend {amount}", { amount: fmt(trendForecast) })}
               </span>
             )}
           </div>
+
+          {budget.rolledUp && (
+            <p className="mt-1.5 text-[11px] text-on-surface-faint">
+              {gt("Sum of {count} child budgets", { count: budget.childCount ?? 0 })}
+            </p>
+          )}
+          {(budget.hierarchyWarnings ?? []).map((w) => (
+            <HierarchyWarning key={w.kind} warning={w} format={fmt} budget={budget} />
+          ))}
         </div>
+
+        {childBudgets && childBudgets.length > 0 && <ChildBudgetList budgets={childBudgets} />}
       </div>
     </div>
+  );
+}
+
+function HierarchyWarning({
+  warning,
+  format,
+  budget,
+}: {
+  warning: BudgetHierarchyWarning;
+  format: (value: number) => string;
+  budget: BudgetWithStatus;
+}) {
+  const gt = useGT();
+  // Both figures are in the API's unit: cents for money, the quantity for usage.
+  const scale = budget.measure === "usage" ? 1 : 100;
+  const total = format(warning.childTotal / scale);
+  const limit = format(warning.parentLimit / scale);
+  const text =
+    warning.kind === "allocation"
+      ? gt("Child budgets allocate {total}, more than this budget's {limit}", { total, limit })
+      : warning.kind === "actual"
+        ? gt("Child budgets have reached {total}, past this budget's {limit}", { total, limit })
+        : gt("Child budgets are forecast to reach {total}, past this budget's {limit}", {
+            total,
+            limit,
+          });
+  return (
+    <p role="status" className="mt-1 text-[11px] text-warning">
+      ⚠ {text}
+    </p>
+  );
+}
+
+/** A dashboard card's collapsed list of its children, one row each. */
+function ChildBudgetList({ budgets }: { budgets: BudgetWithStatus[] }) {
+  const gt = useGT();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-border pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="text-[11px] text-on-surface-secondary hover:text-on-surface"
+      >
+        {open ? "▾" : "▸"} {gt("{count} child budgets", { count: budgets.length })}
+      </button>
+      {open && (
+        <ul className="mt-1.5 space-y-1.5">
+          {budgets.map((child) => (
+            <ChildBudgetRow key={child.id} budget={child} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ChildBudgetRow({ budget }: { budget: BudgetWithStatus }) {
+  const gt = useGT();
+  const progress = budgetProgress(budget);
+  const fmt = budgetValueFormatter(budget);
+  const pct = progress.actualPercent;
+  const color = pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-emerald-500";
+  return (
+    <li className="text-[11px]">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-on-surface-secondary" title={budget.name}>
+          {budget.name}
+        </span>
+        <span className="flex-shrink-0 text-on-surface-faint">
+          {progress.limit !== null
+            ? gt("{actual} of {limit}", {
+                actual: fmt(progress.actual),
+                limit: fmt(progress.limit),
+              })
+            : fmt(progress.actual)}
+        </span>
+      </div>
+      <div className="mt-0.5 h-1 rounded-full bg-surface-sunken overflow-hidden">
+        <div className={`h-full ${color}`} style={{ width: `${Math.min(100, pct)}%` }} />
+      </div>
+    </li>
   );
 }
 
@@ -184,6 +297,8 @@ export interface BudgetWidgetCardProps {
   budget: BudgetWithStatus | undefined;
   onEdit?: (() => void) | undefined;
   onRemove?: (() => void) | undefined;
+  /** Every budget the dashboard loaded, so a parent's card can list its children. */
+  allBudgets?: Iterable<BudgetWithStatus> | undefined;
 }
 
 /**
@@ -191,7 +306,7 @@ export interface BudgetWidgetCardProps {
  * from the widgets that reference them, so the placeholder holds the card's
  * position (and its drag handle) until the row arrives.
  */
-export function BudgetWidgetCard({ budget, onEdit, onRemove }: BudgetWidgetCardProps) {
+export function BudgetWidgetCard({ budget, onEdit, onRemove, allBudgets }: BudgetWidgetCardProps) {
   const gt = useGT();
   if (!budget) {
     return (
@@ -200,5 +315,8 @@ export function BudgetWidgetCard({ budget, onEdit, onRemove }: BudgetWidgetCardP
       </div>
     );
   }
-  return <BudgetCard budget={budget} onEdit={onEdit} onRemove={onRemove} />;
+  const children = allBudgets
+    ? [...allBudgets].filter((b) => b.parentBudgetId === budget.id)
+    : undefined;
+  return <BudgetCard budget={budget} onEdit={onEdit} onRemove={onRemove} childBudgets={children} />;
 }

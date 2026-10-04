@@ -71,9 +71,107 @@ const BudgetUseAdjustedSpend = z
       "the collected one. Updates are full replaces, so omitting it on PUT clears the opt-in.",
   );
 
+const IsoDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .openapi({ example: "2026-10-01" });
+
+const BudgetMeasure = z
+  .enum(["cost", "usage"])
+  .describe(
+    "What the budget counts. `cost` (the default) is money in `currency`, against " +
+      "`amountCents`. `usage` sums the cost rows' usage quantity in `usageUnit` against " +
+      "`usageAmount` (tokens, GB, instance-hours, requests: whatever the providers report; " +
+      "list them with GET /costs/dimensions?dimension=usage-units). Units are matched exactly " +
+      "and never converted. A usage budget takes no scenario model and no billing rules.",
+  )
+  .openapi("BudgetMeasure");
+
+const BudgetUsageUnit = z
+  .string()
+  .min(1)
+  .max(64)
+  .describe("The usage unit a usage budget counts, exactly as the providers report it.");
+
+const BudgetUsageAmount = z
+  .number()
+  .positive()
+  .max(1e15)
+  .describe("A usage budget's limit per period, in `usageUnit`.");
+
+const BudgetPeriod = z
+  .discriminatedUnion("kind", [
+    strict({
+      kind: z.literal("recurring"),
+      unit: z.enum(["day", "week", "month", "quarter", "year"]),
+      interval: z.number().int().min(1).max(365),
+      startDate: IsoDay.describe("First day of the first period (UTC, inclusive)."),
+    }).openapi("BudgetRecurringPeriod"),
+    strict({
+      kind: z.literal("explicit"),
+      periods: z
+        .array(
+          strict({
+            start: IsoDay,
+            end: IsoDay,
+            amountCents: z
+              .number()
+              .int()
+              .positive()
+              .optional()
+              .describe("This period's limit, for a spend budget."),
+            usageAmount: BudgetUsageAmount.optional().describe(
+              "This period's limit, for a usage budget.",
+            ),
+          }),
+        )
+        .min(1)
+        .max(60)
+        .describe("Non-overlapping, inclusive periods, each with its own amount."),
+    }).openapi("BudgetExplicitPeriods"),
+  ])
+  .describe(
+    "Which periods the budget covers. Omitted (or null) is the calendar month. `recurring` " +
+      "repeats every `interval` × `unit` from `startDate`; `explicit` lists the periods with " +
+      "an amount each, and the top-level amount is then ignored. Thresholds fire once per " +
+      "period; days outside every period are not measured.",
+  )
+  .openapi("BudgetPeriod");
+
+const BudgetParentId = z
+  .string()
+  .describe(
+    "The budget this one rolls up into. A parent's actual and forecast are the sum of its " +
+      "children's, each measured over the parent's period; parent and children must count " +
+      "the same thing (one currency, or one usage unit). Hierarchies are at most 4 levels " +
+      "deep. Deleting a budget moves its children up to its own parent. Updates are full " +
+      "replaces, so omitting it on PUT makes the budget a root.",
+  );
+
+const BudgetHierarchyWarning = strict({
+  kind: z
+    .enum(["allocation", "actual", "forecast"])
+    .describe(
+      "`allocation`: the children's own amounts for this period (children on the same period " +
+        "only) add up to more than the parent's. `actual`: together they have already spent " +
+        "more. `forecast`: together they are projected to.",
+    ),
+  childTotal: z.number().describe("The children's total, in the parent's unit."),
+  parentLimit: z.number().describe("The parent's limit for the period, in the same unit."),
+}).openapi("BudgetHierarchyWarning");
+
 const BudgetInput = strict({
   name: z.string().min(1).max(120),
-  amountCents: z.number().int().positive(),
+  amountCents: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      "The limit per period of a spend budget, in minor units of `currency`. Required (and " +
+        "positive) for a spend budget unless `period` is an explicit list; ignored by a usage " +
+        "budget. Defaults to 0.",
+    ),
   currency: z.string().length(3).optional(),
   filters: z.array(CostFilterRef).optional(),
   savedFilterId: BudgetSavedFilterId.optional(),
@@ -81,6 +179,11 @@ const BudgetInput = strict({
   thresholds: z.array(BudgetThreshold).min(1).max(10),
   costBasis: BudgetCostBasis.optional(),
   useAdjustedSpend: BudgetUseAdjustedSpend.optional(),
+  measure: BudgetMeasure.optional(),
+  usageUnit: BudgetUsageUnit.optional(),
+  usageAmount: BudgetUsageAmount.optional(),
+  period: BudgetPeriod.optional(),
+  parentBudgetId: BudgetParentId.optional(),
 }).openapi("BudgetInput");
 
 const BudgetFull = strict({
@@ -99,6 +202,11 @@ const BudgetFull = strict({
   deletedAt: IsoDateTime.nullable(),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  measure: BudgetMeasure,
+  usageUnit: BudgetUsageUnit.nullable(),
+  usageAmount: BudgetUsageAmount.nullable(),
+  period: BudgetPeriod.nullable(),
+  parentBudgetId: BudgetParentId.nullable(),
 }).openapi("BudgetFull");
 
 const BudgetAlertEvent = strict({
@@ -109,6 +217,16 @@ const BudgetAlertEvent = strict({
   actualAmountCents: z.number().int(),
   forecastAmountCents: z.number().int().nullable(),
   triggeredAt: IsoDateTime,
+  periodStart: IsoDay.nullable().describe(
+    "First day of the period the crossing was observed in; null on events from before " +
+      "budget periods were configurable (those are calendar months: see `month`).",
+  ),
+  periodEnd: IsoDay.nullable(),
+  actualUsage: z
+    .number()
+    .nullable()
+    .describe("A usage budget's period-to-date usage at the crossing (the cents fields are 0)."),
+  forecastUsage: z.number().nullable(),
 }).openapi("BudgetAlertEvent");
 
 const BudgetWithStatus = strict({
@@ -179,6 +297,36 @@ const BudgetWithStatus = strict({
       dashboardName: z.string(),
     }),
   ),
+  measure: BudgetMeasure,
+  usageUnit: BudgetUsageUnit.nullable(),
+  usageAmount: BudgetUsageAmount.nullable(),
+  period: BudgetPeriod.nullable(),
+  parentBudgetId: BudgetParentId.nullable(),
+  periodStart: IsoDay.nullable().describe(
+    "First day of the period being measured. Null when the budget's periods do not cover " +
+      "today (a cadence not started yet, a gap in an explicit list): nothing is measured.",
+  ),
+  periodEnd: IsoDay.nullable(),
+  periodLimit: z
+    .number()
+    .nullable()
+    .describe(
+      "This period's limit in the budget's unit: cents for a spend budget, the quantity for " +
+        "a usage budget. Null when no period is active.",
+    ),
+  actualUsage: z
+    .number()
+    .nullable()
+    .describe("Period-to-date usage, for a usage budget (whose `actualCents` is 0)."),
+  forecastUsage: z.number().nullable().describe("Projected period-end usage, for a usage budget."),
+  rolledUp: z
+    .boolean()
+    .describe(
+      "True when the budget has children, so its figures are the sum of theirs over its " +
+        "period rather than a measurement of its own scope.",
+    ),
+  childCount: z.number().int().describe("Number of direct child budgets."),
+  hierarchyWarnings: z.array(BudgetHierarchyWarning),
 }).openapi("BudgetWithStatus");
 
 export function registerBudgetPaths(ctx: BuildContext) {
@@ -190,7 +338,7 @@ export function registerBudgetPaths(ctx: BuildContext) {
     method: "get",
     path: "/api/org/{orgId}/budgets",
     tags: ["Budgets"],
-    summary: "List budgets with current-month actuals and forecasts",
+    summary: "List budgets with current-period actuals and forecasts",
     request: { params: OrgIdParam },
     responses: {
       200: {
@@ -219,10 +367,13 @@ export function registerBudgetPaths(ctx: BuildContext) {
     method: "get",
     path: "/api/org/{orgId}/budgets/{id}",
     tags: ["Budgets"],
-    summary: "Get a budget with current-month status",
+    summary: "Get a budget with current-period status",
     request: { params: idParam() },
     responses: {
-      200: { description: "Budget", content: { "application/json": { schema: BudgetFull } } },
+      200: {
+        description: "Budget",
+        content: { "application/json": { schema: BudgetWithStatus } },
+      },
       404: ErrorResponses[404],
     },
   });

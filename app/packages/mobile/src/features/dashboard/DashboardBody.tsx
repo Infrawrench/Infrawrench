@@ -384,7 +384,14 @@ export function DashboardBody({
             </Card>,
           );
         }
-        return withControls(index, widgetRef, <BudgetCard key={widget.id} budget={budget} />);
+        const children = [...(budgets.data?.values() ?? [])].filter(
+          (b) => b.parentBudgetId === budget.id,
+        );
+        return withControls(
+          index,
+          widgetRef,
+          <BudgetCard key={widget.id} budget={budget} childBudgets={children} />,
+        );
       })}
     </>
   );

@@ -284,16 +284,42 @@ The gate is that equality because rates point _to_ the display currency in one h
 
 ## Budgets & alerts
 
-A budget is a monthly amount tracked against a scope — all spend, or a filtered slice (one provider, one account, a tag). Create one from the **Costs** panel, or from a dashboard's **+** tile → **New budget**. A budget also picks a [cost basis](#cash-and-amortized): leave it on cash to track what you are charged, or switch it to amortized so a commitment purchase doesn't blow the budget in the month you sign it.
+A budget is an amount tracked against a scope (all spend, or a filtered slice: one provider, one account, a tag) for each period it covers. By default that is monthly spend; a budget can also [count a usage quantity](#usage-budgets), run on a [custom period](#budget-periods), and [roll up child budgets](#budget-hierarchies). Create one from the **Costs** panel, or from a dashboard's **+** tile → **New budget**. A budget also picks a [cost basis](#cash-and-amortized): leave it on cash to track what you are charged, or switch it to amortized so a commitment purchase doesn't blow the budget in the month you sign it.
 
 Each budget has one or more thresholds:
 
-- **Actual spend** thresholds fire when month-to-date spend crosses a percentage of the budget.
-- **Forecast** thresholds fire when the projected month-end total crosses it — early warning while there is still time to react.
+- **Actual** thresholds fire when period-to-date spend (or usage) crosses a percentage of the period's amount.
+- **Forecast** thresholds fire when the projected period-end total crosses it: early warning while there is still time to react.
 
-Every threshold fires at most once per calendar month. Alerts show up as a badge on the budget card, as a [mobile push notification](./mobile-push-notifications.md) to org members who have the app installed and budget alerts enabled in their per-org notification preferences, in any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel opted into budget alerts, and — if your org has Twilio configured on the **Settings → Notifications** page — as an SMS to your on-call recipients.
+Every threshold fires at most once per period (per calendar month for a monthly budget). Alerts show up as a badge on the budget card, as a [mobile push notification](./mobile-push-notifications.md) to org members who have the app installed and budget alerts enabled in their per-org notification preferences, in any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel opted into budget alerts, and — if your org has Twilio configured on the **Settings → Notifications** page — as an SMS to your on-call recipients.
 
 ![Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/budget-card.png)
+
+### Usage budgets
+
+Set a budget's **Measure** to **Usage quantity** to limit a quantity rather than money: tokens, GB, instance-hours, requests, credits, whatever your providers report on their cost rows. The unit is a picker over the units actually present in your cost data, matched exactly and never converted (`GB` and `GB-Mo` are different quantities). Thresholds and forecasts work the same way, in the unit; the card, the alert and the CLI all print the quantity with its unit.
+
+Usage quantities come from providers that report them on cost rows (OpenRouter requests, Cloudflare consumed units, Hetzner, ElevenLabs and Cartesia credits, Speechmatics hours, among others) and from [cost rows you push](./server-push.md) with `usageAmount` and `usageUnit`. A usage budget takes no scenario model and no billing rules, since both adjust money.
+
+<insert [The budget editor with Measure set to Usage quantity, the usage unit picker open listing tokens, Requests and GB, and an amount per period filled in] here>
+
+### Budget periods
+
+The **Period** control picks which days a budget counts:
+
+- **Calendar month** (the default): the 1st to the last day of each month, UTC.
+- **Custom cadence**: every N days, weeks, months, quarters or years from a start date, for example a fortnight starting on a sprint's first Monday. Each period starts where the last one ended; days before the start date are not measured.
+- **Explicit periods**: a list of date ranges, each with its own amount, for a launch quarter or a fiscal calendar that doesn't line up with months. Days outside every period are not measured, and the card says when the next period starts.
+
+The forecast projects to the end of the current period, whatever its length.
+
+### Budget hierarchies
+
+Pick a **Parent budget** to nest a budget under another. A parent's actual and forecast are the **sum of its children's**, each measured over the parent's own period, so a yearly parent over monthly team budgets still adds up a year. Its own scope is set aside while it has children. Parent and children must count the same thing (one currency, or one usage unit), and hierarchies go at most four levels deep. Deleting a budget moves its children up to its own parent.
+
+The Costs panel shows budgets as an expandable tree, every level with its own actual and forecast against its own amount. A parent warns when its children outgrow it: when their own amounts for the same period add up to more than the parent's, when together they have already passed it, or when together they are forecast to. Parent thresholds alert on the rolled-up figures like any other budget, and the alert says the figure is a sum of child budgets. A dashboard card for a parent lists its children, collapsed.
+
+<insert [The Costs panel budget tree with a parent budget expanded to show two child budgets, the parent showing the "Child budgets allocate ..." warning] here>
 
 Budgets alert on totals you chose. For spend you didn't see coming — a provider or service suddenly billing far above its own baseline, or one that had never billed at all — see [cost anomaly alerts](./cost-anomaly-alerts.md), which work with no configuration and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if the defaults are too loud or too quiet. Anomalies can text the same on-call recipients as a budget crossing, but unlike budgets they [do not until you ask them to](./cost-anomaly-alerts.md#paging-by-sms).
 

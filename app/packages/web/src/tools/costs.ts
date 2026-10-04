@@ -23,9 +23,11 @@ import {
   getOrgCostStatus,
   listCostDimensionValues,
   listCostTagKeys,
+  listCostUsageUnits,
   runCostQuery,
 } from "../services/cost-query";
 import {
+  BudgetValidationError,
   createBudget,
   getBudgetWithStatus,
   listBudgetEvents,
@@ -224,10 +226,11 @@ export function costTools(): ToolDefinition[] {
       title: "List cost dimension values",
       description:
         "List the distinct values present in the organization's cost data for a dimension " +
-        "(with display labels), or the available tag keys via dimension=tag-keys. Use this to " +
-        "discover valid filter/group-by values before calling query_costs.",
+        "(with display labels), the available tag keys via dimension=tag-keys, or the usage " +
+        "units providers report (for a usage budget's usageUnit) via dimension=usage-units. Use " +
+        "this to discover valid filter/group-by values before calling query_costs.",
       inputSchema: {
-        dimension: z.enum([...COST_DIMENSIONS, "tag-keys"]),
+        dimension: z.enum([...COST_DIMENSIONS, "tag-keys", "usage-units"]),
         tagKey: z.string().optional().describe("Required when dimension is 'tag'."),
       },
       risk: "read",
@@ -238,6 +241,9 @@ export function costTools(): ToolDefinition[] {
         const { dimension, tagKey } = input as { dimension: string; tagKey?: string };
         if (dimension === "tag-keys") {
           return ok(await listCostTagKeys(auth.organizationId));
+        }
+        if (dimension === "usage-units") {
+          return ok(await listCostUsageUnits(auth.organizationId));
         }
         try {
           return ok(await listCostDimensionValues(auth.organizationId, dimension, tagKey));
@@ -565,8 +571,13 @@ export function costTools(): ToolDefinition[] {
       name: "list_budgets",
       title: "List budgets",
       description:
-        "List the organization's monthly cost budgets with current-month actual and forecast " +
-        "spend (in cents) and any alert thresholds fired this month.",
+        "List the organization's budgets with current-period actual and forecast and any alert " +
+        "thresholds fired this period. Spend budgets report `actualCents`/`forecastCents`; usage " +
+        "budgets (`measure: usage`) report `actualUsage`/`forecastUsage` in `usageUnit`. " +
+        "`periodStart`/`periodEnd` give the window being measured and `periodLimit` its limit " +
+        "(cents, or the usage quantity). Budgets form a hierarchy through `parentBudgetId`: a " +
+        "budget with children (`rolledUp: true`) reports the sum of its children's figures, " +
+        "and `hierarchyWarnings` flags children that outgrow their parent.",
       inputSchema: {},
       risk: "read",
       permission: "budgets:read",
@@ -581,8 +592,8 @@ export function costTools(): ToolDefinition[] {
       name: "get_budget",
       title: "Get budget",
       description:
-        "Fetch one budget with current-month actual/forecast status plus its alert history " +
-        "(up to the last 100 fired thresholds across months).",
+        "Fetch one budget with current-period actual/forecast status plus its alert history " +
+        "(up to the last 100 fired thresholds across periods).",
       inputSchema: { budgetId: z.string() },
       risk: "read",
       permission: "budgets:read",
@@ -601,10 +612,16 @@ export function costTools(): ToolDefinition[] {
       name: "create_budget",
       title: "Create budget",
       description:
-        "Create a monthly cost budget. amountCents is the monthly limit in the currency's minor " +
-        "unit. Thresholds fire once per month when actual or forecast spend crosses the given " +
-        "percent of the budget. Filters (same shape as query_costs) scope the budget to a slice " +
-        "of spend; empty filters cover the whole organization. Audit-logged.",
+        "Create a budget. By default it limits monthly spend: amountCents is the limit in the " +
+        "currency's minor unit. Set measure='usage' with usageUnit (list the units in the cost " +
+        "data with list_cost_dimension_values dimension=usage-units) and usageAmount to budget " +
+        "a usage quantity such as tokens or GB instead. `period` changes the cadence: " +
+        "{kind:'recurring', unit: day|week|month|quarter|year, interval, startDate} or " +
+        "{kind:'explicit', periods:[{start, end, amountCents | usageAmount}]} with an amount per " +
+        "period. parentBudgetId nests it under a parent that rolls up its children (same " +
+        "currency or usage unit). Thresholds fire once per period when actual or forecast " +
+        "crosses the given percent of the period's limit. Filters (same shape as query_costs) " +
+        "scope the budget; empty filters cover the whole organization. Audit-logged.",
       inputSchema: budgetInputSchema.shape,
       risk: "write",
       permission: "budgets:write",
@@ -613,7 +630,13 @@ export function costTools(): ToolDefinition[] {
         if (denied) return denied;
         const parsed = budgetInputSchema.safeParse(input);
         if (!parsed.success) return err(`Invalid budget: ${parsed.error.message}`);
-        const created = await createBudget(auth.organizationId, parsed.data, auth.userId);
+        let created;
+        try {
+          created = await createBudget(auth.organizationId, parsed.data, auth.userId);
+        } catch (e) {
+          if (e instanceof BudgetValidationError) return err(`Invalid budget: ${e.message}`);
+          throw e;
+        }
         void logAudit({
           organizationId: auth.organizationId,
           userId: auth.userId,
@@ -630,8 +653,9 @@ export function costTools(): ToolDefinition[] {
       name: "update_budget",
       title: "Update budget",
       description:
-        "Replace a budget's name, amount, currency, filters, and thresholds. Alert history is " +
-        "kept. Audit-logged.",
+        "Replace a budget: name, amount, currency, filters, thresholds, measure, usage unit and " +
+        "amount, period and parent (same fields as create_budget). A full replace: omitted " +
+        "optional fields are cleared. Alert history is kept. Audit-logged.",
       inputSchema: { budgetId: z.string(), ...budgetInputSchema.shape },
       risk: "write",
       permission: "budgets:write",
@@ -641,7 +665,13 @@ export function costTools(): ToolDefinition[] {
         const { budgetId, ...rest } = input as { budgetId: string } & Record<string, unknown>;
         const parsed = budgetInputSchema.safeParse(rest);
         if (!parsed.success) return err(`Invalid budget: ${parsed.error.message}`);
-        const updated = await updateBudget(auth.organizationId, budgetId, parsed.data);
+        let updated;
+        try {
+          updated = await updateBudget(auth.organizationId, budgetId, parsed.data);
+        } catch (e) {
+          if (e instanceof BudgetValidationError) return err(`Invalid budget: ${e.message}`);
+          throw e;
+        }
         if (!updated) return err(`Budget not found: ${budgetId}`);
         void logAudit({
           organizationId: auth.organizationId,

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DEFAULT_BUDGET_INPUT,
   DEFAULT_COST_GRAPH_CONFIG,
+  budgetWithStatusToInput,
   type BudgetInput,
   type BudgetWidgetConfig,
   type BudgetWithStatus,
@@ -296,6 +297,7 @@ export default function DashboardScreen() {
           visible
           title="New budget"
           initialInput={DEFAULT_BUDGET_INPUT}
+          budgets={[...(budgets.data?.values() ?? [])]}
           onClose={() => setSheet(null)}
           onSave={edit.createBudget}
         />
@@ -332,6 +334,7 @@ export default function DashboardScreen() {
         <ConfigureBudget
           widget={sheet.widget}
           budget={budgetFor(sheet.widget)}
+          allBudgets={[...(budgets.data?.values() ?? [])]}
           onClose={() => setSheet(null)}
           onSave={edit.updateBudget}
         />
@@ -347,11 +350,14 @@ export default function DashboardScreen() {
 function ConfigureBudget({
   widget,
   budget,
+  allBudgets,
   onClose,
   onSave,
 }: {
   widget: DashboardWidget;
   budget: BudgetWithStatus | undefined;
+  /** Every budget in the org, for the parent picker. */
+  allBudgets: BudgetWithStatus[];
   onClose: () => void;
   onSave: (budgetId: string, input: BudgetInput) => Promise<void>;
 }) {
@@ -375,27 +381,13 @@ function ConfigureBudget({
     <BudgetSheet
       visible
       title="Budget"
-      initialInput={{
-        name: budget.name,
-        amountCents: budget.amountCents,
-        currency: budget.currency,
-        filters: budget.filters,
-        thresholds: budget.thresholds,
-        // Round-tripped, or editing a budget's amount would quietly move it
-        // back to the cash basis it was deliberately taken off.
-        ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
-        // Same rule for the saved filter scoping the budget: mobile renders it
-        // read-only, but dropping it on save would silently widen the budget.
-        ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
-        // And for the scenario opt-in. Dropping it on save would move the
-        // budget's forecast thresholds back to the bare trend: an
-        // alert-changing edit nobody made.
-        ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
-        // Same rule: not editable from this sheet, but settable via the API
-        // and the Terraform provider; saving here must not silently move the
-        // budget off the adjusted (billing-rule) figure it was opted into.
-        ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
-      }}
+      // Every field round-trips through client-core's mapping, including the
+      // ones this sheet shows read-only or not at all (saved filter, scenario,
+      // adjusted spend, an explicit period list): saving here must never be an
+      // alert-changing edit nobody made.
+      initialInput={budgetWithStatusToInput(budget)}
+      budgets={allBudgets}
+      budgetId={budgetId}
       onClose={onClose}
       onSave={(input) => onSave(budgetId, input)}
     />

@@ -459,9 +459,34 @@ export const budgets = pgTable(
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    /**
+     * What the budget counts: "cost" (money in `currency`, against
+     * `amount_cents`) or "usage" (the cost rows' `usage_amount` in
+     * `usage_unit`, against `usage_amount`). Defaulted so every existing
+     * budget keeps measuring money.
+     */
+    measure: text("measure").$type<"cost" | "usage">().notNull().default("cost"),
+    usageUnit: text("usage_unit"),
+    /** A usage budget's per-period limit. Double: token counts pass 2^31. */
+    usageAmount: doublePrecision("usage_amount"),
+    /**
+     * `BudgetPeriod` (client-core): a recurring cadence or an explicit list of
+     * periods with their own amounts. Null is the calendar month, which is what
+     * every budget measured before this column existed.
+     */
+    period: jsonb("period"),
+    /**
+     * The budget this one rolls up into. No foreign key, like
+     * `saved_filter_id`: budgets are soft-deleted, so the hierarchy is kept
+     * consistent above the database (services/budgets.ts refuses cycles, depth
+     * past `BUDGET_LIMITS.maxDepth` and mismatched measures, and re-parents
+     * the children of a deleted budget to its own parent).
+     */
+    parentBudgetId: text("parent_budget_id"),
   },
   (t) => ({
     orgIdx: index("budgets_org_idx").on(t.organizationId),
+    parentIdx: index("budgets_parent_idx").on(t.parentBudgetId),
   }),
 );
 
@@ -817,7 +842,13 @@ export const budgetAlertEvents = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** "YYYY-MM" (UTC) the crossing was observed in. */
+    /**
+     * The period key the crossing was observed in (`BudgetPeriodWindow.key`):
+     * "YYYY-MM" for a calendar-month budget, which is every row written before
+     * periods were configurable, and the period's start day otherwise. The
+     * column keeps its old name because it is half of the once-per-period
+     * unique index below.
+     */
     month: text("month").notNull(),
     thresholdType: text("threshold_type").$type<"actual" | "forecast">().notNull(),
     thresholdPercent: integer("threshold_percent").notNull(),
@@ -825,6 +856,12 @@ export const budgetAlertEvents = pgTable(
     forecastAmountCents: integer("forecast_amount_cents"),
     triggeredAt: timestamp("triggered_at").notNull().defaultNow(),
     notifiedAt: timestamp("notified_at"),
+    /** The period's inclusive bounds; null on rows that predate periods. */
+    periodStart: text("period_start"),
+    periodEnd: text("period_end"),
+    /** A usage budget's figures at the crossing (the cents columns are 0). */
+    actualUsage: doublePrecision("actual_usage"),
+    forecastUsage: doublePrecision("forecast_usage"),
   },
   (t) => ({
     onceUnique: uniqueIndex("budget_alert_once_unique").on(

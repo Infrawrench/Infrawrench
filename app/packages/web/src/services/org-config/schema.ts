@@ -38,6 +38,8 @@ import {
   type OrgConfigWorkflowTrigger,
 } from "@infrawrench/client-core";
 import {
+  BUDGET_LIMITS,
+  budgetPeriodSchema,
   budgetThresholdSchema,
   costFilterSchema,
   requiredTagSchema,
@@ -74,10 +76,15 @@ const budgetSchema = z
   .object({
     key,
     name,
-    amountCents: z.number().int().positive(),
+    amountCents: z.number().int().min(0),
     currency: z.string().length(3).default("USD"),
     filters: z.array(costFilterSchema).default([]),
     thresholds: z.array(budgetThresholdSchema).min(1).max(10),
+    measure: z.literal("usage").optional(),
+    usageUnit: z.string().trim().min(1).max(BUDGET_LIMITS.maxUsageUnitLength).optional(),
+    usageAmount: z.number().positive().max(BUDGET_LIMITS.maxUsageAmount).optional(),
+    period: budgetPeriodSchema.optional(),
+    parentKey: key.optional(),
   })
   .strict();
 

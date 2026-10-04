@@ -385,7 +385,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 | Resource                                | Manages                                                                                |
 | --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `infrawrench_budget`                    | [Budgets](./cloud-costs.md#budgets) and their alert thresholds                         |
+| `infrawrench_budget`                    | [Budgets](./cloud-costs.md#budgets): spend or usage, any period, nested                |
 | `infrawrench_cost_centre`               | [Cost centres](./tag-policy-and-showback.md)                                           |
 | `infrawrench_allocation_rule`           | The rules that map spend onto cost centres                                             |
 | `infrawrench_tag_policy`                | [Required tags](./tag-policy-and-showback.md) and their enforcement                    |

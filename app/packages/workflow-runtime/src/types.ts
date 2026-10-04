@@ -52,11 +52,14 @@ export interface BudgetTriggerEvent {
   kind: "budget";
   budgetId: string;
   budgetName: string;
-  /** Calendar month the crossing was observed in, `YYYY-MM`. */
+  /**
+   * The period the crossing was observed in: `YYYY-MM` for a calendar-month
+   * budget, the period's start day (`YYYY-MM-DD`) for a custom period.
+   */
   month: string;
   /** ISO-4217 code of every amount below. */
   currency: string;
-  /** The budget's monthly limit. */
+  /** The budget's limit for this period (0 for a usage budget). */
   amountCents: number;
   /** Which measure crossed the threshold. */
   metric: "actual" | "forecast";
@@ -68,6 +71,17 @@ export interface BudgetTriggerEvent {
   actualCents: number;
   /** Projected month-end spend; null when there wasn't enough data to fit one. */
   forecastCents: number | null;
+  /** What the budget counts. Absent on events from before usage budgets. */
+  measure?: "cost" | "usage";
+  /** Inclusive bounds of the period the crossing was observed in. */
+  periodStart?: string;
+  periodEnd?: string;
+  /** Usage budgets only: the unit, and the figures the cents fields leave at 0. */
+  usageUnit?: string;
+  usageLimit?: number;
+  observedUsage?: number;
+  actualUsage?: number;
+  forecastUsage?: number | null;
 }
 
 /**

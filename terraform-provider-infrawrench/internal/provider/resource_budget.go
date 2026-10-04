@@ -2,30 +2,72 @@ package provider
 
 import (
 	"context"
+	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	"github.com/Infrawrench/terraform-provider-infrawrench/internal/iw"
 )
 
 var (
-	_ resource.Resource                = (*budgetResource)(nil)
-	_ resource.ResourceWithConfigure   = (*budgetResource)(nil)
-	_ resource.ResourceWithImportState = (*budgetResource)(nil)
+	_ resource.Resource                     = (*budgetResource)(nil)
+	_ resource.ResourceWithConfigure        = (*budgetResource)(nil)
+	_ resource.ResourceWithImportState      = (*budgetResource)(nil)
+	_ resource.ResourceWithConfigValidators = (*budgetResource)(nil)
 )
+
+// budgetDayPattern is the `YYYY-MM-DD` shape every period date takes.
+var budgetDayPattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// budgetPeriodUnits is the closed set a recurring period repeats in.
+var budgetPeriodUnits = []string{"day", "week", "month", "quarter", "year"}
+
+// budgetMaxUsageAmount is the server's ceiling on a usage amount.
+const budgetMaxUsageAmount = 1e15
+
+type budgetRecurringPeriodModel struct {
+	Unit      types.String `tfsdk:"unit"`
+	Interval  types.Int64  `tfsdk:"interval"`
+	StartDate types.String `tfsdk:"start_date"`
+}
+
+var budgetRecurringPeriodAttrTypes = map[string]attr.Type{
+	"unit":       types.StringType,
+	"interval":   types.Int64Type,
+	"start_date": types.StringType,
+}
+
+type budgetExplicitPeriodModel struct {
+	Start       types.String  `tfsdk:"start"`
+	End         types.String  `tfsdk:"end"`
+	AmountCents types.Int64   `tfsdk:"amount_cents"`
+	UsageAmount types.Float64 `tfsdk:"usage_amount"`
+}
+
+var budgetExplicitPeriodAttrTypes = map[string]attr.Type{
+	"start":        types.StringType,
+	"end":          types.StringType,
+	"amount_cents": types.Int64Type,
+	"usage_amount": types.Float64Type,
+}
+
+var budgetExplicitPeriodObjectType = types.ObjectType{AttrTypes: budgetExplicitPeriodAttrTypes}
 
 // NewBudgetResource constructs the infrawrench_budget resource.
 func NewBudgetResource() resource.Resource { return &budgetResource{} }
@@ -45,16 +87,22 @@ var budgetThresholdAttrTypes = map[string]attr.Type{
 var budgetThresholdObjectType = types.ObjectType{AttrTypes: budgetThresholdAttrTypes}
 
 type budgetResourceModel struct {
-	ID               types.String `tfsdk:"id"`
-	Name             types.String `tfsdk:"name"`
-	AmountCents      types.Int64  `tfsdk:"amount_cents"`
-	Currency         types.String `tfsdk:"currency"`
-	SavedFilterID    types.String `tfsdk:"saved_filter_id"`
-	ScenarioModelID  types.String `tfsdk:"scenario_model_id"`
-	CostBasis        types.String `tfsdk:"cost_basis"`
-	UseAdjustedSpend types.Bool   `tfsdk:"use_adjusted_spend"`
-	Filter           types.List   `tfsdk:"filter"`
-	Threshold        types.List   `tfsdk:"threshold"`
+	ID               types.String  `tfsdk:"id"`
+	Name             types.String  `tfsdk:"name"`
+	AmountCents      types.Int64   `tfsdk:"amount_cents"`
+	Currency         types.String  `tfsdk:"currency"`
+	SavedFilterID    types.String  `tfsdk:"saved_filter_id"`
+	ScenarioModelID  types.String  `tfsdk:"scenario_model_id"`
+	CostBasis        types.String  `tfsdk:"cost_basis"`
+	UseAdjustedSpend types.Bool    `tfsdk:"use_adjusted_spend"`
+	Filter           types.List    `tfsdk:"filter"`
+	Threshold        types.List    `tfsdk:"threshold"`
+	Measure          types.String  `tfsdk:"measure"`
+	UsageUnit        types.String  `tfsdk:"usage_unit"`
+	UsageAmount      types.Float64 `tfsdk:"usage_amount"`
+	ParentBudgetID   types.String  `tfsdk:"parent_budget_id"`
+	RecurringPeriod  types.Object  `tfsdk:"recurring_period"`
+	ExplicitPeriod   types.List    `tfsdk:"explicit_period"`
 }
 
 func (r *budgetResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -63,8 +111,13 @@ func (r *budgetResource) Metadata(_ context.Context, req resource.MetadataReques
 
 func (r *budgetResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "A spend budget with alert thresholds.\n\n" +
-			"Budgets carry live status (this month's actual and forecast spend) that this resource " +
+		MarkdownDescription: "A spend or usage budget with alert thresholds.\n\n" +
+			"By default a budget limits monthly spend. Set `measure = \"usage\"` with `usage_unit` and " +
+			"`usage_amount` to limit a usage quantity (tokens, GB, requests) instead; add a " +
+			"`recurring_period` block for a custom cadence or `explicit_period` blocks for a list of " +
+			"periods with their own amounts; and set `parent_budget_id` to nest it under a parent, " +
+			"whose actual and forecast are then the sum of its children's.\n\n" +
+			"Budgets carry live status (this period's actual and forecast) that this resource " +
 			"deliberately does not expose: it changes on every refresh and would make every plan " +
 			"noisy. Read it from the UI, the CLI, or the API.",
 		Attributes: map[string]schema.Attribute{
@@ -79,8 +132,40 @@ func (r *budgetResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Validators:          []validatorString{stringvalidator.LengthBetween(1, 120)},
 			},
 			"amount_cents": schema.Int64Attribute{
-				Required:            true,
-				MarkdownDescription: "Monthly budget in minor currency units. Must be greater than zero.",
+				Optional: true,
+				Computed: true,
+				Default:  int64default.StaticInt64(0),
+				MarkdownDescription: "Limit per period of a spend budget, in minor currency units. Must be " +
+					"greater than zero for a spend budget unless `explicit_period` blocks carry the amounts; " +
+					"ignored by a usage budget. Defaults to 0.",
+				Validators: []validatorInt64{atLeast(0)},
+			},
+			"measure": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("cost"),
+				MarkdownDescription: "`cost` to limit spend (the default), `usage` to limit a usage quantity in `usage_unit`.",
+				Validators:          []validator.String{oneOfValidator("cost", "usage")},
+			},
+			"usage_unit": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "The usage unit a usage budget counts, exactly as providers report it " +
+					"(the unit picker in the app lists the ones in your cost data), 1–64 characters. " +
+					"Required when `measure` is `usage`.",
+				Validators: []validator.String{stringvalidator.LengthBetween(1, 64)},
+			},
+			"usage_amount": schema.Float64Attribute{
+				Optional: true,
+				MarkdownDescription: "A usage budget's limit per period, in `usage_unit`: greater than zero " +
+					"and at most 10^15. Required for a usage budget unless `explicit_period` blocks carry the amounts.",
+				Validators: []validator.Float64{positiveFloatAtMost(budgetMaxUsageAmount)},
+			},
+			"parent_budget_id": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "Id of the `infrawrench_budget` this one rolls up into. A parent's actual and " +
+					"forecast are the sum of its children's over the parent's period; parent and child must " +
+					"count the same thing (one currency, or one usage unit), and hierarchies are at most four " +
+					"levels deep.",
 			},
 			"currency": schema.StringAttribute{
 				Optional:            true,
@@ -132,7 +217,75 @@ func (r *budgetResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				},
 				Validators: []validator.List{listvalidator.SizeBetween(1, 10)},
 			},
+			"recurring_period": schema.SingleNestedBlock{
+				MarkdownDescription: "A custom cadence: periods of `interval` × `unit`, the first starting on " +
+					"`start_date`. Omit both this and `explicit_period` for the calendar month. Conflicts " +
+					"with `explicit_period`.",
+				Attributes: map[string]schema.Attribute{
+					"unit": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "One of `" + joinBackticked(budgetPeriodUnits) + "`. Required in the block.",
+						Validators:          []validator.String{oneOfValidator(budgetPeriodUnits...)},
+					},
+					"interval": schema.Int64Attribute{
+						Optional:            true,
+						MarkdownDescription: "How many units each period lasts, 1–365. Required in the block.",
+						Validators:          []validatorInt64{between(1, 365)},
+					},
+					"start_date": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "First day of the first period, `YYYY-MM-DD` (UTC). Required in the block.",
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(budgetDayPattern, "must be YYYY-MM-DD"),
+						},
+					},
+				},
+			},
+			"explicit_period": schema.ListNestedBlock{
+				MarkdownDescription: "An explicit list of non-overlapping periods, each with its own amount " +
+					"(`amount_cents` for a spend budget, `usage_amount` for a usage budget). At most 60. " +
+					"Days outside every period are not measured. Conflicts with `recurring_period`.",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"start": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "First day, `YYYY-MM-DD`, inclusive.",
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(budgetDayPattern, "must be YYYY-MM-DD"),
+							},
+						},
+						"end": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "Last day, `YYYY-MM-DD`, inclusive.",
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(budgetDayPattern, "must be YYYY-MM-DD"),
+							},
+						},
+						"amount_cents": schema.Int64Attribute{
+							Optional:            true,
+							MarkdownDescription: "This period's limit for a spend budget, in minor currency units; at least 1.",
+							Validators:          []validatorInt64{atLeast(1)},
+						},
+						"usage_amount": schema.Float64Attribute{
+							Optional: true,
+							MarkdownDescription: "This period's limit for a usage budget: greater than zero and " +
+								"at most 10^15.",
+							Validators: []validator.Float64{positiveFloatAtMost(budgetMaxUsageAmount)},
+						},
+					},
+				},
+				Validators: []validator.List{sizeAtMost(60)},
+			},
 		},
+	}
+}
+
+func (r *budgetResource) ConfigValidators(_ context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.Conflicting(
+			path.MatchRoot("recurring_period"),
+			path.MatchRoot("explicit_period"),
+		),
 	}
 }
 
@@ -273,6 +426,16 @@ func budgetInputFrom(ctx context.Context, model budgetResourceModel) (iw.BudgetI
 		}
 	}
 
+	period, d := budgetPeriodFrom(ctx, model)
+	diags.Append(d...)
+
+	// "cost" is the server's default and is sent as absent, so a config that
+	// never mentions measure produces exactly the body it always did.
+	var measure *string
+	if m := stringPtr(model.Measure); m != nil && *m == "usage" {
+		measure = m
+	}
+
 	return iw.BudgetInput{
 		Name:             model.Name.ValueString(),
 		AmountCents:      model.AmountCents.ValueInt64(),
@@ -283,7 +446,54 @@ func budgetInputFrom(ctx context.Context, model budgetResourceModel) (iw.BudgetI
 		Thresholds:       thresholds,
 		CostBasis:        stringPtr(model.CostBasis),
 		UseAdjustedSpend: boolPtr(model.UseAdjustedSpend),
+		Measure:          measure,
+		UsageUnit:        stringPtr(model.UsageUnit),
+		UsageAmount:      float64Ptr(model.UsageAmount),
+		Period:           period,
+		ParentBudgetID:   stringPtr(model.ParentBudgetID),
 	}, diags
+}
+
+// budgetPeriodFrom builds the wire period from whichever block is set, or nil
+// (the calendar month) when neither is.
+func budgetPeriodFrom(ctx context.Context, model budgetResourceModel) (*iw.BudgetPeriod, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if !model.RecurringPeriod.IsNull() && !model.RecurringPeriod.IsUnknown() {
+		var rp budgetRecurringPeriodModel
+		diags.Append(model.RecurringPeriod.As(ctx, &rp, basetypes.ObjectAsOptions{
+			UnhandledNullAsEmpty:    true,
+			UnhandledUnknownAsEmpty: true,
+		})...)
+		if rp.Unit.IsNull() || rp.Interval.IsNull() || rp.StartDate.IsNull() {
+			diags.AddAttributeError(path.Root("recurring_period"), "Incomplete recurring period",
+				"`unit`, `interval` and `start_date` are all required in a recurring_period block.")
+			return nil, diags
+		}
+		return &iw.BudgetPeriod{
+			Kind:      "recurring",
+			Unit:      stringPtr(rp.Unit),
+			Interval:  int64Ptr(rp.Interval),
+			StartDate: stringPtr(rp.StartDate),
+		}, diags
+	}
+	if !model.ExplicitPeriod.IsNull() && !model.ExplicitPeriod.IsUnknown() {
+		var rows []budgetExplicitPeriodModel
+		diags.Append(model.ExplicitPeriod.ElementsAs(ctx, &rows, false)...)
+		if len(rows) == 0 {
+			return nil, diags
+		}
+		periods := make([]iw.BudgetExplicitPeriod, 0, len(rows))
+		for _, row := range rows {
+			periods = append(periods, iw.BudgetExplicitPeriod{
+				Start:       row.Start.ValueString(),
+				End:         row.End.ValueString(),
+				AmountCents: int64Ptr(row.AmountCents),
+				UsageAmount: float64Ptr(row.UsageAmount),
+			})
+		}
+		return &iw.BudgetPeriod{Kind: "explicit", Periods: periods}, diags
+	}
+	return nil, diags
 }
 
 // budgetStateFrom maps a server budget into Terraform state.
@@ -317,6 +527,41 @@ func budgetStateFrom(ctx context.Context, remote *iw.Budget, prior budgetResourc
 	if useAdjusted.IsNull() {
 		useAdjusted = prior.UseAdjustedSpend
 	}
+	measure := stringValue(remote.Measure)
+	if measure.IsNull() {
+		measure = prior.Measure
+		if measure.IsNull() || measure.IsUnknown() {
+			measure = types.StringValue("cost")
+		}
+	}
+
+	recurring := types.ObjectNull(budgetRecurringPeriodAttrTypes)
+	explicit := types.ListNull(budgetExplicitPeriodObjectType)
+	if p := remote.Period; p != nil {
+		switch p.Kind {
+		case "recurring":
+			obj, d := types.ObjectValueFrom(ctx, budgetRecurringPeriodAttrTypes, budgetRecurringPeriodModel{
+				Unit:      stringValue(p.Unit),
+				Interval:  int64Value(p.Interval),
+				StartDate: stringValue(p.StartDate),
+			})
+			diags.Append(d...)
+			recurring = obj
+		case "explicit":
+			rows := make([]budgetExplicitPeriodModel, 0, len(p.Periods))
+			for _, e := range p.Periods {
+				rows = append(rows, budgetExplicitPeriodModel{
+					Start:       types.StringValue(e.Start),
+					End:         types.StringValue(e.End),
+					AmountCents: int64Value(e.AmountCents),
+					UsageAmount: float64Value(e.UsageAmount),
+				})
+			}
+			list, d := types.ListValueFrom(ctx, budgetExplicitPeriodObjectType, rows)
+			diags.Append(d...)
+			explicit = list
+		}
+	}
 
 	return budgetResourceModel{
 		ID:               types.StringValue(remote.ID),
@@ -329,5 +574,11 @@ func budgetStateFrom(ctx context.Context, remote *iw.Budget, prior budgetResourc
 		UseAdjustedSpend: useAdjusted,
 		Filter:           filters,
 		Threshold:        thresholds,
+		Measure:          measure,
+		UsageUnit:        stringValue(remote.UsageUnit),
+		UsageAmount:      float64Value(remote.UsageAmount),
+		ParentBudgetID:   stringValue(remote.ParentBudgetID),
+		RecurringPeriod:  recurring,
+		ExplicitPeriod:   explicit,
 	}, diags
 }

@@ -618,6 +618,56 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   return result;
 }
 
+/**
+ * Daily usage quantity in one unit over a scope: what a usage budget measures.
+ *
+ * Sums `usage_amount` across rows whose `usage_unit` is exactly `usageUnit`.
+ * Units are matched as the providers wrote them and never converted: "GB" and
+ * "GB-Mo" are different quantities, and summing them would produce a number
+ * that means nothing. Rows reporting no usage carry an empty unit and so never
+ * match. Uses FINAL for the same reason {@link queryCosts} does.
+ */
+export async function queryUsageDaily(
+  organizationId: string,
+  q: { from: string; to: string; filters: CostFilter[]; usageUnit: string },
+): Promise<CostSeriesPoint[]> {
+  const rows = await query((db) =>
+    db
+      .select({
+        bucket: sql`toString(${costDaily.day})`.as("bucket"),
+        amount: sql<number>`sum(${costDaily.usage_amount})`.as("amount"),
+      })
+      .from(costDaily)
+      .final()
+      .where(
+        and(
+          costDailyOrgCondition(organizationId),
+          dayRange(q.from, q.to),
+          eq(costDaily.usage_unit, q.usageUnit),
+          ...q.filters.map((f) =>
+            membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
+          ),
+        ),
+      )
+      .groupBy(sql`bucket`)
+      .orderBy(asc(sql`bucket`)),
+  );
+  return rows.map((r) => ({ bucket: String(r.bucket), amount: Number(r.amount) }));
+}
+
+/** Distinct usage units present in an org's cost data (the usage-budget picker). */
+export async function getCostUsageUnits(organizationId: string): Promise<string[]> {
+  const rows = await query((db) =>
+    db
+      .selectDistinct({ value: costDaily.usage_unit })
+      .from(costDaily)
+      .where(and(costDailyOrgCondition(organizationId), sql`${costDaily.usage_unit} != ''`))
+      .orderBy(asc(costDaily.usage_unit))
+      .limit(200),
+  );
+  return rows.map((r) => String(r.value));
+}
+
 /** One provider-native resource's summed spend over a date range. */
 export interface ResourceCostTotal {
   accountId: string;

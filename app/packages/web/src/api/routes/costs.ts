@@ -27,6 +27,7 @@ import {
   getOrgCostStatus,
   listCostDimensionValues,
   listCostTagKeys,
+  listCostUsageUnits,
   runCostQuery,
 } from "../../services/cost-query";
 import {
@@ -152,6 +153,10 @@ app.get("/dimensions", async (c) => {
 
   if (c.req.query("dimension") === "tag-keys") {
     return c.json({ values: await listCostTagKeys(organizationId) });
+  }
+  // The units a usage budget can count, as providers reported them.
+  if (c.req.query("dimension") === "usage-units") {
+    return c.json({ values: await listCostUsageUnits(organizationId) });
   }
 
   try {
