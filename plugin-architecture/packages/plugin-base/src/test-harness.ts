@@ -72,6 +72,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   tailscale: { apiKey: "tskey-api-test", tailnet: "-" },
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
   deepgram: { apiKey: "test-deepgram-key" },
+  snowflake: { account: "myorg-myaccount", user: "INFRAWRENCH", credential: "test-snowflake-pat" },
   azure: {
     tenantId: "test-tenant-id",
     clientId: "test-client-id",

@@ -45,6 +45,7 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 | PlanetScale  | `planetscale/planetscale`   | Vitess branches and branch passwords                                                                                                                   |
 | ClickHouse   | `ClickHouse/clickhouse`     | Cloud services (`clickhouse_service`)                                                                                                                  |
 | Databricks   | `databricks/databricks`     | Clusters, SQL warehouses, catalogs, schemas                                                                                                            |
+| Snowflake    | `snowflakedb/snowflake`     | Warehouses, databases, schemas, resource monitors                                                                                                      |
 | Netlify      | `netlify/netlify`           | DNS zones, DNS records, environment variables                                                                                                          |
 
 Coverage is per resource type: types that need nested blocks or credentials Infrawrench doesn't store (for example Azure VMs, AWS Lambda packages, Netlify sites) stay in the unsupported list with a reason. A plugin declares its own mapping, so coverage grows type by type.

@@ -237,6 +237,7 @@
     "@infrawrench/plugin-cloudinary": "workspace:*",
     "@infrawrench/plugin-cohere": "workspace:*",
     "@infrawrench/plugin-databricks": "workspace:*",
+    "@infrawrench/plugin-snowflake": "workspace:*",
     "@infrawrench/plugin-deepgram": "workspace:*",
     "@infrawrench/plugin-deepseek": "workspace:*",
     "@infrawrench/plugin-digitalocean": "workspace:*",

@@ -234,6 +234,21 @@ export const providerGroups: ProviderGroup[] = [
         resources: ["Cluster", "SQL Warehouse", "Job", "Pipeline", "Catalog", "Schema", "Table"],
       },
       {
+        name: "Snowflake",
+        detail: "Warehouses, spend by service, query cost, SQL",
+        resources: [
+          "Warehouse",
+          "Database",
+          "Schema",
+          "Resource Monitor",
+          "User",
+          "Role",
+          "Task",
+          "Pipe",
+          "Dynamic Table",
+        ],
+      },
+      {
         name: "Neon",
         detail: "Projects, branches, databases, roles",
         resources: ["Project", "Branch", "Endpoint", "Database", "Role"],
