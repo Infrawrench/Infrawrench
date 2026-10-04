@@ -342,6 +342,28 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Observability",
+    providers: [
+      {
+        name: "Grafana Cloud",
+        detail: "Billed usage by product and stack, stacks, alert rules, dashboards",
+        resources: [
+          "Organization",
+          "Stack",
+          "Installed Plugin",
+          "Access Policy",
+          "Access Policy Token",
+          "Member",
+          "Dashboard",
+          "Alert Rule",
+          "Contact Point",
+          "Data Source",
+          "Synthetic Check",
+        ],
+      },
+    ],
+  },
+  {
     name: "Identity & Auth",
     providers: [
       {

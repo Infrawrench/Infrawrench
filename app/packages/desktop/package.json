@@ -137,6 +137,7 @@
     "@infrawrench/plugin-gcp": "workspace:*",
     "@infrawrench/plugin-gemini": "workspace:*",
     "@infrawrench/plugin-gladia": "workspace:*",
+    "@infrawrench/plugin-grafana-cloud": "workspace:*",
     "@infrawrench/plugin-groq": "workspace:*",
     "@infrawrench/plugin-hetzner": "workspace:*",
     "@infrawrench/plugin-kafka": "workspace:*",

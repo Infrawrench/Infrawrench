@@ -165,6 +165,7 @@ export const typewriterStrings: string[] = [
   "Gemini Context Caches",
   "ElevenLabs Voices",
   "Deepgram Projects",
+  "Grafana Cloud Stacks",
   "Cartesia Voices",
   "AssemblyAI Transcripts",
   "Speechmatics Jobs",

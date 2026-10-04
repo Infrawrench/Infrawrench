@@ -133,6 +133,7 @@ describe("SSH endpoint parity", () => {
     "fireworks",
     "gemini",
     "gladia",
+    "grafana-cloud",
     "groq",
     "mistral",
     "openai",

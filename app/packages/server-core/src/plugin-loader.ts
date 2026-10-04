@@ -41,6 +41,7 @@ import { plugin as elevenlabsPlugin } from "@infrawrench/plugin-elevenlabs";
 import { plugin as fireworksPlugin } from "@infrawrench/plugin-fireworks";
 import { plugin as geminiPlugin } from "@infrawrench/plugin-gemini";
 import { plugin as gladiaPlugin } from "@infrawrench/plugin-gladia";
+import { plugin as grafanaCloudPlugin } from "@infrawrench/plugin-grafana-cloud";
 import { plugin as groqPlugin } from "@infrawrench/plugin-groq";
 import { plugin as mistralPlugin } from "@infrawrench/plugin-mistral";
 import { plugin as openaiPlugin } from "@infrawrench/plugin-openai";
@@ -100,6 +101,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   fireworksPlugin,
   geminiPlugin,
   gladiaPlugin,
+  grafanaCloudPlugin,
   groqPlugin,
   mistralPlugin,
   openaiPlugin,
