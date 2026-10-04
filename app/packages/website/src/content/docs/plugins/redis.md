@@ -26,6 +26,8 @@ Or reference an output from a managed Redis resource (DigitalOcean, ElastiCache,
 
 - **KV console** for arbitrary commands.
 - **SSH tunnel** for private instances.
+- **Metrics**: the Metrics tab charts one INFO reading per sample (ops/sec, connected and blocked clients, used memory, evictions, expirations, hit ratio, keys, and average command latency since restart). The chart fills in as Infrawrench samples the instance.
+- **Redis Cloud** databases open this plugin as their Redis tab, so the [Redis Cloud](./redis-cloud.md) plugin needs no connection string.
 
 ## Tips & limits
 

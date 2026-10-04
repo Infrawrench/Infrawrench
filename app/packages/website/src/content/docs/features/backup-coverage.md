@@ -52,6 +52,7 @@ a false alarm.
 | ------------- | ------------------------------------ | -------------------------------------------------------- |
 | DigitalOcean  | Snapshots (of Droplets and volumes)  | Droplets (including the automated-backup flag), volumes  |
 | Hetzner Cloud | Images of type `backup` / `snapshot` | Servers                                                  |
+| Linode        | — (Backups add-on flag)              | Linodes (the Backups add-on), Managed Databases (daily)  |
 | Google Cloud  | Spanner backups                      | Spanner databases                                        |
 | Neon          | Snapshots                            | Branches                                                 |
 | PlanetScale   | Backups                              | Branches                                                 |

@@ -682,6 +682,7 @@ describe("principalRole declarations", () => {
       "clickhouse/ch-api-key:disable",
       "snowflake/snowflake-user:disable",
       "tailscale/user:suspend",
+      "temporal-cloud/api-key:disable",
       "workos/organization-api-key:expire",
       "workos/organization-membership:deactivate",
     ]);

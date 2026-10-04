@@ -48,6 +48,9 @@ export const DNS_IPV4_SOURCES: AssociationSource[] = [
   { pluginId: "scaleway", resourceTypeId: "instance", outputKey: "publicIp" },
   { pluginId: "gcp", resourceTypeId: "gce-instance", outputKey: "externalIp" },
   { pluginId: "gcp", resourceTypeId: "forwarding-rule", outputKey: "IPAddress" },
+  { pluginId: "linode", resourceTypeId: "linode", outputKey: "ipv4" },
+  { pluginId: "linode", resourceTypeId: "reserved-ip", outputKey: "ip" },
+  { pluginId: "linode", resourceTypeId: "nodebalancer", outputKey: "ipv4" },
 ];
 
 /** IPv6-producing outputs across providers, for AAAA records. */
@@ -55,6 +58,8 @@ export const DNS_IPV6_SOURCES: AssociationSource[] = [
   { pluginId: "digitalocean", resourceTypeId: "droplet", outputKey: "ipv6" },
   { pluginId: "hetzner", resourceTypeId: "server", outputKey: "ipv6" },
   { pluginId: "fly", resourceTypeId: "machine", outputKey: "privateIp" },
+  { pluginId: "linode", resourceTypeId: "linode", outputKey: "ipv6" },
+  { pluginId: "linode", resourceTypeId: "nodebalancer", outputKey: "ipv6" },
 ];
 
 /** Hostname-producing outputs across providers, for CNAME records. */
@@ -67,6 +72,8 @@ export const DNS_HOSTNAME_SOURCES: AssociationSource[] = [
   { pluginId: "digitalocean", resourceTypeId: "spaces-bucket", outputKey: "endpoint" },
   { pluginId: "azure", resourceTypeId: "azure-vm", outputKey: "fqdn" },
   { pluginId: "azure", resourceTypeId: "azure-public-ip", outputKey: "fqdn" },
+  { pluginId: "linode", resourceTypeId: "nodebalancer", outputKey: "hostname" },
+  { pluginId: "linode", resourceTypeId: "bucket", outputKey: "hostname" },
 ];
 
 /**

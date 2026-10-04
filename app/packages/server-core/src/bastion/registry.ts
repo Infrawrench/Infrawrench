@@ -92,25 +92,48 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   ],
   digitalocean: ["api.digitalocean.com"],
   hetzner: ["api.hetzner.cloud", "robot-ws.your-server.de"],
+  // The REST API, Cloud Pulse metrics, and the pre-signed Object Storage
+  // URLs the bucket browser uploads to and deletes through.
+  linode: ["api.linode.com", "monitor-api.linode.com", "*.linodeobjects.com"],
   fly: ["api.machines.dev", "api.fly.io"],
   vercel: ["api.vercel.com"],
+  // api.github.com, or api.<subdomain>.ghe.com for data residency. Copilot
+  // metrics reports are signed download links on GitHub-owned hosts.
+  github: ["api.github.com", "*.ghe.com", "*.githubusercontent.com"],
   netlify: ["api.netlify.com"],
   planetscale: ["api.planetscale.com"],
+  // REST API, plus the subscriptions' Prometheus endpoints on the internal network.
+  "redis-cloud": ["api.redislabs.com", "*.rlrcp.com"],
   cloudflare: ["api.cloudflare.com"],
   cloudinary: ["api.cloudinary.com"],
+  crusoe: ["api.cloud.crusoe.ai"],
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
+  depot: ["api.depot.dev"],
   neon: ["console.neon.tech"],
   snowflake: ["*.snowflakecomputing.com"],
+  // Usage export files download from presigned S3 links (bucket and region
+  // are CircleCI's choice, so the whole S3 suffix).
+  circleci: ["circleci.com", "runner.circleci.com", "*.amazonaws.com"],
   turso: ["api.turso.tech"],
   ovh: ["*.ovh.com"],
+  // Every OCI service host sits under oraclecloud.com (identity, iaas,
+  // database, objectstorage, telemetry, usageapi, usage, limits, query,
+  // containerengine); the public price list is on apexapps.oracle.com.
+  "oracle-cloud": ["*.oraclecloud.com", "apexapps.oracle.com"],
   scaleway: ["api.scaleway.com", "*.scw.cloud"],
   vultr: ["api.vultr.com"],
   anthropic: ["api.anthropic.com"],
   assemblyai: ["api.assemblyai.com", "api.eu.assemblyai.com"],
   cartesia: ["api.cartesia.ai"],
   cohere: ["api.cohere.com"],
+  // Cloud API, observability API and every CKS cluster API server
+  // (`{org}-{hash}.k8s.{zone}.coreweave.com`); bucket data is on cwobject.com.
+  coreweave: ["*.coreweave.com", "cwobject.com", "*.cwobject.com"],
+  cursor: ["api.cursor.com"],
   deepgram: ["api.deepgram.com"],
+  modal: ["api.modal.com"],
   deepseek: ["api.deepseek.com"],
+  devin: ["api.devin.ai"],
   elevenlabs: [
     "api.elevenlabs.io",
     "api.us.elevenlabs.io",
@@ -132,6 +155,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "mp.api.speechmatics.com",
     "portal.speechmatics.com",
   ],
+  "temporal-cloud": ["saas-api.tmprl.cloud", "metrics.temporal.io"],
   together: ["api.together.ai", "api.together.xyz", "api-inference.together.ai"],
   xai: ["api.x.ai", "management-api.x.ai"],
   // Control plane, the per-app file-serving host, and the regional ingest
