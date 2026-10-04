@@ -342,6 +342,26 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Observability",
+    providers: [
+      {
+        name: "New Relic",
+        detail: "Spend by product and account, APM, synthetics, alerts",
+        resources: [
+          "Account",
+          "APM Application",
+          "Browser Application",
+          "Host",
+          "Synthetic Monitor",
+          "Dashboard",
+          "Workload",
+          "Alert Policy",
+          "Alert Condition",
+        ],
+      },
+    ],
+  },
+  {
     name: "Identity & Auth",
     providers: [
       {

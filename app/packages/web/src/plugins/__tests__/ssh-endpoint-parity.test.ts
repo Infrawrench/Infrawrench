@@ -119,6 +119,7 @@ describe("SSH endpoint parity", () => {
     "docker",
     "cloudflare",
     "neon",
+    "newrelic",
     "planetscale",
     "turso",
     "kubernetes",

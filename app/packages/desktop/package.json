@@ -147,6 +147,7 @@
     "@infrawrench/plugin-mssql": "workspace:*",
     "@infrawrench/plugin-mysql": "workspace:*",
     "@infrawrench/plugin-neon": "workspace:*",
+    "@infrawrench/plugin-newrelic": "workspace:*",
     "@infrawrench/plugin-netlify": "workspace:*",
     "@infrawrench/plugin-openai": "workspace:*",
     "@infrawrench/plugin-openrouter": "workspace:*",

@@ -53,6 +53,7 @@ vi.mock("@infrawrench/plugin-mongodb", () => stub("mongodb"));
 vi.mock("@infrawrench/plugin-mysql", () => stub("mysql"));
 vi.mock("@infrawrench/plugin-mssql", () => stub("mssql"));
 vi.mock("@infrawrench/plugin-neon", () => stub("neon"));
+vi.mock("@infrawrench/plugin-newrelic", () => stub("newrelic"));
 vi.mock("@infrawrench/plugin-redis", () => stub("redis"));
 vi.mock("@infrawrench/plugin-scaleway", () => stub("scaleway"));
 vi.mock("@infrawrench/plugin-ssh", () => stub("ssh"));
