@@ -159,6 +159,13 @@ export const ALL_PERMISSIONS = [
   "invoices:write",
   "invoices:issue",
   "pages:write",
+  // Open and re-share every cost report, report folder and dashboard
+  // regardless of its sharing. Its own permission, in the spirit of
+  // `freezes:override` / `tag-policy:override`: sharing is a per-object choice
+  // somebody made, and stepping past it is a distinct act from editing. It is
+  // what keeps an object whose owner left manageable. Admins and owners hold
+  // it through their catalog-derived sets; members do not.
+  "sharing:override",
   "org:settings:write",
 ] as const;
 

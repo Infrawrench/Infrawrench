@@ -7,6 +7,8 @@
  * `onConflictDoNothing` + RETURNING tells us whether this crossing is fresh,
  * and only fresh crossings notify.
  */
+import { resolveObjectCostVisibility } from "./visibility";
+import { runWithCostVisibility } from "./visibility-context";
 import { and, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { BudgetThreshold } from "@infrawrench/client-core";
@@ -355,15 +357,21 @@ export async function evaluateBudgetsForOrg(
       // A budget referencing a saved filter that no longer resolves throws
       // out of budgetMonthStatus into this budget's catch below: the
       // evaluation is skipped and logged, never silently run over all spend.
-      const status = await budgetMonthStatus(
-        organizationId,
-        (budget.filters ?? []) as CostFilter[],
-        budget.currency,
-        now,
-        (budget.costBasis ?? undefined) as CostBasis | undefined,
-        budget.savedFilterId,
-        budget.scenarioModelId,
-        budget.useAdjustedSpend,
+      // A budget a cost-scoped member created measures only the spend that
+      // member can see (`budgets.visibility_user_id`, resolved live), so its
+      // alerts cannot carry totals the creator could not read directly.
+      const visibility = await resolveObjectCostVisibility(organizationId, budget.visibilityUserId);
+      const status = await runWithCostVisibility(visibility, () =>
+        budgetMonthStatus(
+          organizationId,
+          (budget.filters ?? []) as CostFilter[],
+          budget.currency,
+          now,
+          (budget.costBasis ?? undefined) as CostBasis | undefined,
+          budget.savedFilterId,
+          budget.scenarioModelId,
+          budget.useAdjustedSpend,
+        ),
       );
 
       if (watchers.length > 0) {
@@ -445,6 +453,7 @@ export async function evaluateBudgetsForOrg(
         // happened via the budget_alert_events insert above.
         const url = orgAppUrl(organizationId, `budgets/${budget.id}`);
         const routed = await routeAlert({
+          costVisibilityUserId: budget.visibilityUserId ?? null,
           organizationId,
           trigger: "budgetAlerts",
           // A budget at or past 100% is a different kind of news from one at

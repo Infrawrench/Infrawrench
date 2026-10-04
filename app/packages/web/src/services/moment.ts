@@ -20,6 +20,7 @@
  * Wire contract lives in `@infrawrench/client-core` (`moment.ts`) so web,
  * desktop, mobile and the CLI cannot drift from the server.
  */
+import { withholdOrgWideFindings } from "./cost-visibility-filter";
 import { and, desc, eq, gte, inArray, lte, or } from "drizzle-orm";
 import {
   clampMomentWindow,
@@ -345,6 +346,9 @@ function incidentEvents(spans: MomentIncidentSpan[], from: Date, to: Date): Feed
 
 /** `cost_anomalies` by detection time: same table as `GET /costs/anomalies`. */
 const loadCostAnomalies: FeedLoader = async (organizationId, from, to) => {
+  // Org-wide findings: withheld from a cost-scoped caller (see
+  // services/cost-anomalies.ts).
+  if (withholdOrgWideFindings(organizationId)) return { events: [] };
   const rows = await db
     .select()
     .from(costAnomalies)

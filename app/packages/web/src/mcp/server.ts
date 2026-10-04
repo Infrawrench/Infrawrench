@@ -3,7 +3,7 @@ import type { JsonSchemaType } from "@modelcontextprotocol/server";
 import { z, type ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getToolRegistry } from "../tools/registry";
-import { authorizeToolCall } from "../tools/permissions";
+import { authorizeToolCall, runToolHandler } from "../tools/permissions";
 import { getClaimStatus } from "@infrawrench/server-core/trials/ceremony";
 import { hasMembership, listUserOrganizations } from "../api/auth-middleware";
 import type { ToolAuthContext } from "../tools/types";
@@ -204,7 +204,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
         const denied = await authorizeToolCall(tool, callAuth);
         if (denied) return { content: denied.content, isError: true };
 
-        const result = await tool.handler(rest, callAuth);
+        const result = await runToolHandler(tool, rest, callAuth);
         // Images ride a side channel on the chat surface (its content contract
         // is text-only); an MCP client can render them, so a screenshot the
         // model can actually see is appended in the SDK's image shape.

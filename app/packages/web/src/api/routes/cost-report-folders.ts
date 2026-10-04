@@ -12,6 +12,7 @@
  * {@link CostReportFolderError} → 400; this file is transport only, matching
  * api/routes/cost-reports.ts.
  */
+import { grantCreatorOwnership } from "../../services/object-sharing";
 import { Hono } from "hono";
 
 import { costReportFolderInputSchema } from "@infrawrench/ui/cost/config";
@@ -19,7 +20,7 @@ import {
   CostReportFolderError,
   createCostReportFolder,
   deleteCostReportFolder,
-  listCostReportFolders,
+  listVisibleCostReportFolders,
   updateCostReportFolder,
 } from "../../services/cost-report-folders";
 import { logAudit } from "../../services/audit";
@@ -37,7 +38,7 @@ const app = new Hono();
 /** GET /api/org/:orgId/cost-report-folders: the org's folders, flat. */
 app.get("/", async (c) => {
   requirePermission(c, "costs:read");
-  return c.json(await listCostReportFolders(c.get("organizationId")));
+  return c.json(await listVisibleCostReportFolders(c.get("organizationId")));
 });
 
 /** POST /api/org/:orgId/cost-report-folders: create a folder. */
@@ -53,6 +54,7 @@ app.post("/", async (c) => {
 
   try {
     const created = await createCostReportFolder(organizationId, parsed.data);
+    await grantCreatorOwnership(organizationId, "cost_report_folder", created.id, session.userId);
     void logAudit({
       organizationId,
       userId: session.userId,

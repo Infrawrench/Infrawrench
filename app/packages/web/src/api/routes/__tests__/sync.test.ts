@@ -3,6 +3,23 @@ import { Hono } from "hono";
 
 const mockSelect = vi.fn();
 const mockInsert = vi.fn();
+vi.mock("@/auth/effective-permissions", () => ({
+  effectivePermissions: async () => ["*"],
+}));
+vi.mock("@/services/object-sharing", () => ({
+  // Sharing is covered by its own suite; here every object is visible.
+  filterVisibleObjects: async (_o: string, _t: string, items: unknown[]) => items,
+  resolveSharingPrincipal: async () => ({ override: true }),
+  runWithSharingPrincipal: (_p: unknown, fn: () => unknown) => fn(),
+  grantCreatorOwnership: async () => undefined,
+  deleteObjectSharing: async () => undefined,
+  requireObjectAccess: async () => "owner",
+  loadObjectMeta: async () => ({ name: "x" }),
+  listVisibleCostReportFolders: undefined,
+  ObjectNotVisibleError: class extends Error {},
+  ObjectAccessDeniedError: class extends Error {},
+  SharingInputError: class extends Error {},
+}));
 vi.mock("@/db/client", () => ({
   db: {
     select: (...a: unknown[]) => mockSelect(...a),
@@ -115,7 +132,7 @@ describe("Sync routes (bearer auth)", () => {
         .mockReturnValueOnce(makeWhereSelect([{ id: "a1" }]))
         .mockReturnValueOnce(makeWhereSelect([{ id: "r1" }]))
         .mockReturnValueOnce(makeWhereSelect([{ id: "d1" }]))
-        .mockReturnValueOnce(makeJoinSelect([{ id: "pin1" }]))
+        .mockReturnValueOnce(makeJoinSelect([{ id: "pin1", dashboardId: "d1" }]))
         .mockReturnValueOnce(makeJoinSelect([{ id: "assoc1" }]));
 
       const res = await buildApp().request("/pull", {

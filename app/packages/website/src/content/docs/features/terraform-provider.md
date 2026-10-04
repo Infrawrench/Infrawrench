@@ -429,16 +429,18 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Accounts and access
 
-| Resource                        | Manages                                                                      |
-| ------------------------------- | ---------------------------------------------------------------------------- |
-| `infrawrench_account`           | Connected [cloud accounts](../core-concepts/resources-and-accounts.md)       |
-| `infrawrench_bastion`           | [Bastion agent](./bastion-vms.md) enrollments                                |
-| `infrawrench_role`              | Custom [roles and permissions](../team-and-billing/roles-and-permissions.md) |
-| `infrawrench_api_key`           | [API keys](../team-and-billing/api-keys.md)                                  |
-| `infrawrench_ssh_key`           | [SSH keys](../team-and-billing/ssh-keys.md), imported or generated           |
-| `infrawrench_ssh_snippet`       | Saved [SSH fan-out](./ssh-fanout.md) commands                                |
-| `infrawrench_deploy_trigger`    | Redeploy-on-push triggers for [Infrafile](./infrafile.md) projects           |
-| `infrawrench_workflow_schedule` | The cron on an existing [workflow](./workflows.md)                           |
+| Resource                            | Manages                                                                                                                |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `infrawrench_account`               | Connected [cloud accounts](../core-concepts/resources-and-accounts.md)                                                 |
+| `infrawrench_bastion`               | [Bastion agent](./bastion-vms.md) enrollments                                                                          |
+| `infrawrench_role`                  | Custom [roles and permissions](../team-and-billing/roles-and-permissions.md)                                           |
+| `infrawrench_cost_visibility_scope` | [Cost visibility](../team-and-billing/cost-visibility.md) scopes on roles, members and API keys                        |
+| `infrawrench_object_sharing`        | [Sharing](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) on a cost report, folder or dashboard |
+| `infrawrench_api_key`               | [API keys](../team-and-billing/api-keys.md)                                                                            |
+| `infrawrench_ssh_key`               | [SSH keys](../team-and-billing/ssh-keys.md), imported or generated                                                     |
+| `infrawrench_ssh_snippet`           | Saved [SSH fan-out](./ssh-fanout.md) commands                                                                          |
+| `infrawrench_deploy_trigger`        | Redeploy-on-push triggers for [Infrafile](./infrafile.md) projects                                                     |
+| `infrawrench_workflow_schedule`     | The cron on an existing [workflow](./workflows.md)                                                                     |
 
 ### Alert delivery
 

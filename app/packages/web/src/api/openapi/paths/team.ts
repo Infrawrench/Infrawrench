@@ -1,4 +1,5 @@
 import { z } from "../zod";
+import { CostVisibilitySummary } from "./cost-visibility";
 import {
   strict,
   ErrorResponse,
@@ -96,6 +97,9 @@ const MeResponse = strict({
   email: Email,
   role: RoleSummary.nullable(),
   permissions: z.array(Permission),
+  costVisibility: CostVisibilitySummary.optional().describe(
+    "The caller's cost visibility scope. Every cost read enforces it server-side.",
+  ),
 }).openapi("MeResponse");
 
 const PermissionCatalog = strict({ permissions: z.array(Permission) }).openapi("PermissionCatalog");

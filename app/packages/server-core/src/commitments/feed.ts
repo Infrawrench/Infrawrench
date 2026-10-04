@@ -23,6 +23,7 @@
  * utilization is unaffected: it rides on the holding itself and is never
  * blended with anything derived here.
  */
+import { strictlyVisibleAccountIds } from "../cost/visibility-context";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { db } from "../db/client";
@@ -153,7 +154,12 @@ export async function getCommitmentsFeed(
     })
     .from(accounts)
     .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)));
-  const relevant = orgAccounts.filter((a) => commitmentPluginIds.has(a.pluginId));
+  // Cost visibility: per-account figures are shown only for accounts a scoped
+  // caller may see in full (no row to test a cost centre or filter against).
+  const visibleAccounts = strictlyVisibleAccountIds(organizationId);
+  const relevant = orgAccounts.filter(
+    (a) => commitmentPluginIds.has(a.pluginId) && (!visibleAccounts || visibleAccounts.has(a.id)),
+  );
   if (relevant.length === 0) return emptyFeed();
   const accountById = new Map(relevant.map((a) => [a.id, a]));
 

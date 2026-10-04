@@ -12,6 +12,10 @@ import type {
 import { and, asc, desc, eq, gte, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
 import { costDaily } from "./schema";
+import {
+  costVisibilityLayersFor,
+  type CompiledCostVisibilityLayer,
+} from "../cost/visibility-context";
 
 /**
  * The query vocabulary is the cost contract in `@infrawrench/client-core`:
@@ -187,6 +191,65 @@ export function membershipCondition(expr: SQL, op: CostFilter["op"], values: str
 }
 
 /* ------------------------------------------------------------------ *
+ * The one place a cost_daily read is scoped to an organization.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The SQL one cost visibility layer compiles to:
+ * `(account IN … OR allocated centre IN …) AND <saved filter>`.
+ *
+ * The centre arm is the showback `multiIf` (first matching allocation rule
+ * wins, unmatched rows are `''`) tested for membership, so "a row belongs to
+ * the Platform centre" means exactly what the showback report says it means.
+ * A layer with neither accounts nor centres is decided by its saved filter
+ * alone, and one with nothing at all matches nothing: an empty scope fails
+ * closed.
+ */
+function visibilityLayerCondition(layer: CompiledCostVisibilityLayer): SQL {
+  if (layer.unresolvable) return sql`0`;
+  const arms: SQL[] = [];
+  if (layer.accountIds.length > 0) arms.push(inArray(costDaily.account_id, layer.accountIds));
+  if (layer.costCentreIds.length > 0) {
+    const branches = layer.rules.map(
+      (rule) => sql`${matchConditions(rule.match)}, ${rule.costCentreId}`,
+    );
+    const centreExpr =
+      branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
+    arms.push(inArray(centreExpr, layer.costCentreIds));
+  }
+  const filterConds = (layer.filters ?? []).map((f) =>
+    membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
+  );
+  if (arms.length === 0 && layer.filters === null) return sql`0`;
+  const parts: SQL[] = [];
+  if (arms.length > 0) parts.push(sql`(${sql.join(arms, sql` OR `)})`);
+  parts.push(...filterConds);
+  return parts.length > 0 ? sql`(${sql.join(parts, sql` AND `)})` : sql`1`;
+}
+
+/**
+ * `organization_id = …`, narrowed by the cost visibility scope of whoever the
+ * current execution runs for (see `cost/visibility-context.ts`).
+ *
+ * **Every read of `cost_daily` builds its org predicate here and nowhere
+ * else** (this module, `commitment-readers.ts` and the export row stream).
+ * That is what makes a scope hold on every cost surface at once, including
+ * ones written after it: a reader cannot forget to apply a scope it never had
+ * to know about. `__tests__/cost-visibility-sql.test.ts` fails if a raw
+ * org-id equality on `cost_daily` appears anywhere else.
+ *
+ * Unattended callers (the poller's evaluators, exports, the digest) run with
+ * no visibility established and get the bare org predicate, byte-identical to
+ * what every reader issued before scopes existed.
+ */
+export function costDailyOrgCondition(organizationId: string): SQL {
+  const orgCond = eq(costDaily.organization_id, organizationId);
+  const layers = costVisibilityLayersFor(organizationId);
+  if (!layers) return orgCond;
+  return and(orgCond, ...layers.map(visibilityLayerCondition))!;
+}
+
+/* ------------------------------------------------------------------ *
  * Billing rules, compiled into the scan that was going to run anyway.
  * ------------------------------------------------------------------ */
 
@@ -344,7 +407,7 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   }
 
   const where = and(
-    eq(costDaily.organization_id, organizationId),
+    costDailyOrgCondition(organizationId),
     dayRange(q.from, q.to),
     ...q.filters.map((f) =>
       membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
@@ -458,7 +521,7 @@ export async function getResourceCostTotals(
       .final()
       .where(
         and(
-          eq(costDaily.organization_id, organizationId),
+          costDailyOrgCondition(organizationId),
           dayRange(from, to),
           sql`${costDaily.resource_id} != ''`,
         ),
@@ -486,7 +549,7 @@ export async function getCostDimensionValues(
       .from(costDaily)
       .where(
         and(
-          eq(costDaily.organization_id, organizationId),
+          costDailyOrgCondition(organizationId),
           opts?.from ? gte(costDaily.day, opts.from) : undefined,
           opts?.to ? lte(costDaily.day, opts.to) : undefined,
           sql`${expr} != ''`,
@@ -504,7 +567,7 @@ export async function getCostTagKeys(organizationId: string): Promise<string[]> 
     db
       .selectDistinct({ key: sql<string>`arrayJoin(mapKeys(${costDaily.tags}))`.as("key") })
       .from(costDaily)
-      .where(eq(costDaily.organization_id, organizationId))
+      .where(costDailyOrgCondition(organizationId))
       .orderBy(asc(sql`key`))
       .limit(200),
   );
@@ -544,7 +607,7 @@ export async function getUntaggedSpend(
   const hasKey = (key: string) => sql`mapContains(${costDaily.tags}, ${key})`;
   const missingAny = sql`NOT (${sql.join(requiredKeys.map(hasKey), sql` AND `)})`;
   const money = amountExpr(costBasis);
-  const scope = and(eq(costDaily.organization_id, organizationId), dayRange(from, to));
+  const scope = and(costDailyOrgCondition(organizationId), dayRange(from, to));
 
   // One `sumIf` per required key, selected alongside the totals so the whole
   // report is a single scan. The keys are the org's own configuration, but the
@@ -677,7 +740,7 @@ export async function getShowbackSpend(
   const rawExpr = amountExpr(costBasis);
   const moneyExpr = adjustments ? adjustedAmountExpr(rawExpr, adjustments.factors) : rawExpr;
 
-  const where = and(eq(costDaily.organization_id, organizationId), dayRange(from, to));
+  const where = and(costDailyOrgCondition(organizationId), dayRange(from, to));
   const selection = {
     centre: centreExpr.as("centre"),
     currency: costDaily.currency,
@@ -728,7 +791,7 @@ export async function getCostCoverage(
         last_day: sql<string>`toString(max(${costDaily.day}))`.as("last_day"),
       })
       .from(costDaily)
-      .where(eq(costDaily.organization_id, organizationId))
+      .where(costDailyOrgCondition(organizationId))
       .groupBy(costDaily.account_id),
   );
   const result = new Map<string, { firstDay: string; lastDay: string }>();
