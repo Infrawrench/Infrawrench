@@ -144,6 +144,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   coreweave: ["*.coreweave.com", "cwobject.com", "*.cwobject.com"],
   cursor: ["api.cursor.com"],
   deepgram: ["api.deepgram.com"],
+  "elastic-cloud": ["api.elastic-cloud.com", "billing.elastic-cloud.com"],
   modal: ["api.modal.com"],
   deepseek: ["api.deepseek.com"],
   devin: ["api.devin.ai"],

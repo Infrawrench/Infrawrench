@@ -68,6 +68,7 @@ describe("plugin loader", () => {
       "kafka",
       "linode",
       "opensearch",
+      "elastic-cloud",
       "anthropic",
       "assemblyai",
       "cartesia",

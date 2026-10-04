@@ -100,6 +100,7 @@ vi.mock("@infrawrench/plugin-elevenlabs", () => stub("elevenlabs"));
 vi.mock("@infrawrench/plugin-fastly", () => stub("fastly"));
 vi.mock("@infrawrench/plugin-devin", () => stub("devin"));
 vi.mock("@infrawrench/plugin-deepseek", () => stub("deepseek"));
+vi.mock("@infrawrench/plugin-elastic-cloud", () => stub("elastic-cloud"));
 vi.mock("@infrawrench/plugin-deepgram", () => stub("deepgram"));
 vi.mock("@infrawrench/plugin-coralogix", () => stub("coralogix"));
 vi.mock("@infrawrench/plugin-cohere", () => stub("cohere"));

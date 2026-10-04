@@ -42,6 +42,7 @@ import { plugin as circleciPlugin } from "@infrawrench/plugin-circleci";
 import { plugin as clickhousePlugin } from "@infrawrench/plugin-clickhouse";
 import { plugin as crusoePlugin } from "@infrawrench/plugin-crusoe";
 import { plugin as opensearchPlugin } from "@infrawrench/plugin-opensearch";
+import { plugin as elasticCloudPlugin } from "@infrawrench/plugin-elastic-cloud";
 import { plugin as anthropicPlugin } from "@infrawrench/plugin-anthropic";
 import { plugin as assemblyaiPlugin } from "@infrawrench/plugin-assemblyai";
 import { plugin as cartesiaPlugin } from "@infrawrench/plugin-cartesia";
@@ -120,6 +121,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   clickhousePlugin,
   crusoePlugin,
   opensearchPlugin,
+  elasticCloudPlugin,
   anthropicPlugin,
   assemblyaiPlugin,
   cartesiaPlugin,

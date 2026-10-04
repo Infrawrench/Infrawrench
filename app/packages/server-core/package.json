@@ -248,6 +248,7 @@
     "@infrawrench/plugin-deepseek": "workspace:*",
     "@infrawrench/plugin-devin": "workspace:*",
     "@infrawrench/plugin-digitalocean": "workspace:*",
+    "@infrawrench/plugin-elastic-cloud": "workspace:*",
     "@infrawrench/plugin-docker": "workspace:*",
     "@infrawrench/plugin-elevenlabs": "workspace:*",
     "@infrawrench/plugin-fastly": "workspace:*",

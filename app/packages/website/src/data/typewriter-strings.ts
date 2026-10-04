@@ -164,6 +164,8 @@ export const typewriterStrings: string[] = [
   "Snowflake Resource Monitors",
   "ClickHouse Services",
   "ClickHouse Databases",
+  "Elastic Cloud Deployments",
+  "Elastic Serverless Projects",
   "Neon Branches",
   "Neon Endpoints",
   "Neon Databases",

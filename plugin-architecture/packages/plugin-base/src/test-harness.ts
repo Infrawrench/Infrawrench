@@ -91,6 +91,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
   depot: { token: "test-depot-org-token", plan: "startup" },
   deepgram: { apiKey: "test-deepgram-key" },
+  "elastic-cloud": { apiKey: "essu_test_elastic_cloud_key" },
   coralogix: { region: "eu2", apiKey: "test-coralogix-key", unitPrice: "1.50" },
   fastly: { apiToken: "test-fastly-token" },
   snowflake: { account: "myorg-myaccount", user: "INFRAWRENCH", credential: "test-snowflake-pat" },

@@ -268,6 +268,18 @@ export const providerGroups: ProviderGroup[] = [
         resources: ["Service", "Database", "SQL Editor"],
       },
       {
+        name: "Elastic Cloud",
+        detail: "Spend by deployment and project, deployments, serverless projects",
+        resources: [
+          "Organization",
+          "Hosted Deployment",
+          "Serverless Project",
+          "Traffic Filter",
+          "Extension",
+          "Budget",
+        ],
+      },
+      {
         name: "Databricks",
         detail: "Clusters, warehouses, catalogs, SQL",
         resources: ["Cluster", "SQL Warehouse", "Job", "Pipeline", "Catalog", "Schema", "Table"],

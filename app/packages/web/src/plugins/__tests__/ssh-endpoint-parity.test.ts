@@ -154,6 +154,7 @@ describe("SSH endpoint parity", () => {
     "cursor",
     "deepgram",
     "deepseek",
+    "elastic-cloud",
     "devin",
     "elevenlabs",
     "fastly",
