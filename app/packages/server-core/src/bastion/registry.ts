@@ -160,6 +160,9 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   "confluent-cloud": ["api.confluent.cloud", "api.telemetry.confluent.cloud"],
   gemini: ["generativelanguage.googleapis.com"],
   gladia: ["api.gladia.io"],
+  // Cloud API on grafana.com; each stack's Grafana, Prometheus and Synthetic
+  // Monitoring APIs live under grafana.net.
+  "grafana-cloud": ["grafana.com", "*.grafana.net"],
   groq: ["api.groq.com"],
   mistral: ["api.mistral.ai"],
   openai: ["api.openai.com", "mtls.api.openai.com", "mtls-eu.api.openai.com"],

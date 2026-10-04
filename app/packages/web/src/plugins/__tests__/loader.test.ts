@@ -85,6 +85,7 @@ describe("plugin loader", () => {
       "gemini",
       "github",
       "gladia",
+      "grafana-cloud",
       "groq",
       "mistral",
       "modal",

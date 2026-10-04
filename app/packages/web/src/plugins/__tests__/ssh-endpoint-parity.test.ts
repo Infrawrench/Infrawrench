@@ -163,6 +163,7 @@ describe("SSH endpoint parity", () => {
     "gemini",
     "github",
     "gladia",
+    "grafana-cloud",
     "groq",
     "mistral",
     "modal",

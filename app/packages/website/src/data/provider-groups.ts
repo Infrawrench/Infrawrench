@@ -528,7 +528,10 @@ export const providerGroups: ProviderGroup[] = [
   },
   {
     name: "Observability",
-    providers: [{ name: "Sentry", detail: "Spend by data category and project, issues, alerts, cron and uptime monitors", resources: ["Organization", "Project", "Team", "Release", "Issue", "Client Key (DSN)", "Alert", "Monitor", "Cron Monitor", "Uptime Monitor"] }],
+    providers: [
+      { name: "Grafana Cloud", detail: "Billed usage by product and stack, stacks, alert rules, dashboards", resources: ["Organization", "Stack", "Installed Plugin", "Access Policy", "Access Policy Token", "Member", "Dashboard", "Alert Rule", "Contact Point", "Data Source", "Synthetic Check"] },
+      { name: "Sentry", detail: "Spend by data category and project, issues, alerts, cron and uptime monitors", resources: ["Organization", "Project", "Team", "Release", "Issue", "Client Key (DSN)", "Alert", "Monitor", "Cron Monitor", "Uptime Monitor"] },
+    ],
   },
   {
     name: "Communications",

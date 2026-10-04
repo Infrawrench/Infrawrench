@@ -58,6 +58,7 @@ import { plugin as fireworksPlugin } from "@infrawrench/plugin-fireworks";
 import { plugin as confluentCloudPlugin } from "@infrawrench/plugin-confluent-cloud";
 import { plugin as geminiPlugin } from "@infrawrench/plugin-gemini";
 import { plugin as gladiaPlugin } from "@infrawrench/plugin-gladia";
+import { plugin as grafanaCloudPlugin } from "@infrawrench/plugin-grafana-cloud";
 import { plugin as groqPlugin } from "@infrawrench/plugin-groq";
 import { plugin as mistralPlugin } from "@infrawrench/plugin-mistral";
 import { plugin as modalPlugin } from "@infrawrench/plugin-modal";
@@ -137,6 +138,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   confluentCloudPlugin,
   geminiPlugin,
   gladiaPlugin,
+  grafanaCloudPlugin,
   groqPlugin,
   mistralPlugin,
   modalPlugin,

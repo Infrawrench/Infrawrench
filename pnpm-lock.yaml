@@ -246,6 +246,9 @@ importers:
       '@infrawrench/plugin-gladia':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/gladia
+      '@infrawrench/plugin-grafana-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/grafana-cloud
       '@infrawrench/plugin-groq':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/groq
@@ -783,6 +786,9 @@ importers:
       '@infrawrench/plugin-gladia':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/gladia
+      '@infrawrench/plugin-grafana-cloud':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/grafana-cloud
       '@infrawrench/plugin-groq':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/groq
@@ -2067,6 +2073,25 @@ importers:
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/gladia:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/grafana-cloud:
     dependencies:
       '@infrawrench/plugin-base':
         specifier: workspace:*

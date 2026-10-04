@@ -93,6 +93,7 @@ vi.mock("@infrawrench/plugin-mistral", () => stub("mistral"));
 vi.mock("@infrawrench/plugin-modal", () => stub("modal"));
 vi.mock("@infrawrench/plugin-groq", () => stub("groq"));
 vi.mock("@infrawrench/plugin-gladia", () => stub("gladia"));
+vi.mock("@infrawrench/plugin-grafana-cloud", () => stub("grafana-cloud"));
 vi.mock("@infrawrench/plugin-gemini", () => stub("gemini"));
 vi.mock("@infrawrench/plugin-fireworks", () => stub("fireworks"));
 vi.mock("@infrawrench/plugin-confluent-cloud", () => stub("confluent-cloud"));
