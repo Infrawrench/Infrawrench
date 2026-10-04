@@ -127,6 +127,7 @@ describe("SSH endpoint parity", () => {
     "assemblyai",
     "cartesia",
     "cohere",
+    "coralogix",
     "deepgram",
     "deepseek",
     "elevenlabs",

@@ -84,6 +84,7 @@ The weekly digest carries a **Quotas** line with the same count.
 | **ClickHouse Cloud** | The organization's quotas (services, Postgres services, replicas, API keys) with Cloud's own usage figure. Quotas Cloud reports no usage for are skipped.                                                       | Every quota with usage     |
 | **Cloudinary**       | The `/usage` response: monthly credits, transformations, storage, bandwidth, every add-on allowance the environment has, and the Admin API's hourly request budget.                                             | Every reported allowance   |
 | **UploadThing**      | The app's storage used against its plan's storage limit.                                                                                                                                                        | Storage only               |
+| **Coralogix**        | The team's daily unit quota against today's units, and the Events2Metrics, parsing-rule and enrichment limits with their usage.                                                                                 | Subset                     |
 | **Turso**            | The organization's plan allowances against its current usage: rows read and written and replica sync this billing cycle, storage, databases, groups and locations. Dimensions the plan doesn't cap are skipped. | Every capped allowance     |
 
 The "subset" rows are marked on the page too, under the table: AWS publishes thousands of

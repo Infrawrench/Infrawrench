@@ -85,6 +85,7 @@ vi.mock("@infrawrench/plugin-fireworks", () => stub("fireworks"));
 vi.mock("@infrawrench/plugin-elevenlabs", () => stub("elevenlabs"));
 vi.mock("@infrawrench/plugin-deepseek", () => stub("deepseek"));
 vi.mock("@infrawrench/plugin-deepgram", () => stub("deepgram"));
+vi.mock("@infrawrench/plugin-coralogix", () => stub("coralogix"));
 vi.mock("@infrawrench/plugin-cohere", () => stub("cohere"));
 vi.mock("@infrawrench/plugin-cartesia", () => stub("cartesia"));
 vi.mock("@infrawrench/plugin-assemblyai", () => stub("assemblyai"));

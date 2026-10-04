@@ -236,6 +236,7 @@
     "@infrawrench/plugin-cloudflare": "workspace:*",
     "@infrawrench/plugin-cloudinary": "workspace:*",
     "@infrawrench/plugin-cohere": "workspace:*",
+    "@infrawrench/plugin-coralogix": "workspace:*",
     "@infrawrench/plugin-databricks": "workspace:*",
     "@infrawrench/plugin-deepgram": "workspace:*",
     "@infrawrench/plugin-deepseek": "workspace:*",

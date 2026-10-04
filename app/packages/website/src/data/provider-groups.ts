@@ -332,6 +332,27 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Observability",
+    providers: [
+      {
+        name: "Coralogix",
+        detail: "Usage and cost by TCO priority, alerts, TCO policies, quota",
+        resources: [
+          "Team",
+          "Alert",
+          "Dashboard",
+          "TCO Policy",
+          "Parsing Rule Group",
+          "Enrichment",
+          "Custom Enrichment",
+          "Outbound Webhook",
+          "Quota Rule",
+          "Events2Metrics Rule",
+        ],
+      },
+    ],
+  },
+  {
     name: "Media & Analytics",
     providers: [
       {

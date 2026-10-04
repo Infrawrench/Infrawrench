@@ -72,6 +72,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   tailscale: { apiKey: "tskey-api-test", tailnet: "-" },
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
   deepgram: { apiKey: "test-deepgram-key" },
+  coralogix: { region: "eu2", apiKey: "test-coralogix-key", unitPrice: "1.50" },
   azure: {
     tenantId: "test-tenant-id",
     clientId: "test-client-id",
