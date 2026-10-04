@@ -100,6 +100,9 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   cloudinary: ["api.cloudinary.com"],
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
   neon: ["console.neon.tech"],
+  // Usage export files download from presigned S3 links (bucket and region
+  // are CircleCI's choice, so the whole S3 suffix).
+  circleci: ["circleci.com", "runner.circleci.com", "*.amazonaws.com"],
   turso: ["api.turso.tech"],
   ovh: ["*.ovh.com"],
   scaleway: ["api.scaleway.com", "*.scw.cloud"],

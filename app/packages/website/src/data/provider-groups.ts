@@ -342,6 +342,29 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "CI/CD",
+    providers: [
+      {
+        name: "CircleCI",
+        detail:
+          "Credits and spend by project, resource class and executor, workflow insights, runners",
+        resources: [
+          "Organization",
+          "Project",
+          "Workflow",
+          "Pipeline",
+          "Context",
+          "Context Variable",
+          "Project Variable",
+          "Schedule",
+          "Trigger",
+          "Runner Resource Class",
+          "Runner",
+        ],
+      },
+    ],
+  },
+  {
     name: "Identity & Auth",
     providers: [
       {

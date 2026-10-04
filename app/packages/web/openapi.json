@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.42.3",
+    "version": "1.43.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -983,6 +983,25 @@
               "$ref": "#/components/schemas/CredentialFieldRegion"
             }
           },
+          "providerOptions": {
+            "type": "object",
+            "properties": {
+              "dependsOn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "emptyLabel": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dependsOn"
+            ],
+            "additionalProperties": false,
+            "description": "Present when the field's choices come from the provider. Once every field in `dependsOn` has a value, `POST /accounts/credential-options` returns them."
+          },
           "helpLink": {
             "type": "object",
             "properties": {
@@ -1188,6 +1207,7 @@
           "aws",
           "azure",
           "cartesia",
+          "circleci",
           "clickhouse",
           "cloudflare",
           "cloudinary",
@@ -1347,6 +1367,84 @@
         },
         "required": [
           "pluginId",
+          "credentials"
+        ],
+        "additionalProperties": false
+      },
+      "CredentialFieldOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The value to store in the credential field."
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "CredentialOptionsResponse": {
+        "type": "object",
+        "properties": {
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialFieldOption"
+            }
+          }
+        },
+        "required": [
+          "options"
+        ],
+        "additionalProperties": false
+      },
+      "CredentialOptionsRequest": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "fieldKey": {
+            "type": "string",
+            "description": "A credential field that declares `providerOptions`."
+          },
+          "credentials": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The credential values entered so far. Used for the lookup only; nothing is stored."
+          },
+          "bastionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Look up through this bastion, matching how the account will egress once created.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "When editing an existing account, its id; the lookup then egresses through that account's bastion binding.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "pluginId",
+          "fieldKey",
           "credentials"
         ],
         "additionalProperties": false
@@ -1945,6 +2043,8 @@
           "connection",
           "container",
           "container-registry",
+          "context",
+          "context-variable",
           "custom-hostname",
           "custom-voice",
           "d1-database",
@@ -2168,6 +2268,7 @@
           "pg-database",
           "pg-schema",
           "phone-number",
+          "pipeline",
           "placement-group",
           "postgres-cluster",
           "posture-integration",
@@ -2180,6 +2281,7 @@
           "project-rate-limit",
           "project-service-account",
           "project-user",
+          "project-variable",
           "pronunciation-dict",
           "pronunciation-dictionary",
           "provider",
@@ -2213,8 +2315,11 @@
           "route53-hosted-zone",
           "route53-record-set",
           "router",
+          "runner",
+          "runner-resource-class",
           "s3-bucket",
           "sagemaker-endpoint",
+          "schedule",
           "secret",
           "secret-manager-secret",
           "secrets-manager-secret",
@@ -34746,6 +34851,72 @@
           }
         },
         "operationId": "postOrgOrgIdAccountsPreflight",
+        "x-required-permission": "accounts:write"
+      }
+    },
+    "/api/org/{orgId}/accounts/credential-options": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "List the provider's choices for a credential field",
+        "description": "For credential fields that declare `providerOptions` (an account picker filled from the API key, say): asks the provider for the choices the submitted credentials can see. Nothing is stored. A 400 carries the provider's reason, and clients fall back to a text input.\n\n_Requires permission: `accounts:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialOptionsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Choices for the field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialOptionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAccountsCredentialOptions",
         "x-required-permission": "accounts:write"
       }
     },

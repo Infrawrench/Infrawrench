@@ -160,4 +160,9 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-export const API_VERSION = "1.42.3";
+// 1.43.0: CircleCI plugin; `circleci` on the `pluginId` enum and its
+// resource type ids on the `resourceTypeId` enum. Credential fields may
+// declare `providerOptions`, and `POST /accounts/credential-options` returns
+// the provider's choices for them (the CircleCI organization picker).
+// Additive.
+export const API_VERSION = "1.43.0";
