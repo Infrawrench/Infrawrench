@@ -18,6 +18,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-hetzner"),
   () => import("@infrawrench/plugin-kafka"),
   () => import("@infrawrench/plugin-kubernetes"),
+  () => import("@infrawrench/plugin-linode"),
   () => import("@infrawrench/plugin-memcached"),
   () => import("@infrawrench/plugin-mongodb"),
   () => import("@infrawrench/plugin-mysql"),

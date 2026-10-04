@@ -41,13 +41,14 @@ Its coverage is narrower, though, and worth understanding: the local workspace s
 
 A resource is flagged when the provider plugin's heuristic matches the resource's current synced state. The first release ships heuristics for:
 
-| Provider     | Flagged when                                                                                                       |
-| ------------ | ------------------------------------------------------------------------------------------------------------------ |
-| DigitalOcean | Volumes attached to no Droplet; Reserved IPs assigned to no Droplet (free while assigned, $5/month while idle)     |
-| Hetzner      | Volumes attached to no server; Floating IPs not assigned; Primary IPs unassigned that won't auto-delete            |
-| AWS          | EBS volumes in `available` state (detached but still billed); Elastic IPs with no association                      |
-| Google Cloud | Persistent disks attached to no instance; static external IPs in `RESERVED` (unused) state — internal IPs are free |
-| Azure        | App Service Plans with no web app or function app assigned — Free and consumption tiers are not flagged            |
+| Provider     | Flagged when                                                                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| DigitalOcean | Volumes attached to no Droplet; Reserved IPs assigned to no Droplet (free while assigned, $5/month while idle)                           |
+| Hetzner      | Volumes attached to no server; Floating IPs not assigned; Primary IPs unassigned that won't auto-delete                                  |
+| AWS          | EBS volumes in `available` state (detached but still billed); Elastic IPs with no association                                            |
+| Google Cloud | Persistent disks attached to no instance; static external IPs in `RESERVED` (unused) state — internal IPs are free                       |
+| Azure        | App Service Plans with no web app or function app assigned — Free and consumption tiers are not flagged                                  |
+| Linode       | Powered-off Linodes (billed in full until deleted); volumes attached to nothing; NodeBalancers with no backends; unassigned reserved IPs |
 
 Heuristics are declared by each plugin, so coverage grows as plugins do — a provider that knows another "this is idle" signal can add it without any host changes.
 

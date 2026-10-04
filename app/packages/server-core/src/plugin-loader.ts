@@ -10,6 +10,7 @@ import { plugin as gcpPlugin } from "@infrawrench/plugin-gcp";
 import { plugin as hetznerPlugin } from "@infrawrench/plugin-hetzner";
 import { plugin as kafkaPlugin } from "@infrawrench/plugin-kafka";
 import { plugin as kubernetesPlugin } from "@infrawrench/plugin-kubernetes";
+import { plugin as linodePlugin } from "@infrawrench/plugin-linode";
 import { plugin as memcachedPlugin } from "@infrawrench/plugin-memcached";
 import { plugin as mongodbPlugin } from "@infrawrench/plugin-mongodb";
 import { plugin as mysqlPlugin } from "@infrawrench/plugin-mysql";
@@ -69,6 +70,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   hetznerPlugin,
   kafkaPlugin,
   kubernetesPlugin,
+  linodePlugin,
   memcachedPlugin,
   mongodbPlugin,
   mysqlPlugin,

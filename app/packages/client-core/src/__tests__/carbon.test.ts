@@ -73,7 +73,7 @@ describe("published coefficients", () => {
   });
 
   it("covers every provider with its own region table", () => {
-    for (const grid of ["digitalocean", "hetzner", "fly", "scaleway", "ovh"]) {
+    for (const grid of ["digitalocean", "hetzner", "fly", "scaleway", "ovh", "linode"]) {
       expect(Object.keys(PROVIDER_REGION_ZONES[grid] ?? {}).length, grid).toBeGreaterThan(3);
     }
   });
@@ -105,6 +105,10 @@ describe("gridIntensityFor", () => {
     expect(gridIntensityFor("ovh", "GRA11")).toBeCloseTo(40.5);
     expect(gridIntensityFor("scaleway", "pl-waw-1")).toBeCloseTo(608.2);
     expect(gridIntensityFor("digitalocean", "nyc3")).toBeCloseTo(376.1);
+    expect(gridIntensityFor("linode", "se-sto")).toBeCloseTo(34.9);
+    expect(gridIntensityFor("linode", "us-east")).toBeCloseTo(376.1);
+    // Jakarta has no figure, so it gets no number rather than a guess.
+    expect(gridIntensityFor("linode", "id-cgk")).toBeNull();
   });
 
   it("reads a US site on the same grid as the hyperscaler beside it", () => {

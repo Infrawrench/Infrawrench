@@ -34,9 +34,9 @@ vCPUs × watts-per-vCPU × hours × datacentre overhead ÷ 1000 × grid intensit
   cover use its AWS average, which is what CCF itself does for Alibaba.
 - **Datacentre overhead (PUE)** is each provider's published figure, per region
   where they publish one (Google, Scaleway). Hetzner's own parks are 1.13 and
-  OVHcloud's group average is 1.24. DigitalOcean, Fly.io and Hetzner's US and
-  Singapore sites run in colocation and publish nothing, so they read the
-  Uptime Institute's 2025 industry average of 1.54.
+  OVHcloud's group average is 1.24. DigitalOcean, Fly.io, Linode and Hetzner's
+  US and Singapore sites run in colocation and publish nothing, so they read
+  the Uptime Institute's 2025 industry average of 1.54.
 
 Grid figures are **location-based**: what the local grid emits, not what a
 provider's renewable contracts offset. That is the like-for-like comparison
@@ -55,13 +55,14 @@ market-based figures would be lower.
 | Scaleway     | Instances; Kapsule per cluster                                                                                           |
 | OVHcloud     | Public Cloud instances; Managed Kubernetes per cluster                                                                   |
 | Fly.io       | Machines                                                                                                                 |
+| Linode       | Linodes, Managed Databases; LKE per cluster and node pool (Jakarta has no grid figure)                                   |
 | Kubernetes   | Nodes, in any AWS, Google Cloud or Azure region                                                                          |
 
 Types with no processor anyone publishes a figure for (a bucket, a DNS record,
 a serverless function) are outside the scope rather than "not estimated".
 
 A managed cluster's estimate (EKS, GKE, AKS, DigitalOcean Kubernetes, Kapsule,
-OVHcloud Managed Kubernetes) shows on the cluster and in its create form, but
+OVHcloud Managed Kubernetes, LKE) shows on the cluster and in its create form, but
 is **not added to the total**: its nodes are listed in their own right, as
 droplets, EC2 instances and so on, and adding both would count every node
 twice. For the same reason a Kubernetes node whose machine is already listed as
