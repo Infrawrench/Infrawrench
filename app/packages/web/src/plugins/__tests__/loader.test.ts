@@ -43,6 +43,7 @@ describe("plugin loader", () => {
       "kubernetes",
       "memcached",
       "neon",
+      "newrelic",
       "circleci",
       "mongodb",
       "mongodb-atlas",

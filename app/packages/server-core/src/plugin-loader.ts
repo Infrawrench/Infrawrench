@@ -17,6 +17,7 @@ import { plugin as mongodbAtlasPlugin } from "@infrawrench/plugin-mongodb-atlas"
 import { plugin as mysqlPlugin } from "@infrawrench/plugin-mysql";
 import { plugin as mssqlPlugin } from "@infrawrench/plugin-mssql";
 import { plugin as neonPlugin } from "@infrawrench/plugin-neon";
+import { plugin as newrelicPlugin } from "@infrawrench/plugin-newrelic";
 import { plugin as oracleCloudPlugin } from "@infrawrench/plugin-oracle-cloud";
 import { plugin as ovhPlugin } from "@infrawrench/plugin-ovh";
 import { plugin as postgresPlugin } from "@infrawrench/plugin-postgres";
@@ -97,6 +98,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   mysqlPlugin,
   mssqlPlugin,
   neonPlugin,
+  newrelicPlugin,
   oracleCloudPlugin,
   ovhPlugin,
   postgresPlugin,

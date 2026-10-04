@@ -180,6 +180,7 @@ export const typewriterStrings: string[] = [
   "Gemini Context Caches",
   "ElevenLabs Voices",
   "Deepgram Projects",
+  "New Relic Alert Policies",
   "Grafana Cloud Stacks",
   "Sentry Cron Monitors",
   "Coralogix TCO Policies",

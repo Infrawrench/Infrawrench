@@ -45,9 +45,9 @@ market-based figures would be lower.
 
 ## Which providers are covered
 
-  OVHcloud's group average is 1.24. DigitalOcean, Fly.io, Linode, Oracle Cloud and
-  Hetzner's US and Singapore sites publish no figure, so they read the
-  Uptime Institute's 2025 industry average of 1.54.
+OVHcloud's group average is 1.24. DigitalOcean, Fly.io, Linode, Oracle Cloud and
+Hetzner's US and Singapore sites publish no figure, so they read the
+Uptime Institute's 2025 industry average of 1.54.
 
 Types with no processor anyone publishes a figure for (a bucket, a DNS record,
 a serverless function) are outside the scope rather than "not estimated".

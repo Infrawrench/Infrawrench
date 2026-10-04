@@ -73,7 +73,15 @@ describe("published coefficients", () => {
   });
 
   it("covers every provider with its own region table", () => {
-    for (const grid of ["digitalocean", "hetzner", "fly", "scaleway", "ovh", "linode", "oracle-cloud"]) {
+    for (const grid of [
+      "digitalocean",
+      "hetzner",
+      "fly",
+      "scaleway",
+      "ovh",
+      "linode",
+      "oracle-cloud",
+    ]) {
       expect(Object.keys(PROVIDER_REGION_ZONES[grid] ?? {}).length, grid).toBeGreaterThan(3);
     }
   });

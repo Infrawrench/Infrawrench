@@ -55,6 +55,7 @@ vi.mock("@infrawrench/plugin-mongodb-atlas", () => stub("mongodb-atlas"));
 vi.mock("@infrawrench/plugin-mysql", () => stub("mysql"));
 vi.mock("@infrawrench/plugin-mssql", () => stub("mssql"));
 vi.mock("@infrawrench/plugin-neon", () => stub("neon"));
+vi.mock("@infrawrench/plugin-newrelic", () => stub("newrelic"));
 vi.mock("@infrawrench/plugin-redis", () => stub("redis"));
 vi.mock("@infrawrench/plugin-scaleway", () => stub("scaleway"));
 vi.mock("@infrawrench/plugin-sentry", () => stub("sentry"));

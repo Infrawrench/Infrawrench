@@ -59,6 +59,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   openrouter: { managementKey: "sk-or-v1-test-management", apiKey: "sk-or-v1-test-inference" },
   opensearch: { endpoint: "https://search.example.com:9200", authMode: "basic" },
   neon: { apiKey: "neon_test_key" },
+  newrelic: { region: "us", apiKey: "NRAK-TEST", accountId: "1234567" },
   sentry: { region: "us", authToken: "sntryu_test", organization: "acme" },
   "mongodb-atlas": {
     clientId: "mdb_sa_id_test",
