@@ -45,6 +45,7 @@ describe("plugin loader", () => {
       "neon",
       "circleci",
       "mongodb",
+      "mongodb-atlas",
       "mysql",
       "postgres",
       "redis",

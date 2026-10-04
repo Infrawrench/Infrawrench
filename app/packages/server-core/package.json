@@ -265,6 +265,7 @@
     "@infrawrench/plugin-mistral": "workspace:*",
     "@infrawrench/plugin-modal": "workspace:*",
     "@infrawrench/plugin-mongodb": "workspace:*",
+    "@infrawrench/plugin-mongodb-atlas": "workspace:*",
     "@infrawrench/plugin-mssql": "workspace:*",
     "@infrawrench/plugin-mysql": "workspace:*",
     "@infrawrench/plugin-neon": "workspace:*",

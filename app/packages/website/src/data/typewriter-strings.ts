@@ -76,6 +76,7 @@ export const typewriterStrings: string[] = [
   "Snowflake Warehouses",
   "CoreWeave Node Pools",
   "Neon Projects",
+  "MongoDB Atlas Clusters",
   "PlanetScale Databases",
   "Turso Databases",
   "Redis Instances",

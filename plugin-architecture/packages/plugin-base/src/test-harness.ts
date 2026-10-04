@@ -59,6 +59,10 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   openrouter: { managementKey: "sk-or-v1-test-management", apiKey: "sk-or-v1-test-inference" },
   opensearch: { endpoint: "https://search.example.com:9200", authMode: "basic" },
   neon: { apiKey: "neon_test_key" },
+  "mongodb-atlas": {
+    clientId: "mdb_sa_id_test",
+    clientSecret: "mdb_sa_sk_test",
+    orgId: "5f0000000000000000000001",
   circleci: {
     apiToken: "test-circleci-token",
     organization: "00000000-0000-0000-0000-000000000001",

@@ -110,6 +110,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
   depot: ["api.depot.dev"],
   neon: ["console.neon.tech"],
+  "mongodb-atlas": ["cloud.mongodb.com"],
   snowflake: ["*.snowflakecomputing.com"],
   // Usage export files download from presigned S3 links (bucket and region
   // are CircleCI's choice, so the whole S3 suffix).

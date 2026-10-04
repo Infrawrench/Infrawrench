@@ -51,6 +51,7 @@ vi.mock("@infrawrench/plugin-linode", () => stub("linode"));
 vi.mock("@infrawrench/plugin-kubernetes", () => stub("kubernetes"));
 vi.mock("@infrawrench/plugin-memcached", () => stub("memcached"));
 vi.mock("@infrawrench/plugin-mongodb", () => stub("mongodb"));
+vi.mock("@infrawrench/plugin-mongodb-atlas", () => stub("mongodb-atlas"));
 vi.mock("@infrawrench/plugin-mysql", () => stub("mysql"));
 vi.mock("@infrawrench/plugin-mssql", () => stub("mssql"));
 vi.mock("@infrawrench/plugin-neon", () => stub("neon"));

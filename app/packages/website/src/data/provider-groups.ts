@@ -293,6 +293,22 @@ export const providerGroups: ProviderGroup[] = [
         resources: ["Project", "Branch", "Endpoint", "Database", "Role"],
       },
       {
+        name: "MongoDB Atlas",
+        detail: "Spend by service, project and cluster; clusters, backups, alerts",
+        resources: [
+          "Project",
+          "Cluster",
+          "Flex Cluster",
+          "Database User",
+          "IP Access List",
+          "Backup Snapshot",
+          "Alert",
+          "Search Index",
+          "Online Archive",
+          "Private Endpoint",
+        ],
+      },
+      {
         name: "PlanetScale",
         detail: "Databases and branches",
         resources: ["Database", "Branch"],
