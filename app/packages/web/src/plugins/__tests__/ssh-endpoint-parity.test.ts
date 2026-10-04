@@ -142,6 +142,7 @@ describe("SSH endpoint parity", () => {
     "speechmatics",
     "together",
     "xai",
+    "twilio",
   ];
 
   for (const pluginId of NO_SSH_PLUGINS) {

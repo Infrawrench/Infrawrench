@@ -137,6 +137,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // endpoints presigned uploads PUT to.
   uploadthing: ["api.uploadthing.com", "*.ufs.sh", "*.ingest.uploadthing.com", "utfs.io"],
   workos: ["api.workos.com"],
+  twilio: ["api.twilio.com", "messaging.twilio.com", "verify.twilio.com", "pricing.twilio.com"],
   kubernetes: [], // kubeconfig-relative; v1 doesn't bastion-route Kubernetes
 };
 

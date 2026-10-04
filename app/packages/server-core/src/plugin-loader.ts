@@ -52,6 +52,7 @@ import { plugin as togetherPlugin } from "@infrawrench/plugin-together";
 import { plugin as xaiPlugin } from "@infrawrench/plugin-xai";
 import { plugin as uploadthingPlugin } from "@infrawrench/plugin-uploadthing";
 import { plugin as workosPlugin } from "@infrawrench/plugin-workos";
+import { plugin as twilioPlugin } from "@infrawrench/plugin-twilio";
 
 /**
  * The registry, before validation. Exported because `loadPlugins()` *filters*;
@@ -111,6 +112,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   xaiPlugin,
   uploadthingPlugin,
   workosPlugin,
+  twilioPlugin,
 ];
 
 export interface LoadedPlugin {

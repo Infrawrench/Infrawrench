@@ -90,6 +90,7 @@ vi.mock("@infrawrench/plugin-cartesia", () => stub("cartesia"));
 vi.mock("@infrawrench/plugin-assemblyai", () => stub("assemblyai"));
 vi.mock("@infrawrench/plugin-anthropic", () => stub("anthropic"));
 vi.mock("@infrawrench/plugin-workos", () => stub("workos"));
+vi.mock("@infrawrench/plugin-twilio", () => stub("twilio"));
 
 beforeEach(() => {
   disabled = [];
