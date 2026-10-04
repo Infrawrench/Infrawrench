@@ -28,8 +28,45 @@ const CredentialField = strict({
   multiline: z.boolean().optional(),
   defaultValue: z.string().optional(),
   regions: z.array(CredentialFieldRegion).optional(),
+  providerOptions: strict({
+    dependsOn: z.array(z.string()),
+    emptyLabel: z.string().optional(),
+  })
+    .optional()
+    .openapi({
+      description:
+        "Present when the field's choices come from the provider. Once every field in `dependsOn` has a value, `POST /accounts/credential-options` returns them.",
+    }),
   helpLink: strict({ label: z.string(), url: z.string() }).optional(),
 }).openapi("CredentialField");
+
+const CredentialOptionsRequest = strict({
+  pluginId: z.string(),
+  fieldKey: z
+    .string()
+    .openapi({ description: "A credential field that declares `providerOptions`." }),
+  credentials: z.record(z.string()).openapi({
+    description:
+      "The credential values entered so far. Used for the lookup only; nothing is stored.",
+  }),
+  bastionId: Uuid.optional().nullable().openapi({
+    description: "Look up through this bastion, matching how the account will egress once created.",
+  }),
+  accountId: Uuid.optional().nullable().openapi({
+    description:
+      "When editing an existing account, its id; the lookup then egresses through that account's bastion binding.",
+  }),
+}).openapi("CredentialOptionsRequest");
+
+const CredentialOptionsResponse = strict({
+  options: z.array(
+    strict({
+      id: z.string().openapi({ description: "The value to store in the credential field." }),
+      label: z.string(),
+      description: z.string().optional(),
+    }).openapi("CredentialFieldOption"),
+  ),
+}).openapi("CredentialOptionsResponse");
 
 const PreflightPermission = strict({
   id: z.string().openapi({
@@ -261,6 +298,30 @@ export function registerAccountPaths(ctx: BuildContext) {
       200: {
         description: "Preflight report",
         content: { "application/json": { schema: PreflightReport } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/accounts/credential-options",
+    tags: ["Accounts"],
+    summary: "List the provider's choices for a credential field",
+    description:
+      "For credential fields that declare `providerOptions` (an account picker filled from the API key, say): asks the provider for the choices the submitted credentials can see. Nothing is stored. A 400 carries the provider's reason, and clients fall back to a text input.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: CredentialOptionsRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Choices for the field",
+        content: { "application/json": { schema: CredentialOptionsResponse } },
       },
       400: ErrorResponses[400],
       404: ErrorResponses[404],

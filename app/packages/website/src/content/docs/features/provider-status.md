@@ -4,7 +4,7 @@ description: Infrawrench watches your providers' public status pages and tells y
 sidebar_order: 9
 ---
 
-When something starts failing, the first question is always the same: is it your change, or is your provider having a bad day? Infrawrench answers it for you. The cloud poller watches the public status feed of every provider that publishes one — AWS, Google Cloud, Cloudflare, DigitalOcean, Fly.io, Neon, Azure, Hetzner, Scaleway, Netlify, Vercel, PlanetScale, ClickHouse Cloud, OpenAI, Anthropic, Groq, Replicate — and correlates active incidents against the resources your organization holds.
+When something starts failing, the first question is always the same: is it your change, or is your provider having a bad day? Infrawrench answers it for you. The cloud poller watches the public status feed of every provider that publishes one — AWS, Google Cloud, Cloudflare, DigitalOcean, Fly.io, Neon, Azure, Hetzner, Scaleway, Crusoe Cloud, Netlify, Vercel, PlanetScale, ClickHouse Cloud, Redis Cloud, OpenAI, Anthropic, Groq, Replicate, Modal and Cursor — and correlates active incidents against the resources your organization holds.
 
 The result isn't "DigitalOcean has an incident somewhere". It's **"DigitalOcean NYC3 degraded — 12 of your resources there"**.
 
@@ -50,7 +50,7 @@ Incidents that match nothing you hold are still cached but stay quiet — an edg
 
 ## Caveats
 
-- Correlation is only as precise as the provider's status page. Some providers (Azure's RSS feed, most AI providers) don't scope incidents to regions, so their incidents are treated as provider-wide.
+- Correlation is only as precise as the provider's status page. Some providers (Azure's and Redis's RSS feeds, most AI providers) don't scope incidents to regions, so their incidents are treated as provider-wide.
 - "N changes during this incident" is a correlation hint, not a causal claim — the count covers all changes on that provider during the incident window.
 - The feature is cloud-only: the poller fills the incident cache, so the desktop app in local-only mode has nothing to correlate.
 

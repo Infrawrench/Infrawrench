@@ -14,11 +14,12 @@ Find it on the **Costs** panel, above the savings sections — those are about s
 
 ## Which providers
 
-Only the ones that expose a balance. At present: **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI** and **ClickHouse Cloud**. The section renders nothing at all if none of your accounts is on a credit-capable provider — a permanently empty card just teaches people to scroll past that part of the page.
+Only the providers that expose a balance appear here. Current sources are **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI**, **ClickHouse Cloud**, **Snowflake** (contract capacity, rollover and free usage, if the connection role can read org usage), **Crusoe Cloud**, **Linode** (active promotions and account credit) and **Oracle Cloud** (Universal Credits commitments, per subscription line, with the line end date as expiry). The section is hidden when none of your accounts uses a credit-capable provider.
+Only the ones that expose a balance. At present: **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI**, **ClickHouse Cloud**, **Crusoe Cloud**, **Linode** (active promotions and account credit) and **Oracle Cloud** (Universal Credits commitments, per subscription line, with the line's end date as its expiry). The section renders nothing at all if none of your accounts is on a credit-capable provider — a permanently empty card just teaches people to scroll past that part of the page.
 
 Each provider's own word for the pot is used, because that is the word you will be looking for in their console: "Credits" on OpenRouter, "Balance" on DeepSeek and Deepgram.
 
-Some balances need a stronger credential than the account otherwise does. OpenRouter's `/credits` endpoint wants a provisioning key, and Deepgram's balances are an admin-or-owner read. Where that is the case the section says so and links to the page where you make one, rather than reporting a generic failure — "your key can't see this" and "the provider is down" want completely different reactions.
+Some balances need a stronger credential than the account otherwise does. OpenRouter's `/credits` endpoint wants a provisioning key, Deepgram's balances are an admin-or-owner read, and Crusoe's credit balance needs a key from a user with the organization's admin or billing role. Where that is the case the section says so and links to the page where you make one, rather than reporting a generic failure — "your key can't see this" and "the provider is down" want completely different reactions.
 
 ## How the burn rate is measured
 
