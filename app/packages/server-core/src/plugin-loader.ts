@@ -45,6 +45,7 @@ import { plugin as anthropicPlugin } from "@infrawrench/plugin-anthropic";
 import { plugin as assemblyaiPlugin } from "@infrawrench/plugin-assemblyai";
 import { plugin as cartesiaPlugin } from "@infrawrench/plugin-cartesia";
 import { plugin as coherePlugin } from "@infrawrench/plugin-cohere";
+import { plugin as coralogixPlugin } from "@infrawrench/plugin-coralogix";
 import { plugin as cursorPlugin } from "@infrawrench/plugin-cursor";
 import { plugin as deepgramPlugin } from "@infrawrench/plugin-deepgram";
 import { plugin as deepseekPlugin } from "@infrawrench/plugin-deepseek";
@@ -121,6 +122,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   assemblyaiPlugin,
   cartesiaPlugin,
   coherePlugin,
+  coralogixPlugin,
   cursorPlugin,
   deepgramPlugin,
   deepseekPlugin,

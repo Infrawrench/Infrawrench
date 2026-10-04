@@ -71,6 +71,7 @@ describe("plugin loader", () => {
       "assemblyai",
       "cartesia",
       "cohere",
+      "coralogix",
       "cursor",
       "deepgram",
       "deepseek",
