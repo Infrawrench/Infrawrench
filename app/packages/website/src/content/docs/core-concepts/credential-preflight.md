@@ -39,10 +39,10 @@ Deselecting a capability removes its permissions from the template. The generate
 
 ## Which plugins support it
 
-[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), [Cloudflare](../plugins/cloudflare.md), [GitHub](../plugins/github.md), [CoreWeave](../plugins/coreweave.md) and [Linode](../plugins/linode.md) ship full support today. Each plugin page lists the exact permissions behind its capabilities.
+[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), [Cloudflare](../plugins/cloudflare.md), [GitHub](../plugins/github.md), [CoreWeave](../plugins/coreweave.md) and [Linode](../plugins/linode.md) ship a checklist and policy generator. [Cursor](../plugins/cursor.md) ships the checklist without a generator because Cursor keys have no fine-grained scopes to template; the check confirms whether the key works and whether the plan includes Enterprise Analytics API access.
 
 ## How it works
 
-- Probes are **read-only**. AWS uses `sts:GetCallerIdentity` plus `iam:SimulatePrincipalPolicy` (falling back to sample reads if simulation is not allowed); GCP uses `projects.testIamPermissions`; Cloudflare verifies the token and issues one minimal read per capability; GitHub reads the token's user then probes the organization or enterprise; CoreWeave probes its Cloud API, usage export and metrics service; Linode reads your profile and issues one minimal list call per capability.
+- Probes are **read-only**. AWS uses `sts:GetCallerIdentity` plus `iam:SimulatePrincipalPolicy` (falling back to sample reads if simulation is not allowed); GCP uses `projects.testIamPermissions`; Cloudflare verifies the token and issues one minimal read per capability; GitHub reads the token's user then probes the organization or enterprise; CoreWeave probes its Cloud API, usage export and metrics service; Linode reads your profile and issues one minimal list call per capability; Cursor lists team members and makes one Analytics API read, reporting unknown where a permission cannot be checked without writing.
 - On the web app, the probe runs server-side against submitted or stored credentials. Credentials never round-trip to the browser. On desktop, it runs locally, in-process.
 - Preflight results are computed on demand and not stored.

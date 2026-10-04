@@ -402,22 +402,16 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Developer Tools",
+    providers: [{ name: "Cursor", detail: "Seats, spend limits, usage by model and member", resources: ["Team", "Team Member", "Model", "Billing Group", "Member Group", "Repository Blocklist"] }],
+  },
+  {
     name: "Developer Platforms",
-    providers: [
-      {
-        name: "GitHub",
-        detail: "Actions, Copilot and Codespaces spend, seats, runners, caches, budgets",
-        resources: ["Billing Account", "Copilot Seat", "Larger Runner", "Self-Hosted Runner", "Actions Cache", "Codespace", "Budget", "Cost Center"],
-      },
-    ],
+    providers: [{ name: "GitHub", detail: "Actions, Copilot and Codespaces spend, seats, runners, caches, budgets", resources: ["Billing Account", "Copilot Seat", "Larger Runner", "Self-Hosted Runner", "Actions Cache", "Codespace", "Budget", "Cost Center"] }],
   },
   {
     name: "CI/CD",
-    providers: [
-      {
-        name: "CircleCI",
-        detail: "Credits and spend by project, resource class and executor, workflow insights, runners",
-        resources: ["Organization", "Project", "Workflow", "Pipeline", "Context", "Context Variable", "Project Variable", "Schedule", "Trigger", "Runner Resource Class", "Runner"],
+    providers: [{ name: "CircleCI", detail: "Credits and spend by project, resource class and executor, workflow insights, runners", resources: ["Organization", "Project", "Workflow", "Pipeline", "Context", "Context Variable", "Project Variable", "Schedule", "Trigger", "Runner Resource Class", "Runner"] }],
       },
     ],
   },

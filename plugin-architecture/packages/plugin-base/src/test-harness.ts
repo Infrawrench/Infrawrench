@@ -105,6 +105,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   },
   anthropic: { apiKey: "sk-ant-api03-test-key", adminApiKey: "sk-ant-admin01-test-key" },
   cohere: { apiKey: "test-cohere-key" },
+  cursor: { apiKey: "crsr_test" },
   deepseek: { apiKey: "sk-test-deepseek-key" },
   devin: { apiKey: "cog_test_devin_key" },
   elevenlabs: { apiKey: "sk_test_elevenlabs_key" },

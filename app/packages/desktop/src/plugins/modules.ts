@@ -51,6 +51,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-assemblyai"),
   () => import("@infrawrench/plugin-cartesia"),
   () => import("@infrawrench/plugin-cohere"),
+  () => import("@infrawrench/plugin-cursor"),
   () => import("@infrawrench/plugin-deepgram"),
   () => import("@infrawrench/plugin-deepseek"),
   () => import("@infrawrench/plugin-devin"),
