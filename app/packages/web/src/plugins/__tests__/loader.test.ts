@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { loadPlugins } from "@/plugins/loader";
 
 describe("plugin loader", () => {
-  it("loads all 51 plugins successfully", async () => {
+  it("loads all 72 plugins successfully", async () => {
     const plugins = await loadPlugins();
-    expect(plugins).toHaveLength(51);
+    expect(plugins).toHaveLength(72);
   });
 
   it("each plugin has a valid manifest with required fields", async () => {
@@ -45,6 +45,12 @@ describe("plugin loader", () => {
       "neon",
       "newrelic",
       "circleci",
+      "mssql",
+      "fly",
+      "vercel",
+      "netlify",
+      "cloudinary",
+      "clickhouse",
       "mongodb",
       "mongodb-atlas",
       "mysql",
@@ -102,8 +108,6 @@ describe("plugin loader", () => {
       "workos",
       "twilio",
     ];
-    for (const id of expected) {
-      expect(ids).toContain(id);
-    }
+    expect([...ids].sort()).toEqual([...expected].sort());
   });
 });
