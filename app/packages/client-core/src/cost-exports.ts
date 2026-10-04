@@ -350,6 +350,13 @@ export interface CostExportQuery {
   dimensions: CostDimensionId[];
   /** Tag keys to emit as their own columns; only meaningful with the `tag` dimension. */
   tagKeys: string[];
+  /**
+   * Virtual tag keys to emit as their own `vtag_<key>` columns. A row a split
+   * rule divides is exported once per share, with its amounts weighted, so the
+   * file still sums to the collected total. Absent on every export written
+   * before virtual tags existed, which is exactly the file they produced.
+   */
+  virtualTagKeys?: string[] | undefined;
   filters: CostFilter[];
   chargeTypes?: CostChargeType[] | undefined;
   /** Which money column to sum. Absent is `cash`. */

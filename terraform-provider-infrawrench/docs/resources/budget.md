@@ -156,13 +156,13 @@ Optional:
 
 Required:
 
-- `dimension` (String) Cost dimension to filter on. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`.
+- `dimension` (String) Cost dimension to filter on. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`.
 - `op` (String) `in` to keep matching rows, `not_in` to exclude them.
 - `values` (List of String) Values to match. Must not be empty.
 
 Optional:
 
-- `tag_key` (String) Tag key, required when `dimension` is `tag` and rejected otherwise.
+- `tag_key` (String) Tag key, required when `dimension` is `tag` (a provider tag key) or `virtual_tag` (a virtual tag key, see `infrawrench_virtual_tag`) and rejected otherwise.
 
 
 <a id="nestedblock--recurring_period"></a>

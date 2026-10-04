@@ -35,7 +35,7 @@
  * proves at compile time that it parses to exactly these shapes.
  */
 
-import type { CostFilter } from "./costs";
+import { isKeyedCostDimension, type CostFilter } from "./costs";
 import { CloudApiError, type CloudFetch } from "./fetch";
 
 /* ------------------------------------------------------------------ *
@@ -334,8 +334,10 @@ export function costScenarioModelInputError(input: CostScenarioModelInput): stri
       return `${where}: a scope of more than ${COST_SCENARIO_LIMITS.maxScopeFilters} terms is a query, not a scope.`;
     }
     for (const term of adjustment.scope ?? []) {
-      if (term.dimension === "tag" && !term.tagKey?.trim()) {
-        return `${where}: a tag scope needs a tag key.`;
+      if (isKeyedCostDimension(term.dimension) && !term.tagKey?.trim()) {
+        return term.dimension === "virtual_tag"
+          ? `${where}: a virtual tag scope needs a virtual tag key.`
+          : `${where}: a tag scope needs a tag key.`;
       }
       if ((term.values?.length ?? 0) === 0) {
         return `${where}: a scope term with no values matches nothing.`;
@@ -463,7 +465,7 @@ export function scenarioScopeExcluded(scope: CostFilter[], chartFilters: CostFil
     const values = new Set(term.values);
     for (const chartTerm of chartFilters) {
       if (chartTerm.dimension !== term.dimension) continue;
-      if (term.dimension === "tag" && chartTerm.tagKey !== term.tagKey) continue;
+      if (isKeyedCostDimension(term.dimension) && chartTerm.tagKey !== term.tagKey) continue;
       if (chartTerm.op === "in") {
         // Disjoint `in` sets: nothing can satisfy both.
         if (!chartTerm.values.some((v) => values.has(v))) return true;

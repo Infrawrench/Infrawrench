@@ -14660,5 +14660,124 @@
   "858fa003bc4e909d": "Clé de tag facultative. Chaque valeur devient un libellé distinct de la métrique, et le total d'une journée est la somme de toutes ces valeurs.",
   "caf00c92d9dc527b": "Lire une métrique Datadog, comme les requêtes servies, les commandes passées ou une métrique personnalisée envoyée par votre application, et stocker une valeur par jour.",
   "b38bc72b1ea1524a": "Sources à inclure, sous forme de tags Datadog : env:prod, ou plusieurs séparés par des virgules pour les exiger tous. * lit toutes les sources.",
-  "6b4bda4c8c687a02": "Oui, la lire comme un comptage"
+  "6b4bda4c8c687a02": "Oui, la lire comme un comptage",
+  "6f620164afb43340": "Tag virtuel",
+  "25aff3147ee036f3": "Choisir un tag virtuel",
+  "ae18e28608db853e": "Choisir un tag virtuel pour le regroupement",
+  "26d755fb76a0b60a": "Choisir un tag virtuel…",
+  "13732cf698f221ef": "Aucun tag virtuel pour le moment",
+  "0f08d051d828eadf": "Colonnes de tags virtuels",
+  "78205fcd9ea2cb26": "tag virtuel {key}={value}",
+  "98f2cdf262788590": "le tag virtuel {key} est défini",
+  "88442918400bcb3c": "Tout tag virtuel",
+  "a0c6528fd71acf24": "tag virtuel : {name}",
+  "9ae60cdf2021d315": "Valeur du tag virtuel",
+  "74fef1e951f8c937": "Toute valeur (le tag est défini)",
+  "327fcb2077ebe133": "Échec du chargement des tags virtuels",
+  "0e2e515711b16dd0": "Échec de la mise en file d'attente du traitement",
+  "252bbfcbee04814c": "Supprimer le tag virtuel « {name} » ?",
+  "8e98005d6dc91c9f": "Échec de la suppression du tag virtuel",
+  "e8844a32dadfa309": "Tags virtuels",
+  "e98ad2552586f7cc": "Nouveau tag virtuel",
+  "23dc85047ffe9aab": "Aucun tag virtuel pour le moment.",
+  "02c82d26303a3f91": "Retraiter",
+  "6999e3b5defe3c88": "Tout le reste : {value}",
+  "b172ad412374a456": "Aucune dépense sur la période évaluée pour le moment.",
+  "1b74afbf9fd8b1ec": "Évalué du {from} au {to} ; {count} valeurs distinctes.",
+  "edf713458f15d47a": "Règle {n} : {amount}",
+  "a24271ec72a8675c": "{days} jours n'avaient pas de valeurs complètes de métrique métier ; leur répartition a donc reporté les dernières pondérations valides (ou a été répartie à parts égales).",
+  "b37afbacd61ee1fc": "Échec de l'enregistrement du tag virtuel",
+  "2c084f43cb327729": "Modifier le tag virtuel",
+  "fc78183e44e21eed": "La clé ne peut pas être modifiée : les filtres, budgets et rapports l'enregistrent.",
+  "d245b61dff66ee66": "Les règles sont évaluées de haut en bas ; une ligne prend la valeur de la première règle à laquelle elle correspond.",
+  "337c353f995e503d": "+ Ajouter une règle",
+  "1c562f7a5a86f169": "Valeur pour tout ce qui ne correspond à aucune règle (facultatif)",
+  "43ae395a415ab283": "Laisser vide pour ne pas la définir",
+  "5fe13b9ec0cc3bcd": "Aperçu : 30 derniers jours",
+  "b195cb4f1cc99c77": "Génération de l'aperçu…",
+  "810f66dca3c055d1": "Règle {n}",
+  "7706ac9aef3ca5f3": "Type de règle",
+  "152de10a84f96a9a": "S'applique à (vide = toutes les dépenses)",
+  "d5136bd2643035d7": "À partir du (facultatif)",
+  "5de17fea68dd43e0": "paiements",
+  "0e914b867e17b6a4": "Clés de tag, la première présente l'emporte",
+  "b7e6df6b716b5ede": "Préfixe de valeur",
+  "e44141b61ea28e51": "Uniquement si (requête de coûts)",
+  "1ded2746f685ec28": "Uniquement si, p. ex. provider = 'azure'",
+  "74a818995aaa8f2d": "+ Ajouter une clé de tag",
+  "d40c682e5cb748cc": "Casse",
+  "7a76db9d2f01d720": "Parts (pourcentage)",
+  "212d45f78869d9ce": "Parts (pondérées par une métrique)",
+  "934a6fe50f00d032": "Métrique métier",
+  "f3a13192b4dd3161": "Choisir une métrique…",
+  "3dc10e35924c7cb7": "+ Ajouter une part",
+  "011b1207fd58411d": "Total : {total} %",
+  "a9d06250777b5ae9": "Aucune métrique métier pour le moment : ajoutez-en une d'abord dans le panneau Coûts.",
+  "45d489fa984d25f6": "Tags virtuels",
+  "f9fc579020457c0e": {
+    "t": "p",
+    "i": 1,
+    "c": "Une colonne par tag virtuel. Une ligne divisée par une règle de répartition est écrite une fois par part, avec ses montants pondérés, afin que le fichier corresponde toujours au total collecté."
+  },
+  "a7e2603e7759afbd": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Vous avez besoin de l'autorisation ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "costs:read"
+      },
+      " pour voir les tags virtuels de l'organisation."
+    ]
+  },
+  "d95c0595ead30b05": {
+    "t": "p",
+    "i": 1,
+    "c": "Des tags que l'organisation calcule à partir de ses propres règles : fusionnez des graphies comme env, Environment et ENV en une seule clé, attribuez une valeur aux dépenses via n'importe quel filtre de coûts et répartissez un coût partagé entre les équipes par pourcentage ou selon une métrique métier. Les règles sont évaluées dans l'ordre et la première correspondance l'emporte."
+  },
+  "0c4b6e97b931089d": {
+    "t": "p",
+    "i": 1,
+    "c": "Utilisez un tag virtuel partout où un tag fonctionne : graphiques et rapports, filtres enregistrés, budgets, alertes de variation, règles d'allocation et exports. Il est calculé à l'exécution d'un rapport et n'est jamais écrit dans les dépenses collectées, et une répartition partage l'argent au lieu de le copier, de sorte que les totaux ne changent jamais."
+  },
+  "0d816d7fcd0bdd15": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Pour les modifier, l'autorisation ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "costs:write"
+      },
+      " est nécessaire."
+    ]
+  },
+  "9a7bb808b34d0f41": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " % de ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " correspondent à une règle ;",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " non."
+    ]
+  }
 }

@@ -31,8 +31,8 @@ When the alert last ran and when it last fired are evaluation state, not configu
 
 - `enabled` (Boolean) Whether the alert is evaluated. Defaults to `true`. Set it to `false` to silence an alert without losing its definition.
 - `filter` (Block List) Restricts the alert to matching spend. Clauses are ANDed. (see [below for nested schema](#nestedblock--filter))
-- `group_by` (String) Evaluate the thresholds per value of this dimension rather than against the total, so a spike in one account or service is not diluted by the rest. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`. Leave unset to alert on the total.
-- `group_by_tag_key` (String) Which tag to group by. Required when `group_by` is `tag`, and rejected otherwise.
+- `group_by` (String) Evaluate the thresholds per value of this dimension rather than against the total, so a spike in one account or service is not diluted by the rest. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`. Leave unset to alert on the total.
+- `group_by_tag_key` (String) Which tag to group by: a provider tag key when `group_by` is `tag`, or a virtual tag key when it is `virtual_tag`. Required for those two and rejected otherwise.
 - `threshold_amount_cents` (Number) Fire when spend changes by at least this many minor currency units. Must be greater than zero. Set this, `threshold_percent`, or both.
 - `threshold_percent` (Number) Fire when spend changes by at least this percentage, 1–10000. Set this, `threshold_amount_cents`, or both.
 
@@ -45,13 +45,13 @@ When the alert last ran and when it last fired are evaluation state, not configu
 
 Required:
 
-- `dimension` (String) Cost dimension to filter on. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`.
+- `dimension` (String) Cost dimension to filter on. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`.
 - `op` (String) `in` to keep matching rows, `not_in` to exclude them.
 - `values` (List of String) Values to match. Must not be empty.
 
 Optional:
 
-- `tag_key` (String) Tag key, required when `dimension` is `tag` and rejected otherwise.
+- `tag_key` (String) Tag key, required when `dimension` is `tag` (a provider tag key) or `virtual_tag` (a virtual tag key, see `infrawrench_virtual_tag`) and rejected otherwise.
 
 ## Import
 

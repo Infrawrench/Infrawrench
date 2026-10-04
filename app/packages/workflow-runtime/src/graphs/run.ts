@@ -24,6 +24,7 @@ import {
   COST_DIMENSIONS,
   CUSTOM_GRAPH_MAX_REFRESH_SECONDS,
   CUSTOM_GRAPH_MIN_REFRESH_SECONDS,
+  isKeyedCostDimension,
 } from "@infrawrench/client-core";
 
 import {
@@ -180,8 +181,8 @@ function costQuery(raw: unknown): GraphCostQuery {
     fail(`graph.costs.query: unknown groupBy ${JSON.stringify(groupBy)}.`);
   }
   const groupByTagKey = optionalText(q["groupByTagKey"], "graph.costs.query: groupByTagKey", 256);
-  if (groupBy === "tag" && !groupByTagKey) {
-    fail('graph.costs.query: groupBy "tag" needs groupByTagKey.');
+  if (isKeyedCostDimension(groupBy) && !groupByTagKey) {
+    fail(`graph.costs.query: groupBy ${JSON.stringify(groupBy)} needs groupByTagKey.`);
   }
 
   const rawFilters = Array.isArray(q["filters"]) ? q["filters"] : [];
@@ -200,7 +201,9 @@ function costQuery(raw: unknown): GraphCostQuery {
       fail(`graph.costs.query: filters need 1–${GRAPH_MAX_FILTER_VALUES} values.`);
     }
     const tagKey = optionalText(spec["tagKey"], "graph.costs.query: filter tagKey", 256);
-    if (dimension === "tag" && !tagKey) fail('graph.costs.query: a "tag" filter needs tagKey.');
+    if (isKeyedCostDimension(dimension) && !tagKey) {
+      fail(`graph.costs.query: a ${JSON.stringify(dimension)} filter needs tagKey.`);
+    }
     return {
       dimension: dimension as GraphCostQuery["filters"][number]["dimension"],
       op: op as "in" | "not_in",

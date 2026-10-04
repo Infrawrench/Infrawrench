@@ -104,6 +104,11 @@ vi.mock("../ssh-host-keys", () => ({
     { name: "h1", title: "H1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../virtual-tags", () => ({
+  virtualTagTools: () => [
+    { name: "vt1", title: "VT1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../linux-apps", () => ({
   linuxAppTools: () => [
     { name: "la1", title: "LA1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },

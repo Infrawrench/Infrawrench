@@ -14859,5 +14859,125 @@
   "858fa003bc4e909d": "Clave de etiqueta opcional. Cada valor se convierte en su propia etiqueta de la métrica, y el total de un día es la suma de todos ellos.",
   "caf00c92d9dc527b": "Lee una métrica de Datadog, como solicitudes atendidas, pedidos realizados o una métrica personalizada que envía tu aplicación, y almacena un valor por día.",
   "b38bc72b1ea1524a": "Qué orígenes incluir, como etiquetas de Datadog: env:prod, o varias separadas por comas para exigirlas todas. * lee todos los orígenes.",
-  "6b4bda4c8c687a02": "Sí, leerla como recuento"
+  "6b4bda4c8c687a02": "Sí, leerla como recuento",
+  "6f620164afb43340": "Etiqueta virtual",
+  "25aff3147ee036f3": "Elija una etiqueta virtual",
+  "ae18e28608db853e": "Elija una etiqueta virtual para agrupar",
+  "26d755fb76a0b60a": "Elija una etiqueta virtual…",
+  "13732cf698f221ef": "Aún no hay etiquetas virtuales",
+  "0f08d051d828eadf": "Columnas de etiquetas virtuales",
+  "78205fcd9ea2cb26": "etiqueta virtual {key}={value}",
+  "98f2cdf262788590": "la etiqueta virtual {key} está definida",
+  "88442918400bcb3c": "Cualquier etiqueta virtual",
+  "a0c6528fd71acf24": "etiqueta virtual: {name}",
+  "9ae60cdf2021d315": "Valor de etiqueta virtual",
+  "74fef1e951f8c937": "Cualquier valor (la etiqueta está definida)",
+  "327fcb2077ebe133": "No se pudieron cargar las etiquetas virtuales",
+  "0e2e515711b16dd0": "No se pudo poner en cola el procesamiento",
+  "252bbfcbee04814c": "¿Eliminar la etiqueta virtual \"{name}\"?",
+  "8e98005d6dc91c9f": "No se pudo eliminar la etiqueta virtual",
+  "e8844a32dadfa309": "Etiquetas virtuales",
+  "e98ad2552586f7cc": "Nueva etiqueta virtual",
+  "23dc85047ffe9aab": "Aún no hay etiquetas virtuales.",
+  "02c82d26303a3f91": "Reprocesar",
+  "6999e3b5defe3c88": "Todo lo demás: {value}",
+  "b172ad412374a456": "Aún no hay gasto en el rango evaluado.",
+  "1b74afbf9fd8b1ec": "Evaluado del {from} al {to}; {count} valores distintos.",
+  "edf713458f15d47a": "Regla {n}: {amount}",
+  "a24271ec72a8675c": "{days} días no tenían valores completos de la métrica de negocio, por lo que su reparto mantuvo las últimas ponderaciones válidas (o se repartió por igual).",
+  "b37afbacd61ee1fc": "No se pudo guardar la etiqueta virtual",
+  "2c084f43cb327729": "Editar etiqueta virtual",
+  "fc78183e44e21eed": "La clave no se puede cambiar: los filtros, presupuestos e informes la almacenan.",
+  "d245b61dff66ee66": "Las reglas se evalúan de arriba abajo; una fila toma el valor de la primera regla con la que coincide.",
+  "337c353f995e503d": "+ Añadir regla",
+  "1c562f7a5a86f169": "Valor para todo lo que no coincide con ninguna regla (opcional)",
+  "43ae395a415ab283": "Déjelo vacío para dejarlo sin definir",
+  "5fe13b9ec0cc3bcd": "Vista previa: últimos 30 días",
+  "b195cb4f1cc99c77": "Generando vista previa…",
+  "810f66dca3c055d1": "Regla {n}",
+  "7706ac9aef3ca5f3": "Tipo de regla",
+  "152de10a84f96a9a": "Se aplica a (vacío coincide con todo el gasto)",
+  "d5136bd2643035d7": "Desde (opcional)",
+  "5de17fea68dd43e0": "pagos",
+  "0e914b867e17b6a4": "Claves de etiqueta, gana la primera presente",
+  "b7e6df6b716b5ede": "Prefijo del valor",
+  "e44141b61ea28e51": "Solo donde (consulta de costos)",
+  "1ded2746f685ec28": "Solo donde, p. ej. provider = 'azure'",
+  "74a818995aaa8f2d": "+ Añadir clave de etiqueta",
+  "d40c682e5cb748cc": "Mayúsculas/minúsculas",
+  "7a76db9d2f01d720": "Proporciones (porcentaje)",
+  "212d45f78869d9ce": "Proporciones (ponderadas por métrica)",
+  "934a6fe50f00d032": "Métrica de negocio",
+  "f3a13192b4dd3161": "Elija una métrica…",
+  "3dc10e35924c7cb7": "+ Añadir proporción",
+  "011b1207fd58411d": "Total: {total}%",
+  "a9d06250777b5ae9": "Aún no hay métricas de negocio: primero añada una en el panel Costos.",
+  "45d489fa984d25f6": "Etiquetas virtuales",
+  "f9fc579020457c0e": {
+    "t": "p",
+    "i": 1,
+    "c": "Una columna por etiqueta virtual. Una fila que una regla de reparto divide se escribe una vez por proporción, con sus importes ponderados, de modo que el archivo sigue sumando el total recopilado."
+  },
+  "a7e2603e7759afbd": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Necesita el permiso ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "costs:read"
+      },
+      " para ver las etiquetas virtuales de la organización."
+    ]
+  },
+  "d95c0595ead30b05": {
+    "t": "p",
+    "i": 1,
+    "c": "Etiquetas que la organización calcula a partir de sus propias reglas: unifique grafías como env, Environment y ENV en una sola clave, asigne un valor al gasto mediante cualquier filtro de costos y reparta un costo compartido entre equipos por porcentaje o por una métrica de negocio. Las reglas se evalúan en orden y gana la primera coincidencia."
+  },
+  "0c4b6e97b931089d": {
+    "t": "p",
+    "i": 1,
+    "c": "Use una etiqueta virtual en cualquier lugar donde funcione una etiqueta: gráficos e informes, filtros guardados, presupuestos, alertas de cambios, reglas de asignación y exportaciones. Se calcula cuando se ejecuta un informe y nunca se escribe en el gasto recopilado, y un reparto distribuye el dinero en lugar de copiarlo, por lo que los totales nunca cambian."
+  },
+  "0d816d7fcd0bdd15": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Para cambiarlas se necesita el permiso ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "costs:write"
+      },
+      "."
+    ]
+  },
+  "9a7bb808b34d0f41": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "El ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "% de ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " coincidió con una regla;",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " no."
+    ]
+  }
 }

@@ -103,6 +103,15 @@ import {
   type CostCanvasSpec,
   type CostCanvasTableQuery,
   type CostCanvasWidgetConfig,
+  VIRTUAL_TAG_KEY_PATTERN,
+  VIRTUAL_TAG_LIMITS,
+  VIRTUAL_TAG_RULE_KINDS,
+  VIRTUAL_TAG_VALUE_TRANSFORMS,
+  isKeyedCostDimension,
+  type VirtualTagAllocation,
+  type VirtualTagInput,
+  type VirtualTagRule,
+  type VirtualTagSource,
 } from "@infrawrench/client-core";
 
 export {
@@ -416,7 +425,7 @@ export const costFilterSchema = z.object({
   dimension: z.enum(COST_DIMENSIONS),
   op: z.enum(["in", "not_in"]),
   values: z.array(z.string()).min(1),
-  /** Required when dimension === "tag". */
+  /** Required when dimension is "tag" or "virtual_tag" (the virtual tag's key). */
   tagKey: z.string().optional(),
 });
 
@@ -704,10 +713,13 @@ export const costAlertInputSchema = z
     message: "Set a percent threshold, an amount threshold, or both",
     path: ["thresholdPercent"],
   })
-  .refine((v) => v.groupBy !== "tag" || !!v.groupByTagKey?.trim(), {
-    message: "groupByTagKey is required when groupBy is tag",
-    path: ["groupByTagKey"],
-  });
+  .refine(
+    (v) => v.groupBy === null || !isKeyedCostDimension(v.groupBy) || !!v.groupByTagKey?.trim(),
+    {
+      message: "groupByTagKey is required when groupBy is tag or virtual_tag",
+      path: ["groupByTagKey"],
+    },
+  );
 
 /**
  * Per-org anomaly tuning (PUT /costs/anomaly-settings).
@@ -882,10 +894,17 @@ export const allocationRuleMatchSchema = z
     accountId: z.string().min(1).optional(),
     pluginId: z.string().min(1).optional(),
     service: z.string().min(1).optional(),
+    /** One of the org's virtual tags, by key: route a computed value to a centre. */
+    virtualTagKey: z.string().min(1).max(VIRTUAL_TAG_LIMITS.maxKeyLength).optional(),
+    virtualTagValue: z.string().max(VIRTUAL_TAG_LIMITS.maxValueLength).optional(),
   })
   .refine((m) => !m.tagValue?.trim() || !!m.tagKey?.trim(), {
     message: "tagValue requires tagKey",
     path: ["tagValue"],
+  })
+  .refine((m) => !m.virtualTagValue?.trim() || !!m.virtualTagKey?.trim(), {
+    message: "virtualTagValue requires virtualTagKey",
+    path: ["virtualTagValue"],
   });
 
 export const allocationRuleInputSchema = z.object({
@@ -1104,6 +1123,59 @@ export const pricingPreviewRequestSchema = z.object({
 });
 
 /* ------------------------------------------------------------------ *
+ * Virtual tags: POST/PUT /virtual-tags.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Shape-only, like the billing-rule schemas: the cross-field rules (a split's
+ * percentages sum to 100, a filter must parse, a key is listed once) live in
+ * `virtualTagInputError` in client-core so the editor and the API refuse in
+ * identical words. Every kind-specific field is nullable-with-default so a PUT
+ * round-trip of a rule this client did not author still parses.
+ */
+export const virtualTagSourceSchema = z.object({
+  tagKey: z.string().min(1).max(TAG_POLICY_LIMITS.maxKeyLength),
+  valuePrefix: z.string().max(VIRTUAL_TAG_LIMITS.maxPrefixLength).nullable().default(null),
+  query: z.string().max(COST_QUERY_MAX_LENGTH).nullable().default(null),
+});
+
+export const virtualTagAllocationSchema = z.object({
+  value: z.string().min(1).max(VIRTUAL_TAG_LIMITS.maxValueLength),
+  percent: z.number().gt(0).max(100).nullable().default(null),
+  metricId: z.string().min(1).nullable().default(null),
+});
+
+export const virtualTagRuleSchema = z.object({
+  query: z.string().max(COST_QUERY_MAX_LENGTH).default(""),
+  description: z.string().max(VIRTUAL_TAG_LIMITS.maxDescriptionLength).nullable().default(null),
+  startsOn: isoDate.nullable().default(null),
+  endsOn: isoDate.nullable().default(null),
+  kind: z.enum(VIRTUAL_TAG_RULE_KINDS),
+  value: z.string().max(VIRTUAL_TAG_LIMITS.maxValueLength).nullable().default(null),
+  sources: z.array(virtualTagSourceSchema).max(VIRTUAL_TAG_LIMITS.maxSources).default([]),
+  valueTransform: z.enum(VIRTUAL_TAG_VALUE_TRANSFORMS).default("none"),
+  allocations: z
+    .array(virtualTagAllocationSchema)
+    .max(VIRTUAL_TAG_LIMITS.maxAllocations)
+    .default([]),
+});
+
+export const virtualTagInputSchema = z.object({
+  key: z
+    .string()
+    .min(1)
+    .max(VIRTUAL_TAG_LIMITS.maxKeyLength)
+    .regex(
+      VIRTUAL_TAG_KEY_PATTERN,
+      "letters, digits and _ - . : / only, starting with a letter or digit",
+    ),
+  name: z.string().min(1).max(VIRTUAL_TAG_LIMITS.maxNameLength),
+  description: z.string().max(VIRTUAL_TAG_LIMITS.maxDescriptionLength).nullable().optional(),
+  defaultValue: z.string().max(VIRTUAL_TAG_LIMITS.maxValueLength).nullable().optional(),
+  rules: z.array(virtualTagRuleSchema).max(VIRTUAL_TAG_LIMITS.maxRules),
+});
+
+/* ------------------------------------------------------------------ *
  * Org currency settings: PUT /currency and PUT /currency/rates.
  * ------------------------------------------------------------------ */
 
@@ -1243,6 +1315,10 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof billingRuleInputSchema>, BillingRuleInput>,
   Exact<z.infer<typeof managedAccountPricingSchema>, ManagedAccountPricing>,
   Exact<z.infer<typeof pricingPreviewRequestSchema>, PricingPreviewRequest>,
+  Exact<z.infer<typeof virtualTagSourceSchema>, VirtualTagSource>,
+  Exact<z.infer<typeof virtualTagAllocationSchema>, VirtualTagAllocation>,
+  Exact<z.infer<typeof virtualTagRuleSchema>, VirtualTagRule>,
+  Exact<z.infer<typeof virtualTagInputSchema>, VirtualTagInput>,
 ];
 
 /* ------------------------------------------------------------------ *

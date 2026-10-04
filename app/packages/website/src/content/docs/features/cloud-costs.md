@@ -88,7 +88,7 @@ The **Query** toggle above the filter rows switches between the two. They are tw
 ```
 query     := (nothing) | term (AND term)*
 term      := dimension operator value
-dimension := provider | account | service | region | resource | tag['key'] | charge_type | commitment
+dimension := provider | account | service | region | resource | tag['key'] | charge_type | commitment | virtual_tag['key']
 operator  := = | != | IN | NOT IN
 value     := 'text'            for = and !=
            | ('a', 'b', …)     for IN and NOT IN
@@ -97,6 +97,7 @@ value     := 'text'            for = and !=
 - Keywords (`AND`, `IN`, `NOT`) and dimension names are case-insensitive.
 - Values are quoted, with single or double quotes. A quote inside a value is escaped by doubling it (`'it''s'`) or with a backslash (`'it\'s'`); `\\`, `\n` and `\t` also work, and an escape that isn't one of those is an error rather than a silently dropped backslash.
 - The `tag` dimension takes its key in brackets, because a tag filter needs a key as well as a value: `tag['owner'] = 'platform'`.
+- The `virtual_tag` dimension works the same way, with the key of one of your [virtual tags](./virtual-tags.md): `virtual_tag['team'] = 'payments'`.
 - An empty query means no filter, the same as no rows.
 
 ### Worked examples
@@ -452,6 +453,10 @@ Forecasts are a least-squares fit over the trailing 30 days of daily totals, pro
 The things a trend cannot see are exactly what a **scenario model** is for: known future cost, written down once and overlaid on the projection _beside_ the trend rather than instead of it. See [Scenario models](./scenario-models.md).
 
 The fit follows the graph's [cost basis](#cash-and-amortized), which matters more than it sounds: fitting a trend through a cash series containing one enormous commitment purchase projects a month-end total that cannot happen. On an amortized basis that purchase is already spread, and the forecast is fit on the shape of your actual consumption.
+
+## Tags you compute yourself
+
+When provider tags are inconsistent or missing, a **virtual tag** gives spend the dimension you actually want to report on: merge `env`, `Environment` and `ENV` into one key, assign a value by any cost filter, or split a shared cost across teams by percentage or by a business metric. Group by **Virtual tag** in any graph or report, or filter on one in a budget, saved filter, change alert, allocation rule or export. See [Virtual tags](./virtual-tags.md).
 
 ## What you report internally
 

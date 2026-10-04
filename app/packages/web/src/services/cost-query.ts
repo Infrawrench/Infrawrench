@@ -32,8 +32,10 @@ import {
   getCostUsageUnits,
   queryCostCounts,
   queryCosts,
+  resolveVirtualTags,
   type CostSeriesGroup,
 } from "@infrawrench/server-core/clickhouse/cost-readers";
+import { VirtualTagUnresolvedError } from "@infrawrench/server-core/clickhouse/virtual-tag-sql";
 import { forecastDaily } from "@infrawrench/server-core/cost/forecast";
 import { addDays, isoDay } from "@infrawrench/server-core/cost/dates";
 import {
@@ -49,6 +51,8 @@ import { resolveBillingAdjustments } from "@infrawrench/server-core/cost/billing
 import {
   billingAdjustmentsAreEmpty,
   fixedTotalsForRange,
+  isKeyedCostDimension,
+  referencedVirtualTagKeys,
   type CompiledBillingAdjustments,
   type CostAdjustmentSummary,
 } from "@infrawrench/client-core";
@@ -397,8 +401,8 @@ export async function runCostQuery(
   organizationId: string,
   q: CostQueryRequest,
 ): Promise<CostQueryResponse> {
-  if (q.groupBy === "tag" && !q.groupByTagKey) {
-    throw new CostQueryError("groupByTagKey is required when groupBy is tag");
+  if (isKeyedCostDimension(q.groupBy) && !q.groupByTagKey) {
+    throw new CostQueryError(`groupByTagKey is required when groupBy is ${q.groupBy}`);
   }
   if (q.from > q.to) throw new CostQueryError("from must not be after to");
   if (daySpan(q.from, q.to) > 1100) throw new CostQueryError("Date range too large");
@@ -513,7 +517,25 @@ export async function runCostQuery(
     return { grouped: foldTopN(mergeConvertedGroups(groups), q.topN), conversion };
   };
 
-  const { grouped, conversion } = convert(await queryCosts(organizationId, baseQuery));
+  // Virtual tags are resolved up front so an unknown key is the caller's 400
+  // rather than a server error, and handed to the main read only: the
+  // comparison and forecast reads cover other days, and the reader resolves a
+  // metric split's weights for exactly the range it reads.
+  const virtualTagKeys = referencedVirtualTagKeys(filters, q.groupBy, q.groupByTagKey);
+  // Only touched when the query names a virtual tag, so the common path (and
+  // every test that mocks the readers) never reaches the loader.
+  const virtualTags =
+    virtualTagKeys.length > 0
+      ? await resolveVirtualTags(organizationId, virtualTagKeys, q.from, q.to)
+      : undefined;
+  const missingVirtualTag = virtualTagKeys.find((key) => !virtualTags?.has(key));
+  if (missingVirtualTag) {
+    throw new CostQueryError(new VirtualTagUnresolvedError(missingVirtualTag).message);
+  }
+
+  const { grouped, conversion } = convert(
+    await queryCosts(organizationId, { ...baseQuery, ...(virtualTags ? { virtualTags } : {}) }),
+  );
   const series = await labelSeries(organizationId, q.groupBy, grouped);
 
   const response: CostQueryResponse = {
@@ -651,6 +673,24 @@ export async function listCostUsageUnits(organizationId: string): Promise<string
 }
 
 /**
+ * The org's virtual tag keys, labelled with their display names: what the
+ * group-by and filter pickers offer for the `virtual_tag` dimension
+ * (`/costs/dimensions?dimension=virtual-tag-keys`).
+ */
+export async function listVirtualTagKeyOptions(
+  organizationId: string,
+): Promise<CostDimensionValue[]> {
+  // Imported lazily: the store opens a database connection on import, and this
+  // module is otherwise free of one for every caller that never asks.
+  const { listVirtualTags } = await import("@infrawrench/server-core/cost/virtual-tags");
+  const tags = await listVirtualTags(organizationId);
+  return tags.map((t) => ({
+    value: t.key,
+    label: t.name === t.key ? t.key : `${t.name} (${t.key})`,
+  }));
+}
+
+/**
  * Distinct values seen in cost data for a dimension, with display labels
  * resolved for internal ids.
  */
@@ -669,8 +709,8 @@ export async function listCostDimensionValues(
     throw new CostQueryError("Invalid dimension");
   }
   const dim = dimension as CostDimensionId;
-  if (dim === "tag" && !tagKey) {
-    throw new CostQueryError("tagKey is required for the tag dimension");
+  if (isKeyedCostDimension(dim) && !tagKey) {
+    throw new CostQueryError(`tagKey is required for the ${dim} dimension`);
   }
 
   // Charge types are a closed set, not a discovery: answering from a DISTINCT
@@ -681,9 +721,15 @@ export async function listCostDimensionValues(
     return COST_CHARGE_TYPES.map((value) => ({ value, label: COST_CHARGE_TYPE_LABELS[value] }));
   }
 
-  const values = await getCostDimensionValues(organizationId, dim, {
-    ...(tagKey ? { tagKey } : {}),
-  });
+  let values: string[];
+  try {
+    values = await getCostDimensionValues(organizationId, dim, {
+      ...(tagKey ? { tagKey } : {}),
+    });
+  } catch (e) {
+    if (e instanceof VirtualTagUnresolvedError) throw new CostQueryError(e.message);
+    throw e;
+  }
 
   // Attach display labels where the raw value is an internal id.
   if (dimension === "provider") {

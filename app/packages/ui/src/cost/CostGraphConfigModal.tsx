@@ -185,7 +185,12 @@ export function CostGraphConfigModal({
   const [config, setConfig] = useState<CostGraphConfig>(() =>
     normalizeDisplayConfig(initialConfig),
   );
-  const [tagKeys, setTagKeys] = useState<CostDimensionOption[]>([]);
+  // Group-by key options per keyed dimension: provider tag keys for `tag`, the
+  // org's virtual tags for `virtual_tag`. Loaded on first use of each.
+  const [keyOptions, setKeyOptions] = useState<Record<string, CostDimensionOption[]>>({});
+  const keyedGroupBy =
+    config.groupBy === "tag" || config.groupBy === "virtual_tag" ? config.groupBy : null;
+  const tagKeys = keyedGroupBy ? (keyOptions[keyedGroupBy] ?? []) : [];
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -269,13 +274,13 @@ export function CostGraphConfigModal({
     });
 
   useEffect(() => {
-    if (config.groupBy === "tag" && tagKeys.length === 0) {
-      void api
-        .loadDimensionValues("tag-keys")
-        .then(setTagKeys)
-        .catch(() => setTagKeys([]));
-    }
-  }, [api, config.groupBy, tagKeys.length]);
+    if (!keyedGroupBy || keyOptions[keyedGroupBy]) return;
+    const pseudo = keyedGroupBy === "tag" ? "tag-keys" : "virtual-tag-keys";
+    void api
+      .loadDimensionValues(pseudo)
+      .then((options) => setKeyOptions((prev) => ({ ...prev, [keyedGroupBy]: options })))
+      .catch(() => setKeyOptions((prev) => ({ ...prev, [keyedGroupBy]: [] })));
+  }, [api, keyedGroupBy, keyOptions]);
 
   const set = (patch: Partial<CostGraphConfig>) =>
     setConfig((prev) => ({ ...prev, ...patch }) as CostGraphConfig);
@@ -299,6 +304,10 @@ export function CostGraphConfigModal({
     }
     if (parsed.data.groupBy === "tag" && !parsed.data.groupByTagKey) {
       setError(gt("Choose a tag key to group by"));
+      return;
+    }
+    if (parsed.data.groupBy === "virtual_tag" && !parsed.data.groupByTagKey) {
+      setError(gt("Choose a virtual tag to group by"));
       return;
     }
     setSaving(true);
@@ -461,7 +470,14 @@ export function CostGraphConfigModal({
                 id={`${uid}-group-by`}
                 className={selectClass}
                 value={config.groupBy}
-                onChange={(e) => set({ groupBy: e.target.value as CostGraphConfig["groupBy"] })}
+                onChange={(e) =>
+                  set({
+                    groupBy: e.target.value as CostGraphConfig["groupBy"],
+                    // A provider tag key means nothing as a virtual tag key and
+                    // vice versa, so switching dimension clears the choice.
+                    groupByTagKey: undefined,
+                  })
+                }
               >
                 <option value="none">{gt("None")}</option>
                 {COST_DIMENSIONS.map((d) => (
@@ -638,10 +654,10 @@ export function CostGraphConfigModal({
             </div>
           )}
 
-          {config.groupBy === "tag" && (
+          {keyedGroupBy && (
             <div>
               <label htmlFor={`${uid}-tag-key`} className={labelClass}>
-                {gt("Tag key")}
+                {keyedGroupBy === "tag" ? gt("Tag key") : gt("Virtual tag")}
               </label>
               <select
                 id={`${uid}-tag-key`}
@@ -649,7 +665,9 @@ export function CostGraphConfigModal({
                 value={config.groupByTagKey ?? ""}
                 onChange={(e) => set({ groupByTagKey: e.target.value })}
               >
-                <option value="">{gt("Choose a tag key…")}</option>
+                <option value="">
+                  {keyedGroupBy === "tag" ? gt("Choose a tag key…") : gt("Choose a virtual tag…")}
+                </option>
                 {tagKeys.map((k) => (
                   <option key={k.value} value={k.value}>
                     {gtData(k.label)}

@@ -213,4 +213,9 @@
 // 1.60.0: business-metric importers (importer-sources/options/preview, /{id}/importer CRUD, run, runs),
 // an optional `label` on metric values, `import` as a value source, `importer` on BusinessMetric, and the
 // Metronome plugin and resource type IDs. Additive.
-export const API_VERSION = "1.60.0";
+// 1.61.0: virtual tags. `/virtual-tags` CRUD plus `/preview` and
+// `/{id}/reprocess`; a `virtual_tag` value on every cost dimension enum (keyed
+// by `tagKey` / `groupByTagKey` like `tag`), `dimension=virtual-tag-keys` on
+// `/costs/dimensions`, `virtualTagKey`/`virtualTagValue` on allocation rule
+// matches, and `virtualTagKeys` on cost export queries. All additive.
+export const API_VERSION = "1.61.0";

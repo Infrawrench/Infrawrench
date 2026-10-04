@@ -42,6 +42,9 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "freezes", label: msg("Change Freezes") },
   { key: "tag-policy", label: msg("Tag Policy") },
   { key: "cost-centres", label: msg("Cost Centres"), requiresPermission: "costs:read" },
+  // Beside Cost Centres: virtual tags are the dimensions allocation rules and
+  // reports slice by, and the same people maintain both.
+  { key: "virtual-tags", label: msg("Virtual Tags"), requiresPermission: "costs:read" },
   // Next to Cost Centres and Currency, the two other pages where one person's
   // edit restates numbers everybody else reads. Visible on `costs:read` (a
   // rule is part of the explanation for a figure); editing needs

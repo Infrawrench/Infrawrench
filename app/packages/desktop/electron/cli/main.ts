@@ -38,6 +38,7 @@ import {
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdAiSources, cmdAiSpend } from "./commands/ai-spend";
 import { cmdBillingRules, cmdBillingRule, cmdBillingRulePreview } from "./commands/billing-rules";
+import { cmdVirtualTags, cmdVirtualTag, cmdReprocessVirtualTag } from "./commands/virtual-tags";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
@@ -99,7 +100,8 @@ COMMANDS
                       own range and filters, range flags override the range
   estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
                       full id, or a name/external-id with --account)
-  costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment|tag:<key>]
+  costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
+                      [--group-by tag:<key> | virtual_tag:<key>  group by a provider tag or a virtual tag]
                       [--basis cash|amortized] [--charge-type usage|credit|tax|… (repeatable)]
                       [--currency USD  convert to your org's display currency at its stated rates]
                       [--where "provider = 'aws' AND tag['env'] != 'dev'"  filter, as text]
@@ -152,6 +154,12 @@ COMMANDS
   billing-rules preview <n>
                       dry-run one rule against a month of real spend: totals without and
                       with it, and the lines it moved   [--customer <name>] [--month YYYY-MM]
+  virtual-tags        the org's virtual tags (keys computed from ordered rules, usable as
+                      virtual_tag['key'] in --where and --group-by virtual_tag:<key>) with status
+  virtual-tags show   one tag in full: rules, processing status, spend each rule claims and the
+       <key|id>       share left unmatched
+  virtual-tags reprocess <key|id>
+                      re-run a tag's background evaluation over the stored history now
   invoices            invoices raised against managed accounts (customers), newest first — a
                       draft's total is not computed in the list, an issued one is frozen
   invoices customers  the managed accounts themselves: billing currency, cost basis and the
@@ -610,6 +618,25 @@ export async function runCli(): Promise<void> {
           break;
         }
         await cmdBillingRules(ctx);
+        break;
+      // Reading and reprocessing only. Editing a rule re-answers every past
+      // cost question the org has asked, so it belongs in the Settings form
+      // with its live preview, not in a flag.
+      case "virtual-tags":
+        if (rest[0] === "show") {
+          await cmdVirtualTag(ctx, rest.slice(1).join(" "));
+          break;
+        }
+        if (rest[0] === "reprocess") {
+          await cmdReprocessVirtualTag(ctx, rest.slice(1).join(" "));
+          break;
+        }
+        if (rest.length > 0) {
+          // `virtual-tags team` reads as "show me team"; accept it.
+          await cmdVirtualTag(ctx, rest.join(" "));
+          break;
+        }
+        await cmdVirtualTags(ctx);
         break;
       // Read-only on purpose. Approving an invoice freezes the figures a
       // customer will be sent and sending one states that they have them;

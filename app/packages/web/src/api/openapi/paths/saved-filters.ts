@@ -12,6 +12,7 @@ const SavedCostFilterTerm = strict({
     "tag",
     "charge_type",
     "commitment",
+    "virtual_tag",
   ]),
   op: z.enum(["in", "not_in"]),
   values: z.array(z.string()).min(1),

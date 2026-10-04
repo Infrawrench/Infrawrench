@@ -107,10 +107,19 @@ function normalizeQuery(raw: unknown): CostExportQuery {
     ? q.chargeTypes.filter((t) => (COST_CHARGE_TYPES as readonly string[]).includes(t))
     : undefined;
 
+  const virtualTagKeys = Array.isArray(q.virtualTagKeys)
+    ? q.virtualTagKeys
+        .filter((k): k is string => typeof k === "string" && k.length > 0)
+        .slice(0, 25)
+    : [];
+
   return {
     version: 1,
     dimensions: [...new Set(dimensions)],
     tagKeys: [...new Set(tagKeys)],
+    // Present only when set, so an export saved before virtual tags existed
+    // reads back byte-identical.
+    ...(virtualTagKeys.length > 0 ? { virtualTagKeys: [...new Set(virtualTagKeys)] } : {}),
     filters,
     ...(chargeTypes && chargeTypes.length > 0 ? { chargeTypes } : {}),
     ...(q.costBasis === "amortized" ? { costBasis: "amortized" as const } : {}),

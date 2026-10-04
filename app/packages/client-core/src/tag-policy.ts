@@ -417,6 +417,14 @@ export interface AllocationRuleMatch {
   accountId?: string | undefined;
   pluginId?: string | undefined;
   service?: string | undefined;
+  /**
+   * One of the org's virtual tags, by key (`virtual-tags.ts`). Alone it means
+   * "the virtual tag is set"; with `virtualTagValue` the value must be equal.
+   * A split virtual tag routes each share separately, so a row 60% payments
+   * lands 60% on the payments centre.
+   */
+  virtualTagKey?: string | undefined;
+  virtualTagValue?: string | undefined;
 }
 
 export interface AllocationRule {

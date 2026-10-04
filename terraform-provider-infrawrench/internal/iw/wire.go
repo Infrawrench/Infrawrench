@@ -173,6 +173,10 @@ type AllocationRuleMatch struct {
 	AccountID *string `json:"accountId,omitempty"`
 	PluginID  *string `json:"pluginId,omitempty"`
 	Service   *string `json:"service,omitempty"`
+	// VirtualTagKey matches rows where the virtual tag is set; with
+	// VirtualTagValue, rows where it holds that value.
+	VirtualTagKey   *string `json:"virtualTagKey,omitempty"`
+	VirtualTagValue *string `json:"virtualTagValue,omitempty"`
 }
 
 // AllocationRuleInput is the POST/PUT body.
@@ -493,6 +497,73 @@ type BillingRule struct {
 	UpdatedAt         string                `json:"updatedAt"`
 }
 
+/* ------------------------------- virtual tags ------------------------------ */
+
+// VirtualTagSource is one provider tag key a `tag` rule reads from, first
+// present key wins.
+type VirtualTagSource struct {
+	TagKey      string  `json:"tagKey"`
+	ValuePrefix *string `json:"valuePrefix"`
+	Query       *string `json:"query"`
+}
+
+// VirtualTagAllocation is one share of a split. `split` sets Percent,
+// `metric_split` sets MetricID.
+type VirtualTagAllocation struct {
+	Value    string   `json:"value"`
+	Percent  *float64 `json:"percent"`
+	MetricID *string  `json:"metricId"`
+}
+
+// VirtualTagRule is one ordered rule. Flat rather than a union, like billing
+// rule adjustments: every field is always present on the wire, and Sources and
+// Allocations are sent as explicit (possibly empty) arrays.
+type VirtualTagRule struct {
+	Query          string                 `json:"query"`
+	Description    *string                `json:"description"`
+	StartsOn       *string                `json:"startsOn"`
+	EndsOn         *string                `json:"endsOn"`
+	Kind           string                 `json:"kind"`
+	Value          *string                `json:"value"`
+	Sources        []VirtualTagSource     `json:"sources"`
+	ValueTransform string                 `json:"valueTransform"`
+	Allocations    []VirtualTagAllocation `json:"allocations"`
+}
+
+// VirtualTagInput is the POST/PUT body. PUT is a full replace, rule order
+// included, and Key must equal the stored key (it is immutable).
+type VirtualTagInput struct {
+	Key          string           `json:"key"`
+	Name         string           `json:"name"`
+	Description  *string          `json:"description"`
+	DefaultValue *string          `json:"defaultValue"`
+	Rules        []VirtualTagRule `json:"rules"`
+}
+
+// VirtualTagStatus is where the background evaluation over stored history
+// stands. The server's `stats` (spend per rule, top values) is deliberately not
+// decoded: it moves with every collection run, so it would read as constant
+// drift, and it is a report rather than configuration.
+type VirtualTagStatus struct {
+	State       string  `json:"state"`
+	ProcessedAt *string `json:"processedAt"`
+	Error       *string `json:"error"`
+}
+
+// VirtualTag is a stored virtual tag.
+type VirtualTag struct {
+	ID              string           `json:"id"`
+	Key             string           `json:"key"`
+	Name            string           `json:"name"`
+	Description     *string          `json:"description"`
+	DefaultValue    *string          `json:"defaultValue"`
+	Rules           []VirtualTagRule `json:"rules"`
+	Status          VirtualTagStatus `json:"status"`
+	CreatedByUserID *string          `json:"createdByUserId"`
+	CreatedAt       string           `json:"createdAt"`
+	UpdatedAt       string           `json:"updatedAt"`
+}
+
 /* ------------------------------- cost exports ------------------------------ */
 
 // CostExportDestination is a tagged union over the three delivery targets.
@@ -580,12 +651,14 @@ func (d CostExportDestination) MarshalJSON() ([]byte, error) {
 
 // CostExportQuery selects the rows an export emits.
 type CostExportQuery struct {
-	Version     int64        `json:"version"`
-	Dimensions  []string     `json:"dimensions"`
-	TagKeys     []string     `json:"tagKeys"`
-	Filters     []CostFilter `json:"filters"`
-	ChargeTypes []string     `json:"chargeTypes,omitempty"`
-	CostBasis   *string      `json:"costBasis,omitempty"`
+	Version    int64    `json:"version"`
+	Dimensions []string `json:"dimensions"`
+	TagKeys    []string `json:"tagKeys"`
+	// VirtualTagKeys is optional on the wire; omitted means none.
+	VirtualTagKeys []string     `json:"virtualTagKeys,omitempty"`
+	Filters        []CostFilter `json:"filters"`
+	ChargeTypes    []string     `json:"chargeTypes,omitempty"`
+	CostBasis      *string      `json:"costBasis,omitempty"`
 }
 
 // CostExportInput is the POST/PUT body.

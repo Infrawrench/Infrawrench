@@ -80,6 +80,7 @@ const querySchema = z.object({
   version: z.literal(1),
   dimensions: z.array(z.enum(COST_DIMENSIONS)).max(8),
   tagKeys: z.array(z.string().min(1).max(255)).max(25),
+  virtualTagKeys: z.array(z.string().min(1).max(64)).max(25).optional(),
   filters: z.array(filterSchema).max(25),
   chargeTypes: z.array(z.enum(COST_CHARGE_TYPES)).optional(),
   costBasis: z.enum(["cash", "amortized"]).optional(),

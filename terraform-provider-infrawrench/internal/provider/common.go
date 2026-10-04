@@ -300,6 +300,7 @@ var costFilterObjectType = types.ObjectType{AttrTypes: costFilterAttrTypes}
 // costDimensions is the closed set the API accepts on a filter clause.
 var costDimensions = []string{
 	"provider", "account", "service", "region", "resource", "tag", "charge_type", "commitment",
+	"virtual_tag",
 }
 
 // costFilterBlockSchema is the shared `filter` nested block. Every object that
@@ -325,8 +326,9 @@ func costFilterBlockSchema(description string) schema.ListNestedBlock {
 					MarkdownDescription: "Values to match. Must not be empty.",
 				},
 				"tag_key": schema.StringAttribute{
-					Optional:            true,
-					MarkdownDescription: "Tag key, required when `dimension` is `tag` and rejected otherwise.",
+					Optional: true,
+					MarkdownDescription: "Tag key, required when `dimension` is `tag` (a provider tag key) or " +
+						"`virtual_tag` (a virtual tag key, see `infrawrench_virtual_tag`) and rejected otherwise.",
 				},
 			},
 		},

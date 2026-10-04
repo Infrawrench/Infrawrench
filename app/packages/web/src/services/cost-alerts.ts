@@ -129,7 +129,10 @@ export async function createCostAlert(
       // The tag key only means something under a tag grouping; storing a
       // stale one under another grouping would silently resurface if the
       // alert is later switched back.
-      groupByTagKey: input.groupBy === "tag" ? (input.groupByTagKey ?? null) : null,
+      groupByTagKey:
+        input.groupBy === "tag" || input.groupBy === "virtual_tag"
+          ? (input.groupByTagKey ?? null)
+          : null,
       cadence: input.cadence,
       thresholdPercent: input.thresholdPercent,
       thresholdAmountCents: input.thresholdAmountCents,
@@ -155,7 +158,10 @@ export async function updateCostAlert(
       name: input.name,
       filters: input.filters,
       groupBy: input.groupBy,
-      groupByTagKey: input.groupBy === "tag" ? (input.groupByTagKey ?? null) : null,
+      groupByTagKey:
+        input.groupBy === "tag" || input.groupBy === "virtual_tag"
+          ? (input.groupByTagKey ?? null)
+          : null,
       cadence: input.cadence,
       thresholdPercent: input.thresholdPercent,
       thresholdAmountCents: input.thresholdAmountCents,

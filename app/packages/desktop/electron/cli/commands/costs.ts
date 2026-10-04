@@ -17,15 +17,22 @@ import type {
   CostConversion,
   CostDimensionOption,
   CostMeasure,
+  CostDimensionId,
   CostFilter,
   CostQueryRequest,
   CostQueryResponse,
+  KeyedCostDimensionId,
   SavedCostFilter,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import type { RangeFlags } from "../args";
 import { resolveDayWindow, resolveDateRange } from "../args";
 import { c, printJson, println, printTable, formatMoney, seriesColor } from "../output";
-import { anomalyDeltaPercent } from "../format";
+import {
+  anomalyDeltaPercent,
+  formatGroupBy,
+  KEYED_GROUP_DIMENSIONS,
+  parseGroupByFlag,
+} from "../format";
 import { barChart, sparkline } from "../charts";
 
 const GROUP_DIMENSIONS = [
@@ -36,7 +43,12 @@ const GROUP_DIMENSIONS = [
   "resource",
   "charge_type",
   "commitment",
-] as const;
+] as const satisfies readonly CostDimensionId[];
+
+// The keyed dimensions (`tag:env`, `virtual_tag:team`) are parsed by
+// `parseGroupByFlag`; pinned to the wire type here so a dimension renamed
+// upstream fails this file's typecheck rather than a request.
+const KEYED_DIMENSIONS: readonly KeyedCostDimensionId[] = KEYED_GROUP_DIMENSIONS;
 
 /**
  * The two money bases and the charge types, restated as plain arrays.
@@ -375,18 +387,14 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
   }
   const org = await resolveOrg(ctx);
 
-  const requested = range.groupBy ?? "provider";
-  // `tag:<key>` groups by one tag's values (the API's groupBy "tag" plus
-  // groupByTagKey): how a plugin's own dimensions, such as a Kubernetes
-  // row's `namespace` or `gpu_model`, become chartable from here.
-  const tagKey = requested.startsWith("tag:") ? requested.slice(4).trim() : null;
-  if (tagKey === "") throw new CliError(`--group-by tag:<key> needs a tag key, e.g. tag:team.`);
-  const groupBy = tagKey ? "tag" : requested;
-  if (!tagKey && groupBy !== "none" && !GROUP_DIMENSIONS.includes(groupBy as never)) {
-    throw new CliError(
-      `--group-by must be one of none, ${GROUP_DIMENSIONS.join(", ")}, tag:<key> — got "${groupBy}".`,
-    );
-  }
+  const parsedGroupBy = parseGroupByFlag(range.groupBy ?? "provider", GROUP_DIMENSIONS);
+  if ("error" in parsedGroupBy) throw new CliError(parsedGroupBy.error);
+  const groupBy = parsedGroupBy.groupBy;
+  // Set only for a keyed dimension (`tag:env`, `virtual_tag:team`): the server
+  // refuses a keyed grouping without one, and ignores it for any other.
+  const groupByTagKey = KEYED_DIMENSIONS.includes(groupBy as KeyedCostDimensionId)
+    ? parsedGroupBy.tagKey
+    : undefined;
 
   const basis = parseBasis(range.basis);
   const chargeTypes = parseChargeTypes(range.chargeTypes);
@@ -409,7 +417,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
     to,
     binning,
     groupBy: groupBy as CostQueryRequest["groupBy"],
-    ...(tagKey ? { groupByTagKey: tagKey } : {}),
+    ...(groupByTagKey ? { groupByTagKey } : {}),
     filters,
     topN: 8,
     comparePreviousPeriod: false,
@@ -446,7 +454,7 @@ export async function cmdCosts(ctx: CliContext, range: RangeFlags): Promise<void
       from,
       to,
       groupBy,
-      groupByTagKey: tagKey,
+      groupByTagKey: groupByTagKey ?? null,
       // Echoed as both the text the user typed and the structure it compiled
       // to, so a script can see which filter actually ran without re-parsing.
       where: range.where?.trim() || null,
@@ -735,7 +743,7 @@ export async function cmdCostAlerts(ctx: CliContext, range: RangeFlags): Promise
       header: "watching",
       value: (a) =>
         c.dim(
-          `${a.groupBy === null ? "one total" : `each ${a.groupBy}${a.groupBy === "tag" && a.groupByTagKey ? `[${a.groupByTagKey}]` : ""}`}${a.filters.length > 0 ? ` · ${a.filters.length} filter${a.filters.length === 1 ? "" : "s"}` : ""}`,
+          `${formatGroupBy(a.groupBy, a.groupByTagKey)}${a.filters.length > 0 ? ` · ${a.filters.length} filter${a.filters.length === 1 ? "" : "s"}` : ""}`,
         ),
     },
     {

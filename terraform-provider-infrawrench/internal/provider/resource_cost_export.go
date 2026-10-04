@@ -62,19 +62,21 @@ func NewCostExportResource() resource.Resource { return &costExportResource{} }
 type costExportResource struct{ client *iw.Client }
 
 type costExportQueryModel struct {
-	Dimensions  types.List   `tfsdk:"dimensions"`
-	TagKeys     types.List   `tfsdk:"tag_keys"`
-	ChargeTypes types.List   `tfsdk:"charge_types"`
-	CostBasis   types.String `tfsdk:"cost_basis"`
-	Filter      types.List   `tfsdk:"filter"`
+	Dimensions     types.List   `tfsdk:"dimensions"`
+	TagKeys        types.List   `tfsdk:"tag_keys"`
+	VirtualTagKeys types.List   `tfsdk:"virtual_tag_keys"`
+	ChargeTypes    types.List   `tfsdk:"charge_types"`
+	CostBasis      types.String `tfsdk:"cost_basis"`
+	Filter         types.List   `tfsdk:"filter"`
 }
 
 var costExportQueryAttrTypes = map[string]attr.Type{
-	"dimensions":   types.ListType{ElemType: types.StringType},
-	"tag_keys":     types.ListType{ElemType: types.StringType},
-	"charge_types": types.ListType{ElemType: types.StringType},
-	"cost_basis":   types.StringType,
-	"filter":       types.ListType{ElemType: costFilterObjectType},
+	"dimensions":       types.ListType{ElemType: types.StringType},
+	"tag_keys":         types.ListType{ElemType: types.StringType},
+	"virtual_tag_keys": types.ListType{ElemType: types.StringType},
+	"charge_types":     types.ListType{ElemType: types.StringType},
+	"cost_basis":       types.StringType,
+	"filter":           types.ListType{ElemType: costFilterObjectType},
 }
 
 type costExportDestinationModel struct {
@@ -276,6 +278,18 @@ func (r *costExportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 							"meaningful for keys your resources actually carry; see " +
 							"`infrawrench_tag_policy` for enforcing that.",
 						Validators: []validator.List{listvalidator.SizeAtMost(25)},
+					},
+					"virtual_tag_keys": schema.ListAttribute{
+						Optional:    true,
+						ElementType: types.StringType,
+						MarkdownDescription: "Virtual tag keys to emit as their own `vtag_<key>` columns, at " +
+							"most 25, each 1-64 characters (see `infrawrench_virtual_tag`). A row a " +
+							"split rule divides is exported once per share with weighted amounts, so the " +
+							"file still sums to the total.",
+						Validators: []validator.List{
+							listvalidator.SizeAtMost(25),
+							listvalidator.ValueStringsAre(stringvalidator.LengthBetween(1, 64)),
+						},
 					},
 					"charge_types": schema.ListAttribute{
 						Optional:    true,
@@ -550,6 +564,8 @@ func costExportInputFrom(ctx context.Context, model costExportResourceModel) (iw
 		diags.Append(d...)
 		tagKeys, d := stringSlice(ctx, q.TagKeys)
 		diags.Append(d...)
+		virtualTagKeys, d := stringSlice(ctx, q.VirtualTagKeys)
+		diags.Append(d...)
 		chargeTypes, d := stringSlice(ctx, q.ChargeTypes)
 		diags.Append(d...)
 		filters, d := costFiltersFrom(ctx, q.Filter)
@@ -560,6 +576,7 @@ func costExportInputFrom(ctx context.Context, model costExportResourceModel) (iw
 
 		query.Dimensions = dimensions
 		query.TagKeys = tagKeys
+		query.VirtualTagKeys = virtualTagKeys
 		query.ChargeTypes = chargeTypes
 		query.Filters = filters
 		query.CostBasis = stringPtr(q.CostBasis)
@@ -654,6 +671,8 @@ func costExportStateFrom(ctx context.Context, remote *iw.CostExport, prior costE
 	// never mentioned them from showing perpetual drift.
 	tagKeys, d := optionalStringList(ctx, remote.Query.TagKeys)
 	diags.Append(d...)
+	virtualTagKeys, d := optionalStringList(ctx, remote.Query.VirtualTagKeys)
+	diags.Append(d...)
 	chargeTypes, d := optionalStringList(ctx, remote.Query.ChargeTypes)
 	diags.Append(d...)
 	filters, d := costFiltersTo(ctx, remote.Query.Filters)
@@ -663,11 +682,12 @@ func costExportStateFrom(ctx context.Context, remote *iw.CostExport, prior costE
 	}
 
 	query, d := types.ObjectValueFrom(ctx, costExportQueryAttrTypes, costExportQueryModel{
-		Dimensions:  dimensions,
-		TagKeys:     tagKeys,
-		ChargeTypes: chargeTypes,
-		CostBasis:   stringValue(remote.Query.CostBasis),
-		Filter:      filters,
+		Dimensions:     dimensions,
+		TagKeys:        tagKeys,
+		VirtualTagKeys: virtualTagKeys,
+		ChargeTypes:    chargeTypes,
+		CostBasis:      stringValue(remote.Query.CostBasis),
+		Filter:         filters,
 	})
 	diags.Append(d...)
 

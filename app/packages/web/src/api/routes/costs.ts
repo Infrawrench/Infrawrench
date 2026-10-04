@@ -28,6 +28,7 @@ import {
   listCostDimensionValues,
   listCostTagKeys,
   listCostUsageUnits,
+  listVirtualTagKeyOptions,
   runCostQuery,
 } from "../../services/cost-query";
 import {
@@ -157,6 +158,13 @@ app.get("/dimensions", async (c) => {
   // The units a usage budget can count, as providers reported them.
   if (c.req.query("dimension") === "usage-units") {
     return c.json({ values: await listCostUsageUnits(organizationId) });
+  }
+  // The org's virtual tag keys (labelled with their names) for the
+  // `virtual_tag` group-by and filter pickers. A pseudo-dimension like
+  // `tag-keys`, so every host already able to load picker values gets these
+  // through the same call.
+  if (c.req.query("dimension") === "virtual-tag-keys") {
+    return c.json({ values: await listVirtualTagKeyOptions(organizationId) });
   }
 
   try {

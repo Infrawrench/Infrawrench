@@ -16,6 +16,7 @@ const CostDimension = z.enum([
   "tag",
   "charge_type",
   "commitment",
+  "virtual_tag",
 ]);
 
 const ExportCostFilter = strict({
@@ -34,6 +35,13 @@ const CostExportQuery = strict({
         "grouped to provider + service is orders of magnitude smaller than a per-resource one.",
     ),
   tagKeys: z.array(z.string()).describe("Tag keys emitted as their own `tag_<key>` columns."),
+  virtualTagKeys: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Virtual tag keys emitted as their own `vtag_<key>` columns. A row a split rule divides " +
+        "is exported once per share with weighted amounts, so the file still sums to the total.",
+    ),
   filters: z.array(ExportCostFilter),
   chargeTypes: z
     .array(

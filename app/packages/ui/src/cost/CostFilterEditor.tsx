@@ -12,6 +12,7 @@ import {
   type CostFilter,
   type SavedCostFilter,
 } from "./config.js";
+import { isKeyedCostDimension, type CostDimensionId } from "@infrawrench/client-core";
 import type { CostDimensionOption } from "./config.js";
 import type { CostApi } from "./types.js";
 import { MultiSelect, type MultiSelectStatus } from "../components/MultiSelect.js";
@@ -25,6 +26,11 @@ interface FilterRowEditorProps {
   filters: CostFilter[];
   onChange: (filters: CostFilter[]) => void;
   api: CostApi;
+  /**
+   * Dimensions this host cannot accept. The virtual tag rule editor passes
+   * `["virtual_tag"]`: a virtual tag rule may not filter on another one.
+   */
+  excludeDimensions?: readonly CostDimensionId[] | undefined;
 }
 
 /**
@@ -55,9 +61,36 @@ function dimensionStatus(
 }
 
 /** Filter rule rows shared by the graph and budget editors. */
-export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps) {
+export function CostFilterRows({
+  filters,
+  onChange,
+  api,
+  excludeDimensions,
+}: FilterRowEditorProps) {
   const gt = useGT();
   const gtData = useDataString();
+  const dimensions = excludeDimensions
+    ? COST_DIMENSIONS.filter((d) => !excludeDimensions.includes(d))
+    : COST_DIMENSIONS;
+  // The org's virtual tag keys, for the key picker on a virtual_tag row. Loaded
+  // only once a row actually uses the dimension.
+  const [virtualTagKeys, setVirtualTagKeys] = useState<CostDimensionOption[] | null>(null);
+  const usesVirtualTags = filters.some((f) => f.dimension === "virtual_tag");
+  useEffect(() => {
+    if (!usesVirtualTags || virtualTagKeys !== null) return;
+    let cancelled = false;
+    void api
+      .loadDimensionValues("virtual-tag-keys")
+      .then((keys) => {
+        if (!cancelled) setVirtualTagKeys(keys);
+      })
+      .catch(() => {
+        if (!cancelled) setVirtualTagKeys([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, usesVirtualTags, virtualTagKeys]);
   // Loaded options per "dimension" / "dimension:tagKey" key. Missing = load
   // not finished (in flight or not started), null = load failed (focus
   // retries via loadOptions).
@@ -86,8 +119,8 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
   // leaves the values box looking dead right after "+ Add filter".
   useEffect(() => {
     for (const f of filters) {
-      if (f.dimension === "tag") {
-        if (f.tagKey) loadOptions("tag", f.tagKey);
+      if (isKeyedCostDimension(f.dimension)) {
+        if (f.tagKey) loadOptions(f.dimension, f.tagKey);
       } else {
         loadOptions(f.dimension);
       }
@@ -100,8 +133,8 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
 
   /** Re-request a row's values; a no-op unless the previous load failed. */
   const retryOptions = (filter: CostFilter) => {
-    if (filter.dimension === "tag") {
-      if (filter.tagKey) loadOptions("tag", filter.tagKey);
+    if (isKeyedCostDimension(filter.dimension)) {
+      if (filter.tagKey) loadOptions(filter.dimension, filter.tagKey);
     } else {
       loadOptions(filter.dimension);
     }
@@ -121,15 +154,11 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
               value={filter.dimension}
               onChange={(e) => {
                 const dimension = e.target.value as CostFilter["dimension"];
-                update(i, {
-                  dimension,
-                  values: [],
-                  ...(dimension !== "tag" ? { tagKey: undefined } : {}),
-                });
-                if (dimension !== "tag") loadOptions(dimension);
+                update(i, { dimension, values: [], tagKey: undefined });
+                if (!isKeyedCostDimension(dimension)) loadOptions(dimension);
               }}
             >
-              {COST_DIMENSIONS.map((d) => (
+              {dimensions.map((d) => (
                 <option key={d} value={d}>
                   {gtData(DIMENSION_LABELS[d])}
                 </option>
@@ -144,6 +173,29 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
                 onChange={(e) => update(i, { tagKey: e.target.value })}
                 onBlur={() => filter.tagKey && loadOptions("tag", filter.tagKey)}
               />
+            )}
+            {filter.dimension === "virtual_tag" && (
+              <select
+                aria-label={gt("Virtual tag")}
+                className={`${selectBaseClass} w-32 flex-shrink-0`}
+                value={filter.tagKey ?? ""}
+                onChange={(e) => {
+                  const tagKey = e.target.value || undefined;
+                  update(i, { tagKey, values: [] });
+                  if (tagKey) loadOptions("virtual_tag", tagKey);
+                }}
+              >
+                <option value="">
+                  {virtualTagKeys === null ? gt("Loading…") : gt("Choose a virtual tag")}
+                </option>
+                {mergeSelected(virtualTagKeys ?? [], filter.tagKey ? [filter.tagKey] : []).map(
+                  (o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ),
+                )}
+              </select>
             )}
             <select
               aria-label={gt("Filter operator")}
@@ -380,6 +432,7 @@ export function CostFilterEditor({
   onErrorChange,
   savedFilterId,
   onSavedFilterChange,
+  excludeDimensions,
 }: CostFilterEditorProps) {
   const gt = useGT();
   const uid = useId();
@@ -473,7 +526,12 @@ export function CostFilterEditor({
       </div>
 
       {mode === "rows" ? (
-        <CostFilterRows filters={filters} onChange={onChange} api={api} />
+        <CostFilterRows
+          filters={filters}
+          onChange={onChange}
+          api={api}
+          excludeDimensions={excludeDimensions}
+        />
       ) : (
         <div className="space-y-1">
           <textarea

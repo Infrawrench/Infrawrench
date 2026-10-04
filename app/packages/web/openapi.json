@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.60.0",
+    "version": "1.61.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3841,7 +3841,8 @@
           "resource",
           "tag",
           "charge_type",
-          "commitment"
+          "commitment",
+          "virtual_tag"
         ]
       },
       "CostFilter": {
@@ -3934,7 +3935,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ]
           },
           "groupByTagKey": {
@@ -4684,7 +4686,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ]
           },
           "op": {
@@ -4751,7 +4754,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ]
           },
           "groupByTagKey": {
@@ -6588,7 +6592,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ]
           },
           "op": {
@@ -6637,7 +6642,8 @@
                 "resource",
                 "tag",
                 "charge_type",
-                "commitment"
+                "commitment",
+                "virtual_tag"
               ]
             },
             "description": "Row-identity columns kept in the output. Dropping one aggregates over it — an export grouped to provider + service is orders of magnitude smaller than a per-resource one."
@@ -6648,6 +6654,13 @@
               "type": "string"
             },
             "description": "Tag keys emitted as their own `tag_<key>` columns."
+          },
+          "virtualTagKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Virtual tag keys emitted as their own `vtag_<key>` columns. A row a split rule divides is exported once per share with weighted amounts, so the file still sums to the total."
           },
           "filters": {
             "type": "array",
@@ -7268,7 +7281,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ]
           },
           "op": {
@@ -7343,7 +7357,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ],
             "description": "Per-group fan-out. Null watches the scope's one total; a dimension watches each group against its own prior window, and each offending group fires its own event."
           },
@@ -7542,7 +7557,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ],
             "description": "Per-group fan-out. Null watches the scope's one total; a dimension watches each group against its own prior window, and each offending group fires its own event."
           },
@@ -7597,7 +7613,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ]
           },
           "op": {
@@ -7763,7 +7780,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ]
           },
           "op": {
@@ -8026,7 +8044,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ]
           },
           "op": {
@@ -9640,7 +9659,8 @@
               "resource",
               "tag",
               "charge_type",
-              "commitment"
+              "commitment",
+              "virtual_tag"
             ]
           },
           "op": {
@@ -11470,6 +11490,17 @@
           "service": {
             "type": "string",
             "minLength": 1
+          },
+          "virtualTagKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "One of the organization's virtual tags, by key. Alone it matches rows where the tag is set; a split virtual tag routes each share separately."
+          },
+          "virtualTagValue": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Only meaningful with virtualTagKey."
           }
         },
         "additionalProperties": false,
@@ -12848,6 +12879,400 @@
         },
         "required": [
           "ids"
+        ],
+        "additionalProperties": false
+      },
+      "VirtualTagSource": {
+        "type": "object",
+        "properties": {
+          "tagKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "example": "Environment"
+          },
+          "valuePrefix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "default": null,
+            "description": "Prepended to the copied value, e.g. `az-`."
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000,
+            "default": null,
+            "description": "Cost-query-language filter that must also hold for this key to be read, e.g. `provider = 'azure'`. Null for always."
+          }
+        },
+        "required": [
+          "tagKey"
+        ],
+        "additionalProperties": false
+      },
+      "VirtualTagAllocation": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "maximum": 100,
+            "default": null,
+            "description": "`split` only. The shares of one rule sum to 100."
+          },
+          "metricId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null,
+            "description": "`metric_split` only. The business metric whose daily value weights this share. A day where any share's metric has no value carries the last good day's weights forward, or splits evenly when there is none.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "VirtualTagRule": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "default": "",
+            "description": "Cost-query-language filter a row must match, e.g. `provider = 'aws' AND service = 'AmazonRDS'`. Empty matches every row. May not reference another virtual tag."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000,
+            "default": null
+          },
+          "startsOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "default": null,
+            "description": "Inclusive UTC day the rule starts applying; null for no start."
+          },
+          "endsOn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "default": null,
+            "description": "Inclusive UTC day the rule stops applying; null for no end."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "value",
+              "tag",
+              "split",
+              "metric_split"
+            ],
+            "description": "`value`: a fixed value. `tag`: copy the value from the first present provider tag key in `sources` (key collapsing). `split`: divide the row across `allocations` by percentage. `metric_split`: divide it in proportion to business metrics, day by day."
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256,
+            "default": null,
+            "description": "`value` only."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VirtualTagSource"
+            },
+            "maxItems": 10,
+            "default": [],
+            "description": "`tag` only."
+          },
+          "valueTransform": {
+            "type": "string",
+            "enum": [
+              "none",
+              "lower",
+              "upper"
+            ],
+            "default": "none",
+            "description": "`tag` only. Case fold applied to the copied value before the prefix."
+          },
+          "allocations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VirtualTagAllocation"
+            },
+            "maxItems": 20,
+            "default": [],
+            "description": "`split` and `metric_split` only; at least two."
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "VirtualTagCurrencyStats": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "total": {
+            "type": "number"
+          },
+          "unmatched": {
+            "type": "number",
+            "description": "Spend no rule matched."
+          },
+          "byRule": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Spend each rule claimed, in rule order."
+          },
+          "topValues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "value",
+                "amount"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "currency",
+          "total",
+          "unmatched",
+          "byRule",
+          "topValues"
+        ],
+        "additionalProperties": false
+      },
+      "VirtualTagStats": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VirtualTagCurrencyStats"
+            }
+          },
+          "metricFallbackDays": {
+            "type": "integer",
+            "description": "Days a metric split carried weights forward or split evenly."
+          },
+          "distinctValues": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "currencies",
+          "metricFallbackDays",
+          "distinctValues"
+        ],
+        "additionalProperties": false
+      },
+      "VirtualTag": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultValue": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VirtualTagRule"
+            }
+          },
+          "status": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "processing",
+                  "ready",
+                  "failed"
+                ]
+              },
+              "processedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stats": {
+                "$ref": "#/components/schemas/VirtualTagStats"
+              }
+            },
+            "required": [
+              "state",
+              "processedAt",
+              "error",
+              "stats"
+            ],
+            "additionalProperties": false,
+            "description": "The background evaluation over stored history. Queries never wait on it: a saved rule applies to every read immediately; this is the account of what the rules do."
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "description",
+          "defaultValue",
+          "rules",
+          "status",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "VirtualTagInput": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/-]*$",
+            "description": "How filters address the tag: `virtual_tag['team'] = 'payments'`. Immutable after creation, because saved filters, budgets, reports and exports store it.",
+            "example": "team"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Team"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "defaultValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256,
+            "description": "Value for rows no rule matches; null leaves them unset."
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VirtualTagRule"
+            },
+            "maxItems": 100,
+            "description": "Evaluated in order; the first rule a row matches decides its value."
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "rules"
         ],
         "additionalProperties": false
       },
@@ -43077,7 +43502,7 @@
           "Costs"
         ],
         "summary": "List distinct values for a cost dimension",
-        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, or dimension=usage-units for the usage units providers report (a usage budget's unit); dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge types rather than from the stored data, so the picker is populated before any provider has reported one. `usage-units` lists the usage units present in the cost data, most common first, for the `usage` measure's unit picker.\n\n_Requires permission: `costs:read`._",
+        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, dimension=virtual-tag-keys for the organization's virtual tag keys (labelled by name), or dimension=usage-units for the usage units providers report (a usage budget's unit); dimension=tag and dimension=virtual_tag require tagKey. `charge_type` answers from the fixed set of charge types rather than from the stored data, so the picker is populated before any provider has reported one. `usage-units` lists the usage units present in the cost data, most common first, for the `usage` measure's unit picker.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -43102,8 +43527,10 @@
                 "tag",
                 "charge_type",
                 "commitment",
+                "virtual_tag",
                 "tag-keys",
-                "usage-units"
+                "usage-units",
+                "virtual-tag-keys"
               ]
             },
             "required": true,
@@ -52752,6 +53179,422 @@
         },
         "operationId": "deleteOrgOrgIdBillingRulesId",
         "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/virtual-tags": {
+      "get": {
+        "tags": [
+          "Virtual Tags"
+        ],
+        "summary": "List virtual tags",
+        "description": "Virtual tags are tags the organisation computes from its own ordered rules: merge `env`/`Environment`/`ENV` into one key, assign values by any cost filter, split shared spend by percentage or by a business metric, with optional start and end dates per rule. They work as the `virtual_tag` cost dimension everywhere a tag does.\n\n**They are computed at query time and never written into stored cost data**, and splits are weighted so a total never changes.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Virtual tags, by key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VirtualTag"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdVirtualTags",
+        "x-required-permission": "costs:read"
+      },
+      "post": {
+        "tags": [
+          "Virtual Tags"
+        ],
+        "summary": "Create a virtual tag",
+        "description": "Queues the background evaluation over stored history at once.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VirtualTagInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualTag"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdVirtualTags",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/virtual-tags/preview": {
+      "post": {
+        "tags": [
+          "Virtual Tags"
+        ],
+        "summary": "Preview an unsaved virtual tag",
+        "description": "Evaluates a definition over the trailing 30 days without storing it: spend per rule, unmatched spend and the top values. Validates exactly as a save would.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VirtualTagInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Evaluation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/VirtualTagStats"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdVirtualTagsPreview",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/virtual-tags/{id}": {
+      "get": {
+        "tags": [
+          "Virtual Tags"
+        ],
+        "summary": "Get a virtual tag",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualTag"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdVirtualTagsId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Virtual Tags"
+        ],
+        "summary": "Update a virtual tag",
+        "description": "A full replace, rule order included. The key cannot change (400). Saving re-queues the background evaluation.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VirtualTagInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualTag"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdVirtualTagsId",
+        "x-required-permission": "costs:write"
+      },
+      "delete": {
+        "tags": [
+          "Virtual Tags"
+        ],
+        "summary": "Delete a virtual tag",
+        "description": "Refused with a 409 that names every saved filter, budget, report, dashboard card, change alert, allocation rule, cost export or business metric still referencing the key: deleting it would make those fail rather than quietly widen to all spend.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdVirtualTagsId",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/virtual-tags/{id}/reprocess": {
+      "post": {
+        "tags": [
+          "Virtual Tags"
+        ],
+        "summary": "Re-run a virtual tag's evaluation",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualTag"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdVirtualTagsIdReprocess",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
       }
     },
     "/api/org/{orgId}/managed-accounts": {

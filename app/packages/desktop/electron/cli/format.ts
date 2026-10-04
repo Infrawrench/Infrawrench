@@ -492,3 +492,150 @@ export function formatBudgetWarning(
   if (warning.kind === "actual") return `children have reached ${total}, past ${limit}`;
   return `children are forecast to reach ${total}, past ${limit}`;
 }
+
+/* ------------------------------------------------------------------ *
+ * Keyed group-bys (`costs --group-by tag:env`, `virtual_tag:team`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Dimensions that need a key as well as a name. A restatement of client-core's
+ * `KEYED_COST_DIMENSIONS` for the usual reason (type-only imports); the caller
+ * assigns the parsed result to the wire type, so a dimension removed upstream
+ * still fails the build there.
+ */
+export const KEYED_GROUP_DIMENSIONS = ["tag", "virtual_tag"] as const;
+
+/**
+ * Parse a `--group-by` value into the dimension and, for a keyed dimension,
+ * its key. Accepts `virtual_tag:team`, `virtual_tag=team` and the query
+ * language's own spelling, `virtual_tag['team']`, so a key copied from a
+ * `--where` clause works unchanged.
+ *
+ * Returns an error string rather than throwing a `CliError`, so it stays free
+ * of `../context` and can be unit tested.
+ */
+export function parseGroupByFlag(
+  raw: string,
+  plain: readonly string[],
+): { groupBy: string; tagKey?: string } | { error: string } {
+  const value = raw.trim();
+  const bracket = /^([a-z_]+)\[\s*(['"])(.*)\2\s*\]$/.exec(value);
+  const separated = /^([a-z_]+)[:=](.*)$/.exec(value);
+  const match = bracket
+    ? { dimension: bracket[1]!, key: bracket[3]!.trim() }
+    : separated
+      ? { dimension: separated[1]!, key: separated[2]!.trim() }
+      : null;
+  const keyed: readonly string[] = KEYED_GROUP_DIMENSIONS;
+  const allowed = ["none", ...plain, ...KEYED_GROUP_DIMENSIONS.map((d) => `${d}:<key>`)].join(", ");
+
+  if (match) {
+    if (!keyed.includes(match.dimension)) {
+      return { error: `--group-by ${match.dimension} takes no key. Use one of ${allowed}.` };
+    }
+    if (!match.key) return { error: `--group-by ${match.dimension} needs a key after the colon.` };
+    return { groupBy: match.dimension, tagKey: match.key };
+  }
+  if (keyed.includes(value)) {
+    const hint =
+      value === "virtual_tag"
+        ? "`infrawrench virtual-tags` lists the keys"
+        : "`infrawrench tags` lists the policy keys";
+    return { error: `--group-by ${value} needs a key, like ${value}:team (${hint}).` };
+  }
+  if (value === "none" || plain.includes(value)) return { groupBy: value };
+  return { error: `--group-by must be one of ${allowed}; got "${raw}".` };
+}
+
+/** "each service", "each virtual_tag[team]", "one total": a grouping in a list. */
+export function formatGroupBy(
+  groupBy: string | null | undefined,
+  tagKey?: string | null | undefined,
+): string {
+  if (!groupBy || groupBy === "none") return "one total";
+  const keyed: readonly string[] = KEYED_GROUP_DIMENSIONS;
+  return `each ${groupBy}${keyed.includes(groupBy) && tagKey ? `[${tagKey}]` : ""}`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Virtual tags (`infrawrench virtual-tags`)
+ * ------------------------------------------------------------------ */
+
+/**
+ * A virtual tag rule as one line: "provider = 'aws' → 'platform' from
+ * 2026-04-01". A copy of client-core's `describeVirtualTagRule`, which the CLI
+ * cannot import at runtime for the reason `formatBillingRule` gives; kept to
+ * the same output so the CLI, the MCP tools and Settings describe a rule in
+ * the same words.
+ */
+export function formatVirtualTagRule(
+  rule: {
+    query: string;
+    startsOn: string | null;
+    endsOn: string | null;
+    kind: string;
+    value: string | null;
+    sources: ReadonlyArray<{ tagKey: string; valuePrefix: string | null }>;
+    valueTransform: string;
+    allocations: ReadonlyArray<{ value: string; percent: number | null; metricId: string | null }>;
+  },
+  metricName: (id: string) => string = (id) => id,
+): string {
+  const scope = rule.query ? rule.query : "everything";
+  let output: string;
+  switch (rule.kind) {
+    case "value":
+      output = `'${rule.value ?? ""}'`;
+      break;
+    case "tag": {
+      const keys = rule.sources
+        .map((s) => `${s.tagKey}${s.valuePrefix ? ` (prefix '${s.valuePrefix}')` : ""}`)
+        .join(", ");
+      const fold = rule.valueTransform === "none" ? "" : `, ${rule.valueTransform}case`;
+      output = `copy of ${keys}${fold}`;
+      break;
+    }
+    case "split":
+      output = rule.allocations.map((a) => `'${a.value}' ${a.percent ?? 0}%`).join(" / ");
+      break;
+    case "metric_split":
+      output = rule.allocations
+        .map((a) => `'${a.value}' by ${a.metricId ? metricName(a.metricId) : "?"}`)
+        .join(" / ");
+      break;
+    default:
+      output = rule.kind;
+  }
+  let bounds = "";
+  if (rule.startsOn && rule.endsOn) bounds = ` from ${rule.startsOn} to ${rule.endsOn}`;
+  else if (rule.startsOn) bounds = ` from ${rule.startsOn}`;
+  else if (rule.endsOn) bounds = ` until ${rule.endsOn}`;
+  return `${scope} → ${output}${bounds}`;
+}
+
+/**
+ * A part of a total as a percentage: "12.4%". Null when there was no spend to
+ * divide, because a zero total has no share to report (neither 0% nor 100%).
+ */
+export function shareOfTotal(part: number, total: number): string | null {
+  if (!(total > 0) || !Number.isFinite(part)) return null;
+  return `${((part / total) * 100).toFixed(1)}%`;
+}
+
+/**
+ * Resolve `infrawrench virtual-tags show <query>` to one tag: an exact id,
+ * then an exact key (keys are what filters address and are unique per org,
+ * so they are the natural handle), then the name rules of `matchCostReport`.
+ */
+export function matchVirtualTag<T extends { id: string; key: string; name: string }>(
+  tags: readonly T[],
+  query: string,
+): { match: T } | { match: null; candidates: T[] } {
+  const q = query.trim();
+  const byId = tags.find((t) => t.id === q);
+  if (byId) return { match: byId };
+  const byKey =
+    tags.find((t) => t.key === q) ?? tags.find((t) => t.key.toLowerCase() === q.toLowerCase());
+  if (byKey) return { match: byKey };
+  return matchCostReport(tags, q);
+}

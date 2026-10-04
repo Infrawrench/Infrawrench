@@ -191,8 +191,9 @@ func (r *costReportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					},
 					"group_by_tag_key": schema.StringAttribute{
 						Optional: true,
-						MarkdownDescription: "Which tag to group by. Required when `group_by` is `tag`, " +
-							"and rejected otherwise.",
+						MarkdownDescription: "Which tag to group by: a provider tag key when `group_by` is `tag`, " +
+							"or a virtual tag key when it is `virtual_tag`. Required for those two and " +
+							"rejected otherwise.",
 					},
 					"saved_filter_id": schema.StringAttribute{
 						Optional: true,

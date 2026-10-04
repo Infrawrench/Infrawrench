@@ -20,6 +20,7 @@ import { T, useGT } from "gt-react";
 
 import { COST_DIMENSIONS, costAlertInputSchema, type CostFilter } from "./config.js";
 import { CostFilterRows } from "./CostGraphConfigModal.js";
+import { VirtualTagKeySelect } from "./VirtualTagKeySelect.js";
 import { formatMoney } from "./transform.js";
 import { Modal } from "../components/Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
@@ -69,7 +70,9 @@ function describeScope(
       (COST_DIMENSION_LABELS[alert.groupBy] ?? alert.groupBy).toLowerCase(),
     );
     const tagKey =
-      alert.groupBy === "tag" && alert.groupByTagKey ? ` (${alert.groupByTagKey})` : "";
+      (alert.groupBy === "tag" || alert.groupBy === "virtual_tag") && alert.groupByTagKey
+        ? ` (${alert.groupByTagKey})`
+        : "";
     parts.push(gt("each {dimensionLabel}{tagKey}", { dimensionLabel, tagKey }));
   }
   parts.push(
@@ -547,6 +550,7 @@ export function CostChangeAlertConfigModal({
               onChange={(e) =>
                 set({
                   groupBy: e.target.value === "none" ? null : (e.target.value as CostDimensionId),
+                  groupByTagKey: undefined,
                 })
               }
             >
@@ -566,6 +570,14 @@ export function CostChangeAlertConfigModal({
                 placeholder={gt("Tag key, e.g. team")}
                 value={input.groupByTagKey ?? ""}
                 onChange={(e) => set({ groupByTagKey: e.target.value })}
+              />
+            )}
+            {input.groupBy === "virtual_tag" && (
+              <VirtualTagKeySelect
+                client={client}
+                className={`${inputClass} mt-2`}
+                value={input.groupByTagKey ?? ""}
+                onChange={(groupByTagKey) => set({ groupByTagKey })}
               />
             )}
             <p className="mt-1 text-[11px] text-on-surface-faint">

@@ -24,6 +24,7 @@ import {
   listCostDimensionValues,
   listCostTagKeys,
   listCostUsageUnits,
+  listVirtualTagKeyOptions,
   runCostQuery,
 } from "../services/cost-query";
 import {
@@ -69,8 +70,10 @@ export function costTools(): ToolDefinition[] {
       description:
         "Aggregate daily cloud spend across all connected accounts into time series. " +
         "Dates are inclusive YYYY-MM-DD. Group by " +
-        "provider/account/service/region/resource/tag/charge_type/commitment " +
-        "(groupByTagKey required for tag), filter on the same dimensions, choose " +
+        "provider/account/service/region/resource/tag/charge_type/commitment/virtual_tag " +
+        "(groupByTagKey required for tag and virtual_tag; for virtual_tag it is the key of one " +
+        "of the organization's virtual tags, see list_virtual_tags), filter on the same " +
+        "dimensions, choose " +
         "daily/weekly/monthly/quarterly binning (cumulative: true for running totals at any bin; " +
         "'hourly' is refused while every provider reports daily rows), and optionally include " +
         "the previous period (comparePreviousPeriod) or a trend forecast (forecast). Amounts are " +
@@ -235,13 +238,17 @@ export function costTools(): ToolDefinition[] {
       title: "List cost dimension values",
       description:
         "List the distinct values present in the organization's cost data for a dimension " +
-        "(with display labels), the available tag keys via dimension=tag-keys, or the usage " +
+        "(with display labels), the available tag keys via dimension=tag-keys, the " +
+        "organization's virtual tag keys via dimension=virtual-tag-keys, or the usage " +
         "units providers report via dimension=usage-units (a usage budget's usageUnit, or " +
         "query_costs' measure='usage'). Use this to discover valid filter/group-by values before " +
         "calling query_costs.",
       inputSchema: {
-        dimension: z.enum([...COST_DIMENSIONS, "tag-keys", "usage-units"]),
-        tagKey: z.string().optional().describe("Required when dimension is 'tag'."),
+        dimension: z.enum([...COST_DIMENSIONS, "tag-keys", "usage-units", "virtual-tag-keys"]),
+        tagKey: z
+          .string()
+          .optional()
+          .describe("Required when dimension is 'tag' or 'virtual_tag' (the virtual tag's key)."),
       },
       risk: "read",
       permission: "costs:read",
@@ -254,6 +261,9 @@ export function costTools(): ToolDefinition[] {
         }
         if (dimension === "usage-units") {
           return ok(await listCostUsageUnits(auth.organizationId));
+        }
+        if (dimension === "virtual-tag-keys") {
+          return ok(await listVirtualTagKeyOptions(auth.organizationId));
         }
         try {
           return ok(await listCostDimensionValues(auth.organizationId, dimension, tagKey));

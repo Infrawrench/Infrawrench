@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { allocationRuleInputSchema, costCentreInputSchema } from "@infrawrench/ui/cost/config";
 import { z } from "zod";
 import {
+  AllocationRuleError,
   createAllocationRule,
   createCostCentre,
   deleteAllocationRule,
@@ -193,6 +194,7 @@ app.post("/rules", async (c) => {
   try {
     rule = await createAllocationRule(organizationId, parsed.data);
   } catch (e) {
+    if (e instanceof AllocationRuleError) return c.json({ error: e.message }, 400);
     console.error("[cost-centres] Failed to create allocation rule:", e);
     return c.json({ error: "Failed to create allocation rule" }, 400);
   }
@@ -219,7 +221,13 @@ app.put("/rules/:id", async (c) => {
     return c.json({ error: "Invalid allocation rule", issues: parsed.error.issues }, 400);
   }
 
-  const rule = await updateAllocationRule(organizationId, c.req.param("id"), parsed.data);
+  let rule;
+  try {
+    rule = await updateAllocationRule(organizationId, c.req.param("id"), parsed.data);
+  } catch (e) {
+    if (e instanceof AllocationRuleError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
   if (!rule) return c.json({ error: "Not found" }, 404);
   void logAudit({
     organizationId,

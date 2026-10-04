@@ -89,6 +89,35 @@ func elementsLengthBetween(minimum, maximum int) validator.List {
 	return listvalidator.ValueStringsAre(stringvalidator.LengthBetween(minimum, maximum))
 }
 
+// aboveZeroAtMostFloat bounds a float attribute to (0, maximum]: the lower bound
+// is exclusive, which float64validator.Between cannot say. A split share of
+// exactly 0 is meaningless and the API rejects it, so it is a plan error here
+// rather than an HTTP 400 mid-apply.
+func aboveZeroAtMostFloat(maximum float64) validator.Float64 {
+	return aboveZeroAtMostValidator{maximum: maximum}
+}
+
+type aboveZeroAtMostValidator struct{ maximum float64 }
+
+func (v aboveZeroAtMostValidator) Description(_ context.Context) string {
+	return fmt.Sprintf("value must be greater than 0 and at most %g", v.maximum)
+}
+
+func (v aboveZeroAtMostValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v aboveZeroAtMostValidator) ValidateFloat64(ctx context.Context, req validator.Float64Request, resp *validator.Float64Response) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	value := req.ConfigValue.ValueFloat64()
+	if value <= 0 || value > v.maximum {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid Attribute Value",
+			fmt.Sprintf("Attribute %s %s, got: %g", req.Path, v.Description(ctx), value))
+	}
+}
+
 // joinBackticked renders an enum for a Markdown description.
 func joinBackticked(values []string) string {
 	return strings.Join(values, "`, `")

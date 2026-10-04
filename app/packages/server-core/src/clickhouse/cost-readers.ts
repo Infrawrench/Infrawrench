@@ -11,14 +11,36 @@ import type {
   CostQueryRequest,
   CostSeriesPoint,
 } from "@infrawrench/client-core";
-import { effectiveCostBinning, HOURLY_BINNING_UNAVAILABLE_REASON } from "@infrawrench/client-core";
+import {
+  effectiveCostBinning,
+  HOURLY_BINNING_UNAVAILABLE_REASON,
+  referencedVirtualTagKeys,
+} from "@infrawrench/client-core";
 import { and, asc, desc, eq, gte, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import {
+  dayRange,
+  membershipCondition,
+  physicalDimensionExpr,
+  type PhysicalCostDimension,
+} from "./cost-sql";
 import { aiCostAttributed, costDaily } from "./schema";
+import {
+  VirtualTagScope,
+  virtualTagRuleIndexExpr,
+  withVirtualTagJoins,
+  type CompiledVirtualTag,
+  type VirtualTagDefinitions,
+} from "./virtual-tag-sql";
 import {
   costVisibilityLayersFor,
   type CompiledCostVisibilityLayer,
 } from "../cost/visibility-context";
+
+// Re-exported so the modules that already import them from here (the export
+// row builder, the commitment readers, the tests) keep one import path.
+export { dayRange, membershipCondition };
+export type { VirtualTagDefinitions };
 
 /**
  * The query vocabulary is the cost contract in `@infrawrench/client-core`:
@@ -58,7 +80,41 @@ export type CostQuery = Omit<
    * exports, the digest) relies on.
    */
   adjustments?: CompiledBillingAdjustments | undefined;
+  /**
+   * The org's virtual tags this query references, compiled for the range.
+   *
+   * Optional, and resolved lazily when absent: a query whose filters or
+   * grouping mention `virtual_tag` loads exactly those definitions itself (see
+   * {@link resolveVirtualTags}), so every unattended reader (budgets, change
+   * alerts, report delivery, unit costs) understands virtual tags without each
+   * of them learning to. A key that resolves to nothing throws; it never
+   * degrades to unfiltered spend.
+   */
+  virtualTags?: VirtualTagDefinitions | undefined;
 };
+
+/**
+ * The virtual tag definitions a read needs: `provided` when it already covers
+ * every referenced key, otherwise loaded from Postgres for exactly those keys.
+ *
+ * The loader is imported dynamically on purpose. This module is otherwise
+ * ClickHouse-only, and `cost/virtual-tags.ts` opens a database connection as an
+ * import side effect; a static import would hand that to every consumer of a
+ * cost reader, including the tests and tools that never touch a virtual tag.
+ * A query that references none never reaches the import at all.
+ */
+export async function resolveVirtualTags(
+  organizationId: string,
+  keys: readonly string[],
+  from: string,
+  to: string,
+  provided?: VirtualTagDefinitions,
+): Promise<VirtualTagDefinitions | undefined> {
+  if (keys.length === 0) return provided;
+  if (provided && keys.every((k) => provided.has(k))) return provided;
+  const { loadVirtualTagDefinitions } = await import("../cost/virtual-tags");
+  return loadVirtualTagDefinitions(organizationId, keys, from, to);
+}
 
 /** One grouped series. `key` is "" when the query is ungrouped. */
 export interface CostSeriesGroup {
@@ -207,29 +263,19 @@ async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]>
 
 /**
  * Column expression for a dimension. Tag dimensions read from the Map column;
- * everything else is a plain column.
+ * virtual tags compile through the read's {@link VirtualTagScope}; everything
+ * else is a plain column.
  */
-function dimensionExpr(dimension: CostDimension, tagKey: string | undefined): SQL {
-  switch (dimension) {
-    case "provider":
-      return sql`${costDaily.plugin_id}`;
-    case "account":
-      return sql`${costDaily.account_id}`;
-    case "service":
-      return sql`${costDaily.service}`;
-    case "region":
-      return sql`${costDaily.region}`;
-    case "resource":
-      return sql`${costDaily.resource_id}`;
-    case "charge_type":
-      return sql`${costDaily.charge_type}`;
-    case "commitment":
-      return sql`${costDaily.commitment_id}`;
-    case "tag": {
-      if (!tagKey) throw new Error("tagKey is required for the tag dimension");
-      return sql`${costDaily.tags}[${tagKey}]`;
-    }
+function dimensionExpr(
+  dimension: CostDimension,
+  tagKey: string | undefined,
+  scope: VirtualTagScope,
+): SQL {
+  if (dimension === "virtual_tag") {
+    if (!tagKey) throw new Error("tagKey is required for the virtual_tag dimension");
+    return scope.value(tagKey);
   }
+  return physicalDimensionExpr(dimension as PhysicalCostDimension, tagKey);
 }
 
 /**
@@ -264,25 +310,6 @@ function amountExpr(basis: CostBasis | undefined): SQL {
 }
 
 /**
- * The `[from, to]` day-range predicate every `cost_daily` reader filters on.
- *
- * Shared so no reader can get the comparison wrong. `day` is a `Date` column and
- * the bounds are `"YYYY-MM-DD"` strings, which the column's own mapping renders
- * as `toDate('…')`: comparing a `String` against a `Date` is a hard error in
- * ClickHouse rather than a coercion, and this is what keeps it from happening.
- *
- * The builder also qualifies the column as `cost_daily`.`day`, which matters
- * more than it looks: ClickHouse resolves SELECT aliases inside `WHERE`, unlike
- * standard SQL, and several readers below project `toString(day) AS day`. An
- * unqualified `day` in the predicate would bind to *that alias* and the query
- * would die with "There is no supertype for types String, Date". A qualified
- * identifier cannot bind to a projection alias.
- */
-export function dayRange(from: string, to: string): SQL {
-  return and(gte(costDaily.day, from), lte(costDaily.day, to))!;
-}
-
-/**
  * `charge_type IN (...)` when the caller narrowed the charge types, otherwise
  * nothing. Absent means every type, credits and refunds included: that is what
  * makes an unfiltered total the net number the provider would invoice.
@@ -290,19 +317,6 @@ export function dayRange(from: string, to: string): SQL {
 function chargeTypeCondition(chargeTypes: CostChargeType[] | undefined): SQL | undefined {
   if (!chargeTypes || chargeTypes.length === 0) return undefined;
   return inArray(costDaily.charge_type, chargeTypes);
-}
-
-/**
- * `expr IN (values)` / `expr NOT IN (values)`, including for the empty list.
- *
- * Drizzle refuses an empty `inArray`, but an empty filter list is reachable from
- * the wire and used to mean "match nothing" (and, negated, "match everything").
- * Spelling those out keeps a saved filter that lost its last value behaving the
- * way it did before, instead of throwing on read.
- */
-export function membershipCondition(expr: SQL, op: CostFilter["op"], values: string[]): SQL {
-  if (values.length === 0) return op === "in" ? sql`0` : sql`1`;
-  return op === "in" ? inArray(expr, values) : notInArray(expr, values);
 }
 
 /* ------------------------------------------------------------------ *
@@ -322,6 +336,17 @@ export function membershipCondition(expr: SQL, op: CostFilter["op"], values: str
  */
 function visibilityLayerCondition(layer: CompiledCostVisibilityLayer): SQL {
   if (layer.unresolvable) return sql`0`;
+  // A layer that reads a virtual tag (through its saved filter or a cost
+  // centre's allocation rules) matches nothing. This predicate is plain WHERE
+  // SQL built synchronously from the compiled scope: it has no virtual tag
+  // definitions to evaluate and no way to join a split tag's shares, and the
+  // rule for anything a layer cannot resolve is to narrow, never to widen.
+  if (
+    (layer.filters ?? []).some((f) => f.dimension === "virtual_tag") ||
+    layer.rules.some((r) => (r.match as { virtualTagKey?: string }).virtualTagKey)
+  ) {
+    return sql`0`;
+  }
   const arms: SQL[] = [];
   if (layer.accountIds.length > 0) arms.push(inArray(costDaily.account_id, layer.accountIds));
   if (layer.costCentreIds.length > 0) {
@@ -332,8 +357,10 @@ function visibilityLayerCondition(layer: CompiledCostVisibilityLayer): SQL {
       branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
     arms.push(inArray(centreExpr, layer.costCentreIds));
   }
+  // No virtual tag reaches here (refused above), so an empty scope suffices.
+  const noVirtualTags = new VirtualTagScope(undefined);
   const filterConds = (layer.filters ?? []).map((f) =>
-    membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
+    membershipCondition(dimensionExpr(f.dimension, f.tagKey, noVirtualTags), f.op, f.values),
   );
   if (arms.length === 0 && layer.filters === null) return sql`0`;
   const parts: SQL[] = [];
@@ -380,7 +407,13 @@ export function costDailyOrgCondition(organizationId: string): SQL {
  *
  * Every value goes through the dialect's literal escaping, never interpolation.
  */
-function matchConditions(match: BillingRuleMatch): SQL {
+function matchConditions(
+  match: BillingRuleMatch & {
+    virtualTagKey?: string | undefined;
+    virtualTagValue?: string | undefined;
+  },
+  scope?: VirtualTagScope,
+): SQL {
   const conds: SQL[] = [];
   if (match.tagKey) {
     conds.push(
@@ -393,6 +426,19 @@ function matchConditions(match: BillingRuleMatch): SQL {
   if (match.pluginId) conds.push(eq(costDaily.plugin_id, match.pluginId));
   if (match.service) conds.push(eq(costDaily.service, match.service));
   if (match.chargeType) conds.push(eq(costDaily.charge_type, match.chargeType));
+  // Allocation rules can match on a virtual tag. Only the showback reader passes
+  // a scope; a virtual-tag match reaching a reader without one is a bug, and
+  // throwing beats silently dropping the condition (which would widen the rule
+  // to every row its other fields match).
+  if (match.virtualTagKey) {
+    if (!scope) throw new Error("A virtual tag match needs a virtual tag scope");
+    const value = scope.value(match.virtualTagKey);
+    conds.push(
+      match.virtualTagValue !== undefined
+        ? sql`${value} = ${match.virtualTagValue}`
+        : sql`${value} != ''`,
+    );
+  }
   return conds.length > 0 ? sql.join(conds, sql` AND `) : sql`1`;
 }
 
@@ -537,19 +583,26 @@ interface QueryCostsRow {
  */
 export async function queryCosts(organizationId: string, q: CostQuery): Promise<CostSeriesGroup[]> {
   const { bin, cumulative } = effectiveCostBinning(q);
+  const scope = new VirtualTagScope(
+    await resolveVirtualTags(
+      organizationId,
+      referencedVirtualTagKeys(q.filters, q.groupBy, q.groupByTagKey),
+      q.from,
+      q.to,
+      q.virtualTags,
+    ),
+  );
   if (q.measure === "count") {
-    return (await queryCostCounts(organizationId, q)).series;
+    return (await queryCostCounts(organizationId, q, scope)).series;
   }
   // `usage` sums the quantity column instead of money, over rows in one unit
   // only, and ignores currency entirely: forty hours billed in USD and forty in
   // EUR are eighty hours. The service refuses billing rules for it, so the
   // adjustment branches below never see a usage query.
   const usage = q.measure === "usage";
-  const rawExpr = usage ? sql`${costDaily.usage_amount}` : amountExpr(q.costBasis);
   const adjustments = usage ? undefined : q.adjustments;
-  const moneyExpr = adjustments ? adjustedAmountExpr(rawExpr, adjustments.factors) : rawExpr;
 
-  let groupExpr = q.groupBy === "none" ? sql`''` : dimensionExpr(q.groupBy, q.groupByTagKey);
+  let groupExpr = q.groupBy === "none" ? sql`''` : dimensionExpr(q.groupBy, q.groupByTagKey, scope);
   // Only the account dimension can be re-attributed here: it is the only
   // grouping a reallocation names. Grouping by service or region is untouched
   // by a rule that moves an account's spend, which is correct: the money is
@@ -562,11 +615,17 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
     costDailyOrgCondition(organizationId),
     dayRange(q.from, q.to),
     ...q.filters.map((f) =>
-      membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
+      membershipCondition(dimensionExpr(f.dimension, f.tagKey, scope), f.op, f.values),
     ),
     chargeTypeCondition(q.chargeTypes),
     usage ? eq(costDaily.usage_unit, q.usageUnit ?? "") : undefined,
   );
+
+  // Money is computed after every expression that can mention a virtual tag,
+  // because a split tag's weight is only known once the scope has seen it. A
+  // read with no split tag gets `weighted(x) === x`: the old SQL, untouched.
+  const rawExpr = scope.weighted(usage ? sql`${costDaily.usage_amount}` : amountExpr(q.costBasis));
+  const moneyExpr = adjustments ? adjustedAmountExpr(rawExpr, adjustments.factors) : rawExpr;
   const selection = {
     bucket: bucketExpr(bin).as("bucket"),
     grp: groupExpr.as("grp"),
@@ -594,30 +653,33 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   const rows: QueryCostsRow[] = await query((db) =>
     attributed
       ? adjustments
-        ? db
-            .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
-            .from(attributed)
+        ? withVirtualTagJoins(
+            db
+              .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
+              .from(attributed)
+              .$dynamic(),
+            scope,
+          )
             .where(where)
             .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
             .orderBy(asc(sql`bucket`))
-        : db
-            .select(selection)
-            .from(attributed)
+        : withVirtualTagJoins(db.select(selection).from(attributed).$dynamic(), scope)
             .where(where)
             .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
             .orderBy(asc(sql`bucket`))
       : adjustments
-        ? db
-            .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
-            .from(costDaily)
-            .final()
+        ? withVirtualTagJoins(
+            db
+              .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
+              .from(costDaily)
+              .final()
+              .$dynamic(),
+            scope,
+          )
             .where(where)
             .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
             .orderBy(asc(sql`bucket`))
-        : db
-            .select(selection)
-            .from(costDaily)
-            .final()
+        : withVirtualTagJoins(db.select(selection).from(costDaily).final().$dynamic(), scope)
             .where(where)
             .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
             .orderBy(asc(sql`bucket`)),
@@ -673,22 +735,38 @@ export async function queryUsageDaily(
   organizationId: string,
   q: { from: string; to: string; filters: CostFilter[]; usageUnit: string },
 ): Promise<CostSeriesPoint[]> {
+  // A usage budget may filter by a virtual tag; a split tag's share weights the
+  // quantity exactly as it weights money.
+  const scope = new VirtualTagScope(
+    await resolveVirtualTags(
+      organizationId,
+      referencedVirtualTagKeys(q.filters, "none", undefined),
+      q.from,
+      q.to,
+    ),
+  );
+  const filterConds = q.filters.map((f) =>
+    membershipCondition(dimensionExpr(f.dimension, f.tagKey, scope), f.op, f.values),
+  );
+  const quantity = scope.weighted(sql`${costDaily.usage_amount}`);
   const rows = await query((db) =>
-    db
-      .select({
-        bucket: sql`toString(${costDaily.day})`.as("bucket"),
-        amount: sql<number>`sum(${costDaily.usage_amount})`.as("amount"),
-      })
-      .from(costDaily)
-      .final()
+    withVirtualTagJoins(
+      db
+        .select({
+          bucket: sql`toString(${costDaily.day})`.as("bucket"),
+          amount: sql<number>`sum(${quantity})`.as("amount"),
+        })
+        .from(costDaily)
+        .final()
+        .$dynamic(),
+      scope,
+    )
       .where(
         and(
           costDailyOrgCondition(organizationId),
           dayRange(q.from, q.to),
           eq(costDaily.usage_unit, q.usageUnit),
-          ...q.filters.map((f) =>
-            membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
-          ),
+          ...filterConds,
         ),
       )
       .groupBy(sql`bucket`)
@@ -715,24 +793,41 @@ export async function queryUsageDaily(
 export async function queryCostCounts(
   organizationId: string,
   q: CostQuery,
+  scope?: VirtualTagScope,
 ): Promise<{ series: CostSeriesGroup[]; total: number }> {
   if (q.groupBy === "none") throw new Error("The count measure needs a groupBy dimension");
   const { bin } = effectiveCostBinning(q);
-  const groupExpr = dimensionExpr(q.groupBy, q.groupByTagKey);
-  const moneyExpr = amountExpr(q.costBasis);
+  // The caller's scope when it has one (`queryCosts` resolves it once), so a
+  // count can group or filter by a virtual tag like any other read.
+  const vt =
+    scope ??
+    new VirtualTagScope(
+      await resolveVirtualTags(
+        organizationId,
+        referencedVirtualTagKeys(q.filters, q.groupBy, q.groupByTagKey),
+        q.from,
+        q.to,
+        q.virtualTags,
+      ),
+    );
+  const groupExpr = dimensionExpr(q.groupBy, q.groupByTagKey, vt);
+  const filterConds = q.filters.map((f) =>
+    membershipCondition(dimensionExpr(f.dimension, f.tagKey, vt), f.op, f.values),
+  );
+  // Weighted after every expression above: a split tag's shares count only
+  // where they carry money.
+  const moneyExpr = vt.weighted(amountExpr(q.costBasis));
   const where = and(
     costDailyOrgCondition(organizationId),
     dayRange(q.from, q.to),
-    ...q.filters.map((f) =>
-      membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
-    ),
+    ...filterConds,
     chargeTypeCondition(q.chargeTypes),
     sql`${groupExpr} != ''`,
   );
 
   const [perBin, overall] = await Promise.all([
     query((db) => {
-      const perGroup = db
+      const grouped = db
         .select({
           bucket: bucketExpr(bin).as("bucket"),
           grp: groupExpr.as("grp"),
@@ -741,6 +836,8 @@ export async function queryCostCounts(
         })
         .from(costDaily)
         .final()
+        .$dynamic();
+      const perGroup = withVirtualTagJoins(grouped, vt)
         .where(where)
         .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
         .as("per_group");
@@ -755,7 +852,7 @@ export async function queryCostCounts(
         .orderBy(asc(perGroup.bucket));
     }),
     query((db) => {
-      const perGroup = db
+      const grouped = db
         .select({
           grp: groupExpr.as("grp"),
           currency: costDaily.currency,
@@ -763,6 +860,8 @@ export async function queryCostCounts(
         })
         .from(costDaily)
         .final()
+        .$dynamic();
+      const perGroup = withVirtualTagJoins(grouped, vt)
         .where(where)
         .groupBy(sql`grp`, costDaily.currency)
         .as("per_group_total");
@@ -857,9 +956,8 @@ export async function getResourceCostTotals(
 export async function getCostDimensionValues(
   organizationId: string,
   dimension: CostDimension,
-  opts?: { tagKey?: string; from?: string; to?: string },
+  opts?: { tagKey?: string; from?: string; to?: string; virtualTags?: VirtualTagDefinitions },
 ): Promise<string[]> {
-  const expr = dimensionExpr(dimension, opts?.tagKey);
   if (dimension === "tag" && referencesCallerTags([opts?.tagKey])) {
     const key = opts!.tagKey!;
     const callerRows = await query((db) =>
@@ -872,10 +970,28 @@ export async function getCostDimensionValues(
     );
     return callerRows.map((r) => String(r.value));
   }
+  const keys = dimension === "virtual_tag" && opts?.tagKey ? [opts.tagKey] : [];
+  // Metric weights are irrelevant to which values exist, so the range only
+  // bounds the weights the loader resolves; one day keeps that tiny.
+  const today = new Date().toISOString().slice(0, 10);
+  const scope = new VirtualTagScope(
+    await resolveVirtualTags(
+      organizationId,
+      keys,
+      opts?.from ?? today,
+      opts?.to ?? today,
+      opts?.virtualTags,
+    ),
+  );
+  const expr = dimensionExpr(dimension, opts?.tagKey, scope);
   const rows = await query((db) =>
-    db
-      .selectDistinct({ value: expr.as("value") })
-      .from(costDaily)
+    withVirtualTagJoins(
+      db
+        .selectDistinct({ value: expr.as("value") })
+        .from(costDaily)
+        .$dynamic(),
+      scope,
+    )
       .where(
         and(
           costDailyOrgCondition(organizationId),
@@ -1033,6 +1149,9 @@ export interface ShowbackRule {
     accountId?: string | undefined;
     pluginId?: string | undefined;
     service?: string | undefined;
+    /** Match on one of the org's virtual tags (by key), optionally a value. */
+    virtualTagKey?: string | undefined;
+    virtualTagValue?: string | undefined;
   };
 }
 
@@ -1074,15 +1193,27 @@ export async function getShowbackSpend(
   to: string,
   costBasis?: CostBasis,
   adjustments?: CompiledBillingAdjustments,
+  virtualTags?: VirtualTagDefinitions,
 ): Promise<Array<{ costCentreId: string; currency: string; amount: number; rawAmount?: number }>> {
-  const branches = rules.map((rule) => sql`${matchConditions(rule.match)}, ${rule.costCentreId}`);
+  // A rule matching on a split virtual tag claims each share separately: the
+  // scope joins the tag, so a row 60% payments / 40% search lands 60% on the
+  // payments centre and 40% on the search one, and the total is unchanged.
+  const keys = [
+    ...new Set(rules.flatMap((r) => (r.match.virtualTagKey ? [r.match.virtualTagKey] : []))),
+  ];
+  const scope = new VirtualTagScope(
+    await resolveVirtualTags(organizationId, keys, from, to, virtualTags),
+  );
+  const branches = rules.map(
+    (rule) => sql`${matchConditions(rule.match, scope)}, ${rule.costCentreId}`,
+  );
   const allocationExpr =
     branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
   const centreExpr = adjustments
     ? reallocationExpr(adjustments.reallocations, "cost_centre", allocationExpr)
     : allocationExpr;
 
-  const rawExpr = amountExpr(costBasis);
+  const rawExpr = scope.weighted(amountExpr(costBasis));
   const moneyExpr = adjustments ? adjustedAmountExpr(rawExpr, adjustments.factors) : rawExpr;
 
   const where = and(costDailyOrgCondition(organizationId), dayRange(from, to));
@@ -1106,31 +1237,34 @@ export async function getShowbackSpend(
       : null;
     if (attributed) {
       return adjustments
-        ? db
-            .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
-            .from(attributed)
+        ? withVirtualTagJoins(
+            db
+              .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
+              .from(attributed)
+              .$dynamic(),
+            scope,
+          )
             .where(where)
             .groupBy(sql`centre`, costDaily.currency)
             .orderBy(desc(sql`amount`))
-        : db
-            .select(selection)
-            .from(attributed)
+        : withVirtualTagJoins(db.select(selection).from(attributed).$dynamic(), scope)
             .where(where)
             .groupBy(sql`centre`, costDaily.currency)
             .orderBy(desc(sql`amount`));
     }
     return adjustments
-      ? db
-          .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
-          .from(costDaily)
-          .final()
+      ? withVirtualTagJoins(
+          db
+            .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
+            .from(costDaily)
+            .final()
+            .$dynamic(),
+          scope,
+        )
           .where(where)
           .groupBy(sql`centre`, costDaily.currency)
           .orderBy(desc(sql`amount`))
-      : db
-          .select(selection)
-          .from(costDaily)
-          .final()
+      : withVirtualTagJoins(db.select(selection).from(costDaily).final().$dynamic(), scope)
           .where(where)
           .groupBy(sql`centre`, costDaily.currency)
           .orderBy(desc(sql`amount`));
@@ -1222,14 +1356,23 @@ export async function getPricingLines(
     buckets?: readonly string[] | undefined;
   } = {},
 ): Promise<PricingLineRow[]> {
-  const branches = rules.map((rule) => sql`${matchConditions(rule.match)}, ${rule.costCentreId}`);
+  // As in `getShowbackSpend`: a rule matching on a split virtual tag claims
+  // each share separately, weighted, so an invoice prices exactly the slice
+  // showback puts in the customer's centre.
+  const keys = [
+    ...new Set(rules.flatMap((r) => (r.match.virtualTagKey ? [r.match.virtualTagKey] : []))),
+  ];
+  const scope = new VirtualTagScope(await resolveVirtualTags(organizationId, keys, from, to));
+  const branches = rules.map(
+    (rule) => sql`${matchConditions(rule.match, scope)}, ${rule.costCentreId}`,
+  );
   const allocationExpr =
     branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
   const centreExpr =
     options.reallocations && options.reallocations.length > 0
       ? reallocationExpr(options.reallocations, "cost_centre", allocationExpr)
       : allocationExpr;
-  const rawExpr = amountExpr(options.costBasis);
+  const rawExpr = scope.weighted(amountExpr(options.costBasis));
   const tagKeys = [...(options.tagKeys ?? [])];
 
   const selection: Record<string, SQL.Aliased> = {
@@ -1255,11 +1398,10 @@ export async function getPricingLines(
     listed_collected: sql<number>`sum(if(${costDaily.list_reported} != 0, ${rawExpr}, 0))`.as(
       "listed_collected",
     ),
-    list_amount_sum:
-      sql<number>`sum(if(${costDaily.list_reported} != 0, ${costDaily.list_amount}, 0))`.as(
-        "list_amount_sum",
-      ),
-    usage_sum: sql<number>`sum(${costDaily.usage_amount})`.as("usage_sum"),
+    list_amount_sum: sql<number>`sum(if(${costDaily.list_reported} != 0, ${scope.weighted(
+      sql`${costDaily.list_amount}`,
+    )}, 0))`.as("list_amount_sum"),
+    usage_sum: sql<number>`sum(${scope.weighted(sql`${costDaily.usage_amount}`)})`.as("usage_sum"),
   };
 
   const where = and(costDailyOrgCondition(organizationId), dayRange(from, to));
@@ -1273,10 +1415,14 @@ export async function getPricingLines(
       : undefined;
 
   const rows = (await query((db) => {
-    const q = db
-      .select({ ...selection, ...aggregates })
-      .from(costDaily)
-      .final()
+    const q = withVirtualTagJoins(
+      db
+        .select({ ...selection, ...aggregates })
+        .from(costDaily)
+        .final()
+        .$dynamic(),
+      scope,
+    )
       .where(where)
       .groupBy(...groupKeys.map((k) => sql.raw(k)));
     return having ? q.having(having) : q;
@@ -1305,4 +1451,123 @@ export async function getPricingLines(
       listAmount: Number(r["list_amount_sum"] ?? 0),
     };
   });
+}
+
+/** What one virtual tag does to the org's spend over a range, per currency. */
+export interface VirtualTagStatsRows {
+  /** Spend per claiming rule (1-based; 0 is "no rule matched"), per currency. */
+  byRule: Array<{ rule: number; currency: string; amount: number }>;
+  /** Largest values by spend, per currency, descending. */
+  topValues: Array<{ value: string; currency: string; amount: number }>;
+  /** Distinct non-empty values produced. */
+  distinctValues: number;
+}
+
+/**
+ * The processing pass's evaluation of one virtual tag: how much spend each
+ * rule claims and which values come out, from the same compiled expressions
+ * every query uses (so the numbers in Settings are statements about what the
+ * graphs do). Three small aggregates rather than one wide one: a tag copying a
+ * high-cardinality provider tag would otherwise return a row per value per
+ * rule just to sum the per-rule totals.
+ */
+export async function getVirtualTagStats(
+  organizationId: string,
+  tag: CompiledVirtualTag,
+  from: string,
+  to: string,
+): Promise<VirtualTagStatsRows> {
+  const definitions = new Map([[tag.key, tag]]);
+  // Through the visibility predicate like every reader: the processing pass
+  // runs outside any request (unrestricted, the whole org), while a preview
+  // inside a request sees only the caller's slice.
+  const where = and(costDailyOrgCondition(organizationId), dayRange(from, to));
+
+  const ruleScope = new VirtualTagScope(definitions);
+  // Joined even though the rule index needs no value: a split rule's shares
+  // must still be weighted, or a 50/50 rule would count its row twice.
+  if (tag.split) ruleScope.value(tag.key);
+  const ruleMoney = ruleScope.weighted(sql`${costDaily.amount}`);
+  const byRule = await query((db) =>
+    withVirtualTagJoins(
+      db
+        .select({
+          rule: virtualTagRuleIndexExpr(tag).as("rule"),
+          currency: costDaily.currency,
+          amount: sql<number>`sum(${ruleMoney})`.as("amount"),
+        })
+        .from(costDaily)
+        .final()
+        .$dynamic(),
+      ruleScope,
+    )
+      .where(where)
+      .groupBy(sql`rule`, costDaily.currency),
+  );
+
+  const valueScope = new VirtualTagScope(definitions);
+  const valueExpr = valueScope.value(tag.key);
+  const valueMoney = valueScope.weighted(sql`${costDaily.amount}`);
+  const topValues = await query((db) =>
+    withVirtualTagJoins(
+      db
+        .select({
+          value: valueExpr.as("value"),
+          currency: costDaily.currency,
+          amount: sql<number>`sum(${valueMoney})`.as("amount"),
+        })
+        .from(costDaily)
+        .final()
+        .$dynamic(),
+      valueScope,
+    )
+      .where(and(where, sql`${valueExpr} != ''`))
+      .groupBy(sql`value`, costDaily.currency)
+      .orderBy(desc(sql`amount`))
+      .limit(200),
+  );
+
+  const distinctScope = new VirtualTagScope(definitions);
+  const distinctExpr = distinctScope.value(tag.key);
+  const [distinct] = await query((db) =>
+    withVirtualTagJoins(
+      db
+        .select({ n: sql<number>`uniqExact(${distinctExpr})`.as("n") })
+        .from(costDaily)
+        .$dynamic(),
+      distinctScope,
+    ).where(and(where, sql`${distinctExpr} != ''`)),
+  );
+
+  return {
+    byRule: byRule.map((r) => ({
+      rule: Number(r.rule),
+      currency: String(r.currency),
+      amount: Number(r.amount),
+    })),
+    topValues: topValues.map((r) => ({
+      value: String(r.value),
+      currency: String(r.currency),
+      amount: Number(r.amount),
+    })),
+    distinctValues: Number(distinct?.n ?? 0),
+  };
+}
+
+/** The org's earliest and latest cost day, or null with no cost data at all. */
+export async function getOrgCostDayRange(
+  organizationId: string,
+): Promise<{ firstDay: string; lastDay: string } | null> {
+  const [row] = await query((db) =>
+    db
+      .select({
+        first_day: sql<string>`toString(min(${costDaily.day}))`.as("first_day"),
+        last_day: sql<string>`toString(max(${costDaily.day}))`.as("last_day"),
+        n: sql<number>`count()`.as("n"),
+      })
+      .from(costDaily)
+      .where(costDailyOrgCondition(organizationId)),
+  );
+  if (!row || Number(row.n) === 0) return null;
+  return { firstDay: row.first_day, lastDay: row.last_day };
 }

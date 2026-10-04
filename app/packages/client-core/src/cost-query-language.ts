@@ -29,7 +29,12 @@
  * CLI and the server all share one parser rather than four that disagree.
  */
 
-import { COST_DIMENSIONS, type CostDimensionId, type CostFilter } from "./costs";
+import {
+  COST_DIMENSIONS,
+  isKeyedCostDimension,
+  type CostDimensionId,
+  type CostFilter,
+} from "./costs";
 
 /* ------------------------------------------------------------------ *
  * Errors
@@ -294,7 +299,7 @@ function suggestDimension(name: string): CostDimensionId | null {
  *
  *   query      := ε | term ( AND term )*
  *   term       := dimension operator value
- *   dimension  := IDENT | "tag" "[" string "]"
+ *   dimension  := IDENT | ("tag" | "virtual_tag") "[" string "]"
  *   operator   := "=" | "!=" | IN | NOT IN
  *   value      := string                            (for "=" and "!=")
  *              |  "(" string ( "," string )* ")"    (for IN and NOT IN)
@@ -304,7 +309,7 @@ function suggestDimension(name: string): CostDimensionId | null {
 export const COST_QUERY_GRAMMAR = [
   "query     := ε | term (AND term)*",
   "term      := dimension operator value",
-  "dimension := name | tag['key']",
+  "dimension := name | tag['key'] | virtual_tag['key']",
   "operator  := = | != | IN | NOT IN",
   "value     := 'text' | ('a', 'b', …)",
 ].join("\n");
@@ -324,7 +329,8 @@ export const COST_QUERY_LANGUAGE_SUMMARY =
   "A conjunction of equality terms over the cost dimensions: " +
   `${COST_DIMENSIONS.join(", ")}. ` +
   "Supported forms are `dimension = 'value'`, `dimension != 'value'`, " +
-  "`dimension IN ('a','b')`, `dimension NOT IN ('a','b')` and `tag['owner'] = 'platform'`, " +
+  "`dimension IN ('a','b')`, `dimension NOT IN ('a','b')`, `tag['owner'] = 'platform'` and " +
+  "`virtual_tag['team'] = 'payments'` (one of the organization's virtual tags, by key), " +
   "joined by AND. Keywords are case-insensitive. OR is not supported — the filter is a " +
   "conjunction, so use IN ('a','b') to accept several values of one dimension.";
 
@@ -410,7 +416,9 @@ class Parser {
   private parseTerm(): CostFilter {
     const { dimension, tagKey } = this.parseDimension();
     const { op, values } = this.parseOperatorAndValues();
-    return dimension === "tag" ? { dimension, op, values, tagKey } : { dimension, op, values };
+    return isKeyedCostDimension(dimension)
+      ? { dimension, op, values, tagKey }
+      : { dimension, op, values };
   }
 
   private parseDimension(): { dimension: CostDimensionId; tagKey?: string } {
@@ -424,11 +432,14 @@ class Parser {
     }
     const name = token.value.toLowerCase();
 
-    if (name === "tag") {
+    if (isKeyedCostDimension(name)) {
+      const label = name === "tag" ? "tag" : "virtual tag";
+      const example =
+        name === "tag" ? "tag['owner'] = 'platform'" : "virtual_tag['team'] = 'payments'";
       const bracket = this.peek();
       if (bracket.kind !== "punct" || bracket.text !== "[") {
         throw this.fail(
-          "The tag dimension needs a key: write tag['owner'] = 'platform'.",
+          `The ${label} dimension needs a key: write ${example}.`,
           bracket.kind === "eof" ? token : bracket,
           ["["],
         );
@@ -437,20 +448,22 @@ class Parser {
       const key = this.next();
       if (key.kind !== "string") {
         throw this.fail(
-          `Expected a quoted tag key, found ${this.describe(key)}. Write tag['owner'] = 'platform'.`,
+          `Expected a quoted ${label} key, found ${this.describe(key)}. Write ${example}.`,
           key,
         );
       }
       if (key.value === "") {
-        throw this.fail("A tag key cannot be empty.", key);
+        throw this.fail(`A ${label} key cannot be empty.`, key);
       }
       const close = this.next();
       if (close.kind !== "punct" || close.text !== "]") {
-        throw this.fail(`Expected "]" after the tag key, found ${this.describe(close)}.`, close, [
-          "]",
-        ]);
+        throw this.fail(
+          `Expected "]" after the ${label} key, found ${this.describe(close)}.`,
+          close,
+          ["]"],
+        );
       }
-      return { dimension: "tag", tagKey: key.value };
+      return { dimension: name, tagKey: key.value };
     }
 
     const match = COST_DIMENSIONS.find((d) => d === name);
@@ -614,14 +627,16 @@ export function formatCostQuery(filters: readonly CostFilter[]): string {
   filters.forEach((filter, index) => {
     if (filter.values.length === 0) return;
     let name: string;
-    if (filter.dimension === "tag") {
+    if (isKeyedCostDimension(filter.dimension)) {
       if (!filter.tagKey) {
         throw new CostQueryFormatError(
-          "A tag filter needs a key before it can be written as a query.",
+          filter.dimension === "tag"
+            ? "A tag filter needs a key before it can be written as a query."
+            : "A virtual tag filter needs a key before it can be written as a query.",
           index,
         );
       }
-      name = `tag[${quote(filter.tagKey)}]`;
+      name = `${filter.dimension}[${quote(filter.tagKey)}]`;
     } else {
       name = filter.dimension;
     }

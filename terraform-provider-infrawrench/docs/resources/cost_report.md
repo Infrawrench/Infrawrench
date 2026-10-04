@@ -89,7 +89,7 @@ Required:
 
 - `binning` (String) Time bucketing of the x axis. One of `daily`, `weekly`, `monthly`, `quarterly`, `cumulative`. Weeks start on Monday and quarters on the first of January, April, July and October (UTC). `cumulative` is the older spelling of `daily` with `cumulative = true`. Hourly bins are not accepted: every provider's cost rows are stored per day, and the server refuses to run an hourly report.
 - `chart_type` (String) How the series are drawn. One of `stacked_bar`, `multi_bar`, `line`, `area`, `pie`, `donut`, `table`.
-- `group_by` (String) Dimension that becomes one series per value. One of `none`, `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`. Use `none` for a single total series.
+- `group_by` (String) Dimension that becomes one series per value. One of `none`, `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`. Use `none` for a single total series.
 
 Optional:
 
@@ -99,7 +99,7 @@ Optional:
 - `cumulative` (Boolean) Draw running totals from the start of the range instead of per-bin values, at any bin size. Omitted is off.
 - `date_range` (Block, Optional) The window the report covers. Required, and a tagged union: `kind` selects which of the other attributes apply, and the provider sends only that branch because the server's schema is strict — an absolute range carrying a stray `preset` key is rejected outright. (see [below for nested schema](#nestedblock--config--date_range))
 - `filter` (Block List) Restricts the report to matching spend. Clauses are ANDed. (see [below for nested schema](#nestedblock--config--filter))
-- `group_by_tag_key` (String) Which tag to group by. Required when `group_by` is `tag`, and rejected otherwise.
+- `group_by_tag_key` (String) Which tag to group by: a provider tag key when `group_by` is `tag`, or a virtual tag key when it is `virtual_tag`. Required for those two and rejected otherwise.
 - `measure` (String) What the Y axis sums. One of `cost`, `usage`, `count`; omitted is `cost`. `usage` sums the usage quantity providers report and requires `usage_unit`. `count` is how many distinct values of `group_by` had nonzero cost in each bin and requires a `group_by` other than `none`. Neither `usage` nor `count` can be combined with `show_forecast`, `scenario_model_id`, `adjusted` or `unit_cost_metric_id`, and `count` cannot be `cumulative`; the server rejects those combinations.
 - `saved_filter_id` (String) Id of an `infrawrench_saved_filter` applied on top of the `filter` blocks below.
 - `scenario_model_id` (String) Id of an `infrawrench_scenario_model` whose what-if adjustments are layered onto the forecast.
@@ -128,13 +128,13 @@ Optional:
 
 Required:
 
-- `dimension` (String) Cost dimension to filter on. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`.
+- `dimension` (String) Cost dimension to filter on. One of `provider`, `account`, `service`, `region`, `resource`, `tag`, `charge_type`, `commitment`, `virtual_tag`.
 - `op` (String) `in` to keep matching rows, `not_in` to exclude them.
 - `values` (List of String) Values to match. Must not be empty.
 
 Optional:
 
-- `tag_key` (String) Tag key, required when `dimension` is `tag` and rejected otherwise.
+- `tag_key` (String) Tag key, required when `dimension` is `tag` (a provider tag key) or `virtual_tag` (a virtual tag key, see `infrawrench_virtual_tag`) and rejected otherwise.
 
 ## Import
 

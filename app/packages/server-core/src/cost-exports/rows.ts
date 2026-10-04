@@ -29,8 +29,14 @@ import {
   costDailyOrgCondition,
   dayRange,
   membershipCondition,
+  resolveVirtualTags,
 } from "../clickhouse/cost-readers";
 import { costDaily } from "../clickhouse/schema";
+import {
+  VirtualTagScope,
+  withVirtualTagJoins,
+  type VirtualTagDefinitions,
+} from "../clickhouse/virtual-tag-sql";
 
 /** The column set an export emits, in order. Drives both the header and each row. */
 export interface CostExportColumns {
@@ -38,6 +44,11 @@ export interface CostExportColumns {
   dimensions: string[];
   /** `tag_<key>` columns, one per requested tag key. */
   tagColumns: string[];
+  /**
+   * `vtag_<key>` columns, one per requested virtual tag key. Optional so a
+   * layout built before virtual tags existed still describes its file.
+   */
+  virtualTagColumns?: string[];
 }
 
 export interface CostExportRowQuery {
@@ -48,7 +59,15 @@ export interface CostExportRowQuery {
   dimensions: string[];
   /** Tag keys to emit as their own columns. */
   tagKeys: string[];
+  /** Virtual tag keys to emit as their own `vtag_<key>` columns. */
+  virtualTagKeys?: string[] | undefined;
   filters: CostFilter[];
+  /**
+   * The virtual tags the columns and filters reference, compiled for the
+   * period. {@link streamCostExportRows} resolves them; the builder needs
+   * them handed in because it is synchronous.
+   */
+  virtualTags?: VirtualTagDefinitions | undefined;
   chargeTypes?: CostChargeType[] | undefined;
   costBasis?: CostBasis | undefined;
 }
@@ -110,13 +129,34 @@ export function tagColumnName(key: string): string {
   return `tag_${key.replace(/[^A-Za-z0-9_]/g, "_")}`;
 }
 
+/** Sanitise a virtual tag key into its `vtag_<key>` column name. */
+export function virtualTagColumnName(key: string): string {
+  return `vtag_${key.replace(/[^A-Za-z0-9_]/g, "_")}`;
+}
+
 /** Resolve the output column layout for a query, dropping anything unusable. */
-export function resolveColumns(q: { dimensions: string[]; tagKeys: string[] }): CostExportColumns {
+export function resolveColumns(q: {
+  dimensions: string[];
+  tagKeys: string[];
+  virtualTagKeys?: string[] | undefined;
+}): CostExportColumns {
   const dimensions = q.dimensions.filter((d) => dimensionExpr(d)).map(dimensionColumn);
+  const virtualTagColumns = [...new Set((q.virtualTagKeys ?? []).map(virtualTagColumnName))];
   return {
     dimensions: [...new Set(dimensions)],
     tagColumns: [...new Set(q.tagKeys.map(tagColumnName))],
+    ...(virtualTagColumns.length > 0 ? { virtualTagColumns } : {}),
   };
+}
+
+/** Virtual tag keys an export query references, in its columns or its filters. */
+export function exportVirtualTagKeys(q: {
+  virtualTagKeys?: string[] | undefined;
+  filters: CostFilter[];
+}): string[] {
+  const keys = new Set(q.virtualTagKeys ?? []);
+  for (const f of q.filters) if (f.dimension === "virtual_tag" && f.tagKey) keys.add(f.tagKey);
+  return [...keys];
 }
 
 interface BuiltQuery {
@@ -135,17 +175,32 @@ function tagExpr(key: string): SQL {
  * "filtered to account X" selects the same rows whichever columns they are
  * written as.
  */
-export function costExportScope(q: {
-  organizationId: string;
-  from: string;
-  to: string;
-  filters: CostFilter[];
-  chargeTypes?: CostChargeType[] | undefined;
-}): SQL | undefined {
+export function costExportScope(
+  q: {
+    organizationId: string;
+    from: string;
+    to: string;
+    filters: CostFilter[];
+    chargeTypes?: CostChargeType[] | undefined;
+  },
+  scope?: VirtualTagScope,
+): SQL | undefined {
   return and(
     costDailyOrgCondition(q.organizationId),
     dayRange(q.from, q.to),
     ...q.filters.flatMap((f) => {
+      // A virtual tag filter is compiled, never dropped: dropping it would
+      // export spend outside the scope the export was configured for. A
+      // reader that cannot join virtual tags (the FOCUS layout) refuses it.
+      if (f.dimension === "virtual_tag") {
+        if (!f.tagKey) throw new Error("A virtual tag filter needs a key");
+        if (!scope) {
+          throw new Error(
+            "FOCUS 1.3 exports cannot filter by a virtual tag yet. Use Infrawrench columns, or filter by the tags it is built from.",
+          );
+        }
+        return [membershipCondition(scope.value(f.tagKey), f.op, f.values)];
+      }
       const expr = f.dimension === "tag" ? tagExpr(f.tagKey ?? "") : dimensionExpr(f.dimension);
       return expr ? [membershipCondition(expr, f.op, f.values)] : [];
     }),
@@ -166,6 +221,7 @@ export function costExportScope(q: {
  */
 export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
   const columns = resolveColumns(q);
+  const scope = new VirtualTagScope(q.virtualTags);
 
   const dimSelect = Object.fromEntries(
     q.dimensions
@@ -181,23 +237,42 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
   const tagSelect = Object.fromEntries(
     q.tagKeys.map((key) => [tagColumnName(key), tagExpr(key).as(tagColumnName(key))]),
   );
+  const virtualTagSelect = Object.fromEntries(
+    [...new Set(q.virtualTagKeys ?? [])].map((key) => [
+      virtualTagColumnName(key),
+      scope.value(key).as(virtualTagColumnName(key)),
+    ]),
+  );
+  // Built before the money below: a filter on a split tag joins it, and the
+  // weights must include every join.
+  const where = costExportScope(q, scope);
 
   // Grouped and ordered by the *output* column names, which for tag columns are
   // the sanitised `tag_<key>` aliases rather than anything ClickHouse could
   // resolve back to the map. Quoted, so a dimension named like a keyword cannot
   // change the statement's meaning.
-  const groupKeys = ["day", ...columns.dimensions, ...columns.tagColumns, "currency"].map(
-    (name) => sql`${sql.identifier(name)}`,
-  );
+  const groupKeys = [
+    "day",
+    ...columns.dimensions,
+    ...columns.tagColumns,
+    ...(columns.virtualTagColumns ?? []),
+    "currency",
+  ].map((name) => sql`${sql.identifier(name)}`);
 
-  const query = new QueryBuilder()
+  // Weighted after every virtual tag expression above has been built: a split
+  // tag's share weight multiplies both measures, so a divided row's shares sum
+  // back to exactly the collected row.
+  const amount = scope.weighted(amountExpr(q.costBasis));
+  const usage = scope.weighted(sql`${costDaily.usage_amount}`);
+  const builder = new QueryBuilder()
     .select({
       day: sql<string>`toString(${costDaily.day})`.as("day"),
       ...dimSelect,
       ...tagSelect,
+      ...virtualTagSelect,
       currency: costDaily.currency,
-      amount: sql<number>`sum(${amountExpr(q.costBasis)})`.as("amount"),
-      usage_amount: sql<number>`sum(${costDaily.usage_amount})`.as("usage_amount"),
+      amount: sql<number>`sum(${amount})`.as("amount"),
+      usage_amount: sql<number>`sum(${usage})`.as("usage_amount"),
       // Usage units only mean something when the grouped rows agree on one.
       // Summing hours and gigabytes into a single number and then labelling it
       // "hours" would be a lie a warehouse cannot detect, so a mixed group
@@ -209,7 +284,9 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
     })
     .from(costDaily)
     .final()
-    .where(costExportScope(q))
+    .$dynamic();
+  const query = withVirtualTagJoins(builder, scope)
+    .where(where)
     .groupBy(...groupKeys)
     .orderBy(...groupKeys.map((key) => asc(key)));
 
@@ -230,7 +307,15 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
 export async function* streamCostExportRows(
   q: CostExportRowQuery,
 ): AsyncGenerator<CostExportRow, void, undefined> {
-  yield* streamExportQuery<CostExportRow>(buildCostExportQuery(q).sql);
+  if (!isClickHouseConfigured()) return;
+  const virtualTags = await resolveVirtualTags(
+    q.organizationId,
+    exportVirtualTagKeys(q),
+    q.from,
+    q.to,
+    q.virtualTags,
+  );
+  yield* streamExportQuery<CostExportRow>(buildCostExportQuery({ ...q, virtualTags }).sql);
 }
 
 /**

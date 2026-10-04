@@ -141,8 +141,26 @@ export const COST_DIMENSIONS = [
   "tag",
   "charge_type",
   "commitment",
+  "virtual_tag",
 ] as const;
 export type CostDimensionId = (typeof COST_DIMENSIONS)[number];
+
+/**
+ * Dimensions addressed by a key as well as a value: a provider tag
+ * (`tags['env']`) and a virtual tag (`virtual-tags.ts`, computed from the org's
+ * own rules at query time). Both carry the key in `CostFilter.tagKey` /
+ * `CostGraphConfig.groupByTagKey`, so every editor and validator that needs
+ * "which key?" asks this one question rather than special-casing `"tag"`.
+ */
+export const KEYED_COST_DIMENSIONS = [
+  "tag",
+  "virtual_tag",
+] as const satisfies readonly CostDimensionId[];
+export type KeyedCostDimensionId = (typeof KEYED_COST_DIMENSIONS)[number];
+
+export function isKeyedCostDimension(dimension: string): dimension is KeyedCostDimensionId {
+  return (KEYED_COST_DIMENSIONS as readonly string[]).includes(dimension);
+}
 
 /**
  * What a cost row is, as opposed to what it costs: the plugin contract's
@@ -216,7 +234,7 @@ export interface CostFilter {
   dimension: CostDimensionId;
   op: "in" | "not_in";
   values: string[];
-  /** Required when dimension === "tag". */
+  /** Required when dimension is "tag" or "virtual_tag" (the virtual tag's key). */
   tagKey?: string | undefined;
 }
 
@@ -332,7 +350,7 @@ export interface CostGraphConfig {
   binning: CostBinningId;
   dateRange: CostDateRange;
   groupBy: "none" | CostDimensionId;
-  /** Required when groupBy === "tag". */
+  /** Required when groupBy is "tag" or "virtual_tag". */
   groupByTagKey?: string | undefined;
   filters: CostFilter[];
   /**
@@ -596,6 +614,7 @@ export const COST_DIMENSION_LABELS: Record<CostDimensionId, string> = {
   tag: "Tag",
   charge_type: "Charge type",
   commitment: "Commitment",
+  virtual_tag: "Virtual tag",
 };
 
 /**

@@ -169,6 +169,9 @@ export {
   type CostEfficiencySettings,
   COST_ANOMALY_WINDOW,
   COST_DIMENSIONS,
+  KEYED_COST_DIMENSIONS,
+  isKeyedCostDimension,
+  type KeyedCostDimensionId,
   COST_CHARGE_TYPES,
   COST_CHARGE_TYPE_LABELS,
   COST_BASES,
@@ -773,6 +776,7 @@ export {
   type MongoCommand,
 } from "./mongo-browser";
 export * from "./api-types";
+export * from "./virtual-tags";
 export { normalizeTerminalLinkUrl } from "./terminal-links";
 export * from "./moment";
 export * from "./pricing-expression";

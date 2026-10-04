@@ -83,6 +83,7 @@ import { currencyRoutes } from "./routes/currency";
 import { costCentreRoutes } from "./routes/cost-centres";
 import { customCostSourceRoutes } from "./routes/custom-cost-sources";
 import { billingRuleRoutes } from "./routes/billing-rules";
+import { virtualTagRoutes } from "./routes/virtual-tags";
 import { invoiceRoutes, managedAccountRoutes } from "./routes/invoices";
 import { customGraphRoutes } from "./routes/custom-graphs";
 import { orgConfigRoutes } from "./routes/org-config";
@@ -402,6 +403,7 @@ orgScoped.route("/cost-centres", costCentreRoutes);
 // provider in the cost dimensions. See server-core/src/cost/custom-costs.ts.
 orgScoped.route("/custom-cost-sources", customCostSourceRoutes);
 orgScoped.route("/billing-rules", billingRuleRoutes);
+orgScoped.route("/virtual-tags", virtualTagRoutes);
 orgScoped.route("/managed-accounts", managedAccountRoutes);
 orgScoped.route("/invoices", invoiceRoutes);
 orgScoped.route("/custom-graphs", customGraphRoutes);
