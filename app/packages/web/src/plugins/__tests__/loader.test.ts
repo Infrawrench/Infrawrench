@@ -50,6 +50,7 @@ describe("plugin loader", () => {
       "postgres",
       "redis",
       "scaleway",
+      "sentry",
       "ssh",
       "tailscale",
       "cloudflare",

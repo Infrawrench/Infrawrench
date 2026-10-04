@@ -110,6 +110,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
   depot: ["api.depot.dev"],
   neon: ["console.neon.tech"],
+  sentry: ["sentry.io", "us.sentry.io", "de.sentry.io"],
   "mongodb-atlas": ["cloud.mongodb.com"],
   snowflake: ["*.snowflakecomputing.com"],
   // Usage export files download from presigned S3 links (bucket and region

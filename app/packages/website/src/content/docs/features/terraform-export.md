@@ -55,6 +55,7 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 | Redis Cloud  | `RedisLabs/rediscloud`      | ACL rules, roles and users, Essentials subscriptions, Pro databases (`rediscloud_subscription_database`)                                               |
 | Confluent Cloud | `confluentinc/confluent`    | Environments, Kafka clusters (with CKUs or eCKU ceiling), Flink compute pools, service accounts                                                        |
 | MongoDB Atlas | `mongodb/mongodbatlas`      | Projects (`mongodbatlas_project`), IP access list entries, Flex clusters                                                                               |
+| Sentry       | `jianyuan/sentry`           | Projects, teams and client keys (`sentry_project`, `sentry_team`, `sentry_key`)                                                                        |
 
 Coverage is per resource type: types that need nested blocks or credentials Infrawrench doesn't store (for example Azure VMs, AWS Lambda packages, Netlify sites) stay in the unsupported list with a reason. A plugin declares its own mapping, so coverage grows type by type.
 

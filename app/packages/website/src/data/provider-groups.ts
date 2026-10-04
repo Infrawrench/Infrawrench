@@ -515,6 +515,10 @@ export const providerGroups: ProviderGroup[] = [
     ],
   },
   {
+    name: "Observability",
+    providers: [{ name: "Sentry", detail: "Spend by data category and project, issues, alerts, cron and uptime monitors", resources: ["Organization", "Project", "Team", "Release", "Issue", "Client Key (DSN)", "Alert", "Monitor", "Cron Monitor", "Uptime Monitor"] }],
+  },
+  {
     name: "Communications",
     providers: [{ name: "Twilio", detail: "Spend by product and subaccount, balance, numbers, usage triggers", resources: ["Account", "Subaccount", "Phone Number", "Messaging Service", "Verify Service", "TwiML App", "Usage Trigger", "API Key"] }],
   },
