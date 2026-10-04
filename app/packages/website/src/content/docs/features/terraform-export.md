@@ -46,6 +46,7 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 | ClickHouse   | `ClickHouse/clickhouse`     | Cloud services (`clickhouse_service`)                                                                                                                  |
 | Databricks   | `databricks/databricks`     | Clusters, SQL warehouses, catalogs, schemas                                                                                                            |
 | Netlify      | `netlify/netlify`           | DNS zones, DNS records, environment variables                                                                                                          |
+| CoreWeave    | `coreweave/coreweave`       | CKS clusters, VPCs, AI Object Storage buckets                                                                                                          |
 | Linode       | `linode/linode`             | Linodes, volumes, NodeBalancers, LKE clusters, buckets, firewalls, domains, DNS records, VPCs, StackScripts, Managed Databases, reserved IPs           |
 | Oracle Cloud | `oracle/oci`                | Compartments, instances, block volumes, VCNs, subnets, reserved IPs, load balancers, buckets, Autonomous Databases, OKE clusters, budgets, alert rules |
 

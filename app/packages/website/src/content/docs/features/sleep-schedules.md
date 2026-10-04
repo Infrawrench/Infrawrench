@@ -22,6 +22,7 @@ Eligibility is discovered from each provider plugin, never hard-coded: a resourc
 - **ClickHouse Cloud** — Services
 - **Databricks** — Clusters, SQL warehouses, apps
 - **OVHcloud** — Public Cloud instances
+- **CoreWeave**: CKS Node Pools (stop = scale to zero Nodes, start = restore the size it had)
 
 The same start/stop actions appear as buttons on each resource's detail page, so you can always override a schedule by hand.
 
