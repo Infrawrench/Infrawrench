@@ -140,6 +140,7 @@ describe("SSH endpoint parity", () => {
     "replicate",
     "revai",
     "speechmatics",
+    "temporal-cloud",
     "together",
     "xai",
   ];

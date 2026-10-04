@@ -48,6 +48,7 @@ import { plugin as openrouterPlugin } from "@infrawrench/plugin-openrouter";
 import { plugin as replicatePlugin } from "@infrawrench/plugin-replicate";
 import { plugin as revaiPlugin } from "@infrawrench/plugin-revai";
 import { plugin as speechmaticsPlugin } from "@infrawrench/plugin-speechmatics";
+import { plugin as temporalCloudPlugin } from "@infrawrench/plugin-temporal-cloud";
 import { plugin as togetherPlugin } from "@infrawrench/plugin-together";
 import { plugin as xaiPlugin } from "@infrawrench/plugin-xai";
 import { plugin as uploadthingPlugin } from "@infrawrench/plugin-uploadthing";
@@ -107,6 +108,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   replicatePlugin,
   revaiPlugin,
   speechmaticsPlugin,
+  temporalCloudPlugin,
   togetherPlugin,
   xaiPlugin,
   uploadthingPlugin,

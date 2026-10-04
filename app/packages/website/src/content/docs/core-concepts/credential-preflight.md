@@ -36,7 +36,7 @@ Deselecting a capability removes its permissions from the template — least pri
 
 ## Which plugins support it
 
-[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), and [Cloudflare](../plugins/cloudflare.md) ship full support (checklist + generator) today. Each plugin page lists the exact permissions behind every capability. Other plugins simply don't show the panel — nothing changes for them until they declare their permission metadata.
+[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), and [Cloudflare](../plugins/cloudflare.md) ship full support (checklist + generator) today. [Temporal Cloud](../plugins/temporal-cloud.md) shows the checklist without a generator: Temporal Cloud grants access by account role rather than by permission, so each capability names the role it needs. Each plugin page lists the exact permissions behind every capability. Other plugins simply don't show the panel — nothing changes for them until they declare their permission metadata.
 
 ## How it works
 

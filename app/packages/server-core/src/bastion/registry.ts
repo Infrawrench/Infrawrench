@@ -131,6 +131,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "mp.api.speechmatics.com",
     "portal.speechmatics.com",
   ],
+  "temporal-cloud": ["saas-api.tmprl.cloud", "metrics.temporal.io"],
   together: ["api.together.ai", "api.together.xyz", "api-inference.together.ai"],
   xai: ["api.x.ai", "management-api.x.ai"],
   // Control plane, the per-app file-serving host, and the regional ingest

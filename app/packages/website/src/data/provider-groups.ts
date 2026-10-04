@@ -194,6 +194,19 @@ export const providerGroups: ProviderGroup[] = [
         resources: ["Device"],
       },
       {
+        name: "Temporal Cloud",
+        detail: "Spend by namespace, workflow metrics, namespaces and access",
+        resources: [
+          "Namespace",
+          "Export Sink",
+          "User",
+          "Service Account",
+          "API Key",
+          "Nexus Endpoint",
+          "Connectivity Rule",
+        ],
+      },
+      {
         name: "SSH",
         detail: "Any Linux server",
         resources: ["SSH Terminal", "SSH Tunnel", "SFTP Browser"],
