@@ -18,4 +18,5 @@ export const RedisInstanceResourceType = rt({
     o("redisVersion", "Redis Version"),
   ],
   iconKey: "redis",
+  supportsMetrics: true,
 });

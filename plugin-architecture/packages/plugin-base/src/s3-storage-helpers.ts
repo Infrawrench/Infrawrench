@@ -20,6 +20,12 @@ export interface S3StorageConfig {
   /** AWS-style region label, e.g. "nyc3", "fr-par". */
   region: string;
   /**
+   * Session token for temporary credentials (STS-style), sent as
+   * `x-amz-security-token` and covered by the signature. Omit for long-lived
+   * keys.
+   */
+  sessionToken?: string;
+  /**
    * Build the request URL for a given bucket/key/query. Lets plugins pick
    * virtual-hosted ({bucket}.{host}/{key}) or path-style ({host}/{bucket}/{key}).
    * `key` is "" for bucket-level requests.
@@ -80,7 +86,11 @@ async function s3Fetch(
     method,
     url,
   };
-  if (extraHeaders) init.headers = extraHeaders;
+  const headers = {
+    ...(extraHeaders ?? {}),
+    ...(cfg.sessionToken ? { "x-amz-security-token": cfg.sessionToken } : {}),
+  };
+  if (Object.keys(headers).length > 0) init.headers = headers;
   if (body !== undefined) init.body = body;
   return signedS3Fetch(init);
 }

@@ -10,45 +10,59 @@ import { plugin as gcpPlugin } from "@infrawrench/plugin-gcp";
 import { plugin as hetznerPlugin } from "@infrawrench/plugin-hetzner";
 import { plugin as kafkaPlugin } from "@infrawrench/plugin-kafka";
 import { plugin as kubernetesPlugin } from "@infrawrench/plugin-kubernetes";
+import { plugin as linodePlugin } from "@infrawrench/plugin-linode";
 import { plugin as memcachedPlugin } from "@infrawrench/plugin-memcached";
 import { plugin as mongodbPlugin } from "@infrawrench/plugin-mongodb";
 import { plugin as mongodbAtlasPlugin } from "@infrawrench/plugin-mongodb-atlas";
 import { plugin as mysqlPlugin } from "@infrawrench/plugin-mysql";
 import { plugin as mssqlPlugin } from "@infrawrench/plugin-mssql";
 import { plugin as neonPlugin } from "@infrawrench/plugin-neon";
+import { plugin as oracleCloudPlugin } from "@infrawrench/plugin-oracle-cloud";
 import { plugin as ovhPlugin } from "@infrawrench/plugin-ovh";
 import { plugin as postgresPlugin } from "@infrawrench/plugin-postgres";
 import { plugin as redisPlugin } from "@infrawrench/plugin-redis";
 import { plugin as scalewayPlugin } from "@infrawrench/plugin-scaleway";
 import { plugin as sshPlugin } from "@infrawrench/plugin-ssh";
 import { plugin as tailscalePlugin } from "@infrawrench/plugin-tailscale";
+import { plugin as snowflakePlugin } from "@infrawrench/plugin-snowflake";
 import { plugin as databricksPlugin } from "@infrawrench/plugin-databricks";
+import { plugin as depotPlugin } from "@infrawrench/plugin-depot";
+import { plugin as coreweavePlugin } from "@infrawrench/plugin-coreweave";
 import { plugin as tursoPlugin } from "@infrawrench/plugin-turso";
 import { plugin as planetscalePlugin } from "@infrawrench/plugin-planetscale";
+import { plugin as redisCloudPlugin } from "@infrawrench/plugin-redis-cloud";
 import { plugin as azurePlugin } from "@infrawrench/plugin-azure";
 import { plugin as flyPlugin } from "@infrawrench/plugin-fly";
+import { plugin as githubPlugin } from "@infrawrench/plugin-github";
 import { plugin as vercelPlugin } from "@infrawrench/plugin-vercel";
 import { plugin as netlifyPlugin } from "@infrawrench/plugin-netlify";
 import { plugin as cloudinaryPlugin } from "@infrawrench/plugin-cloudinary";
+import { plugin as circleciPlugin } from "@infrawrench/plugin-circleci";
 import { plugin as clickhousePlugin } from "@infrawrench/plugin-clickhouse";
+import { plugin as crusoePlugin } from "@infrawrench/plugin-crusoe";
 import { plugin as opensearchPlugin } from "@infrawrench/plugin-opensearch";
 import { plugin as anthropicPlugin } from "@infrawrench/plugin-anthropic";
 import { plugin as assemblyaiPlugin } from "@infrawrench/plugin-assemblyai";
 import { plugin as cartesiaPlugin } from "@infrawrench/plugin-cartesia";
 import { plugin as coherePlugin } from "@infrawrench/plugin-cohere";
+import { plugin as cursorPlugin } from "@infrawrench/plugin-cursor";
 import { plugin as deepgramPlugin } from "@infrawrench/plugin-deepgram";
 import { plugin as deepseekPlugin } from "@infrawrench/plugin-deepseek";
+import { plugin as devinPlugin } from "@infrawrench/plugin-devin";
 import { plugin as elevenlabsPlugin } from "@infrawrench/plugin-elevenlabs";
 import { plugin as fireworksPlugin } from "@infrawrench/plugin-fireworks";
+import { plugin as confluentCloudPlugin } from "@infrawrench/plugin-confluent-cloud";
 import { plugin as geminiPlugin } from "@infrawrench/plugin-gemini";
 import { plugin as gladiaPlugin } from "@infrawrench/plugin-gladia";
 import { plugin as groqPlugin } from "@infrawrench/plugin-groq";
 import { plugin as mistralPlugin } from "@infrawrench/plugin-mistral";
+import { plugin as modalPlugin } from "@infrawrench/plugin-modal";
 import { plugin as openaiPlugin } from "@infrawrench/plugin-openai";
 import { plugin as openrouterPlugin } from "@infrawrench/plugin-openrouter";
 import { plugin as replicatePlugin } from "@infrawrench/plugin-replicate";
 import { plugin as revaiPlugin } from "@infrawrench/plugin-revai";
 import { plugin as speechmaticsPlugin } from "@infrawrench/plugin-speechmatics";
+import { plugin as temporalCloudPlugin } from "@infrawrench/plugin-temporal-cloud";
 import { plugin as togetherPlugin } from "@infrawrench/plugin-together";
 import { plugin as xaiPlugin } from "@infrawrench/plugin-xai";
 import { plugin as uploadthingPlugin } from "@infrawrench/plugin-uploadthing";
@@ -70,12 +84,14 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   hetznerPlugin,
   kafkaPlugin,
   kubernetesPlugin,
+  linodePlugin,
   memcachedPlugin,
   mongodbPlugin,
   mongodbAtlasPlugin,
   mysqlPlugin,
   mssqlPlugin,
   neonPlugin,
+  oracleCloudPlugin,
   ovhPlugin,
   postgresPlugin,
   redisPlugin,
@@ -83,32 +99,44 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   sshPlugin,
   tailscalePlugin,
   databricksPlugin,
+  snowflakePlugin,
+  depotPlugin,
+  coreweavePlugin,
   tursoPlugin,
   planetscalePlugin,
+  redisCloudPlugin,
   azurePlugin,
   flyPlugin,
+  githubPlugin,
   vercelPlugin,
   netlifyPlugin,
   cloudinaryPlugin,
+  circleciPlugin,
   clickhousePlugin,
+  crusoePlugin,
   opensearchPlugin,
   anthropicPlugin,
   assemblyaiPlugin,
   cartesiaPlugin,
   coherePlugin,
+  cursorPlugin,
   deepgramPlugin,
   deepseekPlugin,
+  devinPlugin,
   elevenlabsPlugin,
   fireworksPlugin,
+  confluentCloudPlugin,
   geminiPlugin,
   gladiaPlugin,
   groqPlugin,
   mistralPlugin,
+  modalPlugin,
   openaiPlugin,
   openrouterPlugin,
   replicatePlugin,
   revaiPlugin,
   speechmaticsPlugin,
+  temporalCloudPlugin,
   togetherPlugin,
   xaiPlugin,
   uploadthingPlugin,
