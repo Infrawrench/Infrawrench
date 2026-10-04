@@ -203,6 +203,8 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewAccountResource,
 		NewBastionResource,
 		NewRoleResource,
+		NewCostVisibilityScopeResource,
+		NewObjectSharingResource,
 		NewAPIKeyResource,
 		NewSSHKeyResource,
 		NewSSHSnippetResource,

@@ -97,6 +97,7 @@ export const API_KEY_SCOPE_GROUPS: readonly ApiKeyScopeGroup[] = [
       { value: "freezes:write", label: "Change freezes (write)" },
       { value: "freezes:override", label: "Change freezes (override)" },
       { value: "tag-policy:override", label: "Tag policy (override)" },
+      { value: "sharing:override", label: "Sharing (override)" },
     ],
   },
   {

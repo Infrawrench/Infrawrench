@@ -3,7 +3,14 @@ import { v4 as uuid } from "uuid";
 import { randomBytes, createHash } from "node:crypto";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client";
-import { apiKeys, users, invitations, organizationMembers, roles } from "../../db/schema";
+import {
+  apiKeys,
+  costVisibilityScopes,
+  users,
+  invitations,
+  organizationMembers,
+  roles,
+} from "../../db/schema";
 import { logAudit } from "../../services/audit";
 import { addSeat, checkSeatAvailability, releaseSeat } from "../../services/seats";
 import { planAccess, FREE_PLAN_LIMITS, type PlanAccess } from "../../services/entitlements";
@@ -18,6 +25,7 @@ import {
   systemRolePermissions,
 } from "@infrawrench/server-core/permissions";
 import { isAgentUserId } from "@infrawrench/server-core/trials/identity";
+import { summarizeCostVisibility } from "@infrawrench/server-core/cost/visibility-context";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -78,6 +86,13 @@ app.get("/me", async (c) => {
      * they have.
      */
     elevations: [...(c.get("elevations") ?? [])],
+    /**
+     * The caller's cost visibility scope: which layers narrow the cost rows
+     * they see. Informational; every cost read enforces it server-side.
+     */
+    costVisibility: summarizeCostVisibility(
+      c.get("costVisibility") ?? { organizationId: c.get("organizationId"), restricted: false },
+    ),
   });
 });
 
@@ -225,6 +240,17 @@ app.delete("/roles/:id", async (c) => {
   }
 
   await db.delete(roles).where(eq(roles.id, roleId));
+  // A role's cost visibility scope goes with it (no member holds the role, as
+  // checked above, so this narrows nobody's access by surprise).
+  await db
+    .delete(costVisibilityScopes)
+    .where(
+      and(
+        eq(costVisibilityScopes.organizationId, organizationId),
+        eq(costVisibilityScopes.principalKind, "role"),
+        eq(costVisibilityScopes.principalId, roleId),
+      ),
+    );
   void logAudit({
     organizationId,
     userId: session.userId,
@@ -522,6 +548,18 @@ app.delete("/members/:id", async (c) => {
       and(
         eq(organizationMembers.userId, userId),
         eq(organizationMembers.organizationId, organizationId),
+      ),
+    );
+
+  // Their member-level cost visibility scope goes with the membership, so a
+  // later re-invite starts from whatever their new role says.
+  await db
+    .delete(costVisibilityScopes)
+    .where(
+      and(
+        eq(costVisibilityScopes.organizationId, organizationId),
+        eq(costVisibilityScopes.principalKind, "member"),
+        eq(costVisibilityScopes.principalId, userId),
       ),
     );
 

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.42.3",
+    "version": "1.43.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5979,7 +5979,8 @@
             "enum": [
               "budget",
               "cost_report",
-              "cost_graph_widget"
+              "cost_graph_widget",
+              "cost_visibility_scope"
             ]
           },
           "id": {
@@ -23696,6 +23697,290 @@
         ],
         "additionalProperties": false
       },
+      "CostVisibilityPrincipalKind": {
+        "type": "string",
+        "enum": [
+          "role",
+          "member",
+          "api_key"
+        ],
+        "description": "What a cost visibility scope attaches to."
+      },
+      "CostVisibilityScope": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "principalKind": {
+            "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Role id, member user id, or API key id."
+          },
+          "principalLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Role name, member email or key name; null when the principal no longer exists."
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "principalKind",
+          "principalId",
+          "principalLabel",
+          "costCentreIds",
+          "accountIds",
+          "savedFilterId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CostVisibilityScopeInput": {
+        "type": "object",
+        "properties": {
+          "principalKind": {
+            "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+          },
+          "principalId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "description": "Rows the allocation rules assign to these cost centres (or their children)."
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Rows on these connected accounts."
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A saved filter ANDed onto the scope. With no centres and no accounts it decides alone; a scope with nothing at all matches no rows."
+          }
+        },
+        "required": [
+          "principalKind",
+          "principalId",
+          "costCentreIds",
+          "accountIds",
+          "savedFilterId"
+        ],
+        "additionalProperties": false
+      },
+      "ShareableObjectType": {
+        "type": "string",
+        "enum": [
+          "cost_report",
+          "cost_report_folder",
+          "dashboard"
+        ]
+      },
+      "OrgAccessLevel": {
+        "type": "string",
+        "enum": [
+          "editor",
+          "viewer",
+          "none"
+        ],
+        "description": "What everyone in the organization can do with the object. `editor` is the default for an object nobody has shared."
+      },
+      "ObjectAccessLevel": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "editor",
+          "viewer"
+        ]
+      },
+      "ObjectAccessGrant": {
+        "type": "object",
+        "properties": {
+          "principalKind": {
+            "type": "string",
+            "enum": [
+              "member",
+              "role"
+            ]
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "principalLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "level": {
+            "$ref": "#/components/schemas/ObjectAccessLevel"
+          },
+          "implicit": {
+            "type": "boolean",
+            "description": "The report creator's ownership, implied rather than stored. Never send it back."
+          }
+        },
+        "required": [
+          "principalKind",
+          "principalId",
+          "principalLabel",
+          "level",
+          "implicit"
+        ],
+        "additionalProperties": false
+      },
+      "ObjectSharing": {
+        "type": "object",
+        "properties": {
+          "objectType": {
+            "$ref": "#/components/schemas/ShareableObjectType"
+          },
+          "objectId": {
+            "type": "string"
+          },
+          "orgAccess": {
+            "$ref": "#/components/schemas/OrgAccessLevel"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObjectAccessGrant"
+            }
+          },
+          "callerLevel": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "editor",
+              "viewer",
+              "none"
+            ],
+            "description": "What the caller can do with this object."
+          },
+          "inheritedFrom": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "folderId": {
+                "type": "string"
+              },
+              "folderName": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string",
+                "enum": [
+                  "owner",
+                  "editor",
+                  "viewer",
+                  "none"
+                ]
+              }
+            },
+            "required": [
+              "folderId",
+              "folderName",
+              "level"
+            ],
+            "additionalProperties": false,
+            "description": "Access the containing folder's explicit sharing already gives the caller."
+          }
+        },
+        "required": [
+          "objectType",
+          "objectId",
+          "orgAccess",
+          "grants",
+          "callerLevel",
+          "inheritedFrom"
+        ],
+        "additionalProperties": false
+      },
+      "ObjectSharingInput": {
+        "type": "object",
+        "properties": {
+          "orgAccess": {
+            "$ref": "#/components/schemas/OrgAccessLevel"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "principalKind": {
+                  "type": "string",
+                  "enum": [
+                    "member",
+                    "role"
+                  ]
+                },
+                "principalId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "level": {
+                  "$ref": "#/components/schemas/ObjectAccessLevel"
+                }
+              },
+              "required": [
+                "principalKind",
+                "principalId",
+                "level"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "orgAccess",
+          "grants"
+        ],
+        "additionalProperties": false
+      },
       "CommitmentUnitAmount": {
         "type": "object",
         "properties": {
@@ -29927,9 +30212,72 @@
           "invoices:write",
           "invoices:issue",
           "pages:write",
+          "sharing:override",
           "org:settings:write"
         ],
         "description": "A permission string. Roles may grant exact permissions like the entries in this enum, or wildcards (e.g. `resources:*:read`, `*`)."
+      },
+      "CostVisibilitySource": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "costCentreIds",
+          "accountIds",
+          "savedFilterId"
+        ],
+        "additionalProperties": false
+      },
+      "CostVisibilitySummary": {
+        "type": "object",
+        "properties": {
+          "restricted": {
+            "type": "boolean",
+            "description": "False means the caller sees every cost row the organization holds."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostVisibilitySource"
+            },
+            "description": "Every scope that applies to the caller. A cost row must match all of them."
+          }
+        },
+        "required": [
+          "restricted",
+          "sources"
+        ],
+        "additionalProperties": false,
+        "description": "The caller's cost visibility scope. Every cost read enforces it server-side."
       },
       "MeResponse": {
         "type": "object",
@@ -29949,6 +30297,9 @@
             "items": {
               "$ref": "#/components/schemas/Permission"
             }
+          },
+          "costVisibility": {
+            "$ref": "#/components/schemas/CostVisibilitySummary"
           }
         },
         "required": [
@@ -56218,6 +56569,427 @@
         },
         "operationId": "getOrgOrgIdCredits",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-visibility": {
+      "get": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "List cost visibility scopes",
+        "description": "Every scope narrowing which cost rows a role, member or API key can see. Scopes that apply to one caller are intersected.\n\n_Requires permission: `team:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostVisibilityScope"
+                      }
+                    }
+                  },
+                  "required": [
+                    "scopes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostVisibility",
+        "x-required-permission": "team:read"
+      },
+      "put": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Create or replace a cost visibility scope",
+        "description": "Upserts the scope of one principal. Roles and members need `team:role:write`; an API key's owner may also scope their own key with `apikeys:write`. Owners cannot be scoped, and cost-scoped callers cannot change scopes.\n\n_Requires permission: `team:role:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostVisibilityScopeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostVisibilityScope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostVisibility",
+        "x-required-permission": "team:role:write"
+      }
+    },
+    "/api/org/{orgId}/cost-visibility/{principalKind}/{principalId}": {
+      "delete": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Remove a cost visibility scope",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+            },
+            "required": true,
+            "name": "principalKind",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "principalId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostVisibilityPrincipalKindPrincipalId",
+        "x-required-permission": "team:role:write",
+        "description": "_Requires permission: `team:role:write`._"
+      }
+    },
+    "/api/org/{orgId}/sharing/{objectType}/{objectId}": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Get an object's sharing",
+        "description": "Who can open or edit a cost report, report folder or dashboard. Needs viewer on the object and the family's read permission (`costs:read` / `dashboards:read`).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ShareableObjectType"
+            },
+            "required": true,
+            "name": "objectType",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "objectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sharing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectSharing"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSharingObjectTypeObjectId"
+      },
+      "put": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Replace an object's sharing",
+        "description": "Replaces the org-wide default and every grant. Owner on the object plus the family's write permission. At least one owner must remain.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ShareableObjectType"
+            },
+            "required": true,
+            "name": "objectType",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "objectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectSharingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sharing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectSharing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSharingObjectTypeObjectId"
+      },
+      "delete": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Reset an object's sharing to the default",
+        "description": "Removes every grant and the org-wide setting, so everyone in the organization can edit again. Owner only. A report's creator remains its owner.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ShareableObjectType"
+            },
+            "required": true,
+            "name": "objectType",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "objectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSharingObjectTypeObjectId"
       }
     },
     "/api/org/{orgId}/commitments": {

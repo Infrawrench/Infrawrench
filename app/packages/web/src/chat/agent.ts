@@ -22,7 +22,7 @@ import {
   chatPendingSecretRequests,
 } from "../db/schema";
 import { getToolRegistry } from "../tools/registry";
-import { authorizeToolCall } from "../tools/permissions";
+import { authorizeToolCall, runToolHandler } from "../tools/permissions";
 import { needsApproval } from "../tools/approval";
 import type { ToolAuthContext, ToolDefinition, ToolResult } from "../tools/types";
 import {
@@ -727,7 +727,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
       // Auto-run read / write tools.
       let result: ToolResult;
       try {
-        result = await tool.handler(tu.input, auth);
+        result = await runToolHandler(tool, tu.input, auth);
       } catch (e) {
         result = {
           content: [{ type: "text", text: e instanceof Error ? e.message : "Tool threw" }],
@@ -853,7 +853,7 @@ export async function executePendingAction(
       result = { content: denied.content, isError: true };
     } else {
       try {
-        result = await tool.handler(pending.toolInput as Record<string, unknown>, auth);
+        result = await runToolHandler(tool, pending.toolInput as Record<string, unknown>, auth);
       } catch (e) {
         result = {
           content: [{ type: "text", text: e instanceof Error ? e.message : "Tool threw" }],

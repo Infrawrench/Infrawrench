@@ -439,6 +439,19 @@ export const budgets = pgTable(
      * internal spend is exactly as marked up as the forecast is.
      */
     useAdjustedSpend: boolean("use_adjusted_spend").notNull().default(false),
+    /**
+     * Set when a **cost-scoped** principal created this object: the user whose
+     * cost visibility scope the unattended evaluator applies, resolved live on
+     * every pass. Null means the creator was unrestricted and the object
+     * evaluates over all of the org's spend.
+     *
+     * Without it, a member restricted to one cost centre could create an
+     * org-wide object here and read every other team's totals back out of its
+     * alerts. No foreign key on purpose: a departed user must make the object
+     * see *nothing* (the resolver answers "no membership, no rows"), whereas an
+     * `ON DELETE SET NULL` would quietly widen it to the whole org.
+     */
+    visibilityUserId: text("visibility_user_id"),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -1344,6 +1357,19 @@ export const costAlerts = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     /** Stamped by each evaluation pass, fired or not: "is this alert live". */
     lastEvaluatedAt: timestamp("last_evaluated_at"),
+    /**
+     * Set when a **cost-scoped** principal created this object: the user whose
+     * cost visibility scope the unattended evaluator applies, resolved live on
+     * every pass. Null means the creator was unrestricted and the object
+     * evaluates over all of the org's spend.
+     *
+     * Without it, a member restricted to one cost centre could create an
+     * org-wide object here and read every other team's totals back out of its
+     * alerts. No foreign key on purpose: a departed user must make the object
+     * see *nothing* (the resolver answers "no membership, no rows"), whereas an
+     * `ON DELETE SET NULL` would quietly widen it to the whole org.
+     */
+    visibilityUserId: text("visibility_user_id"),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -4135,6 +4161,19 @@ export const reportNotifications = pgTable(
     lastStatus: text("last_status"),
     /** Human-readable reason for the last non-success, for the report page. */
     lastError: text("last_error"),
+    /**
+     * Set when a **cost-scoped** principal created this object: the user whose
+     * cost visibility scope the unattended evaluator applies, resolved live on
+     * every pass. Null means the creator was unrestricted and the object
+     * evaluates over all of the org's spend.
+     *
+     * Without it, a member restricted to one cost centre could create an
+     * org-wide object here and read every other team's totals back out of its
+     * alerts. No foreign key on purpose: a departed user must make the object
+     * see *nothing* (the resolver answers "no membership, no rows"), whereas an
+     * `ON DELETE SET NULL` would quietly widen it to the whole org.
+     */
+    visibilityUserId: text("visibility_user_id"),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -4312,3 +4351,4 @@ export * from "./runbook-schema.js";
 export * from "./on-call-schema.js";
 export * from "./restore-drill-schema.js";
 export * from "./query-monitor-schema.js";
+export * from "./cost-visibility-schema.js";

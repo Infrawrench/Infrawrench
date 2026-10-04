@@ -62,6 +62,8 @@
     "./cost/forecast": "./src/cost/forecast.ts",
     "./cost/budget-eval": "./src/cost/budget-eval.ts",
     "./cost/saved-filters": "./src/cost/saved-filters.ts",
+    "./cost/visibility": "./src/cost/visibility.ts",
+    "./cost/visibility-context": "./src/cost/visibility-context.ts",
     "./cost/scenario-forecast": "./src/cost/scenario-forecast.ts",
     "./cost/change-detect": "./src/cost/change-detect.ts",
     "./cost/change-eval": "./src/cost/change-eval.ts",

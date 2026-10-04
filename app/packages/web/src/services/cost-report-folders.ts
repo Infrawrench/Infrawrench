@@ -16,6 +16,7 @@
  * `costReportFolderMoveBlocker` in client-core, so the move menu in the UI can
  * grey out exactly the targets these functions would reject with a 400.
  */
+import { deleteObjectSharing, filterVisibleObjects, requireObjectAccess } from "./object-sharing";
 import { and, asc, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
@@ -52,6 +53,35 @@ export async function listCostReportFolders(organizationId: string): Promise<Cos
     .where(eq(costReportFolders.organizationId, organizationId))
     .orderBy(asc(costReportFolders.name));
   return rows.map(toFolder);
+}
+
+/**
+ * The folders the caller can see: those their sharing lets them open, plus
+ * every ancestor of one, so the tree above a visible folder still renders
+ * (as a path, not as something they can open or edit).
+ */
+export async function listVisibleCostReportFolders(
+  organizationId: string,
+): Promise<CostReportFolder[]> {
+  const all = await listCostReportFolders(organizationId);
+  const visible = await filterVisibleObjects(
+    organizationId,
+    "cost_report_folder",
+    all,
+    (f) => f.id,
+    (f) => ({ folderId: f.parentFolderId }),
+  );
+  if (visible.length === all.length) return all;
+  const byId = new Map(all.map((f) => [f.id, f]));
+  const keep = new Set<string>();
+  for (const f of visible) {
+    let cur: CostReportFolder | undefined = f;
+    while (cur && !keep.has(cur.id)) {
+      keep.add(cur.id);
+      cur = cur.parentFolderId ? byId.get(cur.parentFolderId) : undefined;
+    }
+  }
+  return all.filter((f) => keep.has(f.id));
 }
 
 /**
@@ -107,7 +137,15 @@ export async function updateCostReportFolder(
 ): Promise<CostReportFolder | null> {
   const parentFolderId = input.parentFolderId ?? null;
   const folders = await listCostReportFolders(organizationId);
-  if (!folders.some((f) => f.id === folderId)) return null;
+  const current = folders.find((f) => f.id === folderId);
+  if (!current) return null;
+  await requireObjectAccess(
+    organizationId,
+    "cost_report_folder",
+    folderId,
+    { folderId: current.parentFolderId },
+    "editor",
+  );
 
   const blocked = costReportFolderMoveBlocker(folders, folderId, parentFolderId);
   if (blocked) throw new CostReportFolderError(blocked);
@@ -136,6 +174,22 @@ export async function deleteCostReportFolder(
   organizationId: string,
   folderId: string,
 ): Promise<boolean> {
+  const [existing] = await db
+    .select({ parent: costReportFolders.parentFolderId })
+    .from(costReportFolders)
+    .where(
+      and(eq(costReportFolders.id, folderId), eq(costReportFolders.organizationId, organizationId)),
+    )
+    .limit(1);
+  if (!existing) return false;
+  await requireObjectAccess(
+    organizationId,
+    "cost_report_folder",
+    folderId,
+    { folderId: existing.parent },
+    "delete",
+  );
+  await deleteObjectSharing(organizationId, "cost_report_folder", folderId);
   const [deleted] = await db
     .delete(costReportFolders)
     .where(

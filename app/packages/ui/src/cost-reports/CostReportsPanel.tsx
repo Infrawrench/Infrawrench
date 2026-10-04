@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ShareDialog, type ShareTarget } from "../sharing/ShareDialog.js";
 import { useGT } from "gt-react";
 
 import {
@@ -95,6 +96,8 @@ export function CostReportsPanel({
   const [placing, setPlacing] = useState<CostReport | null>(null);
   const [moving, setMoving] = useState<Moving | null>(null);
 
+  const [sharingTarget, setSharingTarget] = useState<ShareTarget | null>(null);
+  const onShare = client.sharing ? setSharingTarget : undefined;
   const canWrite = Boolean(client.createReport && client.updateReport && client.deleteReport);
   const canPlace = Boolean(
     client.listDashboards && client.addReportToDashboard && client.removeReportPlacement,
@@ -312,6 +315,16 @@ export function CostReportsPanel({
             onDuplicate={() => void duplicateReport(selected)}
             onDelete={() => void deleteReport(selected)}
             onPlace={() => setPlacing(selected)}
+            onShare={
+              onShare
+                ? () =>
+                    onShare({
+                      objectType: "cost_report",
+                      objectId: selected.id,
+                      name: selected.name,
+                    })
+                : undefined
+            }
             onOpenDashboard={onOpenDashboard}
           />
         ) : (
@@ -333,6 +346,7 @@ export function CostReportsPanel({
             onRenameFolder={(f) => void renameFolder(f)}
             onMoveFolder={(f) => setMoving({ kind: "folder", folder: f })}
             onDeleteFolder={(f) => void deleteFolder(f)}
+            onShare={onShare}
             onOpenDashboard={onOpenDashboard}
           />
         )}
@@ -356,6 +370,15 @@ export function CostReportsPanel({
           client={client}
           onClose={() => setPlacing(null)}
           onChanged={refresh}
+        />
+      )}
+
+      {sharingTarget && client.sharing && (
+        <ShareDialog
+          client={client.sharing}
+          target={sharingTarget}
+          onClose={() => setSharingTarget(null)}
+          onSaved={() => void refresh()}
         />
       )}
 
@@ -389,6 +412,7 @@ function ReportList({
   onRenameFolder,
   onMoveFolder,
   onDeleteFolder,
+  onShare,
   onOpenDashboard,
 }: {
   reports: CostReport[] | null;
@@ -408,6 +432,7 @@ function ReportList({
   onRenameFolder: (folder: CostReportFolder) => void;
   onMoveFolder: (folder: CostReportFolder) => void;
   onDeleteFolder: (folder: CostReportFolder) => void;
+  onShare?: ((target: ShareTarget) => void) | undefined;
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
   const gt = useGT();
@@ -435,6 +460,7 @@ function ReportList({
     onDuplicate,
     onDelete,
     onPlace,
+    onShare,
   };
 
   return (
@@ -515,9 +541,24 @@ function ReportList({
                       })}
                 </span>
               </h3>
-              {canManageFolders && (
+              {(canManageFolders || onShare) && (
                 <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
-                  {canNest && (
+                  {onShare && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onShare({
+                          objectType: "cost_report_folder",
+                          objectId: folder.id,
+                          name: folder.name,
+                        })
+                      }
+                      className="hover:text-on-surface-secondary underline"
+                    >
+                      {gt("Share")}
+                    </button>
+                  )}
+                  {canManageFolders && canNest && (
                     <button
                       type="button"
                       onClick={() => onNewFolder(folder)}
@@ -526,27 +567,31 @@ function ReportList({
                       {gt("New subfolder")}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => onRenameFolder(folder)}
-                    className="hover:text-on-surface-secondary underline"
-                  >
-                    {gt("Rename")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onMoveFolder(folder)}
-                    className="hover:text-on-surface-secondary underline"
-                  >
-                    {gt("Move")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDeleteFolder(folder)}
-                    className="hover:text-danger underline"
-                  >
-                    {gt("Delete")}
-                  </button>
+                  {canManageFolders && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onRenameFolder(folder)}
+                        className="hover:text-on-surface-secondary underline"
+                      >
+                        {gt("Rename")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onMoveFolder(folder)}
+                        className="hover:text-on-surface-secondary underline"
+                      >
+                        {gt("Move")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteFolder(folder)}
+                        className="hover:text-danger underline"
+                      >
+                        {gt("Delete")}
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -579,11 +624,13 @@ function ReportRow({
   onDuplicate,
   onDelete,
   onPlace,
+  onShare,
   onOpenDashboard,
 }: {
   report: CostReport;
   canWrite: boolean;
   canPlace: boolean;
+  onShare?: ((target: ShareTarget) => void) | undefined;
   onOpen: (report: CostReport) => void;
   onRename: (report: CostReport) => void;
   onMove: (report: CostReport) => void;
@@ -610,6 +657,17 @@ function ReportRow({
           )}
         </button>
         <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
+          {onShare && (
+            <button
+              type="button"
+              onClick={() =>
+                onShare({ objectType: "cost_report", objectId: report.id, name: report.name })
+              }
+              className="hover:text-on-surface-secondary underline"
+            >
+              {gt("Share")}
+            </button>
+          )}
           {canPlace && (
             <button
               type="button"
@@ -673,6 +731,7 @@ function ReportDetail({
   onDuplicate,
   onDelete,
   onPlace,
+  onShare,
   onOpenDashboard,
 }: {
   report: CostReport;
@@ -687,6 +746,7 @@ function ReportDetail({
   onDuplicate: () => void;
   onDelete: () => void;
   onPlace: () => void;
+  onShare?: (() => void) | undefined;
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
   const gt = useGT();
@@ -715,6 +775,15 @@ function ReportDetail({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
+          {onShare && (
+            <button
+              type="button"
+              onClick={onShare}
+              className="hover:text-on-surface-secondary underline"
+            >
+              {gt("Share")}
+            </button>
+          )}
           {canPlace && (
             <button
               type="button"

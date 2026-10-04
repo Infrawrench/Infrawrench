@@ -2,6 +2,7 @@
  * Org-scoped budget CRUD + status: shared by the HTTP routes
  * (api/routes/budgets.ts) and the tool registry (tools/costs.ts).
  */
+import { visibilityOwnerCondition, visibilityUserIdForCreate } from "./cost-visibility-filter";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import type { BudgetPlacement, BudgetWithStatus } from "@infrawrench/ui/cost";
@@ -123,7 +124,13 @@ export async function listBudgetsWithStatus(organizationId: string): Promise<Bud
   const rows = await db
     .select()
     .from(budgets)
-    .where(and(eq(budgets.organizationId, organizationId), isNull(budgets.deletedAt)))
+    .where(
+      and(
+        eq(budgets.organizationId, organizationId),
+        visibilityOwnerCondition(budgets.visibilityUserId, organizationId),
+        isNull(budgets.deletedAt),
+      ),
+    )
     .orderBy(budgets.createdAt);
 
   const placements = await loadBudgetPlacements(
@@ -155,6 +162,7 @@ export async function getBudgetWithStatus(
       and(
         eq(budgets.id, budgetId),
         eq(budgets.organizationId, organizationId),
+        visibilityOwnerCondition(budgets.visibilityUserId, organizationId),
         isNull(budgets.deletedAt),
       ),
     )
@@ -197,6 +205,8 @@ export async function createBudget(
       savedFilterId: input.savedFilterId ?? null,
       scenarioModelId: input.scenarioModelId ?? null,
       useAdjustedSpend: input.useAdjustedSpend ?? false,
+      // A cost-scoped creator's budget measures only what they can see.
+      visibilityUserId: visibilityUserIdForCreate(organizationId),
       createdByUserId,
     })
     .returning();
@@ -237,6 +247,7 @@ export async function updateBudget(
       and(
         eq(budgets.id, budgetId),
         eq(budgets.organizationId, organizationId),
+        visibilityOwnerCondition(budgets.visibilityUserId, organizationId),
         isNull(budgets.deletedAt),
       ),
     )
@@ -263,6 +274,7 @@ export async function softDeleteBudget(organizationId: string, budgetId: string)
       and(
         eq(budgets.id, budgetId),
         eq(budgets.organizationId, organizationId),
+        visibilityOwnerCondition(budgets.visibilityUserId, organizationId),
         isNull(budgets.deletedAt),
       ),
     )
@@ -288,7 +300,13 @@ export async function listBudgetEvents(organizationId: string, budgetId: string)
   const [budget] = await db
     .select({ id: budgets.id })
     .from(budgets)
-    .where(and(eq(budgets.id, budgetId), eq(budgets.organizationId, organizationId)))
+    .where(
+      and(
+        eq(budgets.id, budgetId),
+        eq(budgets.organizationId, organizationId),
+        visibilityOwnerCondition(budgets.visibilityUserId, organizationId),
+      ),
+    )
     .limit(1);
   if (!budget) return null;
 

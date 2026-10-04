@@ -160,4 +160,11 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-export const API_VERSION = "1.42.3";
+// 1.43.0: cost visibility scopes and per-object sharing. New
+// `/cost-visibility` (list/upsert/delete scopes on roles, members and API
+// keys) and `/sharing/{objectType}/{objectId}` routes, `costVisibility` on
+// `/team/me`, the `sharing:override` permission, and the
+// `cost_visibility_scope` saved-filter referent kind. Cost-scoped callers get
+// narrowed cost responses everywhere and a 403 `cost_scope_restricted` on
+// org-wide surfaces (exports, invoices, digest, config, team changes).
+export const API_VERSION = "1.43.0";

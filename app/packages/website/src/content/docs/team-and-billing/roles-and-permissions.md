@@ -129,6 +129,8 @@ The same permission set gates every surface, not just the web UI:
 
   Neither is in the Member role. Recording exists to watch operators, so granting every operator the ability to watch defeats it. A custom role can grant read without write, which is the usual shape for a compliance reviewer who should be able to watch a tape but not change the policy or destroy evidence. Watching a recording is itself audit-logged.
 
+- **[Cost visibility and sharing](./cost-visibility.md)** narrow a role further rather than adding permissions. A cost visibility scope on a role, member or API key limits _which cost rows_ they see on every cost surface, and sharing on a report, folder or dashboard limits _which objects_ they can open or edit. `sharing:override` (held by Admin and Owner) opens and re-shares every object regardless of its sharing. Scopes are managed with `team:role:write`; a cost-scoped person cannot change roles, invitations or scopes.
+
 ## Audit trail
 
 Every permission-sensitive action is recorded in the [audit log](./audit-log.md), including role creates/edits/deletes and member-role changes.
