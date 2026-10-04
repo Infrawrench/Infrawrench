@@ -178,7 +178,9 @@ dropped, `seccompProfile: RuntimeDefault`, and `readOnlyRootFilesystem: true`.
   namespace.
 - _Egress_ is the public internet minus every private and link-local range
   (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, `169.254/16`), plus
-  kube-dns, the GKE metadata server's Workload Identity endpoints, ClickHouse,
+  kube-dns (by its Service ClusterIP too, because NodeLocal DNSCache answers
+  on the node and a pod selector never matches), the GKE metadata server's
+  Workload Identity endpoints, ClickHouse,
   and `web` → `web`. It is a denylist of the cluster's own address space, not
   an allowlist of destinations: `web`, `poller` and `github-watcher` dial
   arbitrary customer infrastructure by design and a NetworkPolicy cannot name

@@ -183,8 +183,17 @@ spec:
               - 192.168.0.0/16
               - 100.64.0.0/10
               - 169.254.0.0/16
-    # Cluster DNS. kube-dns pods carry `k8s-app: kube-dns` in kube-system.
+    # Cluster DNS. The cluster runs NodeLocal DNSCache, so a pod's query to the
+    # kube-dns Service IP is intercepted on the node by the hostNetwork
+    # node-local-dns pod and never DNATs to a `k8s-app: kube-dns` pod; the
+    # podSelector alone matches nothing and every lookup fails (EAI_AGAIN).
+    # GKE documents allowing the kube-dns ClusterIP as an ipBlock for exactly
+    # this case. 10.8.0.10 is that ClusterIP (`kubectl -n kube-system get svc
+    # kube-dns`); it moves only if the Service range does. The podSelector is
+    # kept for the case NodeLocal DNSCache is ever turned off.
     - to:
+        - ipBlock:
+            cidr: 10.8.0.10/32
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
