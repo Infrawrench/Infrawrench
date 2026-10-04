@@ -299,6 +299,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /tag-policy": "resources:read",
   "PUT /tag-policy": "org:settings:write",
   "GET /tag-policy/compliance": "resources:read",
+  // tag key settings: a display preference over every picker, so reads ride
+  // resources:read like the policy; GET /tag-keys adds cost usage only when the
+  // caller also holds costs:read
+  "GET /tag-keys": "resources:read",
+  "GET /tag-keys/settings": "resources:read",
+  "PUT /tag-keys/settings": "org:settings:write",
   "GET /costs/untagged": "costs:read",
   "GET /costs/showback": "costs:read",
   // currency: reads ride costs:read because a converted total is unauditable

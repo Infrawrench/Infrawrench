@@ -9,6 +9,9 @@
  */
 import { z } from "zod";
 import {
+  TAG_KEY_SETTINGS_LIMITS,
+  tagKeyPatternError,
+  type TagKeySettings,
   COST_ALERT_LIMITS,
   COST_ANOMALY_LIMITS,
   COST_ANOMALY_SMS_MODES,
@@ -875,6 +878,36 @@ export const tagPolicySchema = z.object({
   enforceOnCreate: z.boolean(),
 });
 
+/**
+ * The org's tag key preferences (PUT /tag-keys/settings). Whole-document, no
+ * defaults: a client that omits a list is rejected rather than silently
+ * clearing it. Entries are trimmed before validation; the cross-list rules
+ * (a key both hidden and preferred) are `tagKeySettingsError`'s, run by the
+ * route after this parses.
+ */
+const tagKeyEntry = z
+  .string()
+  .transform((v) => v.trim())
+  .pipe(z.string().min(1).max(TAG_KEY_SETTINGS_LIMITS.maxKeyLength));
+
+export const tagKeySettingsSchema = z.object({
+  hidden: z
+    .array(
+      tagKeyEntry.refine((p) => tagKeyPatternError(p) === null, {
+        message:
+          "expected an exact key or a prefix ending in a single *, e.g. aws:cloudformation:*",
+      }),
+    )
+    .max(TAG_KEY_SETTINGS_LIMITS.maxHidden),
+  preferred: z
+    .array(
+      tagKeyEntry.refine((k) => !k.includes("*"), {
+        message: "preferred keys are exact keys, not patterns",
+      }),
+    )
+    .max(TAG_KEY_SETTINGS_LIMITS.maxPreferred),
+});
+
 export const costCentreInputSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(2000).optional(),
@@ -1303,6 +1336,7 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof customGraphWidgetConfigSchema>, CustomGraphWidgetConfig>,
   Exact<z.infer<typeof requiredTagSchema>, RequiredTag>,
   Exact<z.infer<typeof tagPolicySchema>, TagPolicy>,
+  Exact<z.infer<typeof tagKeySettingsSchema>, TagKeySettings>,
   Exact<z.infer<typeof allocationRuleMatchSchema>, AllocationRuleMatch>,
   Exact<z.infer<typeof allocationRuleInputSchema>, AllocationRuleInput>,
   Exact<z.infer<typeof currencySettingsSchema>, OrgCurrencySettings>,

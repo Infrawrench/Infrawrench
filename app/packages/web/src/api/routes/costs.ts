@@ -147,13 +147,20 @@ app.post("/focus-export", async (c) => {
   });
 });
 
-/** GET /api/org/:orgId/costs/dimensions?dimension=service|region|...&tagKey= */
+/**
+ * GET /api/org/:orgId/costs/dimensions?dimension=service|region|...&tagKey=
+ *
+ * `dimension=tag-keys` lists tag keys with the org's tag key settings
+ * applied: preferred keys first (flagged), hidden keys left out unless
+ * `includeHidden=true`, which keeps them flagged and last.
+ */
 app.get("/dimensions", async (c) => {
   requirePermission(c, "costs:read");
   const organizationId = c.get("organizationId");
 
   if (c.req.query("dimension") === "tag-keys") {
-    return c.json({ values: await listCostTagKeys(organizationId) });
+    const includeHidden = c.req.query("includeHidden") === "true";
+    return c.json({ values: await listCostTagKeys(organizationId, { includeHidden }) });
   }
   // The units a usage budget can count, as providers reported them.
   if (c.req.query("dimension") === "usage-units") {

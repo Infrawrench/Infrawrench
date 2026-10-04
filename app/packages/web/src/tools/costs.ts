@@ -242,22 +242,37 @@ export function costTools(): ToolDefinition[] {
         "organization's virtual tag keys via dimension=virtual-tag-keys, or the usage " +
         "units providers report via dimension=usage-units (a usage budget's usageUnit, or " +
         "query_costs' measure='usage'). Use this to discover valid filter/group-by values before " +
-        "calling query_costs.",
+        "calling query_costs. Tag keys follow the organization's tag key settings: keys flagged " +
+        "preferred are the ones it reports on and come first; keys it hides as noise are omitted " +
+        "unless includeHidden is true. Hidden keys are still queryable, so a user naming one " +
+        "explicitly can still be answered.",
       inputSchema: {
         dimension: z.enum([...COST_DIMENSIONS, "tag-keys", "usage-units", "virtual-tag-keys"]),
         tagKey: z
           .string()
           .optional()
           .describe("Required when dimension is 'tag' or 'virtual_tag' (the virtual tag's key)."),
+        includeHidden: z
+          .boolean()
+          .optional()
+          .describe(
+            "dimension=tag-keys only: also list keys the organization hides, flagged hidden.",
+          ),
       },
       risk: "read",
       permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
-        const { dimension, tagKey } = input as { dimension: string; tagKey?: string };
+        const { dimension, tagKey, includeHidden } = input as {
+          dimension: string;
+          tagKey?: string;
+          includeHidden?: boolean;
+        };
         if (dimension === "tag-keys") {
-          return ok(await listCostTagKeys(auth.organizationId));
+          return ok(
+            await listCostTagKeys(auth.organizationId, { includeHidden: includeHidden === true }),
+          );
         }
         if (dimension === "usage-units") {
           return ok(await listCostUsageUnits(auth.organizationId));

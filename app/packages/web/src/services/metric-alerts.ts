@@ -17,8 +17,10 @@ import type {
 } from "@infrawrench/client-core";
 import { extractRecordTags } from "@infrawrench/client-core";
 import { resolveSelectorResources } from "@infrawrench/server-core/metric-alerts/selector";
+import { getOrgTagKeySettings } from "@infrawrench/server-core/cost/tag-key-settings";
 import { db } from "../db/client";
 import { metricAlertEvents, metricAlertRules, resources } from "../db/schema";
+import { orderTagKeysForPicker } from "./tag-keys";
 
 type RuleRow = typeof metricAlertRules.$inferSelect;
 
@@ -278,12 +280,16 @@ export async function listSelectorOptions(
     for (const key of Object.keys(tags)) tagKeys.add(key);
   }
 
+  // The org's tag key settings apply here as on the cost pickers: this is a
+  // tag picker over the resource inventory, and noise keys are noise here too.
+  const ordered = orderTagKeysForPicker([...tagKeys], await getOrgTagKeySettings(organizationId));
+
   return {
     plugins: [...byPlugin.entries()].map(([pluginId, resourceTypeIds]) => ({
       pluginId,
       resourceTypeIds,
     })),
-    tagKeys: [...tagKeys].sort((a, b) => a.localeCompare(b)),
+    ...ordered,
   };
 }
 

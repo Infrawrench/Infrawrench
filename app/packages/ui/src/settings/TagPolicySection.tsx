@@ -11,6 +11,7 @@ import type {
   TagPolicy,
 } from "@infrawrench/client-core";
 import { useSettingsHost, type SettingsApi } from "./host.js";
+import { TagKeySelect } from "../cost/TagKeyPicker.js";
 import { ArrowIcon } from "../components/icons/ChromeIcons.js";
 
 /** One editable policy row: the key plus allowed values as a comma list. */
@@ -324,7 +325,7 @@ function AllocationSection({
   const [accounts, setAccounts] = useState<CostDimensionOption[]>([]);
   const [providers, setProviders] = useState<CostDimensionOption[]>([]);
   const [services, setServices] = useState<CostDimensionOption[]>([]);
-  const [tagKeys, setTagKeys] = useState<string[]>([]);
+  const [tagKeys, setTagKeys] = useState<CostDimensionOption[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -353,10 +354,9 @@ function AllocationSection({
     dimension("account").then(setAccounts, () => {});
     dimension("provider").then(setProviders, () => {});
     dimension("service").then(setServices, () => {});
-    dimension("tag-keys").then(
-      (options) => setTagKeys(options.map((o) => o.value)),
-      () => {},
-    );
+    // Preferred keys first, hidden ones left out: the server applies the org's
+    // tag key settings.
+    dimension("tag-keys").then(setTagKeys, () => {});
   }, [api, orgId, load]);
 
   async function removeRule(rule: AllocationRule) {
@@ -557,7 +557,7 @@ function NewRuleForm({
   accounts: CostDimensionOption[];
   providers: CostDimensionOption[];
   services: CostDimensionOption[];
-  tagKeys: string[];
+  tagKeys: CostDimensionOption[];
   nextPriority: number;
   onCreated: () => Promise<void>;
   onError: (message: string) => void;
@@ -649,19 +649,14 @@ function NewRuleForm({
 
   return (
     <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/50">
-      <select
+      <TagKeySelect
         value={tagKey}
-        onChange={(e) => setTagKey(e.target.value)}
+        onChange={setTagKey}
+        options={tagKeys}
         aria-label={gt("Tag key")}
         className={selectClass}
-      >
-        <option value="">{gt("Any tag")}</option>
-        {tagKeys.map((key) => (
-          <option key={key} value={key}>
-            {gt("tag: {key}", { key })}
-          </option>
-        ))}
-      </select>
+        emptyLabel={gt("Any tag")}
+      />
       {tagKey && (
         <input
           type="text"

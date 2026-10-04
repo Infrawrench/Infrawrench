@@ -953,6 +953,13 @@
       "when": 1791226061891,
       "tag": "0135_virtual_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1791226804597,
+      "tag": "0136_tag_key_settings",
+      "breakpoints": true
     }
   ]
 }

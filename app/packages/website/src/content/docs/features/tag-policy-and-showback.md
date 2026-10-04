@@ -8,6 +8,8 @@ A **tag policy** is an org-level rule of the form "every resource carries `owner
 
 > **Cloud only.** The policy, compliance scores, and both reports are org-level cloud state. The desktop app shows the same tag governance section on its Costs panel when signed into a cloud org, and the mobile app shows the showback tree read-only; policy, cost centre and rule editing lives in the web app's org settings.
 
+Bills full of provider bookkeeping keys (`aws:cloudformation:*`, `goog-k8s-*`) make every tag picker on this page and elsewhere harder to use. [Tag key settings](./tag-keys.md) hide those from pickers and pin the keys you report on to the top, without touching the data.
+
 ## Defining the policy
 
 The policy lives in **Settings → Tag Policy**. Anyone with `org:settings:write` (Owner by default) can edit it:

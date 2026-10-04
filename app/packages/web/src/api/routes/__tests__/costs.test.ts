@@ -122,6 +122,10 @@ vi.mock("@infrawrench/server-core/twilio-pager", () => ({
 
 // Same reason again: the tag-policy modules reach the db client at import
 // time via the services/tag-policy chain.
+const mockGetTagKeySettings = vi.fn();
+vi.mock("@infrawrench/server-core/cost/tag-key-settings", () => ({
+  getOrgTagKeySettings: (...args: unknown[]) => mockGetTagKeySettings(...args),
+}));
 vi.mock("@infrawrench/server-core/cost/tag-policy", () => ({
   getOrgTagPolicy: vi.fn().mockResolvedValue(null),
   setOrgTagPolicy: vi.fn(),
@@ -600,9 +604,40 @@ describe("GET /dimensions", () => {
 
   it("lists tag keys via dimension=tag-keys", async () => {
     mockGetCostTagKeys.mockResolvedValue(["env", "team"]);
+    mockGetTagKeySettings.mockResolvedValue({ hidden: [], preferred: [] });
     const res = await buildApp().request("/dimensions?dimension=tag-keys");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ values: ["env", "team"] });
+    expect(await res.json()).toEqual({
+      values: [
+        { value: "env", label: "env" },
+        { value: "team", label: "team" },
+      ],
+    });
+  });
+
+  it("applies the org's tag key settings: preferred first, hidden dropped", async () => {
+    mockGetCostTagKeys.mockResolvedValue(["aws:cloudformation:stack-id", "env", "team"]);
+    mockGetTagKeySettings.mockResolvedValue({
+      hidden: ["aws:cloudformation:*"],
+      preferred: ["team"],
+    });
+    const res = await buildApp().request("/dimensions?dimension=tag-keys");
+    expect(await res.json()).toEqual({
+      values: [
+        { value: "team", label: "team", preferred: true },
+        { value: "env", label: "env" },
+      ],
+    });
+
+    const withHidden = await buildApp().request(
+      "/dimensions?dimension=tag-keys&includeHidden=true",
+    );
+    const body = (await withHidden.json()) as { values: Array<{ value: string; hidden?: true }> };
+    expect(body.values.at(-1)).toEqual({
+      value: "aws:cloudformation:stack-id",
+      label: "aws:cloudformation:stack-id",
+      hidden: true,
+    });
   });
 
   it("answers charge_type from the fixed union without querying stored data", async () => {

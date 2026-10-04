@@ -11,6 +11,7 @@ import {
 import { BareInput, Chip, ChipMultiSelect, ChipRow, Field, FormHint } from "@/components/form";
 import { Button, Separator } from "@/components/ui";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
+import { tagKeySuggestions } from "./tag-key-options";
 
 /**
  * The filter rules a cost graph or a budget scopes itself with: mobile's
@@ -103,12 +104,18 @@ export function CostFilterEditor({
             ))}
           </ChipRow>
           {filter.dimension === "tag" ? (
-            <BareInput
-              accessibilityLabel="Tag key"
-              placeholder="tag key"
-              value={filter.tagKey ?? ""}
-              onChangeText={(tagKey) => update(i, { tagKey })}
-            />
+            <>
+              <BareInput
+                accessibilityLabel="Tag key"
+                placeholder="tag key"
+                value={filter.tagKey ?? ""}
+                onChangeText={(tagKey) => update(i, { tagKey })}
+              />
+              <TagKeySuggestions
+                typed={filter.tagKey ?? ""}
+                onPick={(tagKey) => update(i, { tagKey, values: [] })}
+              />
+            </>
           ) : null}
           {filter.dimension === "virtual_tag" ? (
             <VirtualTagKeyChips
@@ -142,6 +149,24 @@ export function CostFilterEditor({
         onPress={() => onChange([...filters, { dimension: "provider", op: "in", values: [] }])}
       />
     </Field>
+  );
+}
+
+/**
+ * The org's tag keys as chips under the free-text key field, preferred first
+ * (starred) and hidden ones left out by the server. The field stays free text:
+ * a hidden key is still a valid filter.
+ */
+function TagKeySuggestions({ typed, onPick }: { typed: string; onPick: (key: string) => void }) {
+  const keys = useDimensionValues("tag-keys");
+  const chips = tagKeySuggestions(keys.data ?? [], typed);
+  if (chips.length === 0) return null;
+  return (
+    <ChipRow>
+      {chips.map((o) => (
+        <Chip key={o.value} label={o.label} selected={false} onPress={() => onPick(o.value)} />
+      ))}
+    </ChipRow>
   );
 }
 

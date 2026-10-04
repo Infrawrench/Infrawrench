@@ -22,6 +22,7 @@ import { COST_DIMENSIONS, costAlertInputSchema, type CostFilter } from "./config
 import { CostFilterRows } from "./CostGraphConfigModal.js";
 import { VirtualTagKeySelect } from "./VirtualTagKeySelect.js";
 import { formatMoney } from "./transform.js";
+import { TagKeyInput, useTagKeyOptions } from "./TagKeyPicker.js";
 import { Modal } from "../components/Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
 import type { CostsClient } from "./types.js";
@@ -394,6 +395,10 @@ export function CostChangeAlertConfigModal({
 
   const set = (patch: Partial<CostAlertInput>) =>
     setInput((prev) => ({ ...prev, ...patch }) as CostAlertInput);
+  const tagKeys = useTagKeyOptions(
+    () => client.loadDimensionValues("tag-keys"),
+    input.groupBy === "tag",
+  );
 
   const save = async () => {
     const percent = percentText.trim() === "" ? null : Number(percentText);
@@ -564,12 +569,13 @@ export function CostChangeAlertConfigModal({
               ))}
             </select>
             {input.groupBy === "tag" && (
-              <input
+              <TagKeyInput
                 aria-label={gt("Tag key")}
                 className={`${inputClass} mt-2`}
                 placeholder={gt("Tag key, e.g. team")}
+                options={tagKeys}
                 value={input.groupByTagKey ?? ""}
-                onChange={(e) => set({ groupByTagKey: e.target.value })}
+                onChange={(groupByTagKey) => set({ groupByTagKey })}
               />
             )}
             {input.groupBy === "virtual_tag" && (

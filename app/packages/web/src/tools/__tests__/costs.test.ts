@@ -149,10 +149,24 @@ describe("costTools", () => {
   });
 
   it("list_cost_dimension_values routes tag-keys to the tag-key lister", async () => {
-    mockListTagKeys.mockResolvedValue(["env", "team"]);
+    const keys = [
+      { value: "team", label: "team", preferred: true },
+      { value: "env", label: "env" },
+    ];
+    mockListTagKeys.mockResolvedValue(keys);
     const r = await tool("list_cost_dimension_values").handler({ dimension: "tag-keys" }, auth);
-    expect(JSON.parse(r.content[0]!.text)).toEqual(["env", "team"]);
+    expect(JSON.parse(r.content[0]!.text)).toEqual(keys);
+    expect(mockListTagKeys).toHaveBeenCalledWith(auth.organizationId, { includeHidden: false });
     expect(mockListDimensionValues).not.toHaveBeenCalled();
+  });
+
+  it("list_cost_dimension_values passes includeHidden through for tag keys", async () => {
+    mockListTagKeys.mockResolvedValue([]);
+    await tool("list_cost_dimension_values").handler(
+      { dimension: "tag-keys", includeHidden: true },
+      auth,
+    );
+    expect(mockListTagKeys).toHaveBeenCalledWith(auth.organizationId, { includeHidden: true });
   });
 
   it("get_cost_status returns per-account coverage", async () => {

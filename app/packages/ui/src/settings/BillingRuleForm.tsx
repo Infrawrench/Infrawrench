@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { T, useGT } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
+import { TagKeySelect } from "../cost/TagKeyPicker.js";
 import {
   BILLING_RULE_FIXED_PERIODS,
   BILLING_RULE_KIND_DESCRIPTIONS,
@@ -160,7 +161,7 @@ function ExpressionEditor({
   providers: CostDimensionOption[];
   services: CostDimensionOption[];
   accounts: CostDimensionOption[];
-  tagKeys: string[];
+  tagKeys: CostDimensionOption[];
 }) {
   const gt = useGT();
   const gtData = useDataString();
@@ -250,8 +251,8 @@ function ExpressionEditor({
         >
           <option value="">{gt("tag…")}</option>
           {tagKeys.map((k) => (
-            <option key={k} value={k}>
-              {k}
+            <option key={k.value} value={k.value}>
+              {k.label}
             </option>
           ))}
         </select>
@@ -318,7 +319,7 @@ export function BillingRuleForm({
   accounts: CostDimensionOption[];
   providers: CostDimensionOption[];
   services: CostDimensionOption[];
-  tagKeys: string[];
+  tagKeys: CostDimensionOption[];
   /** Managed accounts, when the caller can read them; null otherwise. */
   customers: ManagedAccount[] | null;
   canPreviewCustomers: boolean;
@@ -648,19 +649,14 @@ export function BillingRuleForm({
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-on-surface-secondary">{gt("applies to")}</span>
-        <select
+        <TagKeySelect
           value={tagKey}
-          onChange={(e) => setTagKey(e.target.value)}
+          onChange={setTagKey}
+          options={tagKeys}
+          emptyLabel={gt("Any tag")}
           aria-label={gt("Tag key")}
           className={selectClass}
-        >
-          <option value="">{gt("Any tag")}</option>
-          {tagKeys.map((key) => (
-            <option key={key} value={key}>
-              {gt("tag: {key}", { key })}
-            </option>
-          ))}
-        </select>
+        />
         {tagKey && (
           <input
             type="text"

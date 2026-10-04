@@ -78,6 +78,7 @@ func specChecks() []specCheck {
 		{schema: "AllocationRuleMatch", value: AllocationRuleMatch{}},
 
 		{schema: "TagPolicy", value: TagPolicy{}},
+		{schema: "TagKeySettings", value: TagKeySettings{}},
 		{schema: "RequiredTag", value: RequiredTag{}},
 
 		{schema: "SavedCostFilter", value: SavedCostFilter{}},

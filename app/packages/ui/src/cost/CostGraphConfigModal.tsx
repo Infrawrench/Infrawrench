@@ -31,6 +31,7 @@ import type { CostApi } from "./types.js";
 import { Modal } from "../components/Modal.js";
 import { selectBaseClass, selectClass, labelClass } from "./form-styles.js";
 import { DIMENSION_LABELS, CostFilterEditor } from "./CostFilterEditor.js";
+import { TagKeySelect } from "./TagKeyPicker.js";
 
 // The labels and the new-widget defaults live in client-core: mobile authors
 // the same widgets and can't import this package.
@@ -659,21 +660,16 @@ export function CostGraphConfigModal({
               <label htmlFor={`${uid}-tag-key`} className={labelClass}>
                 {keyedGroupBy === "tag" ? gt("Tag key") : gt("Virtual tag")}
               </label>
-              <select
+              <TagKeySelect
                 id={`${uid}-tag-key`}
                 className={selectClass}
+                options={tagKeys}
                 value={config.groupByTagKey ?? ""}
-                onChange={(e) => set({ groupByTagKey: e.target.value })}
-              >
-                <option value="">
-                  {keyedGroupBy === "tag" ? gt("Choose a tag key…") : gt("Choose a virtual tag…")}
-                </option>
-                {tagKeys.map((k) => (
-                  <option key={k.value} value={k.value}>
-                    {gtData(k.label)}
-                  </option>
-                ))}
-              </select>
+                onChange={(groupByTagKey) => set({ groupByTagKey })}
+                emptyLabel={
+                  keyedGroupBy === "tag" ? gt("Choose a tag key…") : gt("Choose a virtual tag…")
+                }
+              />
             </div>
           )}
 

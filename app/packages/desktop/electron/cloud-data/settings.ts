@@ -31,7 +31,7 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     pattern: new RegExp(
-      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|currency|cost-centres|cost-visibility|sharing|billing-rules|virtual-tags|cost-exports|ai-attribution|custom-cost-sources|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear|github-issues)(\\/|$|\\?)`,
+      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|tag-keys|currency|cost-centres|cost-visibility|sharing|billing-rules|virtual-tags|cost-exports|ai-attribution|custom-cost-sources|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear|github-issues)(\\/|$|\\?)`,
     ),
   },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/audit-logs(\\?|$)`) },
@@ -42,7 +42,8 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   // Metric pickers for the Virtual Tags section's metric splits (read-only;
   // business metrics are managed on the unit-costs page, not in Settings).
   { methods: ["GET"], pattern: new RegExp(`${ORG}/business-metrics(\\/|$|\\?)`) },
-  // Allocation-rule pickers on the Tag Policy page.
+  // Allocation-rule pickers on the Tag Policy page, and the tag key
+  // suggestions on Cost Exports.
   { methods: ["GET"], pattern: new RegExp(`${ORG}/costs/dimensions(\\?|$)`) },
   // Drift/expiry alert settings cards on the Notifications page.
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/changes/alert-settings$`) },

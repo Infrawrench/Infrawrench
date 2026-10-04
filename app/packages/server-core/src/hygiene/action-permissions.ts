@@ -72,6 +72,7 @@ export const AUDIT_ACTION_PERMISSION: Readonly<Record<string, string>> = {
   "change_freeze.end": "freezes:write",
   "change_freeze.override": "freezes:override",
   "tag_policy.update": "org:settings:write",
+  "tag_key_settings.update": "org:settings:write",
   "tag_policy.override": "tag-policy:override",
 
   // Money.

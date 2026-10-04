@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.61.0",
+    "version": "1.62.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -4070,6 +4070,14 @@
                     },
                     "label": {
                       "type": "string"
+                    },
+                    "preferred": {
+                      "type": "boolean",
+                      "description": "dimension=tag-keys only: the org pins this key (tag key settings). Preferred keys come first, in the org's order."
+                    },
+                    "hidden": {
+                      "type": "boolean",
+                      "description": "dimension=tag-keys with includeHidden=true only: the org hides this key from pickers. Its data is untouched and filters naming it still work."
                     }
                   },
                   "required": [
@@ -10844,12 +10852,21 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Tag keys on the org's resources, with its tag key settings applied: preferred keys first, hidden keys omitted."
+          },
+          "preferredTagKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The subset of `tagKeys` the org pins, in its order."
           }
         },
         "required": [
           "plugins",
-          "tagKeys"
+          "tagKeys",
+          "preferredTagKeys"
         ],
         "additionalProperties": false
       },
@@ -11257,6 +11274,143 @@
           "untaggedTotals",
           "byKey",
           "topUntagged"
+        ],
+        "additionalProperties": false
+      },
+      "DiscoveredTagKey": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Plugin ids whose cost rows or resources carry the key."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "costs",
+                "resources"
+              ]
+            }
+          },
+          "costRowCount": {
+            "type": "integer",
+            "description": "Cost rows in the lookback window carrying the key."
+          },
+          "costResourceCount": {
+            "type": "integer",
+            "description": "Distinct billed resource ids among those rows."
+          },
+          "inventoryCount": {
+            "type": "integer",
+            "description": "Synced resources whose tags or labels carry the key (newest 2,000 scanned)."
+          },
+          "lastSeen": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Most recent cost day carrying the key; null when only in the inventory."
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "hiddenBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The hidden entry (exact key or prefix pattern) that matched."
+          },
+          "preferred": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "providers",
+          "sources",
+          "costRowCount",
+          "costResourceCount",
+          "inventoryCount",
+          "lastSeen",
+          "hidden",
+          "hiddenBy",
+          "preferred"
+        ],
+        "additionalProperties": false
+      },
+      "TagKeySettings": {
+        "type": "object",
+        "properties": {
+          "hidden": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "maxItems": 200,
+            "description": "Tag keys left out of every tag picker. Each entry is an exact key (`Name`) or a prefix pattern ending in a single `*` (`aws:cloudformation:*`). A lone `*` and a `*` anywhere but the end are rejected. Matching is case-sensitive. Hidden keys' data is untouched: stored, exported, and queryable by a filter naming them.",
+            "example": [
+              "aws:cloudformation:*",
+              "aws:autoscaling:*",
+              "Name"
+            ]
+          },
+          "preferred": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "maxItems": 50,
+            "description": "Exact tag keys pinned to the top of every tag picker, in this order. A key cannot be both hidden and preferred; a preferred key under a hidden prefix stays visible.",
+            "example": [
+              "team",
+              "env",
+              "cost-centre"
+            ]
+          }
+        },
+        "required": [
+          "hidden",
+          "preferred"
+        ],
+        "additionalProperties": false
+      },
+      "DiscoveredTagKeys": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredTagKey"
+            }
+          },
+          "settings": {
+            "$ref": "#/components/schemas/TagKeySettings"
+          },
+          "lookbackDays": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "keys",
+          "settings",
+          "lookbackDays",
+          "truncated"
         ],
         "additionalProperties": false
       },
@@ -43502,7 +43656,7 @@
           "Costs"
         ],
         "summary": "List distinct values for a cost dimension",
-        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, dimension=virtual-tag-keys for the organization's virtual tag keys (labelled by name), or dimension=usage-units for the usage units providers report (a usage budget's unit); dimension=tag and dimension=virtual_tag require tagKey. `charge_type` answers from the fixed set of charge types rather than from the stored data, so the picker is populated before any provider has reported one. `usage-units` lists the usage units present in the cost data, most common first, for the `usage` measure's unit picker.\n\n_Requires permission: `costs:read`._",
+        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, which follow the org's tag key settings (preferred keys first and flagged, hidden keys omitted unless includeHidden=true), dimension=virtual-tag-keys for the organization's virtual tag keys (labelled by name), or dimension=usage-units for the usage units providers report (a usage budget's unit); dimension=tag and dimension=virtual_tag require tagKey. `charge_type` answers from the fixed set of charge types rather than from the stored data, so the picker is populated before any provider has reported one. `usage-units` lists the usage units present in the cost data, most common first, for the `usage` measure's unit picker.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -43543,6 +43697,19 @@
             },
             "required": false,
             "name": "tagKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "description": "dimension=tag-keys only: also list keys the org hides, flagged `hidden`."
+            },
+            "required": false,
+            "name": "includeHidden",
             "in": "query"
           }
         ],
@@ -51269,6 +51436,132 @@
         },
         "operationId": "getOrgOrgIdCostsUntagged",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/tag-keys": {
+      "get": {
+        "tags": [
+          "Tag Policy"
+        ],
+        "summary": "Discovered tag keys with usage",
+        "description": "Every tag key the org's cost data (trailing 90 days) and resource inventory carry, with the providers using it, row and resource counts, and whether the tag key settings hide or pin it. Preferred keys first, then by usage. Cost counts are included only when the caller also holds `costs:read`.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Discovered tag keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveredTagKeys"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdTagKeys",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/tag-keys/settings": {
+      "get": {
+        "tags": [
+          "Tag Policy"
+        ],
+        "summary": "The org's hidden and preferred tag keys",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tag key settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagKeySettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdTagKeysSettings",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "put": {
+        "tags": [
+          "Tag Policy"
+        ],
+        "summary": "Replace the org's hidden and preferred tag keys",
+        "description": "Applied to every tag-key listing the API serves (`GET /costs/dimensions?dimension=tag-keys`, the metric alert selector options, the MCP tools): preferred keys first, hidden keys omitted. A display preference only; no stored data changes.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagKeySettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagKeySettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdTagKeysSettings",
+        "x-required-permission": "org:settings:write"
       }
     },
     "/api/org/{orgId}/currency": {

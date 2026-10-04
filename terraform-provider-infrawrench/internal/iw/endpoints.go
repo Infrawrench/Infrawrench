@@ -170,6 +170,24 @@ func (c *Client) PutTagPolicy(ctx context.Context, in TagPolicy) (*TagPolicy, er
 	return &out, nil
 }
 
+/* ----------------------------- tag key settings ---------------------------- */
+
+func (c *Client) GetTagKeySettings(ctx context.Context) (*TagKeySettings, error) {
+	var out TagKeySettings
+	if err := c.Get(ctx, "/tag-keys/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutTagKeySettings(ctx context.Context, in TagKeySettings) (*TagKeySettings, error) {
+	var out TagKeySettings
+	if err := c.Put(ctx, "/tag-keys/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 /* ------------------------------ saved filters ------------------------------ */
 
 func (c *Client) GetSavedFilter(ctx context.Context, id string) (*SavedCostFilter, error) {

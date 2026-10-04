@@ -14978,5 +14978,96 @@
       },
       " non."
     ]
-  }
+  },
+  "64fe94763a8f1dee": "{key} (masquée)",
+  "2e11f0b3901701f5": "{key} (absente de la liste)",
+  "52c8729410daae1d": "Préférées",
+  "e0f9378503991179": "Toutes les clés d'étiquette",
+  "ea7c7cabe1495214": "Échec du chargement des clés d'étiquette",
+  "262986915eabf92b": "Échec de l'enregistrement des paramètres des clés d'étiquette",
+  "6179415c1647dc6c": "Clés d'étiquette",
+  "aa0d1082c24dda2d": "Clés préférées",
+  "ed9b86adff85a236": "Épinglées en haut de chaque sélecteur, dans cet ordre. Épinglez des clés depuis le tableau ci-dessous.",
+  "25cada88a8210de5": "Aucune clé préférée.",
+  "ecbf3b1029538e24": "Monter {key}",
+  "adca7334f8e7238f": "Descendre {key}",
+  "151dc69f33369c77": "Désépingler {key}",
+  "2f4c4eb372747699": "Clés masquées",
+  "be5d1c939b458c3e": "Aucune clé masquée.",
+  "e37c0ed3cd16d7a4": "({count} clés)",
+  "07562cc7a91b5c19": "Ne plus masquer {pattern}",
+  "701814603e3432dc": "Clé ou motif de préfixe à masquer",
+  "ed9d2b47672b2002": "Un * seul masquerait toutes les clés d'étiquette.",
+  "e4034a264417db29": "Les motifs peuvent contenir au maximum {max} caractères.",
+  "d8e63c3ea9f48743": "* n'est pris en charge qu'à la fin d'un motif.",
+  "f81e8697a887cbbf": "Correspond à {count} clés détectées",
+  "59f122d39ed074db": "Suggérées à partir de vos données",
+  "e24d3e9d477b0bf0": "Enregistrer les clés d'étiquette",
+  "3d8e8c4e97554034": "Clés d'étiquette détectées",
+  "88a5110537d932e0": "Toutes les clés des {days} derniers jours de données de coûts et de votre inventaire de ressources, des plus actives aux moins actives.",
+  "84848dde8c2f14ab": "Rechercher des clés",
+  "bbc17cfbae9edea5": "Toutes les clés",
+  "df1692602270e4e9": "Visibles",
+  "0692d22e0858a017": "Aucune clé d'étiquette trouvée pour l'instant. Elles apparaissent une fois collectées les données de coûts ou les ressources portant des étiquettes.",
+  "0f487f9fce378117": "Lignes de coûts",
+  "3e218c100a4206e3": "Afficher les {count} clés",
+  "f860022dd7c8866a": "Affichage des {count} clés les plus actives.",
+  "70e7f7208406f658": "Masquée par {pattern}",
+  "a10ff8b39e16d7f8": "Épingler",
+  "8b6e2fa6fc5d7dde": "Afficher",
+  "cc2dffef63f169f6": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Masquez les clés d'étiquette dont personne ne tient compte (données internes du fournisseur comme",
+      " ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "aws:cloudformation:stack-id"
+      },
+      ") et épinglez en haut celles par lesquelles votre équipe regroupe. Cela s'applique à tous les sélecteurs d'étiquettes et menus de regroupement : rapports de coûts, tableaux de bord, filtres enregistrés, budgets, alertes, règles de centres de coûts et sélecteur de ressources. Les clés masquées ne sont masquées que dans les sélecteurs ; leurs données sont conservées, exportées et toujours consultables."
+    ]
+  },
+  "d1bfcc917463263f": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Clés exactes ou préfixes se terminant par ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "*"
+      },
+      " comme",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "aws:cloudformation:*"
+      },
+      ". La correspondance est sensible à la casse."
+    ]
+  },
+  "b22055d861f201fe": [
+    "Masquer",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    },
+    " ",
+    "(",
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    },
+    " clés)"
+  ]
 }
