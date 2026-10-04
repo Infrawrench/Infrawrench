@@ -66,6 +66,7 @@ infrawrench/
 │   ├── planetscale/          # @infrawrench/plugin-planetscale
 │   ├── redis-cloud/          # @infrawrench/plugin-redis-cloud
 │   ├── workos/               # @infrawrench/plugin-workos
+│   ├── fastly/               # @infrawrench/plugin-fastly
 │   ├── snowflake/            # @infrawrench/plugin-snowflake
 │   ├── github/               # @infrawrench/plugin-github
 
@@ -1052,6 +1053,18 @@ Verified against Crusoe's published Swagger spec (`https://api.crusoecloud.com/v
 
 ---
 
+### Fastly (`@infrawrench/plugin-fastly`)
+
+Verified against Fastly's published OpenAPI clients (`fastly/fastly-js`, `src/api/*.js` and `docs/*.md`, 2026-10), which carry every path, query parameter and model field used here. Things the code does not make obvious:
+
+- **One token, two gates.** `Fastly-Key` carries an API token whose scope (`global`, `global:read`, `purge_select`, `purge_all`) is intersected with its owner's role (user, billing, engineer, superuser). Billing needs Billing or Superuser, configuration needs Engineer or Superuser, so "manage + costs" needs a Superuser. `preflight.ts` reads both (`/tokens/self`, `/current_user`) and settles costs with one `GET /billing/v3/invoices?limit=1`.
+- **Cost is period-native and stitched from two endpoints.** Closed months come from posted invoices (`/billing/v3/invoices`, cursor paged, filtered by `billing_start_date`/`billing_end_date` as `YYYY-MM-DD`), the current month from `/billing/v3/invoices/month-to-date`; every row is dated to the 1st, `restatementDays: 62` (the Mistral rule). A closed month whose invoice has not posted yet returns **nothing**, so the month-to-date rows written while it was current survive until the invoice replaces them under the same keys. The month-to-date invoice has no `currency_code`; the latest posted invoice's is used, USD when there is none.
+- **Per-service cost is not attributed.** Invoice lines carry product, product line/group and region but no service, and `/billing/v3/service-usage-metrics` answers one `(product_id, usage_type_name)` pair per request in units, not money; joining it to invoice lines would mean guessing which line a usage type bills under. Per-service numbers are traffic from the Historical Stats API instead (Metrics tab, 24-hour totals and a live panel from `rt.fastly.com`). This month's billable usage by product (`/billing/v3/usage-metrics`) is a table on the account root.
+- **Classic config endpoints take form bodies**, not JSON (`/service`, versions, dictionary and config-store items); `fastlyRaw` has `form`, `json` and `raw` (KV values are `application/octet-stream`). Purge by URL is `POST /purge/{host+path}` with the scheme stripped and `Fastly-Soft-Purge: 1` for a soft purge; several surrogate keys go to `POST /service/{id}/purge` as `{surrogate_keys}` (256 per request).
+- **Service children come from the live version**: the active version, else the newest. One `GET /service/{id}/details` per service feeds services, versions, domains and backends, memoised for 60 s on the client so one sync pass does not refetch it per type. Logging endpoints have no single list call, so they fan out over all 28 `/logging/{type}` collections per service (6,000 reads/minute is Fastly's published read limit).
+- **Dictionaries, config stores and KV stores use the generic key browser** (`kvBrowser`), so items are editable in place; write-only dictionaries can be written but not read. Secret stores list names only (Fastly never returns values).
+- **Status feed is StatusCast RSS** (`www.fastlystatus.com/rss/`), not Statuspage: items are posts, the guid's first segment is the incident, and an incident is active when its newest post does not read as finished. Retrospectives and announcements are skipped; POP incidents become a display-only `POP XXX` service.
+- **A 403 on one lister lists that type empty** (a `global:read` token limited to some services, or a role without access); 401 still throws.
 ### MongoDB Atlas (`@infrawrench/plugin-mongodb-atlas`)
 
 Verified against the Atlas Administration API v2 OpenAPI document (github.com/mongodb/openapi, `openapi/v2.json`) and MongoDB's docs (service account token, FOCUS report API), 2026-10. Things the code does not make obvious:
@@ -2985,6 +2998,7 @@ Two parallel integrations (`jira_*` / `linear_*` tables — deliberately not gen
 
 Cost collection added for **deepgram** (real USD daily), **elevenlabs** (money; successor endpoint is POST with an array `group_by`, so product type and region arrive together — on the deprecated fallback only _one_ breakdown is requested, since each is a complete decomposition and emitting both double-counts), **cartesia** (credits → money at the lowest published tier, `estimated`), **speechmatics** (hours → money; the endpoint returns a window aggregate with no buckets so daily rows are one request per day, `maxHistoryDays: 90` because history costs _requests_ here, `estimated`) and **hetzner** (inventory × `/v1/pricing`, `estimated`; emits rows **only for the day it runs** because a past month rebuilt from today's inventory omits everything deleted since — and traffic counters are _cumulative per billing period_, so those rows are dated to the period's first day and restated in place, `restatementDays: 31`; all money is scaled-integer, never float).
 
+**fastly** (Oct 2026) reads invoices for closed months and the month-to-date invoice for the current one, monthly and dated to the 1st, by product, region and `productLine`/`productGroup` tags with charge types (see the Fastly section).
 **Verified as having no usable billing API** (do not retry without new evidence): assemblyai, gladia, revai, cohere, deepseek, gemini (route via `gcp`), workos, groq, together, replicate, fly (GraphQL billing is undocumented), netlify. **Cloudinary was declined deliberately** — it is a flat subscription with an included allowance, so credits are not proportional to money and no rate makes the series correct. `mongodb`/`redis`/`kafka` are connection-string protocol plugins here, not SaaS clients, so they have no account to bill; Atlas spend comes from the separate `mongodb-atlas` plugin (billed invoice line items, Oct 2026).
 **confluent-cloud** (Oct 2026) reads the Billing Costs API daily by product, with resource ids, region joined from inventory, and environment, line type, network and cloud tags; promotional credits and support are charge types (see the Confluent Cloud section).
 **snowflake** (Oct 2026) reports billed amounts from organization usage when the role can read it and credits × user-editable prices otherwise, per service group and warehouse; see the Snowflake section.
@@ -4012,6 +4026,7 @@ spells out one verified list permission per lister in `client.ts listResources` 
 instance-group lister reads aggregated **instanceGroupManagers**, so the permission is
 `compute.instanceGroupManagers.list`, and the KMS/Tasks/Scheduler listers fan out via
 ListLocations, which has its own `*.locations.list` permission.
+**Fastly** (`fastly/src/preflight.ts`): `GET /tokens/self` (scope) and `GET /current_user` (role), evaluated as a scope x role table, then `GET /billing/v3/invoices?limit=1` to settle costs. Template: the token settings (scope, owner role) as text.
 **Cloudflare** (`cloudflare/src/preflight.ts`) — `/user/tokens/verify` (account-owned tokens
 are rejected there with code 1000 — treated as "can't verify", not invalid; non-active status
 flags every row), then per-capability probes: `/zones` + `/accounts` (Zone Read / Account

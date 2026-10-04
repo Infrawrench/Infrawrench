@@ -59,6 +59,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-deepseek"),
   () => import("@infrawrench/plugin-devin"),
   () => import("@infrawrench/plugin-elevenlabs"),
+  () => import("@infrawrench/plugin-fastly"),
   () => import("@infrawrench/plugin-fireworks"),
   () => import("@infrawrench/plugin-confluent-cloud"),
   () => import("@infrawrench/plugin-gemini"),

@@ -142,6 +142,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
     "api.in.residency.elevenlabs.io",
     "api.sg.residency.elevenlabs.io",
   ],
+  fastly: ["api.fastly.com", "rt.fastly.com"],
   fireworks: ["api.fireworks.ai"],
   "confluent-cloud": ["api.confluent.cloud", "api.telemetry.confluent.cloud"],
   gemini: ["generativelanguage.googleapis.com"],

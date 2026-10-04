@@ -76,6 +76,7 @@ describe("plugin loader", () => {
       "deepseek",
       "devin",
       "elevenlabs",
+      "fastly",
       "fireworks",
       "confluent-cloud",
       "gemini",

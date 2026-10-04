@@ -139,6 +139,7 @@
     "@infrawrench/plugin-digitalocean": "workspace:*",
     "@infrawrench/plugin-docker": "workspace:*",
     "@infrawrench/plugin-elevenlabs": "workspace:*",
+    "@infrawrench/plugin-fastly": "workspace:*",
     "@infrawrench/plugin-fireworks": "workspace:*",
     "@infrawrench/plugin-confluent-cloud": "workspace:*",
     "@infrawrench/plugin-fly": "workspace:*",

@@ -96,6 +96,7 @@ vi.mock("@infrawrench/plugin-gemini", () => stub("gemini"));
 vi.mock("@infrawrench/plugin-fireworks", () => stub("fireworks"));
 vi.mock("@infrawrench/plugin-confluent-cloud", () => stub("confluent-cloud"));
 vi.mock("@infrawrench/plugin-elevenlabs", () => stub("elevenlabs"));
+vi.mock("@infrawrench/plugin-fastly", () => stub("fastly"));
 vi.mock("@infrawrench/plugin-devin", () => stub("devin"));
 vi.mock("@infrawrench/plugin-deepseek", () => stub("deepseek"));
 vi.mock("@infrawrench/plugin-deepgram", () => stub("deepgram"));
