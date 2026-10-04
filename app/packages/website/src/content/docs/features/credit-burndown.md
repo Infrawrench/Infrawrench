@@ -14,7 +14,7 @@ Find it on the **Costs** panel, above the savings sections — those are about s
 
 ## Which providers
 
-Only the ones that expose a balance. At present: **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI** and **ClickHouse Cloud**. The section renders nothing at all if none of your accounts is on a credit-capable provider — a permanently empty card just teaches people to scroll past that part of the page.
+Only the ones that expose a balance. At present: **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI**, **ClickHouse Cloud** and **Elastic Cloud** (prepaid ECUs, one pot per order line with its expiry). The section renders nothing at all if none of your accounts is on a credit-capable provider — a permanently empty card just teaches people to scroll past that part of the page.
 
 Each provider's own word for the pot is used, because that is the word you will be looking for in their console: "Credits" on OpenRouter, "Balance" on DeepSeek and Deepgram.
 

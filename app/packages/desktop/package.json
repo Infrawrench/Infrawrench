@@ -130,6 +130,7 @@
     "@infrawrench/plugin-deepgram": "workspace:*",
     "@infrawrench/plugin-deepseek": "workspace:*",
     "@infrawrench/plugin-digitalocean": "workspace:*",
+    "@infrawrench/plugin-elastic-cloud": "workspace:*",
     "@infrawrench/plugin-docker": "workspace:*",
     "@infrawrench/plugin-elevenlabs": "workspace:*",
     "@infrawrench/plugin-fireworks": "workspace:*",

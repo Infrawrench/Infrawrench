@@ -152,6 +152,8 @@ export const typewriterStrings: string[] = [
   "Databricks Tables",
   "ClickHouse Services",
   "ClickHouse Databases",
+  "Elastic Cloud Deployments",
+  "Elastic Serverless Projects",
   "Neon Branches",
   "Neon Endpoints",
   "Neon Databases",

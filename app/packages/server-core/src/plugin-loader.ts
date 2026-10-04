@@ -31,6 +31,7 @@ import { plugin as netlifyPlugin } from "@infrawrench/plugin-netlify";
 import { plugin as cloudinaryPlugin } from "@infrawrench/plugin-cloudinary";
 import { plugin as clickhousePlugin } from "@infrawrench/plugin-clickhouse";
 import { plugin as opensearchPlugin } from "@infrawrench/plugin-opensearch";
+import { plugin as elasticCloudPlugin } from "@infrawrench/plugin-elastic-cloud";
 import { plugin as anthropicPlugin } from "@infrawrench/plugin-anthropic";
 import { plugin as assemblyaiPlugin } from "@infrawrench/plugin-assemblyai";
 import { plugin as cartesiaPlugin } from "@infrawrench/plugin-cartesia";
@@ -90,6 +91,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   cloudinaryPlugin,
   clickhousePlugin,
   opensearchPlugin,
+  elasticCloudPlugin,
   anthropicPlugin,
   assemblyaiPlugin,
   cartesiaPlugin,

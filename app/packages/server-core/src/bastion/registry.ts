@@ -109,6 +109,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   cartesia: ["api.cartesia.ai"],
   cohere: ["api.cohere.com"],
   deepgram: ["api.deepgram.com"],
+  "elastic-cloud": ["api.elastic-cloud.com", "billing.elastic-cloud.com"],
   deepseek: ["api.deepseek.com"],
   elevenlabs: [
     "api.elevenlabs.io",
