@@ -27,20 +27,22 @@ To re-run it later — after rotating a token or tightening a policy — open th
 The same panel generates the exact credential template for the capabilities you want, ready to paste into the provider console. Tick the capabilities the account should have and copy the result:
 
 - **AWS** — an IAM policy JSON document. Attach it as an inline policy on the IAM user or role whose keys you entered.
-- **GCP** — a custom role definition in YAML for `gcloud iam roles create --file`, then grant the role to the service account. (Cost reporting also needs the role, or BigQuery Data Viewer, on the billing export dataset.)
-- **Cloudflare** — a token template: the permission-group list plus a link that opens Cloudflare's token creator with those scopes pre-filled.
-- **GitHub**: the fine-grained token permissions to grant for an organization account, and the classic token scopes for an enterprise account, plus a link to GitHub's token creator.
+- **GCP** — a custom role definition in YAML for `gcloud iam roles create --file`, then grant the role to the service account. Cost reporting also needs the role or BigQuery Data Viewer on the billing export dataset.
+- **Cloudflare** — a token template with the permission-group list and a link to Cloudflare's token creator.
+- **GitHub** — fine-grained token permissions for an organization account or classic token scopes for an enterprise account, plus a link to GitHub's token creator.
+- **CoreWeave** — IAM roles to grant the token owner in an IAM access policy (CKS Viewer or CKS Admin, Billing Viewer, Object Storage Admin, Observability Viewer).
+- **Linode** — personal access token scopes (for example `linodes:read_write`, `account:read_only`) to select under your profile's API Tokens page.
 
 ![Least-privilege template generator with the costs capability deselected and the generated AWS IAM policy JSON shown with a Copy button](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/credential-preflight/policy-template-generator.png)
 
-Deselecting a capability removes its permissions from the template — least privilege is about what you leave out. The generated AWS template also includes `iam:SimulatePrincipalPolicy` so future preflights can report exact per-permission results instead of falling back to sample probes.
+Deselecting a capability removes its permissions from the template. The generated AWS template also includes `iam:SimulatePrincipalPolicy` so future preflights can report exact per-permission results instead of falling back to sample probes.
 
 ## Which plugins support it
 
-[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), [Cloudflare](../plugins/cloudflare.md) and [GitHub](../plugins/github.md) ship full support (checklist + generator) today. Each plugin page lists the exact permissions behind every capability. Other plugins simply don't show the panel — nothing changes for them until they declare their permission metadata.
+[AWS](../plugins/aws.md), [Google Cloud](../plugins/gcp.md), [Cloudflare](../plugins/cloudflare.md), [GitHub](../plugins/github.md), [CoreWeave](../plugins/coreweave.md) and [Linode](../plugins/linode.md) ship full support today. Each plugin page lists the exact permissions behind its capabilities.
 
 ## How it works
 
-- Probes are **read-only**: AWS uses `sts:GetCallerIdentity` plus `iam:SimulatePrincipalPolicy` (falling back to cheap sample reads when the simulator isn't allowed), GCP uses `projects.testIamPermissions`, Cloudflare verifies the token and issues one minimal read per capability. GitHub reads the token's user, then issues one minimal read per capability against the organization or enterprise.
-- On the web app the probe runs server-side against the submitted or stored credentials — credentials never round-trip back to the browser. On desktop it runs locally, in-process, exactly like resource listing does.
+- Probes are **read-only**. AWS uses `sts:GetCallerIdentity` plus `iam:SimulatePrincipalPolicy` (falling back to sample reads if simulation is not allowed); GCP uses `projects.testIamPermissions`; Cloudflare verifies the token and issues one minimal read per capability; GitHub reads the token's user then probes the organization or enterprise; CoreWeave probes its Cloud API, usage export and metrics service; Linode reads your profile and issues one minimal list call per capability.
+- On the web app, the probe runs server-side against submitted or stored credentials. Credentials never round-trip to the browser. On desktop, it runs locally, in-process.
 - Preflight results are computed on demand and not stored.
