@@ -98,6 +98,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   planetscale: ["api.planetscale.com"],
   cloudflare: ["api.cloudflare.com"],
   cloudinary: ["api.cloudinary.com"],
+  crusoe: ["api.cloud.crusoe.ai"],
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
   neon: ["console.neon.tech"],
   turso: ["api.turso.tech"],

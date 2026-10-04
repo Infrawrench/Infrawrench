@@ -117,6 +117,8 @@ export const typewriterStrings: string[] = [
   "Hetzner Volumes",
   "Hetzner Floating IPs",
   "Hetzner Firewalls",
+  "Crusoe GPU VMs",
+  "Crusoe Kubernetes Node Pools",
   "Scaleway Kubernetes Clusters",
   "Scaleway Managed Databases",
   "Scaleway Object Storage",

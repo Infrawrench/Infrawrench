@@ -52,6 +52,12 @@ describe("SSH endpoint parity", () => {
       privateHostOutputKey: "ipv4Private",
     },
     {
+      pluginId: "crusoe",
+      resourceTypeId: "vm",
+      hostOutputKey: "publicIp",
+      privateHostOutputKey: "privateIp",
+    },
+    {
       pluginId: "gcp",
       resourceTypeId: "gce-instance",
       hostOutputKey: "externalIp",
