@@ -23,6 +23,7 @@ import { plugin as redisPlugin } from "@infrawrench/plugin-redis";
 import { plugin as scalewayPlugin } from "@infrawrench/plugin-scaleway";
 import { plugin as sshPlugin } from "@infrawrench/plugin-ssh";
 import { plugin as tailscalePlugin } from "@infrawrench/plugin-tailscale";
+import { plugin as snowflakePlugin } from "@infrawrench/plugin-snowflake";
 import { plugin as databricksPlugin } from "@infrawrench/plugin-databricks";
 import { plugin as depotPlugin } from "@infrawrench/plugin-depot";
 import { plugin as coreweavePlugin } from "@infrawrench/plugin-coreweave";
@@ -95,6 +96,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   sshPlugin,
   tailscalePlugin,
   databricksPlugin,
+  snowflakePlugin,
   depotPlugin,
   coreweavePlugin,
   tursoPlugin,

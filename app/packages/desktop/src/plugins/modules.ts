@@ -33,6 +33,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-ovh"),
   () => import("@infrawrench/plugin-oracle-cloud"),
   () => import("@infrawrench/plugin-databricks"),
+  () => import("@infrawrench/plugin-snowflake"),
   () => import("@infrawrench/plugin-depot"),
   () => import("@infrawrench/plugin-coreweave"),
   () => import("@infrawrench/plugin-turso"),

@@ -62,6 +62,7 @@ vi.mock("@infrawrench/plugin-cloudflare", () => stub("cloudflare"));
 vi.mock("@infrawrench/plugin-ovh", () => stub("ovh"));
 vi.mock("@infrawrench/plugin-oracle-cloud", () => stub("oracle-cloud"));
 vi.mock("@infrawrench/plugin-databricks", () => stub("databricks"));
+vi.mock("@infrawrench/plugin-snowflake", () => stub("snowflake"));
 vi.mock("@infrawrench/plugin-depot", () => stub("depot"));
 vi.mock("@infrawrench/plugin-coreweave", () => stub("coreweave"));
 vi.mock("@infrawrench/plugin-turso", () => stub("turso"));

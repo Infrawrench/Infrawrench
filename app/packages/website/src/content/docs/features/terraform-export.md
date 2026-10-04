@@ -45,6 +45,7 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 | PlanetScale  | `planetscale/planetscale`   | Vitess branches and branch passwords                                                                                                                   |
 | ClickHouse   | `ClickHouse/clickhouse`     | Cloud services (`clickhouse_service`)                                                                                                                  |
 | Databricks   | `databricks/databricks`     | Clusters, SQL warehouses, catalogs, schemas                                                                                                            |
+| Snowflake    | `snowflakedb/snowflake`     | Warehouses, databases, schemas, resource monitors                                                                                                      |
 | Netlify      | `netlify/netlify`           | DNS zones, DNS records, environment variables                                                                                                          |
 | Crusoe Cloud | `crusoecloud/crusoe`        | Projects, VMs, disks, VPC networks, subnets, firewall rules, Kubernetes clusters, node pools                                                           |
 | CoreWeave    | `coreweave/coreweave`       | CKS clusters, VPCs, AI Object Storage buckets                                                                                                          |

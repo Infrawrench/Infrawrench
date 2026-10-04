@@ -14,6 +14,7 @@ Find it on the **Costs** panel, above the savings sections — those are about s
 
 ## Which providers
 
+Only the providers that expose a balance appear here. Current sources are **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI**, **ClickHouse Cloud**, **Snowflake** (contract capacity, rollover and free usage, if the connection role can read org usage), **Crusoe Cloud**, **Linode** (active promotions and account credit) and **Oracle Cloud** (Universal Credits commitments, per subscription line, with the line end date as expiry). The section is hidden when none of your accounts uses a credit-capable provider.
 Only the ones that expose a balance. At present: **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI**, **ClickHouse Cloud**, **Crusoe Cloud**, **Linode** (active promotions and account credit) and **Oracle Cloud** (Universal Credits commitments, per subscription line, with the line's end date as its expiry). The section renders nothing at all if none of your accounts is on a credit-capable provider — a permanently empty card just teaches people to scroll past that part of the page.
 
 Each provider's own word for the pot is used, because that is the word you will be looking for in their console: "Credits" on OpenRouter, "Balance" on DeepSeek and Deepgram.

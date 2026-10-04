@@ -241,6 +241,7 @@
     "@infrawrench/plugin-crusoe": "workspace:*",
     "@infrawrench/plugin-cursor": "workspace:*",
     "@infrawrench/plugin-databricks": "workspace:*",
+    "@infrawrench/plugin-snowflake": "workspace:*",
     "@infrawrench/plugin-depot": "workspace:*",
     "@infrawrench/plugin-deepgram": "workspace:*",
     "@infrawrench/plugin-deepseek": "workspace:*",

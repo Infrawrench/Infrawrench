@@ -56,6 +56,7 @@ describe("plugin loader", () => {
       "ovh",
       "oracle-cloud",
       "databricks",
+      "snowflake",
       "depot",
       "coreweave",
       "turso",

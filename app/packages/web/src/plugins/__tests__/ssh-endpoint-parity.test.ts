@@ -141,6 +141,7 @@ describe("SSH endpoint parity", () => {
     "turso",
     "kubernetes",
     "databricks",
+    "snowflake",
     "depot",
     "coreweave",
     "anthropic",
