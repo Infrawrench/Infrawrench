@@ -86,6 +86,12 @@ interface K8sApiRequest {
   headers: Record<string, string>;
   body?: string | Uint8Array;
   caCert?: string; // PEM-encoded CA certificate
+  /**
+   * `"binary"` returns the raw bytes in `rawBody` (and an empty `body`), as
+   * `HttpHostServices.request` promises; plugins that speak a binary protocol
+   * (Modal's gRPC) would otherwise get it mangled by a UTF-8 decode.
+   */
+  responseEncoding?: "utf8" | "binary";
 }
 
 ipcMain.handle(
@@ -93,7 +99,12 @@ ipcMain.handle(
   (
     _event,
     req: K8sApiRequest,
-  ): Promise<{ status: number; headers: Record<string, string>; body: string }> => {
+  ): Promise<{
+    status: number;
+    headers: Record<string, string>;
+    body: string;
+    rawBody?: Uint8Array;
+  }> => {
     let parsed: URL;
     try {
       parsed = new URL(req.url);
@@ -157,11 +168,17 @@ ipcMain.handle(
                   if (v == null) continue;
                   headers[k] = Array.isArray(v) ? v.join(", ") : String(v);
                 }
-                resolve({
-                  status: res.statusCode ?? 0,
-                  headers,
-                  body: Buffer.concat(chunks).toString("utf8"),
-                });
+                const bytes = Buffer.concat(chunks);
+                resolve(
+                  req.responseEncoding === "binary"
+                    ? {
+                        status: res.statusCode ?? 0,
+                        headers,
+                        body: "",
+                        rawBody: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length),
+                      }
+                    : { status: res.statusCode ?? 0, headers, body: bytes.toString("utf8") },
+                );
               });
             });
 

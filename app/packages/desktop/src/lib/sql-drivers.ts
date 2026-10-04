@@ -106,11 +106,19 @@ function httpRequest(req: {
   headers: Record<string, string>;
   body?: string | Uint8Array;
   caCert?: string;
-}): Promise<{ status: number; headers: Record<string, string>; body: string }> {
-  return invoke<{ status: number; headers: Record<string, string>; body: string }>(
-    "k8s_api_request",
-    req,
-  );
+  responseEncoding?: "utf8" | "binary";
+}): Promise<{
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  rawBody?: Uint8Array;
+}> {
+  return invoke<{
+    status: number;
+    headers: Record<string, string>;
+    body: string;
+    rawBody?: Uint8Array;
+  }>("k8s_api_request", req);
 }
 
 const httpHostServices = { http: { request: httpRequest } };

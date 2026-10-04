@@ -49,6 +49,7 @@ A resource is flagged when the provider plugin's heuristic matches the resource'
 | Google Cloud | Persistent disks attached to no instance; static external IPs in `RESERVED` (unused) state — internal IPs are free |
 | Azure        | App Service Plans with no web app or function app assigned — Free and consumption tiers are not flagged            |
 | Crusoe Cloud | Disks attached to no VM; stopped VMs (compute stops billing, but their disks keep billing for storage)             |
+| Linode       | Powered-off Linodes (billed in full until deleted); volumes attached to nothing; NodeBalancers with no backends; unassigned reserved IPs |
 
 Heuristics are declared by each plugin, so coverage grows as plugins do — a provider that knows another "this is idle" signal can add it without any host changes.
 

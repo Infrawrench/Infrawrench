@@ -10,11 +10,13 @@ import { plugin as gcpPlugin } from "@infrawrench/plugin-gcp";
 import { plugin as hetznerPlugin } from "@infrawrench/plugin-hetzner";
 import { plugin as kafkaPlugin } from "@infrawrench/plugin-kafka";
 import { plugin as kubernetesPlugin } from "@infrawrench/plugin-kubernetes";
+import { plugin as linodePlugin } from "@infrawrench/plugin-linode";
 import { plugin as memcachedPlugin } from "@infrawrench/plugin-memcached";
 import { plugin as mongodbPlugin } from "@infrawrench/plugin-mongodb";
 import { plugin as mysqlPlugin } from "@infrawrench/plugin-mysql";
 import { plugin as mssqlPlugin } from "@infrawrench/plugin-mssql";
 import { plugin as neonPlugin } from "@infrawrench/plugin-neon";
+import { plugin as oracleCloudPlugin } from "@infrawrench/plugin-oracle-cloud";
 import { plugin as ovhPlugin } from "@infrawrench/plugin-ovh";
 import { plugin as postgresPlugin } from "@infrawrench/plugin-postgres";
 import { plugin as redisPlugin } from "@infrawrench/plugin-redis";
@@ -22,6 +24,7 @@ import { plugin as scalewayPlugin } from "@infrawrench/plugin-scaleway";
 import { plugin as sshPlugin } from "@infrawrench/plugin-ssh";
 import { plugin as tailscalePlugin } from "@infrawrench/plugin-tailscale";
 import { plugin as databricksPlugin } from "@infrawrench/plugin-databricks";
+import { plugin as coreweavePlugin } from "@infrawrench/plugin-coreweave";
 import { plugin as tursoPlugin } from "@infrawrench/plugin-turso";
 import { plugin as planetscalePlugin } from "@infrawrench/plugin-planetscale";
 import { plugin as azurePlugin } from "@infrawrench/plugin-azure";
@@ -44,6 +47,7 @@ import { plugin as geminiPlugin } from "@infrawrench/plugin-gemini";
 import { plugin as gladiaPlugin } from "@infrawrench/plugin-gladia";
 import { plugin as groqPlugin } from "@infrawrench/plugin-groq";
 import { plugin as mistralPlugin } from "@infrawrench/plugin-mistral";
+import { plugin as modalPlugin } from "@infrawrench/plugin-modal";
 import { plugin as openaiPlugin } from "@infrawrench/plugin-openai";
 import { plugin as openrouterPlugin } from "@infrawrench/plugin-openrouter";
 import { plugin as replicatePlugin } from "@infrawrench/plugin-replicate";
@@ -70,11 +74,13 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   hetznerPlugin,
   kafkaPlugin,
   kubernetesPlugin,
+  linodePlugin,
   memcachedPlugin,
   mongodbPlugin,
   mysqlPlugin,
   mssqlPlugin,
   neonPlugin,
+  oracleCloudPlugin,
   ovhPlugin,
   postgresPlugin,
   redisPlugin,
@@ -82,6 +88,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   sshPlugin,
   tailscalePlugin,
   databricksPlugin,
+  coreweavePlugin,
   tursoPlugin,
   planetscalePlugin,
   azurePlugin,
@@ -104,6 +111,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   gladiaPlugin,
   groqPlugin,
   mistralPlugin,
+  modalPlugin,
   openaiPlugin,
   openrouterPlugin,
   replicatePlugin,
