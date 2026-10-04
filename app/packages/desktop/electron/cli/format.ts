@@ -624,6 +624,14 @@ export function formatBudgetWarning(
 export const KEYED_GROUP_DIMENSIONS = ["tag", "virtual_tag"] as const;
 
 /**
+ * Group-by prefixes that are tags under another name: Kubernetes node and
+ * PersistentVolumeClaim labels, stored as `k8s_node_label:<key>` and
+ * `k8s_pvc_label:<key>` tags. A restatement of client-core's
+ * `COST_TAG_ALIASES` keys, for the same reason as the list above.
+ */
+export const K8S_LABEL_GROUP_ALIASES = ["k8s_node_label", "k8s_pvc_label"] as const;
+
+/**
  * Parse a `--group-by` value into the dimension and, for a keyed dimension,
  * its key. Accepts `virtual_tag:team`, `virtual_tag=team` and the query
  * language's own spelling, `virtual_tag['team']`, so a key copied from a
@@ -637,28 +645,40 @@ export function parseGroupByFlag(
   plain: readonly string[],
 ): { groupBy: string; tagKey?: string } | { error: string } {
   const value = raw.trim();
-  const bracket = /^([a-z_]+)\[\s*(['"])(.*)\2\s*\]$/.exec(value);
-  const separated = /^([a-z_]+)[:=](.*)$/.exec(value);
+  // Dimension names may carry digits: `k8s_node_label`.
+  const bracket = /^([a-z0-9_]+)\[\s*(['"])(.*)\2\s*\]$/.exec(value);
+  const separated = /^([a-z0-9_]+)[:=](.*)$/.exec(value);
   const match = bracket
     ? { dimension: bracket[1]!, key: bracket[3]!.trim() }
     : separated
       ? { dimension: separated[1]!, key: separated[2]!.trim() }
       : null;
   const keyed: readonly string[] = KEYED_GROUP_DIMENSIONS;
-  const allowed = ["none", ...plain, ...KEYED_GROUP_DIMENSIONS.map((d) => `${d}:<key>`)].join(", ");
+  const aliases: readonly string[] = K8S_LABEL_GROUP_ALIASES;
+  const allowed = [
+    "none",
+    ...plain,
+    ...[...KEYED_GROUP_DIMENSIONS, ...K8S_LABEL_GROUP_ALIASES].map((d) => `${d}:<key>`),
+  ].join(", ");
 
   if (match) {
+    // `k8s_node_label:team` is shorthand for the tag `k8s_node_label:team`,
+    // the query language's `k8s_node_label['team']`: a tag grouping.
+    if (aliases.includes(match.dimension)) {
+      if (!match.key) return { error: `--group-by ${match.dimension} needs a label key.` };
+      return { groupBy: "tag", tagKey: `${match.dimension}:${match.key}` };
+    }
     if (!keyed.includes(match.dimension)) {
       return { error: `--group-by ${match.dimension} takes no key. Use one of ${allowed}.` };
     }
     if (!match.key) return { error: `--group-by ${match.dimension} needs a key after the colon.` };
     return { groupBy: match.dimension, tagKey: match.key };
   }
-  if (keyed.includes(value)) {
+  if (keyed.includes(value) || aliases.includes(value)) {
     const hint =
       value === "virtual_tag"
         ? "`infrawrench virtual-tags` lists the keys"
-        : "`infrawrench tags` lists the policy keys";
+        : "`infrawrench costs tag-keys` lists the keys your cost data carries";
     return { error: `--group-by ${value} needs a key, like ${value}:team (${hint}).` };
   }
   if (value === "none" || plain.includes(value)) return { groupBy: value };

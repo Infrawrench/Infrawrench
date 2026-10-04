@@ -262,6 +262,12 @@ It shows, per namespace and per workload: what was requested, what is actually u
 
 Folding any of them into another would hide all three.
 
+### By node group
+
+On the cluster's tab, a **By node group** table splits the machines by node pool and capacity type (spot, on-demand or reserved): how many nodes, what they cost per day, how much of that is idle, and how much is held by requests nothing uses. Idle capacity belongs to a pool, not to a workload, and the pool is what you resize, so this is the table that says "the spot pool is 40% idle" or "the on-demand pool carries all the waste". Nodes with no pool label are grouped by instance type. The same table is in the **Share** text.
+
+<insert [Cluster Efficiency tab scrolled to the "By node group — most idle first" table, showing a spot pool and an on-demand pool with their idle percentages and idle cost per day] here>
+
 ### Sharing it
 
 The tab ends with a **Share** block: the whole report as fixed-width text, with a copy button. Figures, caveats and the timestamp travel together, so it can be pasted into a ticket or a Slack thread without a screenshot that goes stale without saying so.
@@ -324,6 +330,8 @@ The dimensions it reports:
 | Tag `system`        | `true` for the control-plane namespaces                                        |
 | Tag `gpu_model`     | On GPU rows: the GPU model (`a100-80gb`, `t4`, …), or `mixed`                  |
 
+Node and volume labels are dimensions too; see [Node and volume labels](#node-and-volume-labels) below.
+
 The service labels **partition** the bill — every unit of money appears under exactly one, so they can be summed without double-counting:
 
 | Service                      | Is                                                                    |
@@ -348,6 +356,43 @@ infrawrench costs --where "provider = 'kubernetes'" --group-by tag:gpu_model
 
 The same allocation reaches the MCP tools: `query_costs` groups and filters by these services and tags, and `get_resource_stats` / `get_resource_metrics` on a cluster, namespace or workload return the GPU stats and series.
 
+## Node and volume labels
+
+A namespace is only one way to slice a cluster. The same money can be cut by what the pods ran **on** (a node pool, spot versus on-demand, a team's dedicated nodes) and by what the volumes **are** (the app a claim belongs to, its storage class). Each daily snapshot records both as tags, so every cost surface can group and filter by them: cost graphs, saved filters, budgets, allocation rules, billing rules, the query language, the CLI and the in-app agent.
+
+### What is always recorded
+
+Every row derived from a node (a workload's compute share, idle capacity, system-reserved capacity) carries the node's shape, read from whichever provider labels are present so you never need to know what EKS, GKE or AKS call them:
+
+| Tag             | Value                                                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `node_pool`     | The node pool or node group: Karpenter NodePool, EKS node group, GKE node pool, AKS agent pool, DOKS, Kapsule, OVHcloud, LKE |
+| `capacity_type` | `spot`, `on-demand` or `reserved`; absent when no provider label says                                                        |
+| `instance_type` | The machine type                                                                                                             |
+| `zone`          | The availability zone                                                                                                        |
+
+Every volume row carries `storage_class`.
+
+A workload whose pods run on several kinds of node is written as one row per kind, under the same resource, so its spot and on-demand compute can be told apart. The rows still add up to the same total: nothing is apportioned or estimated, each pod's share is simply filed under the node it was bought from. Idle and system-reserved capacity are split the same way, so "how much idle spot capacity are we paying for" is one group-by.
+
+### Choosing which labels to record
+
+Any node label or PersistentVolumeClaim label can become a dimension too. They are recorded as tags named `k8s_node_label:<label key>` and `k8s_pvc_label:<label key>`. Which keys are recorded is a per-cluster setting: open the Kubernetes account, choose **Update credentials**, and use the **Node labels for cost** and **Volume labels for cost** pickers. They list the label keys actually present on the cluster, most common first, with a few sample values, so there is nothing to look up.
+
+<insert [Update credentials modal on a Kubernetes account with the "Node labels for cost" picker open, listing label keys like team and karpenter.sh/nodepool with their node counts and sample values] here>
+
+Left blank, each uses a short default: the standard topology and architecture labels for nodes, the `app.kubernetes.io/*` labels for claims, and `team`, `owner`, `environment` and `cost-center` for both, wherever your objects carry them. Choose **none** to record no extra labels.
+
+**Why there is a limit.** Node labels split rows, so a label that is different on every node (`kubernetes.io/hostname`, a node or instance id) would turn every workload into one row per node per day. Those per-node keys are never recorded and are not offered in the picker, and each setting is capped at 20 keys. Changing the setting takes effect from the next daily collection; earlier days keep the labels they were collected with.
+
+### Using them
+
+- **Cost graphs:** group by **Tag** and pick the key. The tag-key picker groups Kubernetes node and volume labels under their own headings.
+- **Filters, saved filters and budgets:** add a **Tag** filter row; the key box suggests every key in your cost data.
+- **Query language:** `k8s_node_label['team'] = 'payments'` is shorthand for `tag['k8s_node_label:team'] = 'payments'`, and `k8s_pvc_label['app.kubernetes.io/name'] = 'postgres'` likewise. The normalised tags are plain tags: `tag['capacity_type'] = 'spot'`.
+- **Allocation rules:** match a cost centre on a node or volume label from the Tag Policy page, for example everything on nodes labelled `team=data`.
+- **CLI:** `infrawrench costs --group-by tag:capacity_type` groups by a plain tag, and `--group-by k8s_node_label:team` or `--group-by k8s_pvc_label:app.kubernetes.io/name` by a label. `infrawrench costs tag-keys` lists every key with the `--group-by` value that selects it (add `--json` for scripts).
+
 **There is no history to backfill.** The Kubernetes API describes what is running right now, not what ran last Tuesday. Each daily collection appends one honest snapshot, and the series builds up from the day you connect the account. Unlike a provider that can restate a week of invoices, there is nothing here to restate.
 
 ## Limitations
@@ -362,6 +407,7 @@ The same allocation reaches the MCP tools: `query_costs` groups and filters by t
 - **Volume _utilisation_ is not measured.** Storage is priced on what is provisioned, which is what is billed — but the cluster API cannot tell you how full a 500Gi disk is, so a mostly-empty volume is not flagged the way an over-requested workload is. The kubelet exposes that on its Prometheus endpoint, which is not part of the Kubernetes API.
 - **Volumes and load balancers do not appear as browsable resources.** They are cost objects here, on the cluster's tables and tabs, not entries in the sidebar with their own detail pages.
 - **A pod on a node that has since been drained** is listed with its requests but carries no cost — there is no machine left to take the money from.
+- **Labels are as of the collection.** A node relabelled at noon is recorded with whatever labels it had when the day's snapshot was taken.
 - **Everything is still a snapshot.** The cluster has no history, so each daily collection appends one honest day. A volume deleted this morning simply stops appearing tomorrow.
 
 ## See also

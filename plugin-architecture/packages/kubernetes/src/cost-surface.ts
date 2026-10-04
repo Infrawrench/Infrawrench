@@ -20,6 +20,7 @@ import type {
 } from "./cost-model.js";
 import { formatDailyCost, formatEfficiency, isOverRequested, workloadKey } from "./cost-model.js";
 import type { RateSource } from "./node-rates.js";
+import type { NodeAttributes } from "./cost-labels.js";
 import type { UtilizationStatus } from "./metrics-api.js";
 import type { GpuMetricsSource } from "./gpu-metrics.js";
 import type { ResourceStatus } from "@infrawrench/plugin-base";
@@ -52,6 +53,11 @@ export interface CostIndex {
   workloads: Map<string, WorkloadAllocation>;
   /** namespace name → namespace. */
   namespaces: Map<string, NamespaceAllocation>;
+  /**
+   * Node name → normalised shape (pool, capacity type, instance type, zone).
+   * Optional: the efficiency report omits its node-group section without it.
+   */
+  nodeAttributes?: Map<string, NodeAttributes>;
 }
 
 export function buildCostIndex(

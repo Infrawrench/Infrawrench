@@ -1,6 +1,11 @@
 import { useEffect, useId, useState } from "react";
 import { useGT } from "gt-react";
-import { groupTagKeyOptions } from "@infrawrench/client-core";
+import {
+  describeCostTagKey,
+  groupCostTagKeys,
+  groupTagKeyOptions,
+  type CostTagKeyGroup,
+} from "@infrawrench/client-core";
 import type { CostDimensionOption } from "./config.js";
 
 /**
@@ -57,7 +62,13 @@ export interface TagKeySelectProps {
   "aria-label"?: string | undefined;
 }
 
-/** A `<select>` of tag keys with the org's preferred keys in their own group. */
+/**
+ * A `<select>` of tag keys: the org's preferred keys in their own group first,
+ * then the rest grouped by kind, so Kubernetes node and volume labels (stored
+ * as `k8s_node_label:<key>` / `k8s_pvc_label:<key>` tags) read as labels
+ * rather than long prefixed strings. The option value is always the real key,
+ * so whatever is saved stays exactly what it was.
+ */
 export function TagKeySelect({
   options,
   value,
@@ -70,11 +81,24 @@ export function TagKeySelect({
   const gt = useGT();
   const { preferred, others } = groupTagKeyOptions(options);
   const missing = value !== "" && !options.some((o) => o.value === value);
+  const kindLabels: Record<CostTagKeyGroup, string> = {
+    tag: gt("Tags"),
+    k8s: gt("Kubernetes"),
+    k8s_node_label: gt("Kubernetes node labels"),
+    k8s_pvc_label: gt("Kubernetes volume labels"),
+  };
+  // A raw key gets its readable name; an option that already carries its own
+  // label (a virtual tag's name) keeps it.
+  const nameOf = (o: CostDimensionOption) =>
+    o.label === o.value ? describeCostTagKey(o.value).name : o.label;
   const render = (o: CostDimensionOption) => (
     <option key={o.value} value={o.value}>
-      {o.hidden ? gt("{key} (hidden)", { key: o.label }) : o.label}
+      {o.hidden ? gt("{key} (hidden)", { key: nameOf(o) }) : nameOf(o)}
     </option>
   );
+  const byValue = new Map(others.map((o) => [o.value, o]));
+  const kinds = groupCostTagKeys(others.map((o) => o.value));
+  const kindGrouped = !(kinds.length <= 1 && (kinds[0]?.group ?? "tag") === "tag");
   return (
     <select
       id={id}
@@ -85,16 +109,18 @@ export function TagKeySelect({
     >
       <option value="">{emptyLabel}</option>
       {missing && <option value={value}>{gt("{key} (not in the list)", { key: value })}</option>}
-      {preferred.length > 0 ? (
-        <>
-          <optgroup label={gt("Preferred")}>{preferred.map(render)}</optgroup>
-          {others.length > 0 && (
-            <optgroup label={gt("All tag keys")}>{others.map(render)}</optgroup>
-          )}
-        </>
-      ) : (
-        others.map(render)
-      )}
+      {preferred.length > 0 && <optgroup label={gt("Preferred")}>{preferred.map(render)}</optgroup>}
+      {kindGrouped
+        ? kinds.map((g) => (
+            <optgroup key={g.group} label={kindLabels[g.group]}>
+              {g.keys.map((k) => render(byValue.get(k.key)!))}
+            </optgroup>
+          ))
+        : preferred.length > 0
+          ? others.length > 0 && (
+              <optgroup label={gt("All tag keys")}>{others.map(render)}</optgroup>
+            )
+          : others.map(render)}
     </select>
   );
 }
@@ -143,7 +169,11 @@ export function TagKeyInput({
             <option
               key={o.value}
               value={o.value}
-              label={o.preferred ? gt("Preferred") : undefined}
+              label={
+                o.preferred
+                  ? gt("{key} (preferred)", { key: describeCostTagKey(o.value).name })
+                  : describeCostTagKey(o.value).name
+              }
             />
           ))}
         </datalist>

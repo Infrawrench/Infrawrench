@@ -98,6 +98,7 @@ value     := 'text'            for = and !=
 - Values are quoted, with single or double quotes. A quote inside a value is escaped by doubling it (`'it''s'`) or with a backslash (`'it\'s'`); `\\`, `\n` and `\t` also work, and an escape that isn't one of those is an error rather than a silently dropped backslash.
 - The `tag` dimension takes its key in brackets, because a tag filter needs a key as well as a value: `tag['owner'] = 'platform'`.
 - The `virtual_tag` dimension works the same way, with the key of one of your [virtual tags](./virtual-tags.md): `virtual_tag['team'] = 'payments'`.
+- Kubernetes node and volume labels have shorthands: `k8s_node_label['team'] = 'payments'` means `tag['k8s_node_label:team'] = 'payments'`, and `k8s_pvc_label['…']` the same for PersistentVolumeClaim labels. See [Kubernetes node and volume labels](./kubernetes-costs.md#node-and-volume-labels).
 - An empty query means no filter, the same as no rows.
 
 ### Worked examples

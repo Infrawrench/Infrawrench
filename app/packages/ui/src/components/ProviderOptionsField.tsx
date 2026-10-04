@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useGT } from "gt-react";
 import type { CredentialFieldOption } from "@infrawrench/plugin-base";
 import { formatErrorMessage } from "../utils.js";
+import { MultiSelect } from "./MultiSelect.js";
 
 export type { CredentialFieldOption };
 
@@ -32,6 +33,19 @@ interface ProviderOptionsFieldProps {
   load: (() => Promise<CredentialFieldOption[]>) | undefined;
   /** Changes whenever a dependency changes; a new value reloads the list. */
   reloadKey: string;
+  /**
+   * From `providerOptions.multiple`: pick several. The value is the picked
+   * ids joined with `, `, which is also what the text fallback accepts.
+   */
+  multiple?: boolean | undefined;
+}
+
+/** Split a stored multi-value into ids. */
+function splitMulti(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((v) => v.trim())
+    .filter(Boolean);
 }
 
 const inputClass =
@@ -52,6 +66,7 @@ export function ProviderOptionsField({
   emptyLabel,
   load,
   reloadKey,
+  multiple = false,
 }: ProviderOptionsFieldProps) {
   const gt = useGT();
   const [options, setOptions] = useState<CredentialFieldOption[] | null>(null);
@@ -75,7 +90,7 @@ export function ProviderOptionsField({
           if (cancelled) return;
           setOptions(loaded);
           // Pick the only choice outright; otherwise keep what is there.
-          if (!value && !emptyLabel && loaded.length === 1) onChange(loaded[0]!.id);
+          if (!multiple && !value && !emptyLabel && loaded.length === 1) onChange(loaded[0]!.id);
         })
         .catch((e: unknown) => {
           if (!cancelled) setError(formatErrorMessage(e));
@@ -142,6 +157,45 @@ export function ProviderOptionsField({
       <select id={fieldId} aria-label={label} disabled className={inputClass}>
         <option>{gt("Loading…")}</option>
       </select>
+    );
+  }
+
+  if (multiple) {
+    const picked = splitMulti(value);
+    // Keep values that are no longer on the cluster visible, so saving the
+    // form never silently drops a choice the user made earlier.
+    const missing = picked.filter((id) => !options.some((o) => o.id === id));
+    return (
+      <>
+        <MultiSelect
+          label={label}
+          placeholder={emptyLabel ?? gt("Choose…")}
+          value={picked}
+          onChange={(ids) => onChange(ids.join(", "))}
+          options={[
+            ...missing.map((id) => ({ value: id, label: id })),
+            ...options.map((o) => ({
+              value: o.id,
+              label:
+                o.description && o.description !== o.label
+                  ? `${o.label} (${o.description})`
+                  : o.label,
+            })),
+          ]}
+          status={
+            options.length === 0
+              ? { kind: "empty", message: gt("Nothing to choose from") }
+              : undefined
+          }
+        />
+        <button
+          type="button"
+          onClick={() => setManual(true)}
+          className="text-xs text-info hover:text-info-strong mt-1"
+        >
+          {gt("Enter manually")}
+        </button>
+      </>
     );
   }
 

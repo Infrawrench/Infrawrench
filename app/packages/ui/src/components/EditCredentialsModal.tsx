@@ -196,6 +196,7 @@ export function EditCredentialsModal({
                             : undefined
                         }
                         reloadKey={JSON.stringify(deps.map((k) => merged[k] ?? ""))}
+                        multiple={f.providerOptions.multiple}
                       />
                     );
                   })()

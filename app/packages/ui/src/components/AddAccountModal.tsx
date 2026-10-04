@@ -28,7 +28,7 @@ export interface PluginInfo {
     regions?: Array<{ id: string; label: string; location?: string; flag?: string }>;
     accountReference?: { pluginId: string };
     /** Picker filled by the plugin from the provider once `dependsOn` is entered. */
-    providerOptions?: { dependsOn: string[]; emptyLabel?: string };
+    providerOptions?: { dependsOn: string[]; emptyLabel?: string; multiple?: boolean };
     helpLink?: { label: string; url: string };
   }>;
   /** Declared when the plugin supports credential preflight; absent otherwise. */
@@ -369,6 +369,7 @@ export function AddAccountModal({
                                 onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
                                 placeholder={f.placeholder}
                                 emptyLabel={f.providerOptions.emptyLabel}
+                                multiple={f.providerOptions.multiple}
                                 load={
                                   loadCredentialOptions && depsReady
                                     ? () =>
