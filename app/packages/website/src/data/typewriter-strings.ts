@@ -68,6 +68,7 @@ export const typewriterStrings: string[] = [
   "Fly Apps",
   "Databricks Clusters",
   "Databricks SQL Warehouses",
+  "CoreWeave Node Pools",
   "Neon Projects",
   "PlanetScale Databases",
   "Turso Databases",

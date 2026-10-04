@@ -160,6 +160,18 @@ export const providerGroups: ProviderGroup[] = [
           "Azure Firewall",
         ],
       },
+      {
+        name: "CoreWeave",
+        detail: "GPU cloud: GPU-hours and spend, CKS, Node Pools",
+        resources: [
+          "CKS Cluster",
+          "Node Pool",
+          "Instance Type",
+          "VPC",
+          "Object Storage Bucket",
+          "Object Storage Access Key",
+        ],
+      },
     ],
   },
   {

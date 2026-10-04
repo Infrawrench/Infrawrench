@@ -48,7 +48,7 @@ Clusters opened from their cloud account (below) are not affected. Infrawrench g
 
 ### Clusters from a cloud account
 
-For a cluster you already have in Infrawrench — EKS, AKS, GKE, DOKS, OVH Managed Kubernetes, Scaleway Kapsule — don't add an account here at all. Open the cluster resource and use its **Kubernetes** tab: the kubeconfig (and, where the provider reports them, the node prices) flow through from the cluster's own outputs as an [output reference](../core-concepts/output-references.md). There is no picker in this credential form.
+For a cluster you already have in Infrawrench — EKS, AKS, GKE, DOKS, OVH Managed Kubernetes, Scaleway Kapsule, CoreWeave CKS — don't add an account here at all. Open the cluster resource and use its **Kubernetes** tab: the kubeconfig (and, where the provider reports them, the node prices) flow through from the cluster's own outputs as an [output reference](../core-concepts/output-references.md). There is no picker in this credential form.
 
 ![Kubernetes Add-account form with the Kubeconfig textarea and the optional Cluster hourly rates field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/kubernetes/add-account.png)
 
@@ -64,7 +64,7 @@ A cluster has no billing API — the money is charged to the cloud account that 
 
 The full explanation is on its own page: **[Kubernetes cost allocation](../features/kubernetes-costs.md)**. The short version:
 
-- **Node prices** come from the parent cloud plugin when you open the cluster from its cloud account. DigitalOcean supplies the real node-pool price; AWS and Azure supply on-demand list prices; GCP, Scaleway and OVHcloud do not supply one yet. Otherwise fill in the **Cluster hourly rates** field (`s-2vcpu-4gb=0.0357, m5.large=0.096`).
+- **Node prices** come from the parent cloud plugin when you open the cluster from its cloud account. DigitalOcean supplies the real node-pool price; AWS and Azure supply on-demand list prices; CoreWeave supplies your negotiated rates where you entered them on the CoreWeave account, otherwise its published on-demand prices; GCP, Scaleway and OVHcloud do not supply one yet. Otherwise fill in the **Cluster hourly rates** field (`s-2vcpu-4gb=0.0357, m5.large=0.096`).
 - **Everything else the cluster costs is priced from the same field**, with reserved keys: `controlPlane=0.10` for the flat managed-cluster fee, `loadBalancer=0.0149` per provisioned `LoadBalancer` Service, and `storage/*=0.10` (or `storage/gp3=0.08`) per provisioned GiB-month. No cloud plugin supplies these automatically yet.
 - **With no price at all, no number is invented.** You get capacity, volume sizes, load-balancer counts, requests and efficiency, and the pane explains what to do about it.
 - **metrics-server is optional.** With it, a pod is charged the greater of its request and its actual usage, and you get efficiency figures. Without it, allocation falls back to requests alone and efficiency reads **unknown** — never 0%. A missing metrics-server never breaks the pane.

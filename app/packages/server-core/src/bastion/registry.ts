@@ -108,6 +108,9 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   assemblyai: ["api.assemblyai.com", "api.eu.assemblyai.com"],
   cartesia: ["api.cartesia.ai"],
   cohere: ["api.cohere.com"],
+  // Cloud API, observability API and every CKS cluster API server
+  // (`{org}-{hash}.k8s.{zone}.coreweave.com`); bucket data is on cwobject.com.
+  coreweave: ["*.coreweave.com", "cwobject.com", "*.cwobject.com"],
   deepgram: ["api.deepgram.com"],
   deepseek: ["api.deepseek.com"],
   elevenlabs: [
