@@ -7,6 +7,8 @@ import {
   COST_EXPORT_CADENCE_LABELS,
   COST_EXPORT_FORMATS,
   COST_EXPORT_FORMAT_LABELS,
+  COST_EXPORT_SCHEMAS,
+  COST_EXPORT_SCHEMA_LABELS,
   DEFAULT_COST_EXPORT_INPUT,
   type CostDimensionId,
   type CostExport,
@@ -95,6 +97,7 @@ function formFromExport(exp: CostExport | null): CostExportInput {
   return {
     name: exp.name,
     format: exp.format,
+    schema: exp.schema,
     query: exp.query,
     cadence: exp.cadence,
     hour: exp.hour,
@@ -257,6 +260,11 @@ export function CostExportsSection() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{exp.name}</span>
                     <span className="text-xs text-on-surface-muted uppercase">{exp.format}</span>
+                    {exp.schema === "focus-1.3" && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-surface-overlay text-on-surface-secondary">
+                        {gtData(COST_EXPORT_SCHEMA_LABELS[exp.schema])}
+                      </span>
+                    )}
                     {!exp.enabled && (
                       <span className="text-xs px-1.5 py-0.5 rounded bg-surface-overlay text-on-surface-muted">
                         {gt("paused")}
@@ -444,6 +452,23 @@ function CostExportEditor({
             </label>
 
             <label className="block">
+              <span className={LABEL}>{gt("Column layout")}</span>
+              <select
+                value={form.schema ?? "native"}
+                onChange={(e) =>
+                  setForm({ ...form, schema: e.target.value as CostExportInput["schema"] })
+                }
+                className={INPUT}
+              >
+                {COST_EXPORT_SCHEMAS.map((schema) => (
+                  <option key={schema} value={schema}>
+                    {gtData(COST_EXPORT_SCHEMA_LABELS[schema])}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
               <span className={LABEL}>{gt("Cadence (also the period per object)")}</span>
               <select
                 value={form.cadence}
@@ -518,10 +543,14 @@ function CostExportEditor({
             </label>
           </section>
 
-          <ColumnPicker
-            query={form.query}
-            onChange={(query) => setForm((f) => ({ ...f, query }))}
-          />
+          {form.schema === "focus-1.3" ? (
+            <FocusColumnsNote />
+          ) : (
+            <ColumnPicker
+              query={form.query}
+              onChange={(query) => setForm((f) => ({ ...f, query }))}
+            />
+          )}
 
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">{gt("Destination")}</h3>
@@ -590,6 +619,32 @@ function CostExportEditor({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * What a FOCUS export writes, in place of the column picker: FOCUS fixes its
+ * own columns and grain, so the toggles would be settings that do nothing.
+ * The stored `dimensions`/`tagKeys` are kept untouched, so switching back to
+ * native columns restores the previous choice.
+ */
+function FocusColumnsNote() {
+  return (
+    <section className="space-y-2">
+      <T>
+        <h3 className="text-sm font-semibold">FOCUS 1.3 columns</h3>
+      </T>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          Every object follows the FinOps Open Cost and Usage Specification 1.3: one row per
+          account, service, region, resource, tag set, charge type and commitment per day, with
+          billed cost (cash) and effective cost (amortized) side by side, the FOCUS charge and
+          service categories, and all tags as one JSON column. Infrawrench extras such as the usage
+          quantity and the collection watermark come last, prefixed <code>x_</code>. The
+          export&apos;s filters and charge types still apply.
+        </p>
+      </T>
+    </section>
   );
 }
 

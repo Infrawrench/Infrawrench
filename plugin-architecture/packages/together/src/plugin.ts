@@ -46,6 +46,7 @@ const manifest: PluginManifest = {
     caCertCredentialField,
   ],
   costs: {
+    focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // `GET /v1/billing/usage` returns daily windows of priced line items.
     // `product_name` becomes the service; a model named in the line item's
     // pricing dimensions or attributes becomes the resource, and every

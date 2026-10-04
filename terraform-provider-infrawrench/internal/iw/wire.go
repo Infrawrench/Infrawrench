@@ -506,6 +506,7 @@ type CostExportQuery struct {
 type CostExportInput struct {
 	Name            string                `json:"name"`
 	Format          string                `json:"format"`
+	Schema          string                `json:"schema"`
 	Query           CostExportQuery       `json:"query"`
 	Cadence         string                `json:"cadence"`
 	Hour            int64                 `json:"hour"`
@@ -526,6 +527,7 @@ type CostExport struct {
 	ID              string                `json:"id"`
 	Name            string                `json:"name"`
 	Format          string                `json:"format"`
+	Schema          string                `json:"schema"`
 	Query           CostExportQuery       `json:"query"`
 	Cadence         string                `json:"cadence"`
 	Hour            int64                 `json:"hour"`

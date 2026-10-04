@@ -68,6 +68,7 @@ const manifest: PluginManifest = {
     caCertCredentialField,
   ],
   costs: {
+    focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // `usageCosts:query` groups by DAY + MODEL, so a cost row's "service" is
     // the model that produced the spend. No region or tag dimension exists.
     dimensions: ["service"],

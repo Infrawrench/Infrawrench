@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { CLOUDFLARE_FOCUS } from "./focus-services.js";
 import { CloudflareClient } from "./client.js";
 import { cloudflareTerraformExport } from "./terraform.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -89,7 +90,12 @@ const manifest: PluginManifest = {
   // Billable Usage API: GA for self-serve accounts (Enterprise still rolling
   // out); conservative history window while coverage expands. Charge periods
   // follow the billing cycle, hence periodNative.
-  costs: { dimensions: ["service", "tag"], maxHistoryDays: 90, periodNative: true },
+  costs: {
+    focus: CLOUDFLARE_FOCUS,
+    dimensions: ["service", "tag"],
+    maxHistoryDays: 90,
+    periodNative: true,
+  },
   statusFeed,
   preflight: cloudflarePreflight,
 };

@@ -103,6 +103,9 @@ const manifest: PluginManifest = {
    * collection to ~90 requests, roughly half a minute of paced traffic.
    */
   costs: {
+    focus: {
+      default: { category: "AI and Machine Learning", subcategory: "Natural Language Processing" },
+    },
     dimensions: ["service"],
     maxHistoryDays: 90,
     restatementDays: 2,

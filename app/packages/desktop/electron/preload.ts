@@ -154,6 +154,7 @@ const INVOKE_CHANNELS = [
   "cloud_get_pin",
   "cloud_probe_pins",
   "cloud_costs_query",
+  "cloud_costs_focus_export",
   "cloud_costs_dimensions",
   "cloud_costs_status",
   "cloud_costs_anomalies",

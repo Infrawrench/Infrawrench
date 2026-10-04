@@ -91,7 +91,11 @@ const manifest: PluginManifest = {
   // cost category (compute, storage, backup, data transfer, ClickPipes).
   // Amounts are CHC credits converted at the $1-per-CHC list price, so
   // committed-spend discounts are not reflected.
-  costs: { dimensions: ["service", "resource"], restatementDays: 3 },
+  costs: {
+    focus: { default: { category: "Databases", subcategory: "Data Warehouses" } },
+    dimensions: ["service", "resource"],
+    restatementDays: 3,
+  },
   // creditBalances: active prepaid and trial credit pots, in CHC.
   credits: {
     label: "ClickHouse Credits",

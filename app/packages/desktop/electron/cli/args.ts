@@ -113,11 +113,13 @@ export interface DeployFlags {
 /** Flags for `export`, and `--format pdf` on `reports`/`dashboards <name|id>`. */
 interface ExportFlags {
   /**
-   * Output format, validated in the command: "terraform" for `export`, "pdf"
-   * for `reports`/`dashboards <name|id>` (which write to `--out`/`--file`,
-   * read from `config`).
+   * Output format, validated in the command: "terraform" (the default) or
+   * "focus" for `export`, "pdf" for `reports`/`dashboards <name|id>` (which
+   * write to `--out`/`--file`, read from `config`).
    */
   format?: string | undefined;
+  /** `--out <path>` (or `--file`): where `--format focus` writes; stdout when omitted. */
+  out?: string | undefined;
 }
 
 // The per-command flag interfaces below live here, with the parser that fills
@@ -388,6 +390,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     },
     exportFlags: {
       format: str("format"),
+      out: str("out") ?? str("file"),
     },
     diff: {
       against: str("against"),

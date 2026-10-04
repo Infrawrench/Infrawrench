@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.49.0",
+    "version": "1.50.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3938,6 +3938,49 @@
         ],
         "additionalProperties": false
       },
+      "FocusExportRequest": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostFilter"
+            }
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "description": "The same filter written as text, in the cost query language — an alternative to `filters`, compiled server-side into exactly that structure.\n\nGrammar: a conjunction of equality terms joined by `AND`. A term is `dimension = 'value'`, `dimension != 'value'`, `dimension IN ('a','b')` or `dimension NOT IN ('a','b')`; the tag dimension takes its key in brackets, `tag['owner'] = 'platform'`. Keywords are case-insensitive, strings may be single- or double-quoted, and a quote inside a value is escaped by doubling it (`'it''s'`) or with a backslash (`'it\\'s'`).\n\n`OR` is deliberately not supported: the stored filter is a conjunction, so several values of one dimension go in an `IN` list and unrelated alternatives need separate queries. Anything the structured filter cannot express is a parse error rather than a second execution path.\n\nSending both `query` and a non-empty `filters` is a 400, not a precedence rule. A parse failure is a 400 whose body carries `queryError` with the character `offset`, the `length` of the offending span, and the `expected` alternatives there.",
+            "example": "provider = 'aws' AND tag['env'] != 'dev'"
+          },
+          "savedFilterId": {
+            "type": "string",
+            "description": "A saved cost filter (see /saved-cost-filters) applied by reference. Resolved server-side at query time and AND-composed with whichever of `filters`/`query` is present — unlike those two it is a composition, not an alternative. An id that does not resolve to a live filter is a 400; the query is never silently run unfiltered."
+          },
+          "chargeTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostChargeType"
+            },
+            "description": "Restrict to these kinds of charge. Omitted is all of them, which is what makes an unfiltered total net rather than gross — credits, refunds and commitment discounts are included. Rows collected before charge types existed, and rows from providers that cannot distinguish them, are `usage`."
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      },
       "CostDimensionValues": {
         "type": "object",
         "properties": {
@@ -5590,6 +5633,14 @@
         ],
         "additionalProperties": false
       },
+      "CostExportSchema": {
+        "type": "string",
+        "enum": [
+          "native",
+          "focus-1.3"
+        ],
+        "description": "Which columns an object carries. `native` is Infrawrench's own layout, shaped by `query.dimensions` and `query.tagKeys`. `focus-1.3` writes the FinOps Open Cost and Usage Specification v1.3 columns at the full row grain, with `BilledCost` (cash) and `EffectiveCost` (amortized) side by side; `query.dimensions`, `query.tagKeys` and `query.costBasis` do not apply to it, `query.filters` and `query.chargeTypes` still do."
+      },
       "CostExportFilter": {
         "type": "object",
         "properties": {
@@ -5794,6 +5845,9 @@
               "ndjson"
             ]
           },
+          "schema": {
+            "$ref": "#/components/schemas/CostExportSchema"
+          },
           "query": {
             "$ref": "#/components/schemas/CostExportQuery"
           },
@@ -5890,6 +5944,7 @@
           "id",
           "name",
           "format",
+          "schema",
           "query",
           "cadence",
           "hour",
@@ -5924,6 +5979,16 @@
             "enum": [
               "csv",
               "ndjson"
+            ]
+          },
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CostExportSchema"
+              },
+              {
+                "description": "Which columns an object carries. `native` is Infrawrench's own layout, shaped by `query.dimensions` and `query.tagKeys`. `focus-1.3` writes the FinOps Open Cost and Usage Specification v1.3 columns at the full row grain, with `BilledCost` (cash) and `EffectiveCost` (amortized) side by side; `query.dimensions`, `query.tagKeys` and `query.costBasis` do not apply to it, `query.filters` and `query.chargeTypes` still do. Omitted keeps the stored value (`native` on create)."
+              }
             ]
           },
           "query": {
@@ -37623,6 +37688,62 @@
           }
         },
         "operationId": "postOrgOrgIdCostsQuery",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/costs/focus-export": {
+      "post": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Download cost rows as a FOCUS 1.3 CSV",
+        "description": "The rows a cost query selects, written as a CSV in the FinOps Open Cost and Usage Specification (FOCUS) v1.3 layout: one row per account, service, region, resource, tag set, charge type and commitment per day, with `BilledCost` (cash) and `EffectiveCost` (amortized) side by side, `ChargeCategory`, `ServiceCategory`/`ServiceSubcategory`, `Tags` as a JSON object and the commitment columns where the provider reports a commitment. Custom columns follow, prefixed `x_`. The same mapping a `focus-1.3` scheduled export writes (see /cost-exports).\n\nTakes the cost query's filter in either spelling (`filters` or `query`, never both), an optional saved filter, and charge types. The range spans at most 366 days; for anything longer, or for a recurring feed, use a scheduled export. Validation errors are a 400 before any CSV is written; the body is then streamed.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FocusExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "FOCUS 1.3 CSV, with a header row",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostsFocusExport",
         "x-required-permission": "costs:read"
       }
     },

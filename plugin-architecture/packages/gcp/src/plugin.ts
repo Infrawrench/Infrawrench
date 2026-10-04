@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { GCP_FOCUS } from "./focus-services.js";
 import { GcpClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gcpPreflight, buildGcpPolicyTemplate } from "./preflight.js";
@@ -112,6 +113,7 @@ const manifest: PluginManifest = {
   // throws a user-actionable error when billingExportTable isn't configured,
   // which the host surfaces and backs off on.
   costs: {
+    focus: GCP_FOCUS,
     dimensions: ["service", "region", "resource", "tag"],
     maxHistoryDays: 365,
     restatementDays: 5,

@@ -3,6 +3,7 @@ import type {
   CostReportFolder,
   CostReportFolderInput,
   CostReportInput,
+  FocusExportRequest,
   ReportDeliveryTargets,
   ReportNotification,
   ReportNotificationInput,
@@ -39,6 +40,12 @@ export interface CostReportsClient extends CostApi {
   updateFolder?(folderId: string, input: CostReportFolderInput): Promise<CostReportFolder>;
   /** Contents are not deleted with it: they fall back to the top level. */
   deleteFolder?(folderId: string): Promise<void>;
+  /**
+   * The rows a report's query selects, as FOCUS 1.3 CSV text
+   * (`POST /costs/focus-export`). A read (`costs:read`), so it sits with the
+   * reads; optional so a host without it simply offers no download.
+   */
+  downloadFocusExport?(req: FocusExportRequest): Promise<string>;
   /** Dashboards a report card can be added to, for the placement picker. */
   listDashboards?(): Promise<CostsPanelDashboard[]>;
   /** Add a `cost_report` card for `reportId` to `dashboardId`. */

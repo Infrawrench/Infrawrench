@@ -13701,5 +13701,28 @@
   "00fa02cbadbe92b2": "Cuando está lleno",
   "a0c2fae6bc895b79": "Solo escritura. Déjalo en blanco para mantener el valor actual; Baseten nunca lo devuelve.",
   "161b5caceb1480ae": "yes cuando las réplicas mínimas son mayores que 0 y el despliegue no ha atendido solicitudes en 7 días. Solo se establece cuando la clave de API puede leer el uso de facturación.",
-  "1e5ebe336e6884b7": "Los 75 plugins"
+  "1e5ebe336e6884b7": "Los 75 plugins",
+  "acb704e0f006f008": "Descarga las filas de este informe como CSV FOCUS 1.3: coste facturado y efectivo, categorías de cargo y de servicio, y etiquetas, una fila por recurso y día",
+  "6ed906aeaa40cac7": "Preparando el CSV FOCUS…",
+  "e1f6d08e348d26bf": "Descargar CSV FOCUS",
+  "ae3653fbcd315f8c": "No se pudo descargar el CSV FOCUS — {error}",
+  "c51b15497d25a808": "Disposición de columnas",
+  "e0ba3f12b2b6fde1": {
+    "t": "h3",
+    "i": 1,
+    "c": "Columnas FOCUS 1.3"
+  },
+  "967a8f80aa9854a2": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Cada objeto sigue la FinOps Open Cost and Usage Specification 1.3: una fila por cuenta, servicio, región, recurso, conjunto de etiquetas, tipo de cargo y compromiso por día, con el coste facturado (efectivo pagado) y el coste efectivo (amortizado) uno al lado del otro, las categorías de cargo y de servicio de FOCUS, y todas las etiquetas en una única columna JSON. Los extras de Infrawrench, como la cantidad de uso y la marca de agua de recopilación, van al final con el prefijo ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "x_"
+      },
+      ". Los filtros y tipos de cargo de la exportación se siguen aplicando."
+    ]
+  }
 }

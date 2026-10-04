@@ -54,6 +54,7 @@ const manifest: PluginManifest = {
   // late credits, hence the restatement window. Needs a service token with
   // the `read_invoices` organization access.
   costs: {
+    focus: { default: { category: "Databases", subcategory: "Relational Databases" } },
     dimensions: ["service", "resource"],
     maxHistoryDays: 365,
     restatementDays: 5,

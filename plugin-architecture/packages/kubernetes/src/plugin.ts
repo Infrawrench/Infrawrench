@@ -82,6 +82,7 @@ const manifest: PluginManifest = {
    * restate.
    */
   costs: {
+    focus: { default: { category: "Compute", subcategory: "Containers" } },
     dimensions: ["service", "resource", "tag"],
     maxHistoryDays: 1,
     restatementDays: 1,

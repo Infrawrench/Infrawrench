@@ -9,6 +9,7 @@ import {
   costAnomalySettingsSchema,
   costEfficiencySettingsSchema,
   costQueryRequestSchema,
+  focusExportRequestSchema,
   type CostBasis,
 } from "@infrawrench/ui/cost/config";
 import {
@@ -34,6 +35,7 @@ import {
   listRecentCostAnomalies,
 } from "../../services/cost-anomalies";
 import { logAudit } from "../../services/audit";
+import { focusExportFilename, streamFocusExport } from "../../services/focus-export";
 import { getUntaggedSpendReport } from "../../services/tag-policy";
 import { getShowbackReport } from "../../services/showback";
 import type { AuthSession } from "../auth-middleware";
@@ -79,6 +81,68 @@ app.post("/query", async (c) => {
     }
     throw e;
   }
+});
+
+/**
+ * POST /api/org/:orgId/costs/focus-export: the rows a cost query selects, as a
+ * FOCUS 1.3 CSV download.
+ *
+ * `costs:read`, like the query it mirrors, and unlike a scheduled export's
+ * `org:settings:write`: a download goes to the person who asked, once, and
+ * holds nothing they could not already read through the graphs. A scheduled
+ * export is standing authorisation to ship spend somewhere else.
+ *
+ * Validation happens before the first byte, so a bad range or filter is a 400
+ * with a body rather than a truncated 200. After that the CSV is streamed.
+ */
+app.post("/focus-export", async (c) => {
+  requirePermission(c, "costs:read");
+  const organizationId = c.get("organizationId");
+
+  const parsed = focusExportRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request", issues: parsed.error.issues }, 400);
+  }
+
+  let chunks: AsyncIterable<string>;
+  try {
+    chunks = await streamFocusExport(organizationId, parsed.data);
+  } catch (e) {
+    if (e instanceof CostQueryError) {
+      return c.json(
+        { error: e.message, ...(e.queryError ? { queryError: e.queryError } : {}) },
+        400,
+      );
+    }
+    throw e;
+  }
+
+  const encoder = new TextEncoder();
+  const iterator = chunks[Symbol.asyncIterator]();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const next = await iterator.next();
+        if (next.done) controller.close();
+        else controller.enqueue(encoder.encode(next.value));
+      } catch (e) {
+        controller.error(e);
+      }
+    },
+    async cancel() {
+      // The client went away: stop reading, which releases the ClickHouse
+      // result set in the row stream's `finally`.
+      await iterator.return?.();
+    },
+  });
+
+  return new Response(body, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${focusExportFilename(parsed.data)}"`,
+      "Cache-Control": "no-store",
+    },
+  });
 });
 
 /** GET /api/org/:orgId/costs/dimensions?dimension=service|region|...&tagKey= */

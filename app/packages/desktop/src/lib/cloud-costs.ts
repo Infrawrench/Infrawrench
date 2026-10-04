@@ -52,6 +52,7 @@ import type {
   DashboardNotification,
   DashboardNotificationInput,
   DashboardNotificationSendResult,
+  FocusExportRequest,
   ReportDeliveryTargets,
   ReportNotification,
   ReportNotificationInput,
@@ -64,6 +65,14 @@ export async function queryCloudCosts(
   request: CostQueryRequest,
 ): Promise<CostQueryResponse> {
   return invoke("cloud_costs_query", { orgId, request });
+}
+
+/** `POST /costs/focus-export`: the FOCUS 1.3 CSV body as text. */
+export async function downloadCloudFocusExport(
+  orgId: string,
+  request: FocusExportRequest,
+): Promise<string> {
+  return invoke("cloud_costs_focus_export", { orgId, request });
 }
 
 export async function loadCloudCostDimensionValues(

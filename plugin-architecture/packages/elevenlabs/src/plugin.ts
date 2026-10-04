@@ -55,6 +55,7 @@ const manifest: PluginManifest = {
    * of days, so the trailing 3 are re-fetched to absorb restatements.
    */
   costs: {
+    focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     dimensions: ["service", "region"],
     maxHistoryDays: 365,
     restatementDays: 3,

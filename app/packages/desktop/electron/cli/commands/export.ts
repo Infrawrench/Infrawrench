@@ -46,7 +46,10 @@ function toResourceInstance(row: ResourceRow): ResourceInstance {
 export async function cmdExport(ctx: CliContext, format: string | undefined): Promise<void> {
   const chosen = format ?? "terraform";
   if (chosen !== "terraform") {
-    throw new CliError(`Unknown export format "${chosen}" — only "terraform" is supported.`, 2);
+    throw new CliError(
+      `Unknown export format "${chosen}". Use "terraform" (an account's inventory as HCL) or "focus" (cost rows as a FOCUS 1.3 CSV).`,
+      2,
+    );
   }
   const { orgId, account } = await resolveScopedAccount(ctx);
 

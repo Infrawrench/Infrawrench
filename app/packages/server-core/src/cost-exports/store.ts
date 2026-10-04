@@ -19,6 +19,7 @@ import {
   COST_EXPORT_CADENCES,
   COST_EXPORT_DESTINATION_KINDS,
   COST_EXPORT_FORMATS,
+  COST_EXPORT_SCHEMAS,
   COST_DIMENSIONS,
   COST_CHARGE_TYPES,
   type CostExport,
@@ -27,6 +28,7 @@ import {
   type CostExportFormat,
   type CostExportInput,
   type CostExportQuery,
+  type CostExportSchema,
   type CostExportStatus,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
@@ -190,6 +192,7 @@ function clampRestatementDays(raw: unknown): number {
 interface NormalizedInput {
   name: string;
   format: CostExportFormat;
+  schema: CostExportSchema;
   query: CostExportQuery;
   cadence: CostExportCadence;
   hour: number;
@@ -199,7 +202,10 @@ interface NormalizedInput {
   destination: CostExportDestination;
 }
 
-function normalizeInput(input: CostExportInput): NormalizedInput {
+function normalizeInput(
+  input: CostExportInput,
+  storedSchema: CostExportSchema = "native",
+): NormalizedInput {
   const name = String(input.name ?? "").trim();
   if (!name) throw new CostExportInputError("name is required");
   if (name.length > 120) throw new CostExportInputError("name must be 120 characters or fewer");
@@ -212,6 +218,10 @@ function normalizeInput(input: CostExportInput): NormalizedInput {
   return {
     name,
     format: requireOneOf(input.format, COST_EXPORT_FORMATS, "format"),
+    // Absent keeps what is stored (`native` on create): every client written
+    // before FOCUS existed omits the field, and an edit made from one of them
+    // must not quietly turn a FOCUS export back into native columns.
+    schema: requireOneOf(input.schema ?? storedSchema, COST_EXPORT_SCHEMAS, "schema"),
     query: normalizeQuery(input.query),
     cadence: requireOneOf(input.cadence, COST_EXPORT_CADENCES, "cadence"),
     hour: clampHour(input.hour),
@@ -298,6 +308,9 @@ export function toCostExportView(row: CostExportRecord): CostExport {
     id: row.id,
     name: row.name,
     format: row.format as CostExportFormat,
+    schema: (COST_EXPORT_SCHEMAS as readonly string[]).includes(row.outputSchema)
+      ? (row.outputSchema as CostExportSchema)
+      : "native",
     query: row.query,
     cadence: row.cadence as CostExportCadence,
     hour: row.hour,
@@ -395,6 +408,7 @@ export async function createCostExport(
       organizationId,
       name: normalized.name,
       format: normalized.format,
+      outputSchema: normalized.schema,
       query: normalized.query,
       cadence: normalized.cadence,
       hour: normalized.hour,
@@ -427,7 +441,7 @@ export async function updateCostExport(
   const existing = await getCostExportRow(organizationId, id);
   if (!existing) return null;
 
-  const normalized = normalizeInput(input);
+  const normalized = normalizeInput(input, toCostExportView(existing).schema);
   const creds = credentialsFromInput(input);
   if (!creds && !existing.encryptedCredentials) {
     throw new CostExportInputError("This export has no stored credentials; supply them");
@@ -449,6 +463,7 @@ export async function updateCostExport(
     .set({
       name: normalized.name,
       format: normalized.format,
+      outputSchema: normalized.schema,
       query: normalized.query,
       cadence: normalized.cadence,
       hour: normalized.hour,

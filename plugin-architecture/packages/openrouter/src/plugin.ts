@@ -52,6 +52,7 @@ const manifest: PluginManifest = {
     caCertCredentialField,
   ],
   costs: {
+    focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // GET /activity is daily and broken down by model + provider.
     dimensions: ["service", "resource"],
     // OpenRouter only keeps the last 30 completed UTC days.

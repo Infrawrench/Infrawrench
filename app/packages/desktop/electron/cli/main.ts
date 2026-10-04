@@ -21,7 +21,7 @@ import { cmdScenarios, cmdApplyScenario } from "./commands/scenarios";
 import { cmdReports, cmdRunReport, cmdSendReport } from "./commands/reports";
 import { cmdDashboards, cmdSendDashboard, cmdShowDashboard } from "./commands/dashboards";
 import { pdfFlags } from "./pdf-export";
-import { cmdExports, cmdRunExport } from "./commands/exports";
+import { cmdExportFocus, cmdExports, cmdRunExport } from "./commands/exports";
 import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdBillingRules, cmdBillingRule } from "./commands/billing-rules";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
@@ -76,6 +76,10 @@ COMMANDS
   resource <id>       show one resource's fields & outputs
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
   export              eject an account's inventory as Terraform HCL   --account <id|name> [--format terraform]
+  export --format focus [<report n|id>]
+                      cost rows as a FOCUS 1.3 CSV (stdout, or --out <file>)   [--last 30d]
+                      [--where …] [--filter <name|id>] [--charge-type …]; a report brings its
+                      own range and filters, range flags override the range
   estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
                       full id, or a name/external-id with --account)
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
@@ -215,7 +219,7 @@ FLAGS
   --resource <id>     focus one resource (graph) / filter to it (changes)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
-  --format <fmt>      export format (default: terraform); pdf for reports/dashboards <name|id>
+  --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>
   --reason <text>     posture dismiss: why the finding is an accepted risk
   --where <query>     costs: filter in the cost query language — terms joined by AND, each
                       dimension = 'v' | != 'v' | IN ('a','b') | NOT IN ('a','b'), plus
@@ -231,8 +235,8 @@ FLAGS
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
   -f, --file <path>   JSON rows for costs push / config document (stdin when omitted)
-  --out <path>        config export: write the document here instead of stdout; reports/
-                      dashboards --format pdf: the PDF's path (default: <name>.pdf here)
+  --out <path>        config export / export --format focus: write here instead of stdout;
+                      reports/dashboards --format pdf: the PDF's path (default: <name>.pdf here)
   --sections <a,b>    config: limit to these sections (budgets, workflows, dashboards, …)
   --prune             config apply: also delete what the document doesn't name
   -e, --env <name>    environment to deploy (optional when the Infrafile has one)
@@ -389,6 +393,13 @@ export async function runCli(): Promise<void> {
         await cmdMetrics(ctx, rest[0] ?? "", parsed.range);
         break;
       case "export":
+        // `--format focus` is cost data, not inventory: it shares the verb
+        // because both write a file in someone else's format, but takes the
+        // `costs` flags rather than `--account`.
+        if (parsed.exportFlags.format === "focus") {
+          await cmdExportFocus(ctx, parsed.range, rest.join(" "), parsed.exportFlags.out);
+          break;
+        }
         await cmdExport(ctx, parsed.exportFlags.format);
         break;
       case "estimate":

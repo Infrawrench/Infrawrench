@@ -21,7 +21,7 @@
  * and it is already there.
  */
 import type { CostBasis, CostChargeType, CostFilter } from "@infrawrench/client-core";
-import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, inArray, sql, type SQL } from "drizzle-orm";
 import { QueryBuilder } from "drizzle-orm/clickhouse-core";
 import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client";
 import {
@@ -130,6 +130,32 @@ function tagExpr(key: string): SQL {
 }
 
 /**
+ * The WHERE clause every export reads under: the org, the period, the saved
+ * filters and the charge types. Shared by the native and the FOCUS query so
+ * "filtered to account X" selects the same rows whichever columns they are
+ * written as.
+ */
+export function costExportScope(q: {
+  organizationId: string;
+  from: string;
+  to: string;
+  filters: CostFilter[];
+  chargeTypes?: CostChargeType[] | undefined;
+}): SQL | undefined {
+  return and(
+    costDailyOrgCondition(q.organizationId),
+    dayRange(q.from, q.to),
+    ...q.filters.flatMap((f) => {
+      const expr = f.dimension === "tag" ? tagExpr(f.tagKey ?? "") : dimensionExpr(f.dimension);
+      return expr ? [membershipCondition(expr, f.op, f.values)] : [];
+    }),
+    q.chargeTypes && q.chargeTypes.length > 0
+      ? inArray(costDaily.charge_type, q.chargeTypes)
+      : undefined,
+  );
+}
+
+/**
  * Assemble the SELECT. Exported for the tests that assert its shape.
  *
  * Built with the query builder, then rendered to text: the streaming read below
@@ -183,19 +209,7 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
     })
     .from(costDaily)
     .final()
-    .where(
-      and(
-        costDailyOrgCondition(q.organizationId),
-        dayRange(q.from, q.to),
-        ...q.filters.flatMap((f) => {
-          const expr = f.dimension === "tag" ? tagExpr(f.tagKey ?? "") : dimensionExpr(f.dimension);
-          return expr ? [membershipCondition(expr, f.op, f.values)] : [];
-        }),
-        q.chargeTypes && q.chargeTypes.length > 0
-          ? inArray(costDaily.charge_type, q.chargeTypes)
-          : undefined,
-      ),
-    )
+    .where(costExportScope(q))
     .groupBy(...groupKeys)
     .orderBy(...groupKeys.map((key) => asc(key)));
 
@@ -216,10 +230,18 @@ export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
 export async function* streamCostExportRows(
   q: CostExportRowQuery,
 ): AsyncGenerator<CostExportRow, void, undefined> {
+  yield* streamExportQuery<CostExportRow>(buildCostExportQuery(q).sql);
+}
+
+/**
+ * Stream a finished export statement's rows, one decoded object at a time.
+ * The native and the FOCUS readers both go through here, so both get the same
+ * back-pressure and the same socket cleanup on an early exit.
+ */
+export async function* streamExportQuery<T>(query: string): AsyncGenerator<T, void, undefined> {
   if (!isClickHouseConfigured()) return;
-  const built = buildCostExportQuery(q);
   const rs = await getClickHouseClient().query({
-    query: built.sql,
+    query,
     format: "JSONEachRow",
   });
 
@@ -227,7 +249,7 @@ export async function* streamCostExportRows(
   try {
     for await (const chunk of stream) {
       for (const row of chunk) {
-        yield row.json<CostExportRow>();
+        yield row.json<T>();
       }
     }
   } finally {

@@ -64,7 +64,11 @@ const manifest: PluginManifest = {
   // Dollars are DBUs × current *list* price (discounts not reflected). The
   // querying principal needs USE CATALOG system + SELECT on system.billing;
   // system tables retain a year of usage history.
-  costs: { dimensions: ["service", "resource"], maxHistoryDays: 365 },
+  costs: {
+    focus: { default: { category: "Analytics", subcategory: "Analytics Platforms" } },
+    dimensions: ["service", "resource"],
+    maxHistoryDays: 365,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

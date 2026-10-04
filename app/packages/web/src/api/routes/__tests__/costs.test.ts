@@ -134,6 +134,16 @@ vi.mock("../../../services/showback", () => ({
   getShowbackReport: vi.fn(),
 }));
 
+// The FOCUS service reaches Postgres (names) and ClickHouse (rows) at import
+// time. These tests own the transport: validation, permission, status codes,
+// headers and the streamed body. The mapping has its own suite in server-core
+// (`cost-export-focus.test.ts`).
+const mockStreamFocusExport = vi.fn();
+vi.mock("../../../services/focus-export", () => ({
+  streamFocusExport: (...args: unknown[]) => mockStreamFocusExport(...args),
+  focusExportFilename: (req: { from: string; to: string }) => `focus-${req.from}-to-${req.to}.csv`,
+}));
+
 vi.mock("@/plugins/loader", () => ({
   getPlugin: vi.fn().mockResolvedValue({
     plugin: { manifest: { id: "aws", displayName: "AWS", costs: { dimensions: ["service"] } } },
@@ -256,6 +266,56 @@ beforeEach(() => {
   mockListEfficiencyAlerts.mockResolvedValue([]);
   mockListAnomalies.mockResolvedValue([]);
   mockAcknowledgeAnomaly.mockResolvedValue(acknowledgedAnomaly);
+});
+
+describe("POST /focus-export", () => {
+  const body = { from: "2026-09-01", to: "2026-09-30", filters: [] };
+  const post = (app: Hono, payload: unknown) =>
+    app.request("/focus-export", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+    });
+
+  it("rejects without costs:read", async () => {
+    const res = await post(buildAppWithPermissions(["dashboards:read"]), body);
+    expect(res.status).toBe(403);
+    expect(mockStreamFocusExport).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed body with 400 before streaming anything", async () => {
+    const res = await post(buildApp(), { ...body, from: "September" });
+    expect(res.status).toBe(400);
+    expect(mockStreamFocusExport).not.toHaveBeenCalled();
+  });
+
+  it("turns a service validation error into a 400 with its message", async () => {
+    const { CostQueryError } = await import("@/services/cost-query");
+    mockStreamFocusExport.mockRejectedValueOnce(new CostQueryError("too many days"));
+    const res = await post(buildApp(), body);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("too many days");
+  });
+
+  it("streams the CSV as an attachment", async () => {
+    mockStreamFocusExport.mockResolvedValueOnce(
+      (async function* () {
+        yield "BilledCost,BillingAccountId\n";
+        yield "1.5,acc-1\n";
+      })(),
+    );
+    const res = await post(buildApp(), body);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+    expect(res.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="focus-2026-09-01-to-2026-09-30.csv"',
+    );
+    expect(await res.text()).toBe("BilledCost,BillingAccountId\n1.5,acc-1\n");
+    expect(mockStreamFocusExport).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ from: "2026-09-01", to: "2026-09-30" }),
+    );
+  });
 });
 
 describe("POST /query", () => {

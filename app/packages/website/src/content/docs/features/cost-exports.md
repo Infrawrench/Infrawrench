@@ -1,6 +1,6 @@
 ---
 title: Scheduled cost exports
-description: Ship your raw cost rows to a warehouse or object store on a schedule, as CSV or NDJSON, with the restatement handling a finance system needs.
+description: Ship your raw cost rows to a warehouse or object store on a schedule, as CSV or NDJSON, in Infrawrench or FOCUS 1.3 columns, with the restatement handling a finance system needs.
 sidebar_order: 4
 ---
 
@@ -44,6 +44,7 @@ Go to **Settings → Cost Exports** and click **New export**.
 ### Name, format, and schedule
 
 - **Format** — `CSV` (with a header row) or `NDJSON` (one JSON object per line, the shape BigQuery, Snowflake and DuckDB all load directly).
+- **Column layout** — Infrawrench columns (described below) or [FOCUS 1.3](#focus-13).
 - **Cadence** — `daily`, `weekly` (Monday-start ISO weeks), or `monthly`. This is _also_ the period definition: it decides how many days go into each object.
 - **Hour** and **timezone** — when the run fires, in your own zone. The timezone also decides what "yesterday" means, which is what a period boundary is measured against.
 
@@ -58,6 +59,35 @@ Tag keys are added separately, as their own `tag_<key>` columns.
 Every object also carries `day`, `currency`, `amount`, `usage_amount` and `usage_unit`, plus the two provenance columns above. `usage_unit` is blank whenever the grouped rows disagree on a unit — summing hours and gigabytes and labelling the result "hours" would be a lie the file could not warn you about.
 
 Filters use the same [cost filters](./cloud-costs.md) the graphs and budgets do, so "filtered to account X" means one thing everywhere.
+
+### FOCUS 1.3
+
+Set **Column layout** to **FOCUS 1.3** and every object follows the [FinOps Open Cost and Usage Specification](https://focus.finops.org/) version 1.3 instead of the columns above, so it loads into any tool that reads FOCUS without a mapping step. It works with either format: CSV, or NDJSON with the FOCUS column names as keys.
+
+A FOCUS export fixes its own columns and grain. The column toggles, tag columns and cost basis above do not apply to it; its filters and charge types still do. Each row is one account, service, region, resource, tag set, charge type and commitment for one day.
+
+| FOCUS column                                                   | What Infrawrench writes                                                                                                                                                                                                           |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BilledCost`                                                   | The cash amount: what the provider charged that day.                                                                                                                                                                              |
+| `EffectiveCost`                                                | The amortized amount, the same figure the amortized cost view uses. Usage a commitment covered reads 0 billed and its share of the commitment as effective cost; a commitment purchase reads its price as billed and 0 effective. |
+| `ListCost`, `ContractedCost`                                   | No collector reads a price list, so there are no unit prices: usage carries its effective cost, everything else its billed cost. This understates commitment savings rather than inventing a list price.                          |
+| `ChargeCategory`                                               | Usage and commitment-covered usage (and commitment discount lines) are `Usage`; commitment and support fees are `Purchase`; `Tax`; credits and refunds are `Credit`; adjustments and anything else are `Adjustment`.              |
+| `ChargeFrequency`                                              | `Usage-Based` for usage, `Recurring` for purchases, `One-Time` for the rest.                                                                                                                                                      |
+| `ChargePeriodStart` / `End`                                    | The day, as `[day 00:00Z, next day 00:00Z)`.                                                                                                                                                                                      |
+| `BillingPeriodStart` / `End`                                   | The calendar month containing the day, in UTC.                                                                                                                                                                                    |
+| `BillingAccountId` / `Name`                                    | The connected account and the name you gave it.                                                                                                                                                                                   |
+| `ServiceName`, `ServiceCategory`, `ServiceSubcategory`         | The provider's service name, classified into the FOCUS 1.3 categories. Each provider maps its own services; anything unrecognised is `Other`.                                                                                     |
+| `ServiceProviderName`, `HostProviderName`, `InvoiceIssuerName` | The provider. Rows you [push over the API](./server-push.md#cost-rows) name their `source`.                                                                                                                                       |
+| `RegionId` / `RegionName`, `ResourceId` / `ResourceName`       | From the cost row. The resource name comes from your Infrawrench inventory when the resource is in it.                                                                                                                            |
+| `CommitmentDiscount*`                                          | Where the provider reports which commitment a row belongs to: id, `Spend` (savings plan) or `Usage` (reservation, committed-use) category, type, name from the commitment inventory, and `Used` on usage it covered.              |
+| `Tags`                                                         | Every tag as one JSON object.                                                                                                                                                                                                     |
+| `PricingQuantity` / `PricingUnit`, `ChargeClass`               | Always empty: FOCUS requires the quantity columns to be empty without a SKU price id, which no provider API we collect from supplies, and no collector reports which charges correct an earlier invoice.                          |
+
+After the FOCUS columns come Infrawrench's own, prefixed `x_` as the specification requires: `x_InfrawrenchProviderId`, `x_InfrawrenchChargeType` (the finer-grained charge type), `x_UsageQuantity` and `x_UsageUnit` (the consumption the provider reported), `x_ResourceType`, `x_CostEstimated` (`true` for providers whose amounts are estimated rather than billed), and `x_ExportedAt` / `x_CollectionWatermark` (the provenance columns described above).
+
+Conditional FOCUS columns that need data no provider gives us (SKU, pricing category, unit prices, invoice id, sub-account, capacity reservation) are left out, which the specification allows.
+
+The same file is available once, without a schedule, from a cost report's **Download FOCUS CSV** link, `POST /costs/focus-export`, and `infrawrench export --format focus`.
 
 ### If you restrict an export to particular charge types
 
