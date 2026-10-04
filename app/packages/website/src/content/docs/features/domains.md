@@ -40,6 +40,7 @@ Zones and records come from every plugin that declares them:
 | Google Cloud | Cloud DNS zones              | Cloud DNS record sets |
 | DigitalOcean | Domains                      | DNS records           |
 | Netlify      | Managed DNS zones            | DNS records           |
+| Linode       | DNS Manager domains          | DNS records           |
 | Azure        | DNS zones, Private DNS zones | —                     |
 | Vercel       | Domains                      | —                     |
 
@@ -55,6 +56,7 @@ A record is dangling when its target matches a **provider namespace one of your 
 - Cloud Storage bucket endpoints
 - Azure Storage account and App Service default hostnames
 - DigitalOcean Spaces endpoints
+- Linode Object Storage bucket hostnames and NodeBalancer hostnames
 - Netlify site subdomains, Vercel deployment aliases, Fly.io app hostnames
 - `workers.dev` Worker subdomains
 

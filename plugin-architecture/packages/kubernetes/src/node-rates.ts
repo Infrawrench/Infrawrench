@@ -272,7 +272,7 @@ export function describeRateSource(source: RateSource): string {
  * pane, the docs and the cost declaration all say the same thing.
  */
 export const NO_RATE_GUIDANCE = [
-  "Open this cluster from its cloud account (DigitalOcean, GCP, AWS, Azure, Scaleway or OVHcloud) rather than from a standalone Kubernetes account — the cloud plugin passes its node prices through automatically.",
+  "Open this cluster from its cloud account (DigitalOcean, GCP, AWS, Azure, Scaleway, OVHcloud or CoreWeave) rather than from a standalone Kubernetes account — the cloud plugin passes its node prices through automatically.",
   "Or set the optional “Node hourly rates” field on this Kubernetes account to a list like `s-2vcpu-4gb=0.0357, m5.large=0.096`.",
   "The same field prices everything else a cluster costs: `controlPlane=0.10` for the managed-cluster fee, `loadBalancer=0.0149` per provisioned LoadBalancer Service, and `storage/*=0.10` per provisioned GiB-month (or `storage/gp3=0.08` for one class).",
   "Capacity, volume sizes, load-balancer counts, requests and efficiency are shown either way; only the money is missing.",
