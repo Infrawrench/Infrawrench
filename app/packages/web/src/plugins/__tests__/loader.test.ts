@@ -85,6 +85,7 @@ describe("plugin loader", () => {
       "replicate",
       "revai",
       "speechmatics",
+      "temporal-cloud",
       "together",
       "xai",
       "uploadthing",

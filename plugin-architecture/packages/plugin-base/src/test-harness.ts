@@ -126,6 +126,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   replicate: { apiToken: "r8_test_replicate_token" },
   revai: { accessToken: "test-revai-access-token", region: "us" },
   together: { apiKey: "test-together-key" },
+  "temporal-cloud": { apiKey: "test-temporal-cloud-api-key" },
   xai: { apiKey: "xai-test-inference-key", managementKey: "xai-test-management-key" },
   uploadthing: { apiKey: "sk_live_EXAMPLE_NOT_A_REAL_KEY" },
   workos: { apiKey: "sk_test_workos_key" },

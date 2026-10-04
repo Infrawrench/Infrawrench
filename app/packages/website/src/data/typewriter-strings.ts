@@ -180,6 +180,7 @@ export const typewriterStrings: string[] = [
   "Cartesia Voices",
   "AssemblyAI Transcripts",
   "Speechmatics Jobs",
+  "Temporal Cloud Namespaces",
   "Rev AI Vocabularies",
   "Groq LoRA Adapters",
   "Mistral Batch Jobs",

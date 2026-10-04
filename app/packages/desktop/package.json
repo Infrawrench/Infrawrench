@@ -171,6 +171,7 @@
     "@infrawrench/plugin-speechmatics": "workspace:*",
     "@infrawrench/plugin-ssh": "workspace:*",
     "@infrawrench/plugin-tailscale": "workspace:*",
+    "@infrawrench/plugin-temporal-cloud": "workspace:*",
     "@infrawrench/plugin-together": "workspace:*",
     "@infrawrench/plugin-turso": "workspace:*",
     "@infrawrench/plugin-uploadthing": "workspace:*",

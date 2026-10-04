@@ -67,6 +67,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-replicate"),
   () => import("@infrawrench/plugin-revai"),
   () => import("@infrawrench/plugin-speechmatics"),
+  () => import("@infrawrench/plugin-temporal-cloud"),
   () => import("@infrawrench/plugin-together"),
   () => import("@infrawrench/plugin-xai"),
   () => import("@infrawrench/plugin-uploadthing"),
