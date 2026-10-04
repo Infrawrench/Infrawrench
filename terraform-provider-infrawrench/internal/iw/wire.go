@@ -962,3 +962,28 @@ type PluginSummary struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 }
+
+/* --------------------------- custom cost sources -------------------------- */
+
+// CustomCostSourceInput is the POST/PUT body. Description and DefaultCurrency
+// carry no omitempty: a null clears the field, which keeps the PUT a full
+// replacement, matching Terraform's model of the object.
+type CustomCostSourceInput struct {
+	Name            string  `json:"name"`
+	Description     *string `json:"description"`
+	DefaultCurrency *string `json:"defaultCurrency"`
+}
+
+// CustomCostSource is a named provider for uploaded spend. Uploads themselves
+// are data, not configuration, and are deliberately not modelled here.
+type CustomCostSource struct {
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	Description     *string `json:"description"`
+	DefaultCurrency *string `json:"defaultCurrency"`
+	PluginID        string  `json:"pluginId"`
+	UploadCount     int64   `json:"uploadCount"`
+	LastUploadAt    *string `json:"lastUploadAt"`
+	CreatedAt       string  `json:"createdAt"`
+	UpdatedAt       string  `json:"updatedAt"`
+}

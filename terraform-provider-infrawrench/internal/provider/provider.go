@@ -164,6 +164,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		// Cost allocation and reporting.
 		NewBudgetResource,
 		NewCostCentreResource,
+		NewCustomCostSourceResource,
 		NewAllocationRuleResource,
 		NewTagPolicyResource,
 		NewSavedFilterResource,

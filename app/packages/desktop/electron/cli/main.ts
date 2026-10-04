@@ -65,6 +65,7 @@ import { cmdOwnership } from "./commands/ownership";
 import { cmdGraph } from "./commands/graph";
 import { cmdBlastRadius } from "./commands/blast-radius";
 import { cmdPage, cmdCostsPush } from "./commands/push";
+import { cmdCostSources } from "./commands/custom-costs";
 import { cmdCli } from "./commands/cli-install";
 import { cmdDeploy } from "./commands/deploy";
 import { cmdSshFanout } from "./commands/ssh-fanout";
@@ -105,6 +106,9 @@ COMMANDS
   costs --alerts      change-based cost alerts + recent firings ("spend moved >X% vs the
                       prior period" — distinct from budgets and anomalies)   [--limit 20]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
+                      into a custom source: --format csv|focus [--map date=Day --map tag=Team]
+                      [--currency USD] [--date-format mdy|dmy] [--replace | --append]
+  costs sources       custom cost sources (uploaded spend); "costs sources <name>" for history
   budgets             every budget as a tree (a parent is the sum of its children): this
                       period's actual and forecast vs its limit, in money or a usage unit,
                       with fired alerts and children that outgrow their parent
@@ -266,7 +270,8 @@ FLAGS
   --resource <id>     focus one resource (graph) / filter to it (changes)
   -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
-  --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>
+  --format <fmt>      export format: terraform (default) or focus; pdf for reports/dashboards <name|id>;
+                      costs push: json (default), csv or focus
   --reason <text>     posture dismiss: why the finding is an accepted risk
   --where <query>     costs: filter in the cost query language — terms joined by AND, each
                       dimension = 'v' | != 'v' | IN ('a','b') | NOT IN ('a','b'), plus
@@ -290,7 +295,12 @@ FLAGS
                       count metric rather than returning a plausible wrong number
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
-  -f, --file <path>   JSON rows for costs push / config document (stdin when omitted)
+  -f, --file <path>   JSON rows / CSV / FOCUS file for costs push, config document (stdin when omitted)
+  --map <field=col>   costs push --format csv: map a column (date, cost, currency, service,
+                      account, region, resource, usageQuantity, usageUnit, tags; tag=<col> keeps
+                      a column as a tag). Repeatable; unmapped fields are auto-detected
+  --replace/--append  costs push into a custom source: what to do when the dates overlap an
+                      earlier upload (required then)
   --out <path>        config export / export --format focus: write here instead of stdout;
                       reports/dashboards --format pdf: the PDF's path (default: <name>.pdf here)
   --sections <a,b>    config: limit to these sections (budgets, workflows, dashboards, …)
@@ -464,6 +474,10 @@ export async function runCli(): Promise<void> {
       case "costs":
         if (rest[0] === "push") {
           await cmdCostsPush(ctx, parsed.push);
+          break;
+        }
+        if (rest[0] === "sources") {
+          await cmdCostSources(ctx, rest.slice(1).join(" "));
           break;
         }
         if (parsed.anomalies) {

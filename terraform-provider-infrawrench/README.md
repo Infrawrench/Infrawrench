@@ -657,6 +657,7 @@ secret store that consumes it rather than into an output.
 | --------------------------------------- | --------- | ---------------------------------------------------- |
 | `infrawrench_budget`                    | by id     | Live spend status is deliberately not exposed        |
 | `infrawrench_cost_centre`               | by id     | No single-GET route; read lists and filters          |
+| `infrawrench_custom_cost_source`        | by id     | Destroy deletes the source's uploaded spend          |
 | `infrawrench_allocation_rule`           | by id     | Lower priority wins; first match only                |
 | `infrawrench_tag_policy`                | by org id | Org singleton; destroy resets to unenforced          |
 | `infrawrench_saved_filter`              | by id     | `filter` and `query` are mutually exclusive          |

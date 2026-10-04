@@ -67,6 +67,12 @@ func specChecks() []specCheck {
 		{schema: "CostCentre", value: CostCentre{}},
 		{schema: "CostCentreInput", value: CostCentreInput{}},
 
+		{
+			schema: "CustomCostSource",
+			value:  CustomCostSource{},
+		},
+		{schema: "CustomCostSourceInput", value: CustomCostSourceInput{}},
+
 		{schema: "AllocationRule", value: AllocationRule{}},
 		{schema: "AllocationRuleInput", value: AllocationRuleInput{}},
 		{schema: "AllocationRuleMatch", value: AllocationRuleMatch{}},

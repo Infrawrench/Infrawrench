@@ -70,8 +70,9 @@ import {
   EXTERNAL_COST_PLUGIN_ID,
   sourceFromCostAccountId,
 } from "@infrawrench/server-core/cost/external-cost-ids";
+import { parseCustomCostAccountId } from "@infrawrench/server-core/cost/custom-cost-ids";
 import { db } from "../db/client";
-import { accounts, workflows } from "../db/schema";
+import { accounts, customCostSources, workflows } from "../db/schema";
 import { getPlugin, loadPlugins } from "../plugins/loader";
 
 /**
@@ -241,17 +242,58 @@ function rawTotalsOf(groups: CostSeriesGroup[], cumulative: boolean): Record<str
 }
 
 /**
- * Plugin id → display name, plus the two synthetic providers that have no
- * plugin behind them: rows a workflow reported (`cost/workflow-costs`) and rows
- * a server pushed over the API (`cost/external-costs`).
+ * Plugin id → display name, plus the synthetic providers that have no plugin
+ * behind them: rows a workflow reported (`cost/workflow-costs`), rows a server
+ * pushed over the API (`cost/external-costs`), and one provider per custom
+ * cost source (`cost/custom-costs`), labelled with the source's current name.
  */
-async function providerNames(): Promise<Map<string, string>> {
-  const loaded = await loadPlugins();
+async function providerNames(organizationId: string, keys: string[]): Promise<Map<string, string>> {
+  // Only touch the sources table when a custom provider is actually in play:
+  // most orgs have none, and this runs on every provider-grouped cost query.
+  const [loaded, custom] = await Promise.all([
+    loadPlugins(),
+    keys.some((k) => k.startsWith("custom:"))
+      ? customSourceNames(organizationId)
+      : Promise.resolve(new Map<string, string>()),
+  ]);
   const names = new Map(loaded.map((l) => [l.plugin.manifest.id, l.plugin.manifest.displayName]));
   names.set(WORKFLOW_COST_PLUGIN_ID, "Workflow");
   names.set(EXTERNAL_COST_PLUGIN_ID, "External");
   names.set(DEPLOYMENT_COST_PLUGIN_ID, DEPLOYMENT_COST_PROVIDER_LABEL);
+  for (const [id, name] of custom) names.set(`custom:${id}`, name);
   return names;
+}
+
+/** Custom cost source id → name. A deleted source's rows are zeroed, so a miss is harmless. */
+async function customSourceNames(organizationId: string): Promise<Map<string, string>> {
+  const rows = await db
+    .select({ id: customCostSources.id, name: customCostSources.name })
+    .from(customCostSources)
+    .where(eq(customCostSources.organizationId, organizationId));
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+/**
+ * Labels for the synthetic `custom:<source>[/<label>]` accounts an upload
+ * writes to: "<label> (<source>)", or just the source name when the file named
+ * no account.
+ */
+async function customCostAccountLabels(
+  organizationId: string,
+  values: string[],
+): Promise<Map<string, string>> {
+  const labels = new Map<string, string>();
+  const parsed = values
+    .map((value) => ({ value, ids: parseCustomCostAccountId(value) }))
+    .filter((p) => p.ids !== null);
+  if (parsed.length === 0) return labels;
+  const names = await customSourceNames(organizationId);
+  for (const { value, ids } of parsed) {
+    const source = names.get(ids!.sourceId);
+    if (!source) continue;
+    labels.set(value, ids!.subAccount ? `${ids!.subAccount} (${source})` : source);
+  }
+  return labels;
 }
 
 /** Resolve display labels for group keys (providers → plugin names, accounts → display names). */
@@ -262,7 +304,10 @@ async function labelSeries(
 ): Promise<CostQuerySeries[]> {
   let labelFor = (key: string): string => key || "Total";
   if (groupBy === "provider") {
-    const names = await providerNames();
+    const names = await providerNames(
+      organizationId,
+      groups.map((g) => g.key),
+    );
     labelFor = (key) => names.get(key) ?? key;
   } else if (groupBy === "account") {
     const rows = await db
@@ -280,6 +325,12 @@ async function labelSeries(
       names.set(id, name);
     }
     for (const [id, name] of deploymentCostAccountLabels(groups.map((g) => g.key))) {
+      names.set(id, name);
+    }
+    for (const [id, name] of await customCostAccountLabels(
+      organizationId,
+      groups.map((g) => g.key),
+    )) {
       names.set(id, name);
     }
     labelFor = (key) => names.get(key) ?? key;
@@ -636,7 +687,7 @@ export async function listCostDimensionValues(
 
   // Attach display labels where the raw value is an internal id.
   if (dimension === "provider") {
-    const names = await providerNames();
+    const names = await providerNames(organizationId, values);
     return values.map((v) => ({ value: v, label: names.get(v) ?? v }));
   }
   if (dimension === "account") {
@@ -652,6 +703,9 @@ export async function listCostDimensionValues(
       names.set(id, name);
     }
     for (const [id, name] of deploymentCostAccountLabels(values)) {
+      names.set(id, name);
+    }
+    for (const [id, name] of await customCostAccountLabels(organizationId, values)) {
       names.set(id, name);
     }
     return values.map((v) => ({ value: v, label: names.get(v) ?? v }));

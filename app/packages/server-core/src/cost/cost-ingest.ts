@@ -24,6 +24,7 @@ import { db } from "../db/client";
 import { accounts } from "../db/schema";
 import { hashTags, insertCostRows, type CostDailyRow } from "../clickhouse/cost-writers";
 import { isClickHouseConfigured } from "../clickhouse/client";
+import { COST_CHARGE_TYPES } from "@infrawrench/client-core";
 
 /**
  * One day of spend for one dimension combination. Structurally the same shape
@@ -44,6 +45,15 @@ export interface IngestCostRow {
   usageAmount?: number | undefined;
   usageUnit?: string | undefined;
   accountId?: string | undefined;
+  /**
+   * The file's own account label (custom cost sources only, see
+   * {@link CostIngestSource.subAccountId}). Never an Infrawrench account id.
+   */
+  subAccount?: string | undefined;
+  /** Charge attribution: honoured only when the source sets `allowAttribution`. */
+  chargeType?: string | undefined;
+  amortizedAmount?: number | undefined;
+  commitmentId?: string | undefined;
 }
 
 /** Where a batch of pushed rows came from, and how to key it. */
@@ -62,6 +72,21 @@ export interface CostIngestSource {
   errorPrefix: string;
   /** Most rows accepted in one call. */
   maxRows: number;
+  /**
+   * Accept `chargeType`, `amortizedAmount` and `commitmentId`. Only custom
+   * cost sources set this: a FOCUS file states its charge categories and
+   * amortized cost, which an API push has no standard way to. Off, those
+   * fields are ignored exactly as they always were.
+   */
+  allowAttribution?: boolean | undefined;
+  /**
+   * Map a row's `subAccount` onto a synthetic account id. Set, `accountId` is
+   * rejected (a source's rows never claim a real account) and `subAccount`
+   * splits the account dimension instead.
+   */
+  subAccountId?: ((subAccount: string) => string) | undefined;
+  /** Inclusive range every row's date must fall in (an upload's declared range). */
+  dateRange?: { from: string; to: string } | undefined;
 }
 
 /** Any tag key a caller may not set (we own this namespace). */
@@ -80,6 +105,7 @@ export class CostIngestError extends Error {
 }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const CHARGE_TYPES: ReadonlySet<string> = new Set(COST_CHARGE_TYPES);
 const CURRENCY = /^[A-Za-z]{3}$/;
 
 /** True for a `YYYY-MM-DD` string that is also a real calendar date. */
@@ -156,10 +182,25 @@ export async function ingestCostRows(opts: {
   rows: IngestCostRow[];
   source: CostIngestSource;
 }): Promise<{ written: number }> {
+  const mapped = await validateCostRows(opts);
+  if (mapped.length > 0) await insertCostRows(mapped);
+  return { written: mapped.length };
+}
+
+/**
+ * The validation half of {@link ingestCostRows}: every check, nothing written.
+ * Custom cost uploads call this directly so they can total the rows before
+ * inserting them.
+ */
+export async function validateCostRows(opts: {
+  organizationId: string;
+  rows: IngestCostRow[];
+  source: CostIngestSource;
+}): Promise<CostDailyRow[]> {
   const { organizationId, rows, source } = opts;
 
   if (!Array.isArray(rows)) throw new CostIngestError(`${source.errorPrefix} expects an array.`);
-  if (rows.length === 0) return { written: 0 };
+  if (rows.length === 0) return [];
   if (rows.length > source.maxRows) {
     throw new CostIngestError(
       `${source.errorPrefix} accepts at most ${source.maxRows} rows per call (got ${rows.length}).`,
@@ -169,7 +210,16 @@ export async function ingestCostRows(opts: {
     throw new CostIngestError("Cost storage is not configured on this server.");
   }
 
-  await assertAccountsBelongToOrg(organizationId, rows, source.errorPrefix);
+  if (source.subAccountId) {
+    const index = rows.findIndex((r) => r && typeof r === "object" && r.accountId);
+    if (index !== -1) {
+      throw new CostIngestError(
+        `${source.errorPrefix}: row ${index} sets accountId; use subAccount for the file's own account label.`,
+      );
+    }
+  } else {
+    await assertAccountsBelongToOrg(organizationId, rows, source.errorPrefix);
+  }
 
   const mapped: CostDailyRow[] = rows.map((row, index) => {
     const fail = (detail: string): never => {
@@ -187,6 +237,38 @@ export async function ingestCostRows(opts: {
     if (row.usageAmount !== undefined && !Number.isFinite(row.usageAmount)) {
       fail("has a non-finite usageAmount.");
     }
+    if (source.dateRange && (row.date < source.dateRange.from || row.date > source.dateRange.to)) {
+      fail(
+        `has date ${row.date} outside the upload's range ${source.dateRange.from} to ${source.dateRange.to}.`,
+      );
+    }
+
+    let chargeType = "usage";
+    let commitmentId = "";
+    let amortizedAmount = 0;
+    let amortizedReported = 0;
+    if (source.allowAttribution) {
+      if (row.chargeType !== undefined && row.chargeType !== null) {
+        if (typeof row.chargeType !== "string" || !CHARGE_TYPES.has(row.chargeType)) {
+          fail(`has an unknown chargeType "${String(row.chargeType)}".`);
+        }
+        chargeType = row.chargeType;
+      }
+      commitmentId = shortString(row.commitmentId, fail, "commitmentId");
+      if (row.amortizedAmount !== undefined && row.amortizedAmount !== null) {
+        if (typeof row.amortizedAmount !== "number" || !Number.isFinite(row.amortizedAmount)) {
+          fail("has a non-finite amortizedAmount.");
+        }
+        amortizedAmount = row.amortizedAmount;
+        amortizedReported = 1;
+      }
+    }
+    const subAccount = source.subAccountId ? shortString(row.subAccount, fail, "subAccount") : "";
+    const accountId = source.subAccountId
+      ? subAccount
+        ? source.subAccountId(subAccount)
+        : source.fallbackAccountId
+      : row.accountId || source.fallbackAccountId;
 
     // The reserved tag is what keeps this row's ReplacingMergeTree key disjoint
     // from anything a provider collector writes: see the module comment.
@@ -194,35 +276,38 @@ export async function ingestCostRows(opts: {
 
     return {
       organization_id: organizationId,
-      account_id: row.accountId || source.fallbackAccountId,
+      account_id: accountId,
       plugin_id: source.pluginId,
       day: row.date,
       service: shortString(row.service, fail, "service"),
       region: shortString(row.region, fail, "region"),
       resource_id: shortString(row.resourceId, fail, "resourceId"),
       tags,
-      tags_hash: hashTags(tags),
+      // Without attribution the extras are the defaults, which hash exactly as
+      // a plain tags map: see `hashTags`.
+      tags_hash: hashTags(tags, { chargeType, commitmentId }),
       currency: row.currency.toUpperCase(),
       amount: row.amount,
       usage_amount: row.usageAmount ?? 0,
       usage_unit: shortString(row.usageUnit, fail, "usageUnit"),
-      // Pushed rows are cash usage. A caller reporting a parsed invoice has no
-      // provider-side notion of a commitment term to amortize over, and letting
-      // them declare one would make "amortized" mean something different per
-      // source. `hashTags` above is called without extras for the same reason:
-      // these defaults must hash exactly as they did before the columns existed.
-      charge_type: "usage",
-      amortized_amount: 0,
+      // API-pushed and workflow rows are cash usage. A caller reporting a parsed
+      // invoice has no provider-side notion of a commitment term to amortize
+      // over, and letting them declare one would make "amortized" mean
+      // something different per source. A FOCUS upload is the exception (see
+      // `allowAttribution`): the spec defines both columns. Defaults hash
+      // exactly as they did before the columns existed.
+      charge_type: chargeType as CostDailyRow["charge_type"],
+      amortized_amount: amortizedAmount,
       // Not reported, not "reported as zero": an amortized query falls back to
       // the cash amount for these rows rather than showing them as worthless.
-      amortized_reported: 0,
-      commitment_id: "",
-      // A pushed row carries no list price; re-rating falls back to the uplift.
+      amortized_reported: amortizedReported,
+      commitment_id: commitmentId,
+      // A pushed or uploaded row carries no list price; re-rating falls back
+      // to the uplift.
       list_amount: 0,
       list_reported: 0,
     };
   });
 
-  await insertCostRows(mapped);
-  return { written: mapped.length };
+  return mapped;
 }

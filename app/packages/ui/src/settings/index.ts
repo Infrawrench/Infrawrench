@@ -26,6 +26,7 @@ export { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 export { CurrencySection } from "./CurrencySection.js";
 export { CostExportsSection } from "./CostExportsSection.js";
 export { AiAttributionSection } from "./AiAttributionSection.js";
+export { CustomCostSourcesSection } from "./CustomCostSourcesSection.js";
 export { ApprovalsSection } from "./ApprovalsSection.js";
 export { NotificationsSection } from "./NotificationsSection.js";
 export { OnCallSection } from "./OnCallSection.js";

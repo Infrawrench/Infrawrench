@@ -206,4 +206,8 @@
 // on CostQueryResponse; `granularity` on CostAccountStatus;
 // `dimension=usage-units`; an optional overrides body on
 // POST /cost-reports/{id}/run. Additive.
-export const API_VERSION = "1.58.0";
+// 1.59.0: custom cost sources. `/custom-cost-sources` CRUD plus a chunked
+// upload sequence (`/{id}/uploads`, `…/rows`, `…/complete`, DELETE an
+// upload). Each source reads as its own `custom:<id>` provider in cost
+// queries. Additive.
+export const API_VERSION = "1.59.0";

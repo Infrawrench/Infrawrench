@@ -61,6 +61,12 @@ export const COST_SCOPE_DENY_RULES: readonly CostScopeDenyRule[] = [
       "Cost exports cover the whole organization and are not available with scoped cost access.",
   },
   {
+    prefix: "/custom-cost-sources",
+    methods: "*",
+    reason:
+      "Custom cost sources hold the whole organization's uploaded spend and are not available with scoped cost access.",
+  },
+  {
     prefix: "/invoices",
     methods: "*",
     reason:

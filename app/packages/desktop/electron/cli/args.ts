@@ -95,8 +95,18 @@ export interface PushFlags {
   /** Minutes to suppress repeat pages under the same key. */
   cooldown?: number | undefined;
   voice: boolean;
-  /** JSON file of cost rows; stdin when absent. */
+  /** JSON file of cost rows (or a CSV/FOCUS file with --format); stdin when absent. */
   file?: string | undefined;
+  /** `costs push --format json|csv|focus`; json when absent. Shares `--format` with `export`. */
+  format?: string | undefined;
+  /** `costs push --map field=Column`, repeatable: CSV column mapping overrides. */
+  map: string[];
+  /** `costs push --currency`: currency for CSV rows with no currency column. */
+  currency?: string | undefined;
+  /** `costs push --replace` / `--append`: what to do when the upload overlaps earlier ones. */
+  mode?: "append" | "replace" | undefined;
+  /** `costs push --date-format ymd|mdy|dmy`: order of slash-separated CSV dates. */
+  dateFormat?: string | undefined;
 }
 
 /** Flags for `deploy`. */
@@ -334,6 +344,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         cooldown: { type: "string" },
         voice: { type: "boolean", default: false },
         file: { type: "string", short: "f" },
+        // `costs push` file uploads into a custom cost source.
+        map: { type: "string", multiple: true },
+        replace: { type: "boolean", default: false },
+        append: { type: "boolean", default: false },
+        "date-format": { type: "string" },
         // Export flags (`export`).
         format: { type: "string" },
         // Deploy flags (`deploy`).
@@ -550,6 +565,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       cooldown,
       voice: values.voice === true,
       file: str("file"),
+      format: str("format"),
+      map: Array.isArray(multi.map) ? multi.map : [],
+      currency: str("currency"),
+      mode: values.replace === true ? "replace" : values.append === true ? "append" : undefined,
+      dateFormat: str("date-format"),
     },
     prices: {
       provider: str("provider"),
