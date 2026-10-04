@@ -12,6 +12,7 @@ import { plugin as kafkaPlugin } from "@infrawrench/plugin-kafka";
 import { plugin as kubernetesPlugin } from "@infrawrench/plugin-kubernetes";
 import { plugin as memcachedPlugin } from "@infrawrench/plugin-memcached";
 import { plugin as mongodbPlugin } from "@infrawrench/plugin-mongodb";
+import { plugin as mongodbAtlasPlugin } from "@infrawrench/plugin-mongodb-atlas";
 import { plugin as mysqlPlugin } from "@infrawrench/plugin-mysql";
 import { plugin as mssqlPlugin } from "@infrawrench/plugin-mssql";
 import { plugin as neonPlugin } from "@infrawrench/plugin-neon";
@@ -71,6 +72,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   kubernetesPlugin,
   memcachedPlugin,
   mongodbPlugin,
+  mongodbAtlasPlugin,
   mysqlPlugin,
   mssqlPlugin,
   neonPlugin,

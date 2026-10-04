@@ -100,6 +100,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   cloudinary: ["api.cloudinary.com"],
   databricks: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
   neon: ["console.neon.tech"],
+  "mongodb-atlas": ["cloud.mongodb.com"],
   turso: ["api.turso.tech"],
   ovh: ["*.ovh.com"],
   scaleway: ["api.scaleway.com", "*.scw.cloud"],

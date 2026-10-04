@@ -69,6 +69,7 @@ export const typewriterStrings: string[] = [
   "Databricks Clusters",
   "Databricks SQL Warehouses",
   "Neon Projects",
+  "MongoDB Atlas Clusters",
   "PlanetScale Databases",
   "Turso Databases",
   "Redis Instances",

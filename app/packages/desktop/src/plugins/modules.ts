@@ -20,6 +20,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-kubernetes"),
   () => import("@infrawrench/plugin-memcached"),
   () => import("@infrawrench/plugin-mongodb"),
+  () => import("@infrawrench/plugin-mongodb-atlas"),
   () => import("@infrawrench/plugin-mysql"),
   () => import("@infrawrench/plugin-mssql"),
   () => import("@infrawrench/plugin-neon"),

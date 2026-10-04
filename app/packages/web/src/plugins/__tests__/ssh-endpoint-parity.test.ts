@@ -119,6 +119,7 @@ describe("SSH endpoint parity", () => {
     "docker",
     "cloudflare",
     "neon",
+    "mongodb-atlas",
     "planetscale",
     "turso",
     "kubernetes",
