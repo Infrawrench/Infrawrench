@@ -5,6 +5,7 @@ import {
   toast,
   type AccountReferenceOption,
   type BastionOption,
+  type CredentialFieldOption,
 } from "@infrawrench/ui";
 import type { PolicyTemplate, PreflightReport } from "@infrawrench/client-core";
 import { apiGet, apiPost } from "@/lib/api";
@@ -107,6 +108,22 @@ export function AddAccountModal({
     [orgId],
   );
 
+  const loadCredentialOptions = useCallback(
+    async (
+      pluginId: string,
+      fieldKey: string,
+      credentials: Record<string, string>,
+      bastionId: string | null,
+    ) => {
+      const { options } = await apiPost<{ options: CredentialFieldOption[] }>(
+        `/api/org/${orgId}/accounts/credential-options`,
+        { pluginId, fieldKey, credentials, bastionId },
+      );
+      return options;
+    },
+    [orgId],
+  );
+
   const fetchPolicyTemplate = useCallback(
     async (pluginId: string, capabilityIds: string[]) => {
       const { template } = await apiGet<{ template: PolicyTemplate }>(
@@ -127,6 +144,7 @@ export function AddAccountModal({
       saveAccount={saveAccount}
       runPreflight={runPreflight}
       fetchPolicyTemplate={fetchPolicyTemplate}
+      loadCredentialOptions={loadCredentialOptions}
       bastions={bastions}
       accounts={accounts}
       {...(prefilledPluginId ? { prefilledPluginId } : {})}
