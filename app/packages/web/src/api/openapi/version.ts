@@ -164,4 +164,5 @@
 // 1.44.0: cost visibility scopes and per-object sharing. Adds cost-visibility and sharing routes, costVisibility on /team/me, and sharing:override.
 // 1.45.0: PDF export and scheduled dashboard delivery routes and schemas. Additive.
 // 1.46.0: New Relic plugin and resource type IDs, plus provider-filled credential choices. Additive.
-export const API_VERSION = "1.46.0";
+// 1.47.0: Datadog plugin; `datadog` on the `pluginId` enum and its resource type ids on the `resourceTypeId` enum. Additive.
+export const API_VERSION = "1.47.0";

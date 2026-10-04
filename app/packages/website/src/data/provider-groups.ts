@@ -519,6 +519,22 @@ export const providerGroups: ProviderGroup[] = [
     name: "Observability",
     providers: [
       {
+        name: "Datadog",
+        detail: "Spend by product, monitors, SLOs, synthetics, hosts",
+        resources: [
+          "Organization",
+          "Monitor",
+          "Downtime",
+          "Dashboard",
+          "SLO",
+          "Synthetic Test",
+          "Host",
+          "User",
+          "API Key",
+          "Application Key",
+        ],
+      },
+      {
         name: "Coralogix",
         detail: "Usage and cost by TCO priority, alerts, TCO policies, quota",
         resources: [

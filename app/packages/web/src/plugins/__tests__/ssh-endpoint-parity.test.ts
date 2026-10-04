@@ -155,6 +155,7 @@ describe("SSH endpoint parity", () => {
     "cohere",
     "coralogix",
     "cursor",
+    "datadog",
     "deepgram",
     "deepseek",
     "elastic-cloud",

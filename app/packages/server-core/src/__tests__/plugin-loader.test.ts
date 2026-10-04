@@ -680,6 +680,7 @@ describe("principalRole declarations", () => {
     expect(declared.sort()).toEqual([
       "anthropic/api-key:deactivate-key",
       "clickhouse/ch-api-key:disable",
+      "datadog/user:disable",
       "fastly/api-token:revoke",
       "snowflake/snowflake-user:disable",
       "tailscale/user:suspend",

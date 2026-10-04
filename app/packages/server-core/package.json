@@ -249,6 +249,7 @@
     "@infrawrench/plugin-databricks": "workspace:*",
     "@infrawrench/plugin-snowflake": "workspace:*",
     "@infrawrench/plugin-depot": "workspace:*",
+    "@infrawrench/plugin-datadog": "workspace:*",
     "@infrawrench/plugin-deepgram": "workspace:*",
     "@infrawrench/plugin-deepseek": "workspace:*",
     "@infrawrench/plugin-devin": "workspace:*",

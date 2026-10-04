@@ -50,6 +50,7 @@ import { plugin as cartesiaPlugin } from "@infrawrench/plugin-cartesia";
 import { plugin as coherePlugin } from "@infrawrench/plugin-cohere";
 import { plugin as coralogixPlugin } from "@infrawrench/plugin-coralogix";
 import { plugin as cursorPlugin } from "@infrawrench/plugin-cursor";
+import { plugin as datadogPlugin } from "@infrawrench/plugin-datadog";
 import { plugin as deepgramPlugin } from "@infrawrench/plugin-deepgram";
 import { plugin as deepseekPlugin } from "@infrawrench/plugin-deepseek";
 import { plugin as devinPlugin } from "@infrawrench/plugin-devin";
@@ -131,6 +132,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   coherePlugin,
   coralogixPlugin,
   cursorPlugin,
+  datadogPlugin,
   deepgramPlugin,
   deepseekPlugin,
   devinPlugin,

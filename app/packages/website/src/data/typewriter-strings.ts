@@ -190,6 +190,7 @@ export const typewriterStrings: string[] = [
   "GitHub Copilot Seats",
   "CircleCI Workflows",
   "Devin Sessions",
+  "Datadog Monitors",
   "Cartesia Voices",
   "AssemblyAI Transcripts",
   "Speechmatics Jobs",
