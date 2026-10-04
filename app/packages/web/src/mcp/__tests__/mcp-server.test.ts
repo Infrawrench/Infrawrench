@@ -5,6 +5,11 @@ const handler = vi.fn(async (_input: Record<string, unknown>, _auth: unknown) =>
   content: [{ type: "text" as const, text: "done" }],
 }));
 
+vi.mock("@/auth/cost-visibility", () => ({
+  // Cost visibility resolution reads Postgres; these tests exercise an
+  // unrestricted caller, so the wrapper just runs the work.
+  withPrincipalCostVisibility: (_org: string, _p: unknown, fn: () => Promise<unknown>) => fn(),
+}));
 vi.mock("@infrawrench/server-core/trials/ceremony", () => ({
   resolveAgentCredential: vi.fn(async () => null),
   getClaimStatus: vi.fn(async () => null),
@@ -34,6 +39,11 @@ vi.mock("@/api/auth-middleware", () => ({
 const mockAuthorizeToolCall = vi.fn();
 vi.mock("@/tools/permissions", () => ({
   authorizeToolCall: (...a: unknown[]) => mockAuthorizeToolCall(...a),
+  runToolHandler: (
+    tool: { handler: (i: unknown, a: unknown) => unknown },
+    input: unknown,
+    auth: unknown,
+  ) => tool.handler(input, auth),
 }));
 
 const { buildMcpServer } = await import("@/mcp/server");

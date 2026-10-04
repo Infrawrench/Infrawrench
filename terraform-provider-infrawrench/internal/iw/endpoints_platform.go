@@ -1047,3 +1047,68 @@ func (c *Client) ListAccountResources(ctx context.Context, accountID string) ([]
 	err := c.Get(ctx, "/accounts/"+seg(accountID)+"/resources", &out)
 	return out, err
 }
+
+/* ---------------------------- cost visibility ----------------------------- */
+
+// ListCostVisibilityScopes unwraps the {"scopes": […]} envelope.
+func (c *Client) ListCostVisibilityScopes(ctx context.Context) ([]CostVisibilityScope, error) {
+	var envelope struct {
+		Scopes []CostVisibilityScope `json:"scopes"`
+	}
+	if err := c.Get(ctx, "/cost-visibility", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Scopes, nil
+}
+
+// GetCostVisibilityScope lists and filters by principal: scopes are keyed by
+// (kind, principal) and there is no single-GET route.
+func (c *Client) GetCostVisibilityScope(ctx context.Context, kind, principalID string) (*CostVisibilityScope, error) {
+	all, err := c.ListCostVisibilityScopes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].PrincipalKind == kind && all[i].PrincipalID == principalID {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/cost-visibility", kind+"/"+principalID)
+}
+
+// PutCostVisibilityScope creates or replaces the scope of one principal.
+func (c *Client) PutCostVisibilityScope(ctx context.Context, in CostVisibilityScopeInput) (*CostVisibilityScope, error) {
+	var out CostVisibilityScope
+	if err := c.Put(ctx, "/cost-visibility", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteCostVisibilityScope(ctx context.Context, kind, principalID string) error {
+	return c.Delete(ctx, "/cost-visibility/"+seg(kind)+"/"+seg(principalID))
+}
+
+/* ------------------------------ object sharing ----------------------------- */
+
+func (c *Client) GetObjectSharing(ctx context.Context, objectType, objectID string) (*ObjectSharing, error) {
+	var out ObjectSharing
+	if err := c.Get(ctx, "/sharing/"+seg(objectType)+"/"+seg(objectID), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutObjectSharing(ctx context.Context, objectType, objectID string, in ObjectSharingInput) (*ObjectSharing, error) {
+	var out ObjectSharing
+	if err := c.Put(ctx, "/sharing/"+seg(objectType)+"/"+seg(objectID), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ResetObjectSharing returns the object to the default: everyone in the org
+// can edit, no explicit grants.
+func (c *Client) ResetObjectSharing(ctx context.Context, objectType, objectID string) error {
+	return c.Delete(ctx, "/sharing/"+seg(objectType)+"/"+seg(objectID))
+}

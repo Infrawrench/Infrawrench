@@ -160,6 +160,6 @@
 // Keys that held the dashboard permissions were granted the workflow ones by
 // the earlier permission split, so existing clients keep working. Automated
 // runs now act as the workflow's last editor rather than its creator.
-// 1.43.0: Grafana Cloud plugin; `grafana-cloud` on the `pluginId` enum and its
-// resource type ids on the `resourceTypeId` enum. Additive.
-export const API_VERSION = "1.43.0";
+// 1.43.0: Grafana Cloud and the October 2026 provider batch plugin IDs and resource type IDs. Additive.
+// 1.44.0: cost visibility scopes and per-object sharing. Adds cost-visibility and sharing routes, costVisibility on /team/me, and sharing:override.
+export const API_VERSION = "1.44.0";

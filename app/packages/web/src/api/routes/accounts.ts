@@ -8,7 +8,7 @@ import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { buildPluginHostServices } from "@infrawrench/server-core/host-services";
-import { withEgressScope } from "@infrawrench/server-core/egress-guard";
+import { runInEgressScope, withEgressScope } from "@infrawrench/server-core/egress-guard";
 import { runAccountPreflight } from "@infrawrench/server-core/preflight";
 import { syncAccountResources, syncAccountResourceType } from "../../services/sync-resources";
 import { exportStoredResourcesToTerraform } from "../../services/terraform-export";
@@ -59,6 +59,7 @@ app.get("/plugins", async (c) => {
         regions: f.regions,
         optional: f.optional,
         accountReference: f.accountReference,
+        providerOptions: f.providerOptions,
         helpLink: f.helpLink,
       })),
       preflight: p.plugin.manifest.preflight ?? null,
@@ -135,6 +136,70 @@ app.post("/preflight", async (c) => {
   } catch (e) {
     // createClient throws on malformed credentials (bad JSON key, missing
     // field): that's a user-fixable state, not a 500.
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
+/**
+ * POST /api/accounts/credential-options: the choices for a credential field
+ * that declares `providerOptions` (an account picker filled from the API
+ * key, say), loaded with the credentials entered so far. Nothing is stored.
+ * Egress follows the bastion picked in the form or, when editing an existing
+ * account (`accountId`), that account's own binding.
+ */
+app.post("/credential-options", async (c) => {
+  requirePermission(c, "accounts:write");
+  const { pluginId, fieldKey, credentials, bastionId, accountId } = await c.req.json<{
+    pluginId: string;
+    fieldKey: string;
+    credentials: Record<string, string>;
+    bastionId?: string | null;
+    accountId?: string | null;
+  }>();
+  const organizationId = c.get("organizationId");
+  const loaded = await getPlugin(pluginId);
+  if (!loaded) return c.json({ error: "Plugin not found" }, 404);
+  const field = loaded.plugin.manifest.credentialFields.find((f) => f.key === fieldKey);
+  if (!field?.providerOptions || !loaded.plugin.listCredentialOptions) {
+    return c.json({ error: "This field has no provider options" }, 400);
+  }
+  const credentialError = await serverCredentialError(pluginId, credentials);
+  if (credentialError) return c.json({ error: credentialError }, 400);
+
+  let validatedBastionId: string | null = null;
+  if (accountId) {
+    const [a] = await db
+      .select({ bastionId: accounts.bastionId, pluginId: accounts.pluginId })
+      .from(accounts)
+      .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
+      .limit(1);
+    if (!a || a.pluginId !== pluginId) return c.json({ error: "Account not found" }, 404);
+    validatedBastionId = a.bastionId;
+  } else if (bastionId) {
+    const [b] = await db
+      .select({ id: bastionVms.id })
+      .from(bastionVms)
+      .where(and(eq(bastionVms.id, bastionId), eq(bastionVms.organizationId, organizationId)))
+      .limit(1);
+    if (!b) return c.json({ error: "Bastion not found" }, 400);
+    validatedBastionId = b.id;
+  }
+
+  try {
+    const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
+      organizationId,
+      bastionId: validatedBastionId,
+    });
+    const list = loaded.plugin.listCredentialOptions.bind(loaded.plugin);
+    // Same egress scope a client gets, so a plugin calling the global fetch
+    // still reaches the guarded dispatcher.
+    const options = await runInEgressScope({ organizationId }, () =>
+      list(fieldKey, credentials, hostServices),
+    );
+    return c.json({ options });
+  } catch (e) {
+    // The plugin throws user-facing messages (wrong key, wrong region); the
+    // form shows them and falls back to a text input.
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });

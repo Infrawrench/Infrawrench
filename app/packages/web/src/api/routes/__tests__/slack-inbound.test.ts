@@ -23,6 +23,11 @@ const t = (name: string, cols: string[]) => {
   return table;
 };
 
+vi.mock("@/auth/cost-visibility", () => ({
+  // Cost visibility resolution reads Postgres; these tests exercise an
+  // unrestricted caller, so the wrapper just runs the work.
+  withPrincipalCostVisibility: (_org: string, _p: unknown, fn: () => Promise<unknown>) => fn(),
+}));
 vi.mock("@/db/schema", () => ({
   slackInstallations: t("slackInstallations", ["organizationId", "teamId", "deletedAt"]),
   organizations: t("organizations", ["id", "displayName"]),

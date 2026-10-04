@@ -19,6 +19,7 @@
  * its own permission server-side, so a stale or spoofed answer here can hide a
  * button but cannot grant anything.
  */
+import type { CostVisibilitySummary } from "./cost-visibility";
 import type { CloudFetch } from "./fetch";
 
 export interface OrgRoleSummary {
@@ -40,6 +41,12 @@ export interface OrgMembership {
   email: string | null;
   role: OrgRoleSummary | null;
   permissions: string[];
+  /**
+   * The caller's cost visibility restriction. Optional so a client a release
+   * ahead of its server reads an older response as unrestricted display-wise;
+   * the server enforces the scope either way.
+   */
+  costVisibility?: CostVisibilitySummary;
 }
 
 const EMPTY_MEMBERSHIP: OrgMembership = {

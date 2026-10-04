@@ -77,6 +77,7 @@ import {
   users,
 } from "../../db/schema";
 import { CostQueryError, runCostQuery } from "../../services/cost-query";
+import { withPrincipalCostVisibility } from "../../auth/cost-visibility";
 import { getPlugin } from "../../plugins/loader";
 import { executePendingAction, rejectPendingAction, runAgentTurn } from "../../chat/agent";
 import { noteChatToolApprovalDecided } from "../../chat/slack-approvals";
@@ -256,16 +257,24 @@ async function costSummaryMrkdwn(member: LinkedMember, showOrgName: boolean): Pr
     : `*Cloud costs — ${monthLabel}, month to date*`;
 
   try {
-    const res = await runCostQuery(member.organizationId, {
-      from,
-      to,
-      binning: "daily",
-      groupBy: "service",
-      filters: [],
-      topN: 5,
-      comparePreviousPeriod: true,
-      forecast: false,
-    });
+    // Within the linked member's cost visibility scope, per org: the reply
+    // may land in a channel, and it must never say more than the member could
+    // read in the app.
+    const res = await withPrincipalCostVisibility(
+      member.organizationId,
+      { userId: member.userId },
+      () =>
+        runCostQuery(member.organizationId, {
+          from,
+          to,
+          binning: "daily",
+          groupBy: "service",
+          filters: [],
+          topN: 5,
+          comparePreviousPeriod: true,
+          forecast: false,
+        }),
+    );
 
     const currencies = Object.keys(res.totals);
     if (currencies.length === 0) {

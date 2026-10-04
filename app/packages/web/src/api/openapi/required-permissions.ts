@@ -6,10 +6,22 @@
  * routes: `pnpm --filter @infrawrench/web generate:openapi` will pick them up.
  */
 export const REQUIRED_PERMISSION: Record<string, string | null> = {
+  // cost visibility scopes; PUT/DELETE depend on the principal (an API key's
+  // owner may scope their own key with apikeys:write), so the handler owns
+  // the check and the map records the common case.
+  "GET /cost-visibility": "team:read",
+  "PUT /cost-visibility": "team:role:write",
+  "DELETE /cost-visibility/{principalKind}/{principalId}": "team:role:write",
+  // object sharing; the permission depends on the object type in the path
+  // (costs:* for reports and folders, dashboards:* for dashboards).
+  "GET /sharing/{objectType}/{objectId}": null,
+  "PUT /sharing/{objectType}/{objectId}": null,
+  "DELETE /sharing/{objectType}/{objectId}": null,
   // accounts
   "GET /accounts/plugins": "accounts:read",
   "GET /accounts/plugins/{pluginId}/policy-template": "accounts:read",
   "POST /accounts/preflight": "accounts:write",
+  "POST /accounts/credential-options": "accounts:write",
   "POST /accounts/{id}/preflight": "accounts:write",
   "GET /accounts": "accounts:read",
   "POST /accounts": "accounts:write",

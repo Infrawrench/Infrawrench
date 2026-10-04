@@ -152,6 +152,12 @@ func specChecks() []specCheck {
 		{schema: "LogWorkspaceQueryUpdate", value: LogWorkspaceQueryInput{}},
 		{schema: "LogStreamSelector", value: LogStreamSelector{}},
 
+		{schema: "CostVisibilityScope", value: CostVisibilityScope{}},
+		{schema: "CostVisibilityScopeInput", value: CostVisibilityScopeInput{}},
+		{schema: "ObjectAccessGrant", value: ObjectAccessGrant{}},
+		{schema: "ObjectSharing", value: ObjectSharing{}},
+		{schema: "ObjectSharingInput", value: ObjectSharingInput{}},
+
 		{schema: "RoleSummary", value: Role{}},
 		{schema: "RoleCreateRequest", value: RoleInput{}},
 		{schema: "RoleUpdateRequest", value: RoleInput{}},

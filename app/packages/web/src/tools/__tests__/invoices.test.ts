@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockListManagedAccounts = vi.fn();
 const mockGetManagedAccount = vi.fn();
+vi.mock("@/auth/cost-visibility", () => ({
+  // Cost visibility resolution reads Postgres; these tests exercise an
+  // unrestricted caller, so the wrapper just runs the work.
+  withPrincipalCostVisibility: (_org: string, _p: unknown, fn: () => Promise<unknown>) => fn(),
+}));
 vi.mock("@infrawrench/server-core/cost/managed-accounts", () => ({
   listManagedAccounts: (...a: unknown[]) => mockListManagedAccounts(...a),
   getManagedAccount: (...a: unknown[]) => mockGetManagedAccount(...a),

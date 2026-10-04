@@ -9,6 +9,7 @@
  * server-core `cost/anomaly-acknowledge.ts`, with no database in them; this
  * file is where they meet the tables.
  */
+import { withholdOrgWideFindings } from "./cost-visibility-filter";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import type { CostAnomaly, CostAnomalyAcknowledgement } from "@infrawrench/client-core";
@@ -77,6 +78,10 @@ export async function listRecentCostAnomalies(
   organizationId: string,
   days: number,
 ): Promise<CostAnomaly[]> {
+  // Anomalies are detected per provider and per service over every team's
+  // spend; a cost-scoped caller cannot be shown them without the org-wide
+  // totals they carry.
+  if (withholdOrgWideFindings(organizationId)) return [];
   const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
   const rows = await db
     .select()
@@ -111,6 +116,7 @@ export async function acknowledgeCostAnomaly(
   explanation: string,
   userId: string | null,
 ): Promise<CostAnomaly | null> {
+  if (withholdOrgWideFindings(organizationId)) return null;
   const [existing] = await db
     .select()
     .from(costAnomalies)

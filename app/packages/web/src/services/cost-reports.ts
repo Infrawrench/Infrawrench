@@ -9,6 +9,13 @@
  * a `budgets` row, and the placement/soft-delete rules below are deliberately
  * the same rules.
  */
+import {
+  deleteObjectSharing,
+  filterVisibleObjects,
+  ObjectNotVisibleError,
+  requireObjectAccess,
+} from "./object-sharing";
+import type { ObjectAccessLevel } from "@infrawrench/client-core";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
@@ -92,11 +99,22 @@ function toCostReport(row: CostReportRow, placements: CostReportPlacement[]): Co
 
 /** List the org's reports, alphabetically, each with its dashboard placements. */
 export async function listCostReports(organizationId: string): Promise<CostReport[]> {
-  const rows = await db
+  const allRows = await db
     .select()
     .from(costReports)
     .where(and(eq(costReports.organizationId, organizationId), isNull(costReports.deletedAt)))
     .orderBy(asc(costReports.name));
+  // Only the reports the caller's sharing lets them open.
+  const rows = await filterVisibleObjects(
+    organizationId,
+    "cost_report",
+    allRows,
+    (r) => r.id,
+    (r) => ({
+      createdByUserId: r.createdByUserId,
+      folderId: r.folderId,
+    }),
+  );
 
   const placements = await loadReportPlacements(
     organizationId,
@@ -117,6 +135,29 @@ export async function getCostReport(
 }
 
 async function loadReportRow(
+  organizationId: string,
+  reportId: string,
+  needed: ObjectAccessLevel | "delete" = "viewer",
+): Promise<CostReportRow | null> {
+  const row = await loadReportRowUnchecked(organizationId, reportId);
+  if (!row) return null;
+  try {
+    await requireObjectAccess(
+      organizationId,
+      "cost_report",
+      row.id,
+      { createdByUserId: row.createdByUserId, folderId: row.folderId },
+      needed,
+    );
+  } catch (e) {
+    // Below viewer reads as "no such report", exactly like a deleted one.
+    if (e instanceof ObjectNotVisibleError) return null;
+    throw e;
+  }
+  return row;
+}
+
+async function loadReportRowUnchecked(
   organizationId: string,
   reportId: string,
 ): Promise<CostReportRow | null> {
@@ -170,6 +211,7 @@ export async function updateCostReport(
   reportId: string,
   input: CostReportInput,
 ): Promise<CostReport | null> {
+  if (!(await loadReportRow(organizationId, reportId, "editor"))) return null;
   if (input.folderId) await assertCostReportFolderInOrg(organizationId, input.folderId);
   const [updated] = await db
     .update(costReports)
@@ -207,6 +249,7 @@ export async function softDeleteCostReport(
   organizationId: string,
   reportId: string,
 ): Promise<boolean> {
+  if (!(await loadReportRow(organizationId, reportId, "delete"))) return false;
   const now = new Date();
   const [deleted] = await db
     .update(costReports)
@@ -238,6 +281,7 @@ export async function softDeleteCostReport(
   // takes its schedules with it" (see `report_notifications` in the schema),
   // and the poller pass parks any row this ever misses.
   await disableReportNotificationsForReport(organizationId, reportId, now);
+  await deleteObjectSharing(organizationId, "cost_report", reportId);
   return true;
 }
 

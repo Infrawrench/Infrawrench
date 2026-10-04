@@ -90,6 +90,7 @@ export async function claimDueReportNotifications(
     lastAttemptAt: r["last_attempt_at"] ? new Date(r["last_attempt_at"] as string) : null,
     lastStatus: (r["last_status"] as string | null) ?? null,
     lastError: (r["last_error"] as string | null) ?? null,
+    visibilityUserId: (r["visibility_user_id"] as string | null) ?? null,
     createdByUserId: (r["created_by_user_id"] as string | null) ?? null,
     createdAt: new Date(r["created_at"] as string),
     updatedAt: new Date(r["updated_at"] as string),

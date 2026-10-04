@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.43.0",
+    "version": "1.44.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -983,6 +983,25 @@
               "$ref": "#/components/schemas/CredentialFieldRegion"
             }
           },
+          "providerOptions": {
+            "type": "object",
+            "properties": {
+              "dependsOn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "emptyLabel": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dependsOn"
+            ],
+            "additionalProperties": false,
+            "description": "Present when the field's choices come from the provider. Once every field in `dependsOn` has a value, `POST /accounts/credential-options` returns them."
+          },
           "helpLink": {
             "type": "object",
             "properties": {
@@ -1188,29 +1207,43 @@
           "aws",
           "azure",
           "cartesia",
+          "circleci",
           "clickhouse",
           "cloudflare",
           "cloudinary",
           "cohere",
+          "confluent-cloud",
+          "coralogix",
+          "coreweave",
+          "crusoe",
+          "cursor",
           "databricks",
           "deepgram",
           "deepseek",
+          "depot",
+          "devin",
           "digitalocean",
           "docker",
+          "elastic-cloud",
           "elevenlabs",
+          "fastly",
           "fireworks",
           "fly",
           "gcp",
           "gemini",
+          "github",
           "gladia",
           "grafana-cloud",
           "groq",
           "hetzner",
           "kafka",
           "kubernetes",
+          "linode",
           "memcached",
           "mistral",
+          "modal",
           "mongodb",
+          "mongodb-atlas",
           "mssql",
           "mysql",
           "neon",
@@ -1218,18 +1251,24 @@
           "openai",
           "openrouter",
           "opensearch",
+          "oracle-cloud",
           "ovh",
           "planetscale",
           "postgres",
           "redis",
+          "redis-cloud",
           "replicate",
           "revai",
           "scaleway",
+          "sentry",
+          "snowflake",
           "speechmatics",
           "ssh",
           "tailscale",
+          "temporal-cloud",
           "together",
           "turso",
+          "twilio",
           "uploadthing",
           "vercel",
           "workos",
@@ -1348,6 +1387,84 @@
         },
         "required": [
           "pluginId",
+          "credentials"
+        ],
+        "additionalProperties": false
+      },
+      "CredentialFieldOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The value to store in the credential field."
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "CredentialOptionsResponse": {
+        "type": "object",
+        "properties": {
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialFieldOption"
+            }
+          }
+        },
+        "required": [
+          "options"
+        ],
+        "additionalProperties": false
+      },
+      "CredentialOptionsRequest": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "fieldKey": {
+            "type": "string",
+            "description": "A credential field that declares `providerOptions`."
+          },
+          "credentials": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The credential values entered so far. Used for the lookup only; nothing is stored."
+          },
+          "bastionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Look up through this bastion, matching how the account will egress once created.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "When editing an existing account, its id; the lookup then egresses through that account's bastion binding.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "pluginId",
+          "fieldKey",
           "credentials"
         ],
         "additionalProperties": false
@@ -1827,10 +1944,12 @@
         "type": "string",
         "enum": [
           "access-application",
+          "access-key",
           "access-policy",
           "access-policy-token",
           "account",
           "acm-certificate",
+          "actions-cache",
           "admin-api-key",
           "agent",
           "agent-api-key",
@@ -1840,6 +1959,8 @@
           "ai-gateway",
           "ai-search",
           "alb",
+          "alert",
+          "alert-configuration",
           "alert-policy",
           "alert-rule",
           "alignment-job",
@@ -1848,6 +1969,7 @@
           "analytics-engine-dataset",
           "api-gateway",
           "api-key",
+          "api-token",
           "app",
           "app-engine-service",
           "app-secret",
@@ -1855,6 +1977,8 @@
           "artifact-registry-repo",
           "audit-event",
           "auto-scaling-group",
+          "automation",
+          "autonomous-database",
           "autoscale-pool",
           "azure-ai-services",
           "azure-aks-cluster",
@@ -1893,7 +2017,10 @@
           "azure-subnet",
           "azure-vm",
           "azure-vnet",
+          "backend",
           "backend-service",
+          "backup-policy",
+          "backup-snapshot",
           "backup-vault",
           "balance",
           "basin-catalog",
@@ -1908,7 +2035,13 @@
           "bigquery-dataset",
           "bigquery-table",
           "bigtable-instance",
+          "billing-account",
+          "billing-group",
           "block-volume",
+          "boot-volume",
+          "bucket",
+          "budget",
+          "budget-alert-rule",
           "byok-credential",
           "cache-rule",
           "cached-content",
@@ -1921,6 +2054,8 @@
           "ch-member",
           "ch-postgres",
           "ch-service",
+          "cks-cluster",
+          "client-key",
           "cloud-armor-policy",
           "cloud-build-trigger",
           "cloud-deploy-pipeline",
@@ -1939,20 +2074,34 @@
           "cloudtrail-trail",
           "cloudwatch-alarm",
           "cloudwatch-log-group",
+          "cluster",
           "codebuild-project",
           "codepipeline-pipeline",
+          "codespace",
           "cognito-user-pool",
           "collection",
           "collection-document",
+          "compartment",
           "composer-environment",
+          "config-store",
           "connection",
+          "connectivity-rule",
+          "connector",
           "contact-point",
           "container",
           "container-registry",
+          "context",
+          "context-variable",
+          "copilot-seat",
+          "cost-center",
+          "cron-monitor",
+          "custom-enrichment",
           "custom-hostname",
           "custom-voice",
           "d1-database",
           "dashboard",
+          "database",
+          "database-user",
           "databricks-app",
           "databricks-catalog",
           "databricks-cluster",
@@ -1985,10 +2134,19 @@
           "dedicated-inference",
           "deployed-model",
           "deployment",
+          "depot-actions-repo",
+          "depot-build",
+          "depot-project",
+          "depot-registry-image",
+          "depot-token",
+          "depot-trust-policy",
           "device",
+          "dict",
+          "dictionary",
           "directory",
           "directory-group",
           "directory-user",
+          "disk",
           "distribution-credential",
           "dns-record",
           "dns-zone",
@@ -1999,6 +2157,7 @@
           "documentdb-cluster",
           "doks-cluster",
           "domain",
+          "domain-record",
           "dpo-job",
           "droplet",
           "durable-object-namespace",
@@ -2014,12 +2173,18 @@
           "elasticache-serverless-cache",
           "email-routing-rule",
           "embed-job",
+          "encryption-key",
           "endpoint",
+          "enrichment",
+          "environment",
           "eval",
           "evaluation",
           "evaluation-job",
           "evaluator",
           "eventbridge-rule",
+          "events2metrics",
+          "export-sink",
+          "extension",
           "feature-flag",
           "file",
           "file-search-document",
@@ -2030,10 +2195,13 @@
           "firestore-database",
           "firewall",
           "firewall-rule",
+          "flex-cluster",
           "flexible-ip",
+          "flink-compute-pool",
           "floating-ip",
           "folder",
           "forwarding-rule",
+          "function",
           "gateway",
           "gce-disk",
           "gce-instance",
@@ -2056,6 +2224,7 @@
           "health-check",
           "healthcheck",
           "history-item",
+          "hosted-runner",
           "hyperdrive",
           "iam-role",
           "iam-user",
@@ -2064,12 +2233,15 @@
           "instance",
           "instance-group",
           "instance-template",
+          "instance-type",
           "internet-gateway",
           "invitation",
           "invite",
           "invoice",
+          "ip-access-entry",
           "ip-access-rule",
           "ip-allocation",
+          "issue",
           "job",
           "k8s-cluster",
           "k8s-configmap",
@@ -2093,13 +2265,21 @@
           "kms-key",
           "kms-key-ring",
           "knowledge-base-document",
+          "knowledge-note",
+          "ksqldb-cluster",
+          "kubernetes-cluster",
           "kv-namespace",
+          "kv-store",
           "lambda-function",
           "language-id-job",
+          "linode",
           "live-session",
+          "lke-cluster",
+          "lke-node-pool",
           "llm-model",
           "load-balancer",
           "log-sink",
+          "logging-endpoint",
           "logpush-job",
           "machine",
           "managed-database",
@@ -2113,6 +2293,7 @@
           "memorystore-redis",
           "memorystore-valkey",
           "message-batch",
+          "messaging-service",
           "mistral-agent",
           "mistral-api-key",
           "mistral-batch-job",
@@ -2126,10 +2307,12 @@
           "model-endpoint",
           "model-version",
           "mongodb-database",
+          "monitor",
           "mq-broker",
           "msk-cluster",
           "mssql-database",
           "mysql-database",
+          "namespace",
           "nat-gateway",
           "neon-ai-gateway",
           "neon-auth",
@@ -2157,10 +2340,16 @@
           "netlify-site",
           "netlify-snippet",
           "network",
+          "network-connection",
+          "nexus-endpoint",
           "nfs-share",
+          "node-pool",
+          "nodebalancer",
           "notification-policy",
           "object-storage-bucket",
           "octavia-load-balancer",
+          "oke-cluster",
+          "online-archive",
           "opensearch-cluster",
           "opensearch-domain",
           "organization",
@@ -2169,16 +2358,21 @@
           "organization-membership",
           "organization-role",
           "organization-user",
+          "outgoing-webhook",
           "page-rule",
+          "parsing-rule-group",
           "permission",
           "pg-database",
           "pg-schema",
           "phone-number",
+          "pipeline",
           "placement-group",
+          "playbook",
           "postgres-cluster",
           "posture-integration",
           "prediction",
           "primary-ip",
+          "private-endpoint-service",
           "private-network",
           "product-environment",
           "project",
@@ -2186,6 +2380,7 @@
           "project-rate-limit",
           "project-service-account",
           "project-user",
+          "project-variable",
           "pronunciation-dict",
           "pronunciation-dictionary",
           "provider",
@@ -2201,9 +2396,20 @@
           "purchase",
           "queue",
           "quota",
+          "quota-rule",
           "r2-bucket",
           "rate-limit",
           "rate-limit-rule",
+          "rc-account",
+          "rc-acl-role",
+          "rc-acl-rule",
+          "rc-acl-user",
+          "rc-cloud-account",
+          "rc-database",
+          "rc-psc-endpoint",
+          "rc-subscription",
+          "rc-transit-gateway",
+          "rc-vpc-peering",
           "rdb-instance",
           "rds-cluster",
           "rds-instance",
@@ -2212,6 +2418,9 @@
           "redshift-cluster",
           "registry-namespace",
           "reinforcement-fine-tuning-job",
+          "release",
+          "repo-blocklist",
+          "reservation",
           "reserved-ip",
           "role",
           "route-table",
@@ -2219,21 +2428,44 @@
           "route53-hosted-zone",
           "route53-record-set",
           "router",
+          "runner",
+          "runner-resource-class",
           "s3-bucket",
           "sagemaker-endpoint",
+          "schedule",
+          "scheduled-function",
+          "schema-registry",
+          "search-index",
           "secret",
           "secret-manager-secret",
+          "secret-store",
           "secrets-manager-secret",
           "secrets-store-secret",
           "security-group",
+          "security-list",
           "sentiment-job",
           "server",
           "serverless-container",
           "serverless-function",
+          "serverless-instance",
+          "serverless-traffic-filter",
           "service",
+          "service-account",
+          "service-version",
+          "session",
           "shared-volume",
           "skill",
           "snapshot",
+          "snowflake-account",
+          "snowflake-database",
+          "snowflake-dynamic-table",
+          "snowflake-pipe",
+          "snowflake-resource-monitor",
+          "snowflake-role",
+          "snowflake-schema",
+          "snowflake-task",
+          "snowflake-user",
+          "snowflake-warehouse",
           "sns-topic",
           "spaces-bucket",
           "spanner-backup",
@@ -2250,15 +2482,24 @@
           "ssm-parameter",
           "stack",
           "stack-plugin",
+          "stackscript",
           "static-ip",
           "step-function",
           "storage-box",
+          "subaccount",
           "subnet",
           "supervised-fine-tuning-job",
           "synthetic-check",
           "tailnet",
           "target-group",
+          "tco-policy",
+          "team",
+          "team-member",
+          "tenancy",
+          "tls-certificate",
+          "tls-subscription",
           "topic-job",
+          "traffic-filter",
           "training",
           "transcript",
           "transcription",
@@ -2274,13 +2515,17 @@
           "turso-location",
           "turso-organization-invite",
           "turso-organization-member",
+          "twiml-app",
           "upload-mapping",
           "upload-preset",
           "uptime-check",
+          "uptime-monitor",
+          "usage-trigger",
           "user",
           "user-invite",
           "ut-app",
           "ut-file",
+          "vcn",
           "vector-store",
           "vectorize-index",
           "vercel-deployment",
@@ -2290,8 +2535,10 @@
           "vercel-project",
           "vercel-team",
           "vercel-webhook",
+          "verify-service",
           "vertex-ai-endpoint",
           "vertex-gemini-model",
+          "vm",
           "vocabulary",
           "voice",
           "voice-agent",
@@ -2301,6 +2548,7 @@
           "vpc-nat-gateway",
           "vpc-network",
           "vpc-peering",
+          "vpc-subnet",
           "waf-web-acl",
           "waiting-room",
           "webhook",
@@ -5988,7 +6236,8 @@
             "enum": [
               "budget",
               "cost_report",
-              "cost_graph_widget"
+              "cost_graph_widget",
+              "cost_visibility_scope"
             ]
           },
           "id": {
@@ -23705,6 +23954,290 @@
         ],
         "additionalProperties": false
       },
+      "CostVisibilityPrincipalKind": {
+        "type": "string",
+        "enum": [
+          "role",
+          "member",
+          "api_key"
+        ],
+        "description": "What a cost visibility scope attaches to."
+      },
+      "CostVisibilityScope": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "principalKind": {
+            "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Role id, member user id, or API key id."
+          },
+          "principalLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Role name, member email or key name; null when the principal no longer exists."
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "principalKind",
+          "principalId",
+          "principalLabel",
+          "costCentreIds",
+          "accountIds",
+          "savedFilterId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CostVisibilityScopeInput": {
+        "type": "object",
+        "properties": {
+          "principalKind": {
+            "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+          },
+          "principalId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "description": "Rows the allocation rules assign to these cost centres (or their children)."
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "description": "Rows on these connected accounts."
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A saved filter ANDed onto the scope. With no centres and no accounts it decides alone; a scope with nothing at all matches no rows."
+          }
+        },
+        "required": [
+          "principalKind",
+          "principalId",
+          "costCentreIds",
+          "accountIds",
+          "savedFilterId"
+        ],
+        "additionalProperties": false
+      },
+      "ShareableObjectType": {
+        "type": "string",
+        "enum": [
+          "cost_report",
+          "cost_report_folder",
+          "dashboard"
+        ]
+      },
+      "OrgAccessLevel": {
+        "type": "string",
+        "enum": [
+          "editor",
+          "viewer",
+          "none"
+        ],
+        "description": "What everyone in the organization can do with the object. `editor` is the default for an object nobody has shared."
+      },
+      "ObjectAccessLevel": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "editor",
+          "viewer"
+        ]
+      },
+      "ObjectAccessGrant": {
+        "type": "object",
+        "properties": {
+          "principalKind": {
+            "type": "string",
+            "enum": [
+              "member",
+              "role"
+            ]
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "principalLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "level": {
+            "$ref": "#/components/schemas/ObjectAccessLevel"
+          },
+          "implicit": {
+            "type": "boolean",
+            "description": "The report creator's ownership, implied rather than stored. Never send it back."
+          }
+        },
+        "required": [
+          "principalKind",
+          "principalId",
+          "principalLabel",
+          "level",
+          "implicit"
+        ],
+        "additionalProperties": false
+      },
+      "ObjectSharing": {
+        "type": "object",
+        "properties": {
+          "objectType": {
+            "$ref": "#/components/schemas/ShareableObjectType"
+          },
+          "objectId": {
+            "type": "string"
+          },
+          "orgAccess": {
+            "$ref": "#/components/schemas/OrgAccessLevel"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObjectAccessGrant"
+            }
+          },
+          "callerLevel": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "editor",
+              "viewer",
+              "none"
+            ],
+            "description": "What the caller can do with this object."
+          },
+          "inheritedFrom": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "folderId": {
+                "type": "string"
+              },
+              "folderName": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string",
+                "enum": [
+                  "owner",
+                  "editor",
+                  "viewer",
+                  "none"
+                ]
+              }
+            },
+            "required": [
+              "folderId",
+              "folderName",
+              "level"
+            ],
+            "additionalProperties": false,
+            "description": "Access the containing folder's explicit sharing already gives the caller."
+          }
+        },
+        "required": [
+          "objectType",
+          "objectId",
+          "orgAccess",
+          "grants",
+          "callerLevel",
+          "inheritedFrom"
+        ],
+        "additionalProperties": false
+      },
+      "ObjectSharingInput": {
+        "type": "object",
+        "properties": {
+          "orgAccess": {
+            "$ref": "#/components/schemas/OrgAccessLevel"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "principalKind": {
+                  "type": "string",
+                  "enum": [
+                    "member",
+                    "role"
+                  ]
+                },
+                "principalId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "level": {
+                  "$ref": "#/components/schemas/ObjectAccessLevel"
+                }
+              },
+              "required": [
+                "principalKind",
+                "principalId",
+                "level"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "orgAccess",
+          "grants"
+        ],
+        "additionalProperties": false
+      },
       "CommitmentUnitAmount": {
         "type": "object",
         "properties": {
@@ -29936,9 +30469,72 @@
           "invoices:write",
           "invoices:issue",
           "pages:write",
+          "sharing:override",
           "org:settings:write"
         ],
         "description": "A permission string. Roles may grant exact permissions like the entries in this enum, or wildcards (e.g. `resources:*:read`, `*`)."
+      },
+      "CostVisibilitySource": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "costCentreIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accountIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "savedFilterId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "costCentreIds",
+          "accountIds",
+          "savedFilterId"
+        ],
+        "additionalProperties": false
+      },
+      "CostVisibilitySummary": {
+        "type": "object",
+        "properties": {
+          "restricted": {
+            "type": "boolean",
+            "description": "False means the caller sees every cost row the organization holds."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostVisibilitySource"
+            },
+            "description": "Every scope that applies to the caller. A cost row must match all of them."
+          }
+        },
+        "required": [
+          "restricted",
+          "sources"
+        ],
+        "additionalProperties": false,
+        "description": "The caller's cost visibility scope. Every cost read enforces it server-side."
       },
       "MeResponse": {
         "type": "object",
@@ -29958,6 +30554,9 @@
             "items": {
               "$ref": "#/components/schemas/Permission"
             }
+          },
+          "costVisibility": {
+            "$ref": "#/components/schemas/CostVisibilitySummary"
           }
         },
         "required": [
@@ -34755,6 +35354,72 @@
           }
         },
         "operationId": "postOrgOrgIdAccountsPreflight",
+        "x-required-permission": "accounts:write"
+      }
+    },
+    "/api/org/{orgId}/accounts/credential-options": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "List the provider's choices for a credential field",
+        "description": "For credential fields that declare `providerOptions` (an account picker filled from the API key, say): asks the provider for the choices the submitted credentials can see. Nothing is stored. A 400 carries the provider's reason, and clients fall back to a text input.\n\n_Requires permission: `accounts:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialOptionsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Choices for the field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialOptionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAccountsCredentialOptions",
         "x-required-permission": "accounts:write"
       }
     },
@@ -56227,6 +56892,427 @@
         },
         "operationId": "getOrgOrgIdCredits",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-visibility": {
+      "get": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "List cost visibility scopes",
+        "description": "Every scope narrowing which cost rows a role, member or API key can see. Scopes that apply to one caller are intersected.\n\n_Requires permission: `team:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostVisibilityScope"
+                      }
+                    }
+                  },
+                  "required": [
+                    "scopes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostVisibility",
+        "x-required-permission": "team:read"
+      },
+      "put": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Create or replace a cost visibility scope",
+        "description": "Upserts the scope of one principal. Roles and members need `team:role:write`; an API key's owner may also scope their own key with `apikeys:write`. Owners cannot be scoped, and cost-scoped callers cannot change scopes.\n\n_Requires permission: `team:role:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostVisibilityScopeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostVisibilityScope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostVisibility",
+        "x-required-permission": "team:role:write"
+      }
+    },
+    "/api/org/{orgId}/cost-visibility/{principalKind}/{principalId}": {
+      "delete": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Remove a cost visibility scope",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/CostVisibilityPrincipalKind"
+            },
+            "required": true,
+            "name": "principalKind",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "principalId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostVisibilityPrincipalKindPrincipalId",
+        "x-required-permission": "team:role:write",
+        "description": "_Requires permission: `team:role:write`._"
+      }
+    },
+    "/api/org/{orgId}/sharing/{objectType}/{objectId}": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Get an object's sharing",
+        "description": "Who can open or edit a cost report, report folder or dashboard. Needs viewer on the object and the family's read permission (`costs:read` / `dashboards:read`).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ShareableObjectType"
+            },
+            "required": true,
+            "name": "objectType",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "objectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sharing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectSharing"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSharingObjectTypeObjectId"
+      },
+      "put": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Replace an object's sharing",
+        "description": "Replaces the org-wide default and every grant. Owner on the object plus the family's write permission. At least one owner must remain.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ShareableObjectType"
+            },
+            "required": true,
+            "name": "objectType",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "objectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectSharingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sharing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectSharing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSharingObjectTypeObjectId"
+      },
+      "delete": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Reset an object's sharing to the default",
+        "description": "Removes every grant and the org-wide setting, so everyone in the organization can edit again. Owner only. A report's creator remains its owner.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ShareableObjectType"
+            },
+            "required": true,
+            "name": "objectType",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "objectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSharingObjectTypeObjectId"
       }
     },
     "/api/org/{orgId}/commitments": {

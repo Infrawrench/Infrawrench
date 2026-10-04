@@ -22,7 +22,10 @@ import {
   softDeleteCostReport,
   updateCostReport,
 } from "../services/cost-reports";
-import { CostReportFolderError, listCostReportFolders } from "../services/cost-report-folders";
+import {
+  CostReportFolderError,
+  listVisibleCostReportFolders,
+} from "../services/cost-report-folders";
 import { CostQueryError } from "../services/cost-query";
 import { logAudit } from "../services/audit";
 import { denyUnlessPermitted } from "./permissions";
@@ -78,7 +81,7 @@ export function costReportTools(): ToolDefinition[] {
         if (denied) return denied;
         const [reports, folders] = await Promise.all([
           listCostReports(auth.organizationId),
-          listCostReportFolders(auth.organizationId),
+          listVisibleCostReportFolders(auth.organizationId),
         ]);
         const paths = costReportFolderPaths(folders);
         return ok(
@@ -231,7 +234,7 @@ export function costReportTools(): ToolDefinition[] {
 
         let folderId: string | null = null;
         if (folder !== null) {
-          const folders = await listCostReportFolders(auth.organizationId);
+          const folders = await listVisibleCostReportFolders(auth.organizationId);
           const resolved = resolveFolder(folders, folder);
           if ("error" in resolved) return err(resolved.error);
           folderId = resolved.id;

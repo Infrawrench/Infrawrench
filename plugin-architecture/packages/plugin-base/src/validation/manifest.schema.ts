@@ -59,6 +59,12 @@ export const pluginManifestSchema = z.object({
             pluginId: z.string().min(1),
           })
           .optional(),
+        providerOptions: z
+          .object({
+            dependsOn: z.array(z.string().min(1)),
+            emptyLabel: z.string().optional(),
+          })
+          .optional(),
         optional: z.boolean().optional(),
       }),
     )
