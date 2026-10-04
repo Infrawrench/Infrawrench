@@ -50,6 +50,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-cohere"),
   () => import("@infrawrench/plugin-deepgram"),
   () => import("@infrawrench/plugin-deepseek"),
+  () => import("@infrawrench/plugin-devin"),
   () => import("@infrawrench/plugin-elevenlabs"),
   () => import("@infrawrench/plugin-fireworks"),
   () => import("@infrawrench/plugin-gemini"),

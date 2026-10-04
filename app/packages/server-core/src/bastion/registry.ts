@@ -122,6 +122,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   deepgram: ["api.deepgram.com"],
   modal: ["api.modal.com"],
   deepseek: ["api.deepseek.com"],
+  devin: ["api.devin.ai"],
   elevenlabs: [
     "api.elevenlabs.io",
     "api.us.elevenlabs.io",

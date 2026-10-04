@@ -62,6 +62,7 @@ infrawrench/
 │   ├── oracle-cloud/         # @infrawrench/plugin-oracle-cloud
 │   ├── planetscale/          # @infrawrench/plugin-planetscale
 │   ├── workos/               # @infrawrench/plugin-workos
+│   ├── devin/                # @infrawrench/plugin-devin (Devin AI engineer: ACU cost, sessions)
 │   │                         # AI / speech providers — see that section below
 │   ├── anthropic/            # @infrawrench/plugin-anthropic
 │   ├── assemblyai/           # @infrawrench/plugin-assemblyai
@@ -1029,6 +1030,18 @@ Verified against Crusoe's published Swagger spec (`https://api.crusoecloud.com/v
 - Rate limit: 10 requests per 10 seconds per API key; max 100 API keys per org
 
 ---
+
+### Devin (`@infrawrench/plugin-devin`)
+
+Verified against the Devin v3 OpenAPI document (`https://docs.devin.ai/v3-openapi.json`) and the billing docs (2026-10). Things the code does not make obvious:
+
+- **One host, Bearer auth, org ids from the key.** `https://api.devin.ai`, service user credential `cog_…` or a personal access token. `/v3/self` names the org for an org-scoped service user; an enterprise key (no org there) lists `/v3/enterprise/organizations` and the plugin covers **every** org; a PAT tries that listing and falls back to `devin_sessions_org_id`. Enterprise service users inherit the org-level permission in every org, so after resolution the plugin only ever calls `/v3/organizations/{org}/…` (plus `/v3beta1/organizations/{org}/members/users`, the only member listing an org key can read). No picker is needed, so it does not use `providerOptions`. Every non-org resource is addressed `<org_id>/<id>`.
+- **ACUs, never money.** Consumption is metered in ACUs on every plan (`ViewOrgConsumption`), but no endpoint exposes a rate or an invoice: Enterprise rates live in the order form, and self-serve plans moved to on-demand credits "the same dollar value as" ACUs. Cost is ACUs × the `acuPrice` credential (default $2.25, the published Devin 2.0 pay-as-you-go rate), manifest `estimated`.
+- **Billing days start 08:00 UTC** (midnight PST). Consumption `date` values are that boundary in Unix seconds; `billingDay()` maps any timestamp to its day and `fetchConsumption` sends `time_after`/`time_before` on those boundaries.
+- **Attribution is a three-level allocation** (`allocateOrgRows`, pure and tested): session rows (resource = session, tags user/playbook/`session_tag`/origin/category) inside each principal's daily total, principal residue (Cascade, terminal, Review, capped sessions) inside the org total, org residue last; each level is scaled down if it exceeds its parent so a day/product always sums to the org figure. A session whose `created_at` and `updated_at` share a billing day spent all of `acus_consumed` that day, so only multi-day sessions cost a per-session request (`MAX_SESSION_LOOKUPS` = 400/org/pass; over the cap the pass reports `degraded`). Multiple session tags are joined with `+` into one `session_tag` value so a session is never counted under two groups.
+- **Service users have no names on org endpoints** (the listing is enterprise-only), so they are tagged `Service user <id>` except the key's own, named from `/v3/self`.
+- **Writes are replace-only.** Playbook and knowledge-note `PUT`s replace the whole object, so updates (and the note enable/disable action) read the current object and send unchanged fields back. `DELETE /sessions/{id}` _terminates_ a session, so it is a confirmed destructive plugin action, not `supportsDelete`. Secrets are write-only: no value is ever read, and there is no update endpoint.
+- **Status feed** is the Statuspage at `devinstatus.com` (status.devin.ai redirects there); "X (Enterprise)" components fold into X.
 
 ### Oracle Cloud (`@infrawrench/plugin-oracle-cloud`)
 
@@ -2836,6 +2849,8 @@ Two parallel integrations (`jira_*` / `linear_*` tables — deliberately not gen
 **Host wiring is load-bearing and was wrong on web for a while**: the provider has to sit above the workspace-tab viewport, because every findings list is a tab. Web mounts it in `components/OrgProviders.tsx` from `__root.tsx`, desktop inside `DesktopWorkspaceTabsViewport` — see "Workspace tabs and React context" for why the org layout route is not an option.
 
 ## Provider cost coverage (Aug 2026 sweep)
+
+**devin** (Oct 2026) estimates cost from ACU consumption at a user-editable price per ACU, by product, with sessions as resources and user/playbook/session tag as tags; see the Devin section for why there is no billed-cost path.
 
 Cost collection added for **deepgram** (real USD daily), **elevenlabs** (money; successor endpoint is POST with an array `group_by`, so product type and region arrive together — on the deprecated fallback only _one_ breakdown is requested, since each is a complete decomposition and emitting both double-counts), **cartesia** (credits → money at the lowest published tier, `estimated`), **speechmatics** (hours → money; the endpoint returns a window aggregate with no buckets so daily rows are one request per day, `maxHistoryDays: 90` because history costs _requests_ here, `estimated`) and **hetzner** (inventory × `/v1/pricing`, `estimated`; emits rows **only for the day it runs** because a past month rebuilt from today's inventory omits everything deleted since — and traffic counters are _cumulative per billing period_, so those rows are dated to the period's first day and restated in place, `restatementDays: 31`; all money is scaled-integer, never float).
 

@@ -68,6 +68,7 @@ describe("plugin loader", () => {
       "cohere",
       "deepgram",
       "deepseek",
+      "devin",
       "elevenlabs",
       "fireworks",
       "gemini",
