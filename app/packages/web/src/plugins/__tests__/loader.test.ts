@@ -52,6 +52,7 @@ describe("plugin loader", () => {
       "tailscale",
       "cloudflare",
       "ovh",
+      "oracle-cloud",
       "databricks",
       "turso",
       "planetscale",

@@ -15,6 +15,7 @@ import { plugin as mongodbPlugin } from "@infrawrench/plugin-mongodb";
 import { plugin as mysqlPlugin } from "@infrawrench/plugin-mysql";
 import { plugin as mssqlPlugin } from "@infrawrench/plugin-mssql";
 import { plugin as neonPlugin } from "@infrawrench/plugin-neon";
+import { plugin as oracleCloudPlugin } from "@infrawrench/plugin-oracle-cloud";
 import { plugin as ovhPlugin } from "@infrawrench/plugin-ovh";
 import { plugin as postgresPlugin } from "@infrawrench/plugin-postgres";
 import { plugin as redisPlugin } from "@infrawrench/plugin-redis";
@@ -75,6 +76,7 @@ export const BUNDLED_PLUGINS: readonly Plugin[] = [
   mysqlPlugin,
   mssqlPlugin,
   neonPlugin,
+  oracleCloudPlugin,
   ovhPlugin,
   postgresPlugin,
   redisPlugin,

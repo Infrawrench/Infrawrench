@@ -102,6 +102,10 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   neon: ["console.neon.tech"],
   turso: ["api.turso.tech"],
   ovh: ["*.ovh.com"],
+  // Every OCI service host sits under oraclecloud.com (identity, iaas,
+  // database, objectstorage, telemetry, usageapi, usage, limits, query,
+  // containerengine); the public price list is on apexapps.oracle.com.
+  "oracle-cloud": ["*.oraclecloud.com", "apexapps.oracle.com"],
   scaleway: ["api.scaleway.com", "*.scw.cloud"],
   vultr: ["api.vultr.com"],
   anthropic: ["api.anthropic.com"],
