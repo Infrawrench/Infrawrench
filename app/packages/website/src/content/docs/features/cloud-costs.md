@@ -432,6 +432,10 @@ A spend graph can say `AWSDataTransfer` cost $4,100. It cannot say which two ser
 
 Those figures are estimates and are kept deliberately apart from collected spend: adding a derived second opinion of data transfer to the numbers on this page would double-count the same bytes.
 
+## Who spent it on AI
+
+A provider bill says what each model cost, not which team or feature sent the requests. See [AI spend by caller](./ai-attribution.md): request logs from Bedrock, a Cloudflare AI Gateway, a LiteLLM proxy or your own JSONL files split each billed AI line by caller, with the unexplained remainder labelled `(unattributed)` and billed totals unchanged. Caller dimensions show up here as the tag keys `caller:<dimension>`, and AI provider lines carry `ai:provider`, `ai:model` and `ai:token_type` tags you can group by today.
+
 ## Budgets and cost policy in Terraform
 
 Everything on this page that is configuration rather than data — budgets, saved filters, cost centres and their allocation rules, [reports](./cost-reports.md), [change alerts](./cost-change-alerts.md), [scenario models](./scenario-models.md), [billing rules](./billing-rules.md) and [exports](./cost-exports.md) — can be managed from Terraform instead of the UI, one object at a time, with plans and `terraform import`. See the [Terraform provider](./terraform-provider.md).

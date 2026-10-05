@@ -47,7 +47,7 @@ import type {
   PublishMessagePayload,
   PublishMessageResult,
 } from "@infrawrench/plugin-base";
-import { withMetricsCapability } from "@infrawrench/plugin-base";
+import { withAiCostTags, withMetricsCapability } from "@infrawrench/plugin-base";
 import {
   fetchAccessToken,
   fetchAksAccessToken,
@@ -497,7 +497,15 @@ export class AzureClient implements PluginClient {
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostFetchResult> {
-    return fetchAzureCostData(this.httpCtx, range);
+    const result = await fetchAzureCostData(this.httpCtx, range);
+    // Normalized AI dimensions on Azure OpenAI lines (provider level), so
+    // request logs routed to Azure OpenAI can be reconciled against them.
+    return {
+      ...result,
+      rows: withAiCostTags(result.rows, (row) =>
+        row.service && /openai/i.test(row.service) ? { provider: "azure-openai" } : null,
+      ),
+    };
   }
 
   async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {

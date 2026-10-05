@@ -7,6 +7,7 @@ import { detectCostAnomaliesForOrg } from "@infrawrench/server-core/cost/anomaly
 import { evaluateCostChangeAlertsForOrg } from "@infrawrench/server-core/cost/change-eval";
 import { evaluateCommitmentAlertsForOrg } from "@infrawrench/server-core/commitments/alert-eval";
 import { evaluateUnitCostRegressionsForOrg } from "@infrawrench/server-core/cost/unit-cost-regression-eval";
+import { reattributeAfterCostCollection } from "@infrawrench/server-core/ai-attribution/run";
 import type { PollAccountRow } from "./poll-account";
 
 /**
@@ -70,6 +71,11 @@ export async function pollAccountCosts(account: PollAccountRow): Promise<void> {
     // Unit-cost regressions: the numerator is the spend just collected, the
     // denominator is whatever the org has reported into `business_metric_values`.
     await evaluateUnitCostRegressionsForOrg(account.organizationId);
+
+    // Fresh or restated AI lines change how the day's AI spend splits by
+    // caller: re-split the trailing days. No-op for orgs without request-log
+    // sources; rate-limited per org and never throws.
+    await reattributeAfterCostCollection(account.organizationId);
   } catch (e) {
     console.error(`[poller] cost collection for ${account.id} (${account.pluginId}) failed:`, e);
     const failures = account.pollFailureCount + 1;

@@ -24,6 +24,7 @@
  * collection re-reads the trailing restatement window, so the history fills in
  * one cycle at a time as it is lived.
  */
+import { aiCostTags } from "@infrawrench/plugin-base";
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import type { CursorContext, CursorTeamMember, CursorUsageEvent } from "./api.js";
 import { DAY_MS, getTeamMembers, getTeamSpend, getUsageEvents, isoDay, splitRange } from "./api.js";
@@ -137,7 +138,14 @@ export function usageRows(
         date,
         service: model,
         resourceId: memberIds.get(email) ?? (email || "unattributed"),
-        tags: { user: email || "unattributed", model, maxMode, charge: "usage-based" },
+        tags: {
+          user: email || "unattributed",
+          model,
+          maxMode,
+          charge: "usage-based",
+          // Normalized AI dimensions; see plugin-base `ai-requests.ts`.
+          ...aiCostTags({ provider: "cursor", model: model === "unknown" ? undefined : model }),
+        },
         currency: "USD",
         amount: 0,
         usageAmount: 0,
@@ -180,7 +188,7 @@ export function seatRows(
         date: day,
         service: tier === "premium" ? "Premium seat" : "Standard seat",
         resourceId: member.id ?? email,
-        tags: { user: email, seat: tier, charge: "seat" },
+        tags: { user: email, seat: tier, charge: "seat", ...aiCostTags({ provider: "cursor" }) },
         currency: "USD",
         amount: daily,
         usageAmount: 1,

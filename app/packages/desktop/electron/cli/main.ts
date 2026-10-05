@@ -31,6 +31,7 @@ import {
   cmdRunExport,
 } from "./commands/exports";
 import { cmdTags, cmdShowback } from "./commands/tags";
+import { cmdAiSources, cmdAiSpend } from "./commands/ai-spend";
 import { cmdBillingRules, cmdBillingRule, cmdBillingRulePreview } from "./commands/billing-rules";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
@@ -126,6 +127,9 @@ COMMANDS
   tags                org tag policy, per-account compliance & untagged spend   [--last 30d]
   showback            spend by cost centre via the org's allocation rules, as an indented
                       tree — a parent's bar is its subtree total   [--last 30d]
+  ai-spend [dim]      billed AI spend split by a caller dimension (team, user, feature…), with
+                      per-source match rates and per-provider coverage   [--last 30d]
+  ai-spend sources    the org's AI request-log sources and their collection state
   billing-rules       the org's own adjustments to collected spend (markups, discounts, fixed
                       charges, reallocations) — why a report may not match the invoice
   billing-rules <n>   one rule in full, by name or id
@@ -537,6 +541,13 @@ export async function runCli(): Promise<void> {
         break;
       case "showback":
         await cmdShowback(ctx, parsed.range);
+        break;
+      case "ai-spend":
+        if (rest[0] === "sources") {
+          await cmdAiSources(ctx);
+          break;
+        }
+        await cmdAiSpend(ctx, parsed.range, rest[0]);
         break;
       // Read-only on purpose. Writing a markup changes every figure the org
       // reports about itself and rides `org:settings:write`; that is a

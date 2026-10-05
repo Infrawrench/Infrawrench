@@ -73,6 +73,7 @@ import { registerCreditPaths } from "./paths/credits";
 import { registerCostVisibilityPaths } from "./paths/cost-visibility";
 import { registerCommitmentPaths } from "./paths/commitments";
 import { registerNetworkFlowPaths } from "./paths/network-flows";
+import { registerAiAttributionPaths } from "./paths/ai-attribution";
 import { registerProbePaths } from "./paths/probes";
 import { registerIncidentPaths } from "./paths/incidents";
 import { registerStatusPagePaths } from "./paths/status-pages";
@@ -217,6 +218,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCostVisibilityPaths(ctx);
   registerCommitmentPaths(ctx);
   registerNetworkFlowPaths(ctx);
+  registerAiAttributionPaths(ctx);
   registerProbePaths(ctx);
   registerIncidentPaths(ctx);
   registerStatusPagePaths(ctx);
@@ -298,6 +300,16 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "no single honest denominator), utilization measured only over days with collected " +
           "cost data, and a planner that recommends commitment sizes at the p10 floor of " +
           "uncovered spend. Read-only: nothing here ever purchases.",
+      },
+      {
+        name: "AI attribution",
+        description:
+          "Split billed AI spend by caller (team, user, feature, customer, or any request-metadata " +
+          "key) by joining per-request logs (Bedrock invocation logs, Cloudflare AI Gateway logs, " +
+          "LiteLLM spend logs, custom JSONL in S3) to the provider bills. Each request is priced " +
+          "at list rates and scaled so attributed totals equal the billed amount, with an explicit " +
+          "`(unattributed)` remainder; billed totals are never changed. Caller dimensions appear " +
+          "in every cost report as the tag keys `caller:<dimension>`.",
       },
       {
         name: "Network flows",

@@ -7,6 +7,7 @@ import { awsTerraformExport } from "./terraform.js";
 import { AWS_NETWORK_FLOW_CAPABILITY as awsNetworkFlowCapability } from "./network-flows.js";
 import { AWS_REGIONS } from "./constants.js";
 import { AWS_PRICE_CATALOG } from "./price-catalog.js";
+import { awsAiRequestLogCapability } from "./ai-request-logs.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
 import { VPCResourceType } from "./resources/vpc.js";
@@ -166,6 +167,12 @@ const manifest: PluginManifest = {
   // `pricing:GetProducts` call; spot additionally reads
   // `ec2:DescribeSpotPriceHistory`. See `price-catalog.ts`.
   priceCatalog: AWS_PRICE_CATALOG,
+  // Bedrock invocation logs (S3 or CloudWatch Logs) and custom JSONL request
+  // logs in S3, for splitting AI spend by caller. Needs
+  // bedrock:GetModelInvocationLoggingConfiguration, s3:ListBucket +
+  // s3:GetObject on the log bucket, and for the CloudWatch kind
+  // logs:StartQuery / logs:GetQueryResults / logs:StopQuery.
+  aiRequestLogs: awsAiRequestLogCapability,
   statusFeed,
   preflight: awsPreflight,
 };

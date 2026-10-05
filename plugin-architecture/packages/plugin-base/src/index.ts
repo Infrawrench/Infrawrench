@@ -119,6 +119,37 @@ export {
 } from "./network-flow.js";
 
 export type {
+  AiCostClassification,
+  AiModelRate,
+  AiModelRateCard,
+  AiRequestAggregate,
+  AiRequestLogFetchRange,
+  AiRequestLogFetchResult,
+  AiRequestLogLocation,
+  AiRequestLogsCapabilityDeclaration,
+  AiRequestLogSourceKind,
+  AiRequestRecord,
+  AiTokenType,
+} from "./ai-requests.js";
+export {
+  AI_CALLER_TAG_PREFIX,
+  AI_COST_TAG,
+  AI_MAX_AGGREGATES_PER_DAY,
+  AI_OVERFLOW_VALUE,
+  AI_TOKEN_TYPES,
+  AiRequestAccumulator,
+  AiRequestLogSetupError,
+  aiCostTags,
+  DEFAULT_TOKEN_WEIGHTS,
+  normalizeAiModel,
+  normalizeAiProvider,
+  objectKeyMatchesDay,
+  parseAiRequestJsonLine,
+  readMaybeGzipText,
+  withAiCostTags,
+} from "./ai-requests.js";
+
+export type {
   PolicyTemplate,
   PreflightCapability,
   PreflightCapabilityCheck,

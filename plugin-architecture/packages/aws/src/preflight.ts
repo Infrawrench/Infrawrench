@@ -52,6 +52,15 @@ const COSTS_PERMISSIONS: PreflightPermission[] = [
   { id: "ce:GetCostAndUsage", label: "Read Cost Explorer cost and usage data" },
 ];
 
+const AI_REQUEST_LOG_PERMISSIONS: PreflightPermission[] = [
+  {
+    id: "bedrock:GetModelInvocationLoggingConfiguration",
+    label: "Find where Bedrock delivers invocation logs",
+  },
+  { id: "logs:StartQuery", label: "Aggregate an invocation-log group with Logs Insights" },
+  { id: "logs:GetQueryResults", label: "Read Logs Insights results" },
+];
+
 export const awsPreflight: PreflightDeclaration = {
   capabilities: [
     {
@@ -74,6 +83,13 @@ export const awsPreflight: PreflightDeclaration = {
       label: "Cost reporting",
       description: "Daily spend via Cost Explorer — not part of typical read-only infra policies.",
       requiredPermissions: COSTS_PERMISSIONS,
+    },
+    {
+      id: "ai-request-logs",
+      label: "AI request attribution",
+      description:
+        "Bedrock invocation logs (S3 or CloudWatch Logs) for splitting AI spend by caller. Also grant s3:ListBucket and s3:GetObject on the log bucket.",
+      requiredPermissions: AI_REQUEST_LOG_PERMISSIONS,
     },
   ],
   templateFormat: { label: "AWS IAM policy (JSON)", language: "json" },
@@ -162,6 +178,13 @@ const TEMPLATE_ACTIONS: Record<string, string[]> = {
   ],
   metrics: METRICS_PERMISSIONS.map((p) => p.id),
   costs: COSTS_PERMISSIONS.map((p) => p.id),
+  "ai-request-logs": [
+    ...AI_REQUEST_LOG_PERMISSIONS.map((p) => p.id),
+    "logs:StopQuery",
+    "logs:DescribeLogGroups",
+    "s3:ListBucket",
+    "s3:GetObject",
+  ],
 };
 
 /** Build the paste-ready IAM policy scoped to the selected capabilities. */
@@ -196,7 +219,7 @@ interface CallerIdentity {
   account: string;
 }
 
-async function getCallerIdentity(creds: AwsCredentials): Promise<CallerIdentity> {
+export async function getCallerIdentity(creds: AwsCredentials): Promise<CallerIdentity> {
   const body = new URLSearchParams({
     Action: "GetCallerIdentity",
     Version: "2011-06-15",

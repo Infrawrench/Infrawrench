@@ -18,6 +18,7 @@ import { CostCentresSection } from "./CostCentresSection.js";
 import { ConfigAsCodeSection } from "./ConfigAsCodeSection.js";
 import { CurrencySection } from "./CurrencySection.js";
 import { CostExportsSection } from "./CostExportsSection.js";
+import { AiAttributionSection } from "./AiAttributionSection.js";
 import { ApprovalsSection } from "./ApprovalsSection.js";
 import { NotificationsSection } from "./NotificationsSection.js";
 import { OnCallSection } from "./OnCallSection.js";
@@ -73,6 +74,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <CurrencySection />;
     case "cost-exports":
       return <CostExportsSection />;
+    case "ai-attribution":
+      return <AiAttributionSection />;
     case "approvals":
       return <ApprovalsSection />;
     case "on-call":

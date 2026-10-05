@@ -23,6 +23,7 @@ import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
 import { runNetworkFlowPass } from "@infrawrench/server-core/network-flow/pass";
+import { runAiAttributionPass } from "@infrawrench/server-core/ai-attribution/pass";
 import { runReportDeliveryPass } from "@infrawrench/server-core/report-delivery/pass";
 import {
   pruneResourceChanges,
@@ -154,6 +155,13 @@ export class PollerLoop extends TickLoop {
     // separately gated, separately throttled, and separately switchable off
     // without taking spend collection down with it.
     await this.tickNetworkFlows();
+
+    // AI request attribution: read configured request-log sources (Bedrock
+    // invocation logs, AI Gateway logs, LiteLLM, JSONL) one settled day at a
+    // time and re-split the day's billed AI spend by caller. Its own pass for
+    // the network-flow reason: log stores, not billing APIs, and the
+    // CloudWatch kind is billed to the customer per GB scanned.
+    await this.tickAiAttribution();
 
     // Fourth pass: weekly digests. A no-op outside the Monday-morning send
     // window; the conditional-UPDATE claim inside makes it replica- and
@@ -524,6 +532,14 @@ export class PollerLoop extends TickLoop {
    * flow-capable plugins itself and claims nothing for an org that has not
    * switched collection on.
    */
+  private async tickAiAttribution(): Promise<void> {
+    try {
+      await runAiAttributionPass({ limit: 2 });
+    } catch (e) {
+      console.error("[ai-attribution] source tick failed:", e);
+    }
+  }
+
   private async tickNetworkFlows(): Promise<void> {
     try {
       await runNetworkFlowPass({ limit: 2 });

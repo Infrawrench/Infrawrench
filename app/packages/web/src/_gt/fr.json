@@ -14341,5 +14341,120 @@
   "924995cec49feef3": "Source des métriques GPU",
   "44024c9a4eb4a978": "Prix horaire JSON par pool de nœuds (machine plus GPU attachés) et par GPU, transmis au pair Kubernetes pour qu’il puisse dériver le coût par namespace, par workload et par GPU. Vide lorsqu’aucun prix n’est disponible.",
   "5b041bee093b7b32": "Facultatif. Ce que coûte ce cluster, afin de pouvoir dériver les coûts des workloads. Les clusters ouverts depuis leur compte cloud (DigitalOcean, GCP, AWS, Azure, Scaleway, OVHcloud, CoreWeave) reçoivent automatiquement le prix de leurs nœuds. Sinon, listez les types d'instances : s-2vcpu-4gb=0.0357, m5.large=0.096. Le même champ tarife le reste du cluster — controlPlane=0.10 pour le forfait fixe d'un cluster managé, loadBalancer=0.0149 par Service LoadBalancer, storage/*=0.10 par GiB-month provisionné (ou storage/gp3=0.08 pour une classe donnée). Sur les nœuds GPU, gpu/a100-80gb=3.93 (ou gpu/*=2.50) fixe le prix d'un GPU par heure, ce qui détermine la part du nœud facturée selon les demandes de GPU. Laissé vide, la capacité, la taille des volumes et l'efficacité restent affichées ; seul le montant est omis.",
-  "d13dc6c4ffe407c6": "Facultatif. D'où provient l'utilisation des GPU, pour le coût des GPU inactifs et le redimensionnement des GPU. Laissé vide, le Prometheus du cluster est détecté automatiquement (ou les pods de l'exporteur NVIDIA DCGM sont interrogés directement). Indiquez namespace/service:port pour désigner un Prometheus qui collecte l'exporteur DCGM ou AMD, ou none pour désactiver les métriques GPU."
+  "d13dc6c4ffe407c6": "Facultatif. D'où provient l'utilisation des GPU, pour le coût des GPU inactifs et le redimensionnement des GPU. Laissé vide, le Prometheus du cluster est détecté automatiquement (ou les pods de l'exporteur NVIDIA DCGM sont interrogés directement). Indiquez namespace/service:port pour désigner un Prometheus qui collecte l'exporteur DCGM ou AMD, ou none pour désactiver les métriques GPU.",
+  "7f0022920a3a25d2": "Agrège le groupe de journaux d'invocation avec une requête Logs Insights. Chaque requête quotidienne est facturée à ce compte AWS par GB analysé.",
+  "c6c27e680bb422fa": "Journaux de requêtes AI Gateway",
+  "7e875fa38c6354a5": "Journaux d'invocation Bedrock (CloudWatch Logs)",
+  "d90f7f6111a166b2": "Journaux d'invocation Bedrock (S3)",
+  "8a239f25858e9fad": "Journaux de requêtes personnalisés (JSONL dans S3)",
+  "cf2c3e4f59c14cb6": "Groupe de journaux",
+  "04de2b4322c69a85": "Lit le journal des requêtes d'une passerelle et répartit les dépenses des fournisseurs qui se trouvent derrière (OpenAI, Anthropic, Bedrock…) selon le cf-aig-metadata envoyé par vos appelants.",
+  "98151847c9e54231": "Lit un objet JSON par requête à partir des fichiers situés sous un préfixe, au format de journal de requêtes Infrawrench documenté.",
+  "df1933ff37e11bde": "Lit les objets de journal d'invocation compressés en gzip que Bedrock dépose dans S3 et répartit les dépenses Bedrock selon le requestMetadata joint par vos appelants.",
+  "907ee2d3e66f59bb": "Impossible de charger les paramètres d'attribution IA",
+  "64ef2995ee30d387": "Impossible de supprimer la source",
+  "804f094278e1d09e": "Impossible de planifier la nouvelle collecte",
+  "73e55c4152dd0d25": "Impossible de supprimer la dimension",
+  "52d1f6d5f50d3eab": "Attribution IA",
+  "3b62f231983d0abc": "Sources de journaux de requêtes",
+  "0ad12619c7b2ca99": "Ajouter une source",
+  "8fe6b15cc177ba96": "Dimensions d'appelant",
+  "2043977dbe3e3fd1": "Ajouter une dimension",
+  "81c62e3bb054b0e2": "Clés de métadonnées : {keys}",
+  "b64c79465dd52c6d": "Collecté jusqu'au {day}",
+  "035cfebde2a43871": "Pas encore collecté",
+  "3c5c36211ef5a0d9": "Les requêtes sont facturées à ce compte",
+  "3ea2478272e57cf3": "Recollecter",
+  "a1bdc8e2a98cee3f": "Impossible de lister les emplacements",
+  "27178cf5d76b9cb4": "Impossible d'enregistrer la source",
+  "75203fdb6217eef5": "Choisissez une source…",
+  "cb920a9246480622": "Guide de configuration",
+  "c4619f878a9e69f6": "La lecture de cette source exécute une requête quotidienne que le fournisseur facture à ce compte par GB analysé.",
+  "22dd1090605ddf25": "Connectez d'abord un compte de ce fournisseur.",
+  "71907ce403b94ce7": "Rien à sélectionner dans ce compte pour l'instant.",
+  "54ea3c162a2b795f": "{label} (recommandé)",
+  "f2a0cbbd8640acd6": "Préfixe de clé (facultatif)",
+  "c556bf08149475d4": "URL du proxy",
+  "ab1aa95ade412961": "Clé d'administration",
+  "b47c9177269a7b23": "Période couverte par la première collecte (jours)",
+  "ee72787f4a10f089": "Collecter quotidiennement",
+  "384bcb0b5a625bc5": "Impossible d'enregistrer la dimension",
+  "69f758173c1016b6": "Partir de :",
+  "f2aa1c3708a7f921": "Les rapports l'affichent sous la clé de tag {tag}",
+  "58153e5c6ab05272": "Clés de métadonnées, la première présente l'emporte",
+  "810665a4017944a6": "Saisissez une clé ou choisissez-en une vue dans vos journaux",
+  "c49fd515d5159e4c": "Vues dans vos journaux :",
+  "978c109b1e6cb0e9": "Impossible de charger les statistiques",
+  "13e6a3c2d9fd09b4": "Taux de correspondance et couverture",
+  "b5b4531250b1e097": "Période",
+  "837ad0967a7d14bc": "{days} derniers jours",
+  "f17d292b775128fa": "Correspondantes",
+  "27bd5802648c520b": "Ambiguës",
+  "b57b11792fe373d5": "Sans correspondance",
+  "bb37df47accddecc": "Facture couverte",
+  "2dbddb02cde20b9c": "partielle sur {n} jours",
+  "9b88d39f6360d379": "Facturé",
+  "6d4e5e736992a713": "Attribué",
+  "fcc9eb8f7cc28fe1": "Non attribué",
+  "ecc799fba71c9161": "Dépenses IA par appelant",
+  "afc1493db834ebf6": "Dimension",
+  "decfb9c3912dc6c0": "Aucune dépense attribuée sur cette période.",
+  "e1e4c2af494dee22": "(aucune valeur)",
+  "77adf9222addde5a": {
+    "t": "p",
+    "i": 1,
+    "c": "Répartissez les dépenses IA par équipe, utilisateur, fonctionnalité ou client en rapprochant les journaux par requête des factures que vos fournisseurs IA communiquent déjà. Chaque requête est valorisée au prix catalogue puis mise à l'échelle pour que la répartition corresponde au montant facturé ; ce que les journaux n'expliquent pas reste en (unattributed). Les totaux facturés ne changent jamais."
+  },
+  "e9342a4989f503d1": {
+    "t": "p",
+    "i": 1,
+    "c": "Emplacement des journaux par requête. Chaque journée clôturée est lue une seule fois et agrégée en totaux quotidiens par modèle et par métadonnées mappées ; les requêtes brutes ne sont jamais stockées."
+  },
+  "60acc2ecc3ac0c6a": {
+    "t": "p",
+    "i": 1,
+    "c": "Aucune source pour l'instant. Ajoutez des journaux d'invocation Bedrock, un Cloudflare AI Gateway, un proxy LiteLLM ou des journaux de requêtes JSONL dans S3."
+  },
+  "0a3c2feaa8ed333a": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Associez des clés de métadonnées de requête à une dimension ; la première clé portée par une requête l'emporte. Chaque dimension apparaît dans les rapports de coûts, les budgets et les règles d'allocation sous la clé de tag ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "caller:<key>"
+      },
+      ". Les nouveaux mappages s'appliquent à partir de la prochaine collecte ; recollectez une source pour les appliquer aux jours passés."
+    ]
+  },
+  "6ad00b644d2d8320": {
+    "t": "p",
+    "i": 1,
+    "c": "Aucune dimension pour l'instant. Sans dimension, l'attribution indique toujours les taux de correspondance et la couverture, mais ne répartit rien par appelant."
+  },
+  "22b823ef05156548": {
+    "t": "p",
+    "i": 1,
+    "c": "Les requêtes correspondantes ont été affectées à une ligne facturée ; les ambiguës correspondaient à plusieurs modèles et ont été réparties selon le montant facturé ; les requêtes sans correspondance n'avaient aucune ligne où être affectées (le fournisseur n'est pas connecté, ou sa facture ne nomme pas le modèle)."
+  },
+  "6176eb009748ce22": {
+    "t": "p",
+    "i": 1,
+    "c": "Aucune dépense IA n'a encore été attribuée sur cette période. L'attribution s'exécute après chaque collecte de source et chaque collecte de coûts."
+  },
+  "8a2c488ff6f3a83e": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Pour obtenir une série temporelle, regroupez un rapport de coûts par la clé de tag",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "."
+    ]
+  }
 }

@@ -422,6 +422,103 @@ export const networkFlowDaily = clickhouseTable(
   ],
 );
 
+/**
+ * Per-day AI request aggregates from the request-log sources: one row per
+ * (source, provider, model, mapped metadata) per collection.
+ *
+ * **Never raw requests.** Plugins fold records into aggregates while streaming
+ * (`AiRequestAccumulator`), capped at a few thousand rows per source-day, so
+ * a gateway doing millions of requests a day stores the same handful of rows
+ * as one doing a hundred. Only metadata keys the org mapped to a dimension
+ * are kept; a per-request id or user email never lands here unless someone
+ * mapped that key.
+ *
+ * Plain MergeTree with a `collected_at` per collection rather than a
+ * ReplacingMergeTree: changing a mapping changes `metadata_hash`, so a
+ * re-collection writes *different* keys and replacement would leave the old
+ * ones behind. Readers take the latest `collected_at` per (source, day)
+ * instead, which makes a re-collection atomic from a reader's point of view.
+ * 400 days: enough to re-attribute a year of history when a bill restates,
+ * after which the attributed split below is what remains.
+ */
+export const aiRequestDaily = clickhouseTable(
+  "ai_request_daily",
+  {
+    organization_id: string().notNull(),
+    source_id: string().notNull(),
+    day: date({ mode: "string" }).notNull(),
+    collected_at: dateTime64({ precision: 3, mode: "string" }).notNull(),
+    provider: label("provider").notNull(),
+    model: string().notNull(),
+    metadata: map(label("metadata"), string()).notNull(),
+    requests: uint64({ mode: "number" }).notNull(),
+    input_tokens: uint64({ mode: "number" }).notNull(),
+    output_tokens: uint64({ mode: "number" }).notNull(),
+    cache_read_tokens: uint64({ mode: "number" }).notNull(),
+    cache_write_tokens: uint64({ mode: "number" }).notNull(),
+    reasoning_tokens: uint64({ mode: "number" }).notNull(),
+    /** Gateway-reported cost; `reported_cost_known = 0` means none was reported. */
+    reported_cost: float64().notNull(),
+    reported_cost_known: uint8().notNull(),
+    reported_currency: label("reported_currency").notNull(),
+  },
+  (t) => [
+    mergeTree({
+      partitionBy: sql`toYYYYMM(${t.day})`,
+      orderBy: [t.organization_id, t.day, t.source_id, t.collected_at],
+      ttl: sql`${t.day} + INTERVAL 400 DAY`,
+    }),
+  ],
+);
+
+/**
+ * The attributed view of billed AI spend: every AI-tagged `cost_daily` row of
+ * an org-day, split by caller, with `caller:<dimension>` tags added and an
+ * explicit `(unattributed)` share. Same columns as `cost_daily` so the cost
+ * readers can swap it in (`cost-readers.ts` `attributedCostSource`) for the AI
+ * rows of a day when a query asks about a caller dimension.
+ *
+ * **Billed totals are untouched by construction.** Each billed row's splits sum
+ * to that row's amount, and `cost_daily` itself is never written. A run
+ * rewrites a whole org-day at a new `run_at`; readers take the latest run per
+ * day, so a run is atomic for readers and no tombstones are needed. Three
+ * years, like `cost_daily`, because it is a view of the bill a report may be
+ * asked about.
+ */
+export const aiCostAttributed = clickhouseTable(
+  "ai_cost_attributed",
+  {
+    organization_id: string().notNull(),
+    account_id: string().notNull(),
+    plugin_id: label("plugin_id").notNull(),
+    day: date({ mode: "string" }).notNull(),
+    service: label("service").notNull(),
+    region: label("region").notNull(),
+    resource_id: string().notNull(),
+    tags: map(label("tags"), string()).notNull(),
+    tags_hash: uint64({ mode: "string" }).notNull(),
+    currency: label("currency").notNull(),
+    amount: float64().notNull(),
+    usage_amount: float64().notNull(),
+    usage_unit: label("usage_unit").notNull(),
+    ingested_at: dateTime()
+      .notNull()
+      .default(sql`now()`),
+    charge_type: label("charge_type").notNull().default("usage"),
+    amortized_amount: float64().notNull().default(0),
+    amortized_reported: uint8().notNull().default(0),
+    commitment_id: string().notNull().default(""),
+    run_at: dateTime64({ precision: 3, mode: "string" }).notNull(),
+  },
+  (t) => [
+    mergeTree({
+      partitionBy: sql`toYYYYMM(${t.day})`,
+      orderBy: [t.organization_id, t.day, t.run_at, t.account_id],
+      ttl: sql`${t.day} + INTERVAL 3 YEAR`,
+    }),
+  ],
+);
+
 /** Every table `migrateMetrics` creates, in dependency order. */
 export const CLICKHOUSE_TABLES = [
   metricPointsRaw,
@@ -431,5 +528,7 @@ export const CLICKHOUSE_TABLES = [
   accountResourceCounts,
   costDaily,
   networkFlowDaily,
+  aiRequestDaily,
+  aiCostAttributed,
   pollOutcomes,
 ] as const;

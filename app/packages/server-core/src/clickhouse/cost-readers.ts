@@ -11,7 +11,7 @@ import type {
 } from "@infrawrench/client-core";
 import { and, asc, desc, eq, gte, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
-import { costDaily } from "./schema";
+import { aiCostAttributed, costDaily } from "./schema";
 import {
   costVisibilityLayersFor,
   type CompiledCostVisibilityLayer,
@@ -78,6 +78,118 @@ export interface CostSeriesGroup {
    * (`CostAdjustmentSummary.rawTotals`) only exposes the sum.
    */
   rawPoints?: CostSeriesPoint[];
+}
+
+/* ------------------------------------------------------------------ *
+ * The attributed view: AI caller dimensions.
+ * ------------------------------------------------------------------ */
+
+/** Tag-key prefix of the AI caller dimensions (`caller:team`). See `ai-attribution/`. */
+const CALLER_TAG_PREFIX = "caller:";
+
+/** The `cost_daily` columns both halves of the attributed view project, in order. */
+const COST_VIEW_COLUMNS = [
+  "organization_id",
+  "account_id",
+  "plugin_id",
+  "day",
+  "service",
+  "region",
+  "resource_id",
+  "tags",
+  "tags_hash",
+  "currency",
+  "amount",
+  "usage_amount",
+  "usage_unit",
+  "ingested_at",
+  "charge_type",
+  "amortized_amount",
+  "amortized_reported",
+  "commitment_id",
+] as const;
+
+/** True when any of these tag keys names an AI caller dimension. */
+export function referencesCallerTags(tagKeys: Array<string | undefined>): boolean {
+  return tagKeys.some((k) => typeof k === "string" && k.startsWith(CALLER_TAG_PREFIX));
+}
+
+/**
+ * `cost_daily` with each attributed day's AI rows replaced by their caller
+ * splits, aliased as `cost_daily` so every column reference, filter and
+ * visibility layer below resolves against it unchanged.
+ *
+ * Only reached when a query names a `caller:` tag key; every other read is
+ * byte-identical to what it was. Conservation is structural: the second half
+ * holds, for each day an attribution run covered, splits that sum to every
+ * AI-tagged row of that day, and the first half drops exactly those rows (AI
+ * rows on days with a run). A day with no run keeps its billed rows, which
+ * simply carry no caller tag. Latest run per day wins, so a run in progress is
+ * invisible until it is complete.
+ */
+export function attributedCostSource(organizationId: string, from: string, to: string): SQL {
+  const billedCols = sql.join(
+    COST_VIEW_COLUMNS.map((c) => sql`${costDaily[c]}`),
+    sql`, `,
+  );
+  const splitCols = sql.join(
+    COST_VIEW_COLUMNS.map((c) => sql`${aiCostAttributed[c]}`),
+    sql`, `,
+  );
+  const runDays = sql`SELECT ${aiCostAttributed.day} FROM ${aiCostAttributed} WHERE ${aiCostAttributed.organization_id} = ${organizationId} AND ${aiCostAttributed.day} >= ${sql`toDate(${from})`} AND ${aiCostAttributed.day} <= ${sql`toDate(${to})`}`;
+  return sql`(SELECT ${billedCols} FROM ${costDaily} FINAL WHERE ${costDailyOrgCondition(organizationId)} AND ${dayRange(from, to)} AND NOT (mapContains(${costDaily.tags}, 'ai:provider') AND ${costDaily.day} IN (${runDays})) UNION ALL SELECT ${splitCols} FROM ${aiCostAttributed} WHERE ${aiCostAttributed.organization_id} = ${organizationId} AND ${aiCostAttributed.day} >= ${sql`toDate(${from})`} AND ${aiCostAttributed.day} <= ${sql`toDate(${to})`} AND (${aiCostAttributed.day}, ${aiCostAttributed.run_at}) IN (SELECT ${aiCostAttributed.day}, max(${aiCostAttributed.run_at}) FROM ${aiCostAttributed} WHERE ${aiCostAttributed.organization_id} = ${organizationId} AND ${aiCostAttributed.day} >= ${sql`toDate(${from})`} AND ${aiCostAttributed.day} <= ${sql`toDate(${to})`} GROUP BY ${aiCostAttributed.day})) AS ${sql.identifier("cost_daily")}`;
+}
+
+/**
+ * Only the caller splits (`ai_cost_attributed`, latest run per day), aliased
+ * as `cost_daily` so `costDailyOrgCondition` and its visibility layers apply
+ * to them exactly as to billed rows. Feeds the caller-key and caller-value
+ * pickers and the spend-by-caller breakdown. `from`/`to` are optional: the
+ * pickers look at all history.
+ */
+export function callerSplitsSource(organizationId: string, from?: string, to?: string): SQL {
+  const a = aiCostAttributed;
+  const cols = sql.join(
+    COST_VIEW_COLUMNS.map((c) => sql`${a[c]}`),
+    sql`, `,
+  );
+  const range = sql.join(
+    [
+      sql`${a.organization_id} = ${organizationId}`,
+      ...(from ? [sql`${a.day} >= ${sql`toDate(${from})`}`] : []),
+      ...(to ? [sql`${a.day} <= ${sql`toDate(${to})`}`] : []),
+    ],
+    sql` AND `,
+  );
+  return sql`(SELECT ${cols} FROM ${a} WHERE ${range} AND (${a.day}, ${a.run_at}) IN (SELECT ${a.day}, max(${a.run_at}) FROM ${a} WHERE ${range} GROUP BY ${a.day})) AS ${sql.identifier("cost_daily")}`;
+}
+
+/** Attributed spend for one caller tag over a range, visibility applied. */
+export async function querySpendByCallerTag(
+  organizationId: string,
+  tagKey: string,
+  from: string,
+  to: string,
+  limit = 100,
+): Promise<Array<{ value: string; currency: string; amount: number }>> {
+  const rows = await query((db) =>
+    db
+      .select({
+        value: sql<string>`${costDaily.tags}[${tagKey}]`.as("value"),
+        currency: costDaily.currency,
+        amount: sql<number>`sum(${costDaily.amount})`.as("amount"),
+      })
+      .from(callerSplitsSource(organizationId, from, to))
+      .where(costDailyOrgCondition(organizationId))
+      .groupBy(sql`value`, costDaily.currency)
+      .orderBy(desc(sql`amount`), asc(sql`value`))
+      .limit(limit),
+  );
+  return rows.map((r) => ({
+    value: String(r.value),
+    currency: r.currency,
+    amount: Number(r.amount),
+  }));
 }
 
 /**
@@ -430,22 +542,44 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
   // Two chains rather than one over a computed selection: the builder's types
   // track which clauses a query has used, and a selection it cannot see the
   // shape of collapses that bookkeeping into a union with no `.groupBy` on it.
+  // A `caller:` tag key in the grouping or a filter reads the attributed view
+  // instead (AI rows split by caller); nothing else changes about the query.
+  const attributed = referencesCallerTags([
+    q.groupBy === "tag" ? q.groupByTagKey : undefined,
+    ...q.filters.map((f) => (f.dimension === "tag" ? f.tagKey : undefined)),
+  ])
+    ? attributedCostSource(organizationId, q.from, q.to)
+    : null;
   const rows: QueryCostsRow[] = await query((db) =>
-    adjustments
-      ? db
-          .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
-          .from(costDaily)
-          .final()
-          .where(where)
-          .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
-          .orderBy(asc(sql`bucket`))
-      : db
-          .select(selection)
-          .from(costDaily)
-          .final()
-          .where(where)
-          .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
-          .orderBy(asc(sql`bucket`)),
+    attributed
+      ? adjustments
+        ? db
+            .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
+            .from(attributed)
+            .where(where)
+            .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
+            .orderBy(asc(sql`bucket`))
+        : db
+            .select(selection)
+            .from(attributed)
+            .where(where)
+            .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
+            .orderBy(asc(sql`bucket`))
+      : adjustments
+        ? db
+            .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
+            .from(costDaily)
+            .final()
+            .where(where)
+            .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
+            .orderBy(asc(sql`bucket`))
+        : db
+            .select(selection)
+            .from(costDaily)
+            .final()
+            .where(where)
+            .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
+            .orderBy(asc(sql`bucket`)),
   );
 
   const groups = new Map<string, CostSeriesGroup>();
@@ -543,6 +677,18 @@ export async function getCostDimensionValues(
   opts?: { tagKey?: string; from?: string; to?: string },
 ): Promise<string[]> {
   const expr = dimensionExpr(dimension, opts?.tagKey);
+  if (dimension === "tag" && referencesCallerTags([opts?.tagKey])) {
+    const key = opts!.tagKey!;
+    const callerRows = await query((db) =>
+      db
+        .selectDistinct({ value: sql<string>`${costDaily.tags}[${key}]`.as("value") })
+        .from(callerSplitsSource(organizationId, opts?.from, opts?.to))
+        .where(and(costDailyOrgCondition(organizationId), sql`${costDaily.tags}[${key}] != ''`))
+        .orderBy(asc(sql`value`))
+        .limit(500),
+    );
+    return callerRows.map((r) => String(r.value));
+  }
   const rows = await query((db) =>
     db
       .selectDistinct({ value: expr.as("value") })
@@ -571,7 +717,21 @@ export async function getCostTagKeys(organizationId: string): Promise<string[]> 
       .orderBy(asc(sql`key`))
       .limit(200),
   );
-  return rows.map((r) => r.key);
+  // Caller dimensions live only on the attributed view; offering them here is
+  // what puts `caller:team` in every group-by and filter picker.
+  const callerRows = await query((db) =>
+    db
+      .selectDistinct({
+        key: sql<string>`arrayJoin(mapKeys(${costDaily.tags}))`.as("key"),
+      })
+      .from(callerSplitsSource(organizationId))
+      .where(costDailyOrgCondition(organizationId))
+      .orderBy(asc(sql`key`))
+      .limit(50),
+  );
+  const keys = new Set(rows.map((r) => r.key));
+  for (const r of callerRows) if (r.key.startsWith(CALLER_TAG_PREFIX)) keys.add(r.key);
+  return [...keys].sort();
 }
 
 /** Aggregate spend split by whether rows carry every required tag key. */
@@ -753,8 +913,28 @@ export async function getShowbackSpend(
     currency: string;
     amount: number;
     raw_amount?: number;
-  }> = await query((db) =>
-    adjustments
+  }> = await query((db) => {
+    // An allocation rule on a `caller:` tag reads the attributed view, which
+    // is what lets a cost centre own "everything team=search spent on AI".
+    const attributed = referencesCallerTags(rules.map((r) => r.match.tagKey))
+      ? attributedCostSource(organizationId, from, to)
+      : null;
+    if (attributed) {
+      return adjustments
+        ? db
+            .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
+            .from(attributed)
+            .where(where)
+            .groupBy(sql`centre`, costDaily.currency)
+            .orderBy(desc(sql`amount`))
+        : db
+            .select(selection)
+            .from(attributed)
+            .where(where)
+            .groupBy(sql`centre`, costDaily.currency)
+            .orderBy(desc(sql`amount`));
+    }
+    return adjustments
       ? db
           .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
           .from(costDaily)
@@ -768,8 +948,8 @@ export async function getShowbackSpend(
           .final()
           .where(where)
           .groupBy(sql`centre`, costDaily.currency)
-          .orderBy(desc(sql`amount`)),
-  );
+          .orderBy(desc(sql`amount`));
+  });
 
   return rows.map((r) => ({
     costCentreId: String(r.centre),

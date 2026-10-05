@@ -28,7 +28,17 @@ import type {
   PriceCatalogRequest,
   PriceCatalogResult,
 } from "@infrawrench/plugin-base";
-import { withMetricsCapability } from "@infrawrench/plugin-base";
+import { withAiCostTags, withMetricsCapability } from "@infrawrench/plugin-base";
+import type {
+  AiRequestLogFetchRange,
+  AiRequestLogFetchResult,
+  AiRequestLogLocation,
+} from "@infrawrench/plugin-base";
+import {
+  classifyAwsCostRow,
+  fetchAwsAiRequestLogs,
+  listAwsAiRequestLogLocations,
+} from "./ai-request-logs.js";
 import type { AwsCredentials } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
 import {
@@ -551,7 +561,27 @@ export class AWSClient implements PluginClient {
   }
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostFetchResult> {
-    return fetchAwsCostData(this.creds, range);
+    const result = await fetchAwsCostData(this.creds, range);
+    // Normalized AI dimensions on Bedrock lines, so invocation logs can be
+    // reconciled against them. See plugin-base `ai-requests.ts`.
+    return {
+      ...result,
+      rows: withAiCostTags(result.rows, (row) => classifyAwsCostRow(row.service)),
+    };
+  }
+
+  async listAiRequestLogLocations(
+    _accountId: string,
+    sourceKindId: string,
+  ): Promise<AiRequestLogLocation[]> {
+    return listAwsAiRequestLogLocations(this.creds, sourceKindId);
+  }
+
+  async fetchAiRequestLogs(
+    _accountId: string,
+    range: AiRequestLogFetchRange,
+  ): Promise<AiRequestLogFetchResult> {
+    return fetchAwsAiRequestLogs(this.creds, range);
   }
 
   /**

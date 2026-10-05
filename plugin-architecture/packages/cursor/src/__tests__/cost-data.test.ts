@@ -92,6 +92,8 @@ describe("usageRows", () => {
           model: "claude-4.5-sonnet",
           maxMode: "false",
           charge: "usage-based",
+          "ai:provider": "cursor",
+          "ai:model": "claude-4-5-sonnet",
         },
         currency: "USD",
         amount: 1.5,

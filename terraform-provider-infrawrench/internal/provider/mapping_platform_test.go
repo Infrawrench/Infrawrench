@@ -270,6 +270,74 @@ func TestWriteOnlyFieldsSurviveARefresh(t *testing.T) {
 			t.Error("the stored deploy answers were dropped")
 		}
 	})
+
+	t.Run("litellm api key", func(t *testing.T) {
+		prior := aiRequestSourceResourceModel{APIKey: types.StringValue("sk-master")}
+		state, diags := aiRequestSourceStateFrom(context.Background(), &iw.AIRequestSource{
+			ID: "s1", Kind: "litellm", SourceKindID: "litellm-spend-logs", LookbackDays: 7, HasAPIKey: true,
+		}, prior, 0)
+		if diags.HasError() {
+			t.Fatalf("aiRequestSourceStateFrom: %v", diags)
+		}
+		if state.APIKey.ValueString() != "sk-master" {
+			t.Errorf("the LiteLLM key was dropped: %v", state.APIKey)
+		}
+	})
+}
+
+// The server clamps an AI source's lookback to its kind's history cap and
+// normalises a LiteLLM base URL. Reading either back verbatim would fail the
+// consistency check on apply and diff forever after, so both keep the
+// configured spelling when, and only when, the server's value is equivalent.
+func TestAIRequestSourceServerNormalisation(t *testing.T) {
+	ctx := context.Background()
+	remote := func(lookback int64, baseURL *string) *iw.AIRequestSource {
+		return &iw.AIRequestSource{
+			ID: "s1", Kind: "plugin", SourceKindID: "bedrock-cloudwatch", LookbackDays: lookback, BaseURL: baseURL,
+		}
+	}
+
+	t.Run("a clamped lookback keeps the configured value", func(t *testing.T) {
+		prior := aiRequestSourceResourceModel{LookbackDays: types.Int64Value(90)}
+		state, _ := aiRequestSourceStateFrom(ctx, remote(30, nil), prior, 30)
+		if state.LookbackDays.ValueInt64() != 90 {
+			t.Errorf("lookback_days = %v, want the configured 90", state.LookbackDays)
+		}
+	})
+
+	t.Run("a lookback below the cap is drift", func(t *testing.T) {
+		prior := aiRequestSourceResourceModel{LookbackDays: types.Int64Value(20)}
+		state, _ := aiRequestSourceStateFrom(ctx, remote(10, nil), prior, 30)
+		if state.LookbackDays.ValueInt64() != 10 {
+			t.Errorf("lookback_days = %v, want the server's 10", state.LookbackDays)
+		}
+	})
+
+	t.Run("an unknown cap reports the server value", func(t *testing.T) {
+		prior := aiRequestSourceResourceModel{LookbackDays: types.Int64Value(90)}
+		state, _ := aiRequestSourceStateFrom(ctx, remote(30, nil), prior, 0)
+		if state.LookbackDays.ValueInt64() != 30 {
+			t.Errorf("lookback_days = %v, want the server's 30", state.LookbackDays)
+		}
+	})
+
+	t.Run("an equivalent base URL keeps the configured spelling", func(t *testing.T) {
+		stored := "https://litellm.example.com/proxy"
+		prior := aiRequestSourceResourceModel{BaseURL: types.StringValue("https://LiteLLM.example.com:443/proxy/")}
+		state, _ := aiRequestSourceStateFrom(ctx, remote(7, &stored), prior, 0)
+		if state.BaseURL.ValueString() != "https://LiteLLM.example.com:443/proxy/" {
+			t.Errorf("base_url = %v, want the configured spelling", state.BaseURL)
+		}
+	})
+
+	t.Run("a different base URL is drift", func(t *testing.T) {
+		stored := "https://other.example.com"
+		prior := aiRequestSourceResourceModel{BaseURL: types.StringValue("https://litellm.example.com")}
+		state, _ := aiRequestSourceStateFrom(ctx, remote(7, &stored), prior, 0)
+		if state.BaseURL.ValueString() != stored {
+			t.Errorf("base_url = %v, want the server's %q", state.BaseURL, stored)
+		}
+	})
 }
 
 // An Optional+Computed collection must be mapped faithfully: `[]` stays `[]`

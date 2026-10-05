@@ -1,3 +1,4 @@
+import { cloudflareAiRequestLogCapability } from "./ai-request-logs.js";
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { CLOUDFLARE_FOCUS } from "./focus-services.js";
 import { CloudflareClient } from "./client.js";
@@ -96,6 +97,9 @@ const manifest: PluginManifest = {
     maxHistoryDays: 90,
     periodNative: true,
   },
+  // AI Gateway request logs, for splitting the spend of the providers behind a
+  // gateway by caller. Needs Account · AI Gateway:Read.
+  aiRequestLogs: cloudflareAiRequestLogCapability,
   statusFeed,
   preflight: cloudflarePreflight,
 };

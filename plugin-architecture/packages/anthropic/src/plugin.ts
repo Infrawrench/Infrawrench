@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AnthropicClient } from "./client.js";
+import { anthropicModelRates } from "./ai-rates.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ModelResourceType } from "./resources/model.js";
 import { MessageBatchResourceType } from "./resources/message-batch.js";
@@ -64,10 +65,11 @@ const manifest: PluginManifest = {
   // `description` (→ service) and `workspace_id` (→ resource).
   costs: {
     focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
-    dimensions: ["service", "resource"],
+    dimensions: ["service", "resource", "tag"],
     maxHistoryDays: 365,
     restatementDays: 3,
   },
+  aiModelRates: anthropicModelRates,
   statusFeed,
 };
 

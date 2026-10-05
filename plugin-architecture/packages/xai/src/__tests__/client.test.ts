@@ -404,8 +404,20 @@ describe("fetchCostData", () => {
       toDate: "2026-07-02",
     });
     expect(rows).toEqual([
-      { date: "2026-07-01", service: "Chat grok-4-0709", currency: "USD", amount: 0.75 },
-      { date: "2026-07-02", service: "Chat grok-4-0709", currency: "USD", amount: 0 },
+      {
+        date: "2026-07-01",
+        service: "Chat grok-4-0709",
+        currency: "USD",
+        amount: 0.75,
+        tags: { "ai:provider": "xai" },
+      },
+      {
+        date: "2026-07-02",
+        service: "Chat grok-4-0709",
+        currency: "USD",
+        amount: 0,
+        tags: { "ai:provider": "xai" },
+      },
     ]);
   });
 });

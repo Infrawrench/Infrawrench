@@ -1331,3 +1331,80 @@ type ObjectSharingInput struct {
 	OrgAccess string                    `json:"orgAccess"`
 	Grants    []ObjectSharingGrantInput `json:"grants"`
 }
+
+/* --------------------------- AI request attribution ------------------------ */
+
+// AIRequestSource is one request-log source that AI attribution reads daily: a
+// provider plugin's log location (Bedrock invocation logs, a Cloudflare AI
+// Gateway, JSONL in S3) or a LiteLLM proxy the host reads itself.
+//
+// The API key of a LiteLLM source is write-only; HasAPIKey is the only trace
+// of it any route returns.
+type AIRequestSource struct {
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	Kind             string            `json:"kind"`
+	PluginID         *string           `json:"pluginId"`
+	AccountID        *string           `json:"accountId"`
+	AccountName      *string           `json:"accountName"`
+	SourceKindID     string            `json:"sourceKindId"`
+	Location         map[string]string `json:"location"`
+	Enabled          bool              `json:"enabled"`
+	LookbackDays     int64             `json:"lookbackDays"`
+	BaseURL          *string           `json:"baseUrl"`
+	HasAPIKey        bool              `json:"hasApiKey"`
+	CollectedThrough *string           `json:"collectedThrough"`
+	LastRunAt        *string           `json:"lastRunAt"`
+	NextRunAt        *string           `json:"nextRunAt"`
+	LastError        *string           `json:"lastError"`
+	LastErrorHelpURL *string           `json:"lastErrorHelpUrl"`
+	FailureCount     int64             `json:"failureCount"`
+	CreatedAt        string            `json:"createdAt"`
+	UpdatedAt        string            `json:"updatedAt"`
+}
+
+// AIRequestSourceInput is the POST body and the PUT full replacement.
+//
+// AccountID and BaseURL marshal an explicit null rather than being omitted:
+// the PUT replaces the whole source, and the server reads each as "not set".
+// APIKey is the opposite: omitting it on a PUT keeps the stored key, which is
+// what a configuration that leaves `api_key` unset after the first apply wants.
+type AIRequestSourceInput struct {
+	Name         string            `json:"name"`
+	Kind         string            `json:"kind"`
+	AccountID    *string           `json:"accountId"`
+	SourceKindID string            `json:"sourceKindId"`
+	Location     map[string]string `json:"location"`
+	Enabled      bool              `json:"enabled"`
+	LookbackDays int64             `json:"lookbackDays"`
+	BaseURL      *string           `json:"baseUrl"`
+	APIKey       *string           `json:"apiKey,omitempty"`
+}
+
+// AIRequestSourceKindOption is one kind of source the organization can add.
+// The provider reads it for one fact only: MaxHistoryDays, the cap the server
+// clamps a source's lookback to.
+type AIRequestSourceKindOption struct {
+	Kind           string  `json:"kind"`
+	PluginID       *string `json:"pluginId"`
+	SourceKindID   string  `json:"sourceKindId"`
+	MaxHistoryDays int64   `json:"maxHistoryDays"`
+}
+
+// AIAttributionDimension maps request-metadata keys onto a caller dimension,
+// which cost reports surface as the tag key `caller:<key>`.
+type AIAttributionDimension struct {
+	ID           string   `json:"id"`
+	Key          string   `json:"key"`
+	Label        string   `json:"label"`
+	MetadataKeys []string `json:"metadataKeys"`
+	CreatedAt    string   `json:"createdAt"`
+	UpdatedAt    string   `json:"updatedAt"`
+}
+
+// AIAttributionDimensionInput is the POST body and the PUT full replacement.
+type AIAttributionDimensionInput struct {
+	Key          string   `json:"key"`
+	Label        string   `json:"label"`
+	MetadataKeys []string `json:"metadataKeys"`
+}

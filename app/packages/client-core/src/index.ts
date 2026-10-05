@@ -738,6 +738,7 @@ export * from "./credential-hygiene";
 export * from "./credits";
 export * from "./commitments";
 export * from "./network-flows";
+export * from "./ai-attribution";
 export * from "./iac";
 export * from "./jira";
 export * from "./linear";

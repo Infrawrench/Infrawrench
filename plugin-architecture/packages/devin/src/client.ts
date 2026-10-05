@@ -10,7 +10,7 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, withAiCostTags } from "@infrawrench/plugin-base";
 import type {
   ConsumptionDay,
   DevinAutomation,
@@ -458,7 +458,9 @@ export class DevinClient implements PluginClient {
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostFetchResult> {
     const { self, orgs } = await this.resolved();
-    return fetchDevinCostData(this.ctx, orgs, self, this.acuPrice, range);
+    const result = await fetchDevinCostData(this.ctx, orgs, self, this.acuPrice, range);
+    // Normalized AI dimensions (provider level: Devin bills ACUs, not tokens).
+    return { ...result, rows: withAiCostTags(result.rows, () => ({ provider: "devin" })) };
   }
 
   // -------------------------------------------------------------------------

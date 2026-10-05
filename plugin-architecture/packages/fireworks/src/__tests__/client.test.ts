@@ -202,8 +202,15 @@ describe("costs", () => {
     expect(body.endTime).toBe("2026-07-06T00:00:00Z");
 
     expect(rows).toEqual([
-      { date: "2026-07-01", service: "llama-3", currency: "USD", amount: 12.5 },
-      { date: "2026-07-02", currency: "USD", amount: 0.25 },
+      {
+        date: "2026-07-01",
+        service: "llama-3",
+        currency: "USD",
+        amount: 12.5,
+        tags: { "ai:provider": "fireworks", "ai:model": "llama-3" },
+      },
+      // No MODEL dimension on this row: only the provider is known.
+      { date: "2026-07-02", currency: "USD", amount: 0.25, tags: { "ai:provider": "fireworks" } },
     ]);
   });
 
@@ -230,7 +237,9 @@ describe("costs", () => {
       toDate: "2026-07-01",
     });
     expect(seenAccountScope).toBe(true);
-    expect(rows).toEqual([{ date: "2026-07-01", currency: "USD", amount: 1 }]);
+    expect(rows).toEqual([
+      { date: "2026-07-01", currency: "USD", amount: 1, tags: { "ai:provider": "fireworks" } },
+    ]);
   });
 
   it("chunks a long range into windows the usage API accepts", async () => {

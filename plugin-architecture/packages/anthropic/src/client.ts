@@ -17,7 +17,14 @@ import type {
   LogsFetchParams,
   LogsFetchResult,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, formatBytes, CostSetupError, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  aiCostTags,
+  jsonRestFetch,
+  formatBytes,
+  CostSetupError,
+  externalIdOf,
+} from "@infrawrench/plugin-base";
+import { anthropicTokenType } from "./ai-rates.js";
 
 const BASE_URL = "https://api.anthropic.com";
 
@@ -1599,6 +1606,15 @@ export class AnthropicClient implements PluginClient {
           currency: str(result.currency) || "USD",
           // Lowest currency units → major units.
           amount: cents / 100,
+          // Normalized AI dimensions: the report names the model and token
+          // type for token costs (grouped by description), which is what lets
+          // request logs be reconciled against this bill per model and type.
+          tags: aiCostTags({
+            provider: "anthropic",
+            model: result.cost_type === "tokens" ? str(result.model) : undefined,
+            tokenType:
+              result.cost_type === "tokens" ? anthropicTokenType(result.token_type) : undefined,
+          }),
         });
       }
     }

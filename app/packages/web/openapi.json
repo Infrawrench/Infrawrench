@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.55.0",
+    "version": "1.56.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -63,6 +63,10 @@
     {
       "name": "Commitments",
       "description": "Reserved instances, savings plans and committed-use discounts: the inventory of what was purchased, how much of the usage bill it covers (reported as a range — there is no single honest denominator), utilization measured only over days with collected cost data, and a planner that recommends commitment sizes at the p10 floor of uncovered spend. Read-only: nothing here ever purchases."
+    },
+    {
+      "name": "AI attribution",
+      "description": "Split billed AI spend by caller (team, user, feature, customer, or any request-metadata key) by joining per-request logs (Bedrock invocation logs, Cloudflare AI Gateway logs, LiteLLM spend logs, custom JSONL in S3) to the provider bills. Each request is priced at list rates and scaled so attributed totals equal the billed amount, with an explicit `(unattributed)` remainder; billed totals are never changed. Caller dimensions appear in every cost report as the tag keys `caller:<dimension>`."
     },
     {
       "name": "Network flows",
@@ -27902,6 +27906,566 @@
         "required": [
           "enabled",
           "initialLookbackDays"
+        ],
+        "additionalProperties": false
+      },
+      "AiRequestSourceKindOption": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "plugin",
+              "litellm"
+            ]
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceKindId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "locationLabel": {
+            "type": "string"
+          },
+          "maxHistoryDays": {
+            "type": "integer"
+          },
+          "queriesBillable": {
+            "type": "boolean",
+            "description": "Reading this source is billed to the account's own provider (Logs Insights)."
+          },
+          "acceptsPrefix": {
+            "type": "boolean"
+          },
+          "helpUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "pluginId",
+          "pluginName",
+          "sourceKindId",
+          "label",
+          "description",
+          "locationLabel",
+          "maxHistoryDays",
+          "queriesBillable",
+          "acceptsPrefix",
+          "helpUrl",
+          "accounts"
+        ],
+        "additionalProperties": false
+      },
+      "AiRequestLogLocation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "location": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "recommended": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "location"
+        ],
+        "additionalProperties": false
+      },
+      "AiRequestSource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "plugin",
+              "litellm"
+            ]
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceKindId": {
+            "type": "string"
+          },
+          "location": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "lookbackDays": {
+            "type": "integer"
+          },
+          "baseUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hasApiKey": {
+            "type": "boolean"
+          },
+          "collectedThrough": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastRunAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nextRunAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastErrorHelpUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failureCount": {
+            "type": "integer"
+          },
+          "observedMetadataKeys": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "lastQueryBytesScanned": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "pluginId",
+          "accountId",
+          "accountName",
+          "sourceKindId",
+          "location",
+          "enabled",
+          "lookbackDays",
+          "baseUrl",
+          "hasApiKey",
+          "collectedThrough",
+          "lastRunAt",
+          "nextRunAt",
+          "lastError",
+          "lastErrorHelpUrl",
+          "failureCount",
+          "observedMetadataKeys",
+          "lastQueryBytesScanned",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "AiRequestSourceInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "plugin",
+              "litellm"
+            ]
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required for `plugin` sources."
+          },
+          "sourceKindId": {
+            "type": "string"
+          },
+          "location": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "What the location picker returned, plus `prefix` where the kind accepts one."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "lookbackDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90
+          },
+          "baseUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "LiteLLM only: the proxy's https URL."
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "LiteLLM only. Write-only; omit on update to keep the stored key."
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "sourceKindId",
+          "location",
+          "enabled",
+          "lookbackDays"
+        ],
+        "additionalProperties": false
+      },
+      "AiAttributionDimension": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "metadataKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "label",
+          "metadataKeys",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "AiAttributionDimensionInput": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+            "description": "Becomes the tag key `caller:<key>` in cost reports."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "metadataKeys": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "minItems": 1,
+            "maxItems": 8,
+            "description": "Request-metadata keys feeding the dimension, first present wins."
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "metadataKeys"
+        ],
+        "additionalProperties": false
+      },
+      "AiSourceMatchStats": {
+        "type": "object",
+        "properties": {
+          "sourceId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "days": {
+            "type": "integer"
+          },
+          "requests": {
+            "type": "number"
+          },
+          "matchedRequests": {
+            "type": "number"
+          },
+          "ambiguousRequests": {
+            "type": "number"
+          },
+          "unmatchedRequests": {
+            "type": "number"
+          },
+          "skippedRecords": {
+            "type": "number"
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attributedAmount": {
+            "type": "number"
+          },
+          "billedAmount": {
+            "type": "number"
+          },
+          "coveragePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "degradedDays": {
+            "type": "integer"
+          },
+          "truncatedDays": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sourceId",
+          "name",
+          "days",
+          "requests",
+          "matchedRequests",
+          "ambiguousRequests",
+          "unmatchedRequests",
+          "skippedRecords",
+          "currency",
+          "attributedAmount",
+          "billedAmount",
+          "coveragePercent",
+          "degradedDays",
+          "truncatedDays"
+        ],
+        "additionalProperties": false
+      },
+      "AiProviderCoverage": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "billedAmount": {
+            "type": "number"
+          },
+          "attributedAmount": {
+            "type": "number"
+          },
+          "unattributedAmount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "provider",
+          "currency",
+          "billedAmount",
+          "attributedAmount",
+          "unattributedAmount"
+        ],
+        "additionalProperties": false
+      },
+      "AiAttributionStats": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiSourceMatchStats"
+            }
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiProviderCoverage"
+            }
+          },
+          "attributedDays": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "sources",
+          "providers",
+          "attributedDays"
+        ],
+        "additionalProperties": false
+      },
+      "AiSpendBreakdown": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "dimension": {
+            "type": "string"
+          },
+          "tagKey": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "currency": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "value",
+                "currency",
+                "amount"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "dimension",
+          "tagKey",
+          "rows"
         ],
         "additionalProperties": false
       },
@@ -63930,6 +64494,1050 @@
         },
         "operationId": "putOrgOrgIdNetworkFlowsSettings",
         "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/source-kinds": {
+      "get": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "List the request-log source kinds the org can add",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source kinds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sourceKinds": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AiRequestSourceKindOption"
+                      }
+                    }
+                  },
+                  "required": [
+                    "sourceKinds"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAiAttributionSourceKinds"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/locations": {
+      "get": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Discover locations (buckets, log groups, gateways) for a source kind",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "sourceKindId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Picker options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "locations": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AiRequestLogLocation"
+                      }
+                    }
+                  },
+                  "required": [
+                    "locations"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAiAttributionLocations"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/sources": {
+      "get": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "List request-log sources",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AiRequestSource"
+                      }
+                    }
+                  },
+                  "required": [
+                    "sources"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAiAttributionSources"
+      },
+      "post": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Add a request-log source",
+        "description": "Governed by `org:settings:write`: a source authorizes a daily read of the org's request logs, and the Bedrock CloudWatch kind runs a Logs Insights query billed to the org's own AWS account per GB scanned. Audit-logged.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiRequestSourceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRequestSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAiAttributionSources"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/sources/{id}": {
+      "get": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Read one request-log source",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRequestSource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAiAttributionSourcesId"
+      },
+      "put": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Update a request-log source",
+        "description": "Pointing a source at a different location restarts its collection history.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiRequestSourceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRequestSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdAiAttributionSourcesId"
+      },
+      "delete": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Delete a request-log source",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdAiAttributionSourcesId"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/sources/{id}/recollect": {
+      "post": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Re-read a source's history from a day",
+        "description": "Aggregates keep only mapped metadata keys, so a newly mapped dimension reaches history only by re-reading it. Clamped to the source kind's history limit.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "from"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rescheduled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRequestSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAiAttributionSourcesIdRecollect"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/dimensions": {
+      "get": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "List caller dimensions",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dimensions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "dimensions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AiAttributionDimension"
+                      }
+                    }
+                  },
+                  "required": [
+                    "dimensions"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAiAttributionDimensions"
+      },
+      "post": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Map request-metadata keys to a caller dimension",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiAttributionDimensionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAttributionDimension"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAiAttributionDimensions"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/dimensions/{id}": {
+      "put": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Update a caller dimension",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiAttributionDimensionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAttributionDimension"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdAiAttributionDimensionsId"
+      },
+      "delete": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Delete a caller dimension",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdAiAttributionDimensionsId"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/stats": {
+      "get": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Match-rate statistics per source and coverage per provider",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive start day. Defaults to 29 days ago."
+            },
+            "required": false,
+            "description": "Inclusive start day. Defaults to 29 days ago.",
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive end day. Defaults to today."
+            },
+            "required": false,
+            "description": "Inclusive end day. Defaults to today.",
+            "name": "to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAttributionStats"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAiAttributionStats"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/spend": {
+      "get": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Attributed AI spend by one caller dimension",
+        "description": "Includes the `(unattributed)` remainder and `(not set)` for matched requests that lacked every mapped key. For time series, group a cost report by the tag key `caller:<dimension>`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive start day. Defaults to 29 days ago."
+            },
+            "required": false,
+            "description": "Inclusive start day. Defaults to 29 days ago.",
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive end day. Defaults to today."
+            },
+            "required": false,
+            "description": "Inclusive end day. Defaults to today.",
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+            },
+            "required": true,
+            "name": "dimension",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Breakdown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSpendBreakdown"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAiAttributionSpend"
+      }
+    },
+    "/api/org/{orgId}/ai-attribution/reattribute": {
+      "post": {
+        "tags": [
+          "AI attribution"
+        ],
+        "summary": "Re-split a range of days now",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "to": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Re-split",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "days": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "days"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAiAttributionReattribute"
       }
     },
     "/api/org/{orgId}/probes": {

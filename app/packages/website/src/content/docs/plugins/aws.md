@@ -175,6 +175,16 @@ AWS is the one provider that can feed [network costs](../features/network-costs.
 
 Cross-AZ transfer is priced at $0.01/GB **in each direction**, which is why both directions are stored and priced separately: AWS captures the flow at both network interfaces and bills both ends, so the two records at $0.01 each reproduce the real charge exactly.
 
+## AI spend by caller
+
+Bedrock lines on the bill carry the `ai:provider` tag (and `ai:model` for Marketplace editions such as "Claude 3.5 Sonnet (Amazon Bedrock Edition)"). Three [AI attribution](../features/ai-attribution.md) sources read per-request logs through this account:
+
+- **Bedrock invocation logs (S3)**: the gzipped log objects under `AWSLogs/<account>/BedrockModelInvocationLogs/<region>/YYYY/MM/DD/`. Needs `s3:ListBucket` and `s3:GetObject` on the bucket.
+- **Bedrock invocation logs (CloudWatch Logs)**: one Logs Insights `stats` query per day, billed to your account per GB scanned. Needs `logs:StartQuery`, `logs:GetQueryResults` and `logs:StopQuery`.
+- **Custom request logs (JSONL in S3)**: the documented JSONL format under a prefix you choose.
+
+All three need `bedrock:GetModelInvocationLoggingConfiguration` to preselect the bucket or log group Bedrock delivers to. Callers tag requests with the Converse `requestMetadata` field or the `X-Amzn-Bedrock-Request-Metadata` header. Logs are read for the credential's own region.
+
 ## Dependency graph
 
 The VPC wiring is declared, so the [dependency graph](../features/dependency-graph.md) draws it exactly rather than inferring it: EC2 instances link to their VPC, subnet and security groups, and subnets, security groups, load balancers, target groups, NAT gateways and internet gateways link to their VPC. These arrows appear as soon as the account syncs — nothing to wire by hand.

@@ -337,6 +337,7 @@ describe("fetchCostData", () => {
         amount: 0.027,
         usageAmount: 5,
         usageUnit: "Requests",
+        tags: { "ai:provider": "openrouter", "ai:model": "gpt-4-1" },
       },
     ]);
   });

@@ -231,3 +231,7 @@ Cloudflare accounts feed [cost graphs & budgets](../features/cloud-costs.md) via
 - The token needs the **Billing Read** permission — the "Create a token with these scopes" link now includes it. Tokens created before this permission was added will show a clear "missing Billing Read" error on the cost card; re-create the token from the link and update the account's credentials.
 - The API is generally available for self-serve accounts; Enterprise coverage is still rolling out. If your account isn't covered yet the cost card says so and collection backs off until it is.
 - Amounts are contracted costs per billing period, so daily-binned graphs show them as period steps. Cloudflare refreshes the data daily.
+
+## AI Gateway request logs
+
+An AI Gateway can be an [AI attribution](../features/ai-attribution.md) source: its request log (provider, model, tokens, the gateway's cost estimate and the `cf-aig-metadata` header) splits the spend of the providers behind the gateway (OpenAI, Anthropic, Bedrock and so on, connected as their own accounts) by caller. The token needs **Account · AI Gateway:Read**, and log collection must be on for the gateway. Cached responses are skipped, since they never reach a provider's bill. A gateway with more than 200,000 requests in a day is read up to that cap and the day is marked partial.

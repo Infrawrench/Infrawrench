@@ -65,6 +65,11 @@ for (const plugin of BUNDLED_PLUGINS) {
   // proper names, left as they are.
   add(manifest.priceCatalog?.source.name);
   for (const service of manifest.priceCatalog?.services ?? []) add(service.label);
+  for (const kind of manifest.aiRequestLogs?.sourceKinds ?? []) {
+    add(kind.label);
+    add(kind.description);
+    add(kind.locationLabel);
+  }
   for (const type of plugin.resourceTypes) {
     add(type.displayName);
     add(type.pluralDisplayName);

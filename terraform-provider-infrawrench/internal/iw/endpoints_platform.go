@@ -1135,3 +1135,100 @@ func (c *Client) PutObjectSharing(ctx context.Context, objectType, objectID stri
 func (c *Client) ResetObjectSharing(ctx context.Context, objectType, objectID string) error {
 	return c.Delete(ctx, "/sharing/"+seg(objectType)+"/"+seg(objectID))
 }
+
+/* -------------------------- AI request attribution ------------------------- */
+
+// ListAIRequestSources unwraps the {"sources": […]} envelope.
+func (c *Client) ListAIRequestSources(ctx context.Context) ([]AIRequestSource, error) {
+	var envelope struct {
+		Sources []AIRequestSource `json:"sources"`
+	}
+	if err := c.Get(ctx, "/ai-attribution/sources", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Sources, nil
+}
+
+func (c *Client) GetAIRequestSource(ctx context.Context, id string) (*AIRequestSource, error) {
+	var out AIRequestSource
+	if err := c.Get(ctx, "/ai-attribution/sources/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateAIRequestSource(ctx context.Context, in AIRequestSourceInput) (*AIRequestSource, error) {
+	var out AIRequestSource
+	if err := c.Post(ctx, "/ai-attribution/sources", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateAIRequestSource(ctx context.Context, id string, in AIRequestSourceInput) (*AIRequestSource, error) {
+	var out AIRequestSource
+	if err := c.Put(ctx, "/ai-attribution/sources/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteAIRequestSource(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/ai-attribution/sources/"+seg(id))
+}
+
+// ListAIRequestSourceKinds unwraps the {"sourceKinds": […]} envelope.
+func (c *Client) ListAIRequestSourceKinds(ctx context.Context) ([]AIRequestSourceKindOption, error) {
+	var envelope struct {
+		SourceKinds []AIRequestSourceKindOption `json:"sourceKinds"`
+	}
+	if err := c.Get(ctx, "/ai-attribution/source-kinds", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.SourceKinds, nil
+}
+
+// ListAIAttributionDimensions unwraps the {"dimensions": […]} envelope.
+func (c *Client) ListAIAttributionDimensions(ctx context.Context) ([]AIAttributionDimension, error) {
+	var envelope struct {
+		Dimensions []AIAttributionDimension `json:"dimensions"`
+	}
+	if err := c.Get(ctx, "/ai-attribution/dimensions", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Dimensions, nil
+}
+
+// GetAIAttributionDimension lists and filters: there is no single-GET route.
+func (c *Client) GetAIAttributionDimension(ctx context.Context, id string) (*AIAttributionDimension, error) {
+	all, err := c.ListAIAttributionDimensions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/ai-attribution/dimensions", id)
+}
+
+func (c *Client) CreateAIAttributionDimension(ctx context.Context, in AIAttributionDimensionInput) (*AIAttributionDimension, error) {
+	var out AIAttributionDimension
+	if err := c.Post(ctx, "/ai-attribution/dimensions", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateAIAttributionDimension(ctx context.Context, id string, in AIAttributionDimensionInput) (*AIAttributionDimension, error) {
+	var out AIAttributionDimension
+	if err := c.Put(ctx, "/ai-attribution/dimensions/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteAIAttributionDimension(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/ai-attribution/dimensions/"+seg(id))
+}
