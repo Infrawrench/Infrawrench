@@ -19,6 +19,8 @@ The table has four columns:
 - **Action** — verb + object (e.g. “created Droplet”, “started SSH session”).
 - **Entity** — the type and id of the resource or account affected.
 
+[Single sign-on](./single-sign-on.md) records its own entries: domain, settings and mapping changes, each directory sync, every member the directory adds or removes and every role it changes, and every sign-in that bypassed enforcement. Entries the directory makes on its own show **System** as the user.
+
 Twenty-five entries to a page, newest first, with **Previous** / **Next** underneath and a count of everything matched.
 
 ## Filtering

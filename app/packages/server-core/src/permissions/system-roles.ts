@@ -24,7 +24,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
     name: "Admin",
     description:
       "Manage accounts, resources, team members, and API keys. Cannot manage billing or delete the organization.",
-    permissions: ALL_EXCEPT("billing:write", "org:settings:write"),
+    permissions: ALL_EXCEPT("billing:write", "org:settings:write", "sso:bypass"),
   },
   member: {
     key: "member",

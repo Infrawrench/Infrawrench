@@ -21,13 +21,20 @@ export const redirectUri = AuthSession.makeRedirectUri({
   path: "auth/callback",
 });
 
-export function createAuthRequest(): AuthSession.AuthRequest {
+/**
+ * With `workosOrganizationId`, sign-in starts at that organization's SSO
+ * connection rather than the AuthKit page: the answer to an org that requires
+ * single sign-on.
+ */
+export function createAuthRequest(workosOrganizationId?: string): AuthSession.AuthRequest {
   return new AuthSession.AuthRequest({
     clientId: CLIENT_ID,
     redirectUri,
     responseType: AuthSession.ResponseType.Code,
     usePKCE: true,
     scopes: [],
-    extraParams: { provider: "authkit" },
+    extraParams: workosOrganizationId
+      ? { organization_id: workosOrganizationId }
+      : { provider: "authkit" },
   });
 }

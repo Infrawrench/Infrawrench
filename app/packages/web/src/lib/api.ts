@@ -12,6 +12,7 @@ import {
   SeatLimitReachedClientError,
   PlanRequiredClientError,
 } from "@infrawrench/ui";
+import { isSsoRequiredResponse } from "@infrawrench/client-core";
 
 const SIGN_IN_URL = "/api/auth/sign-in";
 
@@ -122,6 +123,19 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     if (res.status === 403 && isReauthenticationRequired(parsed)) {
       const returnTo = `${window.location.pathname}${window.location.search}`;
       window.location.href = `${SIGN_IN_URL}?return_to=${encodeURIComponent(returnTo)}`;
+      return new Promise(() => {});
+    }
+    // The org requires single sign-on and this session was not established
+    // through its identity provider: sign in again straight at that provider,
+    // returning here. `signInPath` is the server's own same-origin path; it is
+    // still checked, so a response cannot turn this into an open redirect.
+    if (
+      res.status === 403 &&
+      isSsoRequiredResponse(parsed) &&
+      parsed.signInPath.startsWith("/api/auth/sign-in?")
+    ) {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      window.location.href = `${parsed.signInPath}&return_to=${encodeURIComponent(returnTo)}`;
       return new Promise(() => {});
     }
     let message = text;

@@ -1112,3 +1112,62 @@ func (c *Client) PutObjectSharing(ctx context.Context, objectType, objectID stri
 func (c *Client) ResetObjectSharing(ctx context.Context, objectType, objectID string) error {
 	return c.Delete(ctx, "/sharing/"+seg(objectType)+"/"+seg(objectID))
 }
+
+/* ----------------------------- single sign-on ----------------------------- */
+
+func (c *Client) GetSSOStatus(ctx context.Context) (*SSOStatus, error) {
+	var out SSOStatus
+	if err := c.Get(ctx, "/sso", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetUpSSO creates the WorkOS organization SSO hangs off. Idempotent.
+func (c *Client) SetUpSSO(ctx context.Context) error {
+	return c.Post(ctx, "/sso/setup", struct{}{}, nil)
+}
+
+func (c *Client) PutSSOSettings(ctx context.Context, in SSOSettingsInput) (*SSOSettings, error) {
+	var out SSOSettings
+	if err := c.Put(ctx, "/sso/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) ListSSOGroups(ctx context.Context) ([]SSODirectoryGroup, error) {
+	var out struct {
+		Groups []SSODirectoryGroup `json:"groups"`
+	}
+	err := c.Get(ctx, "/sso/groups", &out)
+	return out.Groups, err
+}
+
+func (c *Client) GetSSOGroupRoleMapping(ctx context.Context, id string) (*SSOGroupRoleMapping, error) {
+	var out SSOGroupRoleMapping
+	if err := c.Get(ctx, "/sso/group-mappings/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateSSOGroupRoleMapping(ctx context.Context, in SSOGroupRoleMappingInput) (*SSOGroupRoleMapping, error) {
+	var out SSOGroupRoleMapping
+	if err := c.Post(ctx, "/sso/group-mappings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateSSOGroupRoleMapping(ctx context.Context, id string, in SSOGroupRoleMappingUpdate) (*SSOGroupRoleMapping, error) {
+	var out SSOGroupRoleMapping
+	if err := c.Patch(ctx, "/sso/group-mappings/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteSSOGroupRoleMapping(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/sso/group-mappings/"+seg(id))
+}

@@ -430,18 +430,20 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Accounts and access
 
-| Resource                            | Manages                                                                                                                |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `infrawrench_account`               | Connected [cloud accounts](../core-concepts/resources-and-accounts.md)                                                 |
-| `infrawrench_bastion`               | [Bastion agent](./bastion-vms.md) enrollments                                                                          |
-| `infrawrench_role`                  | Custom [roles and permissions](../team-and-billing/roles-and-permissions.md)                                           |
-| `infrawrench_cost_visibility_scope` | [Cost visibility](../team-and-billing/cost-visibility.md) scopes on roles, members and API keys                        |
-| `infrawrench_object_sharing`        | [Sharing](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) on a cost report, folder or dashboard |
-| `infrawrench_api_key`               | [API keys](../team-and-billing/api-keys.md)                                                                            |
-| `infrawrench_ssh_key`               | [SSH keys](../team-and-billing/ssh-keys.md), imported or generated                                                     |
-| `infrawrench_ssh_snippet`           | Saved [SSH fan-out](./ssh-fanout.md) commands                                                                          |
-| `infrawrench_deploy_trigger`        | Redeploy-on-push triggers for [Infrafile](./infrafile.md) projects                                                     |
-| `infrawrench_workflow_schedule`     | The cron on an existing [workflow](./workflows.md)                                                                     |
+| Resource                             | Manages                                                                                                                |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `infrawrench_account`                | Connected [cloud accounts](../core-concepts/resources-and-accounts.md)                                                 |
+| `infrawrench_bastion`                | [Bastion agent](./bastion-vms.md) enrollments                                                                          |
+| `infrawrench_role`                   | Custom [roles and permissions](../team-and-billing/roles-and-permissions.md)                                           |
+| `infrawrench_cost_visibility_scope`  | [Cost visibility](../team-and-billing/cost-visibility.md) scopes on roles, members and API keys                        |
+| `infrawrench_object_sharing`         | [Sharing](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) on a cost report, folder or dashboard |
+| `infrawrench_sso_settings`           | [Single sign-on](../team-and-billing/single-sign-on.md) enforcement, break-glass owners and provisioning               |
+| `infrawrench_sso_group_role_mapping` | A [single sign-on](../team-and-billing/single-sign-on.md) directory group to role mapping                              |
+| `infrawrench_api_key`                | [API keys](../team-and-billing/api-keys.md)                                                                            |
+| `infrawrench_ssh_key`                | [SSH keys](../team-and-billing/ssh-keys.md), imported or generated                                                     |
+| `infrawrench_ssh_snippet`            | Saved [SSH fan-out](./ssh-fanout.md) commands                                                                          |
+| `infrawrench_deploy_trigger`         | Redeploy-on-push triggers for [Infrafile](./infrafile.md) projects                                                     |
+| `infrawrench_workflow_schedule`      | The cron on an existing [workflow](./workflows.md)                                                                     |
 
 ### Alert delivery
 
@@ -458,14 +460,15 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Data sources
 
-| Data source                       | Reads                                                       |
-| --------------------------------- | ----------------------------------------------------------- |
-| `infrawrench_accounts`            | Connected accounts — for resolving account ids              |
-| `infrawrench_plugins`             | Available plugins — for resolving plugin ids                |
-| `infrawrench_cost_centres`        | Cost centres, including ones not managed by Terraform       |
-| `infrawrench_resources`           | Synced resources — for resolving a probe or schedule target |
-| `infrawrench_permissions`         | The permission catalogue roles and keys grant from          |
-| `infrawrench_slack_installations` | Connected Slack workspaces                                  |
+| Data source                        | Reads                                                       |
+| ---------------------------------- | ----------------------------------------------------------- |
+| `infrawrench_accounts`             | Connected accounts — for resolving account ids              |
+| `infrawrench_plugins`              | Available plugins — for resolving plugin ids                |
+| `infrawrench_cost_centres`         | Cost centres, including ones not managed by Terraform       |
+| `infrawrench_resources`            | Synced resources — for resolving a probe or schedule target |
+| `infrawrench_permissions`          | The permission catalogue roles and keys grant from          |
+| `infrawrench_slack_installations`  | Connected Slack workspaces                                  |
+| `infrawrench_sso_directory_groups` | Directory groups, for resolving a mapping's group id        |
 
 ## Things worth knowing
 

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { fetch as expoFetch } from "expo/fetch";
+import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import {
   TokenManager,
@@ -60,6 +61,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** When the app last sent the user to SSO sign-in; see `onSsoRequired` below. */
+let lastSsoPromptAt = 0;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>("loading");
   const [email, setEmail] = useState<string | null>(null);
@@ -90,6 +94,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // SSH-backed routes (SFTP, tunnels) answer 409 when the host key is
         // unknown or changed. Prompt, pin, and let the request replay.
         on409: handleHostKeyTrustConflict,
+        // The org requires single sign-on and this session did not come
+        // through its identity provider: send the user to sign in there.
+        // Throttled, since every open screen hits the same 403.
+        onSsoRequired: (payload) => {
+          if (!/^org_[0-9A-Za-z]{10,64}$/.test(payload.workosOrganizationId)) return;
+          if (Date.now() - lastSsoPromptAt < 120_000) return;
+          lastSsoPromptAt = Date.now();
+          router.push({
+            pathname: "/sign-in",
+            params: { organization: payload.workosOrganizationId },
+          });
+        },
       }),
     [tokens],
   );

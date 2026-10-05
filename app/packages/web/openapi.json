@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.46.0",
+    "version": "1.47.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -311,6 +311,10 @@
     {
       "name": "Microsoft Teams",
       "description": "Microsoft Teams webhook connections and the channels alert rules can name as destinations."
+    },
+    {
+      "name": "Single sign-on",
+      "description": "SAML/OIDC single sign-on and SCIM directory sync for signing in to Infrawrench, through WorkOS: domains, the Admin Portal, enforcement with break-glass owners, and directory group to role mappings."
     },
     {
       "name": "Jira",
@@ -30737,6 +30741,7 @@
           "access:read",
           "access:request",
           "access:approve",
+          "sso:bypass",
           "team:read",
           "team:invite",
           "team:role:write",
@@ -33758,6 +33763,615 @@
           "issueTypeId",
           "summary"
         ],
+        "additionalProperties": false
+      },
+      "SsoSettings": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "enforceSso": {
+            "type": "boolean",
+            "description": "Members whose email is in a verified domain must sign in through the org's SSO connection."
+          },
+          "breakGlassUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Owners who may sign in without SSO while it is enforced."
+          },
+          "provisioningEnabled": {
+            "type": "boolean",
+            "description": "Directory Sync creates and removes memberships."
+          },
+          "defaultRoleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Role for provisioned members none of whose groups is mapped. Null means the system member role."
+          },
+          "autoAddSeats": {
+            "type": "boolean",
+            "description": "Buy a seat when provisioning needs one, instead of holding the member back."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "enforceSso",
+          "breakGlassUserIds",
+          "provisioningEnabled",
+          "defaultRoleId",
+          "autoAddSeats",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SsoDomain": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "org_domain_01HXYZ"
+          },
+          "domain": {
+            "type": "string",
+            "example": "acme.com"
+          },
+          "state": {
+            "type": "string",
+            "description": "`verified`, `pending` or `failed`. Only verified domains are enforced.",
+            "example": "verified"
+          },
+          "verificationStrategy": {
+            "type": "string",
+            "example": "dns"
+          },
+          "verificationPrefix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the DNS TXT record to create while verification is pending."
+          },
+          "verificationToken": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Value of the DNS TXT record to create while verification is pending."
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "state",
+          "verificationStrategy",
+          "verificationPrefix",
+          "verificationToken"
+        ],
+        "additionalProperties": false
+      },
+      "SsoConnection": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "example": "OktaSAML"
+          },
+          "state": {
+            "type": "string",
+            "description": "`active` once the IdP setup is complete."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "SsoDirectory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "example": "okta scim v2.0"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "SsoSessionState": {
+        "type": "string",
+        "enum": [
+          "sso",
+          "not_sso",
+          "outside_domains",
+          "break_glass_owner",
+          "unknown"
+        ]
+      },
+      "SsoStatus": {
+        "type": "object",
+        "properties": {
+          "planIncluded": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SsoSettings"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SsoDomain"
+            }
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SsoConnection"
+            }
+          },
+          "directories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SsoDirectory"
+            }
+          },
+          "workosError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owners": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "userId",
+                "email",
+                "displayName"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "currentSession": {
+            "$ref": "#/components/schemas/SsoSessionState"
+          },
+          "directoryMemberCounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        },
+        "required": [
+          "planIncluded",
+          "configured",
+          "settings",
+          "domains",
+          "connections",
+          "directories",
+          "workosError",
+          "owners",
+          "currentSession",
+          "directoryMemberCounts"
+        ],
+        "additionalProperties": false
+      },
+      "SsoSettingsInput": {
+        "type": "object",
+        "properties": {
+          "enforceSso": {
+            "type": "boolean",
+            "description": "Turning this on is refused unless a domain is verified, a connection is active, at least one break-glass owner is set, and the caller's own session would still be allowed."
+          },
+          "breakGlassUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "description": "Each id must belong to a current owner. At most 5."
+          },
+          "provisioningEnabled": {
+            "type": "boolean"
+          },
+          "defaultRoleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Never the owner role, and never a role granting permissions the caller lacks."
+          },
+          "autoAddSeats": {
+            "type": "boolean",
+            "description": "Turning this on also needs `billing:write`."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SsoDirectoryGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "directory_group_01HXYZ"
+          },
+          "name": {
+            "type": "string",
+            "example": "Platform engineers"
+          },
+          "directoryId": {
+            "type": "string"
+          },
+          "directoryName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "directoryId",
+          "directoryName"
+        ],
+        "additionalProperties": false
+      },
+      "SsoDirectoryMemberStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "observed",
+          "deprovisioned",
+          "seat_limit",
+          "plan_required",
+          "domain_unverified",
+          "protected"
+        ]
+      },
+      "SsoDirectoryMember": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "directoryId": {
+            "type": "string"
+          },
+          "directoryUserId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "userId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/SsoDirectoryMemberStatus"
+          },
+          "provisionedByDirectory": {
+            "type": "boolean"
+          },
+          "lastSyncedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deprovisionedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "directoryId",
+          "directoryUserId",
+          "email",
+          "displayName",
+          "userId",
+          "groupIds",
+          "status",
+          "provisionedByDirectory",
+          "lastSyncedAt",
+          "deprovisionedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SsoSyncResult": {
+        "type": "object",
+        "properties": {
+          "usersSeen": {
+            "type": "integer"
+          },
+          "provisioned": {
+            "type": "integer"
+          },
+          "deprovisioned": {
+            "type": "integer"
+          },
+          "rolesChanged": {
+            "type": "integer"
+          },
+          "skipped": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "usersSeen",
+          "provisioned",
+          "deprovisioned",
+          "rolesChanged",
+          "skipped"
+        ],
+        "additionalProperties": false
+      },
+      "SsoGroupRoleMapping": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "directoryGroupId": {
+            "type": "string"
+          },
+          "groupName": {
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string"
+          },
+          "roleName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": "integer",
+            "description": "Evaluation order, lowest first. The first mapping whose group matches wins."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "directoryGroupId",
+          "groupName",
+          "roleId",
+          "roleName",
+          "position",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SsoGroupRoleMappingInput": {
+        "type": "object",
+        "properties": {
+          "directoryGroupId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "roleId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Never the owner role, and never a role granting permissions the caller lacks."
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        "required": [
+          "directoryGroupId",
+          "roleId"
+        ],
+        "additionalProperties": false
+      },
+      "SsoGroupRoleMappingUpdate": {
+        "type": "object",
+        "properties": {
+          "roleId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        "additionalProperties": false
+      },
+      "SsoMappingPreviewRow": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SsoDirectoryMemberStatus"
+          },
+          "currentRoleId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currentRoleName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedRoleId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedRoleName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "mapping",
+              "default",
+              "owner_unchanged"
+            ]
+          },
+          "matchedGroupNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "conflict": {
+            "type": "boolean",
+            "description": "More than one mapping matched with different roles; the first one won."
+          },
+          "changes": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "userId",
+          "email",
+          "status",
+          "currentRoleId",
+          "currentRoleName",
+          "resolvedRoleId",
+          "resolvedRoleName",
+          "source",
+          "matchedGroupNames",
+          "conflict",
+          "changes"
+        ],
+        "additionalProperties": false
+      },
+      "SsoMappingPreviewInput": {
+        "type": "object",
+        "properties": {
+          "mappings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "directoryGroupId": {
+                  "type": "string"
+                },
+                "groupName": {
+                  "type": "string"
+                },
+                "roleId": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "directoryGroupId",
+                "roleId",
+                "position"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 500,
+            "description": "Unsaved mappings to preview. Omit to preview the saved ones."
+          },
+          "defaultRoleId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
         "additionalProperties": false
       },
       "LinearIntegration": {
@@ -65671,6 +66285,94 @@
         "x-internal": true
       }
     },
+    "/api/v1/webhooks/workos": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "WorkOS webhook endpoint",
+        "description": "Public; verifies the `WorkOS-Signature` header (HMAC-SHA256 over `<t>.<raw body>`, five-minute tolerance) and ignores redelivered event ids. Directory Sync, SSO connection and organization domain events.",
+        "security": [],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "WorkOS webhook signature"
+            },
+            "required": true,
+            "name": "workos-signature",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "received": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "duplicate": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "received"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad signature or malformed event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Handler error; WorkOS retries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Webhook secret not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postV1WebhooksWorkos",
+        "x-internal": true
+      }
+    },
     "/api/v1/webhooks/stripe": {
       "post": {
         "tags": [
@@ -68050,6 +68752,969 @@
         "operationId": "getOrgOrgIdJiraLinks",
         "x-required-permission": "jira:read",
         "description": "_Requires permission: `jira:read`._"
+      }
+    },
+    "/api/org/{orgId}/sso": {
+      "get": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Single sign-on status",
+        "description": "Settings, domains, connections and directories (read live from WorkOS), owners for the break-glass picker, and how the caller's own session would fare under enforcement.\n\n_Requires permission: `team:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoStatus"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSso",
+        "x-required-permission": "team:read"
+      }
+    },
+    "/api/org/{orgId}/sso/setup": {
+      "post": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Start single sign-on setup",
+        "description": "Creates the WorkOS organization SSO hangs off. Idempotent.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Set up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "created"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "WorkOS unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSsoSetup",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/sso/portal-link": {
+      "post": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Open the WorkOS Admin Portal",
+        "description": "A five-minute link for the customer's IT admin to configure the identity provider (`sso`), the SCIM directory (`dsync`), or domain verification (`domain_verification`).\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "sso",
+                      "dsync",
+                      "domain_verification"
+                    ]
+                  }
+                },
+                "required": [
+                  "intent"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Portal link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "link": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "link"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSsoPortalLink",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/sso/domains": {
+      "post": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Add a domain",
+        "description": "Returns the DNS TXT record to create; verify it with the verify route.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 253
+                  }
+                },
+                "required": [
+                  "domain"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Domain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoDomain"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSsoDomains",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/sso/domains/{id}/verify": {
+      "post": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Check a domain's DNS verification record",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Domain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoDomain"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSsoDomainsIdVerify",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/sso/domains/{id}": {
+      "delete": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Remove a domain",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSsoDomainsId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/sso/settings": {
+      "put": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Update single sign-on settings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SsoSettingsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SsoSettings"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdSsoSettings",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/sso/groups": {
+      "get": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "List directory groups",
+        "description": "Every group across the org's directories, for the mapping picker.\n\n_Requires permission: `team:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Groups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "groups": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SsoDirectoryGroup"
+                      }
+                    }
+                  },
+                  "required": [
+                    "groups"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSsoGroups",
+        "x-required-permission": "team:read"
+      }
+    },
+    "/api/org/{orgId}/sso/directory-members": {
+      "get": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "List directory members",
+        "description": "Every directory user seen, and whether they became a member.\n\n_Requires permission: `team:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SsoDirectoryMember"
+                      }
+                    }
+                  },
+                  "required": [
+                    "members"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSsoDirectoryMembers",
+        "x-required-permission": "team:read"
+      }
+    },
+    "/api/org/{orgId}/sso/sync": {
+      "post": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Sync the directory now",
+        "description": "Reconciles every directory user: provisions, deprovisions and re-applies group mappings. Repairs any webhook that was missed.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoSyncResult"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSsoSync",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/sso/group-mappings": {
+      "get": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "List group to role mappings",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mappings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mappings": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SsoGroupRoleMapping"
+                      }
+                    }
+                  },
+                  "required": [
+                    "mappings"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSsoGroupMappings",
+        "x-required-permission": "team:read",
+        "description": "_Requires permission: `team:read`._"
+      },
+      "post": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Map a directory group to a role",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SsoGroupRoleMappingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoGroupRoleMapping"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSsoGroupMappings",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/sso/group-mappings/{id}": {
+      "get": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Get a group to role mapping",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mapping",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoGroupRoleMapping"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSsoGroupMappingsId",
+        "x-required-permission": "team:read",
+        "description": "_Requires permission: `team:read`._"
+      },
+      "patch": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Change a mapping's role or position",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SsoGroupRoleMappingUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoGroupRoleMapping"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdSsoGroupMappingsId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Remove a group to role mapping",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSsoGroupMappingsId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/sso/group-mappings/preview": {
+      "post": {
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Preview group to role mappings",
+        "description": "What the mappings would do to every directory member. Changes nothing.\n\n_Requires permission: `team:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SsoMappingPreviewInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SsoMappingPreviewRow"
+                      }
+                    }
+                  },
+                  "required": [
+                    "rows"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSsoGroupMappingsPreview",
+        "x-required-permission": "team:read"
       }
     },
     "/api/org/{orgId}/linear": {

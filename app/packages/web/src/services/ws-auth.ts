@@ -9,9 +9,10 @@
  * let a key holding only `resources:execute` start workflow runs and deploys
  * with its owner's full role: `userId` alone resolves to that role.
  */
+import { ssoDenialForPerson } from "./sso/enforcement";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 
-import { authenticateApiRequest } from "../auth/api-auth";
+import { authenticateApiRequest, verifyWorkosAccessToken } from "../auth/api-auth";
 import { effectivePermissions, type PrincipalRef } from "../auth/effective-permissions";
 import { validateWsToken } from "./ws-tokens";
 
@@ -52,6 +53,19 @@ async function resolveWsPrincipal(token: string): Promise<WsPrincipal | null> {
     new Request("http://localhost", { headers: { authorization: `Bearer ${token}` } }),
   );
   if (!auth) return null;
+  // A person presenting a WorkOS token directly (not a minted ws-token, whose
+  // minting route already sat behind the org tree's SSO gate): apply the
+  // org's single sign-on enforcement here, or the socket is the way around it.
+  if (!auth.apiKeyId && !auth.agentRegistrationId) {
+    const claims = await verifyWorkosAccessToken(token);
+    const denied = await ssoDenialForPerson({
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      email: auth.email,
+      sessionId: typeof claims?.sid === "string" ? claims.sid : undefined,
+    });
+    if (denied) return null;
+  }
   return {
     organizationId: auth.organizationId,
     userId: auth.userId,

@@ -34,6 +34,7 @@ The CLI shares the desktop app's session. If you're already signed in from the a
 
 ```
 infrawrench login     # opens your browser (PKCE), then returns to the terminal
+infrawrench login sso org_01H…   # sign in through an organization's identity provider
 infrawrench whoami
 infrawrench logout
 ```
@@ -178,7 +179,10 @@ infrawrench hygiene --json
 infrawrench access                # every request, live elevations first
 infrawrench access active         # only what is in force right now
 infrawrench access --json
+infrawrench access sso            # single sign-on setup: domains, IdP, enforcement, mappings
 ```
+
+If an organization [requires single sign-on](../team-and-billing/single-sign-on.md) and you signed in another way, its commands fail with the exact `infrawrench login sso <org_…>` command to run. `access sso` is read-only and needs `team:read`.
 
 `cost-visibility` lists the organization's [cost visibility scopes](../team-and-billing/cost-visibility.md), and `cost-visibility me` says whether your own cost figures are scoped, which is the first thing to check when your totals disagree with a colleague's. Read-only; scopes are edited in Settings → Cost Visibility. Listing needs `team:read`:
 

@@ -38,9 +38,19 @@ export async function cmdLogin(ctx: CliContext): Promise<void> {
     return;
   }
 
+  // `login sso <org_...>`: start at an organization's SSO connection, which
+  // is what an org that requires single sign-on tells a password session.
+  let ssoOrg: string | undefined;
+  if (ctx.positionals[1] === "sso") {
+    ssoOrg = ctx.positionals[2];
+    if (!ssoOrg || !/^org_[0-9A-Za-z]{10,64}$/.test(ssoOrg)) {
+      throw new CliError("Usage: infrawrench login sso <org_...> (the id from the sign-in error)");
+    }
+  }
+
   const challenge = createPkceChallenge();
   const redirectUri = `http://127.0.0.1:${LOGIN_PORT}/callback`;
-  const authorizeUrl = buildAuthorizeUrl(challenge, redirectUri);
+  const authorizeUrl = buildAuthorizeUrl(challenge, redirectUri, ssoOrg);
 
   const email = await new Promise<string>((resolve, reject) => {
     const server = http.createServer((req, res) => {

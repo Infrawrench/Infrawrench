@@ -1,7 +1,9 @@
 import {
   isSeatLimitResponse,
+  isSsoRequiredResponse,
   PlanRequiredClientError,
   SeatLimitReachedClientError,
+  SsoRequiredClientError,
 } from "@infrawrench/client-core";
 import type { SettingsApi } from "@infrawrench/ui";
 import { invoke } from "./invoke";
@@ -38,6 +40,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (status === 409 && isSeatLimitResponse(parsed)) {
     throw new SeatLimitReachedClientError(parsed);
+  }
+  if (status === 403 && isSsoRequiredResponse(parsed)) {
+    throw new SsoRequiredClientError(parsed.error, parsed.signInPath, parsed.workosOrganizationId);
   }
   let message = bodyText;
   if (parsed && typeof parsed === "object" && "error" in parsed) {

@@ -1,4 +1,4 @@
-import { getAccessToken, forceRefreshAccessToken } from "../cloud-auth";
+import { getAccessToken, forceRefreshAccessToken, maybeStartSsoSignIn } from "../cloud-auth";
 import { CLOUD_URL } from "../../env";
 import { promptHostKeyDecision } from "../ssh-host-key-prompt";
 
@@ -107,6 +107,13 @@ export async function cloudFetch<T>(
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // The org requires SSO and this session did not come through its IdP:
+    // open sign-in there (throttled) and say so, not a raw 403 body.
+    if (res.status === 403 && maybeStartSsoSignIn(text)) {
+      throw new Error(
+        "This organization requires single sign-on. Sign in through your identity provider in the browser window that opened.",
+      );
+    }
     throw new Error(`Cloud request failed: ${res.status} ${path} ${text}`);
   }
   if (res.status === 204) return null;

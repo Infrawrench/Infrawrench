@@ -55,3 +55,20 @@ export class PlanRequiredClientError extends Error {
     this.name = "PlanRequiredClientError";
   }
 }
+
+/**
+ * Thrown for the enforcement gate's structured `sso_required` 403: the org
+ * requires single sign-on for the caller's email domain and this session was
+ * not established through the org's identity provider. `signInPath` is a
+ * same-origin path that starts sign-in straight at that provider.
+ */
+export class SsoRequiredClientError extends Error {
+  readonly signInPath: string;
+  readonly workosOrganizationId: string;
+  constructor(message: string, signInPath: string, workosOrganizationId: string) {
+    super(message || "This organization requires single sign-on");
+    this.name = "SsoRequiredClientError";
+    this.signInPath = signInPath;
+    this.workosOrganizationId = workosOrganizationId;
+  }
+}

@@ -332,12 +332,21 @@ export function createPkceChallenge(): PkceChallenge {
   return { codeVerifier, codeChallenge, state };
 }
 
-export function buildAuthorizeUrl(challenge: PkceChallenge, redirectUri: string): string {
+/**
+ * AuthKit authorize URL. With `workosOrganizationId`, sign-in starts straight
+ * at that organization's SSO connection instead of the AuthKit page: how the
+ * app answers an org that requires single sign-on.
+ */
+export function buildAuthorizeUrl(
+  challenge: PkceChallenge,
+  redirectUri: string,
+  workosOrganizationId?: string,
+): string {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: CLIENT_ID,
     redirect_uri: redirectUri,
-    provider: "authkit",
+    ...(workosOrganizationId ? { organization_id: workosOrganizationId } : { provider: "authkit" }),
     code_challenge: challenge.codeChallenge,
     code_challenge_method: "S256",
     state: challenge.state,

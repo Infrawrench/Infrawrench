@@ -57,6 +57,8 @@ A break-glass grant is authority handed to a **person**, for a bounded window, o
 | `access:request` | Raise and withdraw your own requests         | Yes                |
 | `access:approve` | Approve, deny, and revoke anyone's elevation | No                 |
 
+When the organization [requires single sign-on](./single-sign-on.md), ask for `sso:bypass` to get in without it for a while (an identity provider outage, a contractor without an account there). It is the one permission that only means something as a grant, and only owners can approve it. While enforcement is blocking you, this page still opens so you can file and follow the request.
+
 `access:approve` is deliberately **not** implied by `team:role:write`. Granting someone a role is a considered change with a paper trail; approving an elevation happens in the middle of an incident. An organization should be able to say who may do the second without also saying who may do the first.
 
 ## The audit trail

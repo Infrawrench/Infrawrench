@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { createAuthRequest, redirectUri, workosDiscovery } from "@/lib/auth/workos";
@@ -11,6 +11,13 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function SignIn() {
   const router = useRouter();
+  // Set when an org that requires single sign-on refused this session: sign
+  // in again straight at that org's identity provider.
+  const { organization } = useLocalSearchParams<{ organization?: string }>();
+  const ssoOrg =
+    typeof organization === "string" && /^org_[0-9A-Za-z]{10,64}$/.test(organization)
+      ? organization
+      : undefined;
   const { tokens, api, completeSignIn, sessionError } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +26,7 @@ export default function SignIn() {
     setBusy(true);
     setError(null);
     try {
-      const request = createAuthRequest();
+      const request = createAuthRequest(ssoOrg);
       const result = await request.promptAsync(workosDiscovery);
       if (result.type !== "success" || !result.params.code) {
         if (result.type === "error") setError(result.error?.message ?? "Sign-in failed");
@@ -49,14 +56,20 @@ export default function SignIn() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Infrawrench</Text>
-      <Text style={styles.subtitle}>Manage your infrastructure from anywhere.</Text>
+      <Text style={styles.subtitle}>
+        {ssoOrg
+          ? "This organization requires single sign-on. Sign in through your identity provider."
+          : "Manage your infrastructure from anywhere."}
+      </Text>
       <Pressable
         accessibilityRole="button"
         onPress={() => void handleSignIn()}
         disabled={busy}
         style={({ pressed }) => [styles.button, (pressed || busy) && styles.buttonPressed]}
       >
-        <Text style={styles.buttonText}>{busy ? "Signing in…" : "Sign in"}</Text>
+        <Text style={styles.buttonText}>
+          {busy ? "Signing in…" : ssoOrg ? "Sign in with SSO" : "Sign in"}
+        </Text>
       </Pressable>
       {/* Landing here because restoring the session failed reads as a random
           sign-out unless we say what actually went wrong. */}

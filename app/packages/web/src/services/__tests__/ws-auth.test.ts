@@ -9,6 +9,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { WebSocket } from "ws";
 
 const mockResolveEffectivePermissions = vi.fn();
+// SSO enforcement is covered in services/sso; here it never denies.
+vi.mock("@/services/sso/enforcement", () => ({
+  ssoDenialForPerson: vi.fn().mockResolvedValue(null),
+}));
 vi.mock("@infrawrench/server-core/permissions", () => ({
   resolveEffectivePermissions: (...a: unknown[]) => mockResolveEffectivePermissions(...a),
 }));

@@ -62,13 +62,51 @@ if (!app.requestSingleInstanceLock()) {
 let codeVerifier: string | null = null;
 let oauthState: string | null = null;
 
-function startOAuthFlow(): void {
+function startOAuthFlow(workosOrganizationId?: string): void {
   const challenge = createPkceChallenge();
   codeVerifier = challenge.codeVerifier;
   // Without `state`, any infrawrench:// URL with a valid code would be
   // accepted: CSRF against the custom protocol handler.
   oauthState = challenge.state;
-  void shell.openExternal(buildAuthorizeUrl(challenge, `${PROTOCOL}://callback`));
+  void shell.openExternal(
+    buildAuthorizeUrl(challenge, `${PROTOCOL}://callback`, workosOrganizationId),
+  );
+}
+
+/** WorkOS organization ids are `org_` plus a ULID; anything else is refused. */
+const WORKOS_ORG_ID = /^org_[0-9A-Za-z]{10,64}$/;
+const SSO_SIGN_IN_COOLDOWN_MS = 2 * 60 * 1000;
+let lastSsoSignInAt = 0;
+
+/**
+ * An org answered `sso_required`: this session was not established through
+ * its identity provider. Open sign-in at that provider, at most once every
+ * two minutes, since every open screen will be hitting the same 403. Takes the
+ * raw response body so callers need not parse it first; anything that is not
+ * the structured payload is ignored.
+ */
+export function maybeStartSsoSignIn(bodyText: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return false;
+  }
+  // Checked by hand: client-core is ESM and this module is CommonJS, and the
+  // shape is two fields.
+  const body = parsed as { code?: unknown; workosOrganizationId?: unknown } | null;
+  if (
+    !body ||
+    body.code !== "sso_required" ||
+    typeof body.workosOrganizationId !== "string" ||
+    !WORKOS_ORG_ID.test(body.workosOrganizationId)
+  ) {
+    return false;
+  }
+  if (Date.now() - lastSsoSignInAt < SSO_SIGN_IN_COOLDOWN_MS) return true;
+  lastSsoSignInAt = Date.now();
+  startOAuthFlow(body.workosOrganizationId);
+  return true;
 }
 
 function notifyAuthError(code: string, message: string): void {
@@ -109,8 +147,9 @@ async function handleOAuthCallback(callbackUrl: string): Promise<void> {
   }
 }
 
-ipcMain.handle("cloud_auth_start", () => {
-  startOAuthFlow();
+ipcMain.handle("cloud_auth_start", (_e, args?: { workosOrganizationId?: unknown }) => {
+  const orgId = args?.workosOrganizationId;
+  startOAuthFlow(typeof orgId === "string" && WORKOS_ORG_ID.test(orgId) ? orgId : undefined);
   return { ok: true };
 });
 

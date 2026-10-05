@@ -126,6 +126,20 @@ export const AUDIT_ACTION_PERMISSION: Readonly<Record<string, string>> = {
   "access_request.create": "access:request",
   "access_request.withdraw": "access:request",
 
+  // Single sign-on configuration. `sso.bypass` is deliberately absent: a
+  // break-glass owner's bypass is evidence of being listed, not of holding a
+  // permission, and the directory's own actions carry no person at all.
+  "sso.setup": "org:settings:write",
+  "sso.settings_update": "org:settings:write",
+  "sso.portal_link": "org:settings:write",
+  "sso.domain_add": "org:settings:write",
+  "sso.domain_verify": "org:settings:write",
+  "sso.domain_remove": "org:settings:write",
+  "sso.mapping_create": "org:settings:write",
+  "sso.mapping_update": "org:settings:write",
+  "sso.mapping_delete": "org:settings:write",
+  "sso.sync": "org:settings:write",
+
   // Recorded sessions.
   "session_recording.view": "session-recordings:read",
   "session_recording.delete": "session-recordings:write",

@@ -57,9 +57,34 @@ const ACTION_LABELS: Record<string, string> = {
   "auth.logout": "Logged out",
   "sync.push": "Pushed sync data",
   "sync.pull": "Pulled sync data",
+  "sso.setup": "Set up single sign-on",
+  "sso.settings_update": "Changed single sign-on settings",
+  "sso.portal_link": "Opened the SSO admin portal",
+  "sso.domain_add": "Added SSO domain",
+  "sso.domain_verify": "Verified SSO domain",
+  "sso.domain_remove": "Removed SSO domain",
+  "sso.mapping_create": "Added group to role mapping",
+  "sso.mapping_update": "Changed group to role mapping",
+  "sso.mapping_delete": "Removed group to role mapping",
+  "sso.sync": "Synced the directory",
+  "sso.member_provisioned": "Directory added member",
+  "sso.member_deprovisioned": "Directory removed member",
+  "sso.member_role_change": "Directory changed member role",
+  "sso.deprovision_refused": "Kept last owner the directory removed",
+  "sso.bypass": "Signed in without SSO",
+  "sso.connection_change": "SSO connection changed",
+  "sso.directory_change": "Directory changed",
 };
 
-const ENTITY_TYPES = ["account", "resource", "dashboard", "api_key", "member", "subscription"];
+const ENTITY_TYPES = [
+  "account",
+  "resource",
+  "dashboard",
+  "api_key",
+  "member",
+  "subscription",
+  "sso",
+];
 
 export function AuditLogSection() {
   const { orgId, api, has, permissionsLoading } = useSettingsHost();

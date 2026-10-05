@@ -80,6 +80,7 @@ import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.s
 import { Route as OrgOrgIdSettingsSessionRecordingsRouteImport } from './routes/org.$orgId.settings.session-recordings'
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
+import { Route as OrgOrgIdSettingsSsoRouteImport } from './routes/org.$orgId.settings.sso'
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdWorkflowsWorkflowIdRouteImport } from './routes/org.$orgId.workflows.$workflowId'
@@ -458,6 +459,11 @@ const OrgOrgIdSettingsSshKeysRoute = OrgOrgIdSettingsSshKeysRouteImport.update({
   path: '/ssh-keys',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsSsoRoute = OrgOrgIdSettingsSsoRouteImport.update({
+  id: '/sso',
+  path: '/sso',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
 const OrgOrgIdSettingsTagPolicyRoute =
   OrgOrgIdSettingsTagPolicyRouteImport.update({
     id: '/tag-policy',
@@ -552,6 +558,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
+  '/org/$orgId/settings/sso': typeof OrgOrgIdSettingsSsoRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
@@ -626,6 +633,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
+  '/org/$orgId/settings/sso': typeof OrgOrgIdSettingsSsoRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
@@ -704,6 +712,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
+  '/org/$orgId/settings/sso': typeof OrgOrgIdSettingsSsoRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
@@ -783,6 +792,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
+    | '/org/$orgId/settings/sso'
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/workflows/$workflowId'
@@ -857,6 +867,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
+    | '/org/$orgId/settings/sso'
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/workflows/$workflowId'
@@ -934,6 +945,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/session-recordings'
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
+    | '/org/$orgId/settings/sso'
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/workflows/$workflowId'
@@ -1452,6 +1464,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsSshKeysRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/sso': {
+      id: '/org/$orgId/settings/sso'
+      path: '/sso'
+      fullPath: '/org/$orgId/settings/sso'
+      preLoaderRoute: typeof OrgOrgIdSettingsSsoRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/tag-policy': {
       id: '/org/$orgId/settings/tag-policy'
       path: '/tag-policy'
@@ -1554,6 +1573,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsSessionRecordingsRoute: typeof OrgOrgIdSettingsSessionRecordingsRoute
   OrgOrgIdSettingsSshHostKeysRoute: typeof OrgOrgIdSettingsSshHostKeysRoute
   OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
+  OrgOrgIdSettingsSsoRoute: typeof OrgOrgIdSettingsSsoRoute
   OrgOrgIdSettingsTagPolicyRoute: typeof OrgOrgIdSettingsTagPolicyRoute
   OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
   OrgOrgIdSettingsIndexRoute: typeof OrgOrgIdSettingsIndexRoute
@@ -1585,6 +1605,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
     OrgOrgIdSettingsSessionRecordingsRoute,
   OrgOrgIdSettingsSshHostKeysRoute: OrgOrgIdSettingsSshHostKeysRoute,
   OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
+  OrgOrgIdSettingsSsoRoute: OrgOrgIdSettingsSsoRoute,
   OrgOrgIdSettingsTagPolicyRoute: OrgOrgIdSettingsTagPolicyRoute,
   OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,
   OrgOrgIdSettingsIndexRoute: OrgOrgIdSettingsIndexRoute,

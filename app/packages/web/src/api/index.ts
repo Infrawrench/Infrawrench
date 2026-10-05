@@ -36,6 +36,10 @@ import {
 
 import { callbackRoutes } from "./routes/callback";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
+import { workosWebhookRoutes } from "./routes/workos-webhook";
+import { ssoRoutes } from "./routes/sso";
+import { loadSsoSettings } from "../services/sso/settings";
+import { ssoEnforcementMiddleware } from "../services/sso/enforcement";
 import { workflowGitWebhook } from "./routes/workflows-git";
 import { githubRoutes, githubSetupRoute } from "./routes/github";
 
@@ -180,6 +184,8 @@ api.onError((err, c) => {
 
 api.route("/callback", callbackRoutes);
 api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
+// WorkOS Directory Sync, SSO connection and domain events; signature-verified.
+api.route("/api/v1/webhooks/workos", workosWebhookRoutes);
 // Public git webhook for workflows (no session; opaque token in path).
 api.route("/api", workflowGitWebhook);
 // GitHub App setup callback, outside the org tree: it checks the session
@@ -270,11 +276,19 @@ api.get("/api/auth/sign-in", async (c) => {
       maxAge: OAUTH_COOKIE_MAX_AGE,
     });
   }
+  // `?organization=<orgId>` starts sign-in at that org's SSO connection: it
+  // is where the enforcement gate's `sso_required` answer points. An unknown
+  // or unconfigured org falls back to the ordinary AuthKit page rather than
+  // erroring.
+  const ssoOrgId = c.req.query("organization");
+  const ssoSettings = ssoOrgId ? await loadSsoSettings(ssoOrgId).catch(() => null) : null;
   const url = workos.userManagement.getAuthorizationUrl({
-    provider: "authkit",
     clientId,
     redirectUri,
     state,
+    ...(ssoSettings
+      ? { organizationId: ssoSettings.workosOrganizationId }
+      : { provider: "authkit" }),
   });
   return c.redirect(url);
 });
@@ -353,6 +367,11 @@ orgScoped.use("*", unlessApiKey(agentOrgMiddleware));
 orgScoped.use("*", unlessApiKey(sessionMiddleware));
 orgScoped.use("*", unlessApiKey(orgMiddleware));
 orgScoped.use("*", unlessApiKey(permissionsMiddleware));
+// Enterprise SSO enforcement: a member in one of the org's verified domains
+// must hold a session established through the org's SSO connection. After
+// permissions, because the break-glass exemption reads the live elevations.
+// Session principals only; keys and agents have no sign-in to enforce.
+orgScoped.use("*", unlessApiKey(ssoEnforcementMiddleware));
 // Cost visibility scopes: runs for every principal (session, key, agent), last
 // in the chain, so the whole handler executes inside the caller's scope and
 // every ClickHouse cost read is narrowed by it. See auth/cost-visibility.ts.
@@ -405,6 +424,7 @@ orgScoped.route("/accounts", accountRoutes);
 orgScoped.route("/api-keys", apiKeyRoutes);
 orgScoped.route("/agent-registrations", agentRegistrationRoutes);
 orgScoped.route("/team", teamRoutes);
+orgScoped.route("/sso", ssoRoutes);
 orgScoped.route("/cost-visibility", costVisibilityRoutes);
 orgScoped.route("/sharing", sharingRoutes);
 orgScoped.route("/billing", billingRoutes);

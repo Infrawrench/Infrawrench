@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { getAccessToken, forceRefreshAccessToken } from "../cloud-auth";
+import { getAccessToken, forceRefreshAccessToken, maybeStartSsoSignIn } from "../cloud-auth";
 import { CLOUD_URL } from "../../env";
 
 /**
@@ -31,7 +31,7 @@ const ALLOWED: Array<{ methods: string[]; pattern: RegExp }> = [
   {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     pattern: new RegExp(
-      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|credential-hygiene|bastions|change-freezes|tag-policy|currency|cost-centres|cost-visibility|sharing|billing-rules|cost-exports|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear)(\\/|$|\\?)`,
+      `${ORG}/(team|api-keys|agent-registrations|ssh-keys|ssh-host-keys|session-recordings|access-requests|sso|credential-hygiene|bastions|change-freezes|tag-policy|currency|cost-centres|cost-visibility|sharing|billing-rules|cost-exports|config|twilio|msteams|slack|push|digest|alert-rules|on-call|jira|linear)(\\/|$|\\?)`,
     ),
   },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/audit-logs(\\?|$)`) },
@@ -112,6 +112,7 @@ ipcMain.handle(
       res = await fetch(url, buildInit(token));
     }
     const bodyText = await res.text().catch(() => "");
+    if (res.status === 403) maybeStartSsoSignIn(bodyText);
     return { status: res.status, bodyText };
   },
 );

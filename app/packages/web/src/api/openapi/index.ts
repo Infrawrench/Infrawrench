@@ -105,6 +105,7 @@ import { registerAlertRulePaths } from "./paths/alert-rules";
 import { registerSlackPaths } from "./paths/slack";
 import { registerMsTeamsPaths } from "./paths/msteams";
 import { registerJiraPaths } from "./paths/jira";
+import { registerSsoPaths } from "./paths/sso";
 import { registerLinearPaths } from "./paths/linear";
 import { registerDigestPaths } from "./paths/digest";
 import { REQUIRED_PERMISSION, normalizePathForPermissionLookup } from "./required-permissions";
@@ -246,6 +247,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSlackPaths(ctx);
   registerMsTeamsPaths(ctx);
   registerJiraPaths(ctx);
+  registerSsoPaths(ctx);
   registerLinearPaths(ctx);
   registerDigestPaths(ctx);
 
@@ -590,6 +592,13 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Microsoft Teams",
         description:
           "Microsoft Teams webhook connections and the channels alert rules can name as destinations.",
+      },
+      {
+        name: "Single sign-on",
+        description:
+          "SAML/OIDC single sign-on and SCIM directory sync for signing in to Infrawrench, " +
+          "through WorkOS: domains, the Admin Portal, enforcement with break-glass owners, and " +
+          "directory group to role mappings.",
       },
       {
         name: "Jira",
