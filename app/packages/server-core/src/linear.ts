@@ -98,6 +98,7 @@ export const LINEAR_SOURCE_KINDS = [
   "posture_finding",
   "expiring",
   "probe",
+  "extended_support",
 ] as const;
 
 export type LinearSourceKind = (typeof LINEAR_SOURCE_KINDS)[number];

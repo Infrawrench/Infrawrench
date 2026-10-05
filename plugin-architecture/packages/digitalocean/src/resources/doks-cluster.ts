@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { DOKS_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const DOKSClusterResourceType = rt({
   name: "DOKS Cluster",
@@ -51,6 +52,7 @@ export const DOKSClusterResourceType = rt({
   ],
   parentTypeId: "project",
   showInSidebar: true,
+  extendedSupport: DOKS_EXTENDED_SUPPORT,
   iconKey: "kubernetes",
   supportsCreate: true,
   supportsMetrics: true,

@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { lastSegment, type ListerContext } from "./shared.js";
 import { engineInfoFromVersion } from "../cloudsql-engine.js";
+import { cloudSqlTierVcpus } from "../extended-support.js";
 
 export async function listCloudSqlInstances(
   ctx: ListerContext,
@@ -40,6 +41,14 @@ export async function listCloudSqlInstances(
         availabilityType: String(
           (db["settings"] as Record<string, unknown> | undefined)?.["availabilityType"] ?? "",
         ),
+        billableVcpus:
+          cloudSqlTierVcpus(
+            String((db["settings"] as Record<string, unknown> | undefined)?.["tier"] ?? ""),
+          ) *
+          ((db["settings"] as Record<string, unknown> | undefined)?.["availabilityType"] ===
+          "REGIONAL"
+            ? 2
+            : 1),
         publicIpAddress: publicIp,
         privateIpAddress: privateIp,
         privateNetwork,

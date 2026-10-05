@@ -293,6 +293,7 @@ export interface OrgConfigAlertSettings {
     | undefined;
   expiry?: { enabled: boolean; leadDays: number } | undefined;
   posture?: { enabled: boolean } | undefined;
+  extendedSupport?: { enabled: boolean; leadDays: number } | undefined;
   digest?:
     | {
         enabled: boolean;

@@ -1,5 +1,6 @@
 import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { ELASTIC_DEPLOYMENT_EXTENDED_SUPPORT } from "./extended-support.js";
 
 /**
  * Elastic Cloud resource types. Each names the endpoint it lists from; field
@@ -80,6 +81,7 @@ export const DeploymentResourceType = rt({
   dependsOn: [
     { fieldKey: "trafficFilterIds", targetTypeId: "traffic-filter", label: "filtered by" },
   ],
+  extendedSupport: ELASTIC_DEPLOYMENT_EXTENDED_SUPPORT,
   supportsUpdate: true,
   supportsDelete: true,
   supportsMetrics: true,

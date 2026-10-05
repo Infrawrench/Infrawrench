@@ -54,6 +54,10 @@ const COSTS_PERMISSIONS: PreflightPermission[] = [
     id: "ce:GetReservationUtilization",
     label: "Read reservation utilization, for blended commitment discounts",
   },
+  {
+    id: "ce:GetDimensionValues",
+    label: "Find the extended-support usage types billed to the account",
+  },
 ];
 
 const AI_REQUEST_LOG_PERMISSIONS: PreflightPermission[] = [

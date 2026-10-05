@@ -255,6 +255,53 @@ describe("expiryFields declarations", () => {
 });
 
 /**
+ * And again for support calendars: a version, engine, quantity or policy key
+ * the type never declares means a calendar that matches nothing, or a
+ * surcharge that is never priced. `regionFieldKey` is exempt because several
+ * listers store `region` without declaring it as a form field.
+ */
+describe("extendedSupport declarations", () => {
+  it("name fields the type actually knows about", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    let declared = 0;
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const decl = type.extendedSupport;
+        if (!decl) continue;
+        declared += 1;
+        const keys = [
+          decl.versionFieldKey,
+          decl.engineFieldKey,
+          decl.quantityFieldKey,
+          ...(decl.chargedWhen ?? []).map((c) => c.fieldKey),
+        ].filter((k): k is string => k !== undefined);
+        for (const key of keys) {
+          if (!type.fields.some((f) => f.key === key))
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+    expect(declared).toBeGreaterThan(0);
+  });
+
+  it("only give engine-scoped releases to types that read an engine", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const decl = type.extendedSupport;
+        if (!decl || decl.engineFieldKey) continue;
+        for (const r of decl.releases)
+          if (r.engines) bad.push(`${plugin.manifest.id}/${type.id}:${r.id}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
+/**
  * Same silent-failure class again: a `postureChecks` condition over a field
  * the lister never stores simply never matches; no compile error, no runtime
  * error, just a security check that silently watches nothing.

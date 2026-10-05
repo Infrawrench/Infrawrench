@@ -1,6 +1,10 @@
 export * from "./types.js";
 export { SavingsSection, type SavingsSectionProps } from "./SavingsSection.js";
 export {
+  ExtendedSupportSection,
+  type ExtendedSupportSectionProps,
+} from "./ExtendedSupportSection.js";
+export {
   OversizedSection,
   describeResizeConfirm,
   type OversizedSectionProps,

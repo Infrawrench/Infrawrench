@@ -1,4 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { flexibleSkuVCores } from "../extended-support.js";
 import {
   ARM,
   extractName,
@@ -284,6 +285,10 @@ export async function listPostgresFlexibleServers(
         version: String(props?.["version"] ?? ""),
         sku: String(sku?.["name"] ?? ""),
         tier: String(sku?.["tier"] ?? ""),
+        // A high-availability standby's vCores are billed too.
+        billableVCores:
+          flexibleSkuVCores(String(sku?.["name"] ?? "")) *
+          (String(ha?.["mode"] ?? "Disabled") !== "Disabled" ? 2 : 1),
         storageSizeGb: Number(storage?.["storageSizeGB"] ?? 0),
         haEnabled: String(ha?.["mode"] ?? "Disabled") !== "Disabled",
         backupRetentionDays: Number(backup?.["backupRetentionDays"] ?? 7),
@@ -341,6 +346,10 @@ export async function listMySQLFlexibleServers(
         version: String(props?.["version"] ?? ""),
         sku: String(sku?.["name"] ?? ""),
         tier: String(sku?.["tier"] ?? ""),
+        // A high-availability standby's vCores are billed too.
+        billableVCores:
+          flexibleSkuVCores(String(sku?.["name"] ?? "")) *
+          (String(ha?.["mode"] ?? "Disabled") !== "Disabled" ? 2 : 1),
         storageSizeGb: Number(storage?.["storageSizeGB"] ?? 0),
         haEnabled: String(ha?.["mode"] ?? "Disabled") !== "Disabled",
         backupRetentionDays: Number(backup?.["backupRetentionDays"] ?? 7),

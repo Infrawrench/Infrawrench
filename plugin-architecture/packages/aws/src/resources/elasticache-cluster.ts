@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { ELASTICACHE_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const ElastiCacheClusterResourceType = rt({
   name: "ElastiCache Cluster",
@@ -40,6 +41,7 @@ export const ElastiCacheClusterResourceType = rt({
   dependsOn: [
     { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
+  extendedSupport: ELASTICACHE_EXTENDED_SUPPORT,
   iconKey: "cache",
   supportsCreate: true,
   supportsMetrics: true,

@@ -118,6 +118,7 @@ export const JIRA_SOURCE_KINDS = [
   "posture_finding",
   "expiring",
   "probe",
+  "extended_support",
 ] as const;
 
 export type JiraSourceKind = (typeof JIRA_SOURCE_KINDS)[number];

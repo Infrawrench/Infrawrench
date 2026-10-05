@@ -9,6 +9,7 @@ import "./invoices";
 import "./metric-alerts";
 import "./orphans";
 import "./rightsizing";
+import "./extended-support";
 import "./expiring";
 import "./quotas";
 import "./price-catalog";

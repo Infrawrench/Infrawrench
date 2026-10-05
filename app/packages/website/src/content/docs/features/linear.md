@@ -29,6 +29,7 @@ The same six findings as Jira:
 | Posture finding     | [Posture checks](./posture-checks.md)                                                    |
 | Expiring credential | [Expiry radar](./expiry-radar.md)                                                        |
 | Failed probe        | [Synthetic probes](./synthetic-probes.md)                                                |
+| Extended support    | [Extended support findings](./extended-support.md) — the Costs panel section             |
 
 Each one prefills the issue for you: a title naming the finding, and a description carrying
 the numbers behind it plus a link back into Infrawrench. Linear renders the description as

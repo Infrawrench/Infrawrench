@@ -9,17 +9,17 @@ Everything you configure in Infrawrench that isn't a provider account or a live 
 
 ## What's in the document
 
-| Section         | What it carries                                                                |
-| --------------- | ------------------------------------------------------------------------------ |
-| `budgets`       | Monthly spend budgets, their filters and alert thresholds                      |
-| `customGraphs`  | Each [custom graph](./custom-graphs.md)'s name, description and source         |
-| `workflows`     | Each [workflow](./workflows.md)'s source, trigger, declared metrics, enabled   |
-| `dashboards`    | Every [dashboard](./dashboard.md), its name, and its cards in grid order       |
-| `metricAlerts`  | [Metric alert rules](./metric-alerts.md) — selector, condition, cooldown       |
-| `probes`        | [Synthetic probes](./synthetic-probes.md) — URL, interval, failure threshold   |
-| `costCentres`   | Cost centres and their [allocation rules](./tag-policy-and-showback.md)        |
-| `tagPolicy`     | The org's required tags and whether they're enforced at create time            |
-| `alertSettings` | Cost anomaly tuning, drift/expiry/posture alerting, the weekly digest schedule |
+| Section         | What it carries                                                                                 |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| `budgets`       | Monthly spend budgets, their filters and alert thresholds                                       |
+| `customGraphs`  | Each [custom graph](./custom-graphs.md)'s name, description and source                          |
+| `workflows`     | Each [workflow](./workflows.md)'s source, trigger, declared metrics, enabled                    |
+| `dashboards`    | Every [dashboard](./dashboard.md), its name, and its cards in grid order                        |
+| `metricAlerts`  | [Metric alert rules](./metric-alerts.md) — selector, condition, cooldown                        |
+| `probes`        | [Synthetic probes](./synthetic-probes.md) — URL, interval, failure threshold                    |
+| `costCentres`   | Cost centres and their [allocation rules](./tag-policy-and-showback.md)                         |
+| `tagPolicy`     | The org's required tags and whether they're enforced at create time                             |
+| `alertSettings` | Cost anomaly tuning, drift/expiry/posture/extended-support alerting, the weekly digest schedule |
 
 ## What's deliberately not
 

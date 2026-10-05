@@ -29,6 +29,7 @@ import { registerBusinessMetricPaths } from "./paths/business-metrics";
 import { registerOrphanPaths } from "./paths/orphans";
 import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
 import { registerRightsizingPaths } from "./paths/rightsizing";
+import { registerExtendedSupportPaths } from "./paths/extended-support";
 import { registerBudgetPaths } from "./paths/budgets";
 import { registerMetricAlertPaths } from "./paths/metric-alerts";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
@@ -178,6 +179,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerBusinessMetricPaths(ctx);
   registerOrphanPaths(ctx);
   registerRightsizingPaths(ctx);
+  registerExtendedSupportPaths(ctx);
   registerBudgetPaths(ctx);
   registerMetricAlertPaths(ctx);
   registerChangeFreezePaths(ctx);
@@ -637,14 +639,14 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         description:
           "Jira Cloud connection, project and issue-type pickers, and filing a finding " +
           "(cost anomaly, orphan, oversized resource, posture finding, expiring credential, " +
-          "failed probe) as a tracked issue.",
+          "failed probe, extended-support finding) as a tracked issue.",
       },
       {
         name: "Linear",
         description:
           "Linear workspace connection, team picker, and filing a finding (cost anomaly, " +
-          "orphan, oversized resource, posture finding, expiring credential, failed probe) " +
-          "as a tracked issue.",
+          "orphan, oversized resource, posture finding, expiring credential, failed probe, " +
+          "extended-support finding) as a tracked issue.",
       },
       {
         name: "GitHub issues",

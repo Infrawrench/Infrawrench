@@ -262,6 +262,18 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "warning",
   },
   {
+    // Money already leaving the account on a schedule the provider set, so a
+    // weekly reminder rather than a page: `info`, not `warning`. Upcoming
+    // surcharges are deadlines and ride `expiryAlerts` instead.
+    id: "extendedSupportAlerts",
+    label: "Extended support",
+    description:
+      "Resources are paying an extended-support surcharge or are past the end of support.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "info",
+  },
+  {
     // The one trigger a *person* raises. Every other entry in this list is a
     // detector noticing something; this one fires because somebody declared an
     // incident (or mitigated or resolved one), which is why it is `critical` by
@@ -305,6 +317,7 @@ export const COST_FIGURE_TRIGGERS: readonly AlertTrigger[] = [
   "commitmentIdleAlerts",
   "unitCostRegressionAlerts",
   "savingsFindings",
+  "extendedSupportAlerts",
   "weeklyDigest",
 ];
 

@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { CLOUDSQL_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const CloudSqlInstanceResourceType = rt({
   name: "Cloud SQL Instance",
@@ -16,6 +17,13 @@ export const CloudSqlInstanceResourceType = rt({
       description: "Public IPv4 endpoint; empty when the instance is private-IP only",
     }),
     f("availabilityType", "Availability Type", { required: false }),
+    f("billableVcpus", "Billable vCPUs", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description:
+        "vCPUs extended support bills on (a high-availability vCPU counts twice); 0 for shared-core tiers",
+    }),
     f("network", "VPC Network", {
       kind: "association",
       required: false,
@@ -56,6 +64,7 @@ export const CloudSqlInstanceResourceType = rt({
     o("password", "Password", { sensitive: true }),
     o("port", "Port"),
   ],
+  extendedSupport: CLOUDSQL_EXTENDED_SUPPORT,
   supportsCreate: true,
   supportsMetrics: true,
   peerIntegrations: (() => {

@@ -165,6 +165,9 @@ export async function listGkeClusters(
         name,
         location,
         version: String(c["currentMasterVersion"] ?? ""),
+        releaseChannel: String(
+          (c["releaseChannel"] as Record<string, unknown> | undefined)?.["channel"] ?? "",
+        ),
         machineType: String(nodeConfig["machineType"] ?? ""),
         diskSizeGb: Number(nodeConfig["diskSizeGb"] ?? 0),
         nodeCount,

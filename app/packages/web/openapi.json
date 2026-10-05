@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.71.0",
+    "version": "1.72.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -326,11 +326,11 @@
     },
     {
       "name": "Jira",
-      "description": "Jira Cloud connection, project and issue-type pickers, and filing a finding (cost anomaly, orphan, oversized resource, posture finding, expiring credential, failed probe) as a tracked issue."
+      "description": "Jira Cloud connection, project and issue-type pickers, and filing a finding (cost anomaly, orphan, oversized resource, posture finding, expiring credential, failed probe, extended-support finding) as a tracked issue."
     },
     {
       "name": "Linear",
-      "description": "Linear workspace connection, team picker, and filing a finding (cost anomaly, orphan, oversized resource, posture finding, expiring credential, failed probe) as a tracked issue."
+      "description": "Linear workspace connection, team picker, and filing a finding (cost anomaly, orphan, oversized resource, posture finding, expiring credential, failed probe, extended-support finding) as a tracked issue."
     },
     {
       "name": "GitHub issues",
@@ -11087,6 +11087,494 @@
         ],
         "additionalProperties": false
       },
+      "ExtendedSupportFinding": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "AWS"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "EKS Cluster"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "releaseId": {
+            "type": "string",
+            "description": "The matched support-calendar entry, unique within the resource type.",
+            "example": "k8s-1.30"
+          },
+          "product": {
+            "type": "string",
+            "example": "Amazon EKS"
+          },
+          "engine": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currentVersion": {
+            "type": "string",
+            "example": "1.30"
+          },
+          "targetVersion": {
+            "type": "string",
+            "example": "1.35"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "end-of-life",
+              "surcharged",
+              "unsupported",
+              "upcoming"
+            ],
+            "description": "`surcharged`: past standard support and paying for extended support. `unsupported`: past standard support with no surcharge (no paid extension, or not enrolled), so a forced upgrade is pending. `end-of-life`: past the end of extended support too. `upcoming`: standard support ends within the organization's lead time."
+          },
+          "standardSupportEnds": {
+            "type": "string",
+            "description": "Last day of standard support, YYYY-MM-DD."
+          },
+          "surchargeStartsOn": {
+            "type": "string",
+            "description": "First day the surcharge applies, YYYY-MM-DD."
+          },
+          "daysUntilSurcharge": {
+            "type": "integer",
+            "description": "Zero or negative once it has started."
+          },
+          "extendedSupportEnds": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last day of extended support, after which the provider upgrades it."
+          },
+          "daysUntilForcedUpgrade": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "charged": {
+            "type": "boolean",
+            "description": "False when there is no paid extension or the resource is not enrolled."
+          },
+          "quantity": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Billable units (vCPUs, nodes); null when unknown."
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "cluster-hour",
+              "vcpu-hour",
+              "vcore-hour",
+              "node-hour",
+              "instance-hour",
+              "acu-hour"
+            ]
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tierLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The rate tier in force (or first, if upcoming)."
+          },
+          "monthlySurcharge": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Monthly surcharge an upgrade removes (projected for `upcoming`). Null means no figure."
+          },
+          "listMonthlySurcharge": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The list-price figure."
+          },
+          "costBasis": {
+            "type": "string",
+            "enum": [
+              "billed",
+              "billed-share",
+              "list-price",
+              "unpriced"
+            ],
+            "description": "Where `monthlySurcharge` came from: `billed` (the provider's billing, attributable to this resource alone), `billed-share` (a billed line shared by several matching resources, split by list-price weight), `list-price` (computed from published rates), or `unpriced` (no figure)."
+          },
+          "billedLineItems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Provider line items behind a billed figure."
+          },
+          "nextTier": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "monthlySurcharge": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "from",
+              "label",
+              "monthlySurcharge"
+            ],
+            "additionalProperties": false,
+            "description": "The next, higher rate tier, when the rate is scheduled to rise."
+          },
+          "priceNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pricingUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "upgradeUrl": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "displayName",
+          "externalId",
+          "region",
+          "releaseId",
+          "product",
+          "engine",
+          "currentVersion",
+          "targetVersion",
+          "status",
+          "standardSupportEnds",
+          "surchargeStartsOn",
+          "daysUntilSurcharge",
+          "extendedSupportEnds",
+          "daysUntilForcedUpgrade",
+          "charged",
+          "quantity",
+          "unit",
+          "currency",
+          "tierLabel",
+          "monthlySurcharge",
+          "listMonthlySurcharge",
+          "costBasis",
+          "billedLineItems",
+          "nextTier",
+          "priceNote",
+          "pricingUrl",
+          "upgradeUrl",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "ExtendedSupportTotal": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          },
+          "monthly": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "currency",
+          "monthly"
+        ],
+        "additionalProperties": false
+      },
+      "UnattributedExtendedSupportCharge": {
+        "type": "object",
+        "properties": {
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "releaseId": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "engine": {
+            "type": "string"
+          },
+          "lineItem": {
+            "type": "string",
+            "description": "Provider line item, e.g. an AWS usage type."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Billed over the window."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "monthlyAmount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "lineItem",
+          "amount",
+          "currency",
+          "accountId",
+          "accountName",
+          "monthlyAmount"
+        ],
+        "additionalProperties": false
+      },
+      "ExtendedSupportListResponse": {
+        "type": "object",
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtendedSupportFinding"
+            },
+            "description": "Most urgent first, then largest surcharge."
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "end-of-life": {
+                "type": "integer"
+              },
+              "surcharged": {
+                "type": "integer"
+              },
+              "unsupported": {
+                "type": "integer"
+              },
+              "upcoming": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "end-of-life",
+              "surcharged",
+              "unsupported",
+              "upcoming"
+            ],
+            "additionalProperties": false
+          },
+          "currentMonthly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtendedSupportTotal"
+            },
+            "description": "What surcharged and end-of-life findings cost now."
+          },
+          "upcomingMonthly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtendedSupportTotal"
+            },
+            "description": "What upcoming findings will add once they start."
+          },
+          "leadDays": {
+            "type": "integer"
+          },
+          "billing": {
+            "type": "object",
+            "properties": {
+              "windowDays": {
+                "type": "integer"
+              },
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "accountId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "00000000-0000-0000-0000-000000000000"
+                    },
+                    "accountName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "read",
+                        "failed"
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "accountId",
+                    "accountName",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "unattributed": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UnattributedExtendedSupportCharge"
+                }
+              }
+            },
+            "required": [
+              "windowDays",
+              "accounts",
+              "unattributed"
+            ],
+            "additionalProperties": false,
+            "description": "Present when billed charges were read for at least one account."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "findings",
+          "totalCount",
+          "counts",
+          "currentMonthly",
+          "upcomingMonthly",
+          "leadDays",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ExtendedSupportSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the weekly extended-support alert is sent."
+          },
+          "leadDays": {
+            "type": "integer",
+            "description": "Days ahead an upcoming surcharge is listed for. Default 90."
+          },
+          "lastNotifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the last weekly alert scan completed. Owned by the poller; read-only."
+          }
+        },
+        "required": [
+          "enabled",
+          "leadDays",
+          "lastNotifiedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ExtendedSupportSettingsUpdate": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "leadDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          }
+        },
+        "additionalProperties": false
+      },
       "BudgetCostFilter": {
         "type": "object",
         "properties": {
@@ -21683,6 +22171,8 @@
               "k8s-cert",
               "ssh-key",
               "secret-version",
+              "lease",
+              "extended-support",
               "other"
             ],
             "description": "Grouping bucket for the kind of deadline."
@@ -41547,7 +42037,8 @@
           "oversized",
           "posture_finding",
           "expiring",
-          "probe"
+          "probe",
+          "extended_support"
         ],
         "description": "Which detector produced the finding the issue was filed from."
       },
@@ -41804,7 +42295,8 @@
           "oversized",
           "posture_finding",
           "expiring",
-          "probe"
+          "probe",
+          "extended_support"
         ],
         "description": "Which detector produced the finding the issue was filed from."
       },
@@ -53829,6 +54321,145 @@
         },
         "operationId": "getOrgOrgIdRightsizing",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/extended-support": {
+      "get": {
+        "tags": [
+          "Orphans"
+        ],
+        "summary": "List resources billed at extended-support or end-of-life rates",
+        "description": "Matches every synced resource's version against its provider's support calendar (declared by the plugin): resources paying an extended-support surcharge, past the end of support, or whose standard support ends within the lead time. Each finding carries the monthly surcharge an upgrade removes: the provider's billed amount where it can be attributed (AWS Cost Explorer extended-support usage types), otherwise list price. Results are cached for a few minutes; pass `refresh=true` to recompute.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "description": "Bypass the short server-side cache and recompute now."
+            },
+            "required": false,
+            "description": "Bypass the short server-side cache and recompute now.",
+            "name": "refresh",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Extended-support findings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtendedSupportListResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdExtendedSupport",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/extended-support/settings": {
+      "get": {
+        "tags": [
+          "Orphans"
+        ],
+        "summary": "Get the organization's extended-support settings",
+        "description": "An organization that never saved reads the shipped defaults (enabled, 90 days).\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Extended-support settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtendedSupportSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdExtendedSupportSettings",
+        "x-required-permission": "org:settings:write"
+      },
+      "put": {
+        "tags": [
+          "Orphans"
+        ],
+        "summary": "Update the extended-support settings",
+        "description": "Every field is optional. `leadDays` must be a whole number from 1 to 365. Saving never resets the alert cooldown.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtendedSupportSettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtendedSupportSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdExtendedSupportSettings",
+        "x-required-permission": "org:settings:write"
       }
     },
     "/api/org/{orgId}/budgets": {

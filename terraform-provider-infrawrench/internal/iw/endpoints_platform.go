@@ -852,6 +852,22 @@ func (c *Client) PutExpiryAlertSettings(ctx context.Context, in ExpiryAlertSetti
 	return &out, nil
 }
 
+func (c *Client) GetExtendedSupportSettings(ctx context.Context) (*ExtendedSupportSettings, error) {
+	var out ExtendedSupportSettings
+	if err := c.Get(ctx, "/extended-support/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutExtendedSupportSettings(ctx context.Context, in ExtendedSupportSettingsUpdate) (*ExtendedSupportSettings, error) {
+	var out ExtendedSupportSettings
+	if err := c.Put(ctx, "/extended-support/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) GetPostureAlertSettings(ctx context.Context) (*PostureAlertSettings, error) {
 	var out PostureAlertSettings
 	if err := c.Get(ctx, "/posture/settings", &out); err != nil {

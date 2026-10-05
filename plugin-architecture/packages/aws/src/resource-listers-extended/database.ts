@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
 import { joinIds, rdsSecurityGroupIds, type ListerContext } from "../resource-listers.js";
+import { openSearchNormalizedUnits } from "../extended-support.js";
 
 export async function listRedshiftClusters(
   ctx: ListerContext,
@@ -153,6 +154,11 @@ export async function listOpenSearchDomains(
           engineVersion: String(ds["EngineVersion"] ?? ""),
           instanceType: String(clusterConfig?.["InstanceType"] ?? ""),
           instanceCount: Number(clusterConfig?.["InstanceCount"] ?? 0),
+          normalizedInstanceUnits:
+            openSearchNormalizedUnits(
+              String(clusterConfig?.["InstanceType"] ?? ""),
+              Number(clusterConfig?.["InstanceCount"] ?? 0),
+            ) ?? 0,
           status: ds["Processing"] === true,
           volumeType: String(ebsOptions?.["VolumeType"] ?? ""),
           volumeSize: Number(ebsOptions?.["VolumeSize"] ?? 0),

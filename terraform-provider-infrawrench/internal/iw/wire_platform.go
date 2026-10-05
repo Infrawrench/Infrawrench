@@ -945,6 +945,21 @@ type ExpiryAlertSettings struct {
 	LastNotifiedAt *string `json:"lastNotifiedAt"`
 }
 
+// ExtendedSupportSettingsUpdate is the PUT body for extended-support findings.
+type ExtendedSupportSettingsUpdate struct {
+	Enabled  *bool  `json:"enabled,omitempty"`
+	LeadDays *int64 `json:"leadDays,omitempty"`
+}
+
+// ExtendedSupportSettings is the org singleton for the weekly extended-support
+// alert and how far ahead upcoming surcharges are listed. LastNotifiedAt is
+// owned by the poller's cooldown claim and is not writable.
+type ExtendedSupportSettings struct {
+	Enabled        bool    `json:"enabled"`
+	LeadDays       int64   `json:"leadDays"`
+	LastNotifiedAt *string `json:"lastNotifiedAt"`
+}
+
 // PostureAlertSettingsUpdate is the PUT body for posture-check notifications.
 type PostureAlertSettingsUpdate struct {
 	Enabled *bool `json:"enabled,omitempty"`

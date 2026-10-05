@@ -301,6 +301,14 @@ infrawrench prices compare --vcpus 8 --memory 32
 infrawrench prices compare m7i.xlarge --provider aws --json
 ```
 
+`extended-support` lists [extended support findings](./extended-support.md): clusters and databases on versions billed at extended-support or end-of-life rates, with the monthly surcharge an upgrade removes (billed where the provider's billing names it, list price otherwise). `--local` checks the desktop workspace on your machine, at list price:
+
+```
+infrawrench extended-support
+infrawrench extended-support --local
+infrawrench extended-support --json
+```
+
 `carbon` prints the organization's [estimated carbon](./carbon.md) by provider, region and resource, with how many resources could not be estimated beside the total and the assumptions underneath. Cloud-only:
 
 ```

@@ -30,6 +30,7 @@ time it files, and a finding filed to both shows both issue links.
 | Posture finding     | [Posture checks](./posture-checks.md)                                                    |
 | Expiring credential | [Expiry radar](./expiry-radar.md)                                                        |
 | Failed probe        | [Synthetic probes](./synthetic-probes.md)                                                |
+| Extended support    | [Extended support findings](./extended-support.md) — the Costs panel section             |
 
 Each one prefills the issue for you: a summary naming the finding, and a description carrying
 the numbers behind it — the day and the baseline for an anomaly, the current and recommended

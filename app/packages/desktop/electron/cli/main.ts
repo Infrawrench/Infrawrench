@@ -64,6 +64,7 @@ import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
 import { cmdPrices } from "./commands/prices";
 import { cmdGithubIssues, cmdGithubIssueSettings } from "./commands/github-issues";
+import { cmdExtendedSupport } from "./commands/extended-support";
 import { cmdCarbon } from "./commands/carbon";
 import { cmdK8sNetwork } from "./commands/k8s-network";
 import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
@@ -260,6 +261,8 @@ COMMANDS
   github-issues       findings filed as GitHub issues, open first, with any pull request
   github-issues settings  repository routing, Terraform sources and each GitHub App
                       installation's granted permissions (cloud only)
+  extended-support    clusters & databases on versions billed at extended-support / end-of-life
+                      rates, with the monthly surcharge an upgrade removes (--local: list price)
   carbon              estimated CO2e of the estate by provider, region and resource, with what
                       could not be estimated and the assumptions   [--days 30] (cloud only)
   k8s-network [cluster]
@@ -871,6 +874,9 @@ export async function runCli(): Promise<void> {
       case "github-issues":
         if (rest[0] === "settings") await cmdGithubIssueSettings(ctx);
         else await cmdGithubIssues(ctx);
+        break;
+      case "extended-support":
+        await cmdExtendedSupport(ctx);
         break;
       case "carbon":
         await cmdCarbon(ctx, parsed.range);

@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { GKE_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const GkeClusterResourceType = rt({
   name: "GKE Cluster",
@@ -24,6 +25,12 @@ export const GkeClusterResourceType = rt({
         "Service account email the node VMs run as; the Compute Engine default when omitted",
     }),
     f("status", "Status", { required: false }),
+    f("releaseChannel", "Release Channel", {
+      required: false,
+      editable: false,
+      description:
+        "RAPID, REGULAR, STABLE or EXTENDED; only EXTENDED stays on a version past standard support (billed)",
+    }),
     f("network", "VPC Network", {
       kind: "association",
       required: false,
@@ -74,6 +81,7 @@ export const GkeClusterResourceType = rt({
         "JSON hourly price per node pool (machine plus attached GPUs) and per GPU, handed to the Kubernetes peer so it can derive per-namespace, per-workload and per-GPU cost. Empty when no price is available.",
     }),
   ],
+  extendedSupport: GKE_EXTENDED_SUPPORT,
   supportsCreate: true,
   supportsMetrics: true,
   peerIntegrations: [

@@ -6,6 +6,7 @@ import { ensureArray } from "./xml.js";
 import { EC2_SSH_WORLD_OPEN } from "./constants.js";
 import type { AwsCredentials } from "./auth.js";
 import { ec2SshUsernameFromImageName } from "./ssh-username.js";
+import { rdsInstanceClassVcpus } from "./extended-support.js";
 
 export interface ListerContext {
   ec2<T>(action: string, params?: Record<string, string>): Promise<T>;
@@ -493,6 +494,9 @@ export async function listEKSClusters(
           version: String(c["version"] ?? ""),
           status: String(c["status"] ?? ""),
           platformVersion: String(c["platformVersion"] ?? ""),
+          supportType: String(
+            (c["upgradePolicy"] as Record<string, unknown> | undefined)?.["supportType"] ?? "",
+          ),
           roleArn: String(c["roleArn"] ?? ""),
           nodeGroupCount,
           nodeCount: totalNodeCount,
@@ -564,6 +568,9 @@ export async function listRDSInstances(
         engine,
         engineVersion: String(db["EngineVersion"] ?? ""),
         instanceClass: String(db["DBInstanceClass"] ?? ""),
+        // What RDS Extended Support bills on; 0 (unknown) for db.serverless.
+        vcpus: rdsInstanceClassVcpus(String(db["DBInstanceClass"] ?? "")) ?? 0,
+        engineLifecycleSupport: String(db["EngineLifecycleSupport"] ?? ""),
         status: String(db["DBInstanceStatus"] ?? ""),
         allocatedStorage: Number(db["AllocatedStorage"] ?? 0),
         availabilityZone: String(db["AvailabilityZone"] ?? ""),

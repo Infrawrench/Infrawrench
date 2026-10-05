@@ -590,7 +590,7 @@ terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 
 The full list: `tag_policy`, `tag_key_settings`, `alert_routing`, `currency_settings`,
 `anomaly_settings`, `efficiency_alert_settings`, `realized_savings_settings`,
-`drift_alert_settings`, `expiry_alert_settings`, `posture_alert_settings`,
+`drift_alert_settings`, `expiry_alert_settings`, `extended_support_settings`, `posture_alert_settings`,
 `session_recording_settings`, `network_flow_settings`, `digest_settings`, `jira_integration`,
 `linear_integration`, `github_issue_settings`.
 
@@ -705,6 +705,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_change_freeze`               | by id         | `starts_at` is Optional and Computed; ending is an action    |
 | `infrawrench_drift_alert_settings`        | by org id     | Org singleton; destroy is a no-op                            |
 | `infrawrench_expiry_alert_settings`       | by org id     | Org singleton; destroy is a no-op                            |
+| `infrawrench_extended_support_settings`   | by org id     | Org singleton; destroy is a no-op                            |
 | `infrawrench_posture_alert_settings`      | by org id     | Org singleton; destroy is a no-op                            |
 | `infrawrench_session_recording_settings`  | by org id     | Org singleton; destroy deliberately leaves it running        |
 | `infrawrench_network_flow_settings`       | by org id     | Org singleton; destroy turns collection **off**              |

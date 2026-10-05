@@ -434,6 +434,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_change_freeze`               | [Change freezes](../team-and-billing/change-freeze.md)                                        |
 | `infrawrench_drift_alert_settings`        | What the [change timeline](./change-timeline.md) notifies about                               |
 | `infrawrench_expiry_alert_settings`       | [Expiry radar](./expiry-radar.md) lead time                                                   |
+| `infrawrench_extended_support_settings`   | [Extended support](./extended-support.md) alert and look-ahead                                |
 | `infrawrench_posture_alert_settings`      | Whether [posture findings](./posture-checks.md) notify                                        |
 | `infrawrench_session_recording_settings`  | [Session recording](./session-recording.md) and retention                                     |
 | `infrawrench_network_flow_settings`       | Whether [network flow costs](./network-costs.md) are collected                                |

@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { OPENSEARCH_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const OpenSearchDomainResourceType = rt({
   name: "OpenSearch Domain",
@@ -20,6 +21,13 @@ export const OpenSearchDomainResourceType = rt({
     f("engineVersion", "Engine Version"),
     f("instanceType", "Instance Type", { required: false }),
     f("instanceCount", "Instance Count", { kind: "number", required: false }),
+    f("normalizedInstanceUnits", "Normalized Instance Units", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description:
+        "Data-node instance count times the size factor AWS bills extended support on, per hour",
+    }),
     f("status", "Processing", { kind: "boolean", required: false }),
     f("volumeType", "Volume Type", { required: false }),
     f("volumeSize", "Volume Size (GB)", { kind: "number", required: false }),
@@ -44,6 +52,7 @@ export const OpenSearchDomainResourceType = rt({
     { fieldKey: "subnetIds", targetTypeId: "subnet", label: "in subnet" },
     { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
+  extendedSupport: OPENSEARCH_EXTENDED_SUPPORT,
   iconKey: "search",
   supportsCreate: true,
   supportsMetrics: true,

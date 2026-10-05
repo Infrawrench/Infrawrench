@@ -50,10 +50,12 @@ import {
   settingsTabTarget,
   type OrphansClient,
   type RightsizingClient,
+  type ExtendedSupportClient,
   type SchedulesClient,
 } from "@infrawrench/ui";
 import { createWebOrphansClient } from "@/lib/orphans-client";
 import { createWebRightsizingClient } from "@/lib/rightsizing-client";
+import { createWebExtendedSupportClient } from "@/lib/extended-support-client";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLogWorkspaceClient } from "@/lib/log-workspace-client";
 import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
@@ -233,6 +235,16 @@ function getRightsizingClient(orgId: string): RightsizingClient {
   return client;
 }
 
+const extendedSupportClients = new Map<string, ExtendedSupportClient>();
+function getExtendedSupportClient(orgId: string): ExtendedSupportClient {
+  let client = extendedSupportClients.get(orgId);
+  if (!client) {
+    client = createWebExtendedSupportClient(orgId);
+    extendedSupportClients.set(orgId, client);
+  }
+  return client;
+}
+
 const schedulesClients = new Map<string, SchedulesClient>();
 function getSchedulesClient(orgId: string): SchedulesClient {
   let client = schedulesClients.get(orgId);
@@ -329,6 +341,19 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               }),
             );
           }}
+          extendedSupport={getExtendedSupportClient(orgId)}
+          onOpenExtendedSupportResource={(f) =>
+            void navigate(
+              getWorkspaceNavigateArgs({
+                kind: "resource",
+                accountId: f.accountId,
+                resourceId: f.resourceId,
+                view: "details",
+                pluginId: f.pluginId,
+                resourceTypeId: f.resourceTypeId,
+              }),
+            )
+          }
           schedules={getSchedulesClient(orgId)}
           onOpenScheduledResource={(s) =>
             void navigate(

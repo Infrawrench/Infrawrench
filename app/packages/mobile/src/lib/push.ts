@@ -248,6 +248,8 @@ export function pushDataToPath(data: MobilePushData): string {
       return `/org/${data.orgId}/posture`;
     // A savings finding is listed in the Costs screen's savings sections.
     case "savings_finding":
+    // Extended-support findings are a section of the Costs screen.
+    case "extended_support_alert":
       return `/org/${data.orgId}/costs`;
     // A log-match alert names the saved query that fired; open its viewer so
     // the matching lines are one refresh away.
@@ -508,6 +510,8 @@ export function parsePushData(raw: unknown): MobilePushData | null {
       }
       return { type: "savings_finding", orgId, kind, resourceId };
     }
+    case "extended_support_alert":
+      return { type: "extended_support_alert", orgId };
     case "probe_alert": {
       const probeId = data["probeId"];
       const status = data["status"];

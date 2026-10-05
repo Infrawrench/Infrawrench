@@ -9,6 +9,7 @@ import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect
 import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import { runPostureAlerts } from "@infrawrench/server-core/posture/alerts";
 import { runSavingsFindingScan } from "@infrawrench/server-core/github-issues/savings-scan";
+import { runExtendedSupportAlerts } from "@infrawrench/server-core/extended-support/alerts";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
 import { runLeasePass } from "@infrawrench/server-core/leases/pass";
 import { runTrialExpiryPass } from "@infrawrench/server-core/trials/pass";
@@ -207,6 +208,11 @@ export class PollerLoop extends TickLoop {
     // (which a routing rule can send to GitHub issues), and findings that went
     // away resolve their issues. Six-hourly per org, claimed like the radars.
     await this.tickSavingsScan();
+
+    // Extended-support alerts: the same claim engine on a seven-day window
+    // (`org_extended_support_settings.last_notified_at`). Defensive like the
+    // others.
+    await this.tickExtendedSupportAlerts();
 
     // Eighth pass: sleep/wake schedules. Claims due transitions with the
     // accounts lease protocol (`resource_schedules.next_transition_at`
@@ -448,6 +454,15 @@ export class PollerLoop extends TickLoop {
       await runSavingsFindingScan({ limit: 3 });
     } catch (e) {
       console.error("[poller] savings scan tick failed:", e);
+    }
+  }
+
+  /** Scan a bounded batch of orgs whose weekly extended-support window has come due. */
+  private async tickExtendedSupportAlerts(): Promise<void> {
+    try {
+      await runExtendedSupportAlerts({ limit: 4 });
+    } catch (e) {
+      console.error("[extended-support] alert tick failed:", e);
     }
   }
 

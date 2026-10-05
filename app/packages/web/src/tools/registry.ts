@@ -21,6 +21,7 @@ import { scheduleTools } from "./schedules";
 import { rightsizingTools } from "./rightsizing";
 import { githubIssueTools } from "./github-issues";
 import { savingsTools } from "./savings";
+import { extendedSupportTools } from "./extended-support";
 import { carbonTools } from "./carbon";
 import { priceCatalogTools } from "./price-catalog";
 import { aiAttributionTools } from "./ai-attribution";
@@ -53,6 +54,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...rightsizingTools(),
     ...githubIssueTools(),
     ...savingsTools(),
+    ...extendedSupportTools(),
     ...carbonTools(),
     ...priceCatalogTools(),
     ...aiAttributionTools(),

@@ -18,6 +18,8 @@ const ExpiryKind = z
     "k8s-cert",
     "ssh-key",
     "secret-version",
+    "lease",
+    "extended-support",
     "other",
   ])
   .openapi({ description: "Grouping bucket for the kind of deadline." });

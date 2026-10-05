@@ -623,6 +623,25 @@ export interface PluginClient {
    */
   fetchPriceCatalog?(request: PriceCatalogRequest): Promise<PriceCatalogResult>;
   /**
+   * Return the extended-support surcharges the provider actually billed this
+   * account over `range` (inclusive `start`, exclusive `end`, `YYYY-MM-DD`),
+   * one entry per provider line item and region. Optional: without it the
+   * host prices findings from the resource types' `extendedSupport`
+   * calendars at list price, and says so.
+   *
+   * Called on demand when somebody opens the findings (the host caches the
+   * answer for minutes), so it should be a small, bounded number of billing
+   * requests. Return only lines that are unambiguously extended-support
+   * charges: a misattributed line would be reported as money an upgrade
+   * saves. Return `[]` when nothing was billed, and throw when the billing
+   * data cannot be read, so the host can fall back to list price rather than
+   * reporting a confident zero.
+   */
+  fetchExtendedSupportCharges?(
+    accountId: string,
+    range: { start: string; end: string },
+  ): Promise<ExtendedSupportCharge[]>;
+  /**
    * Return **aggregated** source→destination flows for one closed UTC day.
    * Only called when the manifest declares `networkFlows`.
    *
@@ -1285,6 +1304,7 @@ import type {
   PriceCatalogRequest,
   PriceCatalogResult,
 } from "./price-catalog.js";
+import type { ExtendedSupportCharge } from "./extended-support.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {

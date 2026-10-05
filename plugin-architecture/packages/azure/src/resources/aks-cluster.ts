@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { AKS_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const AKSClusterResourceType = rt({
   name: "AKS Cluster",
@@ -33,6 +34,11 @@ export const AKSClusterResourceType = rt({
     }),
     f("networkPlugin", "Network Plugin", { required: false }),
     f("tier", "Tier", { required: false }),
+    f("supportPlan", "Support Plan", {
+      required: false,
+      description:
+        "AKSLongTermSupport keeps a version patched past community support (Premium tier); KubernetesOfficial does not",
+    }),
     f("nodeResourceGroup", "Node Resource Group", {
       required: false,
       description: "Managed resource group AKS creates the node VMSS and disks in",
@@ -78,6 +84,7 @@ export const AKSClusterResourceType = rt({
       label: "runs as",
     },
   ],
+  extendedSupport: AKS_EXTENDED_SUPPORT,
   iconKey: "kubernetes",
   // Sleep/wake schedules: managedClusters start / stop. Stop deallocates the
   // control plane and every node pool, so compute billing stops; state is kept.

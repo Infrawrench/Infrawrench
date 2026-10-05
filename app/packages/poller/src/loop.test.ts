@@ -42,6 +42,7 @@ vi.mock("@infrawrench/server-core/db/schema", () => ({
   orgExpirySettings: { organizationId: "organizationId" },
   orgQuotaSettings: { organizationId: "organizationId" },
   orgPostureSettings: { organizationId: "organizationId" },
+  orgExtendedSupportSettings: { organizationId: "organizationId" },
   accounts: { id: "id", organizationId: "organizationId" },
 }));
 

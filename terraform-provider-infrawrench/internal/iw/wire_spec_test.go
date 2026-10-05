@@ -308,6 +308,8 @@ func specChecks() []specCheck {
 		{schema: "DriftAlertSettingsUpdate", value: DriftAlertSettingsUpdate{}},
 		{schema: "ExpiryAlertSettings", value: ExpiryAlertSettings{}},
 		{schema: "ExpiryAlertSettingsUpdate", value: ExpiryAlertSettingsUpdate{}},
+		{schema: "ExtendedSupportSettings", value: ExtendedSupportSettings{}},
+		{schema: "ExtendedSupportSettingsUpdate", value: ExtendedSupportSettingsUpdate{}},
 		{schema: "PostureAlertSettings", value: PostureAlertSettings{}},
 		{schema: "PostureAlertSettingsUpdate", value: PostureAlertSettingsUpdate{}},
 		{schema: "SessionRecordingSettings", value: SessionRecordingSettings{}},

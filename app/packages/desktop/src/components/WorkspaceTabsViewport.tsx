@@ -32,7 +32,12 @@ import {
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
 import { InvoicesPanel, type InvoicesClient } from "@infrawrench/ui/invoices";
-import { type OrphansClient, type RightsizingClient, type SchedulesClient } from "@infrawrench/ui";
+import {
+  type ExtendedSupportClient,
+  type OrphansClient,
+  type RightsizingClient,
+  type SchedulesClient,
+} from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
 import { createDesktopCostReportsClient } from "@/lib/cost-reports-client";
 import { CostCanvasesPanel, type CostCanvasesClient } from "@infrawrench/ui/cost-canvases";
@@ -41,6 +46,7 @@ import { createDesktopInvoicesClient } from "@/lib/invoices-client";
 import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
 import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
+import { createDesktopExtendedSupportClient } from "@/lib/extended-support-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
 import { createDesktopLogWorkspaceClient } from "@/lib/log-workspace-client";
 import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
@@ -118,6 +124,12 @@ let schedulesClient: SchedulesClient | null = null;
 function getSchedulesClient(): SchedulesClient {
   if (!schedulesClient) schedulesClient = createDesktopSchedulesClient();
   return schedulesClient;
+}
+
+let extendedSupportClient: ExtendedSupportClient | null = null;
+function getExtendedSupportClient(): ExtendedSupportClient {
+  if (!extendedSupportClient) extendedSupportClient = createDesktopExtendedSupportClient();
+  return extendedSupportClient;
 }
 
 let rightsizingClient: RightsizingClient | null = null;
@@ -298,6 +310,16 @@ function renderPanel(
               ),
             );
           }}
+          // Both modes: support calendars are declarations over stored
+          // versions. Local mode is list price only (no billing read).
+          extendedSupport={getExtendedSupportClient()}
+          onOpenExtendedSupportResource={(f) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(f.accountId, f.resourceId, f.pluginId, f.resourceTypeId),
+              ),
+            )
+          }
           // Cloud-only: the rows live server-side and the cloud poller runs
           // the transitions, so local mode omits the section entirely.
           schedules={activeCloudOrgId ? getSchedulesClient() : undefined}

@@ -3196,6 +3196,26 @@ export const orgExpirySettings = pgTable("org_expiry_settings", {
 });
 
 /**
+ * Per-org settings and throttle state for extended-support findings, modelled
+ * on `org_expiry_settings`: `leadDays` is how far ahead an upcoming surcharge
+ * is listed, `lastNotifiedAt` is the weekly alert scan's claim (see
+ * `extended-support/alerts.ts`). No row means the shipped defaults.
+ */
+export const orgExtendedSupportSettings = pgTable("org_extended_support_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** Whether the poller sends extended-support alerts for this org at all. */
+  enabled: boolean("enabled").notNull().default(true),
+  /** Days ahead an upcoming surcharge is listed for. */
+  leadDays: integer("lead_days").notNull().default(90),
+  /** The cooldown claim: when this org's alert scan last completed. */
+  lastNotifiedAt: timestamp("last_notified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
  * Per-org settings and throttle state for posture-check alerts, modelled on
  * `org_expiry_settings` minus the lead time (findings have no clock). One row
  * per org that has either tuned the settings or been through an alert scan;
@@ -4207,7 +4227,7 @@ export const jiraIssueLinks = pgTable(
     orgKindIdx: index("jira_issue_links_org_kind_idx").on(t.organizationId, t.sourceKind),
     sourceKindValid: check(
       "jira_issue_links_source_kind_valid",
-      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe')`,
+      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe', 'extended_support')`,
     ),
   }),
 );
@@ -4299,7 +4319,7 @@ export const linearIssueLinks = pgTable(
     orgKindIdx: index("linear_issue_links_org_kind_idx").on(t.organizationId, t.sourceKind),
     sourceKindValid: check(
       "linear_issue_links_source_kind_valid",
-      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe')`,
+      sql`${t.sourceKind} IN ('cost_anomaly', 'orphan', 'oversized', 'posture_finding', 'expiring', 'probe', 'extended_support')`,
     ),
   }),
 );

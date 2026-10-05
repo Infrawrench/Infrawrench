@@ -272,6 +272,18 @@ export type PushNotificationData =
     }
   | {
       /**
+       * A weekly summary of resources paying an extended-support surcharge or
+       * past the end of support (see server-core `extended-support/alerts.ts`).
+       * At most one notification per org per week.
+       *
+       * Target route: the Costs screen, `/org/{orgId}/costs`, whose Extended
+       * support section lists the findings.
+       */
+      type: "extended_support_alert";
+      orgId: string;
+    }
+  | {
+      /**
        * A saved log-workspace query with alerting enabled found matching log
        * lines (see server-core `log-workspaces/pass.ts`). At most one
        * notification per cooldown window, never one per matching line.
