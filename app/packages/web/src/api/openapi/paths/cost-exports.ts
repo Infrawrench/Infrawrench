@@ -59,7 +59,7 @@ const CostExportQuery = strict({
       ]),
     )
     .optional(),
-  costBasis: z.enum(["cash", "amortized"]).optional(),
+  costBasis: z.enum(["cash", "amortized", "blended"]).optional(),
 })
   .describe(
     "The rows a run selects. Reuses the same `CostFilter` and dimension vocabulary the " +

@@ -41,6 +41,7 @@ Both windows are read on **one charge-type basis**, and the basis is named on ev
 
 - **Cash** (the default) — what the provider charged on the day it charged it.
 - **Amortized** — a commitment's up-front fee spread across the term it buys.
+- **Blended** — amortized, with each commitment's discount shared evenly across all the usage it could cover.
 
 They answer different questions, and a comparison that silently mixed them would be worse than no
 comparison at all: an amortized "after" against a cash "before" on a commitment-covered resource

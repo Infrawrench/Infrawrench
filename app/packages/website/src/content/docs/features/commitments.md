@@ -42,6 +42,10 @@ There is no single honest denominator for the question, so it's reported as a **
 
 Accounts whose provider can't distinguish usage from credits, fees and taxes are **excluded and named** rather than silently dragging the ratio down. If every account is excluded, coverage reads "unavailable" — not 0%.
 
+## Blended discounts for fair chargeback
+
+Coverage and utilization stay on the amortized basis, because they describe what the provider actually did. For splitting the bill between teams, pick the **Blended** [cost basis](./cloud-costs.md#blended) on any graph, report, budget, export or customer instead: it spreads each commitment's discount evenly over all the usage it was eligible to cover, so every team pays the same effective rate for the same kind of usage whichever account the provider applied the discount to. Day totals are exactly the amortized totals.
+
 ## Utilization — measured only where there's data
 
 For money-denominated commitments (a savings plan's hourly commitment), utilization is _delivered spend ÷ committed spend_ — but only over days where cost data was actually collected. A day the collection didn't run is reported as a **missing day**, never counted as an idle commitment: counting it would make a fully-used plan look half-used and send someone off to cancel a healthy commitment.

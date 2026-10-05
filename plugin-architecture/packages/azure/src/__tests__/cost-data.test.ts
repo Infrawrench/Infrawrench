@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchAzureCostData, mapAzureChargeType } from "../cost-data.js";
+import type { CostRow } from "@infrawrench/plugin-base";
+
+import { azureCoveredRatios, fetchAzureCostData, mapAzureChargeType } from "../cost-data.js";
 import type { AzureHttpContext } from "../shared.js";
 
 const RANGE = { fromDate: "2026-07-01", toDate: "2026-07-02" };
@@ -791,5 +793,175 @@ describe("fetchAzureCostData fallback", () => {
     const denied = new Error("Azure API POST 403: AuthorizationFailed");
     const { ctx } = ctxFor([denied, denied, denied]);
     await expect(fetchAzureCostData(ctx, RANGE)).rejects.toThrow(/AuthorizationFailed/);
+  });
+});
+
+// ─── Blended commitment discounts ─────────────────────────────────────────
+
+describe("fetchAzureCostData blended basis", () => {
+  const METER_COLUMNS = [
+    "Cost",
+    "UsageQuantity",
+    "UsageDate",
+    "ServiceName",
+    "MeterId",
+    "Currency",
+  ];
+  const OD_METER_COLUMNS = ["Cost", "UsageQuantity", "UsageDate", "MeterId", "Currency"];
+
+  /** Cash, amortized, attribution, unused: the four passes before blending. */
+  function basePasses() {
+    return [
+      page({
+        columns: USAGE_COLUMNS,
+        rows: [
+          [40, 20260701, "Virtual Machines", "eastus", "USD"],
+          [60, 20260701, "Virtual Machines", "westeurope", "USD"],
+          [7, 20260701, "Storage", "eastus", "USD"],
+        ],
+      }),
+      page({
+        columns: USAGE_COLUMNS,
+        rows: [
+          // eastus: 40 on demand + 30 covered at the reservation's rate.
+          [70, 20260701, "Virtual Machines", "eastus", "USD"],
+          [60, 20260701, "Virtual Machines", "westeurope", "USD"],
+          [7, 20260701, "Storage", "eastus", "USD"],
+        ],
+      }),
+      page({
+        columns: ATTRIBUTION_COLUMNS,
+        rows: [[500, 20260701, "Purchase", RESERVATION_ARM_ID, "USD"]],
+      }),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
+    ];
+  }
+
+  const amortizedOf = (r: CostRow) => r.amortizedAmount ?? r.amount;
+  const blendedOf = (r: CostRow) => r.blendedAmount ?? amortizedOf(r);
+
+  it("spreads the reservation's discount over the service and preserves the day", async () => {
+    const { ctx, bodies } = ctxFor([
+      ...basePasses(),
+      // Covered: 30 hours of meter m-1 at the reservation's effective 1/hour.
+      page({
+        columns: METER_COLUMNS,
+        rows: [[30, 30, 20260701, "Virtual Machines", "M-1", "USD"]],
+      }),
+      // The subscription's own on-demand price for m-1: 2/hour.
+      page({ columns: OD_METER_COLUMNS, rows: [[20, 10, 20260701, "m-1", "USD"]] }),
+    ]);
+
+    const { rows } = await fetchAzureCostData(ctx, RANGE);
+
+    // Covered weight 30 × 2 = 60; on-demand weights 40 and 60. Pool effective
+    // 40 + 30 + 60 = 130 over 160 on demand.
+    const rate = 130 / 160;
+    const vm = (region: string, chargeType: string) =>
+      rows.find(
+        (r) =>
+          r.service === "Virtual Machines" && r.region === region && r.chargeType === chargeType,
+      )!;
+    expect(vm("eastus", "usage").blendedAmount).toBeCloseTo(40 * rate, 9);
+    expect(vm("eastus", "commitment_covered_usage").blendedAmount).toBeCloseTo(60 * rate, 9);
+    expect(vm("westeurope", "usage").blendedAmount).toBeCloseTo(60 * rate, 9);
+    // Another service, and the purchase, are outside the pool.
+    expect(rows.find((r) => r.service === "Storage")!.blendedAmount).toBeUndefined();
+    expect(rows.find((r) => r.chargeType === "commitment_fee")!.blendedAmount).toBeUndefined();
+
+    const amortized = rows.reduce((n, r) => n + amortizedOf(r), 0);
+    const blended = rows.reduce((n, r) => n + blendedOf(r), 0);
+    expect(blended).toBeCloseTo(amortized, 9);
+
+    // The meter queries: amortized dataset, cost and quantity, by pricing model.
+    expect(groupingOf(bodies[4])).toEqual(["ServiceName", "MeterId"]);
+    expect(groupingOf(bodies[5])).toEqual(["MeterId"]);
+    expect(typeOf(bodies[4])).toBe("AmortizedCost");
+    expect(JSON.stringify(filterOf(bodies[4]))).toContain("Reservation");
+    expect(JSON.stringify(filterOf(bodies[5]))).toContain("OnDemand");
+    expect(
+      (bodies[4] as unknown as { dataset: { aggregation: unknown } }).dataset.aggregation,
+    ).toMatchObject({ totalQuantity: { name: "UsageQuantity", function: "Sum" } });
+  });
+
+  it("prices a meter never run on demand from the public retail price list", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          Items: [{ meterId: "m-1", retailPrice: 3, tierMinimumUnits: 0, type: "Consumption" }],
+          NextPageLink: null,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { ctx } = ctxFor([
+      ...basePasses(),
+      page({
+        columns: METER_COLUMNS,
+        rows: [[30, 30, 20260701, "Virtual Machines", "m-1", "USD"]],
+      }),
+      page({ columns: OD_METER_COLUMNS, rows: [] }),
+    ]);
+
+    const { rows } = await fetchAzureCostData(ctx, RANGE);
+
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain("prices.azure.com/api/retail/prices");
+    // Covered weight 30 × 3 = 90: rate 130 / 190.
+    const covered = rows.find((r) => r.chargeType === "commitment_covered_usage")!;
+    expect(covered.blendedAmount).toBeCloseTo(90 * (130 / 190), 9);
+    fetchSpy.mockRestore();
+  });
+
+  it("leaves the pool unblended when a covered meter has no price anywhere", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ Items: [] }), { status: 200 }));
+    const { ctx } = ctxFor([
+      ...basePasses(),
+      page({
+        columns: METER_COLUMNS,
+        rows: [[30, 30, 20260701, "Virtual Machines", "m-1", "USD"]],
+      }),
+      page({ columns: OD_METER_COLUMNS, rows: [] }),
+    ]);
+
+    const { rows } = await fetchAzureCostData(ctx, RANGE);
+
+    expect(rows.every((r) => r.blendedAmount === undefined)).toBe(true);
+    fetchSpy.mockRestore();
+  });
+
+  it("survives a refused meter query and makes none when nothing was covered", async () => {
+    const refused = ctxFor([...basePasses(), new Error("400 BadRequest")]);
+    const result = await fetchAzureCostData(refused.ctx, RANGE);
+    expect(result.degraded).toBeFalsy();
+    expect(result.rows.every((r) => r.blendedAmount === undefined)).toBe(true);
+
+    const uncovered = ctxFor([
+      page({ columns: USAGE_COLUMNS, rows: [[5, 20260701, "Storage", "eastus", "USD"]] }),
+      page({ columns: USAGE_COLUMNS, rows: [[5, 20260701, "Storage", "eastus", "USD"]] }),
+      page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
+    ]);
+    await fetchAzureCostData(uncovered.ctx, RANGE);
+    expect(uncovered.post).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("azureCoveredRatios", () => {
+  it("rejects a ratio below one, where the benefit would cost more than on demand", () => {
+    const ratios = azureCoveredRatios(
+      [
+        {
+          date: "2026-07-01",
+          service: "Virtual Machines",
+          currency: "USD",
+          meterId: "m",
+          quantity: 10,
+          cost: 50,
+        },
+      ],
+      new Map([["m", 1]]),
+    );
+    expect([...ratios.values()]).toEqual([null]);
   });
 });

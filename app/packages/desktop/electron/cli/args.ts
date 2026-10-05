@@ -35,7 +35,7 @@ export interface RangeFlags {
    */
   window?: string | undefined;
   /**
-   * `costs --basis cash|amortized`, which number to sum. Left as a raw string
+   * `costs --basis cash|amortized|blended`, which number to sum. Left as a raw string
    * so the command validates it and can name the valid values in the error,
    * the way `--group-by` does.
    */

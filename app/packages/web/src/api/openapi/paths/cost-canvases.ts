@@ -18,7 +18,7 @@ const BlockId = z
   .regex(/^[A-Za-z0-9_-]+$/)
   .describe("Stable within the spec; text blocks reference KPI ids as `{{id}}`.");
 const Title = z.string().min(1).max(120);
-const CostBasis = z.enum(["cash", "amortized"]);
+const CostBasis = z.enum(["cash", "amortized", "blended"]);
 const Filters = z.array(ReportCostFilter).max(20).optional();
 
 const KpiMetric = z

@@ -94,7 +94,7 @@ function label(name: string) {
  * `Required<T>` is not enough: Drizzle types a defaulted column as
  * `charge_type?: string | undefined`, and dropping the `?` leaves the explicit
  * `| undefined` behind. The writer row types below use this so a producer that
- * forgets `charge_type` or `amortized_reported` fails to compile: those two
+ * forgets `charge_type`, `amortized_reported` or `blended_reported` fails to compile: those
  * decide how the row reads, and "left to the default" is not a decision anything
  * writing cost data gets to make implicitly.
  */
@@ -329,6 +329,19 @@ export const costDaily = clickhouseTable(
      * the uplift instead of re-rating the line to nothing.
      */
     list_reported: uint8().notNull().default(0),
+    /**
+     * The row's amount with commitment discounts blended: re-priced at the
+     * effective rate its pool shares (see plugin-base `cost-blending.ts`).
+     * Readers fall back to the amortized amount when it was not reported.
+     */
+    blended_amount: float64().notNull().default(0),
+    /**
+     * Whether `blended_amount` was reported, as opposed to defaulted. Zero is
+     * a meaningful blended amount (a covered row whose share of a pool is
+     * nothing), so "reported" lives apart from the value, exactly as
+     * `amortized_reported` does.
+     */
+    blended_reported: uint8().notNull().default(0),
   },
   (t) => [
     replacingMergeTree({

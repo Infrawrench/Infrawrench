@@ -103,13 +103,14 @@ const RangeQuery = strict({
   from: IsoDate.optional().openapi({ description: "Defaults to 30 days ago." }),
   to: IsoDate.optional().openapi({ description: "Defaults to today." }),
   basis: z
-    .enum(["cash", "amortized"])
+    .enum(["cash", "amortized", "blended"])
     .optional()
     .openapi({
       description:
         "Which money to sum. `cash` (the default) is what the provider charged on the day it " +
-        "charged it; `amortized` spreads a commitment's up-front fee across the term it buys. " +
-        "Providers that report no amortized amount fall back to their cash amount.",
+        "charged it; `amortized` spreads a commitment's up-front fee across the term it buys; " +
+        "`blended` also spreads each commitment's discount evenly over all the usage it could " +
+        "cover. Providers that report no amortized amount fall back to their cash amount.",
     }),
 });
 

@@ -124,7 +124,7 @@ COMMANDS
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource|charge_type|commitment]
                       [--group-by tag:<key> | virtual_tag:<key> | k8s_node_label:<key> | k8s_pvc_label:<key>
                        group by a provider tag, a virtual tag or a Kubernetes label]
-                      [--basis cash|amortized] [--charge-type usage|credit|tax|… (repeatable)]
+                      [--basis cash|amortized|blended] [--charge-type usage|credit|tax|… (repeatable)]
                       [--currency USD  convert to your org's display currency (stated rates, then
                       automatic ECB rates if on)]
                       [--where "provider = 'aws' AND tag['env'] != 'dev'"  filter, as text]
@@ -233,7 +233,7 @@ COMMANDS
                       [--set field=value …, @file reads a value] [--file importer.json]
   unit-costs <key>    cost per unit of a business metric over time — a period with no reported
                       value prints as "—", never as 0   [--last 30d]
-                      [--group-by daily|weekly|monthly|cumulative] [--basis cash|amortized]
+                      [--group-by daily|weekly|monthly|cumulative] [--basis cash|amortized|blended]
                       [--currency USD] [--where "…"] [--margin  revenue metrics only]
   orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
                       (--local scans this machine's workspace; no cost column without the cloud)

@@ -29,9 +29,9 @@ import { c, printJson, println, printTable, formatNumber } from "../output";
 import { formatUnitCostRatio, unitCostRatioLabel } from "../format";
 import { sparkline } from "../charts";
 
-const COST_BASES = ["cash", "amortized"] as const;
+const COST_BASES = ["cash", "amortized", "blended"] as const;
 
-/** `--basis cash|amortized`, defaulting to cash. */
+/** `--basis cash|amortized|blended`, defaulting to cash. */
 function parseBasis(raw: string | undefined): CostBasis | undefined {
   if (raw === undefined) return undefined;
   const match = COST_BASES.find((b) => b === raw);
@@ -187,9 +187,7 @@ export async function cmdUnitCosts(
   }
 
   const mode = response.mode;
-  const scope = [`${from} → ${to}`, binning, basis === "amortized" ? "amortized" : "cash"].join(
-    " · ",
-  );
+  const scope = [`${from} → ${to}`, binning, basis ?? "cash"].join(" · ");
   const headline = response.series
     .map(
       (s) =>

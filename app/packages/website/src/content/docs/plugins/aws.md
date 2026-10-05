@@ -36,7 +36,7 @@ The add-account form (and **Check credentials** on the account page) probes what
 
 - **Resource inventory** — read-only Describe/List access, checked via a representative sample: `ec2:DescribeInstances`, `s3:ListAllMyBuckets`, `rds:DescribeDBInstances`, `lambda:ListFunctions`, `dynamodb:ListTables`.
 - **Metrics & dashboards** — `cloudwatch:GetMetricStatistics`, `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, plus `logs:FilterLogEvents` and `logs:DescribeLogStreams` for the Logs tabs.
-- **Cost reporting** — `ce:GetCostAndUsage`. This is **not** part of `ReadOnlyAccess`-style infra policies, so it's the check that most often comes back ✗.
+- **Cost reporting** — `ce:GetCostAndUsage`, plus `ce:GetReservationUtilization` for the [blended basis](#blended-commitment-discounts) on reservation-covered usage. These are **not** part of `ReadOnlyAccess`-style infra policies, so it's the check that most often comes back ✗.
 - **[Cost estimates](../features/cost-estimates.md)** — `pricing:GetProducts`, for the live per-region prices behind the create form's estimate, the size picker's price chips and the resource page's monthly figure. Also outside typical read-only policies. Without it nothing breaks; AWS resources simply quote no estimate.
 
 The probe resolves the caller with `sts:GetCallerIdentity` (needs no permission) and asks `iam:SimulatePrincipalPolicy` for an exact per-permission verdict; when the key isn't allowed to call the simulator it falls back to one cheap sample read per capability. The generator produces an IAM policy JSON document scoped to the capabilities you tick — attach it as an inline policy on the IAM user whose keys you pasted. It also grants `iam:SimulatePrincipalPolicy` so later preflights stay exact.
@@ -89,7 +89,7 @@ The region pickers include every commercial region, including the opt-in regions
 
 ## Cost graphs
 
-AWS accounts feed [cost graphs & budgets](../features/cloud-costs.md) via Cost Explorer (`GetCostAndUsage`), collected daily and broken down by service, region and [charge type](../features/cloud-costs.md#charge-types-and-cash-vs-amortized), on both a cash and an [amortized](../features/cloud-costs.md#cash-and-amortized) basis.
+AWS accounts feed [cost graphs & budgets](../features/cloud-costs.md) via Cost Explorer (`GetCostAndUsage`), collected daily and broken down by service, region and [charge type](../features/cloud-costs.md#charge-types-and-cash-vs-amortized), on both a cash and an [amortized](../features/cloud-costs.md#cash-amortized-and-blended) basis.
 
 - The IAM user needs the `ce:GetCostAndUsage` action — it is **not** part of typical read-only policies, so add a small policy for it. **Charge-type and amortized attribution need no additional permission**: they are the same API call with a different grouping and a second metric.
 - AWS charges **$0.01 per Cost Explorer request**. A collection makes three requests per month of range (see below), so a normal day costs 3–6 requests and the one-time 365-day backfill about 39 — well under a dollar a month per account either way.
@@ -134,9 +134,13 @@ Three of those are worth a sentence:
 
 On-demand usage (pass 1a) is billed at AWS's public rate, with enterprise-agreement, private-rate and bundled discounts arriving as their own `Discount`-family lines, so Infrawrench records each on-demand usage line's amount as its list price. That is what a [managed account](../features/managed-accounts.md#re-rating-to-public-pricing) re-rated to public pricing is billed from. Spot usage is a `Usage` line too and is re-rated at the Spot price it ran at. Reservation- and Savings-Plan-covered usage has no on-demand figure in Cost Explorer, so it falls back to the customer's uplift. No extra request or permission is involved.
 
+### Blended commitment discounts
+
+AWS accounts also report the [blended cost basis](../features/cloud-costs.md#blended). Savings Plan covered usage already carries its on-demand cost; for reservation-covered hours Infrawrench asks Cost Explorer's `GetReservationUtilization` for the day's on-demand cost of the reservation hours used, one request per service with reservation coverage. That needs the **`ce:GetReservationUtilization`** IAM action on top of `ce:GetCostAndUsage`. Without it collection carries on, and only the reservation-covered services read as amortized on the blended basis. The extra requests (one for Savings Plan coverage plus one per reserved service) are only made on days that had covered usage.
+
 ### Amortized cost
 
-Both `UnblendedCost` and `AmortizedCost` come back on the same requests, so AWS accounts support the amortized [cost basis](../features/cloud-costs.md#cash-and-amortized) at no extra cost. This matters more than it sounds for reservations: the unblended rate of RI-covered usage is **zero** by AWS's own definition, so on a cash basis a reserved fleet looks free and the reservation looks like a pure expense. Amortized cost is what those hours are actually worth.
+Both `UnblendedCost` and `AmortizedCost` come back on the same requests, so AWS accounts support the amortized [cost basis](../features/cloud-costs.md#cash-amortized-and-blended) at no extra cost. This matters more than it sounds for reservations: the unblended rate of RI-covered usage is **zero** by AWS's own definition, so on a cash basis a reserved fleet looks free and the reservation looks like a pure expense. Amortized cost is what those hours are actually worth.
 
 It is also why **commitment coverage is reported on the amortized basis and only there**. Covered hours cost nothing in cash — you paid for them when you bought the commitment — so a coverage percentage computed from cash figures would read 0% for every account that has ever bought anything, however well covered it is. Coverage, the utilization Infrawrench derives from cost rows, and the savings planner all read amortized money for that reason, and all three read it on both sides of every ratio.
 

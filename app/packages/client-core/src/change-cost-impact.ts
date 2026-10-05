@@ -284,11 +284,12 @@ export function collectChangeImpactResults(
  */
 export function parseCostBasis(value: unknown): CostBasis | null {
   if (value === undefined || value === null || value === "") return "cash";
-  return value === "cash" || value === "amortized" ? value : null;
+  return value === "cash" || value === "amortized" || value === "blended" ? value : null;
 }
 
 /** Human label for the basis, for the "(cash basis)" suffix every surface prints. */
 export function costBasisLabel(basis: CostBasis): string {
+  if (basis === "blended") return "blended basis";
   return basis === "amortized" ? "amortized basis" : "cash basis";
 }
 

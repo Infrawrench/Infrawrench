@@ -132,6 +132,10 @@ function toCostDailyRow(
     // provider with no list price leaves the line to the fallback uplift.
     list_amount: r.listAmount ?? 0,
     list_reported: r.listAmount === undefined ? 0 : 1,
+    // Same absent-versus-zero discipline: an unreported blended amount falls
+    // back to the amortized one, a reported zero is a real share.
+    blended_amount: r.blendedAmount ?? 0,
+    blended_reported: r.blendedAmount === undefined ? 0 : 1,
   };
 }
 

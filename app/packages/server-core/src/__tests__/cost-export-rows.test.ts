@@ -3,7 +3,7 @@ import type { SQL } from "drizzle-orm";
 import { ClickHouseDialect } from "drizzle-orm/clickhouse-core";
 import { buildCostExportQuery, resolveColumns, tagColumnName } from "../cost-exports/rows";
 import { csvCell, outputColumns, toCsv, toNdjson } from "../cost-exports/serialize";
-import { amortizedAmountExpr } from "../clickhouse/cost-readers";
+import { amortizedAmountExpr, blendedAmountExpr } from "../clickhouse/cost-readers";
 import type { CostExportRow } from "../cost-exports/rows";
 
 const stamp = { exportedAt: "2026-08-08T04:00:00.000Z", collectionWatermark: "2026-08-06" };
@@ -82,6 +82,14 @@ describe("buildCostExportQuery", () => {
     // And it distinguishes a reported amortized zero (a commitment purchase, on
     // its purchase day) from no amortized figure at all.
     expect(sql).toContain("amortized_reported");
+  });
+
+  it("sums the blended column when asked, through the same expression as the graphs", () => {
+    const { sql } = buildCostExportQuery({ ...base, costBasis: "blended" });
+    expect(sql).toContain(render(blendedAmountExpr()));
+    expect(sql).toContain("blended_reported");
+    // Unblended rows fall back to amortized, which itself falls back to cash.
+    expect(sql).toContain(render(amortizedAmountExpr()));
   });
 
   it("translates filters, including tag filters, into escaped predicates", () => {

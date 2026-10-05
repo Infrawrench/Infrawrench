@@ -16,7 +16,10 @@ describe("awsPreflight declaration", () => {
       "ai-request-logs",
     ]);
     const costs = awsPreflight.capabilities.find((c) => c.id === "costs")!;
-    expect(costs.requiredPermissions.map((p) => p.id)).toEqual(["ce:GetCostAndUsage"]);
+    expect(costs.requiredPermissions.map((p) => p.id)).toEqual([
+      "ce:GetCostAndUsage",
+      "ce:GetReservationUtilization",
+    ]);
     expect(awsPreflight.templateFormat).toEqual({
       label: "AWS IAM policy (JSON)",
       language: "json",
@@ -39,7 +42,10 @@ describe("buildAwsPolicyTemplate", () => {
       "InfrawrenchCosts",
       "InfrawrenchPreflight",
     ]);
-    expect(doc.Statement[1]!.Action).toEqual(["ce:GetCostAndUsage"]);
+    expect(doc.Statement[1]!.Action).toEqual([
+      "ce:GetCostAndUsage",
+      "ce:GetReservationUtilization",
+    ]);
     expect(doc.Statement[2]!.Action).toEqual(["iam:SimulatePrincipalPolicy"]);
     for (const s of doc.Statement) {
       expect(s.Effect).toBe("Allow");

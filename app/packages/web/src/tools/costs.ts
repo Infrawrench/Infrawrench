@@ -96,7 +96,10 @@ export function costTools(): ToolDefinition[] {
         "charged it; 'amortized' spreads a commitment's up-front fee across the term it buys, " +
         "which is the right number for an org holding reservations or savings plans. Providers " +
         "that report no amortized amount fall back to their cash amount rather than dropping " +
-        "out. chargeTypes narrows to particular kinds of charge (usage, " +
+        "out. 'blended' is amortized with each commitment's discount spread evenly over all the " +
+        "usage it was eligible to cover, so every eligible hour carries the same effective rate " +
+        "whichever account the provider applied the discount to: use it for chargeback and " +
+        "showback between teams. Its day totals equal the amortized totals. chargeTypes narrows to particular kinds of charge (usage, " +
         "commitment_covered_usage, commitment_fee, commitment_discount, credit, tax, refund, " +
         "adjustment, support, other); omitting it includes all of them, which is what makes a " +
         "total net rather than gross — filter to ['usage','commitment_covered_usage'] to see " +
@@ -310,8 +313,10 @@ export function costTools(): ToolDefinition[] {
         "Per-account cost data coverage: whether the provider plugin supports cost collection, " +
         "when spend was last polled, backfill state, and the date range covered. Check this when " +
         "query_costs returns empty or surprising data.\n\n" +
-        "Three capability flags decide how the numbers should be read. `amortization` says the " +
+        "Four capability flags decide how the numbers should be read. `amortization` says the " +
         "provider reports an amortized amount, so costBasis='amortized' is meaningful for it; " +
+        "`blending` says it reports blended commitment discounts, so costBasis='blended' moves " +
+        "money between its rows (elsewhere blended reads as amortized); " +
         "`chargeTypes` says it distinguishes usage from credits, tax and commitments (when " +
         "false, every one of its rows is 'usage'); and `estimated` says the amounts were " +
         "computed by Infrawrench from inventory and a published rate card rather than billed by " +

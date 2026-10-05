@@ -119,7 +119,7 @@ resource "infrawrench_budget" "launch" {
 ### Optional
 
 - `amount_cents` (Number) Limit per period of a spend budget, in minor currency units. Must be greater than zero for a spend budget unless `explicit_period` blocks carry the amounts; ignored by a usage budget. Defaults to 0.
-- `cost_basis` (String) `cash` to measure against invoiced spend, `amortized` to spread commitment fees.
+- `cost_basis` (String) `cash` to measure against invoiced spend, `amortized` to spread commitment fees, or `blended` to also share each commitment's discount evenly across all the usage it could cover, so every team or customer pays the same effective rate (day totals match amortized).
 - `currency` (String) ISO 4217 currency code. Defaults to `USD`.
 - `explicit_period` (Block List) An explicit list of non-overlapping periods, each with its own amount (`amount_cents` for a spend budget, `usage_amount` for a usage budget). At most 60. Days outside every period are not measured. Conflicts with `recurring_period`. (see [below for nested schema](#nestedblock--explicit_period))
 - `filter` (Block List) Restricts the budget to matching spend. Clauses are ANDed. (see [below for nested schema](#nestedblock--filter))

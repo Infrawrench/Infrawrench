@@ -83,7 +83,7 @@ const querySchema = z.object({
   virtualTagKeys: z.array(z.string().min(1).max(64)).max(25).optional(),
   filters: z.array(filterSchema).max(25),
   chargeTypes: z.array(z.enum(COST_CHARGE_TYPES)).optional(),
-  costBasis: z.enum(["cash", "amortized"]).optional(),
+  costBasis: z.enum(["cash", "amortized", "blended"]).optional(),
 });
 
 const destinationSchema = z.union([

@@ -73,13 +73,22 @@ function costRow(over: Partial<CostDailyRow>): CostDailyRow {
     commitment_id: "",
     list_amount: 0,
     list_reported: 0,
+    blended_amount: 0,
+    blended_reported: 0,
     ...over,
   };
 }
 
 // Plain usage on two days, plus one commitment-covered row sharing day1:
 // enough to give the coverage, showback and billing-rule SQL something to say.
-const usageProd = costRow({ amount: 10, amortized_amount: 10 });
+// Blended: the 20 of covered usage and the 10 on demand share one rate, so
+// the pool's 30 is re-split 12 / 18. usageDev carries no blended opinion.
+const usageProd = costRow({
+  amount: 10,
+  amortized_amount: 10,
+  blended_amount: 12,
+  blended_reported: 1,
+});
 const usageDev = costRow({
   day: day2,
   resource_id: "i-bbb",
@@ -93,6 +102,8 @@ const coveredProd = costRow({
   amortized_amount: 20,
   charge_type: "commitment_covered_usage",
   commitment_id: "cm-1",
+  blended_amount: 18,
+  blended_reported: 1,
   tags_hash: hashTags(
     { env: "prod" },
     { chargeType: "commitment_covered_usage", commitmentId: "cm-1" },
@@ -205,6 +216,21 @@ describe.skipIf(!isClickHouseConfigured())("cost and flow SQL against a real ser
     expect(groups[0]!.key).toBe(accountId);
     expect(groups[0]!.currency).toBe("USD");
     expect(sumPoints(groups, "points")).toBeCloseTo(15);
+  });
+
+  it("sums the blended basis to the amortized total, falling back per row", async () => {
+    const amortized = await queryCosts(orgId, { ...baseQuery, costBasis: "amortized" });
+    const blended = await queryCosts(orgId, { ...baseQuery, costBasis: "blended" });
+    // 12 + 18 blended on day1, plus usageDev's 5 read through the fallback.
+    expect(sumPoints(blended, "points")).toBeCloseTo(35);
+    expect(sumPoints(blended, "points")).toBeCloseTo(sumPoints(amortized, "points"));
+
+    const usageOnly = await queryCosts(orgId, {
+      ...baseQuery,
+      costBasis: "blended",
+      chargeTypes: ["usage"],
+    });
+    expect(sumPoints(usageOnly, "points")).toBeCloseTo(17);
   });
 
   it("applies compiled billing rules in the query", async () => {

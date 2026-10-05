@@ -389,8 +389,11 @@ export const budgets = pgTable(
     filters: jsonb("filters").notNull().default([]),
     thresholds: jsonb("thresholds").notNull().default([]),
     /**
-     * Which number the budget tracks: "cash" (what the provider charged) or
-     * "amortized" (commitment fees spread over the term they buy). Defaulted
+     * Which number the budget tracks: "cash" (what the provider charged),
+     * "amortized" (commitment fees spread over the term they buy) or
+     * "blended" (amortized, with commitment discounts shared evenly across
+     * eligible usage). Free text, no check constraint, so adding a basis
+     * needs no migration. Defaulted
      * rather than nullable so every existing budget keeps measuring cash, which
      * is what it has been measuring.
      */
@@ -1311,7 +1314,10 @@ export const managedAccounts = pgTable(
      * three-year commitment in the month it was signed is not a bill anyone can
      * budget against.
      */
-    costBasis: text("cost_basis").$type<"cash" | "amortized">().notNull().default("amortized"),
+    costBasis: text("cost_basis")
+      .$type<"cash" | "amortized" | "blended">()
+      .notNull()
+      .default("amortized"),
     /** Off means a pass-through contract: billed exactly what providers charged. */
     applyBillingRules: boolean("apply_billing_rules").notNull().default(true),
     /**

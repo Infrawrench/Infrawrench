@@ -230,7 +230,7 @@ describe("POST /change-impact", () => {
   });
 
   it("400s on a cost basis it does not have, instead of silently using cash", async () => {
-    const res = await post({ subjectKind: "change", subjectId: "chg-1", costBasis: "blended" });
+    const res = await post({ subjectKind: "change", subjectId: "chg-1", costBasis: "unblended" });
     expect(res.status).toBe(400);
     expect(mockWriteImpactAnnotation).not.toHaveBeenCalled();
   });

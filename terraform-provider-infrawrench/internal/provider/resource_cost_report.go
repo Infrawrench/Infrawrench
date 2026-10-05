@@ -229,8 +229,8 @@ func (r *costReportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					"cost_basis": schema.StringAttribute{
 						Optional: true,
 						MarkdownDescription: "`cash` to chart invoiced spend, `amortized` to spread " +
-							"commitment fees across the term they cover.",
-						Validators: []validator.String{oneOfValidator("cash", "amortized")},
+							"commitment fees across the term they cover, " + blendedBasisDescription,
+						Validators: []validator.String{oneOfValidator("cash", "amortized", "blended")},
 					},
 					"unit_cost_metric_id": schema.StringAttribute{
 						Optional: true,

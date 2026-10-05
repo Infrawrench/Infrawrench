@@ -50,6 +50,10 @@ const METRICS_PERMISSIONS: PreflightPermission[] = [
 
 const COSTS_PERMISSIONS: PreflightPermission[] = [
   { id: "ce:GetCostAndUsage", label: "Read Cost Explorer cost and usage data" },
+  {
+    id: "ce:GetReservationUtilization",
+    label: "Read reservation utilization, for blended commitment discounts",
+  },
 ];
 
 const AI_REQUEST_LOG_PERMISSIONS: PreflightPermission[] = [

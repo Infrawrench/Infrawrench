@@ -93,7 +93,7 @@ Required:
 Optional:
 
 - `charge_types` (List of String) Restrict the export to these classes of charge, e.g. `usage`, `commitment_fee`, `credit`, `tax`. Leave unset to export every class.
-- `cost_basis` (String) `cash` to export invoiced spend, `amortized` to spread commitment fees across the term they cover.
+- `cost_basis` (String) `cash` to export invoiced spend, `amortized` to spread commitment fees across the term they cover, or `blended` to also share each commitment's discount evenly across all the usage it could cover, so every team or customer pays the same effective rate (day totals match amortized).
 - `filter` (Block List) Restricts the export to matching spend. Clauses are ANDed. At most 25. (see [below for nested schema](#nestedblock--query--filter))
 - `tag_keys` (List of String) Tag keys to emit as their own columns, at most 25. Only meaningful for keys your resources actually carry; see `infrawrench_tag_policy` for enforcing that.
 - `virtual_tag_keys` (List of String) Virtual tag keys to emit as their own `vtag_<key>` columns, at most 25, each 1-64 characters (see `infrawrench_virtual_tag`). A row a split rule divides is exported once per share with weighted amounts, so the file still sums to the total.

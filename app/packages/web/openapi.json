@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.67.0",
+    "version": "1.68.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -3884,9 +3884,10 @@
         "type": "string",
         "enum": [
           "cash",
-          "amortized"
+          "amortized",
+          "blended"
         ],
-        "description": "Which number to sum. `cash` is what the provider charged on the day it charged it — the default, and what every query returned before this existed. `amortized` spreads a commitment's up-front fee across the term it buys, so a year of capacity bought on one day is counted on the days it covers. Providers that report no amortized amount fall back to their cash amount, so an amortized query over a mixed estate never drops their spend."
+        "description": "Which number to sum. `cash` is what the provider charged on the day it charged it — the default, and what every query returned before this existed. `amortized` spreads a commitment's up-front fee across the term it buys, so a year of capacity bought on one day is counted on the days it covers. Providers that report no amortized amount fall back to their cash amount, so an amortized query over a mixed estate never drops their spend. `blended` is amortized with each commitment's discount (reservations, savings plans, committed-use discounts) spread evenly over all the usage it was eligible to cover, so every eligible hour in the commitment's scope carries the same effective rate whichever account or resource the provider applied it to: the fair basis for chargeback. Day totals equal the amortized totals exactly; rows a provider did not blend fall back to their amortized amount."
       },
       "CostChargeType": {
         "type": "string",
@@ -4608,6 +4609,10 @@
           "amortization": {
             "type": "boolean",
             "description": "Whether this account's plugin reports an amortized amount distinct from the cash amount. Clients offer the amortized cost basis only when at least one account says yes; elsewhere the amortized view is the cash numbers under another name."
+          },
+          "blending": {
+            "type": "boolean",
+            "description": "Whether this account's plugin reports blended commitment discounts. Clients offer the blended cost basis only when at least one account says yes; elsewhere it reads as the amortized numbers."
           },
           "estimated": {
             "type": "boolean",
@@ -5357,7 +5362,8 @@
             "type": "string",
             "enum": [
               "cash",
-              "amortized"
+              "amortized",
+              "blended"
             ]
           },
           "measure": {
@@ -5750,7 +5756,8 @@
                 "type": "string",
                 "enum": [
                   "cash",
-                  "amortized"
+                  "amortized",
+                  "blended"
                 ]
               },
               "adjusted": {
@@ -5793,7 +5800,8 @@
                 "type": "string",
                 "enum": [
                   "cash",
-                  "amortized"
+                  "amortized",
+                  "blended"
                 ]
               }
             },
@@ -5916,7 +5924,8 @@
             "type": "string",
             "enum": [
               "cash",
-              "amortized"
+              "amortized",
+              "blended"
             ]
           },
           "adjusted": {
@@ -7449,7 +7458,8 @@
             "type": "string",
             "enum": [
               "cash",
-              "amortized"
+              "amortized",
+              "blended"
             ]
           }
         },
@@ -9959,7 +9969,8 @@
             "type": "string",
             "enum": [
               "cash",
-              "amortized"
+              "amortized",
+              "blended"
             ]
           },
           "chargeTypes": {
@@ -10473,7 +10484,8 @@
         "type": "string",
         "enum": [
           "cash",
-          "amortized"
+          "amortized",
+          "blended"
         ],
         "description": "The basis `actualCents` and `forecastCents` were measured on."
       },
@@ -10987,7 +10999,7 @@
                 "$ref": "#/components/schemas/BudgetCostBasis"
               },
               {
-                "description": "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it charged it. An organization holding reservations or savings plans usually wants `amortized`: a cash budget is blown the month a commitment is bought and then reads as under-spent for the rest of the term it paid for."
+                "description": "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it charged it. An organization holding reservations or savings plans usually wants `amortized`: a cash budget is blown the month a commitment is bought and then reads as under-spent for the rest of the term it paid for. `blended` additionally spreads each commitment's discount evenly over all the usage it could cover, which is the fair basis for a team's budget when commitments are bought centrally."
               }
             ]
           },
@@ -11118,7 +11130,7 @@
                 "$ref": "#/components/schemas/BudgetCostBasis"
               },
               {
-                "description": "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it charged it. An organization holding reservations or savings plans usually wants `amortized`: a cash budget is blown the month a commitment is bought and then reads as under-spent for the rest of the term it paid for."
+                "description": "Which number the budget tracks. Defaults to `cash` — what the provider charged, when it charged it. An organization holding reservations or savings plans usually wants `amortized`: a cash budget is blown the month a commitment is bought and then reads as under-spent for the rest of the term it paid for. `blended` additionally spreads each commitment's discount evenly over all the usage it could cover, which is the fair basis for a team's budget when commitments are bought centrally."
               }
             ]
           },
@@ -14606,7 +14618,8 @@
             "type": "string",
             "enum": [
               "cash",
-              "amortized"
+              "amortized",
+              "blended"
             ]
           },
           "applyBillingRules": {
@@ -14720,9 +14733,10 @@
             "type": "string",
             "enum": [
               "cash",
-              "amortized"
+              "amortized",
+              "blended"
             ],
-            "description": "Defaults to `amortized`. Charging a customer the whole cash value of a three-year commitment in the month it was signed is not a bill anyone can budget against."
+            "description": "Defaults to `amortized`. Charging a customer the whole cash value of a three-year commitment in the month it was signed is not a bill anyone can budget against. `blended` spreads each commitment's discount evenly over all the usage it could cover, so a customer is not billed more or less depending on which account the provider happened to apply a shared commitment to."
           },
           "applyBillingRules": {
             "type": "boolean",
@@ -15105,7 +15119,8 @@
             "type": "string",
             "enum": [
               "cash",
-              "amortized"
+              "amortized",
+              "blended"
             ]
           },
           "applyBillingRules": {
@@ -20388,9 +20403,10 @@
         "type": "string",
         "enum": [
           "cash",
-          "amortized"
+          "amortized",
+          "blended"
         ],
-        "description": "Which charge-type basis both windows are read on. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys. It is echoed on every response because a delta whose basis is unstated is unreadable — an amortized 'after' against a cash 'before' looks exactly like a saving."
+        "description": "Which charge-type basis both windows are read on. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys; `blended` also spreads each commitment's discount evenly over the usage it could cover. It is echoed on every response because a delta whose basis is unstated is unreadable — an amortized 'after' against a cash 'before' looks exactly like a saving."
       },
       "ChangeCostImpactWindow": {
         "type": [
@@ -53573,9 +53589,10 @@
               "type": "string",
               "enum": [
                 "cash",
-                "amortized"
+                "amortized",
+                "blended"
               ],
-              "description": "Which money to sum. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys. Providers that report no amortized amount fall back to their cash amount."
+              "description": "Which money to sum. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys; `blended` also spreads each commitment's discount evenly over all the usage it could cover. Providers that report no amortized amount fall back to their cash amount."
             },
             "required": false,
             "name": "basis",
@@ -54657,9 +54674,10 @@
               "type": "string",
               "enum": [
                 "cash",
-                "amortized"
+                "amortized",
+                "blended"
               ],
-              "description": "Which money to sum. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys. Providers that report no amortized amount fall back to their cash amount."
+              "description": "Which money to sum. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys; `blended` also spreads each commitment's discount evenly over all the usage it could cover. Providers that report no amortized amount fall back to their cash amount."
             },
             "required": false,
             "name": "basis",
@@ -62610,7 +62628,7 @@
               "$ref": "#/components/schemas/ChangeCostBasis"
             },
             "required": false,
-            "description": "Which charge-type basis both windows are read on. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys. It is echoed on every response because a delta whose basis is unstated is unreadable — an amortized 'after' against a cash 'before' looks exactly like a saving.",
+            "description": "Which charge-type basis both windows are read on. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys; `blended` also spreads each commitment's discount evenly over the usage it could cover. It is echoed on every response because a delta whose basis is unstated is unreadable — an amortized 'after' against a cash 'before' looks exactly like a saving.",
             "name": "costBasis",
             "in": "query"
           }

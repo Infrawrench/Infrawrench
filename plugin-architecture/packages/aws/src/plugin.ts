@@ -112,7 +112,9 @@ const manifest: PluginManifest = {
   // REGION, everything else by SERVICE + RECORD_TYPE (the API allows only two
   // groupings per request). Per-resource granularity is intentionally omitted
   // (CE keeps it 14 days only, and it explodes cardinality). Needs the
-  // ce:GetCostAndUsage IAM action and no other.
+  // ce:GetCostAndUsage IAM action, plus ce:GetReservationUtilization for the
+  // blended basis on reservation-covered usage (optional: without it those
+  // pools read as amortized).
   //
   // chargeTypes: RECORD_TYPE tells on-demand usage from covered usage, tax,
   // credits, refunds, support and commitment purchases; see cost-data.ts for
@@ -134,6 +136,9 @@ const manifest: PluginManifest = {
     restatementDays: 3,
     chargeTypes: true,
     amortization: true,
+    // Savings Plan and RI discounts spread evenly over eligible usage; see
+    // "Blended commitment discounts" in cost-data.ts.
+    blending: true,
   },
   // EC2 + RDS Reserved Instances and Savings Plans. Needs
   // ec2:DescribeReservedInstances, rds:DescribeReservedDBInstances and

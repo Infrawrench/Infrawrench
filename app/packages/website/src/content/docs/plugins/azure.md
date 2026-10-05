@@ -134,11 +134,15 @@ Things worth knowing about the numbers:
 - **If your subscription doesn't support the breakdown, collection still works.** Azure only exposes the benefit column on Enterprise Agreement and Microsoft Customer Agreement accounts. When it refuses the query, Infrawrench falls back to the previous single-query collection and every row is recorded as usage.
 - **Amortized amounts are collected too, where Azure serves them.** See below.
 
+### Blended commitment discounts
+
+Azure subscriptions that serve amortized data also report the [blended cost basis](../features/cloud-costs.md#blended). When a collection window has reservation- or savings-plan-covered usage, Infrawrench runs two extra amortized-cost queries (covered usage per meter, and the subscription's own on-demand price per meter) and, for a covered meter that never ran on demand, looks up its public price in the Azure Retail Prices API. No extra role is needed beyond Cost Management Reader. A service whose covered meters can't all be priced keeps its amortized figures on the blended basis.
+
 ### Amortized cost, and how coverage is measured
 
 Azure serves cost data as two datasets. **Actual cost** is the bank statement: a reservation purchase lands whole on the day it was charged, and usage the reservation covers costs **zero**, because you paid for it when you bought the reservation. **Amortized cost** spreads the purchase across the term it buys, so the covered hours are priced at what they are actually worth.
 
-Infrawrench queries both, with the same grouping, and the gap between them for a given service and region is exactly what your commitments delivered there. That cell is then recorded as two rows: on-demand consumption, and commitment-covered consumption worth nothing in cash and its amortized value on the amortized [cost basis](../features/cloud-costs.md#cash-and-amortized).
+Infrawrench queries both, with the same grouping, and the gap between them for a given service and region is exactly what your commitments delivered there. That cell is then recorded as two rows: on-demand consumption, and commitment-covered consumption worth nothing in cash and its amortized value on the amortized [cost basis](../features/cloud-costs.md#cash-amortized-and-blended).
 
 This is what makes the [Commitments](../features/commitments.md) coverage figure work for Azure. It needs no Enterprise Agreement, because it never asks which reservation covered an hour — only whether one did.
 

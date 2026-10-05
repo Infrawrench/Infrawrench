@@ -183,7 +183,8 @@ function normalizeInput(input: ManagedAccountInput): Normalized {
       "billingAddress",
     ),
     billingCurrency,
-    costBasis: input.costBasis === "cash" ? "cash" : "amortized",
+    costBasis:
+      input.costBasis === "cash" || input.costBasis === "blended" ? input.costBasis : "amortized",
     applyBillingRules: input.applyBillingRules !== false,
     notes: trimOrNull(input.notes, MANAGED_ACCOUNT_LIMITS.maxNotesLength, "notes"),
     costCentreIds: dedupe(

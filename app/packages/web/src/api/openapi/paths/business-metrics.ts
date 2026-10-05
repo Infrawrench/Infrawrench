@@ -312,7 +312,7 @@ const UnitCostQueryRequest = strict({
     .optional()
     .describe("The same narrowing as cost-query-language text."),
   savedFilterId: Uuid.optional(),
-  costBasis: z.enum(["cash", "amortized"]).optional(),
+  costBasis: z.enum(["cash", "amortized", "blended"]).optional(),
   chargeTypes: z.array(z.string()).optional(),
   displayCurrency: z
     .string()

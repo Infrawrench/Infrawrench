@@ -121,6 +121,8 @@ export async function tombstoneCustomCostRows(scope: CustomCostRowScope): Promis
         commitment_id: row.commitment_id,
         list_amount: 0,
         list_reported: 0,
+        blended_amount: 0,
+        blended_reported: 0,
       };
     });
     await insertCostRows(tombstones);
