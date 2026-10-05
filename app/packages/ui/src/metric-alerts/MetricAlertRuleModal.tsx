@@ -13,6 +13,7 @@ import {
   type MetricSeriesKeyOption,
 } from "./config.js";
 import { Modal } from "../components/Modal.js";
+import { TagKeySelect } from "../cost/TagKeyPicker.js";
 import type { MetricAlertsClient } from "./types.js";
 
 const inputClass =
@@ -112,6 +113,17 @@ export function MetricAlertRuleModal({
     };
   }, [client, input.pluginId, input.resourceTypeId, input.tagKey, input.tagValue]);
 
+  // The server already applied the org's tag key settings (preferred first,
+  // hidden left out); this only marks which ones go in the pinned group.
+  const tagKeyOptions = useMemo(() => {
+    const preferred = new Set(options?.preferredTagKeys ?? []);
+    return (options?.tagKeys ?? []).map((k) => ({
+      value: k,
+      label: k,
+      ...(preferred.has(k) ? { preferred: true } : {}),
+    }));
+  }, [options]);
+
   const typeOptions = useMemo(() => {
     if (!options || !input.pluginId) return [];
     return options.plugins.find((p) => p.pluginId === input.pluginId)?.resourceTypeIds ?? [];
@@ -199,24 +211,19 @@ export function MetricAlertRuleModal({
                   </option>
                 ))}
               </select>
-              <select
+              <TagKeySelect
                 aria-label={gt("Tag key")}
                 className={inputClass}
+                options={tagKeyOptions}
                 value={input.tagKey ?? ""}
-                onChange={(e) =>
+                onChange={(tagKey) =>
                   set({
-                    tagKey: e.target.value || null,
-                    ...(e.target.value ? {} : { tagValue: null }),
+                    tagKey: tagKey || null,
+                    ...(tagKey ? {} : { tagValue: null }),
                   })
                 }
-              >
-                <option value="">{gt("Any tag")}</option>
-                {(options?.tagKeys ?? []).map((k) => (
-                  <option key={k} value={k}>
-                    {k}
-                  </option>
-                ))}
-              </select>
+                emptyLabel={gt("Any tag")}
+              />
               <input
                 aria-label={gt("Tag value")}
                 className={inputClass}

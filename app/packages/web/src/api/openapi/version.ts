@@ -218,4 +218,10 @@
 // by `tagKey` / `groupByTagKey` like `tag`), `dimension=virtual-tag-keys` on
 // `/costs/dimensions`, `virtualTagKey`/`virtualTagValue` on allocation rule
 // matches, and `virtualTagKeys` on cost export queries. All additive.
-export const API_VERSION = "1.61.0";
+// 1.62.0: tag key settings. New `GET /tag-keys` (discovered keys with usage)
+// and `GET/PUT /tag-keys/settings` (hidden keys and prefix patterns, preferred
+// keys). `GET /costs/dimensions?dimension=tag-keys` now applies them: values
+// are `{value, label, preferred?}` objects (were bare strings; the union
+// already allowed both), preferred first, hidden omitted unless the new
+// `includeHidden=true`. `MetricAlertSelectorOptions` gains `preferredTagKeys`.
+export const API_VERSION = "1.62.0";

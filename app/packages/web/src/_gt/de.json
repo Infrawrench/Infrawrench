@@ -14978,5 +14978,93 @@
       },
       " nicht."
     ]
-  }
+  },
+  "64fe94763a8f1dee": "{key} (ausgeblendet)",
+  "2e11f0b3901701f5": "{key} (nicht in der Liste)",
+  "52c8729410daae1d": "Bevorzugt",
+  "e0f9378503991179": "Alle Tag-Schlüssel",
+  "ea7c7cabe1495214": "Tag-Schlüssel konnten nicht geladen werden",
+  "262986915eabf92b": "Einstellungen für Tag-Schlüssel konnten nicht gespeichert werden",
+  "6179415c1647dc6c": "Tag-Schlüssel",
+  "aa0d1082c24dda2d": "Bevorzugte Schlüssel",
+  "ed9b86adff85a236": "In dieser Reihenfolge oben in jeder Auswahl angeheftet. Heften Sie Schlüssel über die Tabelle unten an.",
+  "25cada88a8210de5": "Keine bevorzugten Schlüssel.",
+  "ecbf3b1029538e24": "{key} nach oben",
+  "adca7334f8e7238f": "{key} nach unten",
+  "151dc69f33369c77": "{key} lösen",
+  "2f4c4eb372747699": "Ausgeblendete Schlüssel",
+  "be5d1c939b458c3e": "Keine ausgeblendeten Schlüssel.",
+  "e37c0ed3cd16d7a4": "({count} Schlüssel)",
+  "07562cc7a91b5c19": "{pattern} nicht mehr ausblenden",
+  "701814603e3432dc": "Schlüssel oder Präfixmuster zum Ausblenden",
+  "ed9d2b47672b2002": "Ein einzelnes * würde alle Tag-Schlüssel ausblenden.",
+  "e4034a264417db29": "Muster dürfen höchstens {max} Zeichen lang sein.",
+  "d8e63c3ea9f48743": "* wird nur am Ende eines Musters unterstützt.",
+  "f81e8697a887cbbf": "Entspricht {count} erkannten Schlüsseln",
+  "59f122d39ed074db": "Aus Ihren Daten vorgeschlagen",
+  "e24d3e9d477b0bf0": "Tag-Schlüssel speichern",
+  "3d8e8c4e97554034": "Erkannte Tag-Schlüssel",
+  "88a5110537d932e0": "Jeder Schlüssel aus den Kostendaten der letzten {days} Tage und aus Ihrem Ressourcenbestand, die aktivsten zuerst.",
+  "84848dde8c2f14ab": "Schlüssel suchen",
+  "bbc17cfbae9edea5": "Alle Schlüssel",
+  "df1692602270e4e9": "Sichtbar",
+  "0692d22e0858a017": "Noch keine Tag-Schlüssel gefunden. Sie erscheinen, sobald Kostendaten oder Ressourcen mit Tags oder Labels erfasst wurden.",
+  "0f487f9fce378117": "Kostenzeilen",
+  "3e218c100a4206e3": "Alle {count} Schlüssel anzeigen",
+  "f860022dd7c8866a": "Die {count} aktivsten Schlüssel werden angezeigt.",
+  "70e7f7208406f658": "Ausgeblendet durch {pattern}",
+  "a10ff8b39e16d7f8": "Anheften",
+  "8b6e2fa6fc5d7dde": "Einblenden",
+  "cc2dffef63f169f6": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Blenden Sie Tag-Schlüssel aus, die niemand auswertet (interne Daten des Anbieters wie",
+      " ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "aws:cloudformation:stack-id"
+      },
+      ") und heften Sie die, nach denen Ihr Team gruppiert, oben an. Das gilt für jede Tag-Auswahl und jedes Gruppieren-nach-Dropdown: Kostenberichte, Dashboards, gespeicherte Filter, Budgets, Alarme, Kostenstellenregeln und die Ressourcenauswahl. Ausgeblendete Schlüssel werden nur in Auswahlen ausgeblendet; ihre Daten bleiben erhalten, werden exportiert und sind weiterhin abfragbar."
+    ]
+  },
+  "d1bfcc917463263f": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Exakte Schlüssel oder Präfixe, die auf ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "*"
+      },
+      " enden, z. B.",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "aws:cloudformation:*"
+      },
+      ". Groß- und Kleinschreibung wird beachtet."
+    ]
+  },
+  "b22055d861f201fe": [
+    {
+      "t": "code",
+      "i": 1,
+      "c": {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    },
+    " ausblenden (",
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    },
+    " Schlüssel)"
+  ]
 }

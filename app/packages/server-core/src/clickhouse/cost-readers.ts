@@ -1006,15 +1006,25 @@ export async function getCostDimensionValues(
   return rows.map((r) => String(r.value));
 }
 
-/** Distinct tag keys present in an org's cost data. */
-export async function getCostTagKeys(organizationId: string): Promise<string[]> {
+/**
+ * Distinct tag keys present in an org's cost data.
+ *
+ * The cap is generous on purpose: callers drop the org's hidden keys
+ * (`applyTagKeySettings`) and trim to their own limit afterwards, and a bill
+ * full of `aws:cloudformation:*` noise would otherwise spend the whole cap on
+ * keys nobody will see.
+ */
+export async function getCostTagKeys(
+  organizationId: string,
+  limit = TAG_KEY_SCAN_LIMIT,
+): Promise<string[]> {
   const rows = await query((db) =>
     db
       .selectDistinct({ key: sql<string>`arrayJoin(mapKeys(${costDaily.tags}))`.as("key") })
       .from(costDaily)
       .where(costDailyOrgCondition(organizationId))
       .orderBy(asc(sql`key`))
-      .limit(200),
+      .limit(limit),
   );
   // Caller dimensions live only on the attributed view; offering them here is
   // what puts `caller:team` in every group-by and filter picker.
@@ -1033,6 +1043,62 @@ export async function getCostTagKeys(organizationId: string): Promise<string[]> 
   const keys = new Set(rows.map((r) => r.key).filter((key) => key !== "infrawrench:upload"));
   for (const r of callerRows) if (r.key.startsWith(CALLER_TAG_PREFIX)) keys.add(r.key);
   return [...keys].sort();
+}
+
+/** Upper bound on distinct tag keys read per org for pickers and the usage table. */
+export const TAG_KEY_SCAN_LIMIT = 2000;
+
+/** Per-key usage over a window of cost data: the tag key settings table. */
+export interface CostTagKeyUsageRow {
+  key: string;
+  pluginIds: string[];
+  rowCount: number;
+  resourceCount: number;
+  lastSeen: string;
+}
+
+/**
+ * How each tag key is used in the org's cost data since `from`: which
+ * providers bill with it, on how many rows and distinct resources, and the
+ * last day it appeared. Busiest keys first.
+ *
+ * Read without FINAL: these are orientation figures for deciding what to hide,
+ * and a replaced-but-unmerged row inflating a count by one changes no decision,
+ * while FINAL over a 90-day window is the expensive way to read it.
+ */
+export async function getCostTagKeyUsage(
+  organizationId: string,
+  from: string,
+  limit = TAG_KEY_SCAN_LIMIT,
+): Promise<CostTagKeyUsageRow[]> {
+  const key = sql<string>`arrayJoin(mapKeys(${costDaily.tags}))`;
+  const rows = await query((db) =>
+    db
+      .select({
+        key: key.as("key"),
+        plugin_ids: sql<string[]>`groupUniqArray(16)(toString(${costDaily.plugin_id}))`.as(
+          "plugin_ids",
+        ),
+        row_count: sql<string>`count()`.as("row_count"),
+        resource_count:
+          sql<string>`uniqExactIf(${costDaily.resource_id}, ${costDaily.resource_id} != '')`.as(
+            "resource_count",
+          ),
+        last_seen: sql<string>`toString(max(${costDaily.day}))`.as("last_seen"),
+      })
+      .from(costDaily)
+      .where(and(costDailyOrgCondition(organizationId), gte(costDaily.day, from)))
+      .groupBy(sql`key`)
+      .orderBy(desc(sql`row_count`), asc(sql`key`))
+      .limit(limit),
+  );
+  return rows.map((r) => ({
+    key: r.key,
+    pluginIds: [...r.plugin_ids].sort(),
+    rowCount: Number(r.row_count),
+    resourceCount: Number(r.resource_count),
+    lastSeen: r.last_seen,
+  }));
 }
 
 /** Aggregate spend split by whether rows carry every required tag key. */

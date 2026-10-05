@@ -318,6 +318,19 @@ infrawrench ai-spend team --json
 
 <insert [Terminal showing `infrawrench tags` output with the compliance table (green/yellow/red score column) and the untagged-spend bar chart below] here>
 
+`tag-keys` lists every tag key in the organization's cost data and resource inventory, with the providers that use it, how much, and whether the organization's [tag key settings](./tag-keys.md) hide it from pickers or pin it to the top. The four verbs edit those settings; quote a prefix pattern so the shell leaves the `*` alone:
+
+```
+infrawrench tag-keys                              # every key, busiest first
+infrawrench tag-keys --json
+infrawrench tag-keys hide 'aws:cloudformation:*'  # or an exact key
+infrawrench tag-keys unhide 'aws:cloudformation:*'
+infrawrench tag-keys pin team                     # appended to the preferred order
+infrawrench tag-keys unpin team
+```
+
+Hiding a key only changes what pickers offer; its data stays queryable. Editing needs `org:settings:write`.
+
 And the organization's own adjustments to collected spend — the answer to "why doesn't this total match the invoice":
 
 ```

@@ -1014,6 +1014,25 @@ export const orgTagPolicies = pgTable("org_tag_policies", {
 });
 
 /**
+ * The org's tag key preferences: keys hidden from every tag picker and keys
+ * pinned to the top of them. One row per org; a missing row reads as no
+ * preferences (`DEFAULT_TAG_KEY_SETTINGS`), the `org_tag_policies` protocol.
+ * A display preference only: nothing reads it on the write or query path, so
+ * a hidden key's cost rows are stored, exported and queryable as before.
+ */
+export const orgTagKeySettings = pgTable("org_tag_key_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** Exact keys and `prefix*` patterns: see `TagKeySettings` in client-core. */
+  hiddenKeys: jsonb("hidden_keys").$type<string[]>().notNull().default([]),
+  /** Exact keys, in pin order. */
+  preferredKeys: jsonb("preferred_keys").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
  * Named cost centres spend is allocated to for showback ("Platform", "Data",
  * "Growth"…). Purely org-defined labels: the mapping from spend to centre is
  * the allocation rules table below.

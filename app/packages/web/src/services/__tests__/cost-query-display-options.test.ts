@@ -19,6 +19,9 @@ vi.mock("@infrawrench/server-core/clickhouse/cost-readers", () => ({
   getCostDimensionValues: vi.fn(async () => []),
   getCostTagKeys: vi.fn(async () => []),
 }));
+vi.mock("@infrawrench/server-core/cost/tag-key-settings", () => ({
+  getOrgTagKeySettings: vi.fn(async () => ({ hidden: [], preferred: [] })),
+}));
 vi.mock("@infrawrench/server-core/cost/billing-rules", () => ({
   resolveBillingAdjustments: vi.fn(),
 }));

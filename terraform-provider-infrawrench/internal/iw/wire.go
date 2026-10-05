@@ -212,6 +212,16 @@ type TagPolicy struct {
 	EnforceOnCreate bool          `json:"enforceOnCreate"`
 }
 
+/* ----------------------------- tag key settings ---------------------------- */
+
+// TagKeySettings is an org singleton: the tag keys hidden from every picker
+// (exact keys or `prefix*` patterns) and the ones pinned to the top, in order.
+// No id, no POST, no DELETE; both lists are always present on the wire.
+type TagKeySettings struct {
+	Hidden    []string `json:"hidden"`
+	Preferred []string `json:"preferred"`
+}
+
 /* ------------------------------ saved filters ------------------------------ */
 
 // SavedCostFilterInput is the POST/PUT body. Filters and Query are mutually

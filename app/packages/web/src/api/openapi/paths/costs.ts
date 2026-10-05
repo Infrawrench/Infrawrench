@@ -277,7 +277,31 @@ export const CostQueryResponse = strict({
 }).openapi("CostQueryResponse");
 
 const CostDimensionValues = strict({
-  values: z.array(z.union([z.string(), strict({ value: z.string(), label: z.string() })])),
+  values: z.array(
+    z.union([
+      z.string(),
+      strict({
+        value: z.string(),
+        label: z.string(),
+        preferred: z
+          .boolean()
+          .optional()
+          .openapi({
+            description:
+              "dimension=tag-keys only: the org pins this key (tag key settings). Preferred keys " +
+              "come first, in the org's order.",
+          }),
+        hidden: z
+          .boolean()
+          .optional()
+          .openapi({
+            description:
+              "dimension=tag-keys with includeHidden=true only: the org hides this key from " +
+              "pickers. Its data is untouched and filters naming it still work.",
+          }),
+      }),
+    ]),
+  ),
 }).openapi("CostDimensionValues");
 
 const CostAccountStatus = strict({
@@ -747,10 +771,12 @@ export function registerCostPaths(ctx: BuildContext) {
     tags: ["Costs"],
     summary: "List distinct values for a cost dimension",
     description:
-      "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, " +
-      "dimension=virtual-tag-keys for the organization's virtual tag keys (labelled by name), or " +
-      "dimension=usage-units for the usage units providers report (a usage budget's unit); " +
-      "dimension=tag and dimension=virtual_tag require tagKey. `charge_type` answers from the fixed set of charge " +
+      "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, which " +
+      "follow the org's tag key settings (preferred keys first and flagged, hidden keys " +
+      "omitted unless includeHidden=true), dimension=virtual-tag-keys for the organization's " +
+      "virtual tag keys (labelled by name), or dimension=usage-units for the usage units " +
+      "providers report (a usage budget's unit); dimension=tag and dimension=virtual_tag " +
+      "require tagKey. `charge_type` answers from the fixed set of charge " +
       "types rather than from the stored data, so the picker is populated before any " +
       "provider has reported one. `usage-units` lists the usage units present in the cost " +
       "data, most common first, for the `usage` measure's unit picker.",
@@ -772,6 +798,9 @@ export function registerCostPaths(ctx: BuildContext) {
           "virtual-tag-keys",
         ]),
         tagKey: z.string().optional(),
+        includeHidden: z.enum(["true", "false"]).optional().openapi({
+          description: "dimension=tag-keys only: also list keys the org hides, flagged `hidden`.",
+        }),
       }),
     },
     responses: {

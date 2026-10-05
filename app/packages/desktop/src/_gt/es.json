@@ -14780,5 +14780,96 @@
       },
       " no."
     ]
-  }
+  },
+  "64fe94763a8f1dee": "{key} (oculta)",
+  "2e11f0b3901701f5": "{key} (no está en la lista)",
+  "52c8729410daae1d": "Preferidas",
+  "e0f9378503991179": "Todas las claves de etiqueta",
+  "ea7c7cabe1495214": "No se pudieron cargar las claves de etiqueta",
+  "262986915eabf92b": "No se pudo guardar la configuración de claves de etiqueta",
+  "6179415c1647dc6c": "Claves de etiqueta",
+  "aa0d1082c24dda2d": "Claves preferidas",
+  "ed9b86adff85a236": "Fijadas arriba en todos los selectores, en este orden. Fija claves desde la tabla de abajo.",
+  "25cada88a8210de5": "No hay claves preferidas.",
+  "ecbf3b1029538e24": "Subir {key}",
+  "adca7334f8e7238f": "Bajar {key}",
+  "151dc69f33369c77": "Desfijar {key}",
+  "2f4c4eb372747699": "Claves ocultas",
+  "be5d1c939b458c3e": "No hay claves ocultas.",
+  "e37c0ed3cd16d7a4": "({count} claves)",
+  "07562cc7a91b5c19": "Dejar de ocultar {pattern}",
+  "701814603e3432dc": "Clave o patrón de prefijo que ocultar",
+  "ed9d2b47672b2002": "Un * solo ocultaría todas las claves de etiqueta.",
+  "e4034a264417db29": "Los patrones pueden tener como máximo {max} caracteres.",
+  "d8e63c3ea9f48743": "* solo se admite al final de un patrón.",
+  "f81e8697a887cbbf": "Coincide con {count} claves detectadas",
+  "59f122d39ed074db": "Sugeridas a partir de tus datos",
+  "e24d3e9d477b0bf0": "Guardar claves de etiqueta",
+  "3d8e8c4e97554034": "Claves de etiqueta detectadas",
+  "88a5110537d932e0": "Todas las claves de los últimos {days} días de datos de costes y de tu inventario de recursos, de más a menos activas.",
+  "84848dde8c2f14ab": "Buscar claves",
+  "bbc17cfbae9edea5": "Todas las claves",
+  "df1692602270e4e9": "Visibles",
+  "0692d22e0858a017": "Aún no se han encontrado claves de etiqueta. Aparecen cuando se han recopilado datos de costes o recursos con etiquetas.",
+  "0f487f9fce378117": "Filas de costes",
+  "3e218c100a4206e3": "Mostrar las {count} claves",
+  "f860022dd7c8866a": "Mostrando las {count} claves más activas.",
+  "70e7f7208406f658": "Oculta por {pattern}",
+  "a10ff8b39e16d7f8": "Fijar",
+  "8b6e2fa6fc5d7dde": "Mostrar",
+  "cc2dffef63f169f6": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Oculta las claves de etiqueta de las que nadie informa (datos internos del proveedor como",
+      " ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "aws:cloudformation:stack-id"
+      },
+      ") y fija arriba las que tu equipo usa para agrupar. Se aplica a todos los selectores de etiquetas y desplegables de agrupación: informes de costes, paneles, filtros guardados, presupuestos, alertas, reglas de centros de costes y el selector de recursos. Las claves ocultas solo se ocultan de los selectores; sus datos se conservan, se exportan y se pueden seguir consultando."
+    ]
+  },
+  "d1bfcc917463263f": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Claves exactas o prefijos que terminan en ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "*"
+      },
+      " como",
+      " ",
+      {
+        "t": "code",
+        "i": 3,
+        "c": "aws:cloudformation:*"
+      },
+      ". Se distingue entre mayúsculas y minúsculas."
+    ]
+  },
+  "b22055d861f201fe": [
+    "Ocultar",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    },
+    " ",
+    "(",
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    },
+    " claves)"
+  ]
 }

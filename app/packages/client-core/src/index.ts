@@ -351,6 +351,25 @@ export {
   type ShowbackReport,
 } from "./tag-policy";
 export {
+  DEFAULT_TAG_KEY_SETTINGS,
+  TAG_KEY_SETTINGS_LIMITS,
+  applyTagKeySettings,
+  groupTagKeyOptions,
+  hiddenTagKeyMatch,
+  isTagKeyHidden,
+  isTagKeyPrefixPattern,
+  normalizeTagKeySettings,
+  tagKeyMatchesPattern,
+  tagKeyPatternError,
+  tagKeySettingsError,
+  suggestTagKeyPrefixes,
+  type TagKeyPrefixSuggestion,
+  type DiscoveredTagKey,
+  type DiscoveredTagKeysResponse,
+  type TagKeySettings,
+  type TagKeySource,
+} from "./tag-keys";
+export {
   BILLING_RULE_KINDS,
   BILLING_RULE_KIND_LABELS,
   BILLING_RULE_KIND_DESCRIPTIONS,

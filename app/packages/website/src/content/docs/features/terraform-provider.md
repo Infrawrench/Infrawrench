@@ -351,7 +351,7 @@ terraform import infrawrench_tag_policy.this       org_01HXYZABCDEF
 terraform import infrawrench_alert_routing.org     org_01HXYZABCDEF
 ```
 
-That covers [tag policy](./tag-policy-and-showback.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [weekly digest](./weekly-digest.md), the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
+That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, the drift, expiry and posture alert settings, [session recording](./session-recording.md), the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
 
 Two resources import under something other than their own id. A [report notification](./cost-reports.md) hangs off its report, so it takes `<report-id>/<notification-id>`; a workflow schedule takes the id of the [workflow](./workflows.md) it belongs to.
 
@@ -412,6 +412,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_ai_attribution_dimension`  | The caller dimensions [AI attribution](./ai-attribution.md) splits spend by            |
 | `infrawrench_custom_cost_source`        | [Custom cost sources](./custom-cost-sources.md) for uploaded CSV and FOCUS spend       |
 | `infrawrench_virtual_tag`               | [Virtual tags](./virtual-tags.md) and their ordered rules                              |
+| `infrawrench_tag_key_settings`          | [Hidden and preferred tag keys](./tag-keys.md) across every tag picker                 |
 
 ### Monitoring
 

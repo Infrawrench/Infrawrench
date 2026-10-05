@@ -39,6 +39,12 @@ import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdAiSources, cmdAiSpend } from "./commands/ai-spend";
 import { cmdBillingRules, cmdBillingRule, cmdBillingRulePreview } from "./commands/billing-rules";
 import { cmdVirtualTags, cmdVirtualTag, cmdReprocessVirtualTag } from "./commands/virtual-tags";
+import {
+  cmdTagKeys,
+  cmdEditTagKeys,
+  TAG_KEYS_ACTIONS,
+  type TagKeysAction,
+} from "./commands/tag-keys";
 import { cmdInvoice, cmdInvoiceCustomers, cmdInvoices } from "./commands/invoices";
 import { cmdOrphans } from "./commands/orphans";
 import { cmdOversized } from "./commands/oversized";
@@ -143,6 +149,10 @@ COMMANDS
                       [--restatement-days 7] [--dimensions provider,account,service,region]
   exports setup <n>   the least-privilege GRANT statements a warehouse export needs
   tags                org tag policy, per-account compliance & untagged spend   [--last 30d]
+  tag-keys            every tag key in cost data and inventory, with providers, usage and
+                      whether the org hides it from pickers or pins it to the top
+  tag-keys hide <k>   hide a key, or a prefix like 'aws:cloudformation:*', from every picker
+                      (data untouched; still queryable)   also: unhide <k>, pin <k>, unpin <k>
   showback            spend by cost centre via the org's allocation rules, as an indented
                       tree — a parent's bar is its subtree total   [--last 30d]
   ai-spend [dim]      billed AI spend split by a caller dimension (team, user, feature…), with
@@ -591,6 +601,24 @@ export async function runCli(): Promise<void> {
       case "tags":
         await cmdTags(ctx, parsed.range);
         break;
+      case "tag-keys": {
+        const verb = rest[0] as TagKeysAction | undefined;
+        if (verb && (TAG_KEYS_ACTIONS as readonly string[]).includes(verb)) {
+          await cmdEditTagKeys(
+            ctx,
+            verb as Exclude<TagKeysAction, "list">,
+            rest.slice(1).join(" "),
+          );
+          break;
+        }
+        if (verb) {
+          throw new CliError(
+            `Unknown tag-keys action "${verb}". Use hide, unhide, pin or unpin, or no action to list.`,
+          );
+        }
+        await cmdTagKeys(ctx);
+        break;
+      }
       case "showback":
         await cmdShowback(ctx, parsed.range);
         break;

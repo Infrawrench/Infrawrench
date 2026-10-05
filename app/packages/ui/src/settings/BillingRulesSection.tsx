@@ -53,7 +53,7 @@ export function BillingRulesSection() {
   const [accounts, setAccounts] = useState<CostDimensionOption[]>([]);
   const [providers, setProviders] = useState<CostDimensionOption[]>([]);
   const [services, setServices] = useState<CostDimensionOption[]>([]);
-  const [tagKeys, setTagKeys] = useState<string[]>([]);
+  const [tagKeys, setTagKeys] = useState<CostDimensionOption[]>([]);
   const [customers, setCustomers] = useState<ManagedAccount[] | null>(null);
   const [editing, setEditing] = useState<BillingRule | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,10 +85,9 @@ export function BillingRulesSection() {
     dimension("account").then(setAccounts, () => {});
     dimension("provider").then(setProviders, () => {});
     dimension("service").then(setServices, () => {});
-    dimension("tag-keys").then(
-      (options) => setTagKeys(options.map((o) => o.value)),
-      () => {},
-    );
+    // Preferred keys first, hidden ones left out: the server applies the org's
+    // tag key settings.
+    dimension("tag-keys").then(setTagKeys, () => {});
     // Customers, for scoping tiered and expression rules and for previewing
     // one customer's invoice. Optional: without `invoices:read` the picker
     // explains itself instead.

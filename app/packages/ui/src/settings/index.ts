@@ -20,6 +20,7 @@ export { AgentsSection } from "./AgentsSection.js";
 export { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 export { FreezesSection } from "./FreezesSection.js";
 export { TagPolicySection } from "./TagPolicySection.js";
+export { TagKeysSection } from "./TagKeysSection.js";
 export { BillingRulesSection } from "./BillingRulesSection.js";
 export { CostCentresSection } from "./CostCentresSection.js";
 export { VirtualTagsSection } from "./VirtualTagsSection.js";

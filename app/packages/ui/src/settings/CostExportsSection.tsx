@@ -13,6 +13,7 @@ import {
   costExportWarehouseTable,
   describeCostExportDestination,
   type CostDimensionId,
+  type CostDimensionOption,
   type CostExport,
   type CostExportHttpDestination,
   type CostExportInput,
@@ -25,6 +26,7 @@ import { Modal } from "../components/Modal.js";
 import { parseNumericInputValue } from "../form-values.js";
 import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost } from "./host.js";
+import { TagKeyInput, useTagKeyOptions } from "../cost/TagKeyPicker.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
 import { WarehouseDestinationFields } from "./CostExportWarehouseFields.js";
@@ -787,6 +789,16 @@ function ColumnPicker({
     const { virtualTagKeys: _drop, ...rest } = query;
     onChange(next.length > 0 ? { ...rest, virtualTagKeys: next } : rest);
   }
+  // Suggestions for the draft: the org's tag keys, preferred first and hidden
+  // ones left out by the server. Still free text: a hidden key is a perfectly
+  // good export column, and the export itself ignores the settings.
+  const tagKeys = useTagKeyOptions(() =>
+    api
+      .get<{
+        values: Array<string | CostDimensionOption>;
+      }>(`/api/org/${orgId}/costs/dimensions?dimension=tag-keys`)
+      .then((res) => res.values.map((v) => (typeof v === "string" ? { value: v, label: v } : v))),
+  );
 
   function toggleDimension(dimension: CostDimensionId) {
     const selected = query.dimensions.includes(dimension);
@@ -860,10 +872,10 @@ function ColumnPicker({
         <div className="flex items-end gap-2">
           <label className="block flex-1">
             <span className={LABEL}>{gt("Tag key")}</span>
-            <input
-              type="text"
+            <TagKeyInput
+              options={tagKeys?.filter((o) => !query.tagKeys.includes(o.value)) ?? null}
               value={tagKeyDraft}
-              onChange={(e) => setTagKeyDraft(e.target.value)}
+              onChange={setTagKeyDraft}
               placeholder="team"
               className={INPUT}
             />

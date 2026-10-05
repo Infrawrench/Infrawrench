@@ -86,6 +86,7 @@
     "./cost/unit-cost-regression": "./src/cost/unit-cost-regression.ts",
     "./cost/unit-cost-regression-eval": "./src/cost/unit-cost-regression-eval.ts",
     "./cost/tag-policy": "./src/cost/tag-policy.ts",
+    "./cost/tag-key-settings": "./src/cost/tag-key-settings.ts",
     "./cost/allocation": "./src/cost/allocation.ts",
     "./cost/billing-rules": "./src/cost/billing-rules.ts",
     "./cost/pricing-preview": "./src/cost/pricing-preview.ts",

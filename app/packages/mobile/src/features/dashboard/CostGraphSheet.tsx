@@ -31,6 +31,7 @@ import {
 import { CostBasisChips } from "./CostBasisChips";
 import { CostFilterEditor, useDimensionValues } from "./CostFilterEditor";
 import { SavedFilterChip } from "./SavedFilterChip";
+import { tagKeyChipOptions } from "./tag-key-options";
 
 /**
  * Author a cost-graph widget: the native counterpart of web's
@@ -259,7 +260,8 @@ export function CostGraphSheet({
         <ChipSelect
           label="Tag key"
           {...(tagKeys.isLoading ? { hint: "Loading tag keys…" } : {})}
-          options={(tagKeys.data ?? []).map((k) => ({ value: k.value, label: k.label }))}
+          // A star marks the org's preferred keys; hidden ones never arrive.
+          options={tagKeyChipOptions(tagKeys.data ?? [], config.groupByTagKey)}
           value={config.groupByTagKey ?? null}
           onChange={(groupByTagKey) => set({ groupByTagKey })}
         />

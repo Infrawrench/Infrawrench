@@ -13,6 +13,9 @@ describe("isAllowedSettingsRequest", () => {
     expect(isAllowedSettingsRequest("GET", "/api/profile")).toBe(true);
     expect(isAllowedSettingsRequest("patch", "/api/org/o1/team/m1")).toBe(true);
     expect(isAllowedSettingsRequest("GET", "/api/org/o1/audit-logs?limit=50")).toBe(true);
+    // The Tag Keys section: the discovery table and the settings document.
+    expect(isAllowedSettingsRequest("GET", "/api/org/o1/tag-keys")).toBe(true);
+    expect(isAllowedSettingsRequest("PUT", "/api/org/o1/tag-keys/settings")).toBe(true);
     // The AI Attribution section: sources, locations picker, dimensions, stats.
     expect(
       isAllowedSettingsRequest(

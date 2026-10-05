@@ -19,6 +19,7 @@ import { MultiSelect, type MultiSelectStatus } from "../components/MultiSelect.j
 
 import { selectBaseClass, selectClass, tabClass } from "./form-styles.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
+import { TagKeyInput } from "./TagKeyPicker.js";
 
 export const DIMENSION_LABELS = COST_DIMENSION_LABELS;
 
@@ -120,6 +121,9 @@ export function CostFilterRows({
   useEffect(() => {
     for (const f of filters) {
       if (isKeyedCostDimension(f.dimension)) {
+        // A tag row's key field suggests the org's tag keys, preferred first
+        // and hidden ones left out by the server.
+        if (f.dimension === "tag") loadOptions("tag-keys");
         if (f.tagKey) loadOptions(f.dimension, f.tagKey);
       } else {
         loadOptions(f.dimension);
@@ -130,6 +134,7 @@ export function CostFilterRows({
   const update = (index: number, patch: Partial<CostFilter>) => {
     onChange(filters.map((f, i) => (i === index ? ({ ...f, ...patch } as CostFilter) : f)));
   };
+  const tagKeyOptions = optionsByKey["tag-keys"];
 
   /** Re-request a row's values; a no-op unless the previous load failed. */
   const retryOptions = (filter: CostFilter) => {
@@ -165,12 +170,13 @@ export function CostFilterRows({
               ))}
             </select>
             {filter.dimension === "tag" && (
-              <input
+              <TagKeyInput
                 aria-label={gt("Tag key")}
                 className={`${selectBaseClass} w-24 flex-shrink-0`}
                 placeholder={gt("tag key")}
+                options={Array.isArray(tagKeyOptions) ? tagKeyOptions : null}
                 value={filter.tagKey ?? ""}
-                onChange={(e) => update(i, { tagKey: e.target.value })}
+                onChange={(tagKey) => update(i, { tagKey })}
                 onBlur={() => filter.tagKey && loadOptions("tag", filter.tagKey)}
               />
             )}

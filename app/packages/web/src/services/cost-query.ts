@@ -28,7 +28,6 @@ import {
   COST_STORE_GRANULARITY,
   getCostCoverage,
   getCostDimensionValues,
-  getCostTagKeys,
   getCostUsageUnits,
   queryCostCounts,
   queryCosts,
@@ -77,6 +76,7 @@ import {
 import { parseCustomCostAccountId } from "@infrawrench/server-core/cost/custom-cost-ids";
 import { db } from "../db/client";
 import { accounts, customCostSources, workflows } from "../db/schema";
+import { listPickerCostTagKeys } from "./tag-keys";
 import { getPlugin, loadPlugins } from "../plugins/loader";
 
 /**
@@ -660,11 +660,22 @@ export async function runCostQuery(
 export interface CostDimensionValue {
   value: string;
   label: string;
+  /** Tag keys only: pinned by the org's tag key settings. */
+  preferred?: boolean | undefined;
+  /** Tag keys only, with `includeHidden`: hidden by the org's tag key settings. */
+  hidden?: boolean | undefined;
 }
 
-/** Distinct tag keys seen in the org's cost data. */
-export async function listCostTagKeys(organizationId: string): Promise<string[]> {
-  return getCostTagKeys(organizationId);
+/**
+ * Tag keys seen in the org's cost data, as picker options: the org's
+ * preferred keys first, its hidden keys left out (see `services/tag-keys.ts`).
+ * `includeHidden` keeps them, flagged, for a picker that offers "show hidden".
+ */
+export async function listCostTagKeys(
+  organizationId: string,
+  opts: { includeHidden?: boolean } = {},
+): Promise<CostDimensionValue[]> {
+  return listPickerCostTagKeys(organizationId, opts);
 }
 
 /** Distinct usage units seen in the org's cost data (the usage-budget picker). */

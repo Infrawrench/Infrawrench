@@ -582,12 +582,13 @@ organization id — any value is accepted, since there is only ever one:
 
 ```sh
 terraform import infrawrench_tag_policy.this          org_01HXYZABCDEF
+terraform import infrawrench_tag_key_settings.this    org_01HXYZABCDEF
 terraform import infrawrench_alert_routing.org        org_01HXYZABCDEF
 terraform import infrawrench_currency_settings.this   org_01HXYZABCDEF
 terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 ```
 
-The full list: `tag_policy`, `alert_routing`, `currency_settings`,
+The full list: `tag_policy`, `tag_key_settings`, `alert_routing`, `currency_settings`,
 `anomaly_settings`, `efficiency_alert_settings`, `drift_alert_settings`,
 `expiry_alert_settings`, `posture_alert_settings`,
 `session_recording_settings`, `network_flow_settings`, `digest_settings`, `jira_integration`,
@@ -660,6 +661,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_custom_cost_source`        | by id     | Destroy deletes the source's uploaded spend          |
 | `infrawrench_allocation_rule`           | by id     | Lower priority wins; first match only                |
 | `infrawrench_tag_policy`                | by org id | Org singleton; destroy resets to unenforced          |
+| `infrawrench_tag_key_settings`          | by org id | Org singleton; destroy clears both lists             |
 | `infrawrench_saved_filter`              | by id     | `filter` and `query` are mutually exclusive          |
 | `infrawrench_cost_report`               | by id     |                                                      |
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |

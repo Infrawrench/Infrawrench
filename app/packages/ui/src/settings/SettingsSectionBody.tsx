@@ -13,6 +13,7 @@ import { AgentsSection } from "./AgentsSection.js";
 import { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 import { FreezesSection } from "./FreezesSection.js";
 import { TagPolicySection } from "./TagPolicySection.js";
+import { TagKeysSection } from "./TagKeysSection.js";
 import { BillingRulesSection } from "./BillingRulesSection.js";
 import { CostCentresSection } from "./CostCentresSection.js";
 import { VirtualTagsSection } from "./VirtualTagsSection.js";
@@ -66,6 +67,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <FreezesSection />;
     case "tag-policy":
       return <TagPolicySection />;
+    case "tag-keys":
+      return <TagKeysSection />;
     case "cost-centres":
       return <CostCentresSection />;
     case "virtual-tags":

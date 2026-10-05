@@ -79,6 +79,7 @@ import { budgetRoutes } from "./routes/budgets";
 import { metricAlertRoutes } from "./routes/metric-alerts";
 import { changeFreezeRoutes } from "./routes/change-freezes";
 import { tagPolicyRoutes } from "./routes/tag-policy";
+import { tagKeyRoutes } from "./routes/tag-keys";
 import { currencyRoutes } from "./routes/currency";
 import { costCentreRoutes } from "./routes/cost-centres";
 import { customCostSourceRoutes } from "./routes/custom-cost-sources";
@@ -397,6 +398,7 @@ orgScoped.route("/budgets", budgetRoutes);
 orgScoped.route("/metric-alerts", metricAlertRoutes);
 orgScoped.route("/change-freezes", changeFreezeRoutes);
 orgScoped.route("/tag-policy", tagPolicyRoutes);
+orgScoped.route("/tag-keys", tagKeyRoutes);
 orgScoped.route("/currency", currencyRoutes);
 orgScoped.route("/cost-centres", costCentreRoutes);
 // Spend uploaded from files into named sources; each source reads as its own

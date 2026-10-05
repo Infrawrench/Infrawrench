@@ -93,7 +93,14 @@ const MetricAlertSelectorOptions = strict({
       resourceTypeIds: z.array(z.string()),
     }),
   ),
-  tagKeys: z.array(z.string()),
+  tagKeys: z.array(z.string()).openapi({
+    description:
+      "Tag keys on the org's resources, with its tag key settings applied: preferred keys " +
+      "first, hidden keys omitted.",
+  }),
+  preferredTagKeys: z.array(z.string()).openapi({
+    description: "The subset of `tagKeys` the org pins, in its order.",
+  }),
 }).openapi("MetricAlertSelectorOptions");
 
 const MetricAlertSelectorPreview = strict({

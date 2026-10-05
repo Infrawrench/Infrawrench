@@ -41,6 +41,9 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "credential-hygiene", label: msg("Credential Hygiene"), requiresPermission: "audit:read" },
   { key: "freezes", label: msg("Change Freezes") },
   { key: "tag-policy", label: msg("Tag Policy") },
+  // Beside Tag Policy: both are about the org's tag vocabulary. Readable on
+  // resources:read like the policy (the table lists inventory keys too).
+  { key: "tag-keys", label: msg("Tag Keys"), requiresPermission: "resources:read" },
   { key: "cost-centres", label: msg("Cost Centres"), requiresPermission: "costs:read" },
   // Beside Cost Centres: virtual tags are the dimensions allocation rules and
   // reports slice by, and the same people maintain both.

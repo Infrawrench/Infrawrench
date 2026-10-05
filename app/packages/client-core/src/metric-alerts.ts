@@ -117,7 +117,13 @@ export interface MetricAlertSelectorPreview {
  */
 export interface MetricAlertSelectorOptions {
   plugins: Array<{ pluginId: string; resourceTypeIds: string[] }>;
+  /** Preferred first, hidden omitted: the org's tag key settings applied. */
   tagKeys: string[];
+  /**
+   * The subset of `tagKeys` the org pins, in its order. Optional so a client
+   * a release ahead of its server still renders (as one flat list).
+   */
+  preferredTagKeys?: string[] | undefined;
 }
 
 export const DEFAULT_METRIC_ALERT_INPUT: MetricAlertRuleInput = {

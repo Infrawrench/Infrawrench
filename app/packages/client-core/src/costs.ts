@@ -544,6 +544,16 @@ export interface BudgetInput {
 export interface CostDimensionOption {
   value: string;
   label: string;
+  /**
+   * Tag keys only (`dimension=tag-keys`): pinned by the org's tag key
+   * settings. Preferred keys come first in the list, in the org's order.
+   */
+  preferred?: boolean | undefined;
+  /**
+   * Tag keys only, and only with `includeHidden=true`: the org hides this key
+   * from pickers. The data is untouched; a filter naming it still works.
+   */
+  hidden?: boolean | undefined;
 }
 
 /* ------------------------------------------------------------------ *

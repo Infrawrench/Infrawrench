@@ -46,6 +46,9 @@ vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
   loadConversionContext: vi.fn(async () => ({ displayCurrency: null, rates: [] })),
 }));
 vi.mock("@infrawrench/server-core/cost/forecast", () => ({ forecastDaily: vi.fn(() => []) }));
+vi.mock("@infrawrench/server-core/cost/tag-key-settings", () => ({
+  getOrgTagKeySettings: vi.fn(async () => ({ hidden: [], preferred: [] })),
+}));
 vi.mock("../../db/client", () => ({ db: {} }));
 vi.mock("../../plugins/loader", () => ({
   getPlugin: vi.fn(async () => null),
