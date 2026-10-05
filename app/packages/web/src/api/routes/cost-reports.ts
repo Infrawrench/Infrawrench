@@ -14,7 +14,11 @@
  */
 import { Hono } from "hono";
 
-import { costReportInputSchema, costReportRunOverridesSchema } from "@infrawrench/ui/cost/config";
+import {
+  costReportBulkRequestSchema,
+  costReportInputSchema,
+  costReportRunOverridesSchema,
+} from "@infrawrench/ui/cost/config";
 import {
   createCostReport,
   getCostReport,
@@ -26,6 +30,7 @@ import {
 import { CostQueryError } from "../../services/cost-query";
 import { CostReportFolderError } from "../../services/cost-report-folders";
 import { logAudit } from "../../services/audit";
+import { applyCostReportBulk, CostReportBulkError } from "../../services/cost-reports-bulk";
 import type { AuthSession } from "../auth-middleware";
 import { requirePermission } from "../../auth/permissions";
 
@@ -68,6 +73,35 @@ app.post("/", async (c) => {
   } catch (e) {
     // A folderId outside the org (or stale) is a bad request, not a server bug.
     if (e instanceof CostReportFolderError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+/**
+ * POST /api/org/:orgId/cost-reports/bulk: move or delete many reports and
+ * folders at once, all or nothing.
+ *
+ * Every item is checked (exists, the caller's sharing allows it, the folder
+ * tree that would result stays within the nesting limit) before anything is
+ * written; any problem is a 400 whose `problems` names each blocking item, and
+ * nothing changes. Audit rows are one per item, as the single-item routes
+ * write them, with `bulk: true` in the metadata.
+ */
+app.post("/bulk", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+
+  const parsed = costReportBulkRequestSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid bulk request", issues: parsed.error.issues }, 400);
+  }
+  try {
+    return c.json(await applyCostReportBulk(organizationId, parsed.data, session.userId ?? null));
+  } catch (e) {
+    if (e instanceof CostReportBulkError) {
+      return c.json({ error: e.message, problems: e.problems }, 400);
+    }
     throw e;
   }
 });

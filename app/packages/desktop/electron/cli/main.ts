@@ -16,14 +16,20 @@ import { cmdMetrics } from "./commands/metrics";
 import { cmdExport } from "./commands/export";
 import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies, cmdCostAlerts } from "./commands/costs";
-import { cmdBudgets } from "./commands/budgets";
 import { cmdBusinessMetrics, cmdUnitCosts } from "./commands/unit-costs";
 import {
   cmdBusinessMetricImporter,
   cmdBusinessMetricSources,
 } from "./commands/unit-cost-importers";
 import { cmdScenarios, cmdApplyScenario } from "./commands/scenarios";
-import { cmdReports, cmdRunReport, cmdSendReport } from "./commands/reports";
+import {
+  cmdDeleteReports,
+  cmdMoveReports,
+  cmdReports,
+  cmdRunReport,
+  cmdSendReport,
+} from "./commands/reports";
+import { cmdBudgetAnnotate, cmdBudgets } from "./commands/budgets";
 import { cmdCanvasList, cmdCanvasRefresh, cmdCanvasShow } from "./commands/canvas";
 import { cmdDashboards, cmdSendDashboard, cmdShowDashboard } from "./commands/dashboards";
 import { pdfFlags } from "./pdf-export";
@@ -136,6 +142,14 @@ COMMANDS
   canvas show <n|id>  one canvas's definition (blocks, placements, prompt)
                       [--format pdf [--out <path>]  save the rendered canvas as a PDF]
   canvas refresh <n>  re-run a canvas's queries (no model call) and print its figures
+  reports move <item>... --folder <path|id|top>
+                      file reports (and folder:<path> folders) into one folder, all or nothing
+  reports delete <item>... [-y]
+                      delete reports and folders, all or nothing (asks first without -y)
+  budgets <name|id>   one budget's alert history, with the note on each firing
+  budgets annotate <name|id> --note <text> [--event <id>]
+                      explain a fired budget alert (the latest by default); the note shows on
+                      the budget, on cost charts at that day, and in the alert's Slack thread
   dashboards          the org's dashboards and their scheduled PDF deliveries
   dashboards <n|id>   one dashboard's delivery schedules
                       [--format pdf [--out <path>]  save the rendered dashboard as a PDF]
@@ -537,6 +551,16 @@ export async function runCli(): Promise<void> {
           await cmdSendReport(ctx, rest.slice(1).join(" "));
           break;
         }
+        // `move` and `delete` take one item per positional (quote names with
+        // spaces), unlike the run form, which joins the words into one name.
+        if (rest[0] === "move") {
+          await cmdMoveReports(ctx, rest.slice(1), parsed.bulk.folder);
+          break;
+        }
+        if (rest[0] === "delete") {
+          await cmdDeleteReports(ctx, rest.slice(1), parsed.bulk.yes);
+          break;
+        }
         if (rest.length > 0) {
           await cmdRunReport(ctx, rest.join(" "), pdfFlags(parsed), parsed.range);
           break;
@@ -565,6 +589,13 @@ export async function runCli(): Promise<void> {
         }
         break;
       }
+      case "budgets":
+        if (rest[0] === "annotate") {
+          await cmdBudgetAnnotate(ctx, rest.slice(1).join(" "), parsed.bulk);
+          break;
+        }
+        await cmdBudgets(ctx, rest.join(" "));
+        break;
       case "dashboards":
         // Same shape as `reports`: `send` is the explicit verb that posts
         // into channels, a positional names one, bare lists them all.
@@ -602,9 +633,6 @@ export async function runCli(): Promise<void> {
           break;
         }
         await cmdExports(ctx);
-        break;
-      case "budgets":
-        await cmdBudgets(ctx);
         break;
       case "tags":
         await cmdTags(ctx, parsed.range);

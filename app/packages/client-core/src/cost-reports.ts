@@ -360,3 +360,174 @@ export function costReportFolderMoveBlocker(
   }
   return null;
 }
+
+/* ------------------------------------------------------------------ *
+ * Bulk move and bulk delete: POST /cost-reports/bulk.
+ *
+ * One request, validated item by item before anything is written, then
+ * applied all-or-nothing in one transaction. A half-applied bulk move is the
+ * failure this exists to prevent: forty reports filed and three left behind,
+ * with nothing on screen saying which three.
+ * ------------------------------------------------------------------ */
+
+/** Bounds the API enforces on a bulk request. */
+export const COST_REPORT_BULK_LIMITS = {
+  /**
+   * Items per request, reports and folders together. Comfortably more than a
+   * Reports list a person can select by hand, and small enough that the one
+   * transaction it runs in stays short.
+   */
+  maxItems: 500,
+} as const;
+
+/**
+ * The bulk request body.
+ *
+ * `move` files every report into `targetFolderId` and makes every folder a
+ * direct child of it (null is the top level). `delete` soft-deletes the
+ * reports and deletes the folders, whose remaining contents fall back to the
+ * top level exactly as a single folder delete does.
+ */
+export type CostReportBulkRequest =
+  | {
+      action: "move";
+      reportIds: string[];
+      folderIds: string[];
+      targetFolderId: string | null;
+    }
+  | { action: "delete"; reportIds: string[]; folderIds: string[] };
+
+/** One item the server refused, and why. Nothing was written when any exist. */
+export interface CostReportBulkProblem {
+  kind: "report" | "folder" | "target";
+  id: string;
+  /** The item's name when the caller can see it; null when it is unknown. */
+  name: string | null;
+  message: string;
+}
+
+/** What a successful bulk request did. */
+export interface CostReportBulkResult {
+  action: "move" | "delete";
+  reports: number;
+  folders: number;
+}
+
+/**
+ * The 400 body of a refused bulk request: `problems` names every item that
+ * blocked it, so a client can say which ones rather than "something failed".
+ */
+export interface CostReportBulkErrorBody {
+  error: string;
+  problems: CostReportBulkProblem[];
+}
+
+/**
+ * Why moving `folderIds` under `targetFolderId` is not allowed, item by item.
+ * Empty when the whole move may proceed.
+ *
+ * All the moves are applied to a copy of the tree first and every moved folder
+ * is then checked against that *final* tree with
+ * {@link costReportFolderMoveBlocker}, the single-folder rule. Checking each one
+ * against the tree as it stands would be wrong both ways: moving a parent and
+ * its child together is fine (the child just becomes the parent's sibling),
+ * and two folders that each fit alone can, together, nest past the limit.
+ *
+ * Reports never block a move on tree grounds: any folder can hold a report.
+ * The only report-side rule, that the target exists, is the target check.
+ */
+export function costReportBulkMoveBlockers(
+  folders: readonly CostReportFolder[],
+  folderIds: readonly string[],
+  targetFolderId: string | null,
+): Array<{ folderId: string | null; message: string }> {
+  if (targetFolderId !== null && !folders.some((f) => f.id === targetFolderId)) {
+    return [{ folderId: null, message: "Unknown destination folder." }];
+  }
+  const moving = new Set(folderIds);
+  const simulated = folders.map((f) =>
+    moving.has(f.id) ? { ...f, parentFolderId: targetFolderId } : f,
+  );
+  const out: Array<{ folderId: string | null; message: string }> = [];
+  for (const id of moving) {
+    if (id === targetFolderId) {
+      out.push({ folderId: id, message: "A folder cannot be moved inside itself." });
+      continue;
+    }
+    const blocked = costReportFolderMoveBlocker(simulated, id, targetFolderId);
+    if (blocked) out.push({ folderId: id, message: blocked });
+  }
+  return out;
+}
+
+/**
+ * Why `targetFolderId` cannot take the whole selection, or null when it can:
+ * the first blocker, named, for a disabled row in a folder picker or a drop
+ * target that refuses. Ids not in `folders` are ignored (the server rechecks).
+ */
+export function costReportBulkMoveTargetBlocker(
+  folders: readonly CostReportFolder[],
+  folderIds: readonly string[],
+  targetFolderId: string | null,
+): string | null {
+  const known = new Set(folders.map((f) => f.id));
+  const blockers = costReportBulkMoveBlockers(
+    folders,
+    folderIds.filter((id) => known.has(id)),
+    targetFolderId,
+  );
+  const first = blockers[0];
+  if (!first) return null;
+  const name = first.folderId ? folders.find((f) => f.id === first.folderId)?.name : undefined;
+  return name ? `"${name}": ${first.message}` : first.message;
+}
+
+/** One selectable row of the Reports list. */
+export interface CostReportListItem {
+  kind: "report" | "folder";
+  id: string;
+}
+
+/**
+ * Every item in display order: top-level reports, then each folder followed by
+ * its own reports, depth first. The order a shift-click range runs in, so a
+ * range selects exactly what lies between the two clicks on screen.
+ */
+export function costReportListOrder(
+  folders: readonly CostReportFolder[],
+  reports: readonly Pick<CostReport, "id" | "folderId">[],
+): CostReportListItem[] {
+  const known = new Set(folders.map((f) => f.id));
+  const byFolder = new Map<string | null, string[]>();
+  for (const r of reports) {
+    const key = r.folderId !== null && known.has(r.folderId) ? r.folderId : null;
+    const list = byFolder.get(key) ?? [];
+    list.push(r.id);
+    byFolder.set(key, list);
+  }
+  const out: CostReportListItem[] = [];
+  for (const id of byFolder.get(null) ?? []) out.push({ kind: "report", id });
+  for (const { folder } of flattenCostReportFolderTree(folders)) {
+    out.push({ kind: "folder", id: folder.id });
+    for (const id of byFolder.get(folder.id) ?? []) out.push({ kind: "report", id });
+  }
+  return out;
+}
+
+/**
+ * The items between `anchor` and `target` inclusive, in list order: what a
+ * shift-click selects. Just `target` when the anchor is gone from the list.
+ */
+export function costReportListRange(
+  order: readonly CostReportListItem[],
+  anchor: CostReportListItem,
+  target: CostReportListItem,
+): CostReportListItem[] {
+  const same = (a: CostReportListItem, b: CostReportListItem) => a.kind === b.kind && a.id === b.id;
+  const from = order.findIndex((i) => same(i, anchor));
+  const to = order.findIndex((i) => same(i, target));
+  if (to === -1) return [];
+  if (from === -1) return [order[to]!];
+  const [lo, hi] = from <= to ? [from, to] : [to, from];
+  return order.slice(lo, hi + 1);
+}

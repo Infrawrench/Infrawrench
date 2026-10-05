@@ -4,6 +4,7 @@ import { createDesktopSettingsApi } from "./settings-client";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import {
   pdfFileName,
+  type CostReportBulkRequest,
   type CostReportFolderInput,
   type CostReportInput,
   type FocusExportRequest,
@@ -12,6 +13,7 @@ import {
 import { downloadPdfBytes } from "@infrawrench/ui";
 import {
   loadCloudCostReportPdf,
+  bulkUpdateCloudCostReports,
   createCloudCostReport,
   createCloudCostReportFolder,
   createCloudReportNotification,
@@ -55,6 +57,8 @@ export function createDesktopCostReportsClient(): CostReportsClient {
     updateReport: (reportId: string, input: CostReportInput) =>
       updateCloudCostReport(requireOrgId(), reportId, input),
     deleteReport: (reportId: string) => deleteCloudCostReport(requireOrgId(), reportId),
+    bulkUpdate: (request: CostReportBulkRequest) =>
+      bulkUpdateCloudCostReports(requireOrgId(), request),
     listFolders: () => listCloudCostReportFolders(requireOrgId()),
     createFolder: (input: CostReportFolderInput) =>
       createCloudCostReportFolder(requireOrgId(), input),

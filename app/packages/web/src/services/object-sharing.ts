@@ -270,14 +270,31 @@ export async function requireObjectAccess(
   needed: ObjectAccessLevel | "delete",
 ): Promise<EffectiveAccessLevel> {
   const resolver = await loadAccessResolver(organizationId, type);
+  const problem = objectAccessProblem(resolver, objectId, meta, needed);
+  if (problem) throw problem;
+  return resolver.level(objectId, meta);
+}
+
+/**
+ * {@link requireObjectAccess} against an already-loaded resolver, returning
+ * the error instead of throwing it (null when access is sufficient). For
+ * callers that check many objects at once and must report every shortfall,
+ * such as the bulk move/delete of reports, without a resolver load per item.
+ */
+export function objectAccessProblem(
+  resolver: Awaited<ReturnType<typeof loadAccessResolver>>,
+  objectId: string,
+  meta: ObjectMeta,
+  needed: ObjectAccessLevel | "delete",
+): ObjectNotVisibleError | ObjectAccessDeniedError | null {
   const level = resolver.level(objectId, meta);
-  if (!canViewObject(level)) throw new ObjectNotVisibleError();
+  if (!canViewObject(level)) return new ObjectNotVisibleError();
   const want: ObjectAccessLevel =
     needed === "delete" ? (resolver.hasOwner(objectId, meta) ? "owner" : "editor") : needed;
   const rank = { viewer: 1, editor: 2, owner: 3 } as const;
   const have = level === "none" ? 0 : rank[level];
-  if (have < rank[want]) throw new ObjectAccessDeniedError(want);
-  return level;
+  if (have < rank[want]) return new ObjectAccessDeniedError(want);
+  return null;
 }
 
 /** Record the creator as owner of a new dashboard or folder. */

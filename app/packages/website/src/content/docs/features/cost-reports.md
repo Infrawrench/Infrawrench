@@ -58,6 +58,16 @@ Folders organize the list and change nothing else. A report keeps its id, its UR
 - **Deleting a folder never deletes a report.** The folder's reports move to the top of the list and its subfolders become top-level folders — the confirmation says exactly that before anything happens.
 - **Moving is always safe.** The one thing the server refuses is a move that could not mean anything: a folder cannot be placed inside itself or one of its own subfolders, and nothing can nest past the three-level limit. The move menu greys those targets out.
 
+### Moving and deleting many at once
+
+Every report and folder in the list has a checkbox. Tick several, **shift-click** to select everything between two rows, or use **Select contents** on a folder to pick up every report filed in it; the bar above the list then offers **Move to folder…** and **Delete…**. The keyboard works too while focus is in the list: **Ctrl+A** (⌘A on a Mac) selects everything, **M** opens the folder picker, **Delete** asks to delete the selection, and **Esc** clears it.
+
+You can also drag: drag a selected row (or a folder heading) onto any folder heading in the list, or onto a folder in the **Folders** sidebar beside it, which also has **Top level**. Dragging a row that is not selected moves just that row. A folder that cannot take what you are dragging (it is inside one of the folders being moved, or the result would nest past three levels) shows a red outline and says why instead of accepting the drop.
+
+A bulk move or delete is **all or nothing**. Every item is checked first: that it still exists, that your [sharing](./cost-reports.md) lets you edit it (or, to delete, that you own it), that you can edit the destination folder (a folder's sharing extends to whatever is filed in it), and that the folder tree that would result stays within three levels. If anything fails, nothing changes and the error names each item that blocked it. Moved folders keep their contents and become children of the destination. Deleting works like deleting one at a time: reports take their dashboard cards with them and their delivery schedules stop, and whatever a deleted folder still holds moves to the top level. The confirmation lists what goes and what moves, and each item gets its own [audit log](../team-and-billing/audit-log.md) entry.
+
+<insert [Reports page with three reports ticked, the selection bar showing "3 selected · Move to folder… · Delete…", and the Folders sidebar with one folder highlighted as a drop target during a drag] here>
+
 On the command line, `infrawrench reports` shows each report's folder path (`Finance / Monthly`) in its own column, and `--json` includes the folder list. The [mobile app](#on-your-phone) groups its read-only list the same way. In chat and MCP, `list_cost_reports` reports each item's `folderPath` and `move_cost_report` files a report by folder path, name, or id.
 
 ## Show a report on a dashboard
@@ -166,9 +176,14 @@ infrawrench reports send "Monthly spend"  # deliver it to its schedules right no
 infrawrench reports "Monthly spend" --format pdf  # write monthly-spend.pdf (or --out <path>)
 infrawrench reports "Monthly spend" --bin quarter --cumulative   # a one-off view, nothing saved
 infrawrench reports "Monthly spend" --measure count --json       # how many services were billed per bin
+infrawrench reports move "Monthly spend" "Weekly spend" folder:"Finance / Old" --folder Archive
+infrawrench reports move "Monthly spend" --folder top    # back to the top level
+infrawrench reports delete "Old draft" folder:Scratch -y  # asks first without -y
 ```
 
 `--measure cost|usage|count`, `--unit <usage unit>`, `--bin day|week|month|quarter|hour` and `--cumulative` change how this one run is measured and binned without editing the report everybody else sees. Switching a run to usage or count drops the report's forecast, scenario and billing rules for that run, since they only apply to money. `--measure usage` without `--unit` lists the units your cost data has.
+
+`move` and `delete` take one item per argument (quote names with spaces); prefix a folder with `folder:`. Like the Reports page they are all or nothing, and `--json` prints what was moved or deleted.
 
 The `delivery` column shows each report's schedules and calls out failing ones; `reports send` is behind an explicit verb because it posts into channels and inboxes.
 
@@ -176,7 +191,7 @@ The name is matched exactly first, then as a substring; an ambiguous query lists
 
 ## From chat and MCP
 
-Reports are exposed to the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, `move_cost_report`, and `delete_cost_report` — so "run the monthly spend report" works without restating a filter set. `run_cost_report` takes the report's id and returns the series along with the window a relative range resolved to; optional `measure`, `usageUnit`, `binning` and `cumulative` parameters look at the same report another way for that one call, without saving anything. `move_cost_report` files a report in a [folder](#folders) by path, name, or id — or back at the top level with `null`.
+Reports are exposed to the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, `move_cost_report`, and `delete_cost_report`, `bulk_move_cost_reports` and `bulk_delete_cost_reports` — so "run the monthly spend report" works without restating a filter set. `run_cost_report` takes only the report's id and returns the series along with the window a relative range resolved to; optional `measure`, `usageUnit`, `binning` and `cumulative` parameters look at the same report another way for that one call, without saving anything. `move_cost_report` files a report in a [folder](#folders) by path, name, or id — or back at the top level with `null`.
 
 Reads need `costs:read` and writes need `costs:write`; see [roles & permissions](../team-and-billing/roles-and-permissions.md). Every create, update and delete lands in the [audit log](../team-and-billing/audit-log.md).
 
@@ -188,7 +203,7 @@ Creating or editing a delivery schedule stays on web and desktop, deliberately: 
 
 Annotation markers are drawn on the phone's charts too, with the note text a tap away. Writing one stays on web and desktop with everything else: a note's scope choice can change what every chart in the org shows, and that is not a decision to make on a bus.
 
-Creating and editing a report stays on web and desktop, and so does managing folders — the phone reads the filing, it doesn't refile. Choosing a chart type, a binning, a group-by and a filter set is a desktop job, and a half-editor on a phone is the fastest way to change a report that five dashboards depend on by accident.
+Creating and editing a report stays on web and desktop, and so does managing folders (including moving or deleting several at once) — the phone reads the filing, it doesn't refile. Choosing choosing a chart type, a binning, a group-by and a filter set is a desktop job, and a half-editor on a phone is the fastest way to change a report that five dashboards depend on by accident.
 
 ## When a report is worth making
 

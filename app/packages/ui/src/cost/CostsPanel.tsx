@@ -18,6 +18,7 @@ import type {
 import { SleepSchedulesSection } from "../schedules/SleepSchedulesSection.js";
 import type { SchedulesClient, SleepSchedule } from "../schedules/types.js";
 import { BudgetCard } from "./BudgetCard.js";
+import { BudgetAlertNoteModal } from "./BudgetAlertNoteModal.js";
 import { CostAnomaliesSection } from "./CostAnomaliesSection.js";
 import { CostChangeAlertsSection } from "./CostChangeAlertsSection.js";
 import { EfficiencyAlertsSection } from "./EfficiencyAlertsSection.js";
@@ -163,6 +164,11 @@ export function CostsPanel({
   const [hasBillingRules, setHasBillingRules] = useState(false);
   const [editing, setEditing] = useState<{ budget: BudgetWithStatus | null } | null>(null);
   const [placing, setPlacing] = useState<BudgetWithStatus | null>(null);
+  const [noting, setNoting] = useState<{
+    budget: BudgetWithStatus;
+    event: BudgetWithStatus["currentMonthEvents"][number];
+  } | null>(null);
+  const annotateBudgetAlert = client.annotateBudgetAlert;
 
   const canWrite = Boolean(client.createBudget && client.updateBudget && client.deleteBudget);
   const canPlace = Boolean(client.addBudgetToDashboard && client.removeBudgetPlacement);
@@ -386,6 +392,9 @@ export function CostsPanel({
                   </div>
                 )}
                 onEdit={canWrite ? (budget) => setEditing({ budget }) : undefined}
+                onExplain={
+                  annotateBudgetAlert ? (budget, event) => setNoting({ budget, event }) : undefined
+                }
               />
             ))}
           </div>
@@ -477,6 +486,21 @@ export function CostsPanel({
           onChanged={refresh}
         />
       )}
+
+      {noting && annotateBudgetAlert && (
+        <BudgetAlertNoteModal
+          budget={noting.budget}
+          event={noting.event}
+          onSave={async (note) => {
+            const result = await annotateBudgetAlert(noting.budget.id, noting.event.id, note);
+            // The card shows the note straight away, even while the modal
+            // stays open to say where the follow-up was posted.
+            void refresh();
+            return result;
+          }}
+          onClose={() => setNoting(null)}
+        />
+      )}
     </div>
   );
 }
@@ -491,10 +515,15 @@ function BudgetTreeItem({
   node,
   renderActions,
   onEdit,
+  onExplain,
 }: {
   node: BudgetTreeNode;
   renderActions: (budget: BudgetWithStatus) => ReactNode;
   onEdit?: ((budget: BudgetWithStatus) => void) | undefined;
+  /** Open the note composer for one of a budget's firings this period. */
+  onExplain?:
+    | ((budget: BudgetWithStatus, event: BudgetWithStatus["currentMonthEvents"][number]) => void)
+    | undefined;
 }) {
   const gt = useGT();
   const { budget, children } = node;
@@ -504,7 +533,11 @@ function BudgetTreeItem({
   const [open, setOpen] = useState(needsAttention);
   return (
     <div className="flex flex-col gap-1.5">
-      <BudgetCard budget={budget} onEdit={onEdit ? () => onEdit(budget) : undefined} />
+      <BudgetCard
+        budget={budget}
+        onEdit={onEdit ? () => onEdit(budget) : undefined}
+        onExplain={onExplain ? (event) => onExplain(budget, event) : undefined}
+      />
       {renderActions(budget)}
       {children.length > 0 && (
         <div className="px-1">
@@ -524,6 +557,7 @@ function BudgetTreeItem({
                   node={child}
                   renderActions={renderActions}
                   onEdit={onEdit}
+                  onExplain={onExplain}
                 />
               ))}
             </div>

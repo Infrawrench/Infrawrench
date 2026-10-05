@@ -127,6 +127,21 @@ infrawrench reports "Monthly spend" --format pdf --out monthly.pdf
 
 The name is matched exactly first, then as a substring; an ambiguous query lists the candidates rather than picking one, since running the wrong cost report gives a wrong answer that looks right. An id works anywhere a name does.
 
+`reports move` and `reports delete` file or remove many reports and folders at once, all or nothing, exactly like [selecting several on the Reports page](./cost-reports.md#moving-and-deleting-many-at-once). Each argument is one item (quote names with spaces; prefix folders with `folder:`), and `delete` asks before it runs unless you pass `-y`:
+
+```
+infrawrench reports move "Monthly spend" folder:"Finance / Old" --folder Archive
+infrawrench reports delete "Old draft" -y --json
+```
+
+`budgets` lists the org's budgets with month-to-date spend, forecast, and how many of this month's alerts nobody has explained yet; `budgets <name|id>` shows one budget's alert history with the note on each firing, and `budgets annotate` [explains a fired alert](./cloud-costs.md#explaining-a-budget-alert) (the latest one unless `--event <id>` names another). The note is posted as a reply in the alert's Slack threads and drawn on the cost charts:
+
+```
+infrawrench budgets
+infrawrench budgets "Prod" --json
+infrawrench budgets annotate "Prod" --note "Q3 load test, ends Friday"
+```
+
 `--format pdf` downloads the server-rendered [PDF](./dashboard-pdf.md) instead of charting in the terminal, to `--out <path>` (or `--file`) or to the report's name as a file in the current directory. `dashboards` does the same for whole dashboards, and lists them with their delivery schedules:
 
 ```

@@ -967,6 +967,13 @@
       "when": 1791227342873,
       "tag": "0137_fx_rate_feed",
       "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1791230283453,
+      "tag": "0138_budget_alert_notes",
+      "breakpoints": true
     }
   ]
 }

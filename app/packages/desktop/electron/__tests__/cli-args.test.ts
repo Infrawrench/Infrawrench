@@ -153,3 +153,37 @@ describe("unit-costs flags", () => {
     expect(parsed.range.basis).toBe("amortized");
   });
 });
+
+describe("parseCliArgs — reports move/delete and budgets annotate", () => {
+  it("keeps one positional per item and reads the destination", () => {
+    const parsed = parseCliArgs([
+      "reports",
+      "move",
+      "Monthly spend",
+      "folder:Finance / Q3",
+      "--folder",
+      "Archive",
+    ]);
+    expect(parsed.positionals).toEqual(["reports", "move", "Monthly spend", "folder:Finance / Q3"]);
+    expect(parsed.bulk.folder).toBe("Archive");
+    expect(parsed.bulk.yes).toBe(false);
+  });
+
+  it("reads -y for a bulk delete", () => {
+    expect(parseCliArgs(["reports", "delete", "Old", "-y"]).bulk.yes).toBe(true);
+  });
+
+  it("reads the note and the event for budgets annotate", () => {
+    const { bulk } = parseCliArgs([
+      "budgets",
+      "annotate",
+      "Prod",
+      "--note",
+      "Load test",
+      "--event",
+      "evt-1",
+    ]);
+    expect(bulk.note).toBe("Load test");
+    expect(bulk.event).toBe("evt-1");
+  });
+});

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   budgetProgress,
+  currentMonthBudgetNotes,
   formatBudgetMonth,
   formatBudgetPeriodWindow,
   formatMoney,
@@ -66,6 +67,7 @@ export function BudgetCard({
   const { limit, actual, forecast, trendForecast, actualPercent: actualPct } = progress;
   const forecastPct = progress.forecastPercent;
   const fired = budget.currentMonthEvents.length > 0;
+  const notes = currentMonthBudgetNotes(budget);
 
   const barColor =
     actualPct >= 100 ? colors.danger : actualPct >= 80 ? colors.warning : colors.success;
@@ -139,6 +141,25 @@ export function BudgetCard({
         </Text>
       ))}
       {childBudgets && childBudgets.length > 0 ? <ChildList budgets={childBudgets} /> : null}
+      {/* The notes people wrote on this month's firings: the badge says the
+          budget fired, the note says why, and a phone is where the alert was
+          most likely read. Writing one is web/desktop/CLI only (see
+          KNOWLEDGE.md: mobile omits shared cost-annotation writes). */}
+      {notes.length > 0 && (
+        <View style={styles.notes}>
+          {notes.map(({ eventId, thresholdPercent, note }) => (
+            <Text key={eventId} style={styles.note}>
+              <Text style={styles.noteLabel}>{thresholdPercent}%: </Text>
+              {note.text}
+              <Text style={styles.noteBy}>
+                {" "}
+                ({note.notedByName ? `${note.notedByName}, ` : ""}
+                {note.notedAt.slice(0, 10)})
+              </Text>
+            </Text>
+          ))}
+        </View>
+      )}
     </Card>
   );
 }
@@ -244,6 +265,12 @@ const styles = StyleSheet.create({
   },
   footRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
   foot: { color: colors.textFaint, fontSize: 11 },
+  notes: {
+    gap: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
+  },
   children: {
     gap: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -252,4 +279,7 @@ const styles = StyleSheet.create({
   },
   childToggle: { color: colors.textMuted, fontSize: 12 },
   childName: { color: colors.textMuted, fontSize: 11, flexShrink: 1 },
+  note: { color: colors.textMuted, fontSize: 12 },
+  noteLabel: { color: colors.textFaint },
+  noteBy: { color: colors.textFaint, fontSize: 11 },
 });

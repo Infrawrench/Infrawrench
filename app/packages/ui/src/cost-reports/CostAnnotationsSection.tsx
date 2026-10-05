@@ -109,6 +109,7 @@ export function CostAnnotationsSection({
                   {describeCostAnnotationScope(annotation)}
                   {/* Where this note came from, when it wasn't written by hand. */}
                   {annotation.costAnomalyId ? gt(" · Explains a detected anomaly") : ""}
+                  {annotation.budgetAlert ? gt(" · Explains a budget alert") : ""}
                 </p>
               </div>
               {canWrite && (

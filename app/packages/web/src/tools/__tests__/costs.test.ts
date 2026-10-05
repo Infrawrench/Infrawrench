@@ -95,6 +95,13 @@ vi.mock("../../services/cost-anomalies", () => ({
   acknowledgeCostAnomaly: (...a: unknown[]) => mockAcknowledgeAnomaly(...a),
 }));
 
+const mockNoteBudgetAlert = vi.fn();
+class FakeBudgetAlertNoteError extends Error {}
+vi.mock("../../services/budget-alert-notes", () => ({
+  BudgetAlertNoteError: FakeBudgetAlertNoteError,
+  noteBudgetAlertEvent: (...a: unknown[]) => mockNoteBudgetAlert(...a),
+}));
+
 const mockLogAudit = vi.fn();
 vi.mock("../../services/audit", () => ({
   logAudit: (...a: unknown[]) => mockLogAudit(...a),
@@ -318,6 +325,56 @@ describe("costTools — anomalies", () => {
     const r = await tool("list_cost_anomalies").handler({}, auth);
     expect(mockListAnomalies).toHaveBeenCalledWith("o1", 30);
     expect(JSON.parse(r.content[0]!.text)[0].id).toBe("anom-1");
+  });
+
+  it("annotate_budget_alert needs costs:write as well as budgets:read", async () => {
+    grant("budgets:read", "costs:read");
+    const r = await tool("annotate_budget_alert").handler(
+      { budgetId: "b1", eventId: "e1", note: "Load test" },
+      auth,
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content[0]!.text).toContain("costs:write");
+    expect(mockNoteBudgetAlert).not.toHaveBeenCalled();
+  });
+
+  it("annotate_budget_alert writes the note and audits it", async () => {
+    grant("budgets:read", "costs:write");
+    mockNoteBudgetAlert.mockResolvedValue({
+      id: "e1",
+      month: "2026-10",
+      thresholdType: "actual",
+      thresholdPercent: 80,
+      note: { text: "Load test", annotationId: "ann-9" },
+      followUp: { slack: 2, msTeams: 0 },
+    });
+    const r = await tool("annotate_budget_alert").handler(
+      { budgetId: "b1", eventId: "e1", note: "Load test" },
+      auth,
+    );
+    expect(r.isError).toBeFalsy();
+    expect(mockNoteBudgetAlert).toHaveBeenCalledWith("o1", "b1", "e1", "Load test", "u1");
+    expect(JSON.parse(r.content[0]!.text).followUp.slack).toBe(2);
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "budget_alert.note", entityId: "b1" }),
+    );
+  });
+
+  it("annotate_budget_alert reports an unknown event and a rejected note as tool errors", async () => {
+    grant("budgets:read", "costs:write");
+    mockNoteBudgetAlert.mockResolvedValueOnce(null);
+    const missing = await tool("annotate_budget_alert").handler(
+      { budgetId: "b1", eventId: "nope", note: "x" },
+      auth,
+    );
+    expect(missing.isError).toBe(true);
+    mockNoteBudgetAlert.mockRejectedValueOnce(new FakeBudgetAlertNoteError("Too long."));
+    const bad = await tool("annotate_budget_alert").handler(
+      { budgetId: "b1", eventId: "e1", note: "x" },
+      auth,
+    );
+    expect(bad.isError).toBe(true);
+    expect(bad.content[0]!.text).toContain("Too long.");
   });
 
   it("acknowledge_cost_anomaly denies a costs:read-only caller", async () => {

@@ -77,6 +77,35 @@ ipcMain.handle(
   },
 );
 
+// Budget alert notes. The server derives the chart marker's date from the
+// firing and posts the follow-up to the alert's Slack threads and Teams
+// webhooks, so the renderer sends only the sentence.
+ipcMain.handle(
+  "cloud_budget_alert_events",
+  async (_e, { orgId, budgetId }: { orgId: string; budgetId: string }) => {
+    return cloudFetch(orgId, `/budgets/${encodeURIComponent(budgetId)}/events`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_budget_alert_note",
+  async (
+    _e,
+    {
+      orgId,
+      budgetId,
+      eventId,
+      note,
+    }: { orgId: string; budgetId: string; eventId: string; note: string },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/budgets/${encodeURIComponent(budgetId)}/events/${encodeURIComponent(eventId)}/note`,
+      { method: "POST", body: JSON.stringify({ note }) },
+    );
+  },
+);
+
 ipcMain.handle("cloud_costs_anomaly_settings", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/costs/anomaly-settings");
 });
@@ -324,6 +353,18 @@ ipcMain.handle(
   async (_e, { orgId, reportId }: { orgId: string; reportId: string }) => {
     return cloudFetch(orgId, `/cost-reports/${encodeURIComponent(reportId)}`, {
       method: "DELETE",
+    });
+  },
+);
+
+// Bulk move/delete of reports and folders. The server validates every item
+// and applies all or nothing; its 400 message names the blocking items.
+ipcMain.handle(
+  "cloud_bulk_cost_reports",
+  async (_e, { orgId, request }: { orgId: string; request: unknown }) => {
+    return cloudFetch(orgId, "/cost-reports/bulk", {
+      method: "POST",
+      body: JSON.stringify(request),
     });
   },
 );

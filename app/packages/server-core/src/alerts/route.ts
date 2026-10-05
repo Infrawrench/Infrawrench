@@ -145,6 +145,12 @@ export interface AlertRouteResult {
   matchedRuleIds: string[];
   /** Posted Slack messages, when the caller asked for them (`track`). */
   slackMessages: SlackPostedMessage[];
+  /**
+   * Teams webhooks the alert was sent to, when the caller asked (`track`).
+   * Incoming webhooks return no message id to reply to, so this is what a
+   * follow-up (a note on a budget alert) is addressed by instead.
+   */
+  msTeamsWebhookIds?: string[];
   /** Delivery rows created for acknowledgement, if the rule escalates. */
   deliveryIds: string[];
 }
@@ -231,6 +237,7 @@ interface DestinationOutcome {
   counts: AlertTransportCounts;
   attemptedCounts: AlertTransportCounts;
   slackMessages: SlackPostedMessage[];
+  msTeamsWebhookIds: string[];
 }
 
 /**
@@ -383,6 +390,7 @@ async function deliverDestinations(
       msTeams: teams.attempted,
     },
     slackMessages: slack.messages,
+    msTeamsWebhookIds: options.track && teams.succeeded > 0 ? teamsIds : [],
   };
 }
 
@@ -542,6 +550,7 @@ export async function routeAlert(
     const byTransport: AlertTransportCounts = { push: 0, slack: 0, msTeams: 0 };
     const attemptedByTransport: AlertTransportCounts = { push: 0, slack: 0, msTeams: 0 };
     const slackMessages: SlackPostedMessage[] = [];
+    const msTeamsWebhookIds: string[] = [];
     const deliveryIds: string[] = [];
     const seen = new Set<string>();
 
@@ -574,6 +583,7 @@ export async function routeAlert(
           addCounts(byTransport, out.counts);
           addCounts(attemptedByTransport, out.attemptedCounts);
           slackMessages.push(...out.slackMessages);
+          msTeamsWebhookIds.push(...out.msTeamsWebhookIds);
         }
         continue;
       }
@@ -599,6 +609,7 @@ export async function routeAlert(
       addCounts(byTransport, out.counts);
       addCounts(attemptedByTransport, out.attemptedCounts);
       slackMessages.push(...out.slackMessages);
+      msTeamsWebhookIds.push(...out.msTeamsWebhookIds);
 
       // An escalation whose original delivery reached nobody has nothing to
       // escalate *from*, and leaving the row armed would fire a "nobody
@@ -644,6 +655,7 @@ export async function routeAlert(
       unrouted: false,
       matchedRuleIds: decision.matchedRuleIds,
       slackMessages,
+      msTeamsWebhookIds,
       deliveryIds,
     };
   } catch (err) {

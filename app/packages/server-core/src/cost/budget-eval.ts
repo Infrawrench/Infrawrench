@@ -57,7 +57,7 @@ import {
 import { resolveSavedCostFilters } from "./saved-filters";
 import { forecastWithScenario, resolveCostScenarioModel } from "./scenario-forecast";
 import { sendBudgetAlertPage } from "../twilio-pager";
-import { alertReached, routeAlert } from "../alerts/route";
+import { alertReached, routeAlert, type AlertRouteResult } from "../alerts/route";
 import {
   fireBudgetTriggerWorkflows,
   listBudgetTriggerWorkflows,
@@ -716,6 +716,26 @@ function periodPhrase(status: BudgetPeriodStatus): string {
  * logged, never thrown: budget evaluation must not break the poller's cost
  * pass.
  */
+/**
+ * Where a routed budget alert landed, as the columns a later note follows it
+ * to; null when it reached no chat destination at all.
+ */
+export function budgetAlertDeliveredTo(
+  routed: Pick<AlertRouteResult, "slackMessages" | "msTeamsWebhookIds">,
+): {
+  slackMessages: Array<{ installationId: string; channelId: string; ts: string }>;
+  msTeamsWebhookIds: string[];
+} | null {
+  const slackMessages = routed.slackMessages.map((m) => ({
+    installationId: m.installationId,
+    channelId: m.channelId,
+    ts: m.ts,
+  }));
+  const msTeamsWebhookIds = [...new Set(routed.msTeamsWebhookIds ?? [])];
+  if (slackMessages.length === 0 && msTeamsWebhookIds.length === 0) return null;
+  return { slackMessages, msTeamsWebhookIds };
+}
+
 export async function evaluateBudgetsForOrg(
   organizationId: string,
   now = new Date(),
@@ -905,36 +925,46 @@ export async function evaluateBudgetsForOrg(
         // Routing is independent of the org's Twilio settings: dedupe already
         // happened via the budget_alert_events insert above.
         const url = orgAppUrl(organizationId, `budgets/${budget.id}`);
-        const routed = await routeAlert({
-          costVisibilityUserId: budget.visibilityUserId ?? null,
-          organizationId,
-          trigger: "budgetAlerts",
-          // A budget at or past 100% is a different kind of news from one at
-          // 80%, and severity is what a quiet-hours `urgentOverride` keys on,
-          // so "sleep through warnings, wake me if we actually blew the budget"
-          // is expressible without a second rule.
-          severity: threshold.percent >= 100 ? "critical" : "warning",
-          title: `Budget "${budget.name}" at ${threshold.percent}%`,
-          body: alertBody,
-          context: `${period} · ${kind}`,
-          url,
-          pushData: {
-            type: "budget_breach",
-            orgId: organizationId,
-            budgetId: budget.id,
-            month: status.periodKey,
-            thresholdPercent: threshold.percent,
+        const routed = await routeAlert(
+          {
+            costVisibilityUserId: budget.visibilityUserId ?? null,
+            organizationId,
+            trigger: "budgetAlerts",
+            // A budget at or past 100% is a different kind of news from one at
+            // 80%, and severity is what a quiet-hours `urgentOverride` keys on,
+            // so "sleep through warnings, wake me if we actually blew the budget"
+            // is expressible without a second rule.
+            severity: threshold.percent >= 100 ? "critical" : "warning",
+            title: `Budget "${budget.name}" at ${threshold.percent}%`,
+            body: alertBody,
+            context: `${period} · ${kind}`,
+            url,
+            pushData: {
+              type: "budget_breach",
+              orgId: organizationId,
+              budgetId: budget.id,
+              month: status.periodKey,
+              thresholdPercent: threshold.percent,
+            },
+            // Money facts only for money: an "over $500" routing rule must not
+            // match a usage budget because it crossed 50,000 tokens.
+            facts: usage
+              ? { key: budget.name }
+              : { amountCents: observed, currency: budget.currency, key: budget.name },
+            // Tracked so a note added to this firing later can follow it: as a
+            // reply in each Slack message's thread, and as a follow-up to the
+            // same Teams webhooks (see `budget_alert_events.slack_messages`).
           },
-          // Money facts only for money: an "over $500" routing rule must not
-          // match a usage budget because it crossed 50,000 tokens.
-          facts: usage
-            ? { key: budget.name }
-            : { amountCents: observed, currency: budget.currency, key: budget.name },
-        });
-        if (paged || alertReached(routed)) {
+          { track: true },
+        );
+        const delivered = budgetAlertDeliveredTo(routed);
+        if (paged || alertReached(routed) || delivered) {
           await db
             .update(budgetAlertEvents)
-            .set({ notifiedAt: new Date() })
+            .set({
+              ...(paged || alertReached(routed) ? { notifiedAt: new Date() } : {}),
+              ...delivered,
+            })
             .where(eq(budgetAlertEvents.id, inserted.id));
         }
       }

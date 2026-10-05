@@ -4,6 +4,10 @@ import {
   COST_REPORT_LIMITS,
   DASHBOARD_WIDGET_KINDS,
   costReportFolderMoveBlocker,
+  costReportBulkMoveBlockers,
+  costReportBulkMoveTargetBlocker,
+  costReportListOrder,
+  costReportListRange,
   costReportFolderPaths,
   duplicateCostReportName,
   flattenCostReportFolderTree,
@@ -154,5 +158,79 @@ describe("costReportFolderMoveBlocker", () => {
     expect(costReportFolderMoveBlocker(tree, "root", "other")).toMatch(/3 levels/);
     // A childless folder still fits under a depth-2 parent.
     expect(costReportFolderMoveBlocker(tree, "other", "child")).toBeNull();
+  });
+});
+
+describe("costReportBulkMoveBlockers", () => {
+  // a > b > c, plus d and e at the top.
+  const tree = [
+    folder("a", "A"),
+    folder("b", "B", "a"),
+    folder("c", "C", "b"),
+    folder("d", "D"),
+    folder("e", "E"),
+  ];
+
+  it("allows moving a parent and its child together", () => {
+    // Both land under d: b's subtree (b > c) is height 2, d is depth 1.
+    expect(costReportBulkMoveBlockers(tree, ["b", "c"], "d")).toEqual([]);
+  });
+
+  it("judges each folder against the tree as it will be, not as it is", () => {
+    // e alone fits under c? c is depth 3, so no: the limit is three levels.
+    expect(costReportBulkMoveBlockers(tree, ["e"], "c")).toHaveLength(1);
+    // Moving c out to the top first makes depth room: c becomes depth 1.
+    expect(costReportBulkMoveBlockers(tree, ["c", "e"], null)).toEqual([]);
+  });
+
+  it("refuses a target inside one of the moved folders", () => {
+    const blocked = costReportBulkMoveBlockers(tree, ["a", "d"], "c");
+    expect(blocked.map((b) => b.folderId)).toContain("a");
+  });
+
+  it("refuses a folder moved into itself", () => {
+    expect(costReportBulkMoveBlockers(tree, ["d"], "d")[0]?.folderId).toBe("d");
+  });
+
+  it("refuses an unknown target outright", () => {
+    expect(costReportBulkMoveBlockers(tree, [], "nope")).toEqual([
+      { folderId: null, message: "Unknown destination folder." },
+    ]);
+  });
+
+  it("names the first blocked folder for a picker tooltip", () => {
+    expect(costReportBulkMoveTargetBlocker(tree, ["a"], "c")).toMatch(/^"A": /);
+    expect(costReportBulkMoveTargetBlocker(tree, ["d"], "a")).toBeNull();
+  });
+});
+
+describe("costReportListOrder / costReportListRange", () => {
+  const folders = [folder("f1", "Finance"), folder("f2", "Ops")];
+  const reports = [
+    { id: "top", folderId: null },
+    { id: "fin", folderId: "f1" },
+    { id: "ops", folderId: "f2" },
+    { id: "orphan", folderId: "gone" },
+  ];
+
+  it("lists top-level reports, then each folder followed by its reports", () => {
+    expect(costReportListOrder(folders, reports)).toEqual([
+      { kind: "report", id: "top" },
+      { kind: "report", id: "orphan" },
+      { kind: "folder", id: "f1" },
+      { kind: "report", id: "fin" },
+      { kind: "folder", id: "f2" },
+      { kind: "report", id: "ops" },
+    ]);
+  });
+
+  it("selects the inclusive run in either direction", () => {
+    const order = costReportListOrder(folders, reports);
+    const ids = (a: string, b: string) =>
+      costReportListRange(order, { kind: "report", id: a }, { kind: "report", id: b }).map(
+        (i) => i.id,
+      );
+    expect(ids("fin", "top")).toEqual(["top", "orphan", "f1", "fin"]);
+    expect(ids("missing", "ops")).toEqual(["ops"]);
   });
 });

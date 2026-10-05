@@ -34,6 +34,8 @@ import {
   COST_RANGE_PRESETS,
   COST_REPORT_LIMITS,
   COST_REPORT_FOLDER_LIMITS,
+  COST_REPORT_BULK_LIMITS,
+  type CostReportBulkRequest,
   type CostReportFolderInput,
   COST_ANNOTATION_LIMITS,
   type CostAnnotationInput,
@@ -612,6 +614,48 @@ export const costAnnotationInputSchema = z.object({
 export const costAnomalyAcknowledgeSchema = z.object({
   explanation: z.string().min(1).max(COST_ANNOTATION_LIMITS.maxTextLength),
 });
+
+/**
+ * Body for a note on a fired budget alert
+ * (POST /budgets/:id/events/:eventId/note).
+ *
+ * One field, for the reason the anomaly explanation has one: the note's date
+ * is the day the alert fired and its scope is org-wide, both derived by the
+ * server from the event. The ceiling is the annotation's, since the note
+ * becomes one.
+ */
+export const budgetAlertNoteSchema = z.object({
+  note: z.string().min(1).max(COST_ANNOTATION_LIMITS.maxTextLength),
+});
+
+const bulkIdsSchema = z.array(z.string().min(1)).max(COST_REPORT_BULK_LIMITS.maxItems);
+
+/**
+ * Body for POST /cost-reports/bulk. Shape-only: whether every id exists, is
+ * visible and editable, and whether the folder moves keep the tree within its
+ * depth limit is decided by the service against the whole tree, before
+ * anything is written.
+ */
+export const costReportBulkRequestSchema = z
+  .discriminatedUnion("action", [
+    z.object({
+      action: z.literal("move"),
+      reportIds: bulkIdsSchema,
+      folderIds: bulkIdsSchema,
+      targetFolderId: z.string().min(1).nullable(),
+    }),
+    z.object({
+      action: z.literal("delete"),
+      reportIds: bulkIdsSchema,
+      folderIds: bulkIdsSchema,
+    }),
+  ])
+  .refine((b) => b.reportIds.length + b.folderIds.length > 0, {
+    message: "Select at least one report or folder.",
+  })
+  .refine((b) => b.reportIds.length + b.folderIds.length <= COST_REPORT_BULK_LIMITS.maxItems, {
+    message: `At most ${COST_REPORT_BULK_LIMITS.maxItems} items per request.`,
+  });
 
 export const budgetThresholdSchema = z.object({
   type: z.enum(["actual", "forecast"]),
@@ -1346,6 +1390,7 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof costReportInputSchema>, CostReportInput>,
   Exact<z.infer<typeof costReportRunOverridesSchema>, CostReportRunOverrides>,
   Exact<z.infer<typeof costReportFolderInputSchema>, CostReportFolderInput>,
+  Exact<z.infer<typeof costReportBulkRequestSchema>, CostReportBulkRequest>,
   Exact<z.infer<typeof costAnnotationInputSchema>, CostAnnotationInput>,
   Exact<z.infer<typeof budgetThresholdSchema>, BudgetThreshold>,
   Exact<z.infer<typeof budgetInputSchema>, BudgetInput>,

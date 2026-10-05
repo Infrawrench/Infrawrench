@@ -828,19 +828,27 @@ type CostAnnotationInput struct {
 
 // CostAnnotation is a note pinned to a date or a span on cost charts.
 //
-// CostAnomalyID is read-only and has no counterpart on the input: it is set when
-// somebody acknowledges a detected anomaly with an explanation, which mints the
-// annotation server-side. An annotation Terraform created is always null there.
+// CostAnomalyID and BudgetAlert are read-only and have no counterpart on the
+// input: they are set when somebody explains a detected anomaly or a fired
+// budget alert, which mints the annotation server-side. An annotation Terraform
+// created is always null in both.
 type CostAnnotation struct {
-	ID              string  `json:"id"`
-	StartDate       string  `json:"startDate"`
-	EndDate         *string `json:"endDate"`
-	Text            string  `json:"text"`
-	CostReportID    *string `json:"costReportId"`
-	CostAnomalyID   *string `json:"costAnomalyId"`
-	CreatedByUserID *string `json:"createdByUserId"`
-	CreatedAt       string  `json:"createdAt"`
-	UpdatedAt       string  `json:"updatedAt"`
+	ID              string                     `json:"id"`
+	StartDate       string                     `json:"startDate"`
+	EndDate         *string                    `json:"endDate"`
+	Text            string                     `json:"text"`
+	CostReportID    *string                    `json:"costReportId"`
+	CostAnomalyID   *string                    `json:"costAnomalyId"`
+	BudgetAlert     *CostAnnotationBudgetAlert `json:"budgetAlert"`
+	CreatedByUserID *string                    `json:"createdByUserId"`
+	CreatedAt       string                     `json:"createdAt"`
+	UpdatedAt       string                     `json:"updatedAt"`
+}
+
+// CostAnnotationBudgetAlert names the fired budget alert a note explains.
+type CostAnnotationBudgetAlert struct {
+	BudgetID string `json:"budgetId"`
+	EventID  string `json:"eventId"`
 }
 
 /* -------------------------- report notifications --------------------------- */

@@ -23,6 +23,13 @@ vi.mock("../../../services/budgets", () => ({
 }));
 
 class FakeSavedFilterError extends Error {}
+// The routes also mount the alert-note endpoint; its service reaches the
+// database and chat clients, none of which these tests exercise.
+vi.mock("../../../services/audit", () => ({ logAudit: vi.fn() }));
+vi.mock("../../../services/budget-alert-notes", () => ({
+  BudgetAlertNoteError: class extends Error {},
+  noteBudgetAlertEvent: vi.fn(),
+}));
 vi.mock("@infrawrench/server-core/cost/saved-filters", () => ({
   SavedCostFilterResolutionError: FakeSavedFilterError,
 }));

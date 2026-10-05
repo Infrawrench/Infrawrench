@@ -50,6 +50,13 @@ const CostAnnotation = strict({
       "reverse of the anomaly's own `acknowledgement.annotationId`, resolved from that same " +
       "single link rather than stored twice.",
   ),
+  budgetAlert: strict({ budgetId: Uuid, eventId: Uuid })
+    .nullable()
+    .describe(
+      "The fired budget alert this note explains (see POST " +
+        "/budgets/{id}/events/{eventId}/note), or null. Resolved from the event's own " +
+        "`note.annotationId`, the same single link, never stored twice.",
+    ),
 }).openapi("CostAnnotation");
 
 export function registerCostAnnotationPaths(ctx: BuildContext) {
