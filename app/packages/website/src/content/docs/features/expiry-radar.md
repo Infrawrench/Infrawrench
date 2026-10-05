@@ -29,6 +29,8 @@ On desktop the screen works in both modes: signed into Infrawrench Cloud it show
 
 ## Alerts before it bites
 
+Clusters and databases approaching the end of their provider's standard support appear here too, as **Extended support** deadlines: the day a surcharge starts or the day the provider upgrades the resource. The money side of those lives in [Extended support findings](./extended-support.md).
+
 The cloud poller sweeps every organization's feed and, when items sit inside your lead time, sends one summary alert — counts per severity plus the soonest deadlines — over the same transports as every other alert: Slack channels, Microsoft Teams webhooks, and mobile push. The **Expiry alerts** trigger is on by default and can be toggled per channel and per user in **Settings → Notifications** (and on the mobile notifications screen). Alerts are rate-limited to one per organization per day, so a certificate three weeks out reminds you daily, not every fifteen seconds.
 
 ![Org settings showing the Expiry radar card with the enabled toggle and lead-time input set to 60 days](https://agent-assets.infrawrench.com/docs-screenshots/features/expiry-radar/settings-card.png)

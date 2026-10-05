@@ -22,6 +22,7 @@ import {
   COST_ANOMALY_SMS_MODES,
   DRIFT_ALERT_LIMITS,
   EXPIRY_ALERT_LIMITS,
+  EXTENDED_SUPPORT_LIMITS,
   METRIC_ALERT_LIMITS,
   PROBE_LIMITS,
   type OrgConfigAllocationRule,
@@ -332,6 +333,17 @@ const alertSettingsSchema = z
       .strict()
       .optional(),
     posture: z.object({ enabled: z.boolean() }).strict().optional(),
+    extendedSupport: z
+      .object({
+        enabled: z.boolean(),
+        leadDays: z
+          .number()
+          .int()
+          .min(EXTENDED_SUPPORT_LIMITS.leadDays.min)
+          .max(EXTENDED_SUPPORT_LIMITS.leadDays.max),
+      })
+      .strict()
+      .optional(),
     digest: z
       .object({
         enabled: z.boolean(),

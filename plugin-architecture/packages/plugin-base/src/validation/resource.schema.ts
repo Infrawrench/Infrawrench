@@ -350,6 +350,86 @@ const carbonSchema = z.object({
   countOffset: z.number().int().min(0).optional(),
 });
 
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+
+const extendedSupportConditionSchema = z
+  .object({
+    fieldKey: z.string().min(1),
+    in: z.array(z.string().min(1)).min(1).optional(),
+    notIn: z.array(z.string().min(1)).min(1).optional(),
+  })
+  // A condition with neither list would always pass, which is a silent no-op.
+  .refine((c) => (c.in === undefined) !== (c.notIn === undefined), {
+    message: "extended support condition needs exactly one of `in` / `notIn`",
+  });
+
+const extendedSupportReleaseSchema = z
+  .object({
+    id: z.string().min(1),
+    product: z.string().min(1),
+    engines: z.array(z.string().min(1)).min(1).optional(),
+    versions: z.array(z.string().min(1)).min(1),
+    standardSupportEnds: isoDay,
+    extendedSupportEnds: isoDay.optional(),
+    targetVersion: z.string().min(1),
+    surcharge: z
+      .object({
+        unit: z.enum([
+          "cluster-hour",
+          "vcpu-hour",
+          "vcore-hour",
+          "node-hour",
+          "instance-hour",
+          "acu-hour",
+        ]),
+        currency: z.string().length(3),
+        tiers: z
+          .array(
+            z.object({
+              from: isoDay,
+              rate: z.number().positive().optional(),
+              label: z.string().min(1),
+            }),
+          )
+          .min(1)
+          // Hosts pick "the last tier whose `from` has passed", which only
+          // works over an ascending list.
+          .refine((tiers) => tiers.every((t, i) => i === 0 || tiers[i - 1]!.from < t.from), {
+            message: "surcharge tiers must be strictly ascending by `from`",
+          }),
+        pricingUrl: z.string().url(),
+        priceNote: z.string().min(1).optional(),
+      })
+      .optional(),
+    upgradeUrl: z.string().url(),
+    note: z.string().min(1).optional(),
+  })
+  .refine((r) => !r.extendedSupportEnds || r.extendedSupportEnds > r.standardSupportEnds, {
+    message: "extendedSupportEnds must be after standardSupportEnds",
+    path: ["extendedSupportEnds"],
+  });
+
+const extendedSupportSchema = z
+  .object({
+    versionFieldKey: z.string().min(1),
+    engineFieldKey: z.string().min(1).optional(),
+    quantityFieldKey: z.string().min(1).optional(),
+    regionFieldKey: z.string().min(1).optional(),
+    chargedWhen: z.array(extendedSupportConditionSchema).min(1).optional(),
+    notChargedNote: z.string().min(1).optional(),
+    releases: z.array(extendedSupportReleaseSchema).min(1),
+  })
+  .refine((d) => new Set(d.releases.map((r) => r.id)).size === d.releases.length, {
+    message: "extended support release ids must be unique within the type",
+    path: ["releases"],
+  })
+  // Engine-scoped releases need somewhere to read the engine from, or they
+  // would never match and the author would never find out why.
+  .refine((d) => d.engineFieldKey !== undefined || d.releases.every((r) => !r.engines), {
+    message: "releases with `engines` need `engineFieldKey` on the declaration",
+    path: ["engineFieldKey"],
+  });
+
 const rightsizingSchema = z
   .object({
     sizeFieldKey: z.string().min(1),
@@ -458,6 +538,7 @@ export const resourceTypeDefinitionSchema = z.object({
   backupPolicy: backupPolicySchema.optional(),
   lifecycle: lifecycleActionsSchema.optional(),
   rightsizing: rightsizingSchema.optional(),
+  extendedSupport: extendedSupportSchema.optional(),
   carbon: carbonSchema.optional(),
   principalRole: principalRoleSchema.optional(),
 });

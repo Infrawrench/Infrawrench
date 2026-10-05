@@ -102,6 +102,15 @@ export type {
   WarehouseSinkDeclaration,
   WarehouseTargetField,
 } from "./warehouse-sink.js";
+export type {
+  ExtendedSupportCharge,
+  ExtendedSupportCondition,
+  ExtendedSupportDeclaration,
+  ExtendedSupportRateTier,
+  ExtendedSupportRelease,
+  ExtendedSupportSurcharge,
+  ExtendedSupportUnit,
+} from "./extended-support.js";
 export { normalizeQuotaUsage, QuotaAccessError, quotaUtilization } from "./quotas.js";
 
 export type {

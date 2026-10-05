@@ -239,6 +239,7 @@ export async function listAKSClusters(
         osDiskSizeGb: Number(firstPool?.["osDiskSizeGB"] ?? 0),
         networkPlugin: String(networkProfile?.["networkPlugin"] ?? ""),
         tier: String((cluster["sku"] as Record<string, unknown> | undefined)?.["tier"] ?? "Free"),
+        supportPlan: String(props?.["supportPlan"] ?? "KubernetesOfficial"),
         nodeResourceGroup: String(props?.["nodeResourceGroup"] ?? ""),
         subnetRefs: joinRefs(
           (agentPools ?? []).map((pool) => subnetRef(String(pool["vnetSubnetID"] ?? ""))),

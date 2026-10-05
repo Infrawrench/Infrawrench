@@ -2,6 +2,7 @@ import type { PeerGuidanceAction } from "./schema.js";
 import type { AssociationSource } from "./create.js";
 import type { PostureCheckRule, PostureSeverity } from "./posture.js";
 import type { PrincipalRoleDeclaration } from "./principal.js";
+import type { ExtendedSupportDeclaration } from "./extended-support.js";
 
 export type { AssociationSource };
 
@@ -290,6 +291,12 @@ export type ExpiryKind =
    * its own lease rows.
    */
   | "lease"
+  /**
+   * A version leaving its provider's standard support window (the
+   * surcharge start or the forced-upgrade date), never declared by a plugin's
+   * `expiryFields`; hosts derive these items from `extendedSupport`.
+   */
+  | "extended-support"
   | "other";
 
 /**
@@ -1079,6 +1086,13 @@ export interface ResourceTypeDefinition {
    * flagged as oversized.
    */
   rightsizing?: RightsizingDeclaration;
+  /**
+   * The provider's support calendar for this type's engine versions: when
+   * standard support ends, what extended support costs, what to upgrade to.
+   * Feeds the "Extended support" savings findings and the expiry radar; see
+   * {@link ExtendedSupportDeclaration}. Absent = never flagged.
+   */
+  extendedSupport?: ExtendedSupportDeclaration;
   /**
    * How the carbon estimate reads this type; see {@link CarbonDeclaration}.
    * Absent = a `rightsizing` declaration is read in its place, and a type

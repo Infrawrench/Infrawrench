@@ -8,7 +8,15 @@ import type { BuildContext } from "../context";
  * `linear_issue_links.source_kind`.
  */
 const LinearSourceKind = z
-  .enum(["cost_anomaly", "orphan", "oversized", "posture_finding", "expiring", "probe"])
+  .enum([
+    "cost_anomaly",
+    "orphan",
+    "oversized",
+    "posture_finding",
+    "expiring",
+    "probe",
+    "extended_support",
+  ])
   .openapi("LinearSourceKind", {
     description: "Which detector produced the finding the issue was filed from.",
   });

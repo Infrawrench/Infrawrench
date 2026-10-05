@@ -8,7 +8,15 @@ import type { BuildContext } from "../context";
  * `jira_issue_links.source_kind`.
  */
 const JiraSourceKind = z
-  .enum(["cost_anomaly", "orphan", "oversized", "posture_finding", "expiring", "probe"])
+  .enum([
+    "cost_anomaly",
+    "orphan",
+    "oversized",
+    "posture_finding",
+    "expiring",
+    "probe",
+    "extended_support",
+  ])
   .openapi("JiraSourceKind", {
     description: "Which detector produced the finding the issue was filed from.",
   });

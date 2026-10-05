@@ -57,6 +57,8 @@ export function githubSourceKindLabel(kind: GithubIssueSourceKind): string {
       return "Failed probe";
     case "commitment_idle":
       return "Idle commitment";
+    case "extended_support":
+      return "Extended support";
   }
 }
 

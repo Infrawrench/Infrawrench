@@ -1,5 +1,6 @@
 import type { CreateFieldConfig, PeerGuidanceAction } from "@infrawrench/plugin-base";
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { MANAGED_DATABASE_EXTENDED_SUPPORT } from "../extended-support.js";
 
 // Kafka's `/users` endpoint requires a `settings.acl` block or DO 422s with
 // "settings is required". These editable fields default to full access on
@@ -115,6 +116,7 @@ export const ManagedDatabaseResourceType = rt({
   showInSidebar: true,
   supportsCreate: true,
   supportsMetrics: true,
+  extendedSupport: MANAGED_DATABASE_EXTENDED_SUPPORT,
   iconKey: "database",
   peerIntegrations: [
     {

@@ -6,12 +6,15 @@ import { Modal } from "../components/Modal.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
 import { CarbonPanelSection } from "./CarbonPanelSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
+import { ExtendedSupportSection } from "../savings/ExtendedSupportSection.js";
 import { CreditBurndownSection } from "./CreditBurndownSection.js";
 import { CommitmentsSection } from "./CommitmentsSection.js";
 import { RealizedSavingsSection } from "./RealizedSavingsSection.js";
 import { NetworkFlowSection } from "./NetworkFlowSection.js";
 import { KubernetesNetworkSection } from "./KubernetesNetworkSection.js";
 import type {
+  ExtendedSupportClient,
+  ExtendedSupportFinding,
   OrphanedResource,
   OrphansClient,
   OversizedResource,
@@ -103,6 +106,13 @@ export interface CostsPanelProps {
   /** Open an oversized resource's detail view. */
   onOpenOversizedResource?: ((resource: OversizedResource, accountId: string) => void) | undefined;
   /**
+   * Data access for the "Extended support" section. Omitted when the host has
+   * nothing to scan; the section is then left out.
+   */
+  extendedSupport?: ExtendedSupportClient | undefined;
+  /** Open an extended-support finding's resource detail view. */
+  onOpenExtendedSupportResource?: ((finding: ExtendedSupportFinding) => void) | undefined;
+  /**
    * Data access for the "Sleep schedules" section. Omitted when the host has
    * no schedule store (desktop in local-only mode): the section is then left
    * out rather than shown empty.
@@ -136,6 +146,8 @@ export function CostsPanel({
   onOpenResource,
   rightsizing,
   onOpenOversizedResource,
+  extendedSupport,
+  onOpenExtendedSupportResource,
   schedules,
   onOpenScheduledResource,
   onOpenExternal,
@@ -469,6 +481,13 @@ export function CostsPanel({
         {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
         {rightsizing && (
           <OversizedSection client={rightsizing} onOpenResource={onOpenOversizedResource} />
+        )}
+        {extendedSupport && (
+          <ExtendedSupportSection
+            client={extendedSupport}
+            onOpenResource={onOpenExtendedSupportResource}
+            onOpenExternal={onOpenExternal}
+          />
         )}
         {schedules && (
           <SleepSchedulesSection client={schedules} onOpenResource={onOpenScheduledResource} />

@@ -211,6 +211,8 @@ export function genericTools(): ToolDefinition[] {
             "k8s-cert",
             "ssh-key",
             "secret-version",
+            "lease",
+            "extended-support",
             "other",
           ])
           .optional()

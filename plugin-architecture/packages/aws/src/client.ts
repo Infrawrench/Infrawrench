@@ -1,4 +1,5 @@
 import type {
+  ExtendedSupportCharge,
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -150,6 +151,7 @@ import {
 import { fetchAwsCostData } from "./cost-data.js";
 import { fetchAwsPriceCatalog } from "./price-catalog.js";
 import { fetchAwsCommitments } from "./commitments.js";
+import { fetchAwsExtendedSupportCharges } from "./extended-support.js";
 import {
   fetchAwsQuotas,
   type AwsGetDefaultServiceQuotaResponse,
@@ -629,6 +631,17 @@ export class AWSClient implements PluginClient {
     range: BusinessMetricSourceRange,
   ): Promise<BusinessMetricSourceResult> {
     return runCloudWatchSource((region) => this.credsFor(region), this.creds.region, params, range);
+  }
+
+  /**
+   * Extended-support surcharges Cost Explorer billed over `range`; see
+   * `extended-support.ts` for how usage types are placed on resource types.
+   */
+  async fetchExtendedSupportCharges(
+    _accountId: string,
+    range: { start: string; end: string },
+  ): Promise<ExtendedSupportCharge[]> {
+    return fetchAwsExtendedSupportCharges(this.creds, range);
   }
 
   async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {

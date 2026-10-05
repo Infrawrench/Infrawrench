@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { RDS_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const RDSInstanceResourceType = rt({
   name: "RDS Instance",
@@ -34,6 +35,18 @@ export const RDSInstanceResourceType = rt({
     }),
     f("engineVersion", "Engine Version"),
     f("instanceClass", "Instance Class"),
+    f("vcpus", "vCPUs", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "vCPUs of the instance class, which RDS Extended Support bills on",
+    }),
+    f("engineLifecycleSupport", "Extended Support", {
+      required: false,
+      editable: false,
+      description:
+        "Whether RDS keeps this instance on paid Extended Support past the end of standard support, or upgrades it",
+    }),
     f("status", "Status"),
     f("allocatedStorage", "Storage (GB)", { kind: "number", required: false }),
     f("availabilityZone", "Availability Zone", { required: false }),
@@ -99,6 +112,7 @@ export const RDSInstanceResourceType = rt({
     stoppedValues: ["stopped", "stopping"],
   },
   supportsCreate: true,
+  extendedSupport: RDS_EXTENDED_SUPPORT,
   iconKey: "database",
   peerIntegrations: [
     {

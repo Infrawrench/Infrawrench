@@ -1,5 +1,6 @@
 import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { ATLAS_CLUSTER_EXTENDED_SUPPORT } from "./extended-support.js";
 import { ALL_DEDICATED_TIERS } from "./tiers.js";
 
 /**
@@ -238,6 +239,7 @@ export const ClusterResourceType = rt({
   supportsUpdate: true,
   supportsDelete: false,
   supportsMetrics: true,
+  extendedSupport: ATLAS_CLUSTER_EXTENDED_SUPPORT,
   iconKey: "mongodb",
 });
 

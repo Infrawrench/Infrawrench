@@ -38,6 +38,7 @@ import { getOrgAnomalySettings } from "@infrawrench/server-core/cost/anomaly-set
 import { getDriftAlertSettings } from "@infrawrench/server-core/drift/settings";
 import { getExpirySettings } from "@infrawrench/server-core/expiry/settings";
 import { getPostureSettings } from "@infrawrench/server-core/posture/settings";
+import { getExtendedSupportSettings } from "@infrawrench/server-core/extended-support/settings";
 import { getOrgDigestSettings } from "@infrawrench/server-core/digest/weekly";
 import { listDigestEmailRecipients } from "@infrawrench/server-core/digest/recipients";
 import { db } from "../../db/client";
@@ -350,15 +351,17 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     }),
   );
 
-  const [tagPolicy, costAnomaly, drift, expiry, posture, digest, recipients] = await Promise.all([
-    getOrgTagPolicy(organizationId),
-    getOrgAnomalySettings(organizationId),
-    getDriftAlertSettings(organizationId),
-    getExpirySettings(organizationId),
-    getPostureSettings(organizationId),
-    getOrgDigestSettings(organizationId),
-    listDigestEmailRecipients(organizationId),
-  ]);
+  const [tagPolicy, costAnomaly, drift, expiry, posture, extendedSupport, digest, recipients] =
+    await Promise.all([
+      getOrgTagPolicy(organizationId),
+      getOrgAnomalySettings(organizationId),
+      getDriftAlertSettings(organizationId),
+      getExpirySettings(organizationId),
+      getPostureSettings(organizationId),
+      getExtendedSupportSettings(organizationId),
+      getOrgDigestSettings(organizationId),
+      listDigestEmailRecipients(organizationId),
+    ]);
 
   return {
     accountNameById,
@@ -393,6 +396,7 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
       },
       expiry: { enabled: expiry.enabled, leadDays: expiry.leadDays },
       posture: { enabled: posture.enabled },
+      extendedSupport: { enabled: extendedSupport.enabled, leadDays: extendedSupport.leadDays },
       digest: {
         enabled: digest.enabled,
         timezone: digest.timezone,

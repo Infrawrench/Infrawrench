@@ -70,6 +70,7 @@ import {
   orgDriftAlertSettings,
   orgExpirySettings,
   orgPostureSettings,
+  orgExtendedSupportSettings,
   orgTagPolicies,
   resources,
   syntheticProbes,
@@ -1363,6 +1364,28 @@ function planAlertSettings(plan: PlanBuilder, args: AlertSettingsArgs): void {
           set: { ...next, updatedAt: now },
         });
     });
+  }
+
+  if (incoming.extendedSupport) {
+    const next = {
+      enabled: incoming.extendedSupport.enabled,
+      leadDays: incoming.extendedSupport.leadDays,
+    };
+    singleton(
+      "extendedSupport",
+      "Extended support alerts",
+      next,
+      current.extendedSupport,
+      async (tx) => {
+        await tx
+          .insert(orgExtendedSupportSettings)
+          .values({ organizationId, ...next })
+          .onConflictDoUpdate({
+            target: orgExtendedSupportSettings.organizationId,
+            set: { ...next, updatedAt: now },
+          });
+      },
+    );
   }
 
   if (incoming.digest) {

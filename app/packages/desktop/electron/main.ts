@@ -33,6 +33,7 @@ import { CLOUD_URL } from "../env";
 import { getShellCommandStatus, installShellCommand, uninstallShellCommand } from "./shell-command";
 import { readLocalDeploys } from "./deploy-history";
 import { listLocalOrphans } from "./local-orphans";
+import { listLocalExtendedSupport } from "./local-extended-support";
 import {
   getEncryptionKey,
   encryptValue,
@@ -759,6 +760,11 @@ ipcMain.handle("local_deploy_history", () => readLocalDeploys());
 // synced rows, run over the local workspace. Credential-free: see
 // electron/local-orphans.ts. The cloud counterpart is `cloud_orphans_list`.
 ipcMain.handle("local_orphans_list", () => listLocalOrphans());
+
+// Extended-support findings without an org: the same declared support
+// calendars over the local workspace, list price only. See
+// electron/local-extended-support.ts; cloud counterpart `cloud_extended_support_list`.
+ipcMain.handle("local_extended_support_list", () => listLocalExtendedSupport());
 
 // Native clipboard image read. The renderer cannot use
 // navigator.clipboard.read() (Electron fails its permission check and the

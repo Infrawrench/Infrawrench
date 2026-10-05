@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { POSTGRES_FLEXIBLE_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const PostgresFlexibleServerResourceType = rt({
   name: "PostgreSQL Flexible Server",
@@ -16,6 +17,12 @@ export const PostgresFlexibleServerResourceType = rt({
     f("version", "PostgreSQL Version", { required: false }),
     f("sku", "SKU", { required: false }),
     f("tier", "Tier", { required: false }),
+    f("billableVCores", "Billable vCores", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "vCores extended support bills on, including a high-availability standby",
+    }),
     f("storageSizeGb", "Storage (GB)", { kind: "number", required: false }),
     f("haEnabled", "HA Enabled", { kind: "boolean", required: false }),
     f("backupRetentionDays", "Backup Retention (Days)", { kind: "number", required: false }),
@@ -61,6 +68,7 @@ export const PostgresFlexibleServerResourceType = rt({
       label: "encrypted with",
     },
   ],
+  extendedSupport: POSTGRES_FLEXIBLE_EXTENDED_SUPPORT,
   iconKey: "database",
   // Sleep/wake schedules: flexibleServers start / stop. Compute stops billing;
   // Azure restarts a stopped server by itself after 7 days.

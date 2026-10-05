@@ -38,6 +38,20 @@ import type { OversizedResource, RightsizingListResponse } from "@infrawrench/cl
  * writes the audit trail) and reject with the server's error message on any
  * refusal so the row can show it verbatim.
  */
+export type { ExtendedSupportFinding, ExtendedSupportListResponse } from "@infrawrench/client-core";
+
+import type { ExtendedSupportListResponse } from "@infrawrench/client-core";
+
+/**
+ * Host-injected data access for the Extended support section. Web reads the
+ * cloud API; desktop picks cloud or the local workspace at call time, the
+ * orphans-client stance (the computation is pure, so local mode works too,
+ * at list price).
+ */
+export interface ExtendedSupportClient {
+  listExtendedSupport(refresh?: boolean): Promise<ExtendedSupportListResponse>;
+}
+
 export interface RightsizingClient {
   listRightsizing(refresh?: boolean): Promise<RightsizingListResponse>;
   applyResize(resource: OversizedResource, accountId: string): Promise<void>;

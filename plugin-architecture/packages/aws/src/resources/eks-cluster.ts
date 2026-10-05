@@ -1,4 +1,5 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
+import { EKS_EXTENDED_SUPPORT } from "../extended-support.js";
 
 export const EKSClusterResourceType = rt({
   name: "EKS Cluster",
@@ -28,6 +29,11 @@ export const EKSClusterResourceType = rt({
       enumValues: ["CREATING", "ACTIVE", "DELETING", "FAILED", "UPDATING", "PENDING"],
     }),
     f("platformVersion", "Platform Version", { required: false }),
+    f("supportType", "Upgrade Policy", {
+      required: false,
+      description:
+        "EXTENDED keeps the version on paid extended support after standard support ends; STANDARD upgrades it automatically",
+    }),
     f("roleArn", "Role ARN", { required: false }),
     f("nodeGroupCount", "Node Groups", { kind: "number", required: false }),
     f("nodeCount", "Node Count", { kind: "number", required: false }),
@@ -83,6 +89,7 @@ export const EKSClusterResourceType = rt({
     { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
     { fieldKey: "clusterSecurityGroupId", targetTypeId: "security-group", label: "guarded by" },
   ],
+  extendedSupport: EKS_EXTENDED_SUPPORT,
   iconKey: "kubernetes",
   supportsCreate: true,
   supportsMetrics: true,

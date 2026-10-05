@@ -16,7 +16,13 @@
  * of a *runtime* dependency on plugin-base so the mobile bundle doesn't pull
  * in zod for the sake of two interfaces.
  */
-import type { ExpiryFieldRule, ExpiryKind } from "@infrawrench/plugin-base";
+import type {
+  ExpiryFieldRule,
+  ExpiryKind,
+  ExtendedSupportDeclaration,
+} from "@infrawrench/plugin-base";
+
+import { extendedSupportExpiryItems } from "./extended-support";
 
 import type { CloudFetch } from "./fetch";
 
@@ -73,6 +79,8 @@ export const DEFAULT_MAX_AGE_DAYS: Record<ExpiryKind, number> = {
   // Leases always carry an absolute `expires_at`, so age-derivation never
   // applies to them; the entry exists only because every kind needs one.
   lease: 365,
+  // Same: extended-support items carry the provider's published date.
+  "extended-support": 365,
   other: 365,
 };
 
@@ -86,6 +94,7 @@ export const EXPIRY_KIND_LABELS: Record<ExpiryKind, string> = {
   "ssh-key": "SSH keys",
   "secret-version": "Secret versions",
   lease: "Leases",
+  "extended-support": "Extended support",
   other: "Other",
 };
 
@@ -148,6 +157,11 @@ export interface ExpiryScanResourceType {
   id: string;
   displayName: string;
   expiryFields?: readonly ExpiryFieldRule[] | undefined;
+  /**
+   * The type's support calendar. Its next deadline per resource becomes a
+   * `kind: "extended-support"` item (see `extendedSupportExpiryItems`).
+   */
+  extendedSupport?: ExtendedSupportDeclaration | undefined;
 }
 
 /** The part of a loaded plugin the scan reads. */
@@ -323,6 +337,15 @@ export function computeExpiryFeed(
       }
     }
   }
+
+  // Support calendars are declarations over synced versions too, so their
+  // next deadline rides the same radar (and the same expiry alerts).
+  items.push(
+    ...extendedSupportExpiryItems(input, {
+      now,
+      severity: (days) => expirySeverity(days, leadDays),
+    }),
+  );
 
   items.sort(
     (a, b) =>

@@ -5,6 +5,7 @@ import { useSettingsHost } from "./host.js";
 import { AlertRoutingSection } from "./AlertRoutingSection.js";
 import { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 import { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
+import { ExtendedSupportAlertsSection } from "./ExtendedSupportAlertsSection.js";
 import { DriftAlertsSection } from "./notifications/DriftAlertsSection.js";
 import { MsTeamsSection, TeamsMark } from "./notifications/MsTeamsSection.js";
 import { PushPreferencesSection, PushRosterSection } from "./notifications/PushSections.js";
@@ -180,6 +181,7 @@ export function NotificationsSection() {
       <div className="grid gap-6 lg:grid-cols-2">
         <DriftAlertsSection orgId={orgId} />
         <ExpiryAlertsSection />
+        <ExtendedSupportAlertsSection />
         <div className="lg:col-span-2">
           <WeeklyDigestSection />
         </div>

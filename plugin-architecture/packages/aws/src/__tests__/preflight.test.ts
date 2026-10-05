@@ -19,6 +19,7 @@ describe("awsPreflight declaration", () => {
     expect(costs.requiredPermissions.map((p) => p.id)).toEqual([
       "ce:GetCostAndUsage",
       "ce:GetReservationUtilization",
+      "ce:GetDimensionValues",
     ]);
     expect(awsPreflight.templateFormat).toEqual({
       label: "AWS IAM policy (JSON)",
@@ -45,6 +46,7 @@ describe("buildAwsPolicyTemplate", () => {
     expect(doc.Statement[1]!.Action).toEqual([
       "ce:GetCostAndUsage",
       "ce:GetReservationUtilization",
+      "ce:GetDimensionValues",
     ]);
     expect(doc.Statement[2]!.Action).toEqual(["iam:SimulatePrincipalPolicy"]);
     for (const s of doc.Statement) {

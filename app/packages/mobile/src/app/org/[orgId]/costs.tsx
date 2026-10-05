@@ -25,6 +25,7 @@ import { BudgetTree } from "@/features/costs/BudgetTree";
 import { CostGraphCard } from "@/features/dashboard/CostGraphCard";
 import { useBudgets } from "@/features/dashboard/useBudgets";
 import { useCostStatus } from "@/features/dashboard/useCostStatus";
+import { ExtendedSupportSection } from "@/features/savings/ExtendedSupportSection";
 import { OversizedSection } from "@/features/savings/OversizedSection";
 import { SavingsSection } from "@/features/savings/SavingsSection";
 import { SchedulesSection } from "@/features/schedules/SchedulesSection";
@@ -85,6 +86,7 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["untagged-spend"] });
         void queryClient.invalidateQueries({ queryKey: ["orphans"] });
         void queryClient.invalidateQueries({ queryKey: ["rightsizing"] });
+        void queryClient.invalidateQueries({ queryKey: ["extended-support"] });
         void queryClient.invalidateQueries({ queryKey: ["schedules"] });
         void queryClient.invalidateQueries({ queryKey: ["carbon"] });
         void queryClient.invalidateQueries({ queryKey: ["realized-savings"] });
@@ -148,6 +150,8 @@ export default function CostsScreen() {
       <SavingsSection />
 
       <OversizedSection />
+
+      <ExtendedSupportSection />
 
       <SchedulesSection />
 
