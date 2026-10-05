@@ -58,10 +58,10 @@ func specChecks() []specCheck {
 		{
 			schema: "BudgetWithStatus",
 			value:  Budget{},
-			// This month's firing history. Operational state, not
-			// configuration: it would change under a plan that changes
-			// nothing.
-			ignored: []string{"currentMonthEvents"},
+			// This period's firing history, and where a parent's children
+			// currently outgrow it. Operational state, not configuration:
+			// both change under a plan that changes nothing.
+			ignored: []string{"currentMonthEvents", "hierarchyWarnings"},
 		},
 
 		{schema: "CostCentre", value: CostCentre{}},

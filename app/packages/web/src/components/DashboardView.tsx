@@ -33,6 +33,7 @@ import {
   CostGraphCard,
   CostGraphConfigModal,
   DEFAULT_BUDGET_INPUT,
+  budgetWithStatusToInput,
   DEFAULT_COST_GRAPH_CONFIG,
   type BudgetInput,
   type BudgetWithStatus,
@@ -728,6 +729,7 @@ export function DashboardView({
                     ) : (
                       <BudgetWidgetCard
                         budget={budgets.get((card.widget.config as { budgetId: string }).budgetId)}
+                        allBudgets={budgets.values()}
                         onEdit={() => setBudgetModal({ widget: card.widget })}
                         onRemove={() => void handleRemoveWidget(card.widget.id)}
                       />
@@ -814,6 +816,12 @@ export function DashboardView({
                   )
                 : DEFAULT_BUDGET_INPUT
             }
+            budgets={[...budgets.values()]}
+            budgetId={
+              budgetModal.widget
+                ? (budgetModal.widget.config as { budgetId: string }).budgetId
+                : null
+            }
             api={costApi}
             onSave={(input) => saveBudgetWidget(budgetModal.widget, input)}
             onClose={() => setBudgetModal(null)}
@@ -875,28 +883,12 @@ export function DashboardView({
   );
 }
 
+/**
+ * Every field round-trips through the shared mapping, so a rename from a
+ * dashboard card never resets a setting this editor does not show.
+ */
 function budgetToInput(budget: BudgetWithStatus | undefined): BudgetInput {
-  if (!budget) return DEFAULT_BUDGET_INPUT;
-  return {
-    name: budget.name,
-    amountCents: budget.amountCents,
-    currency: budget.currency,
-    filters: budget.filters as BudgetInput["filters"],
-    thresholds: budget.thresholds,
-    // Round-tripped, or editing a budget's name would quietly move it back to
-    // the cash basis it was deliberately taken off.
-    ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
-    // Same rule: a rename must not silently detach the saved filter scoping
-    // this budget; updates are full replaces.
-    ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
-    // Same rule: a rename must not silently detach the scenario model whose
-    // forecast this budget's thresholds were opted into.
-    ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
-    // Same rule: not exposed as a toggle in this editor, but settable via the
-    // API and the Terraform provider; a save here must not silently move a
-    // budget back off the adjusted (billing-rule) figure it was opted into.
-    ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
-  };
+  return budget ? budgetWithStatusToInput(budget) : DEFAULT_BUDGET_INPUT;
 }
 
 function toCardData(wf: WorkflowPin): WorkflowDashboardCardData {

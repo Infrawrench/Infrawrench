@@ -79,6 +79,17 @@ const READ_CALLS: Array<[string, () => Promise<unknown>]> = [
   ["getResourceCostTotals", () => readers.getResourceCostTotals(ORG, "2026-09-01", "2026-09-30")],
   ["getCostDimensionValues", () => readers.getCostDimensionValues(ORG, "service")],
   ["getCostTagKeys", () => readers.getCostTagKeys(ORG)],
+  [
+    "queryUsageDaily",
+    () =>
+      readers.queryUsageDaily(ORG, {
+        from: "2026-09-01",
+        to: "2026-09-30",
+        filters: [],
+        usageUnit: "tokens",
+      }),
+  ],
+  ["getCostUsageUnits", () => readers.getCostUsageUnits(ORG)],
   ["getUntaggedSpend", () => readers.getUntaggedSpend(ORG, ["team"], "2026-09-01", "2026-09-30")],
   ["getShowbackSpend", () => readers.getShowbackSpend(ORG, [], "2026-09-01", "2026-09-30")],
   ["getCostCoverage", () => readers.getCostCoverage(ORG)],

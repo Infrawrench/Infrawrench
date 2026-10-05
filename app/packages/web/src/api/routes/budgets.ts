@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { budgetInputSchema } from "@infrawrench/ui/cost/config";
 import {
+  BudgetValidationError,
   createBudget,
   getBudgetWithStatus,
   listBudgetEvents,
@@ -44,6 +45,7 @@ app.post("/", async (c) => {
     // A budget must not be born pointing at a saved filter that doesn't
     // resolve: it would error every evaluation from day one.
     if (e instanceof SavedCostFilterResolutionError) return c.json({ error: e.message }, 400);
+    if (e instanceof BudgetValidationError) return c.json({ error: e.message }, 400);
     throw e;
   }
 });
@@ -74,6 +76,7 @@ app.put("/:id", async (c) => {
     return c.json(updated);
   } catch (e) {
     if (e instanceof SavedCostFilterResolutionError) return c.json({ error: e.message }, 400);
+    if (e instanceof BudgetValidationError) return c.json({ error: e.message }, 400);
     throw e;
   }
 });

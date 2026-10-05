@@ -36,6 +36,7 @@ import {
   tallyOrgConfigChanges,
   type OrgConfigApplyMode,
   type OrgConfigApplyResult,
+  type OrgConfigBudget,
   type OrgConfigChange,
   type OrgConfigDashboard,
   type OrgConfigDashboardCard,
@@ -284,6 +285,19 @@ async function buildOrgConfigPlan(
   const now = new Date();
 
   // --- budgets -------------------------------------------------------------
+  // A parent is named by key and resolved when the write runs, by which time
+  // every budget's id (created in this document or already present) is known;
+  // there is no foreign key, so creation order does not matter.
+  const budgetShape = (entry: OrgConfigBudget, selfId: string) => {
+    const parentId = entry.parentKey ? budgetIdByKey.get(entry.parentKey) : undefined;
+    return {
+      measure: entry.measure === "usage" ? ("usage" as const) : ("cost" as const),
+      usageUnit: entry.measure === "usage" ? (entry.usageUnit ?? null) : null,
+      usageAmount: entry.measure === "usage" ? (entry.usageAmount ?? null) : null,
+      period: entry.period ?? null,
+      parentBudgetId: parentId && parentId !== selfId ? parentId : null,
+    };
+  };
   const budgetIdByKey = planCollection(plan, "budgets", mode, state.budgets, doc.budgets, {
     create: (id, entry) => async (tx) => {
       await tx.insert(budgets).values({
@@ -294,6 +308,7 @@ async function buildOrgConfigPlan(
         currency: entry.currency,
         filters: entry.filters,
         thresholds: entry.thresholds,
+        ...budgetShape(entry, id),
         createdByUserId: opts.userId,
       });
     },
@@ -306,6 +321,7 @@ async function buildOrgConfigPlan(
           currency: entry.currency,
           filters: entry.filters,
           thresholds: entry.thresholds,
+          ...budgetShape(entry, id),
           updatedAt: now,
         })
         .where(eq(budgets.id, id));
@@ -317,6 +333,18 @@ async function buildOrgConfigPlan(
         .update(budgets)
         .set({ deletedAt: now, updatedAt: now })
         .where(eq(budgets.id, entity.id));
+      // Mirrors `softDeleteBudget` here too: children still pointing at the
+      // deleted budget move up a level. Removals run after every create and
+      // update in the section, so children the document re-parents already
+      // point elsewhere and are untouched.
+      const [deleted] = await tx
+        .select({ parentBudgetId: budgets.parentBudgetId })
+        .from(budgets)
+        .where(eq(budgets.id, entity.id));
+      await tx
+        .update(budgets)
+        .set({ parentBudgetId: deleted?.parentBudgetId ?? null, updatedAt: now })
+        .where(and(eq(budgets.parentBudgetId, entity.id), isNull(budgets.deletedAt)));
       await tx
         .update(dashboardWidgets)
         .set({ deletedAt: now, updatedAt: now })
@@ -330,6 +358,16 @@ async function buildOrgConfigPlan(
         );
     },
   });
+
+  for (const entry of doc.budgets ?? []) {
+    if (entry.parentKey && !budgetIdByKey.has(entry.parentKey)) {
+      plan.miss(
+        "budgets",
+        entry.key,
+        `parent budget "${entry.parentKey}" is neither in this document nor in the organization; the budget is applied without a parent`,
+      );
+    }
+  }
 
   // --- custom graphs -------------------------------------------------------
   let touchesCustomGraphs = false;

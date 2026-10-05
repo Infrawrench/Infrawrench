@@ -215,16 +215,29 @@ export async function loadOrgConfigState(organizationId: string): Promise<OrgCon
     budgetRows,
     (b) => b.id,
     (b) => b.name,
-    (b, key) => ({
+    (b, key): OrgConfigBudget => ({
       key,
       name: b.name,
       amountCents: b.amountCents,
       currency: b.currency,
       filters: (b.filters ?? []) as CostFilter[],
       thresholds: (b.thresholds ?? []) as OrgConfigBudget["thresholds"],
+      // Only what differs from the default, so a monthly spend budget's entry
+      // reads (and diffs) exactly as it did before these fields existed.
+      ...(b.measure === "usage" ? { measure: "usage" as const } : {}),
+      ...(b.measure === "usage" && b.usageUnit ? { usageUnit: b.usageUnit } : {}),
+      ...(b.measure === "usage" && b.usageAmount != null ? { usageAmount: b.usageAmount } : {}),
+      ...(b.period ? { period: b.period as OrgConfigBudget["period"] } : {}),
     }),
   );
   const budgetKeyById = new Map(budgetEntities.map((b) => [b.id, b.key]));
+  // The parent is a cross-reference like a widget's budget: rewritten to the
+  // parent's key, and dropped when the parent is not part of the export.
+  for (const entity of budgetEntities) {
+    const row = budgetRows.find((b) => b.id === entity.id);
+    const parentKey = row?.parentBudgetId ? budgetKeyById.get(row.parentBudgetId) : undefined;
+    if (parentKey) entity.config.parentKey = parentKey;
+  }
 
   const graphEntities = withKeys(
     graphRows,

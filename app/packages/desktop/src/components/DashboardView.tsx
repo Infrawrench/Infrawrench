@@ -84,6 +84,7 @@ import {
   CostGraphCard,
   CostGraphConfigModal,
   DEFAULT_BUDGET_INPUT,
+  budgetWithStatusToInput,
   DEFAULT_COST_GRAPH_CONFIG,
   type BudgetInput,
   type BudgetWithStatus,
@@ -1021,18 +1022,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     await refetchReports();
   }
 
+  /**
+   * Every field round-trips through the shared mapping, so a rename from a
+   * dashboard card never resets a setting this editor does not show.
+   */
   function budgetToInput(budget: BudgetWithStatus | undefined): BudgetInput {
-    if (!budget) return DEFAULT_BUDGET_INPUT;
-    return {
-      name: budget.name,
-      amountCents: budget.amountCents,
-      currency: budget.currency,
-      filters: budget.filters as BudgetInput["filters"],
-      thresholds: budget.thresholds,
-      // Round-tripped, or editing a budget's name would quietly move it back to
-      // the cash basis it was deliberately taken off.
-      ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
-    };
+    return budget ? budgetWithStatusToInput(budget) : DEFAULT_BUDGET_INPUT;
   }
 
   if (loading) {
@@ -1293,6 +1288,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                   ) : (
                     <BudgetWidgetCard
                       budget={budgets.get((card.widget.config as { budgetId: string }).budgetId)}
+                      allBudgets={budgets.values()}
                       onEdit={() => setBudgetModal({ widget: card.widget })}
                       onRemove={() => void removeWidget(card.widget.id)}
                     />
@@ -1369,6 +1365,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                     budgets.get((budgetModal.widget.config as { budgetId: string }).budgetId),
                   )
                 : DEFAULT_BUDGET_INPUT
+            }
+            budgets={[...budgets.values()]}
+            budgetId={
+              budgetModal.widget
+                ? (budgetModal.widget.config as { budgetId: string }).budgetId
+                : null
             }
             api={costApi}
             onSave={(input) => saveBudgetWidget(budgetModal.widget, input)}

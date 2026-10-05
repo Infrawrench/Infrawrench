@@ -682,7 +682,8 @@ export function registerCostPaths(ctx: BuildContext) {
     tags: ["Costs"],
     summary: "List distinct values for a cost dimension",
     description:
-      "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys; " +
+      "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, or " +
+      "dimension=usage-units for the usage units providers report (a usage budget's unit); " +
       "dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge " +
       "types rather than from the stored data, so the picker is populated before any " +
       "provider has reported one.",
@@ -699,6 +700,7 @@ export function registerCostPaths(ctx: BuildContext) {
           "charge_type",
           "commitment",
           "tag-keys",
+          "usage-units",
         ]),
         tagKey: z.string().optional(),
       }),

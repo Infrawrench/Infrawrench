@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.56.0",
+    "version": "1.57.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -8985,6 +8985,148 @@
         ],
         "description": "The basis `actualCents` and `forecastCents` were measured on."
       },
+      "BudgetMeasure": {
+        "type": "string",
+        "enum": [
+          "cost",
+          "usage"
+        ],
+        "description": "What the budget counts. `cost` (the default) is money in `currency`, against `amountCents`. `usage` sums the cost rows' usage quantity in `usageUnit` against `usageAmount` (tokens, GB, instance-hours, requests: whatever the providers report; list them with GET /costs/dimensions?dimension=usage-units). Units are matched exactly and never converted. A usage budget takes no scenario model and no billing rules."
+      },
+      "BudgetRecurringPeriod": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "recurring"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "quarter",
+              "year"
+            ]
+          },
+          "interval": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "startDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "First day of the first period (UTC, inclusive).",
+            "example": "2026-10-01"
+          }
+        },
+        "required": [
+          "kind",
+          "unit",
+          "interval",
+          "startDate"
+        ],
+        "additionalProperties": false
+      },
+      "BudgetExplicitPeriods": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "explicit"
+            ]
+          },
+          "periods": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "example": "2026-10-01"
+                },
+                "end": {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "example": "2026-10-01"
+                },
+                "amountCents": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "description": "This period's limit, for a spend budget."
+                },
+                "usageAmount": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000000000000000,
+                  "description": "This period's limit, for a usage budget."
+                }
+              },
+              "required": [
+                "start",
+                "end"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 60,
+            "description": "Non-overlapping, inclusive periods, each with its own amount."
+          }
+        },
+        "required": [
+          "kind",
+          "periods"
+        ],
+        "additionalProperties": false
+      },
+      "BudgetPeriod": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/BudgetRecurringPeriod"
+          },
+          {
+            "$ref": "#/components/schemas/BudgetExplicitPeriods"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Which periods the budget covers. Omitted (or null) is the calendar month. `recurring` repeats every `interval` × `unit` from `startDate`; `explicit` lists the periods with an amount each, and the top-level amount is then ignored. Thresholds fire once per period; days outside every period are not measured."
+      },
+      "BudgetHierarchyWarning": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "allocation",
+              "actual",
+              "forecast"
+            ],
+            "description": "`allocation`: the children's own amounts for this period (children on the same period only) add up to more than the parent's. `actual`: together they have already spent more. `forecast`: together they are projected to."
+          },
+          "childTotal": {
+            "type": "number",
+            "description": "The children's total, in the parent's unit."
+          },
+          "parentLimit": {
+            "type": "number",
+            "description": "The parent's limit for the period, in the same unit."
+          }
+        },
+        "required": [
+          "kind",
+          "childTotal",
+          "parentLimit"
+        ],
+        "additionalProperties": false
+      },
       "BudgetWithStatus": {
         "type": "object",
         "properties": {
@@ -9131,6 +9273,89 @@
               ],
               "additionalProperties": false
             }
+          },
+          "measure": {
+            "$ref": "#/components/schemas/BudgetMeasure"
+          },
+          "usageUnit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The usage unit a usage budget counts, exactly as the providers report it."
+          },
+          "usageAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "maximum": 1000000000000000,
+            "description": "A usage budget's limit per period, in `usageUnit`."
+          },
+          "period": {
+            "$ref": "#/components/schemas/BudgetPeriod"
+          },
+          "parentBudgetId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The budget this one rolls up into. A parent's actual and forecast are the sum of its children's, each measured over the parent's period; parent and children must count the same thing (one currency, or one usage unit). Hierarchies are at most 4 levels deep. Deleting a budget moves its children up to its own parent. Updates are full replaces, so omitting it on PUT makes the budget a root."
+          },
+          "periodStart": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "First day of the period being measured. Null when the budget's periods do not cover today (a cadence not started yet, a gap in an explicit list): nothing is measured.",
+            "example": "2026-10-01"
+          },
+          "periodEnd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-10-01"
+          },
+          "periodLimit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "This period's limit in the budget's unit: cents for a spend budget, the quantity for a usage budget. Null when no period is active."
+          },
+          "actualUsage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Period-to-date usage, for a usage budget (whose `actualCents` is 0)."
+          },
+          "forecastUsage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Projected period-end usage, for a usage budget."
+          },
+          "rolledUp": {
+            "type": "boolean",
+            "description": "True when the budget has children, so its figures are the sum of theirs over its period rather than a measurement of its own scope."
+          },
+          "childCount": {
+            "type": "integer",
+            "description": "Number of direct child budgets."
+          },
+          "hierarchyWarnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetHierarchyWarning"
+            }
           }
         },
         "required": [
@@ -9151,7 +9376,20 @@
           "forecastCents",
           "scenarioForecastCents",
           "currentMonthEvents",
-          "placements"
+          "placements",
+          "measure",
+          "usageUnit",
+          "usageAmount",
+          "period",
+          "parentBudgetId",
+          "periodStart",
+          "periodEnd",
+          "periodLimit",
+          "actualUsage",
+          "forecastUsage",
+          "rolledUp",
+          "childCount",
+          "hierarchyWarnings"
         ],
         "additionalProperties": false
       },
@@ -9237,6 +9475,37 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "measure": {
+            "$ref": "#/components/schemas/BudgetMeasure"
+          },
+          "usageUnit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The usage unit a usage budget counts, exactly as the providers report it."
+          },
+          "usageAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "maximum": 1000000000000000,
+            "description": "A usage budget's limit per period, in `usageUnit`."
+          },
+          "period": {
+            "$ref": "#/components/schemas/BudgetPeriod"
+          },
+          "parentBudgetId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The budget this one rolls up into. A parent's actual and forecast are the sum of its children's, each measured over the parent's period; parent and children must count the same thing (one currency, or one usage unit). Hierarchies are at most 4 levels deep. Deleting a budget moves its children up to its own parent. Updates are full replaces, so omitting it on PUT makes the budget a root."
           }
         },
         "required": [
@@ -9254,7 +9523,12 @@
           "createdByUserId",
           "deletedAt",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "measure",
+          "usageUnit",
+          "usageAmount",
+          "period",
+          "parentBudgetId"
         ],
         "additionalProperties": false
       },
@@ -9268,7 +9542,8 @@
           },
           "amountCents": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "minimum": 0,
+            "description": "The limit per period of a spend budget, in minor units of `currency`. Required (and positive) for a spend budget unless `period` is an explicit list; ignored by a usage budget. Defaults to 0."
           },
           "currency": {
             "type": "string",
@@ -9310,11 +9585,53 @@
           "useAdjustedSpend": {
             "type": "boolean",
             "description": "Measure this budget against billing-rule-adjusted spend — the internal figure — instead of what the providers charged. False by default, and for every budget nobody opted in. The default is a deliberate refusal: a markup is organisation policy and a budget threshold pages a real person, so adding one settings row must not be able to move every on-call rota at once. Unlike a scenario this affects `actual` thresholds too — an opted-in budget is measuring the internal number, and month-to-date internal spend is as marked up as the forecast is. The alert body says the figure is adjusted and names the collected one. Updates are full replaces, so omitting it on PUT clears the opt-in."
+          },
+          "measure": {
+            "$ref": "#/components/schemas/BudgetMeasure"
+          },
+          "usageUnit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The usage unit a usage budget counts, exactly as the providers report it."
+          },
+          "usageAmount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000000000000,
+            "description": "A usage budget's limit per period, in `usageUnit`."
+          },
+          "period": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BudgetPeriod"
+              },
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BudgetRecurringPeriod"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BudgetExplicitPeriods"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "recurring": "#/components/schemas/BudgetRecurringPeriod",
+                    "explicit": "#/components/schemas/BudgetExplicitPeriods"
+                  }
+                }
+              }
+            ]
+          },
+          "parentBudgetId": {
+            "type": "string",
+            "description": "The budget this one rolls up into. A parent's actual and forecast are the sum of its children's, each measured over the parent's period; parent and children must count the same thing (one currency, or one usage unit). Hierarchies are at most 4 levels deep. Deleting a budget moves its children up to its own parent. Updates are full replaces, so omitting it on PUT makes the budget a root."
           }
         },
         "required": [
           "name",
-          "amountCents",
           "thresholds"
         ],
         "additionalProperties": false
@@ -9354,6 +9671,36 @@
           "triggeredAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "periodStart": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "First day of the period the crossing was observed in; null on events from before budget periods were configurable (those are calendar months: see `month`).",
+            "example": "2026-10-01"
+          },
+          "periodEnd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-10-01"
+          },
+          "actualUsage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "A usage budget's period-to-date usage at the crossing (the cents fields are 0)."
+          },
+          "forecastUsage": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         },
         "required": [
@@ -9363,7 +9710,11 @@
           "thresholdPercent",
           "actualAmountCents",
           "forecastAmountCents",
-          "triggeredAt"
+          "triggeredAt",
+          "periodStart",
+          "periodEnd",
+          "actualUsage",
+          "forecastUsage"
         ],
         "additionalProperties": false
       },
@@ -41609,7 +41960,7 @@
           "Costs"
         ],
         "summary": "List distinct values for a cost dimension",
-        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys; dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge types rather than from the stored data, so the picker is populated before any provider has reported one.\n\n_Requires permission: `costs:read`._",
+        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys, or dimension=usage-units for the usage units providers report (a usage budget's unit); dimension=tag requires tagKey. `charge_type` answers from the fixed set of charge types rather than from the stored data, so the picker is populated before any provider has reported one.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -41634,7 +41985,8 @@
                 "tag",
                 "charge_type",
                 "commitment",
-                "tag-keys"
+                "tag-keys",
+                "usage-units"
               ]
             },
             "required": true,
@@ -47436,7 +47788,7 @@
         "tags": [
           "Budgets"
         ],
-        "summary": "List budgets with current-month actuals and forecasts",
+        "summary": "List budgets with current-period actuals and forecasts",
         "parameters": [
           {
             "schema": {
@@ -47525,7 +47877,7 @@
         "tags": [
           "Budgets"
         ],
-        "summary": "Get a budget with current-month status",
+        "summary": "Get a budget with current-period status",
         "parameters": [
           {
             "schema": {
@@ -47555,7 +47907,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BudgetFull"
+                  "$ref": "#/components/schemas/BudgetWithStatus"
                 }
               }
             }

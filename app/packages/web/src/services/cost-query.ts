@@ -23,6 +23,7 @@ import {
   getCostCoverage,
   getCostDimensionValues,
   getCostTagKeys,
+  getCostUsageUnits,
   queryCosts,
   type CostSeriesGroup,
 } from "@infrawrench/server-core/clickhouse/cost-readers";
@@ -528,6 +529,11 @@ export interface CostDimensionValue {
 /** Distinct tag keys seen in the org's cost data. */
 export async function listCostTagKeys(organizationId: string): Promise<string[]> {
   return getCostTagKeys(organizationId);
+}
+
+/** Distinct usage units seen in the org's cost data (the usage-budget picker). */
+export async function listCostUsageUnits(organizationId: string): Promise<string[]> {
+  return getCostUsageUnits(organizationId);
 }
 
 /**

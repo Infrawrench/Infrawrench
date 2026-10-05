@@ -14,6 +14,10 @@ import {
   COST_ANOMALY_SMS_MODES,
   COST_EFFICIENCY_LIMITS,
   COST_BASES,
+  BUDGET_LIMITS,
+  BUDGET_MEASURES,
+  BUDGET_PERIOD_UNITS,
+  type BudgetPeriod,
   COST_CHANGE_CADENCES,
   COST_CHANGE_DIRECTIONS,
   type CostAlertInput,
@@ -159,6 +163,35 @@ export {
   type CostGraphConfig,
   type BudgetWidgetConfig,
   type BudgetThreshold,
+  // Usage budgets, flexible periods and hierarchies: pure helpers shared by
+  // the server's evaluator and every editor.
+  BUDGET_MEASURES,
+  BUDGET_MEASURE_LABELS,
+  BUDGET_PERIOD_UNITS,
+  BUDGET_PERIOD_UNIT_LABELS,
+  BUDGET_LIMITS,
+  budgetInputError,
+  budgetWithStatusToInput,
+  budgetProgress,
+  buildBudgetTree,
+  budgetDescendantIds,
+  budgetDepth,
+  budgetSubtreeHeight,
+  resolveBudgetPeriod,
+  upcomingBudgetPeriod,
+  formatBudgetPeriodWindow,
+  formatUsageQuantity,
+  type BudgetMeasure,
+  type BudgetPeriod,
+  type BudgetPeriodUnit,
+  type BudgetRecurringPeriod,
+  type BudgetExplicitPeriod,
+  type BudgetExplicitPeriods,
+  type BudgetPeriodWindow,
+  type BudgetTreeNode,
+  type BudgetHierarchyWarning,
+  type BudgetHierarchyWarningKind,
+  type BudgetProgress,
   COST_REPORT_LIMITS,
   COST_REPORT_FOLDER_LIMITS,
   normalizeCostReportName,
@@ -474,9 +507,49 @@ export const budgetThresholdSchema = z.object({
   percent: z.number().int().min(1).max(1000),
 });
 
+const budgetUsageAmount = z.number().positive().max(BUDGET_LIMITS.maxUsageAmount);
+
+/**
+ * Which periods a budget covers. Shapes only: ordering, overlap and "each entry
+ * carries the amount its budget's measure needs" are `budgetInputError`'s,
+ * because they depend on fields outside this object.
+ */
+export const budgetPeriodSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("recurring"),
+    unit: z.enum(BUDGET_PERIOD_UNITS),
+    interval: z.number().int().min(1).max(BUDGET_LIMITS.maxInterval),
+    startDate: isoDate,
+  }),
+  z.object({
+    kind: z.literal("explicit"),
+    periods: z
+      .array(
+        z.object({
+          start: isoDate,
+          end: isoDate,
+          amountCents: z.number().int().positive().optional(),
+          usageAmount: budgetUsageAmount.optional(),
+        }),
+      )
+      .min(1)
+      .max(BUDGET_LIMITS.maxExplicitPeriods),
+  }),
+]);
+
+/**
+ * Create/update body for a budget. Deliberately a plain object (no
+ * `superRefine`) so the MCP tools can spread `.shape`; the cross-field rules
+ * live in `budgetInputError`, which every caller runs after this parses.
+ */
 export const budgetInputSchema = z.object({
   name: z.string().min(1).max(120),
-  amountCents: z.number().int().positive(),
+  /**
+   * The per-period limit of a spend budget. Defaults to 0 because a usage
+   * budget and an explicit period list do not use it; `budgetInputError`
+   * insists on a positive one where it is the limit.
+   */
+  amountCents: z.number().int().min(0).default(0),
   currency: z.string().length(3).default("USD"),
   filters: z.array(costFilterSchema).default([]),
   /**
@@ -500,6 +573,16 @@ export const budgetInputSchema = z.object({
    * charged. A PUT that omits it clears the opt-in, the safe direction.
    */
   useAdjustedSpend: z.boolean().optional(),
+  /** What the budget counts; absent is spend. */
+  measure: z.enum(BUDGET_MEASURES).optional(),
+  /** The usage unit a usage budget counts, exactly as providers report it. */
+  usageUnit: z.string().trim().min(1).max(BUDGET_LIMITS.maxUsageUnitLength).optional(),
+  /** A usage budget's limit per period. */
+  usageAmount: budgetUsageAmount.optional(),
+  /** Absent is the calendar month. A PUT that omits it goes back to monthly. */
+  period: budgetPeriodSchema.optional(),
+  /** The budget this one rolls up into. A PUT that omits it makes it a root. */
+  parentBudgetId: z.string().min(1).optional(),
 });
 
 /**
@@ -1043,6 +1126,7 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof costAnnotationInputSchema>, CostAnnotationInput>,
   Exact<z.infer<typeof budgetThresholdSchema>, BudgetThreshold>,
   Exact<z.infer<typeof budgetInputSchema>, BudgetInput>,
+  Exact<z.infer<typeof budgetPeriodSchema>, BudgetPeriod>,
   Exact<z.infer<typeof costAlertInputSchema>, CostAlertInput>,
   Exact<z.infer<typeof costAnomalySettingsSchema>, CostAnomalySettings>,
   Exact<z.infer<typeof costEfficiencySettingsSchema>, CostEfficiencySettings>,

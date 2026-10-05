@@ -35,13 +35,27 @@ export interface BudgetTriggerBudget {
   name: string;
   amountCents: number;
   currency: string;
+  /** Absent is a spend budget. */
+  measure?: "cost" | "usage" | undefined;
+  usageUnit?: string | null | undefined;
 }
 
-/** Current-month spend for a budget, as computed by `budgetMonthStatus`. */
+/**
+ * A budget's current-period figures, as computed by the budget resolver.
+ * `month` is the period key (`YYYY-MM` for a calendar-month budget), which is
+ * what makes a trigger fire once per period. `limit` is the period's limit in
+ * the budget's unit; absent means `budget.amountCents`, which is what every
+ * monthly spend budget measures against.
+ */
 export interface BudgetTriggerStatus {
   month: string;
   actualCents: number;
   forecastCents: number | null;
+  limit?: number | null | undefined;
+  actualUsage?: number | null | undefined;
+  forecastUsage?: number | null | undefined;
+  periodStart?: string | null | undefined;
+  periodEnd?: string | null | undefined;
 }
 
 export interface BudgetTriggerWorkflow {
@@ -79,8 +93,18 @@ export async function listBudgetTriggerWorkflows(
   }
 }
 
-/** The observed value a trigger compares against, or null when unavailable. */
-function observedCents(status: BudgetTriggerStatus, metric: "actual" | "forecast"): number | null {
+/**
+ * The observed value a trigger compares against, in the budget's unit, or
+ * null when unavailable.
+ */
+function observedValue(
+  status: BudgetTriggerStatus,
+  metric: "actual" | "forecast",
+  usage: boolean,
+): number | null {
+  if (usage) {
+    return metric === "actual" ? (status.actualUsage ?? null) : (status.forecastUsage ?? null);
+  }
   return metric === "actual" ? status.actualCents : status.forecastCents;
 }
 
@@ -95,7 +119,9 @@ export async function fireBudgetTriggerWorkflows(opts: {
   candidates: BudgetTriggerWorkflow[];
 }): Promise<void> {
   const { organizationId, budget, status, candidates } = opts;
-  if (budget.amountCents <= 0) return;
+  const usage = budget.measure === "usage";
+  const limit = status.limit !== undefined ? status.limit : budget.amountCents;
+  if (limit === null || limit <= 0) return;
 
   for (const wf of candidates) {
     const trigger = (wf.trigger ?? {}) as BudgetTrigger;
@@ -108,11 +134,12 @@ export async function fireBudgetTriggerWorkflows(opts: {
           ? trigger.percent
           : DEFAULT_BUDGET_TRIGGER_PERCENT;
 
-      const observed = observedCents(status, metric);
+      const observed = observedValue(status, metric, usage);
       // A null forecast means there wasn't enough data to fit one: that is not
       // the same as "spend is zero", so don't treat it as below the threshold.
       if (observed === null || observed === 0) continue;
-      if (observed < Math.round((budget.amountCents * percent) / 100)) continue;
+      const bar = usage ? (limit * percent) / 100 : Math.round((limit * percent) / 100);
+      if (observed < bar) continue;
 
       // Claim the crossing. `IS DISTINCT FROM` also covers the null (never
       // fired) case; only the replica that changes the row runs the workflow.
@@ -135,12 +162,28 @@ export async function fireBudgetTriggerWorkflows(opts: {
         budgetName: budget.name,
         month: status.month,
         currency: budget.currency,
-        amountCents: budget.amountCents,
+        // The cents fields keep meaning cents: a usage budget reports 0 there
+        // and its quantities in the usage fields, so a workflow written for
+        // spend budgets cannot mistake 40,000 tokens for $400.
+        amountCents: usage ? 0 : limit,
         metric,
         percent,
-        observedCents: observed,
-        actualCents: status.actualCents,
-        forecastCents: status.forecastCents,
+        observedCents: usage ? 0 : observed,
+        actualCents: usage ? 0 : status.actualCents,
+        forecastCents: usage ? null : status.forecastCents,
+        measure: usage ? "usage" : "cost",
+        ...(usage
+          ? {
+              usageUnit: budget.usageUnit ?? "",
+              usageLimit: limit,
+              observedUsage: observed,
+              actualUsage: status.actualUsage ?? 0,
+              forecastUsage: status.forecastUsage ?? null,
+            }
+          : {}),
+        ...(status.periodStart && status.periodEnd
+          ? { periodStart: status.periodStart, periodEnd: status.periodEnd }
+          : {}),
       };
 
       // Imported lazily: this module is reached from the cost/budget path,

@@ -286,6 +286,13 @@ infrawrench estimate my-api-box --account production
 infrawrench estimate acc-123:ec2-instance:i-0abc --json
 ```
 
+`budgets` prints every budget as the tree the Costs panel draws: each level's period-to-date actual and forecast against its own limit, in money or in a usage budget's unit, the period being measured, fired alerts, and any children that outgrow their parent. `--json` returns the full rows.
+
+```sh
+infrawrench budgets
+infrawrench budgets --json
+```
+
 `tags` and `showback` are the [tag governance](./tag-policy-and-showback.md) reports: the org's required tags with per-account compliance scores and the spend missing a required key, and spend grouped by cost centre through the org's allocation rules:
 
 ```

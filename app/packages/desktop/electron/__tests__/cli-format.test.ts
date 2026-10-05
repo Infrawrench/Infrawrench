@@ -13,6 +13,12 @@ import {
   unitCostRatioLabel,
   formatInvoiceStatus,
   formatInvoiceTotal,
+  budgetBar,
+  budgetFigures,
+  formatBudgetPeriod,
+  formatBudgetValue,
+  orderBudgetTree,
+  type CliBudgetRow,
 } from "../cli/format";
 import { setColorEnabled } from "../cli/output";
 
@@ -344,5 +350,69 @@ describe("formatInvoiceTotal", () => {
 
   it("prints a zero total in the invoice currency rather than nothing", () => {
     expect(formatInvoiceTotal({ billed: {} }, "USD")).toBe("0.00 USD");
+  });
+});
+
+describe("budget tree", () => {
+  const row = (over: Partial<CliBudgetRow> = {}): CliBudgetRow => ({
+    id: "b",
+    name: "B",
+    amountCents: 100_00,
+    currency: "USD",
+    month: "2026-10",
+    actualCents: 50_00,
+    forecastCents: 90_00,
+    currentMonthEvents: [],
+    ...over,
+  });
+
+  it("reads an older server's row as a monthly spend budget", () => {
+    expect(budgetFigures(row())).toEqual({
+      limit: 100_00,
+      actual: 50_00,
+      forecast: 90_00,
+      percent: 50,
+    });
+    expect(formatBudgetPeriod(row())).toBe("2026-10");
+  });
+
+  it("prints a usage budget in its unit", () => {
+    const usage = row({
+      measure: "usage",
+      usageUnit: "tokens",
+      periodLimit: 2_000_000,
+      actualUsage: 1_500_000,
+      forecastUsage: null,
+    });
+    expect(budgetFigures(usage).percent).toBe(75);
+    expect(formatBudgetValue(usage, 1_500_000)).toBe("1.5M tokens");
+    expect(formatBudgetValue(row(), 123_456)).toBe("$1,235");
+  });
+
+  it("names a custom period and an inactive one", () => {
+    expect(formatBudgetPeriod(row({ periodStart: "2026-10-05", periodEnd: "2026-10-18" }))).toBe(
+      "2026-10-05 → 2026-10-18",
+    );
+    expect(formatBudgetPeriod(row({ periodStart: "2026-10-01", periodEnd: "2026-10-31" }))).toBe(
+      "2026-10",
+    );
+    expect(formatBudgetPeriod(row({ periodStart: null, periodEnd: null }))).toBe(
+      "no active period",
+    );
+  });
+
+  it("orders parents before children and keeps orphans", () => {
+    const order = orderBudgetTree([
+      row({ id: "child", parentBudgetId: "root" }),
+      row({ id: "root" }),
+      row({ id: "orphan", parentBudgetId: "gone" }),
+    ]).map(({ row: r, depth }) => `${r.id}:${depth}`);
+    expect(order).toEqual(["root:0", "child:1", "orphan:0"]);
+  });
+
+  it("draws a capped bar", () => {
+    expect(budgetBar(50, 4)).toBe("██░░");
+    expect(budgetBar(250, 4)).toBe("████");
+    expect(budgetBar(null, 3)).toBe("···");
   });
 });

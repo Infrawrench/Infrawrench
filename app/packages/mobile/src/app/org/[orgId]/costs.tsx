@@ -21,7 +21,7 @@ import { CostChangeAlertsSection } from "@/features/costs/CostChangeAlertsSectio
 import { EfficiencyAlertsSection } from "@/features/costs/EfficiencyAlertsSection";
 import { TagGovernanceSection } from "@/features/costs/TagGovernanceSection";
 import { UnitCostsSection } from "@/features/costs/UnitCostsSection";
-import { BudgetCard } from "@/features/dashboard/BudgetCard";
+import { BudgetTree } from "@/features/costs/BudgetTree";
 import { CostGraphCard } from "@/features/dashboard/CostGraphCard";
 import { useBudgets } from "@/features/dashboard/useBudgets";
 import { useCostStatus } from "@/features/dashboard/useCostStatus";
@@ -121,9 +121,9 @@ export default function CostsScreen() {
           onRetry={() => void budgets.refetch()}
         />
       ) : rows.length === 0 ? (
-        <EmptyView message="No budgets yet. Add one from a dashboard — edit it, add a card, and pick New budget — to track a monthly amount and get alerted before the bill does." />
+        <EmptyView message="No budgets yet. Add one from a dashboard — edit it, add a card, and pick New budget — to track spend or a usage quantity per period and get alerted before the bill does." />
       ) : (
-        rows.map((b) => <BudgetCard key={b.id} budget={b} />)
+        <BudgetTree budgets={rows} />
       )}
 
       {/* Above tag governance, mirroring the web panel's order: "what does a
