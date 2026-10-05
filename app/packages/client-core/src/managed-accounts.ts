@@ -51,6 +51,7 @@ import type {
   PricingExpressionFailure,
   RerateCoverage,
 } from "./msp-pricing";
+import type { ExchangeRateSource } from "./currency";
 
 /* ------------------------------------------------------------------ *
  * Managed accounts
@@ -322,8 +323,16 @@ export interface ManagedInvoiceTotals {
 export interface ManagedInvoiceRate {
   currency: string;
   rate: number;
-  /** The `effective_from` of the org rate row that was used. */
+  /**
+   * The `effective_from` of the org rate row that was used, or the ECB
+   * publication date when the rate came from the automatic feed.
+   */
   effectiveFrom: string;
+  /**
+   * `manual` (the org's stated rate) or `ecb` (automatic reference rate).
+   * Absent on invoices frozen before the feed existed, which were all manual.
+   */
+  source?: ExchangeRateSource;
 }
 
 /**

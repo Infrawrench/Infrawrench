@@ -40,10 +40,11 @@ import { HOURLY_BINNING_UNAVAILABLE_REASON } from "@infrawrench/client-core";
 import {
   convertGroups,
   mergeConvertedGroups,
+  RateBook,
 } from "@infrawrench/server-core/cost/currency-convert";
 import {
-  listOrgExchangeRates,
   loadConversionContext,
+  loadOrgRateBook,
 } from "@infrawrench/server-core/cost/currency-settings";
 import {
   SavedCostFilterResolutionError,
@@ -173,7 +174,7 @@ async function resolveConversion(
   if (mode === "margin") {
     return {
       displayCurrency: metric.currency,
-      rates: metric.currency ? await listOrgExchangeRates(organizationId) : [],
+      rates: metric.currency ? await loadOrgRateBook(organizationId) : RateBook.manualOnly([]),
     };
   }
   return loadConversionContext(organizationId, requested);

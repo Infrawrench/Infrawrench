@@ -1026,28 +1026,51 @@ type CostEfficiencySettings struct {
 
 /* --------------------------------- currency -------------------------------- */
 
-// CurrencySettings is the PUT body for the org's display currency. The pointer
-// has no omitempty: null is how conversion is turned off, and an absent key
-// would be a different request.
+// CurrencySettings is both the PUT body and its response for the org's
+// currency settings. DisplayCurrency has no omitempty: null is how conversion
+// is turned off, and an absent key would be a different request. AutoRates and
+// RateBasis are omitempty pointers on the way in because the server treats an
+// absent key as "keep the stored value"; the response always carries both.
 type CurrencySettings struct {
 	DisplayCurrency *string `json:"displayCurrency"`
+	AutoRates       *bool   `json:"autoRates,omitempty"`
+	RateBasis       *string `json:"rateBasis,omitempty"`
 }
 
-// CurrencyConfig is what GET /currency returns: the display currency plus the
-// whole stated rate table.
+// FxFeedStatus is the state of the automatic ECB reference-rate feed. It is
+// global (the same for every organization) and read-only.
+type FxFeedStatus struct {
+	Source           string   `json:"source"`
+	SourceName       string   `json:"sourceName"`
+	SourceURL        string   `json:"sourceUrl"`
+	LatestRateDate   *string  `json:"latestRateDate"`
+	EarliestRateDate *string  `json:"earliestRateDate"`
+	Currencies       []string `json:"currencies"`
+	LastSuccessAt    *string  `json:"lastSuccessAt"`
+	LastError        *string  `json:"lastError"`
+}
+
+// CurrencyConfig is what GET /currency returns: the settings, the whole stated
+// rate table, and the feed's state.
 type CurrencyConfig struct {
 	DisplayCurrency *string        `json:"displayCurrency"`
+	AutoRates       bool           `json:"autoRates"`
+	RateBasis       string         `json:"rateBasis"`
 	Rates           []ExchangeRate `json:"rates"`
+	Feed            FxFeedStatus   `json:"feed"`
 }
 
 // ExchangeRateInput is the upsert body. The route is keyed on
 // (fromCurrency, toCurrency, effectiveFrom): restating a rate for a day it
-// already covers replaces it rather than adding a second one.
+// already covers replaces it rather than adding a second one. EffectiveTo has
+// no omitempty: null is "open-ended", and sending it explicitly is what clears
+// an end date that was set before.
 type ExchangeRateInput struct {
-	FromCurrency  string `json:"fromCurrency"`
-	ToCurrency    string `json:"toCurrency"`
-	Rate          string `json:"rate"`
-	EffectiveFrom string `json:"effectiveFrom"`
+	FromCurrency  string  `json:"fromCurrency"`
+	ToCurrency    string  `json:"toCurrency"`
+	Rate          string  `json:"rate"`
+	EffectiveFrom string  `json:"effectiveFrom"`
+	EffectiveTo   *string `json:"effectiveTo"`
 }
 
 // ExchangeRate is one stated rate.
@@ -1061,6 +1084,7 @@ type ExchangeRate struct {
 	ToCurrency    string  `json:"toCurrency"`
 	Rate          string  `json:"rate"`
 	EffectiveFrom string  `json:"effectiveFrom"`
+	EffectiveTo   *string `json:"effectiveTo"`
 	CreatedBy     *string `json:"createdBy"`
 	CreatedAt     string  `json:"createdAt"`
 	UpdatedAt     string  `json:"updatedAt"`

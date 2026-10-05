@@ -280,7 +280,15 @@ const listBillingRules = vi.fn();
 vi.mock("../cost/billing-rules", () => ({ resolveBillingAdjustments, listBillingRules }));
 
 const listOrgExchangeRates = vi.fn();
-vi.mock("../cost/currency-settings", () => ({ listOrgExchangeRates }));
+// The real precedence (stated rate, then feed) runs; only the loading is faked,
+// with no feed, which is what an org with automatic rates off gets.
+vi.mock("../cost/currency-settings", async () => {
+  const { RateBook } = await import("../cost/currency-convert");
+  return {
+    loadOrgRateBook: async (organizationId: string) =>
+      RateBook.manualOnly(await listOrgExchangeRates(organizationId)),
+  };
+});
 
 const getManagedAccountRow = vi.fn();
 vi.mock("../cost/managed-accounts", () => ({ getManagedAccountRow }));
@@ -628,7 +636,7 @@ describe("freezing at approval", () => {
     const { approveInvoice, getInvoice } = await import("../cost/invoices");
     const approved = await approveInvoice(ORG, "inv-1", "user-2");
     expect(approved.derivation.rates).toEqual([
-      { currency: "USD", rate: 0.8, effectiveFrom: "2026-01-01" },
+      { currency: "USD", rate: 0.8, effectiveFrom: "2026-01-01", source: "manual" },
     ]);
 
     // The org restates the rate, effective before the invoice's period even
@@ -774,6 +782,16 @@ describe("renderInvoiceCsv", () => {
     expect(header).toContain("adjustment");
     expect(header).toContain("rate");
     expect(header).toContain("billed");
+    // Where each line's rate came from and the date it was dated, so a
+    // converted figure can be checked against its source.
+    const columns = header!.split(",");
+    expect(columns).toContain("rate_source");
+    expect(columns).toContain("rate_effective_from");
+    const usdLine = rows.find((r) => r.includes(",USD,"));
+    expect(usdLine).toBeDefined();
+    const cells = usdLine!.split(",");
+    expect(cells[columns.indexOf("rate_source")]).toBe("manual");
+    expect(cells[columns.indexOf("rate_effective_from")]).toBe("2026-01-01");
     // A line and a total row, so the reader never has to sum it themselves.
     expect(
       rows.some((r) => r.startsWith("INV-2026-0001,Northwind Trading") && r.includes("1200")),

@@ -960,6 +960,13 @@
       "when": 1791226804597,
       "tag": "0136_tag_key_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1791227342873,
+      "tag": "0137_fx_rate_feed",
+      "breakpoints": true
     }
   ]
 }

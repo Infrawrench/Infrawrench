@@ -17,8 +17,8 @@ import type {
   CostFilter,
   CostScenarioProjection,
   CostSeriesPoint,
-  ExchangeRate,
 } from "@infrawrench/client-core";
+import type { RateSource } from "@infrawrench/server-core/cost/currency-convert";
 import {
   CostScenarioApplicationError,
   CostScenarioResolutionError,
@@ -50,7 +50,7 @@ export interface AttachCostScenarioOptions {
   /** Distinct currencies in the response's series. */
   currencies: string[];
   displayCurrency: string | null;
-  rates: ExchangeRate[];
+  rates: RateSource;
 }
 
 /**

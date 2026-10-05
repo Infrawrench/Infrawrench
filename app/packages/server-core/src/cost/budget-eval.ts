@@ -47,7 +47,7 @@ import {
 import { billingAdjustmentsAreEmpty } from "@infrawrench/client-core";
 import { resolveBillingAdjustments } from "./billing-rules";
 import { convertGroups } from "./currency-convert";
-import { getOrgCurrencySettings, listOrgExchangeRates } from "./currency-settings";
+import { getOrgCurrencySettings, loadOrgRateBook } from "./currency-settings";
 import {
   forecastDaily,
   forecastWindowTotal,
@@ -315,12 +315,10 @@ async function measureCostScope(
   });
 
   // Conversion is attempted only when the budget is denominated in the org's
-  // display currency: see the doc comment on budgetMonthStatus.
-  const settings = await getOrgCurrencySettings(organizationId).catch(() => ({
-    displayCurrency: null as string | null,
-  }));
-  const target = settings.displayCurrency === currency ? currency : null;
-  const rates = target ? await listOrgExchangeRates(organizationId) : [];
+  // display currency: see the doc comment above.
+  const settings = await getOrgCurrencySettings(organizationId).catch(() => null);
+  const target = settings && settings.displayCurrency === currency ? currency : null;
+  const rates = target && settings ? await loadOrgRateBook(organizationId, settings) : [];
   const { groups: usable, conversion } = convertGroups(groups, target, rates);
 
   const daily = new Map<string, number>();

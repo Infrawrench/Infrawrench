@@ -220,14 +220,34 @@ function printConversionNotice(conversion: CostConversion | undefined): void {
   if (converted.length === 0 && unconverted.length === 0) return;
 
   for (const entry of converted) {
-    const rates = entry.rates.map((r) => `${r.rate} from ${r.effectiveFrom}`).join(", ");
+    // Stated rates are listed one by one (they are what a reader reconciles
+    // against); a daily feed across a quarter is sixty-odd rates, so it is
+    // condensed to its range and publication dates. Inlined rather than
+    // imported because client-core is type-only here (zero runtime deps).
+    const manual = entry.rates.filter((r) => (r.source ?? "manual") === "manual");
+    const feed = entry.rates.filter((r) => r.source === "ecb");
+    const parts = manual.map((r) => `${r.rate} from ${r.effectiveFrom} (your rate)`);
+    if (feed.length === 1) {
+      parts.push(`${feed[0]!.rate} (ECB reference rate, ${feed[0]!.effectiveFrom})`);
+    } else if (feed.length > 1) {
+      const values = feed.map((r) => r.rate);
+      const dates = feed.map((r) => r.effectiveFrom).sort();
+      parts.push(
+        `${Math.min(...values)}–${Math.max(...values)} (ECB reference rates, ${dates[0]} to ${dates[dates.length - 1]})`,
+      );
+    }
+    const rates = parts.join("; ");
     println(
       `${c.dim("·")} ${c.bold(entry.currency)} ${c.dim(`converted to ${displayCurrency} at ${rates}`)}`,
     );
   }
   if (converted.length > 0) {
     println(
-      `  ${c.dim("your organization's own stated rates — Infrawrench never fetches live FX; spend already in " + displayCurrency + " is not converted")}`,
+      `  ${c.dim(
+        "a rate your organization stated always wins over an automatic ECB rate; weekends and holidays carry the last ECB publication; spend already in " +
+          displayCurrency +
+          " is not converted",
+      )}`,
     );
   }
   if (unconverted.length > 0) {
@@ -235,7 +255,7 @@ function printConversionNotice(conversion: CostConversion | undefined): void {
       `${c.yellow("!")} ${c.bold(unconverted.join(", "))} ${c.dim(`not included in the ${displayCurrency} figure`)}`,
     );
     println(
-      `  ${c.dim("no exchange rate is configured (or none covers every day in this range), so these amounts are listed separately in their own currency rather than folded in or dropped")}`,
+      `  ${c.dim("no stated or automatic rate covers every day in this range (the ECB does not publish every currency), so these amounts are listed separately in their own currency rather than folded in or dropped")}`,
     );
   }
   println();

@@ -29,6 +29,7 @@ type exchangeRateResourceModel struct {
 	ToCurrency    types.String `tfsdk:"to_currency"`
 	Rate          types.String `tfsdk:"rate"`
 	EffectiveFrom types.String `tfsdk:"effective_from"`
+	EffectiveTo   types.String `tfsdk:"effective_to"`
 }
 
 func (r *exchangeRateResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -40,7 +41,10 @@ func (r *exchangeRateResource) Schema(_ context.Context, _ resource.SchemaReques
 		MarkdownDescription: "One stated exchange rate, effective from a day.\n\n" +
 			"A given day converts at the rate with the greatest `effective_from` on or before it, so " +
 			"historical periods keep the rate that applied then and restating a rate today cannot restate " +
-			"last quarter's totals. A day earlier than every stated rate has no rate at all.\n\n" +
+			"last quarter's totals. A day earlier than every stated rate has no rate at all, unless the " +
+			"organization has automatic rates on (`infrawrench_currency_settings.auto_rates`).\n\n" +
+			"A stated rate always wins over an automatic one for the days it covers. Set `effective_to` to " +
+			"make it a bounded override: after that day the automatic feed takes over again.\n\n" +
 			"This is exactly the kind of number that belongs in review: it restates every converted total " +
 			"the organization reports, in the digest that goes to the whole team and in the budget alerts " +
 			"that page people.",
@@ -67,6 +71,13 @@ func (r *exchangeRateResource) Schema(_ context.Context, _ resource.SchemaReques
 				MarkdownDescription: "Inclusive day this rate starts applying, as `YYYY-MM-DD`. Together with the " +
 					"two currencies it is the rate's natural key: restating a rate for a day it already covers " +
 					"replaces it rather than adding a second one the reader has to choose between.",
+			},
+			"effective_to": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "Inclusive last day this rate applies, as `YYYY-MM-DD`. Omit for open-ended " +
+					"(until a later stated rate). Days after it fall back to automatic rates when they are on, " +
+					"and are otherwise unconverted; an older stated rate never resurfaces. Must not be before " +
+					"`effective_from`.",
 			},
 		},
 	}
@@ -184,6 +195,7 @@ func exchangeRateInputFrom(model exchangeRateResourceModel) iw.ExchangeRateInput
 		ToCurrency:    model.ToCurrency.ValueString(),
 		Rate:          model.Rate.ValueString(),
 		EffectiveFrom: model.EffectiveFrom.ValueString(),
+		EffectiveTo:   stringPtr(model.EffectiveTo),
 	}
 }
 
@@ -207,6 +219,7 @@ func exchangeRateStateFrom(remote *iw.ExchangeRate, prior exchangeRateResourceMo
 		ToCurrency:    types.StringValue(remote.ToCurrency),
 		Rate:          rate,
 		EffectiveFrom: types.StringValue(remote.EffectiveFrom),
+		EffectiveTo:   stringValue(remote.EffectiveTo),
 	}
 }
 

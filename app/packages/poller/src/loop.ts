@@ -27,6 +27,7 @@ import { runNetworkFlowPass } from "@infrawrench/server-core/network-flow/pass";
 import { runAiAttributionPass } from "@infrawrench/server-core/ai-attribution/pass";
 import { runReportDeliveryPass } from "@infrawrench/server-core/report-delivery/pass";
 import { runVirtualTagPass } from "@infrawrench/server-core/cost/virtual-tag-pass";
+import { runFxRateFeedPass } from "@infrawrench/server-core/cost/fx-feed-pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
@@ -299,6 +300,21 @@ export class PollerLoop extends TickLoop {
     // compile into every read), it is the status Settings shows. Defensive like
     // the others.
     await this.tickVirtualTags();
+    // Exchange-rate feed: the ECB euro reference rates, stored once for every
+    // org (orgs opt in to reading them). One global row claimed with the same
+    // conditional-UPDATE lease as the status feeds, due a few times a day at
+    // most, so on almost every tick this is one UPDATE that matches nothing.
+    // Defensive like the others: a dead feed leaves the stored rates in place.
+    await this.tickFxRateFeed();
+  }
+
+  /** Fetch and store the day's reference exchange rates when due. */
+  private async tickFxRateFeed(): Promise<void> {
+    try {
+      await runFxRateFeedPass();
+    } catch (e) {
+      console.error("[fx-feed] feed tick failed:", e);
+    }
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {

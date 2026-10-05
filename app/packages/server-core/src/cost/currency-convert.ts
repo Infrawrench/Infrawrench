@@ -35,9 +35,19 @@
  *     module could have. A currency that has *some* rates but none effective
  *     early enough for *some* points is reported as unconverted too: a
  *     partially converted series would be a number nobody could reconcile.
- *  5. **One hop only.** Rates are stated from a currency to the display
- *     currency. Nothing here inverts a rate or chains two of them; both invent
- *     a number the org never stated.
+ *  5. **Stated rates are one hop.** A stated rate converts from a currency to
+ *     the display currency. Nothing here inverts a stated rate or chains two
+ *     of them; both invent a number the org never stated.
+ *  6. **A stated rate wins over the feed.** When the org has automatic rates
+ *     on, the feed fills every day no stated rate covers. A day inside a
+ *     stated rate's range (from `effectiveFrom`, until `effectiveTo` or the
+ *     next stated rate) always converts at the stated rate. The feed's own
+ *     rules (weekend/holiday carry-forward, crossing through EUR) live in
+ *     `./fx-feed.ts`.
+ *
+ * Rules 3 and 6 are implemented once, in `RateBook`, which every converter
+ * below takes. Passing a bare `ExchangeRate[]` still works and means "stated
+ * rates only", which is what every caller did before the feed existed.
  */
 import {
   buildExchangeRateTable,
@@ -45,8 +55,11 @@ import {
   type CostConvertedCurrency,
   type CostConversionRate,
   type ExchangeRate,
+  type ExchangeRateBasis,
+  type ExchangeRateSource,
   type ExchangeRateTable,
 } from "@infrawrench/client-core";
+import { feedRateFor, monthEndOf, type FxFeedSnapshot } from "./fx-feed";
 
 export type { CostConversion, CostConvertedCurrency, CostConversionRate };
 
@@ -119,6 +132,226 @@ export function parseRate(raw: string): number | null {
   return value;
 }
 
+/** The rate one day of one currency converts at, and where it came from. */
+export interface ResolvedRate {
+  rate: number;
+  source: ExchangeRateSource;
+  /** Stated rate's effective date, or the feed publication date used. */
+  effectiveFrom: string;
+  /** The stated rate row, when `source` is `manual`. */
+  manualRateId: string | null;
+}
+
+export interface RateBookInput {
+  /** The org's stated rates (`org_exchange_rates`), any order. */
+  manual: ExchangeRate[];
+  /** The feed history, or null when the org has automatic rates off. */
+  feed: FxFeedSnapshot | null;
+  /** Which feed rate converts a day. Ignored without a feed. */
+  basis: ExchangeRateBasis;
+}
+
+/**
+ * Every rate an org can convert at, with the precedence rules applied in one
+ * place: a stated rate covering the day, else the feed (on the day, or at the
+ * month end under `month_end`), else nothing.
+ *
+ * Pure and synchronous: the loader (`loadOrgRateBook` in
+ * `./currency-settings.ts`) does the I/O, this answers questions.
+ */
+export class RateBook {
+  readonly manual: ExchangeRate[];
+  readonly feed: FxFeedSnapshot | null;
+  readonly basis: ExchangeRateBasis;
+  private readonly tables = new Map<string, ExchangeRateTable>();
+
+  constructor(input: RateBookInput) {
+    this.manual = input.manual;
+    this.feed = input.feed;
+    this.basis = input.basis;
+  }
+
+  /** Stated rates only: the pre-feed behaviour, and what a bare array means. */
+  static manualOnly(rates: ExchangeRate[]): RateBook {
+    return new RateBook({ manual: rates, feed: null, basis: "daily" });
+  }
+
+  get usesFeed(): boolean {
+    return this.feed !== null;
+  }
+
+  private table(to: string): ExchangeRateTable {
+    let table = this.tables.get(to);
+    if (!table) {
+      table = buildExchangeRateTable(this.manual, to);
+      this.tables.set(to, table);
+    }
+    return table;
+  }
+
+  /**
+   * The stated rate covering `day`, if any. The latest rate effective on or
+   * before the day governs it; if that rate has ended, the day is outside
+   * every stated range (an older rate does not resurface, because an end date
+   * is somebody saying "not this number after this day").
+   */
+  manualFor(from: string, to: string, day: string): ExchangeRate | null {
+    const match = rateForDay(this.table(to).get(from) ?? [], day);
+    if (!match) return null;
+    if (match.effectiveTo && day > match.effectiveTo) return null;
+    return parseRate(match.rate) === null ? null : match;
+  }
+
+  /** The day whose feed rate converts `day` under this book's basis. */
+  feedDayFor(day: string): string {
+    return this.basis === "month_end" ? monthEndOf(day) : day;
+  }
+
+  /** Rule 6: stated rate, else feed, else null. */
+  resolve(from: string, to: string, day: string): ResolvedRate | null {
+    if (from === to) return null;
+    const manual = this.manualFor(from, to, day);
+    if (manual) {
+      return {
+        rate: parseRate(manual.rate)!,
+        source: "manual",
+        effectiveFrom: manual.effectiveFrom,
+        manualRateId: manual.id,
+      };
+    }
+    const feed = feedRateFor(this.feed, from, to, this.feedDayFor(day));
+    if (feed) {
+      return { rate: feed.rate, source: "ecb", effectiveFrom: feed.rateDate, manualRateId: null };
+    }
+    return null;
+  }
+
+  /**
+   * The newest rate available for a pair, for a currency that is present but
+   * has no points to date a lookup by: the newest stated rate if it is still
+   * open-ended, else the newest feed publication.
+   */
+  latest(from: string, to: string): ResolvedRate | null {
+    const newest = (this.table(to).get(from) ?? [])[0];
+    if (newest && !newest.effectiveTo && parseRate(newest.rate) !== null) {
+      return {
+        rate: parseRate(newest.rate)!,
+        source: "manual",
+        effectiveFrom: newest.effectiveFrom,
+        manualRateId: newest.id,
+      };
+    }
+    const feed = feedRateFor(this.feed, from, to, "9999-12-31");
+    if (feed) {
+      return { rate: feed.rate, source: "ecb", effectiveFrom: feed.rateDate, manualRateId: null };
+    }
+    if (newest && parseRate(newest.rate) !== null) {
+      return {
+        rate: parseRate(newest.rate)!,
+        source: "manual",
+        effectiveFrom: newest.effectiveFrom,
+        manualRateId: newest.id,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Plain-English account of what `resolve` decided and why, for the lookup
+   * endpoint, the CLI and the MCP tool. Kept beside `resolve` so the
+   * explanation cannot describe a rule the code does not follow.
+   */
+  explain(from: string, to: string, day: string): { resolved: ResolvedRate | null; text: string } {
+    if (from === to) {
+      return { resolved: null, text: `${from} is the target currency, so it is not converted.` };
+    }
+    const resolved = this.resolve(from, to, day);
+    if (resolved?.source === "manual") {
+      return {
+        resolved,
+        text: `Your stated ${from} to ${to} rate effective ${resolved.effectiveFrom} covers ${day}, and a stated rate always takes precedence over automatic rates.`,
+      };
+    }
+    if (resolved?.source === "ecb") {
+      const feedDay = this.feedDayFor(day);
+      const basis =
+        this.basis === "month_end"
+          ? `the month-end basis converts ${day} at the rate for ${feedDay}`
+          : `the daily basis converts ${day} at that day's rate`;
+      const carried =
+        resolved.effectiveFrom === feedDay
+          ? ""
+          : ` The ECB published no rates on ${feedDay}, so the last publication (${resolved.effectiveFrom}) is carried forward.`;
+      const cross =
+        from === "EUR" || to === "EUR"
+          ? ""
+          : ` Crossed through EUR (${to} per EUR / ${from} per EUR).`;
+      return {
+        resolved,
+        text: `No stated rate covers ${day}, so the ECB reference rate applies; ${basis}.${carried}${cross}`,
+      };
+    }
+    if (!this.feed) {
+      return {
+        resolved: null,
+        text: `No stated ${from} to ${to} rate covers ${day} and automatic rates are off, so ${from} spend on that day is shown unconverted.`,
+      };
+    }
+    return {
+      resolved: null,
+      text: `No stated ${from} to ${to} rate covers ${day}, and the ECB feed has no rate for this pair on that day (the ECB does not publish every currency, and has no rates before 1999-01-04), so ${from} spend on that day is shown unconverted. State a rate to include it.`,
+    };
+  }
+}
+
+/** Either a full rate book or, for callers that predate the feed, stated rates. */
+export type RateSource = RateBook | ExchangeRate[];
+
+/** Normalize a `RateSource`: a bare array is stated rates only. */
+export function asRateBook(rates: RateSource): RateBook {
+  return rates instanceof RateBook ? rates : RateBook.manualOnly(rates);
+}
+
+/** Map key for one distinct applied rate. */
+function appliedKey(r: ResolvedRate): string {
+  return `${r.source}|${r.effectiveFrom}|${r.rate}`;
+}
+
+/** Record that `resolved` was applied on `day`, widening its day span. */
+function noteApplied(
+  applied: Map<string, CostConversionRate>,
+  resolved: ResolvedRate,
+  day: string,
+): void {
+  const key = appliedKey(resolved);
+  const existing = applied.get(key);
+  if (!existing) {
+    applied.set(key, {
+      effectiveFrom: resolved.effectiveFrom,
+      rate: resolved.rate,
+      source: resolved.source,
+      firstDay: day,
+      lastDay: day,
+    });
+    return;
+  }
+  if (!existing.firstDay || day < existing.firstDay) existing.firstDay = day;
+  if (!existing.lastDay || day > existing.lastDay) existing.lastDay = day;
+}
+
+/** Newest effective date first, stated before feed on a tie. */
+function sortApplied(rates: CostConversionRate[]): CostConversionRate[] {
+  return rates.sort((a, b) =>
+    a.effectiveFrom === b.effectiveFrom
+      ? (a.source ?? "manual") < (b.source ?? "manual")
+        ? -1
+        : 1
+      : a.effectiveFrom < b.effectiveFrom
+        ? 1
+        : -1,
+  );
+}
+
 /** What `convertGroups` did, alongside the converted groups. */
 export interface ConversionResult<T extends ConvertibleGroup> {
   groups: T[];
@@ -144,11 +377,11 @@ export interface ConversionResult<T extends ConvertibleGroup> {
 export function convertGroups<T extends ConvertibleGroup>(
   groups: T[],
   displayCurrency: string | null,
-  rates: ExchangeRate[],
+  rates: RateSource,
 ): ConversionResult<T> {
   if (!displayCurrency) return { groups, conversion: null };
 
-  const table = buildExchangeRateTable(rates, displayCurrency);
+  const book = asRateBook(rates);
   const present = [...new Set(groups.map((g) => g.currency))].sort();
 
   const convertible = new Map<string, Map<string, CostConversionRate>>();
@@ -156,7 +389,7 @@ export function convertGroups<T extends ConvertibleGroup>(
 
   for (const currency of present) {
     if (currency === displayCurrency) continue; // rule 2: passed through
-    const applied = resolveRatesFor(groups, currency, table);
+    const applied = resolveRatesFor(groups, currency, displayCurrency, book);
     if (applied) convertible.set(currency, applied);
     else unconverted.push(currency);
   }
@@ -165,11 +398,16 @@ export function convertGroups<T extends ConvertibleGroup>(
     ([currency, applied]) => ({
       currency,
       // Newest effective date first: the same order the rate editor shows.
-      rates: [...applied.values()].sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1)),
+      rates: sortApplied([...applied.values()]),
     }),
   );
 
-  const conversion: CostConversion = { displayCurrency, converted, unconverted };
+  const conversion: CostConversion = {
+    displayCurrency,
+    converted,
+    unconverted,
+    ...(book.usesFeed ? { rateBasis: book.basis } : {}),
+  };
 
   if (convertible.size === 0) {
     // Nothing to multiply, but the caller still has to be told which currencies
@@ -180,12 +418,13 @@ export function convertGroups<T extends ConvertibleGroup>(
   const out = groups.map((group) => {
     const applied = convertible.get(group.currency);
     if (!applied) return group;
-    const rateList = table.get(group.currency) ?? [];
     const convertPoints = (points: Array<{ bucket: string; amount: number }>) =>
       points.map((point) => {
-        // `applied` was built from these same points, so a rate exists.
-        const rate = rateForDay(rateList, point.bucket)!;
-        return { ...point, amount: roundAmount(point.amount * parseRate(rate.rate)!) };
+        // `applied` was built from these same points, so a rate exists. A raw
+        // point on a bucket the adjusted series lacks resolves the same way.
+        const rate = book.resolve(group.currency, displayCurrency, point.bucket);
+        if (!rate) return point;
+        return { ...point, amount: roundAmount(point.amount * rate.rate) };
       });
     return {
       ...group,
@@ -206,29 +445,28 @@ export function convertGroups<T extends ConvertibleGroup>(
 function resolveRatesFor(
   groups: readonly ConvertibleGroup[],
   currency: string,
-  table: ExchangeRateTable,
+  displayCurrency: string,
+  book: RateBook,
 ): Map<string, CostConversionRate> | null {
-  const rates = table.get(currency);
-  if (!rates || rates.length === 0) return null;
-
   const applied = new Map<string, CostConversionRate>();
   for (const group of groups) {
     if (group.currency !== currency) continue;
-    for (const point of group.points) {
-      const match = rateForDay(rates, point.bucket);
+    for (const point of [...group.points, ...(group.rawPoints ?? [])]) {
+      const match = book.resolve(currency, displayCurrency, point.bucket);
       if (!match) return null;
-      const value = parseRate(match.rate);
-      if (value === null) return null;
-      applied.set(match.effectiveFrom, { effectiveFrom: match.effectiveFrom, rate: value });
+      noteApplied(applied, match, point.bucket);
     }
   }
   // A currency present only through empty-point groups converts trivially; use
   // its latest rate so the caveat can still name one.
   if (applied.size === 0) {
-    const latest = rates[0]!;
-    const value = parseRate(latest.rate);
-    if (value === null) return null;
-    applied.set(latest.effectiveFrom, { effectiveFrom: latest.effectiveFrom, rate: value });
+    const latest = book.latest(currency, displayCurrency);
+    if (!latest) return null;
+    applied.set(appliedKey(latest), {
+      effectiveFrom: latest.effectiveFrom,
+      rate: latest.rate,
+      source: latest.source,
+    });
   }
   return applied;
 }
@@ -289,12 +527,12 @@ export function mergeConvertedGroups<T extends ConvertibleGroup & { key: string 
 export function convertTotals(
   totals: Record<string, number>,
   displayCurrency: string | null,
-  rates: ExchangeRate[],
+  rates: RateSource,
   day: string,
 ): { totals: Record<string, number>; conversion: CostConversion | null } {
   if (!displayCurrency) return { totals, conversion: null };
 
-  const table = buildExchangeRateTable(rates, displayCurrency);
+  const book = asRateBook(rates);
   const out: Record<string, number> = {};
   const converted: CostConvertedCurrency[] = [];
   const unconverted: string[] = [];
@@ -305,13 +543,20 @@ export function convertTotals(
       out[currency] = roundAmount((out[currency] ?? 0) + amount);
       continue;
     }
-    const match = rateForDay(table.get(currency) ?? [], day);
-    const value = match ? parseRate(match.rate) : null;
-    if (match && value !== null) {
-      out[displayCurrency] = roundAmount((out[displayCurrency] ?? 0) + amount * value);
+    const match = book.resolve(currency, displayCurrency, day);
+    if (match) {
+      out[displayCurrency] = roundAmount((out[displayCurrency] ?? 0) + amount * match.rate);
       converted.push({
         currency,
-        rates: [{ effectiveFrom: match.effectiveFrom, rate: value }],
+        rates: [
+          {
+            effectiveFrom: match.effectiveFrom,
+            rate: match.rate,
+            source: match.source,
+            firstDay: day,
+            lastDay: day,
+          },
+        ],
       });
     } else {
       out[currency] = roundAmount((out[currency] ?? 0) + amount);
@@ -319,5 +564,13 @@ export function convertTotals(
     }
   }
 
-  return { totals: out, conversion: { displayCurrency, converted, unconverted } };
+  return {
+    totals: out,
+    conversion: {
+      displayCurrency,
+      converted,
+      unconverted,
+      ...(book.usesFeed ? { rateBasis: book.basis } : {}),
+    },
+  };
 }

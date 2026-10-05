@@ -4,17 +4,17 @@ page_title: "infrawrench_currency_settings Resource - infrawrench"
 subcategory: ""
 description: |-
   The currency the organization's converted totals are expressed in.
-  Setting it turns conversion on everywhere — graphs, budgets, the digest, the alerts that page people. Which rate a given day converts at comes from infrawrench_exchange_rate, and a day earlier than every stated rate has no rate at all, so state the rates before or alongside the currency.
-  An organization singleton. terraform destroy clears the display currency, which restores the per-currency view; the stated rates survive, so conversion can be turned back on without re-entering them.
+  Setting it turns conversion on everywhere — graphs, budgets, the digest, the alerts that page people. Which rate a given day converts at comes from infrawrench_exchange_rate and, when auto_rates is on, from the European Central Bank's daily euro reference rates. A stated rate always wins over the feed for the days it covers.
+  An organization singleton. terraform destroy clears the display currency and turns automatic rates off, which restores the per-currency view; the stated rates survive, so conversion can be turned back on without re-entering them.
 ---
 
 # infrawrench_currency_settings (Resource)
 
 The currency the organization's converted totals are expressed in.
 
-Setting it turns conversion on everywhere — graphs, budgets, the digest, the alerts that page people. Which rate a given day converts at comes from `infrawrench_exchange_rate`, and a day earlier than every stated rate has no rate at all, so state the rates before or alongside the currency.
+Setting it turns conversion on everywhere — graphs, budgets, the digest, the alerts that page people. Which rate a given day converts at comes from `infrawrench_exchange_rate` and, when `auto_rates` is on, from the European Central Bank's daily euro reference rates. A stated rate always wins over the feed for the days it covers.
 
-An organization **singleton**. `terraform destroy` clears the display currency, which restores the per-currency view; the stated rates survive, so conversion can be turned back on without re-entering them.
+An organization **singleton**. `terraform destroy` clears the display currency and turns automatic rates off, which restores the per-currency view; the stated rates survive, so conversion can be turned back on without re-entering them.
 
 
 
@@ -24,6 +24,11 @@ An organization **singleton**. `terraform destroy` clears the display currency, 
 ### Required
 
 - `display_currency` (String) ISO 4217 code, upper-case, e.g. `USD`. Cost data is stored per currency and never merged unless this is set.
+
+### Optional
+
+- `auto_rates` (Boolean) Fill every day no stated rate covers from the automatic daily ECB euro reference rates (weekends and holidays carry the last publication; pairs without EUR are crossed through it). Currencies the ECB does not publish stay manual-only. Defaults to `false`.
+- `rate_basis` (String) Which automatic rate converts a day's spend: `daily` (that day's rate) or `month_end` (the rate on the last day of that day's month, so a month converts at one rate). Only affects feed rates. Defaults to `daily`.
 
 ### Read-Only
 

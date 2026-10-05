@@ -404,7 +404,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_business_metric`           | [Unit-cost](./unit-costs.md) denominators — the definition, not the values             |
 | `infrawrench_business_metric_importer`  | A metric's [scheduled importer](./unit-costs.md#import-on-a-schedule) from an account  |
 | `infrawrench_managed_account`           | [Managed accounts](./managed-accounts.md) an MSP bills                                 |
-| `infrawrench_currency_settings`         | The organization's display currency                                                    |
+| `infrawrench_currency_settings`         | The organization's display currency, automatic ECB rates and their basis               |
 | `infrawrench_exchange_rate`             | One stated rate, effective from a day                                                  |
 | `infrawrench_anomaly_settings`          | [Anomaly detection](./cost-anomaly-alerts.md) thresholds                               |
 | `infrawrench_efficiency_alert_settings` | [Commitment and unit-cost alert](./commitment-and-unit-cost-alerts.md) thresholds      |
@@ -485,7 +485,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 **Singletons don't really get destroyed.** There is always exactly one anomaly settings row, one routing table, one tag policy — so `terraform destroy` can't remove them. Each one does the sensible thing instead, and it differs on purpose:
 
 - The cost settings and [alert routing](./alert-routing.md) **restore the shipped defaults**. An organization routing nothing at all is a worse state than the default one.
-- Currency settings **clear the display currency**, which turns conversion off. Your stated exchange rates survive, so you can turn it back on without re-entering them.
+- Currency settings **clear the display currency** and turn automatic rates off, which turns conversion off. Your stated exchange rates survive, so you can turn it back on without re-entering them.
 - [Session recording](./session-recording.md) is deliberately **left running**. Silently disabling an audit control because someone deleted a resource block is not a safe default.
 - The drift, expiry and posture alert settings are **left alone** — they have no documented shipped values to restore to.
 - [Network flow collection](./network-costs.md) is **turned off**, and it's the one singleton where destroy deliberately changes something. Collection runs queries your cloud provider bills to your own account; leaving it running for a resource you deleted would keep spending your money with nothing in Terraform left to explain why.

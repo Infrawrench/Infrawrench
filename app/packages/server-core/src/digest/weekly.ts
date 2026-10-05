@@ -49,7 +49,7 @@ import {
 import { loadChangeCostImpacts } from "../cost/change-impact-load";
 import { queryCosts } from "../clickhouse/cost-readers";
 import { convertGroups, mergeConvertedGroups } from "../cost/currency-convert";
-import { getOrgCurrencySettings, listOrgExchangeRates } from "../cost/currency-settings";
+import { getOrgCurrencySettings, loadOrgRateBook } from "../cost/currency-settings";
 import { listExpiring } from "../expiry/feed";
 import { MAX_RESOURCES_PER_PROJECTION, projectMonthlySpend } from "../cost/estimate";
 import { listPosture } from "../posture/feed";
@@ -156,13 +156,14 @@ export async function buildWeeklyDigest(
     // display-currency setting: there is no per-request opt-in to consult.
     // Unset (every org that has not configured one) still emits the one line
     // per currency it always did.
-    getOrgCurrencySettings(organizationId).catch(() => ({
-      displayCurrency: null as string | null,
-    })),
+    getOrgCurrencySettings(organizationId).catch(() => null),
   ]);
 
-  const displayCurrency = currencySettings.displayCurrency;
-  const rates = displayCurrency ? await listOrgExchangeRates(organizationId) : [];
+  const displayCurrency = currencySettings?.displayCurrency ?? null;
+  const rates =
+    displayCurrency && currencySettings
+      ? await loadOrgRateBook(organizationId, currencySettings)
+      : [];
   const providerConverted = convertGroups(rawByProvider, displayCurrency, rates);
   const serviceConverted = convertGroups(rawByService, displayCurrency, rates);
   // Merge after converting: two providers' EUR and USD series collapse into one

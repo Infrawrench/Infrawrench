@@ -82,6 +82,12 @@ vi.mock("@infrawrench/server-core/credits/feed", () => ({
   pruneCreditSnapshots: (...a: unknown[]) => pruneCreditSnapshots(...a),
 }));
 
+// Mocked so a tick never reaches out to the ECB: the pass has its own suite.
+const runFxRateFeedPass = vi.fn(async () => ({ claimed: false }));
+vi.mock("@infrawrench/server-core/cost/fx-feed-pass", () => ({
+  runFxRateFeedPass: () => runFxRateFeedPass(),
+}));
+
 // Mocked like the workflow runner: the real pass pulls in the ClickHouse
 // reader chain, which this suite has no business importing.
 const runMetricAlertPass = vi.fn();

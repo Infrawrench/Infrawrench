@@ -35,7 +35,6 @@ import {
   type CostScenarioAdjustment,
   type CostScenarioModel,
   type CostScenarioProjection,
-  type ExchangeRate,
   type ScenarioDayPoint,
 } from "@infrawrench/client-core";
 
@@ -47,7 +46,7 @@ import {
   type CostChargeType,
   type CostFilter,
 } from "../clickhouse/cost-readers";
-import { convertGroups } from "./currency-convert";
+import { asRateBook, convertGroups, type RateSource } from "./currency-convert";
 import { forecastDaily, type DailyPoint } from "./forecast";
 import { addDays } from "./dates";
 
@@ -137,8 +136,8 @@ export interface ScenarioForecastOptions {
   baselineCurrency: string | null;
   /** The org's display currency, when conversion is active. */
   displayCurrency: string | null;
-  /** The org's stated rates, for converting the model's amounts. */
-  rates: ExchangeRate[];
+  /** The org's rates (stated, plus the feed when on), for converting amounts. */
+  rates: RateSource;
 }
 
 /**
@@ -236,13 +235,12 @@ function resolveScenarioCurrency(options: ScenarioForecastOptions): {
   }
   if (target === model.currency) return { amountRate: 1, currency: target };
 
-  // One hop, the same rule `currency-convert.ts` follows: rates are stated to
-  // the display currency and nothing here inverts or chains them.
-  const applicable = rates
-    .filter((r) => r.fromCurrency === model.currency && r.toCurrency === target)
-    .sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1));
-  const rate = applicable[0];
-  const parsed = rate ? Number(rate.rate) : NaN;
+  // The newest applicable rate, under the same precedence every converter
+  // uses: an open-ended stated rate first, then the automatic feed's newest
+  // publication when the org has it on. A projection is about the future, so
+  // there is no historical day to date the lookup by.
+  const rate = asRateBook(rates).latest(model.currency, target);
+  const parsed = rate ? rate.rate : NaN;
   if (!rate || !Number.isFinite(parsed) || parsed <= 0) {
     throw new CostScenarioApplicationError(
       `Scenario "${model.name}" is in ${model.currency} but this chart is in ${target}, and no ` +
@@ -270,7 +268,7 @@ async function scopedProjection(args: {
   costBasis?: CostBasis | undefined;
   chargeTypes?: CostChargeType[] | undefined;
   displayCurrency: string | null;
-  rates: ExchangeRate[];
+  rates: RateSource;
 }): Promise<ScenarioDayPoint[]> {
   const groups = await queryCosts(args.organizationId, {
     from: addDays(args.fitTo, -(FIT_WINDOW_DAYS - 1)),

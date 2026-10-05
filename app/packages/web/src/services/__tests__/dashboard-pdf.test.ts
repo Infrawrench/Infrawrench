@@ -118,14 +118,26 @@ describe("costResponseBlocks", () => {
         ],
         currencies: ["EUR", "USD"],
         totals: { EUR: 3, USD: 1 },
-        conversion: { displayCurrency: "EUR", convertedCurrencies: [], rates: [] } as never,
+        conversion: {
+          displayCurrency: "EUR",
+          converted: [
+            {
+              currency: "USD",
+              rates: [{ effectiveFrom: "2026-10-02", rate: 0.89, source: "ecb" }],
+            },
+          ],
+          unconverted: [],
+        },
       },
     );
     expect(blocks[0]).toMatchObject({ kind: "pie", slices: [{ label: "A", value: 3 }] });
     const notes = blocks
       .filter((b) => b.kind === "text")
       .map((b) => (b.kind === "text" ? b.text : ""));
-    expect(notes.some((n) => n.includes("Converted to EUR"))).toBe(true);
+    // The note names the rate source and its date, so a printed figure can be checked.
+    expect(
+      notes.some((n) => n.includes("USD converted to EUR at ECB reference rates (2026-10-02)")),
+    ).toBe(true);
     expect(notes.some((n) => n.includes("Charted in EUR"))).toBe(true);
   });
 });

@@ -36,6 +36,16 @@ vi.mock("@infrawrench/server-core/cost/pricing-preview", () => ({
   previewPricing: vi.fn(),
 }));
 
+// The currency module reaches Postgres at import time; the tools only pass
+// arguments through, so the precedence itself is tested in server-core.
+const mockLookupRate = vi.fn();
+class MockCurrencySettingsError extends Error {}
+vi.mock("@infrawrench/server-core/cost/currency-settings", () => ({
+  CurrencySettingsError: MockCurrencySettingsError,
+  getOrgCurrencyConfig: vi.fn(async () => ({ displayCurrency: "USD", rates: [] })),
+  lookupOrgExchangeRate: (...a: unknown[]) => mockLookupRate(...a),
+}));
+
 vi.mock("@infrawrench/server-core/cost/tag-policy", () => ({
   getOrgTagPolicy: vi.fn().mockResolvedValue(null),
   setOrgTagPolicy: vi.fn(),
@@ -115,6 +125,30 @@ describe("costTools", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     grant("costs:read", "budgets:read", "budgets:write");
+  });
+
+  it("lookup_exchange_rate passes the pair and day through, defaulting the target", async () => {
+    mockLookupRate.mockResolvedValue({ rate: 1.1225, source: "ecb", rateDate: "2026-10-02" });
+    const r = await tool("lookup_exchange_rate").handler({ from: "EUR", date: "2026-10-04" }, auth);
+    expect(r.isError).toBeFalsy();
+    expect(mockLookupRate).toHaveBeenCalledWith("o1", {
+      from: "EUR",
+      to: undefined,
+      date: "2026-10-04",
+    });
+  });
+
+  it("lookup_exchange_rate turns a settings error into a tool error", async () => {
+    mockLookupRate.mockRejectedValue(new MockCurrencySettingsError("No display currency is set"));
+    const r = await tool("lookup_exchange_rate").handler({ from: "EUR" }, auth);
+    expect(r.isError).toBe(true);
+    expect(r.content[0]!.text).toContain("No display currency");
+  });
+
+  it("get_currency_settings denies callers without costs:read", async () => {
+    grant("resources:read");
+    const r = await tool("get_currency_settings").handler({}, auth);
+    expect(r.isError).toBe(true);
   });
 
   it("query_costs denies callers without costs:read", async () => {

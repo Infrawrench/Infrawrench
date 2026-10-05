@@ -1,4 +1,4 @@
-import type { CostConversion } from "@infrawrench/client-core";
+import { describeCostConversion, type CostConversion } from "@infrawrench/client-core";
 import { emailButton, emailDocument, escapeHtml } from "../email-html";
 /**
  * Weekly digest composition: pure functions only. Everything here takes data
@@ -489,25 +489,16 @@ function normalizeProjection(
  * The one-line caveat under a converted spend figure, or null when nothing was
  * converted.
  *
- * Two facts, in the order they matter: that the number is a conversion at rates
- * the org itself stated (not a market rate we fetched), and which currencies
- * are still sitting outside it because no rate covers them.
+ * Two facts, in the order they matter: that the number is a conversion and at
+ * whose rates (the org's stated ones, the automatic ECB feed, or both, with
+ * their dates), and which currencies are still sitting outside it because no
+ * rate covers them.
  */
 export function conversionCaveat(conversion: CostConversion | undefined): string | null {
-  if (!conversion) return null;
-  const parts: string[] = [];
-  if (conversion.converted.length > 0) {
-    const codes = conversion.converted.map((c) => c.currency).join(", ");
-    parts.push(
-      `${codes} converted to ${conversion.displayCurrency} at your organization's stated rates`,
-    );
-  }
-  if (conversion.unconverted.length > 0) {
-    parts.push(
-      `${conversion.unconverted.join(", ")} shown unconverted — no exchange rate is configured`,
-    );
-  }
-  return parts.length > 0 ? `${parts.join("; ")}.` : null;
+  // The same sentence every compact surface prints (graph footnote, mobile,
+  // CLI, PDF), which names the rate source and its dates: stated rates, the
+  // automatic ECB reference rates, or both.
+  return describeCostConversion(conversion);
 }
 
 // --- Formatting ---

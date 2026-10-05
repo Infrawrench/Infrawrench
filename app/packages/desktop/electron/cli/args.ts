@@ -45,9 +45,10 @@ export interface RangeFlags {
    *
    * Opt-in and inert without it: absent, the field is not sent at all and the
    * server answers exactly as it always did. Conversion also requires the org
-   * to have configured that display currency and stated the rates, because
-   * Infrawrench never fetches live FX. Left a raw string so the command
-   * validates the shape and can say what it expected.
+   * to have configured that display currency, and to have stated rates or
+   * turned on automatic (ECB) rates. Also the base for `currency feed`. Left a
+   * raw string so the command validates the shape and can say what it
+   * expected.
    */
   currency?: string | undefined;
   /**

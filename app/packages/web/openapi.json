@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.62.0",
+    "version": "1.63.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -11444,6 +11444,15 @@
             "description": "Inclusive day this rate starts applying. A given day converts at the rate with the greatest `effectiveFrom` on or before it, so historical periods keep the rate that applied then. A day earlier than every stated rate has no rate.",
             "example": "2026-07-01"
           },
+          "effectiveTo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Inclusive last day this rate applies, or `null` for open-ended (until a later stated rate). Past it, the automatic feed takes over when on; otherwise those days are unconverted. An older stated rate never resurfaces past an end date.",
+            "example": "2026-07-01"
+          },
           "createdBy": {
             "type": [
               "string",
@@ -11463,9 +11472,78 @@
           "toCurrency",
           "rate",
           "effectiveFrom",
+          "effectiveTo",
           "createdBy",
           "createdAt",
           "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "FxFeedStatus": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "ecb"
+            ]
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "sourceUrl": {
+            "type": "string"
+          },
+          "latestRateDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Newest publication stored, or null before the first successful fetch.",
+            "example": "2026-07-01"
+          },
+          "earliestRateDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code, upper-case.",
+              "example": "USD"
+            },
+            "description": "Currencies in the newest publication, plus EUR. Any other currency is manual-only: it converts only at a rate you state."
+          },
+          "lastSuccessAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error from the most recent failed fetch; cleared on success."
+          }
+        },
+        "required": [
+          "source",
+          "sourceName",
+          "sourceUrl",
+          "latestRateDate",
+          "earliestRateDate",
+          "currencies",
+          "lastSuccessAt",
+          "lastError"
         ],
         "additionalProperties": false
       },
@@ -11481,16 +11559,33 @@
             "description": "ISO 4217 code, upper-case.",
             "example": "USD"
           },
+          "autoRates": {
+            "type": "boolean"
+          },
+          "rateBasis": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "month_end"
+            ],
+            "description": "Which automatic (feed) rate converts a day's spend. `daily`: the rate published for that day, carried forward over weekends and holidays. `month_end`: the rate in force on the last day of that day's month, so a whole month converts at one rate. Stated rates always apply to the days their own dates cover, whatever the basis."
+          },
           "rates": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ExchangeRate"
             }
+          },
+          "feed": {
+            "$ref": "#/components/schemas/FxFeedStatus"
           }
         },
         "required": [
           "displayCurrency",
-          "rates"
+          "autoRates",
+          "rateBasis",
+          "rates",
+          "feed"
         ],
         "additionalProperties": false
       },
@@ -11505,12 +11600,196 @@
             "pattern": "^[A-Z]{3}$",
             "description": "The currency converted amounts are expressed in, or `null` for no conversion at all. `null` is the default and the state of every organization that has not opted in: cost data is stored per currency and never merged unless you ask.",
             "example": "USD"
+          },
+          "autoRates": {
+            "type": "boolean",
+            "description": "Fill days no stated rate covers from the automatic daily ECB reference-rate feed. Off by default. A stated rate always wins over the feed for the days it covers. Currencies the ECB does not publish are manual-only."
+          },
+          "rateBasis": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "month_end"
+            ],
+            "description": "Which automatic (feed) rate converts a day's spend. `daily`: the rate published for that day, carried forward over weekends and holidays. `month_end`: the rate in force on the last day of that day's month, so a whole month converts at one rate. Stated rates always apply to the days their own dates cover, whatever the basis."
+          }
+        },
+        "required": [
+          "displayCurrency",
+          "autoRates",
+          "rateBasis"
+        ],
+        "additionalProperties": false
+      },
+      "CurrencySettingsInput": {
+        "type": "object",
+        "properties": {
+          "displayCurrency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Z]{3}$",
+            "description": "The currency converted amounts are expressed in, or `null` for no conversion at all. `null` is the default and the state of every organization that has not opted in: cost data is stored per currency and never merged unless you ask.",
+            "example": "USD"
+          },
+          "autoRates": {
+            "type": "boolean",
+            "description": "Omitted keeps the stored value."
+          },
+          "rateBasis": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "month_end"
+            ],
+            "description": "Omitted keeps the stored value."
           }
         },
         "required": [
           "displayCurrency"
         ],
         "additionalProperties": false
+      },
+      "ExchangeRateLookup": {
+        "type": "object",
+        "properties": {
+          "fromCurrency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 code, upper-case.",
+            "example": "USD"
+          },
+          "toCurrency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 code, upper-case.",
+            "example": "USD"
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "rateBasis": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "month_end"
+            ],
+            "description": "Which automatic (feed) rate converts a day's spend. `daily`: the rate published for that day, carried forward over weekends and holidays. `month_end`: the rate in force on the last day of that day's month, so a whole month converts at one rate. Stated rates always apply to the days their own dates cover, whatever the basis."
+          },
+          "rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Multiply an amount in `fromCurrency` by this. `null`: no rate applies."
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "manual",
+              "ecb"
+            ],
+            "description": "`manual`: a rate your organization stated. `ecb`: the automatic European Central Bank euro reference rate (crossed through EUR when neither side is EUR)."
+          },
+          "rateDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The stated rate's effective date, or the ECB publication date used.",
+            "example": "2026-07-01"
+          },
+          "manualRateId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "explanation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fromCurrency",
+          "toCurrency",
+          "date",
+          "rateBasis",
+          "rate",
+          "source",
+          "rateDate",
+          "manualRateId",
+          "explanation"
+        ],
+        "additionalProperties": false
+      },
+      "FxFeedRates": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FxFeedStatus"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-07-01"
+              },
+              "base": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$",
+                "description": "ISO 4217 code, upper-case.",
+                "example": "USD"
+              },
+              "rateDate": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "description": "Publication used for `date`: the same day, or the last one before it over a weekend or holiday. Null when the feed holds nothing that early.",
+                "example": "2026-07-01"
+              },
+              "rates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$",
+                      "description": "ISO 4217 code, upper-case.",
+                      "example": "USD"
+                    },
+                    "rate": {
+                      "type": "number",
+                      "description": "Units of `base` per 1 unit of `currency`."
+                    }
+                  },
+                  "required": [
+                    "currency",
+                    "rate"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "date",
+              "base",
+              "rateDate",
+              "rates"
+            ],
+            "additionalProperties": false
+          }
+        ]
       },
       "ExchangeRateInput": {
         "type": "object",
@@ -11536,6 +11815,15 @@
           "effectiveFrom": {
             "type": "string",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "effectiveTo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Omitted or `null` for open-ended. Must not be before `effectiveFrom`.",
             "example": "2026-07-01"
           }
         },
@@ -51569,8 +51857,8 @@
         "tags": [
           "Currency"
         ],
-        "summary": "The org's display currency and exchange rate table",
-        "description": "Readable with `costs:read` rather than a settings permission: anyone who can see a converted total has to be able to see what it was converted at, or the number is unauditable.\n\n_Requires permission: `costs:read`._",
+        "summary": "The org's currency settings, exchange rate table and feed state",
+        "description": "Readable with `costs:read` rather than a settings permission: anyone who can see a converted total has to be able to see what it was converted at, or the number is unauditable. `feed` reports the automatic ECB reference-rate feed (global, the same for every organization): its newest publication, its coverage and its last error.\n\n_Requires permission: `costs:read`._",
         "parameters": [
           {
             "schema": {
@@ -51603,8 +51891,8 @@
         "tags": [
           "Currency"
         ],
-        "summary": "Set or clear the org's display currency",
-        "description": "Setting a currency opts the organization into converted totals; `null` turns conversion off everywhere and restores the per-currency view. Clearing does not delete the rate table, so conversion can be turned back on without re-stating anything. Only currencies with a configured rate are converted — Infrawrench never fetches live exchange rates.\n\n_Requires permission: `org:settings:write`._",
+        "summary": "Save the org's currency settings",
+        "description": "Setting a display currency opts the organization into converted totals; `null` turns conversion off everywhere and restores the per-currency view. Clearing does not delete the rate table, so conversion can be turned back on without re-stating anything. With `autoRates` off, only currencies with a stated rate are converted; with it on, the daily ECB reference rates fill the days no stated rate covers.\n\n_Requires permission: `org:settings:write`._",
         "parameters": [
           {
             "schema": {
@@ -51623,7 +51911,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CurrencySettings"
+                "$ref": "#/components/schemas/CurrencySettingsInput"
               }
             }
           }
@@ -51654,13 +51942,156 @@
         "x-required-permission": "org:settings:write"
       }
     },
+    "/api/org/{orgId}/currency/lookup": {
+      "get": {
+        "tags": [
+          "Currency"
+        ],
+        "summary": "Which rate a day of spend converts at",
+        "description": "Applies the organization's precedence (a stated rate covering the day, else the automatic feed when on, at the day or month-end rate per `rateBasis`) and explains the outcome. `to` defaults to the display currency; `date` defaults to today.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code, upper-case.",
+              "example": "USD"
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code, upper-case.",
+              "example": "USD"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "example": "2026-07-01"
+            },
+            "required": false,
+            "name": "date",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The applicable rate, or none",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeRateLookup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCurrencyLookup"
+      }
+    },
+    "/api/org/{orgId}/currency/feed": {
+      "get": {
+        "tags": [
+          "Currency"
+        ],
+        "summary": "Automatic reference rates for one day",
+        "description": "Every rate the ECB feed holds for `date` (default today; weekends and holidays carry the last publication), expressed in `base` (default the display currency, else EUR), plus the feed's state. Readable whether or not the organization has automatic rates on.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "example": "2026-07-01"
+            },
+            "required": false,
+            "name": "date",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 code, upper-case.",
+              "example": "USD"
+            },
+            "required": false,
+            "name": "base",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feed rates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FxFeedRates"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCurrencyFeed"
+      }
+    },
     "/api/org/{orgId}/currency/rates": {
       "put": {
         "tags": [
           "Currency"
         ],
         "summary": "Create or replace one exchange rate",
-        "description": "Upserts on (`fromCurrency`, `toCurrency`, `effectiveFrom`) — one rate per pair per day, so correcting a rate replaces it rather than adding a second one whose precedence a reader would have to guess. Rates are stated to the display currency in one hop: nothing inverts a rate or chains two, because both produce a number you never stated.\n\n_Requires permission: `org:settings:write`._",
+        "description": "Upserts on (`fromCurrency`, `toCurrency`, `effectiveFrom`): one rate per pair per day, so correcting a rate replaces it rather than adding a second one whose precedence a reader would have to guess. Stated rates are one hop to the display currency and are never inverted or chained. A stated rate always wins over the automatic feed for the days it covers; give it an `effectiveTo` to hand the days after back to the feed.\n\n_Requires permission: `org:settings:write`._",
         "parameters": [
           {
             "schema": {
@@ -51716,7 +52147,7 @@
           "Currency"
         ],
         "summary": "Delete one exchange rate",
-        "description": "Removing a rate makes the days it covered fall back to the next-older rate, or to unconverted if none remains. Spend never disappears — it reverts to its own currency.\n\n_Requires permission: `org:settings:write`._",
+        "description": "Removing a rate makes the days it covered fall back to the next-older rate, then the automatic feed when on, or to unconverted if none applies. Spend never disappears: it reverts to its own currency.\n\n_Requires permission: `org:settings:write`._",
         "parameters": [
           {
             "schema": {

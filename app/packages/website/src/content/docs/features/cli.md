@@ -353,6 +353,17 @@ infrawrench virtual-tags show team --json
 
 A tag is addressed by its key, its id, or its name. The unmatched share is the part of the evaluated spend no rule matched: it took the tag's default value, or is "not set". Use the key anywhere a cost filter or grouping is accepted: `--where "virtual_tag['team'] = 'platform'"` and `--group-by virtual_tag:team`. Editing rules stays in Settings, where the editor previews what a change would do before it re-answers every past report. See [Virtual tags](./virtual-tags.md).
 
+And the exchange rates behind any converted figure:
+
+```
+infrawrench currency                      # display currency, automatic rates, ECB feed state, stated rates
+infrawrench currency rate EUR 2026-09-30  # which rate that day converts at, its source and date, and why
+infrawrench currency rate GBP USD         # any pair, today
+infrawrench currency feed --currency USD  # every ECB reference rate for today, in USD
+```
+
+`currency rate` applies your organization's own precedence: a stated rate covering the day wins, then the automatic ECB rate if automatic rates are on (carried over weekends and holidays, crossed through EUR). All three take `--json`. Read-only, like billing rules. See [Currency](./cloud-costs.md#currency).
+
 And, if you bill customers for the infrastructure you run for them, the documents themselves:
 
 ```
