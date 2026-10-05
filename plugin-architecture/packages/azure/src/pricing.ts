@@ -36,7 +36,11 @@ const retailPriceItemSchema = z.object({
   // 2023-01-01-preview api-version, and only on savings-plan-eligible meters.
   effectiveStartDate: z.string().nullish(),
   reservationTerm: z.string().nullish(),
-  savingsPlan: z.array(z.object({ retailPrice: z.number(), term: z.string() })).nullish(),
+  savingsPlan: z
+    .array(
+      z.object({ retailPrice: z.number(), unitPrice: z.number().optional(), term: z.string() }),
+    )
+    .nullish(),
 });
 
 const retailPricesPageSchema = z.object({
