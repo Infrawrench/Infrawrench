@@ -15157,5 +15157,72 @@
     "t": "p",
     "i": 1,
     "c": "Füllen Sie jeden Tag, den kein angegebener Kurs abdeckt, mit den Euro-Referenzkursen der Europäischen Zentralbank, die täglich abgerufen und bis 1999 zurück gespeichert werden. Wochenenden und Feiertage verwenden den zuletzt veröffentlichten Kurs, und Paare ohne Euro werden über den EUR gekreuzt. Währungen, die die EZB nicht veröffentlicht, sind nur manuell: Sie werden ausschließlich zu einem Kurs umgerechnet, den Sie unten angeben."
-  }
+  },
+  "22d86168569bb964": "Notiz bearbeiten",
+  "a02066d16397e2d1": "Diese Warnung erklären",
+  "5ffc009ba01e1215": "Gespeichert. Als Antwort in {slack} Slack-Thread(s) und an {teams} Teams-Webhook(s) gesendet.",
+  "c8c6f02f5e1bfe28": "Warum sie ausgelöst wurde",
+  "07c898b3427dcff1": "Lasttest Q3; erwartet, endet am Freitag",
+  "433e024af4ad5e9a": "Dies überschreibt die Notiz und die Markierung in den Diagrammen und sendet den neuen Wortlaut unter der Warnung.",
+  "d991ff99853b602a": "Eine Notiz erklärt die Warnung; sie schaltet die anderen Schwellenwerte des Budgets nicht stumm.",
+  "f3439d1621a2cd1a": "Notiz hinzufügen",
+  "913c603fd0487863": "{type} {percent} % am {day}",
+  "0fb8a452809485af": "({name}, {day})",
+  "0f3546fe1c9ca5e7": "({day})",
+  "5455c796cab5ddb3": " · Erklärt eine Budgetwarnung",
+  "2c9d3cdc1e48de77": "Berichtsordner",
+  "59ec0512ad62ce69": "Ziehen Sie Berichte oder Ordner hierher, um sie abzulegen.",
+  "284e925bc681a50a": "Auswahl",
+  "cdf78ff0f3cc4c74": "In Ordner verschieben…",
+  "ac7f3986fabb191e": "Löschen…",
+  "ab520df47bca22d2": "Alle auswählen",
+  "a5747f28b7a7278e": "Haken Sie Berichte oder Ordner an, um mehrere auf einmal zu verschieben oder zu löschen. Umschalt+Klick wählt einen Bereich; Strg+A wählt alles, M verschiebt, Entf löscht, Esc hebt die Auswahl auf.",
+  "f4de75f841fd3ebb": "Ausgewählte Elemente löschen",
+  "9f57f47d3db32d9e": "{reports} Berichte und {folders} Ordner löschen?",
+  "63d11003c713f77c": "Alles wird gemeinsam gelöscht oder gar nichts.",
+  "fe7f049f1f1d6727": "{count} ausgewählte Elemente",
+  "44db3d0a0ecbc10c": "Inhalt abwählen",
+  "efde5f9a662cf679": "Inhalt auswählen",
+  "854cdf05ad3a9e0e": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " Dashboard-Karten mit diesen Berichten werden ebenfalls entfernt, und ihre Zustellzeitpläne werden beendet."
+  ],
+  "711534a6336b7708": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Warum sie ausgelöst wurde, in einem Satz. Die Notiz wird mit Ihrem Namen an der Warnung gespeichert, als Notiz in",
+      " ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "jedem Kostendiagramm"
+      },
+      " für den ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " angezeigt und unter der Warnung in Slack und Teams gepostet."
+    ]
+  },
+  "41576f9997ba9fa2": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " weitere Berichte und ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " Unterordner in den gelöschten Ordnern wandern auf die oberste Ebene; sie werden nicht gelöscht."
+  ]
 }

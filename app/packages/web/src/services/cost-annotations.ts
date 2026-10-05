@@ -21,7 +21,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
-import { costAnnotations, costAnomalies, costReports } from "../db/schema";
+import { budgetAlertEvents, costAnnotations, costAnomalies, costReports } from "../db/schema";
 
 type CostAnnotationRow = typeof costAnnotations.$inferSelect;
 
@@ -35,7 +35,11 @@ export class CostAnnotationError extends Error {}
  * disagree with itself. Null on the create path, where a note written by hand
  * explains no finding by definition.
  */
-function toCostAnnotation(row: CostAnnotationRow, costAnomalyId: string | null): CostAnnotation {
+function toCostAnnotation(
+  row: CostAnnotationRow,
+  costAnomalyId: string | null,
+  budgetAlert: { budgetId: string; eventId: string } | null = null,
+): CostAnnotation {
   return {
     id: row.id,
     // `date` columns come back as YYYY-MM-DD strings, which is exactly the
@@ -49,6 +53,7 @@ function toCostAnnotation(row: CostAnnotationRow, costAnomalyId: string | null):
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     costAnomalyId,
+    budgetAlert,
   };
 }
 
@@ -63,6 +68,18 @@ async function anomalyIdForAnnotation(annotationId: string): Promise<string | nu
     .where(eq(costAnomalies.annotationId, annotationId))
     .limit(1);
   return row?.id ?? null;
+}
+
+/** The fired budget alert whose note this is, if any; the same reverse read. */
+async function budgetAlertForAnnotation(
+  annotationId: string,
+): Promise<{ budgetId: string; eventId: string } | null> {
+  const [row] = await db
+    .select({ eventId: budgetAlertEvents.id, budgetId: budgetAlertEvents.budgetId })
+    .from(budgetAlertEvents)
+    .where(eq(budgetAlertEvents.annotationId, annotationId))
+    .limit(1);
+  return row ?? null;
 }
 
 /**
@@ -117,13 +134,27 @@ export async function listCostAnnotations(
   // acknowledging an anomaly should say so wherever it is drawn, and the join
   // is on `cost_anomalies.annotation_id`, which is unique where it is set, so
   // this can only ever add one id per note, never duplicate a row.
+  // The budget-alert join is the same shape: `budget_alert_events.annotation_id`
+  // is unique where set, so it adds at most one link per note.
   const rows = await db
-    .select({ annotation: costAnnotations, anomalyId: costAnomalies.id })
+    .select({
+      annotation: costAnnotations,
+      anomalyId: costAnomalies.id,
+      budgetEventId: budgetAlertEvents.id,
+      budgetId: budgetAlertEvents.budgetId,
+    })
     .from(costAnnotations)
     .leftJoin(costAnomalies, eq(costAnomalies.annotationId, costAnnotations.id))
+    .leftJoin(budgetAlertEvents, eq(budgetAlertEvents.annotationId, costAnnotations.id))
     .where(scope)
     .orderBy(desc(costAnnotations.startDate), asc(costAnnotations.id));
-  return rows.map(({ annotation, anomalyId }) => toCostAnnotation(annotation, anomalyId));
+  return rows.map(({ annotation, anomalyId, budgetEventId, budgetId }) =>
+    toCostAnnotation(
+      annotation,
+      anomalyId,
+      budgetEventId && budgetId ? { budgetId, eventId: budgetEventId } : null,
+    ),
+  );
 }
 
 export async function createCostAnnotation(
@@ -184,7 +215,11 @@ export async function updateCostAnnotation(
   // the anomaly and this endpoint cannot reach that column) but the answer
   // still has to carry it, or rewording an anomaly's note would read back as
   // having severed it.
-  return toCostAnnotation(updated, await anomalyIdForAnnotation(updated.id));
+  return toCostAnnotation(
+    updated,
+    await anomalyIdForAnnotation(updated.id),
+    await budgetAlertForAnnotation(updated.id),
+  );
 }
 
 /**

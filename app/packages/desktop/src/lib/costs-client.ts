@@ -15,6 +15,8 @@ import type {
 } from "@infrawrench/ui/cost";
 import {
   acknowledgeCloudCostAnomaly,
+  annotateCloudBudgetAlert,
+  listCloudBudgetAlertEvents,
   createCloudBudget,
   createCloudCostAlert,
   createCloudWidget,
@@ -127,6 +129,12 @@ export function createDesktopCostsClient(): CostsClient {
     // so desktop gets the composer too rather than a list it can only read.
     acknowledgeAnomaly: (anomalyId: string, explanation: string) =>
       acknowledgeCloudCostAnomaly(requireOrgId(), anomalyId, explanation),
+    // Budget alert notes: org-level cloud state like the anomaly composer
+    // above, so desktop writes them too.
+    listBudgetAlertEvents: (budgetId: string) =>
+      listCloudBudgetAlertEvents(requireOrgId(), budgetId),
+    annotateBudgetAlert: (budgetId: string, eventId: string, note: string) =>
+      annotateCloudBudgetAlert(requireOrgId(), budgetId, eventId, note),
     // Desktop gets the tuning editor too: the Costs panel is the same
     // component in both hosts, and the settings are org-level cloud state
     // either way; leaving it out would make the desktop panel quietly less

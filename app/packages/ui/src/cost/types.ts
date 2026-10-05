@@ -1,5 +1,7 @@
 import type {
   BillingRule,
+  BudgetAlertEvent,
+  BudgetAlertNoteResult,
   CarbonEstimate,
   BudgetWithStatus,
   CostAccountStatus,
@@ -221,6 +223,22 @@ export interface CostsClient extends CostApi {
   addBudgetToDashboard?(dashboardId: string, budgetId: string, title: string): Promise<void>;
   /** Remove one budget card, identified by the widget id from `placements`. */
   removeBudgetPlacement?(widgetId: string): Promise<void>;
+  /**
+   * A budget's alert history with each firing's note (`GET /budgets/:id/events`).
+   * Optional: without it the budget card shows only this month's firings.
+   */
+  listBudgetAlertEvents?(budgetId: string): Promise<BudgetAlertEvent[]>;
+  /**
+   * Explain one firing: saved on the alert, drawn on the charts at the day it
+   * fired, and posted after the alert in Slack (thread reply) and Teams.
+   * Optional: without it the card shows notes but offers no composer. The
+   * server enforces `costs:write`.
+   */
+  annotateBudgetAlert?(
+    budgetId: string,
+    eventId: string,
+    note: string,
+  ): Promise<BudgetAlertNoteResult>;
   /**
    * Tag governance reads, optional the way `listAnomalies` is: a host that
    * hasn't wired them simply doesn't render the tag governance section.

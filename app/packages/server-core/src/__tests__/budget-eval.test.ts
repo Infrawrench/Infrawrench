@@ -145,8 +145,31 @@ describe("evaluateBudgetsForOrg — notification fan-out", () => {
         // fact rather than only inside the sentence.
         facts: expect.objectContaining({ amountCents: expect.any(Number) }),
       }),
+      // Tracked, so a note written later can follow the alert into its threads.
+      { track: true },
     );
     expect(sendBudgetAlertPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("records where the alert landed so a note can follow it", async () => {
+    arrange([budget()], [{ id: "evt1" }]);
+    routeAlert.mockResolvedValueOnce(
+      routed({
+        slackMessages: [{ installationId: "i1", channelId: "C1", ts: "1700000000.000100" }],
+        msTeamsWebhookIds: ["w1", "w1"],
+      }),
+    );
+    await budgetEval.evaluateBudgetsForOrg("org1", NOW);
+    const update = notifiedUpdates().find((q) => q.sql.includes('"slack_messages"'));
+    expect(update).toBeTruthy();
+    expect(update!.sql).toContain('"ms_teams_webhook_ids"');
+  });
+
+  it("budgetAlertDeliveredTo is null when nothing reached a chat", () => {
+    expect(budgetEval.budgetAlertDeliveredTo({ slackMessages: [] })).toBeNull();
+    expect(
+      budgetEval.budgetAlertDeliveredTo({ slackMessages: [], msTeamsWebhookIds: ["a", "a"] }),
+    ).toEqual({ slackMessages: [], msTeamsWebhookIds: ["a"] });
   });
 
   it("sets notifiedAt when only push succeeds", async () => {

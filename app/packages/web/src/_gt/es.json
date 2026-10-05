@@ -15161,5 +15161,72 @@
     "t": "p",
     "i": 1,
     "c": "Rellena cada día no cubierto por un tipo indicado con los tipos de referencia del euro del Banco Central Europeo, obtenidos a diario y conservados desde 1999. Los fines de semana y festivos usan el último tipo publicado, y los pares sin el euro se cruzan a través del EUR. Las monedas que el BCE no publica son solo manuales: se convierten únicamente al tipo que indiques abajo."
-  }
+  },
+  "22d86168569bb964": "Editar nota",
+  "a02066d16397e2d1": "Explicar esta alerta",
+  "5ffc009ba01e1215": "Guardado. Publicado como respuesta en {slack} hilo(s) de Slack y en {teams} webhook(s) de Teams.",
+  "c8c6f02f5e1bfe28": "Por qué se activó",
+  "07c898b3427dcff1": "Prueba de carga del T3; prevista, termina el viernes",
+  "433e024af4ad5e9a": "Esto reescribe la nota y la marca que ya están en los gráficos, y publica el nuevo texto bajo la alerta.",
+  "d991ff99853b602a": "Una nota explica la alerta; no silencia los demás umbrales del presupuesto.",
+  "f3439d1621a2cd1a": "Añadir nota",
+  "913c603fd0487863": "{type} {percent}% el {day}",
+  "0fb8a452809485af": "({name}, {day})",
+  "0f3546fe1c9ca5e7": "({day})",
+  "5455c796cab5ddb3": " · Explica una alerta de presupuesto",
+  "2c9d3cdc1e48de77": "Carpetas de informes",
+  "59ec0512ad62ce69": "Arrastra informes o carpetas aquí para archivarlos.",
+  "284e925bc681a50a": "Selección",
+  "cdf78ff0f3cc4c74": "Mover a carpeta…",
+  "ac7f3986fabb191e": "Eliminar…",
+  "ab520df47bca22d2": "Seleccionar todo",
+  "a5747f28b7a7278e": "Marca informes o carpetas para mover o eliminar varios a la vez. Mayús+clic selecciona un rango; Ctrl+A selecciona todo, M mueve, Supr elimina, Esc borra la selección.",
+  "f4de75f841fd3ebb": "Eliminar los elementos seleccionados",
+  "9f57f47d3db32d9e": "¿Eliminar {reports} informes y {folders} carpetas?",
+  "63d11003c713f77c": "Todo se elimina a la vez, o no se elimina nada.",
+  "fe7f049f1f1d6727": "{count} elementos seleccionados",
+  "44db3d0a0ecbc10c": "Deseleccionar contenido",
+  "efde5f9a662cf679": "Seleccionar contenido",
+  "854cdf05ad3a9e0e": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " tarjetas de panel que muestran estos informes también se eliminan, y sus programaciones de entrega se detienen."
+  ],
+  "711534a6336b7708": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Por qué se activó, en una frase. Se guarda en la alerta con tu nombre, se dibuja como nota en",
+      " ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "todos los gráficos de costes"
+      },
+      " que incluyan ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      ", y se publica bajo la alerta en Slack y Teams."
+    ]
+  },
+  "41576f9997ba9fa2": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " otros informes y ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " subcarpetas dentro de las carpetas eliminadas pasan al nivel superior; no se eliminan."
+  ]
 }

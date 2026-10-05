@@ -18,6 +18,7 @@
 import type { CostCapabilityDeclaration, CostChargeType } from "@infrawrench/plugin-base";
 
 import type { CostReportWidgetConfig } from "./cost-reports";
+import type { BudgetAlertNote } from "./budget-alert-notes";
 import type { CustomGraphWidgetConfig } from "./custom-graphs";
 import type { CostCanvasWidgetConfig } from "./cost-canvases";
 // Type-only, and deliberately one-way at runtime: `cost-scenarios.ts` is the
@@ -725,6 +726,12 @@ export interface BudgetWithStatus {
     thresholdType: "actual" | "forecast";
     thresholdPercent: number;
     triggeredAt: string;
+    /**
+     * Somebody's explanation of this firing, or null while there is none.
+     * Optional on the wire so a client a release ahead of its server still
+     * renders: absent reads as "no note".
+     */
+    note?: BudgetAlertNote | null | undefined;
   }>;
   /**
    * The dashboards carrying a card for this budget. A budget exists

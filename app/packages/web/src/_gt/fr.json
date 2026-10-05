@@ -15160,5 +15160,72 @@
     "t": "p",
     "i": 1,
     "c": "Complétez chaque jour qu'aucun taux saisi ne couvre avec les taux de référence de change de l'euro de la Banque centrale européenne, récupérés chaque jour et conservés depuis 1999. Les week-ends et jours fériés utilisent le dernier taux publié, et les paires sans l'euro sont croisées via l'EUR. Les devises que la BCE ne publie pas sont manuelles uniquement : elles ne sont converties qu'au taux que vous saisissez ci-dessous."
-  }
+  },
+  "22d86168569bb964": "Modifier la note",
+  "a02066d16397e2d1": "Expliquer cette alerte",
+  "5ffc009ba01e1215": "Enregistré. Publié en réponse dans {slack} fil(s) Slack et sur {teams} webhook(s) Teams.",
+  "c8c6f02f5e1bfe28": "Pourquoi elle s’est déclenchée",
+  "07c898b3427dcff1": "Test de charge du T3 ; prévu, se termine vendredi",
+  "433e024af4ad5e9a": "Cela réécrit la note et le repère déjà présents sur les graphiques, et publie la nouvelle formulation sous l’alerte.",
+  "d991ff99853b602a": "Une note explique l’alerte ; elle ne fait pas taire les autres seuils du budget.",
+  "f3439d1621a2cd1a": "Ajouter une note",
+  "913c603fd0487863": "{type} {percent} % le {day}",
+  "0fb8a452809485af": "({name}, {day})",
+  "0f3546fe1c9ca5e7": "({day})",
+  "5455c796cab5ddb3": " · Explique une alerte de budget",
+  "2c9d3cdc1e48de77": "Dossiers de rapports",
+  "59ec0512ad62ce69": "Faites glisser des rapports ou des dossiers ici pour les classer.",
+  "284e925bc681a50a": "Sélection",
+  "cdf78ff0f3cc4c74": "Déplacer vers un dossier…",
+  "ac7f3986fabb191e": "Supprimer…",
+  "ab520df47bca22d2": "Tout sélectionner",
+  "a5747f28b7a7278e": "Cochez des rapports ou des dossiers pour en déplacer ou supprimer plusieurs à la fois. Maj+clic sélectionne une plage ; Ctrl+A sélectionne tout, M déplace, Suppr supprime, Échap efface la sélection.",
+  "f4de75f841fd3ebb": "Supprimer les éléments sélectionnés",
+  "9f57f47d3db32d9e": "Supprimer {reports} rapports et {folders} dossiers ?",
+  "63d11003c713f77c": "Tout est supprimé ensemble, ou rien ne l’est.",
+  "fe7f049f1f1d6727": "{count} éléments sélectionnés",
+  "44db3d0a0ecbc10c": "Désélectionner le contenu",
+  "efde5f9a662cf679": "Sélectionner le contenu",
+  "854cdf05ad3a9e0e": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " cartes de tableau de bord affichant ces rapports sont aussi supprimées, et leurs envois planifiés s’arrêtent."
+  ],
+  "711534a6336b7708": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Pourquoi elle s’est déclenchée, en une phrase. Elle est enregistrée sur l’alerte avec votre nom, affichée comme note sur",
+      " ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "chaque graphique de coûts"
+      },
+      " couvrant le ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      ", et publiée sous l’alerte dans Slack et Teams."
+    ]
+  },
+  "41576f9997ba9fa2": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " autres rapports et ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " sous-dossiers des dossiers supprimés passent au niveau supérieur ; ils ne sont pas supprimés."
+  ]
 }

@@ -36,6 +36,7 @@ import {
   softDeleteBudget,
   updateBudget,
 } from "../services/budgets";
+import { BudgetAlertNoteError, noteBudgetAlertEvent } from "../services/budget-alert-notes";
 import { listSavedCostFilters as listSavedCostFiltersForOrg } from "../services/saved-cost-filters";
 import { listCostScenarioModels as listCostScenarioModelsForOrg } from "../services/cost-scenarios";
 import { logAudit } from "../services/audit";
@@ -710,6 +711,74 @@ export function costTools(): ToolDefinition[] {
         if (!budget) return err(`Budget not found: ${budgetId}`);
         const events = await listBudgetEvents(auth.organizationId, budgetId);
         return ok({ ...budget, events: events ?? [] });
+      },
+    },
+
+    {
+      name: "annotate_budget_alert",
+      title: "Explain a fired budget alert",
+      description:
+        "Write a note on one firing of a budget threshold saying why it fired ('Q3 load test, " +
+        "ends Friday'). The note is recorded on the alert with who wrote it and when, drawn on " +
+        "every cost chart as a dated annotation at the day the alert fired, and posted after the " +
+        "alert: as a reply in the Slack thread of each message the alert was posted as, and as " +
+        "a follow-up to the Teams webhooks it reached.\n\n" +
+        "Event ids come from get_budget (`events`) or list_budgets (`currentMonthEvents`). " +
+        "**Only explain a cause you have evidence for**: this posts into people's channels and " +
+        "writes into the organization's record of its spending. Calling it again on the same " +
+        "event rewrites the note and rewords the same chart marker. It does not silence the " +
+        "budget: later thresholds still fire. Audit-logged.",
+      inputSchema: {
+        budgetId: z.string(),
+        eventId: z.string().describe("A fired event of that budget, from get_budget."),
+        note: z
+          .string()
+          .min(1)
+          .max(COST_ANNOTATION_LIMITS.maxTextLength)
+          .describe("One sentence on why the alert fired. Becomes the chart annotation's text."),
+      },
+      risk: "write",
+      permission: "costs:write",
+      handler: async (input, auth) => {
+        const denied =
+          (await denyUnlessPermitted(auth, "budgets:read")) ??
+          (await denyUnlessPermitted(auth, "costs:write"));
+        if (denied) return denied;
+        const { budgetId, eventId, note } = input as {
+          budgetId: string;
+          eventId: string;
+          note: string;
+        };
+        try {
+          const result = await noteBudgetAlertEvent(
+            auth.organizationId,
+            budgetId,
+            eventId,
+            note,
+            auth.userId,
+          );
+          if (!result) return err(`Budget alert not found: ${budgetId} / ${eventId}`);
+          void logAudit({
+            organizationId: auth.organizationId,
+            userId: auth.userId,
+            action: "budget_alert.note",
+            entityType: "budget",
+            entityId: budgetId,
+            metadata: {
+              eventId: result.id,
+              month: result.month,
+              thresholdType: result.thresholdType,
+              thresholdPercent: result.thresholdPercent,
+              note: result.note?.text ?? null,
+              annotationId: result.note?.annotationId ?? null,
+              source: auth.source,
+            },
+          });
+          return ok(result);
+        } catch (e) {
+          if (e instanceof BudgetAlertNoteError) return err(e.message);
+          throw e;
+        }
       },
     },
 

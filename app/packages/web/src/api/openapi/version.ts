@@ -228,4 +228,8 @@
 // settings gain `autoRates` and `rateBasis`, stated rates an optional
 // `effectiveTo`, conversion notices name each rate's source and date, and
 // `GET /currency/lookup` and `GET /currency/feed` are new. Additive.
-export const API_VERSION = "1.63.0";
+// 1.64.0: `POST /cost-reports/bulk` (all-or-nothing move/delete of reports and
+// folders), `POST /budgets/{id}/events/{eventId}/note` (a note on a fired budget
+// alert), and `note` on BudgetAlertEvent and on BudgetWithStatus's
+// currentMonthEvents. Additive.
+export const API_VERSION = "1.64.0";

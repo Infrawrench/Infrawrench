@@ -31,6 +31,8 @@ type costAnnotationResourceModel struct {
 	Text          types.String `tfsdk:"text"`
 	CostReportID  types.String `tfsdk:"cost_report_id"`
 	CostAnomalyID types.String `tfsdk:"cost_anomaly_id"`
+	BudgetID      types.String `tfsdk:"budget_id"`
+	BudgetEventID types.String `tfsdk:"budget_alert_event_id"`
 }
 
 func (r *costAnnotationResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -80,6 +82,20 @@ func (r *costAnnotationResource) Schema(_ context.Context, _ resource.SchemaRequ
 					"acknowledges an anomaly with an explanation, and that acknowledgement writes its own " +
 					"annotation. Adopting one of those into Terraform is possible but rarely what you want; the " +
 					"explanation belongs to whoever investigated the spike.",
+			},
+
+			"budget_id": schema.StringAttribute{
+				Computed: true,
+				MarkdownDescription: "The budget whose fired alert this note explains, or null; null for every " +
+					"note Terraform creates.\n\n" +
+					"Read-only, like `cost_anomaly_id`: the link is minted server-side when somebody writes a " +
+					"note on a fired budget alert, which creates its own annotation.",
+			},
+
+			"budget_alert_event_id": schema.StringAttribute{
+				Computed: true,
+				MarkdownDescription: "The fired budget alert (one threshold crossing of `budget_id`) this note " +
+					"explains, or null. Read-only, set together with `budget_id`.",
 			},
 		},
 	}
@@ -199,5 +215,16 @@ func costAnnotationStateFrom(remote *iw.CostAnnotation) costAnnotationResourceMo
 		Text:          types.StringValue(remote.Text),
 		CostReportID:  stringValue(remote.CostReportID),
 		CostAnomalyID: stringValue(remote.CostAnomalyID),
+		BudgetID:      budgetAlertField(remote.BudgetAlert, func(b *iw.CostAnnotationBudgetAlert) string { return b.BudgetID }),
+		BudgetEventID: budgetAlertField(remote.BudgetAlert, func(b *iw.CostAnnotationBudgetAlert) string { return b.EventID }),
 	}
+}
+
+// budgetAlertField reads one side of an annotation's budget-alert link, null
+// when the note explains no budget alert.
+func budgetAlertField(link *iw.CostAnnotationBudgetAlert, pick func(*iw.CostAnnotationBudgetAlert) string) types.String {
+	if link == nil {
+		return types.StringNull()
+	}
+	return types.StringValue(pick(link))
 }

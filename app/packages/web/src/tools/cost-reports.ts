@@ -27,6 +27,7 @@ import {
   listVisibleCostReportFolders,
 } from "../services/cost-report-folders";
 import { CostQueryError } from "../services/cost-query";
+import { applyCostReportBulk, CostReportBulkError } from "../services/cost-reports-bulk";
 import { logAudit } from "../services/audit";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, err, type ToolDefinition } from "./types";
@@ -301,6 +302,97 @@ export function costReportTools(): ToolDefinition[] {
           metadata: { source: auth.source },
         });
         return ok({ ok: true });
+      },
+    },
+
+    {
+      name: "bulk_move_cost_reports",
+      title: "Move several cost reports and folders",
+      description:
+        "File many saved cost reports and report folders into one folder in a single " +
+        'all-or-nothing step. `folder` is a folder id, a full path ("Finance / Monthly"), or ' +
+        "a unique folder name; null is the top level. Moved folders become direct children of " +
+        "the destination, keeping their contents. Every item is checked first (it exists, the " +
+        "caller may edit it, and the resulting tree stays within three levels with no cycles); " +
+        "if any fails, nothing moves and the error names each blocking item. Ids come from " +
+        "list_cost_reports. Audit-logged per item.",
+      inputSchema: {
+        reportIds: z.array(z.string()).default([]),
+        folderIds: z.array(z.string()).default([]),
+        folder: z.string().nullable(),
+      },
+      risk: "write",
+      permission: "costs:write",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:write");
+        if (denied) return denied;
+        const { reportIds, folderIds, folder } = input as {
+          reportIds: string[];
+          folderIds: string[];
+          folder: string | null;
+        };
+        if (reportIds.length + folderIds.length === 0) {
+          return err("Name at least one report or folder to move.");
+        }
+        let targetFolderId: string | null = null;
+        if (folder !== null) {
+          const folders = await listVisibleCostReportFolders(auth.organizationId);
+          const resolved = resolveFolder(folders, folder);
+          if ("error" in resolved) return err(resolved.error);
+          targetFolderId = resolved.id;
+        }
+        try {
+          return ok(
+            await applyCostReportBulk(
+              auth.organizationId,
+              { action: "move", reportIds, folderIds, targetFolderId },
+              auth.userId,
+              { source: auth.source },
+            ),
+          );
+        } catch (e) {
+          if (e instanceof CostReportBulkError) return err(e.message);
+          throw e;
+        }
+      },
+    },
+
+    {
+      name: "bulk_delete_cost_reports",
+      title: "Delete several cost reports and folders",
+      description:
+        "Delete many saved cost reports and report folders in one all-or-nothing step. " +
+        "Deleted reports take their dashboard cards with them and their delivery schedules " +
+        "stop; a deleted folder's remaining reports and subfolders move to the top level and " +
+        "are not deleted. If any item cannot be deleted (missing, or the caller is not its " +
+        "owner), nothing is deleted and the error names each one. Audit-logged per item. The " +
+        "chat surface confirms with the user before invoking.",
+      inputSchema: {
+        reportIds: z.array(z.string()).default([]),
+        folderIds: z.array(z.string()).default([]),
+      },
+      risk: "destructive",
+      permission: "costs:write",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:write");
+        if (denied) return denied;
+        const { reportIds, folderIds } = input as { reportIds: string[]; folderIds: string[] };
+        if (reportIds.length + folderIds.length === 0) {
+          return err("Name at least one report or folder to delete.");
+        }
+        try {
+          return ok(
+            await applyCostReportBulk(
+              auth.organizationId,
+              { action: "delete", reportIds, folderIds },
+              auth.userId,
+              { source: auth.source },
+            ),
+          );
+        } catch (e) {
+          if (e instanceof CostReportBulkError) return err(e.message);
+          throw e;
+        }
       },
     },
   ];

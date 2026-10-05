@@ -87,6 +87,13 @@ export interface CostAnnotation {
    * can be checked against the spike it explains.
    */
   costAnomalyId?: string | null;
+  /**
+   * The fired budget alert this note explains, when it was written as a note
+   * on one (`budget-alert-notes.ts`), and null otherwise. Resolved from
+   * `budget_alert_events.annotation_id` the same way as `costAnomalyId`, so a
+   * marker on a chart can link back to the budget whose alert it explains.
+   */
+  budgetAlert?: { budgetId: string; eventId: string } | null;
 }
 
 /** Create/update payload (POST/PUT /cost-annotations). */

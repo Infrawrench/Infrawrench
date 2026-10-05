@@ -965,6 +965,7 @@ function SpendGraphCard({
                         than taking it on trust.
                       */}
                       {annotation.costAnomalyId ? gt(" · Explains a detected anomaly") : ""}
+                      {annotation.budgetAlert ? gt(" · Explains a budget alert") : ""}
                     </p>
                   </div>
                   {canWriteAnnotations && (

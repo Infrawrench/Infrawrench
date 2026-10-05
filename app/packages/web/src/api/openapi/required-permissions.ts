@@ -485,8 +485,12 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /costs/rows": "costs:write",
   // cost reports: a report is cost data under a name, so it follows the cost
   // permissions rather than the dashboard ones. Running one is a read.
+  // A note on a fired budget alert creates a cost annotation, so it takes the
+  // annotation scope (the handler also requires budgets:read).
+  "POST /budgets/{id}/events/{eventId}/note": "costs:write",
   "GET /cost-reports": "costs:read",
   "POST /cost-reports": "costs:write",
+  "POST /cost-reports/bulk": "costs:write",
   "GET /cost-reports/{id}": "costs:read",
   "PUT /cost-reports/{id}": "costs:write",
   "DELETE /cost-reports/{id}": "costs:write",

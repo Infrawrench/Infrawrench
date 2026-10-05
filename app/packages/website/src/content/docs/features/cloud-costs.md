@@ -360,6 +360,20 @@ The Costs panel shows budgets as an expandable tree, every level with its own ac
 
 <insert [The Costs panel budget tree with a parent budget expanded to show two child budgets, the parent showing the "Child budgets allocate ..." warning] here>
 
+### Explaining a budget alert
+
+The person who reads a budget alert usually knows why it fired within minutes ("the Q3 load test, ends Friday"). Write that down where everyone will find it: each threshold that fired this month is listed on the budget card in the **Costs** panel, with **Explain** next to it. The note you write is:
+
+- **Saved on the alert**, with your name and the time, and shown on the budget card on web, desktop and the [mobile app](./mobile-app.md).
+- **Drawn on every cost chart** as an org-wide [annotation](./cost-reports.md#annotations) on the day the alert fired, marked **Explains a budget alert**, so the step in the graph explains itself months later.
+- **Posted after the alert**: as a reply in the Slack thread of each message the alert was posted as, and as a follow-up card to the Teams webhooks it reached (Teams incoming webhooks cannot reply in a thread). The composer tells you how many it reached. Budget alerts are not sent by email, so there is no email follow-up. Alerts that fired before notes existed, or that [quiet hours](./alert-routing.md#quiet-hours) held and delivered later, have no recorded chat messages, so their notes stay on the budget and the charts only.
+
+**Edit note** rewrites the note and rewords the same chart marker rather than adding a second one; deleting the marker from a chart leaves the note on the alert. A note explains an alert, it does not silence the budget: later thresholds fire as usual. Writing one needs `costs:write` (the permission any annotation needs) and lands in the [audit log](../team-and-billing/audit-log.md) as `budget_alert.note`.
+
+<insert [Costs panel budget card with two fired thresholds this month, one showing a note with its author and date, the other with an Explain link; the Explain this alert dialog open beside it] here>
+
+From the terminal, `infrawrench budgets` lists every budget with how many of this month's alerts are still unexplained, `infrawrench budgets "Prod"` shows one budget's alert history with each note, and `infrawrench budgets annotate "Prod" --note "Q3 load test, ends Friday"` explains the latest firing (`--event <id>` picks another; `--json` on all three). In chat and MCP the tool is `annotate_budget_alert`; event ids come from `get_budget`.
+
 Budgets alert on totals you chose. For spend you didn't see coming — a provider or service suddenly billing far above its own baseline, or one that had never billed at all — see [cost anomaly alerts](./cost-anomaly-alerts.md), which work with no configuration and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if the defaults are too loud or too quiet. Anomalies can text the same on-call recipients as a budget crossing, but unlike budgets they [do not until you ask them to](./cost-anomaly-alerts.md#paging-by-sms).
 
 ## The Costs panel

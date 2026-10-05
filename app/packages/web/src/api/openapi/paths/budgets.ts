@@ -210,6 +210,27 @@ const BudgetFull = strict({
   parentBudgetId: BudgetParentId.nullable(),
 }).openapi("BudgetFull");
 
+const BudgetAlertNote = strict({
+  text: z.string(),
+  notedAt: IsoDateTime.describe(
+    "When the note as it now reads was written; a rewrite restamps it.",
+  ),
+  notedByUserId: z.string().nullable(),
+  notedByName: z
+    .string()
+    .nullable()
+    .describe("The author's display name, or email when they have none."),
+  annotationId: z
+    .string()
+    .nullable()
+    .describe(
+      "The org-wide cost annotation the note drew on the charts at the day the alert fired " +
+        "(see /cost-annotations). Null once that marker is deleted; the note itself stays.",
+    ),
+})
+  .describe("Somebody's explanation of this firing. Null while there is none.")
+  .openapi("BudgetAlertNote");
+
 const BudgetAlertEvent = strict({
   id: Uuid,
   month: Month,
@@ -228,7 +249,29 @@ const BudgetAlertEvent = strict({
     .nullable()
     .describe("A usage budget's period-to-date usage at the crossing (the cents fields are 0)."),
   forecastUsage: z.number().nullable(),
+  note: BudgetAlertNote.nullable(),
 }).openapi("BudgetAlertEvent");
+
+const BudgetAlertNoteInput = strict({
+  note: z
+    .string()
+    .min(1)
+    .max(500)
+    .describe(
+      "What this firing was, in a sentence. The date and scope of the chart marker it creates " +
+        "are derived from the event (the day it fired, org-wide), never chosen by the caller.",
+    ),
+}).openapi("BudgetAlertNoteInput");
+
+const BudgetAlertNoteResult = BudgetAlertEvent.extend({
+  followUp: strict({
+    slack: z.number().int().describe("Slack threads the note was posted in as a reply."),
+    msTeams: z
+      .number()
+      .int()
+      .describe("Teams webhooks the note was sent to (incoming webhooks cannot thread)."),
+  }),
+}).openapi("BudgetAlertNoteResult");
 
 const BudgetWithStatus = strict({
   id: Uuid,
@@ -285,6 +328,7 @@ const BudgetWithStatus = strict({
       thresholdType: z.enum(["actual", "forecast"]),
       thresholdPercent: z.number().int(),
       triggeredAt: IsoDateTime,
+      note: BudgetAlertNote.nullable().optional(),
     }),
   ),
   /**
@@ -418,6 +462,36 @@ export function registerBudgetPaths(ctx: BuildContext) {
         description: "Events",
         content: { "application/json": { schema: z.array(BudgetAlertEvent) } },
       },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/budgets/{id}/events/{eventId}/note",
+    tags: ["Budgets"],
+    summary: "Explain a fired budget alert",
+    description:
+      "Saves a note on one firing (who and when are recorded), draws it on every cost chart as " +
+      "an org-wide annotation at the day the alert fired, and posts it after the alert: a " +
+      "reply in each Slack message's thread and a follow-up to the Teams webhooks it reached. " +
+      "Sending again rewrites the note and rewords the same chart marker rather than adding " +
+      "another; a marker somebody deleted is not recreated. Alerts that fired before notes " +
+      "existed, or that quiet hours held, have no recorded chat messages to follow. Needs " +
+      "`budgets:read` and `costs:write`.",
+    request: {
+      params: params({
+        id: Uuid.openapi({ param: { name: "id", in: "path" } }),
+        eventId: Uuid.openapi({ param: { name: "eventId", in: "path" } }),
+      }),
+      body: { content: { "application/json": { schema: BudgetAlertNoteInput } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "The event with its note, and where the follow-up was posted",
+        content: { "application/json": { schema: BudgetAlertNoteResult } },
+      },
+      400: ErrorResponses[400],
       404: ErrorResponses[404],
     },
   });

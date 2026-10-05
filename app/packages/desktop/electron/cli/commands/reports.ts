@@ -12,6 +12,8 @@
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
 import type {
   CostReport,
+  CostReportBulkRequest,
+  CostReportBulkResult,
   CostReportFolder,
   CostReportRunOverrides,
   CostReportRunResult,
@@ -26,6 +28,7 @@ import { barChart, sparkline } from "../charts";
 import { exportPdf, wantsPdf, type PdfExportFlags } from "../pdf-export";
 import type { RangeFlags } from "../args";
 import { checkDisplayFlags, formatMeasureValue, parseDisplayFlags, seriesTotal } from "./costs";
+import { confirm } from "../prompt";
 
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
@@ -199,6 +202,195 @@ export async function resolveReport(orgId: string, query: string): Promise<CostR
       .map((r) => r.name)
       .join(", ")}. Use the full name or the id.`,
   );
+}
+
+/** A positional on `reports move|delete`, resolved to one report or folder. */
+type BulkItem =
+  { kind: "report"; id: string; label: string } | { kind: "folder"; id: string; label: string };
+
+/**
+ * Resolve each positional to exactly one report or folder. `folder:<path>`
+ * forces a folder; otherwise a report match wins, then a folder by id, full
+ * path ("Finance / Monthly") or unique name. Anything ambiguous or unknown is
+ * an error naming it, before anything is sent: a bulk command that guesses is
+ * a bulk command that files the wrong forty reports.
+ */
+function resolveBulkItems(
+  queries: string[],
+  reports: CostReport[],
+  folders: CostReportFolder[],
+): BulkItem[] {
+  const paths = folderPathsById(folders);
+  const out: BulkItem[] = [];
+  for (const raw of queries) {
+    const forceFolder = raw.startsWith("folder:");
+    const query = forceFolder ? raw.slice("folder:".length).trim() : raw.trim();
+    if (!forceFolder) {
+      const found = matchCostReport(reports, query);
+      if (found.match) {
+        out.push({ kind: "report", id: found.match.id, label: found.match.name });
+        continue;
+      }
+      if (found.candidates.length > 1) {
+        throw new CliError(
+          `"${query}" matches ${found.candidates.length} reports: ${found.candidates
+            .map((r) => r.name)
+            .join(", ")}. Use the full name or the id.`,
+        );
+      }
+    }
+    const folder = resolveFolderQuery(folders, paths, query);
+    if (folder) {
+      out.push({ kind: "folder", id: folder.id, label: paths.get(folder.id) ?? folder.name });
+      continue;
+    }
+    throw new CliError(
+      `Nothing matches "${query}". Run \`infrawrench reports\` to see reports and folder paths.`,
+    );
+  }
+  return out;
+}
+
+/** A folder by id, full path or unique name; null when none, error when several. */
+function resolveFolderQuery(
+  folders: CostReportFolder[],
+  paths: Map<string, string>,
+  query: string,
+): CostReportFolder | null {
+  const q = query.trim().toLowerCase();
+  const byId = folders.find((f) => f.id === query.trim());
+  if (byId) return byId;
+  const byPath = folders.filter((f) => (paths.get(f.id) ?? "").toLowerCase() === q);
+  if (byPath.length === 1) return byPath[0]!;
+  const byName = folders.filter((f) => f.name.trim().toLowerCase() === q);
+  if (byName.length === 1) return byName[0]!;
+  if (byName.length > 1) {
+    throw new CliError(
+      `"${query}" matches ${byName.length} folders: ${byName
+        .map((f) => paths.get(f.id) ?? f.name)
+        .join(", ")}. Use the full path or the id.`,
+    );
+  }
+  return null;
+}
+
+/** Send one bulk request; the server's 400 already names every blocking item. */
+async function sendBulk(orgId: string, request: CostReportBulkRequest) {
+  return orgFetch<CostReportBulkResult>(orgId, "/cost-reports/bulk", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * `infrawrench reports move <item>... --folder <path|id|top>`: file reports
+ * and folders into one folder, all or nothing. Moved folders keep their
+ * contents and become children of the destination.
+ */
+export async function cmdMoveReports(
+  ctx: CliContext,
+  queries: string[],
+  destination: string | undefined,
+): Promise<void> {
+  requireCloud(ctx);
+  if (queries.length === 0) {
+    throw new CliError(
+      'What should move? `infrawrench reports move "<report>" folder:"<folder>" --folder <path|top>`.',
+      2,
+    );
+  }
+  if (destination === undefined) {
+    throw new CliError(
+      "Where to? Add `--folder <path|id>`, or `--folder top` for the top level.",
+      2,
+    );
+  }
+  const org = await resolveOrg(ctx);
+  const [reports, folders] = await Promise.all([
+    orgFetch<CostReport[]>(org.id, "/cost-reports"),
+    orgFetch<CostReportFolder[]>(org.id, "/cost-report-folders"),
+  ]);
+  const items = resolveBulkItems(queries, reports, folders);
+  const paths = folderPathsById(folders);
+  const top = ["top", "/", "root", "none"].includes(destination.trim().toLowerCase());
+  const target = top ? null : resolveFolderQuery(folders, paths, destination);
+  if (!top && !target) {
+    throw new CliError(
+      `No folder matches "${destination}". Use \`--folder top\` for the top level.`,
+    );
+  }
+
+  const result = await sendBulk(org.id, {
+    action: "move",
+    reportIds: items.filter((i) => i.kind === "report").map((i) => i.id),
+    folderIds: items.filter((i) => i.kind === "folder").map((i) => i.id),
+    targetFolderId: target?.id ?? null,
+  });
+
+  const where = target ? (paths.get(target.id) ?? target.name) : "the top level";
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, ...result, targetFolderId: target?.id ?? null, items });
+    return;
+  }
+  for (const item of items) {
+    println(`  ${c.green("✓")} ${item.kind === "folder" ? c.dim("folder ") : ""}${item.label}`);
+  }
+  println();
+  println(`Moved ${result.reports} report(s) and ${result.folders} folder(s) to ${c.bold(where)}.`);
+}
+
+/**
+ * `infrawrench reports delete <item>... [-y]`: delete reports and folders,
+ * all or nothing. Asks first unless `-y`, and refuses to run unattended
+ * without it: this removes dashboard cards and stops delivery schedules.
+ */
+export async function cmdDeleteReports(
+  ctx: CliContext,
+  queries: string[],
+  yes: boolean,
+): Promise<void> {
+  requireCloud(ctx);
+  if (queries.length === 0) {
+    throw new CliError('What should be deleted? `infrawrench reports delete "<report>" -y`.', 2);
+  }
+  const org = await resolveOrg(ctx);
+  const [reports, folders] = await Promise.all([
+    orgFetch<CostReport[]>(org.id, "/cost-reports"),
+    orgFetch<CostReportFolder[]>(org.id, "/cost-report-folders"),
+  ]);
+  const items = resolveBulkItems(queries, reports, folders);
+
+  if (!yes) {
+    if (!process.stdin.isTTY || ctx.flags.output === "json") {
+      throw new CliError(
+        "Refusing to delete without confirmation on a non-interactive run. Re-run with -y.",
+        2,
+      );
+    }
+    for (const item of items) {
+      println(`  ${c.red("✗")} ${item.kind === "folder" ? c.dim("folder ") : ""}${item.label}`);
+    }
+    println(
+      c.dim(
+        "Deleted reports lose their dashboard cards and delivery schedules; a deleted folder's other contents move to the top level.",
+      ),
+    );
+    if (!(await confirm(`Delete these ${items.length} item(s) from ${org.displayName}?`))) {
+      println(c.dim("Cancelled; nothing was changed."));
+      return;
+    }
+  }
+
+  const result = await sendBulk(org.id, {
+    action: "delete",
+    reportIds: items.filter((i) => i.kind === "report").map((i) => i.id),
+    folderIds: items.filter((i) => i.kind === "folder").map((i) => i.id),
+  });
+  if (ctx.flags.output === "json") {
+    printJson({ org: org.id, ...result, items });
+    return;
+  }
+  println(`Deleted ${result.reports} report(s) and ${result.folders} folder(s).`);
 }
 
 /**

@@ -55,6 +55,10 @@ import type {
   CreditBurndown,
 } from "@infrawrench/ui/cost";
 import type {
+  BudgetAlertEvent,
+  BudgetAlertNoteResult,
+  CostReportBulkRequest,
+  CostReportBulkResult,
   CostEfficiencySettings,
   EfficiencyAlertEvent,
   EfficiencyAlertKind,
@@ -126,6 +130,24 @@ export async function acknowledgeCloudCostAnomaly(
   explanation: string,
 ): Promise<CostAnomaly> {
   return invoke("cloud_costs_acknowledge_anomaly", { orgId, anomalyId, explanation });
+}
+
+/** A budget's alert history, each firing with its note. */
+export async function listCloudBudgetAlertEvents(
+  orgId: string,
+  budgetId: string,
+): Promise<BudgetAlertEvent[]> {
+  return (await invoke<BudgetAlertEvent[]>("cloud_budget_alert_events", { orgId, budgetId })) ?? [];
+}
+
+/** Explain one firing; the server dates the chart marker and posts the follow-up. */
+export async function annotateCloudBudgetAlert(
+  orgId: string,
+  budgetId: string,
+  eventId: string,
+  note: string,
+): Promise<BudgetAlertNoteResult> {
+  return invoke("cloud_budget_alert_note", { orgId, budgetId, eventId, note });
 }
 
 export async function loadCloudAnomalySettings(orgId: string): Promise<CostAnomalySettingsView> {
@@ -318,6 +340,14 @@ export async function updateCloudCostReport(
 
 export async function deleteCloudCostReport(orgId: string, reportId: string): Promise<void> {
   await invoke("cloud_delete_cost_report", { orgId, reportId });
+}
+
+/** Move or delete many reports and folders at once; all or nothing server-side. */
+export async function bulkUpdateCloudCostReports(
+  orgId: string,
+  request: CostReportBulkRequest,
+): Promise<CostReportBulkResult> {
+  return invoke("cloud_bulk_cost_reports", { orgId, request });
 }
 
 /* ------------------------------------------------------------------ *

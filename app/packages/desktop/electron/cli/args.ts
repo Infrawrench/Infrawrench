@@ -257,10 +257,23 @@ export interface PriceFlags {
   desc: boolean;
 }
 
+/** Flags for `reports move|delete` and `budgets annotate`. */
+export interface BulkFlags {
+  /** `reports move --folder <path|id|top>`: the destination. */
+  folder?: string | undefined;
+  /** `budgets annotate --note <text>`: the note on the fired alert. */
+  note?: string | undefined;
+  /** `budgets annotate --event <id>`: which firing; the latest when omitted. */
+  event?: string | undefined;
+  /** `-y/--yes`: skip the confirmation `reports delete` otherwise asks for. */
+  yes: boolean;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   exports: ExportsFlags;
   prices: PriceFlags;
+  bulk: BulkFlags;
   range: RangeFlags;
   push: PushFlags;
   deploy: DeployFlags;
@@ -411,6 +424,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         "max-price": { type: "string" },
         sort: { type: "string" },
         desc: { type: "boolean", default: false },
+        // `reports move --folder`, `budgets annotate --note/--event`.
+        folder: { type: "string" },
+        note: { type: "string" },
+        event: { type: "string" },
       },
     });
   } catch (e) {
@@ -493,6 +510,12 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       account: str("account") ?? null,
       reason: str("reason") ?? null,
       help: values.help === true,
+    },
+    bulk: {
+      folder: str("folder"),
+      note: str("note"),
+      event: str("event"),
+      yes: values.yes === true,
     },
     range: {
       last: str("last"),

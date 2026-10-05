@@ -25,6 +25,11 @@ import { resolveCostScenarioModel } from "@infrawrench/server-core/cost/scenario
 import { resolveSavedCostFilters } from "@infrawrench/server-core/cost/saved-filters";
 import { db } from "../db/client";
 import { budgetAlertEvents, budgets, dashboardWidgets, dashboards } from "../db/schema";
+import {
+  listBudgetAlertEventsWithNotes,
+  loadAuthorNames,
+  toBudgetAlertNote,
+} from "./budget-alert-notes";
 
 type BudgetRow = typeof budgets.$inferSelect;
 
@@ -233,6 +238,7 @@ async function toBudgetWithStatus(
         )
         .orderBy(desc(budgetAlertEvents.triggeredAt))
     : [];
+  const authors = await loadAuthorNames(events.map((e) => e.notedByUserId));
 
   return {
     id: b.id,
@@ -261,6 +267,9 @@ async function toBudgetWithStatus(
       thresholdType: e.thresholdType,
       thresholdPercent: e.thresholdPercent,
       triggeredAt: e.triggeredAt.toISOString(),
+      // The note shows on the card itself: the alert badge answers "did it
+      // fire", the note answers "and do we know why".
+      note: toBudgetAlertNote(e, e.notedByUserId ? (authors.get(e.notedByUserId) ?? null) : null),
     })),
     placements,
     measure: status.measure,
@@ -455,38 +464,10 @@ export async function softDeleteBudget(organizationId: string, budgetId: string)
   return true;
 }
 
-/** Alert history for a budget (last 100 events). Null when budget not found. */
+/**
+ * Alert history for a budget (last 100 events), each with its note. Null when
+ * budget not found.
+ */
 export async function listBudgetEvents(organizationId: string, budgetId: string) {
-  const [budget] = await db
-    .select({ id: budgets.id })
-    .from(budgets)
-    .where(
-      and(
-        eq(budgets.id, budgetId),
-        eq(budgets.organizationId, organizationId),
-        visibilityOwnerCondition(budgets.visibilityUserId, organizationId),
-      ),
-    )
-    .limit(1);
-  if (!budget) return null;
-
-  const events = await db
-    .select()
-    .from(budgetAlertEvents)
-    .where(eq(budgetAlertEvents.budgetId, budget.id))
-    .orderBy(desc(budgetAlertEvents.triggeredAt))
-    .limit(100);
-  return events.map((e) => ({
-    id: e.id,
-    month: e.month,
-    thresholdType: e.thresholdType,
-    thresholdPercent: e.thresholdPercent,
-    actualAmountCents: e.actualAmountCents,
-    forecastAmountCents: e.forecastAmountCents,
-    triggeredAt: e.triggeredAt.toISOString(),
-    periodStart: e.periodStart,
-    periodEnd: e.periodEnd,
-    actualUsage: e.actualUsage,
-    forecastUsage: e.forecastUsage,
-  }));
+  return listBudgetAlertEventsWithNotes(organizationId, budgetId);
 }

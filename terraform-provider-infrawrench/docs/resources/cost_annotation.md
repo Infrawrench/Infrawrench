@@ -32,6 +32,10 @@ An end equal to the start is stored as null, so writing the same day twice reads
 
 ### Read-Only
 
+- `budget_alert_event_id` (String) The fired budget alert (one threshold crossing of `budget_id`) this note explains, or null. Read-only, set together with `budget_id`.
+- `budget_id` (String) The budget whose fired alert this note explains, or null; null for every note Terraform creates.
+
+Read-only, like `cost_anomaly_id`: the link is minted server-side when somebody writes a note on a fired budget alert, which creates its own annotation.
 - `cost_anomaly_id` (String) The detected cost anomaly this note explains, or null for a note written by hand — which is every note Terraform creates.
 
 Read-only, and there is no way to set it: the link is minted server-side when somebody acknowledges an anomaly with an explanation, and that acknowledgement writes its own annotation. Adopting one of those into Terraform is possible but rarely what you want; the explanation belongs to whoever investigated the spike.

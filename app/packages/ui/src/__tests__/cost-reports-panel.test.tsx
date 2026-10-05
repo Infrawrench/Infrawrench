@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 beforeAll(() => {
   // jsdom doesn't implement <dialog> showModal/close: stub them, the way
@@ -19,6 +19,7 @@ import { CostReportsPanel } from "../cost-reports/CostReportsPanel.js";
 import type { CostReportsClient } from "../cost-reports/types.js";
 import {
   DEFAULT_COST_GRAPH_CONFIG,
+  costReportBulkRequestSchema,
   costReportFolderInputSchema,
   costReportInputSchema,
   costReportWidgetConfigSchema,
@@ -320,5 +321,114 @@ describe("cost report folder schema", () => {
 
   it("rejects a blank name", () => {
     expect(costReportFolderInputSchema.safeParse({ name: "" }).success).toBe(false);
+  });
+});
+
+describe("bulk request schema", () => {
+  it("needs at least one item and caps the total", () => {
+    expect(
+      costReportBulkRequestSchema.safeParse({ action: "delete", reportIds: [], folderIds: [] })
+        .success,
+    ).toBe(false);
+    expect(
+      costReportBulkRequestSchema.safeParse({
+        action: "move",
+        reportIds: ["r1"],
+        folderIds: [],
+        targetFolderId: null,
+      }).success,
+    ).toBe(true);
+    const many = Array.from({ length: 300 }, (_, i) => `id-${i}`);
+    expect(
+      costReportBulkRequestSchema.safeParse({
+        action: "delete",
+        reportIds: many,
+        folderIds: many,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires a target on a move", () => {
+    expect(
+      costReportBulkRequestSchema.safeParse({ action: "move", reportIds: ["r1"], folderIds: [] })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("CostReportsPanel bulk selection", () => {
+  const rows = [
+    report({ id: "r1", name: "Alpha" }),
+    report({ id: "r2", name: "Bravo" }),
+    report({ id: "r3", name: "Charlie" }),
+  ];
+
+  function bulkClient(
+    bulkUpdate = vi.fn(async () => ({ action: "move", reports: 0, folders: 0 })),
+  ) {
+    return {
+      bulkUpdate,
+      client: makeClient(
+        rows,
+        {
+          createReport: vi.fn(),
+          updateReport: vi.fn(),
+          deleteReport: vi.fn(),
+          bulkUpdate,
+        } as Partial<CostReportsClient>,
+        [folder({ id: "f1", name: "Finance" })],
+      ),
+    };
+  }
+
+  it("renders no checkboxes when the host cannot bulk-update", async () => {
+    render(<CostReportsPanel client={makeClient(rows)} />);
+    await screen.findByText("Alpha");
+    expect(screen.queryByLabelText("Select Alpha")).toBeNull();
+  });
+
+  it("shift-click selects the run between two rows", async () => {
+    const { client } = bulkClient();
+    render(<CostReportsPanel client={client} />);
+    fireEvent.click(await screen.findByLabelText("Select Alpha"));
+    fireEvent.click(screen.getByLabelText("Select Charlie"), { shiftKey: true });
+    expect((screen.getByLabelText("Select Bravo") as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("3 selected")).toBeTruthy();
+  });
+
+  it("moves the selection in one request through the folder picker", async () => {
+    const { client, bulkUpdate } = bulkClient();
+    render(<CostReportsPanel client={client} />);
+    fireEvent.click(await screen.findByLabelText("Select Alpha"));
+    fireEvent.click(screen.getByLabelText("Select Bravo"));
+    fireEvent.click(screen.getByText("Move to folder…"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByText("Finance"));
+    await waitFor(() =>
+      expect(bulkUpdate).toHaveBeenCalledWith({
+        action: "move",
+        reportIds: expect.arrayContaining(["r1", "r2"]),
+        folderIds: [],
+        targetFolderId: "f1",
+      }),
+    );
+  });
+
+  it("deletes the selection after confirming, with Delete from the keyboard", async () => {
+    const { client, bulkUpdate } = bulkClient();
+    render(<CostReportsPanel client={client} />);
+    const box = await screen.findByLabelText("Select Charlie");
+    fireEvent.click(box);
+    fireEvent.keyDown(box, { key: "Delete" });
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Charlie")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(bulkUpdate).toHaveBeenCalledWith({
+        action: "delete",
+        reportIds: ["r3"],
+        folderIds: [],
+      }),
+    );
   });
 });

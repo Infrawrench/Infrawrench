@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ShareDialog, type ShareTarget } from "../sharing/ShareDialog.js";
 import { useGT } from "gt-react";
 import { focusExportFilename, focusExportRequestForConfig } from "@infrawrench/client-core";
@@ -22,6 +22,22 @@ import type { CostsPanelDashboard } from "../cost/types.js";
 import { ReportDeliverySection } from "./ReportDeliverySection.js";
 import type { CostReportsClient } from "./types.js";
 import { ArrowIcon } from "../components/icons/ChromeIcons.js";
+import {
+  costReportBulkMoveTargetBlocker,
+  costReportListOrder,
+  costReportListRange,
+  type CostReportListItem,
+} from "@infrawrench/client-core";
+import {
+  BulkActionBar,
+  DropZone,
+  folderSectionId,
+  BulkDeleteModal,
+  CostReportFolderRail,
+  itemKey,
+  parseItemKey,
+  type BulkDragState,
+} from "./CostReportBulk.js";
 
 /**
  * Hand generated text to the browser's own download path. Works unchanged in
@@ -66,8 +82,11 @@ interface MoveTarget {
   blocked?: string | undefined;
 }
 
-/** Who the move modal is moving. */
-type Moving = { kind: "report"; report: CostReport } | { kind: "folder"; folder: CostReportFolder };
+/** Who the move modal is moving: one item, or the whole selection. */
+type Moving =
+  | { kind: "report"; report: CostReport }
+  | { kind: "folder"; folder: CostReportFolder }
+  | { kind: "selection" };
 
 export interface CostReportsPanelProps {
   client: CostReportsClient;
@@ -124,6 +143,15 @@ export function CostReportsPanel({
   const canManageFolders = Boolean(
     client.createFolder && client.updateFolder && client.deleteFolder,
   );
+  // Multi-select only exists when there is something to do with a selection.
+  const canBulk = canWrite && Boolean(client.bulkUpdate);
+  /** Selected items as `itemKey`s, in no particular order. */
+  const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set());
+  /** The last item clicked without shift: where a shift-click range starts. */
+  const anchorRef = useRef<CostReportListItem | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [drag, setDrag] = useState<BulkDragState | null>(null);
 
   const refresh = useCallback(async () => {
     // A failure has to be visible: an empty list and a broken list look
@@ -151,6 +179,126 @@ export function CostReportsPanel({
   );
 
   const folderTree = useMemo(() => flattenCostReportFolderTree(folders), [folders]);
+  const listOrder = useMemo(() => costReportListOrder(folders, reports ?? []), [folders, reports]);
+
+  // Drop what a refresh took away (deleted elsewhere, or moved out of sight):
+  // a selection must never act on an item the list no longer shows.
+  useEffect(() => {
+    setSelection((prev) => {
+      if (prev.size === 0) return prev;
+      const present = new Set(listOrder.map(itemKey));
+      const next = new Set([...prev].filter((k) => present.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [listOrder]);
+
+  const selectedItems = useMemo(
+    () => [...selection].map(parseItemKey).filter((i): i is CostReportListItem => i !== null),
+    [selection],
+  );
+
+  function toggleItem(item: CostReportListItem, range: boolean) {
+    const anchor = anchorRef.current;
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (range && anchor) {
+        // A range takes the anchor's state: shift-clicking after selecting
+        // selects the run, after deselecting clears it, the way file lists do.
+        const on = prev.has(itemKey(anchor));
+        for (const i of costReportListRange(listOrder, anchor, item)) {
+          if (on) next.add(itemKey(i));
+          else next.delete(itemKey(i));
+        }
+        return next;
+      }
+      const key = itemKey(item);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    if (!range || !anchor) anchorRef.current = item;
+  }
+
+  /** Select (or, when all already are, deselect) every report filed in a folder. */
+  function toggleFolderContents(folderId: string) {
+    const keys = (reports ?? [])
+      .filter((r) => r.folderId === folderId)
+      .map((r) => itemKey({ kind: "report", id: r.id }));
+    setSelection((prev) => {
+      const next = new Set(prev);
+      const all = keys.length > 0 && keys.every((k) => prev.has(k));
+      for (const k of keys) {
+        if (all) next.delete(k);
+        else next.add(k);
+      }
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelection(new Set(listOrder.map(itemKey)));
+  }
+
+  function clearSelection() {
+    setSelection(new Set());
+    anchorRef.current = null;
+  }
+
+  async function runBulkMove(items: readonly CostReportListItem[], target: string | null) {
+    if (!client.bulkUpdate || items.length === 0) return;
+    setBulkError(null);
+    await client.bulkUpdate({
+      action: "move",
+      reportIds: items.filter((i) => i.kind === "report").map((i) => i.id),
+      folderIds: items.filter((i) => i.kind === "folder").map((i) => i.id),
+      targetFolderId: target,
+    });
+    await refresh();
+  }
+
+  /** A drop onto a folder (null is the top level): moves what was dragged. */
+  async function dropOnFolder(target: string | null) {
+    const dragged = drag;
+    setDrag(null);
+    if (!dragged) return;
+    try {
+      await runBulkMove(dragged.items, target);
+      // Only a dragged selection is consumed by the drop; dragging one
+      // unselected row leaves whatever else was selected alone.
+      if (dragged.fromSelection) clearSelection();
+    } catch (e: unknown) {
+      setBulkError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** What a drag starting on `item` carries: the selection if it is part of it. */
+  function startDrag(item: CostReportListItem) {
+    const inSelection = selection.has(itemKey(item));
+    setDrag({ items: inSelection ? selectedItems : [item], fromSelection: inSelection });
+  }
+
+  /** Why the current drag cannot land on `target`, or null when it can. */
+  function dropBlocker(target: string | null): string | null {
+    if (!drag) return null;
+    const folderIds = drag.items.filter((i) => i.kind === "folder").map((i) => i.id);
+    return costReportBulkMoveTargetBlocker(folders, folderIds, target);
+  }
+
+  async function runBulkDelete() {
+    if (!client.bulkUpdate) return;
+    await client.bulkUpdate({
+      action: "delete",
+      reportIds: selectedItems.filter((i) => i.kind === "report").map((i) => i.id),
+      folderIds: selectedItems.filter((i) => i.kind === "folder").map((i) => i.id),
+    });
+    if (reportId && selection.has(itemKey({ kind: "report", id: reportId }))) {
+      onSelectReport?.(undefined);
+    }
+    clearSelection();
+    setBulkDeleting(false);
+    await refresh();
+  }
+
   const folderPathById = useMemo(
     () => new Map(folderTree.map((row) => [row.folder.id, row.path])),
     [folderTree],
@@ -263,7 +411,10 @@ export function CostReportsPanel({
 
   async function applyMove(target: string | null) {
     if (!moving) return;
-    if (moving.kind === "report") {
+    if (moving.kind === "selection") {
+      await runBulkMove(selectedItems, target);
+      clearSelection();
+    } else if (moving.kind === "report") {
       await client.updateReport?.(moving.report.id, {
         ...toInput(moving.report),
         folderId: target,
@@ -280,6 +431,28 @@ export function CostReportsPanel({
 
   const moveTargets = useMemo<MoveTarget[]>(() => {
     if (!moving) return [];
+    if (moving.kind === "selection") {
+      // The whole selection against the tree it would produce: the server's
+      // rule, so no pickable row comes back as a 400.
+      const folderIds = selectedItems.filter((i) => i.kind === "folder").map((i) => i.id);
+      const parentOf = (i: CostReportListItem) =>
+        i.kind === "report"
+          ? (reports?.find((r) => r.id === i.id)?.folderId ?? null)
+          : (folders.find((f) => f.id === i.id)?.parentFolderId ?? null);
+      const blockedFor = (target: string | null) =>
+        selectedItems.length > 0 && selectedItems.every((i) => parentOf(i) === target)
+          ? gt("Already here")
+          : (costReportBulkMoveTargetBlocker(folders, folderIds, target) ?? undefined);
+      return [
+        { folderId: null, label: gt("Top level (no folder)"), depth: 0, blocked: blockedFor(null) },
+        ...folderTree.map(({ folder, depth }) => ({
+          folderId: folder.id,
+          label: folder.name,
+          depth: depth + 1,
+          blocked: blockedFor(folder.id),
+        })),
+      ];
+    }
     const subjectFolderId = moving.kind === "folder" ? moving.folder.id : null;
     const currentParent =
       moving.kind === "report" ? moving.report.folderId : moving.folder.parentFolderId;
@@ -306,7 +479,7 @@ export function CostReportsPanel({
       });
     }
     return targets;
-  }, [moving, folderTree, folders]);
+  }, [moving, folderTree, folders, reports, selectedItems, gt]);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -347,29 +520,78 @@ export function CostReportsPanel({
             onOpenDashboard={onOpenDashboard}
           />
         ) : (
-          <ReportList
-            reports={reports}
-            folders={folders}
-            error={error}
-            canWrite={canWrite}
-            canPlace={canPlace}
-            canManageFolders={canManageFolders}
-            onNew={() => setEditing({ report: null })}
-            onNewFolder={(parent) => void createFolder(parent)}
-            onOpen={(r) => onSelectReport?.(r.id)}
-            onRename={(r) => void renameReport(r)}
-            onMove={(r) => setMoving({ kind: "report", report: r })}
-            onDuplicate={(r) => void duplicateReport(r)}
-            onDelete={(r) => void deleteReport(r)}
-            onPlace={setPlacing}
-            onRenameFolder={(f) => void renameFolder(f)}
-            onMoveFolder={(f) => setMoving({ kind: "folder", folder: f })}
-            onDeleteFolder={(f) => void deleteFolder(f)}
-            onShare={onShare}
-            onOpenDashboard={onOpenDashboard}
-          />
+          <div className="flex gap-6">
+            {canBulk && folders.length > 0 && (
+              <CostReportFolderRail
+                folderTree={folderTree}
+                drag={drag}
+                dropBlocker={dropBlocker}
+                onDrop={(target) => void dropOnFolder(target)}
+              />
+            )}
+            <div className="min-w-0 flex-1 flex flex-col gap-3">
+              {canBulk && (
+                <BulkActionBar
+                  count={selection.size}
+                  total={listOrder.length}
+                  error={bulkError}
+                  onMove={() => setMoving({ kind: "selection" })}
+                  onDelete={() => setBulkDeleting(true)}
+                  onSelectAll={selectAll}
+                  onClear={clearSelection}
+                  onDismissError={() => setBulkError(null)}
+                />
+              )}
+              <ReportList
+                reports={reports}
+                folders={folders}
+                error={error}
+                selection={canBulk ? selection : null}
+                onToggle={toggleItem}
+                onToggleFolderContents={toggleFolderContents}
+                drag={drag}
+                onDragItem={startDrag}
+                onDragEnd={() => setDrag(null)}
+                dropBlocker={dropBlocker}
+                onDropOnFolder={(target) => void dropOnFolder(target)}
+                onKeyCommand={(command) => {
+                  if (command === "select-all") selectAll();
+                  else if (command === "clear") clearSelection();
+                  else if (selection.size === 0) return;
+                  else if (command === "move") setMoving({ kind: "selection" });
+                  else if (command === "delete") setBulkDeleting(true);
+                }}
+                canWrite={canWrite}
+                canPlace={canPlace}
+                canManageFolders={canManageFolders}
+                onNew={() => setEditing({ report: null })}
+                onNewFolder={(parent) => void createFolder(parent)}
+                onOpen={(r) => onSelectReport?.(r.id)}
+                onRename={(r) => void renameReport(r)}
+                onMove={(r) => setMoving({ kind: "report", report: r })}
+                onDuplicate={(r) => void duplicateReport(r)}
+                onDelete={(r) => void deleteReport(r)}
+                onPlace={setPlacing}
+                onRenameFolder={(f) => void renameFolder(f)}
+                onMoveFolder={(f) => setMoving({ kind: "folder", folder: f })}
+                onDeleteFolder={(f) => void deleteFolder(f)}
+                onShare={onShare}
+                onOpenDashboard={onOpenDashboard}
+              />
+            </div>
+          </div>
         )}
       </div>
+
+      {bulkDeleting && (
+        <BulkDeleteModal
+          items={selectedItems}
+          reports={reports ?? []}
+          folders={folders}
+          onConfirm={runBulkDelete}
+          onClose={() => setBulkDeleting(false)}
+        />
+      )}
 
       {editing && (
         // The dashboard cost-card editor, unchanged: a report's "title" is its
@@ -403,7 +625,13 @@ export function CostReportsPanel({
 
       {moving && (
         <MoveToFolderModal
-          subjectName={moving.kind === "report" ? moving.report.name : moving.folder.name}
+          subjectName={
+            moving.kind === "report"
+              ? moving.report.name
+              : moving.kind === "folder"
+                ? moving.folder.name
+                : gt("{count} selected items", { count: selectedItems.length })
+          }
           targets={moveTargets}
           onPick={applyMove}
           onClose={() => setMoving(null)}
@@ -433,10 +661,29 @@ function ReportList({
   onDeleteFolder,
   onShare,
   onOpenDashboard,
+  selection,
+  onToggle,
+  onToggleFolderContents,
+  drag,
+  onDragItem,
+  onDragEnd,
+  dropBlocker,
+  onDropOnFolder,
+  onKeyCommand,
 }: {
   reports: CostReport[] | null;
   folders: CostReportFolder[];
   error: string | null;
+  /** Selected `itemKey`s, or null when this host cannot act on a selection. */
+  selection: ReadonlySet<string> | null;
+  onToggle: (item: CostReportListItem, range: boolean) => void;
+  onToggleFolderContents: (folderId: string) => void;
+  drag: BulkDragState | null;
+  onDragItem: (item: CostReportListItem) => void;
+  onDragEnd: () => void;
+  dropBlocker: (target: string | null) => string | null;
+  onDropOnFolder: (target: string | null) => void;
+  onKeyCommand: (command: "select-all" | "clear" | "move" | "delete") => void;
   canWrite: boolean;
   canPlace: boolean;
   canManageFolders: boolean;
@@ -480,10 +727,35 @@ function ReportList({
     onDelete,
     onPlace,
     onShare,
+    selection,
+    onToggle,
+    onDragItem,
+    onDragEnd,
   };
 
+  /**
+   * The list's keyboard commands, live whenever focus is inside it (a row's
+   * checkbox or button) and never while typing in a field.
+   */
+  function onKeyDown(e: KeyboardEvent<HTMLElement>) {
+    if (!selection) return;
+    const el = e.target as HTMLElement;
+    if (el.closest("input[type=text], input[type=search], textarea, select, [contenteditable]")) {
+      return;
+    }
+    const mod = e.ctrlKey || e.metaKey;
+    let command: "select-all" | "clear" | "move" | "delete" | null = null;
+    if (mod && e.key.toLowerCase() === "a") command = "select-all";
+    else if (e.key === "Escape" && selection.size > 0) command = "clear";
+    else if (!mod && !e.altKey && e.key.toLowerCase() === "m") command = "move";
+    else if (e.key === "Delete" || (e.key === "Backspace" && mod)) command = "delete";
+    if (!command) return;
+    e.preventDefault();
+    onKeyCommand(command);
+  }
+
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3" onKeyDown={onKeyDown}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-on-surface">{gt("Cost reports")}</h2>
@@ -529,7 +801,7 @@ function ReportList({
         </p>
       )}
 
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2" id={folderSectionId(null)}>
         {(byFolder.get(null) ?? []).map((report) => (
           <ReportRow
             key={report.id}
@@ -546,87 +818,130 @@ function ReportList({
         // is even offered: an offer that 400s is worse than no offer.
         const canNest =
           canManageFolders && costReportFolderMoveBlocker(folders, null, folder.id) === null;
+        const folderItem: CostReportListItem = { kind: "folder", id: folder.id };
+        const allContentsSelected =
+          selection !== null &&
+          contents.length > 0 &&
+          contents.every((r) => selection.has(itemKey({ kind: "report", id: r.id })));
         return (
-          <div key={folder.id} className="flex flex-col gap-2" style={{ marginLeft: depth * 20 }}>
-            <div className="flex items-center justify-between gap-3 mt-1">
-              <h3 className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-on-surface-secondary">
-                <span>{folder.name}</span>
-                <span className="ml-2 font-normal normal-case tracking-normal text-on-surface-faint">
-                  {contents.length === 0
-                    ? gt("empty")
-                    : gt("{count} report{plural}", {
-                        count: contents.length,
-                        plural: contents.length === 1 ? "" : "s",
-                      })}
-                </span>
-              </h3>
-              {(canManageFolders || onShare) && (
-                <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
-                  {onShare && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onShare({
-                          objectType: "cost_report_folder",
-                          objectId: folder.id,
-                          name: folder.name,
-                        })
-                      }
-                      className="hover:text-on-surface-secondary underline"
-                    >
-                      {gt("Share")}
-                    </button>
+          <DropZone
+            key={folder.id}
+            target={folder.id}
+            drag={drag}
+            dropBlocker={dropBlocker}
+            onDrop={onDropOnFolder}
+            className="flex flex-col gap-2"
+          >
+            <div
+              id={folderSectionId(folder.id)}
+              className="flex flex-col gap-2"
+              style={{ marginLeft: depth * 20 }}
+            >
+              <div
+                className="flex items-center justify-between gap-3 mt-1"
+                draggable={selection !== null}
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", folder.name);
+                  onDragItem(folderItem);
+                }}
+                onDragEnd={onDragEnd}
+              >
+                <h3 className="flex min-w-0 items-center gap-2 truncate text-xs font-semibold uppercase tracking-wide text-on-surface-secondary">
+                  {selection !== null && (
+                    <SelectBox
+                      checked={selection.has(itemKey(folderItem))}
+                      label={gt("Select folder {name}", { name: folder.name })}
+                      onToggle={(range) => onToggle(folderItem, range)}
+                    />
                   )}
-                  {canManageFolders && canNest && (
-                    <button
-                      type="button"
-                      onClick={() => onNewFolder(folder)}
-                      className="hover:text-on-surface-secondary underline"
-                    >
-                      {gt("New subfolder")}
-                    </button>
-                  )}
-                  {canManageFolders && (
-                    <>
+                  <span className="truncate">{folder.name}</span>
+                  <span className="ml-2 font-normal normal-case tracking-normal text-on-surface-faint">
+                    {contents.length === 0
+                      ? gt("empty")
+                      : gt("{count} report{plural}", {
+                          count: contents.length,
+                          plural: contents.length === 1 ? "" : "s",
+                        })}
+                  </span>
+                </h3>
+                {(canManageFolders || onShare || selection !== null) && (
+                  <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
+                    {selection !== null && contents.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => onRenameFolder(folder)}
+                        onClick={() => onToggleFolderContents(folder.id)}
                         className="hover:text-on-surface-secondary underline"
                       >
-                        {gt("Rename")}
+                        {allContentsSelected ? gt("Deselect contents") : gt("Select contents")}
                       </button>
+                    )}
+                    {onShare && (
                       <button
                         type="button"
-                        onClick={() => onMoveFolder(folder)}
+                        onClick={() =>
+                          onShare({
+                            objectType: "cost_report_folder",
+                            objectId: folder.id,
+                            name: folder.name,
+                          })
+                        }
                         className="hover:text-on-surface-secondary underline"
                       >
-                        {gt("Move")}
+                        {gt("Share")}
                       </button>
+                    )}
+                    {canManageFolders && canNest && (
                       <button
                         type="button"
-                        onClick={() => onDeleteFolder(folder)}
-                        className="hover:text-danger underline"
+                        onClick={() => onNewFolder(folder)}
+                        className="hover:text-on-surface-secondary underline"
                       >
-                        {gt("Delete")}
+                        {gt("New subfolder")}
                       </button>
-                    </>
-                  )}
-                </div>
+                    )}
+                    {canManageFolders && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onRenameFolder(folder)}
+                          className="hover:text-on-surface-secondary underline"
+                        >
+                          {gt("Rename")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onMoveFolder(folder)}
+                          className="hover:text-on-surface-secondary underline"
+                        >
+                          {gt("Move")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteFolder(folder)}
+                          className="hover:text-danger underline"
+                        >
+                          {gt("Delete")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+              {contents.length > 0 && (
+                <ul className="flex flex-col gap-2">
+                  {contents.map((report) => (
+                    <ReportRow
+                      key={report.id}
+                      report={report}
+                      onOpenDashboard={onOpenDashboard}
+                      {...reportProps}
+                    />
+                  ))}
+                </ul>
               )}
             </div>
-            {contents.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {contents.map((report) => (
-                  <ReportRow
-                    key={report.id}
-                    report={report}
-                    onOpenDashboard={onOpenDashboard}
-                    {...reportProps}
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
+          </DropZone>
         );
       })}
     </section>
@@ -645,10 +960,18 @@ function ReportRow({
   onPlace,
   onShare,
   onOpenDashboard,
+  selection,
+  onToggle,
+  onDragItem,
+  onDragEnd,
 }: {
   report: CostReport;
   canWrite: boolean;
   canPlace: boolean;
+  selection: ReadonlySet<string> | null;
+  onToggle: (item: CostReportListItem, range: boolean) => void;
+  onDragItem: (item: CostReportListItem) => void;
+  onDragEnd: () => void;
   onShare?: ((target: ShareTarget) => void) | undefined;
   onOpen: (report: CostReport) => void;
   onRename: (report: CostReport) => void;
@@ -659,13 +982,35 @@ function ReportRow({
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
   const gt = useGT();
+  const item: CostReportListItem = { kind: "report", id: report.id };
+  const selected = selection?.has(itemKey(item)) ?? false;
   return (
-    <li className="rounded-xl border border-border bg-surface-raised px-4 py-3 hover:border-border-strong transition-colors">
+    <li
+      className={`rounded-xl border bg-surface-raised px-4 py-3 hover:border-border-strong transition-colors ${
+        selected ? "border-accent/60" : "border-border"
+      }`}
+      draggable={selection !== null}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", report.name);
+        onDragItem(item);
+      }}
+      onDragEnd={onDragEnd}
+    >
       <div className="flex items-start justify-between gap-3">
+        {selection !== null && (
+          <span className="pt-0.5">
+            <SelectBox
+              checked={selected}
+              label={gt("Select {name}", { name: report.name })}
+              onToggle={(range) => onToggle(item, range)}
+            />
+          </span>
+        )}
         <button
           type="button"
           onClick={() => onOpen(report)}
-          className="min-w-0 text-left"
+          className="min-w-0 flex-1 text-left"
           title={gt("Open {name}", { name: report.name })}
         >
           <span className="block truncate text-sm font-medium text-on-surface">{report.name}</span>
@@ -944,6 +1289,34 @@ function ReportDetail({
           provides no notifications client (e.g. a surface without them). */}
       <ReportDeliverySection reportId={report.id} client={client} />
     </section>
+  );
+}
+
+/**
+ * A row's selection checkbox. Shift held while toggling extends the range from
+ * the last plain toggle, for keyboard (Shift+Space) and pointer alike: the
+ * change event's native event carries the modifier either way.
+ */
+function SelectBox({
+  checked,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  label: string;
+  onToggle: (range: boolean) => void;
+}) {
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      aria-label={label}
+      onChange={(e) => {
+        const native = e.nativeEvent as Event & { shiftKey?: boolean };
+        onToggle(native.shiftKey === true);
+      }}
+      className="size-3.5 shrink-0 cursor-pointer accent-current"
+    />
   );
 }
 

@@ -36,6 +36,17 @@ vi.mock("../../../services/cost-report-folders", () => ({
   CostReportFolderError: FakeCostReportFolderError,
 }));
 
+const mockBulk = vi.fn();
+class FakeCostReportBulkError extends Error {
+  constructor(readonly problems: unknown[]) {
+    super("blocked");
+  }
+}
+vi.mock("../../../services/cost-reports-bulk", () => ({
+  applyCostReportBulk: (...args: unknown[]) => mockBulk(...args),
+  CostReportBulkError: FakeCostReportBulkError,
+}));
+
 const mockLogAudit = vi.fn();
 vi.mock("../../../services/audit", () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),
@@ -252,5 +263,48 @@ describe("POST /:id/run", () => {
     const res = await buildApp().request("/report-1/run", { method: "POST" });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Date range too large" });
+  });
+});
+
+describe("POST /bulk", () => {
+  const move = {
+    action: "move",
+    reportIds: ["report-1"],
+    folderIds: [],
+    targetFolderId: "folder-1",
+  };
+
+  it("rejects a costs:read-only caller", async () => {
+    const res = await buildAppWithPermissions(["costs:read"]).request("/bulk", {
+      method: "POST",
+      body: JSON.stringify(move),
+    });
+    expect(res.status).toBe(403);
+    expect(mockBulk).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty selection without calling the service", async () => {
+    const res = await buildApp().request("/bulk", {
+      method: "POST",
+      body: JSON.stringify({ action: "delete", reportIds: [], folderIds: [] }),
+    });
+    expect(res.status).toBe(400);
+    expect(mockBulk).not.toHaveBeenCalled();
+  });
+
+  it("applies a move for the caller and returns the counts", async () => {
+    mockBulk.mockResolvedValue({ action: "move", reports: 1, folders: 0 });
+    const res = await buildApp().request("/bulk", { method: "POST", body: JSON.stringify(move) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ action: "move", reports: 1, folders: 0 });
+    expect(mockBulk).toHaveBeenCalledWith("org-1", move, "user-1");
+  });
+
+  it("answers a refused selection with 400 and every problem", async () => {
+    const problems = [{ kind: "folder", id: "f", name: "F", message: "too deep" }];
+    mockBulk.mockRejectedValue(new FakeCostReportBulkError(problems));
+    const res = await buildApp().request("/bulk", { method: "POST", body: JSON.stringify(move) });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "blocked", problems });
   });
 });

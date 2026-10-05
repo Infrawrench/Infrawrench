@@ -11,6 +11,8 @@ import {
 import type { BudgetWithStatus } from "./types.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
+type FiredEvent = BudgetWithStatus["currentMonthEvents"][number];
+
 export interface BudgetCardProps {
   budget: BudgetWithStatus;
   onEdit?: (() => void) | undefined;
@@ -22,6 +24,18 @@ export interface BudgetCardProps {
    * leaves this off.
    */
   childBudgets?: BudgetWithStatus[] | undefined;
+  /**
+   * Open the note composer for one of this month's firings. Absent on hosts
+   * (and surfaces, like a dashboard card) that only show notes.
+   */
+  onExplain?: ((event: FiredEvent) => void) | undefined;
+}
+
+/** "Oct 3": a firing's day, short, in UTC like the budget month itself. */
+function shortDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 /** Formats a value in the budget's own unit: money, or a usage quantity. */
@@ -54,7 +68,7 @@ function usePeriodLabel(budget: BudgetWithStatus): string {
  * it. Status colors are reserved for state (on-track / approaching / over),
  * never used as series colors.
  */
-export function BudgetCard({ budget, onEdit, onRemove, childBudgets }: BudgetCardProps) {
+export function BudgetCard({ budget, onEdit, onRemove, childBudgets, onExplain }: BudgetCardProps) {
   const gt = useGT();
   const progress = budgetProgress(budget);
   const fmt = budgetValueFormatter(budget);
@@ -204,6 +218,48 @@ export function BudgetCard({ budget, onEdit, onRemove, childBudgets }: BudgetCar
         </div>
 
         {childBudgets && childBudgets.length > 0 && <ChildBudgetList budgets={childBudgets} />}
+        {/* This month's firings, each with its note (or the way to add one).
+            On the card itself rather than behind the badge's tooltip: "did it
+            fire" and "do we know why" are read together. */}
+        {fired && (onExplain || budget.currentMonthEvents.some((e) => e.note)) && (
+          <ul className="flex flex-col gap-1.5 border-t border-border pt-2 text-[11px]">
+            {budget.currentMonthEvents.map((e) => (
+              <li key={e.id} className="flex flex-col gap-0.5">
+                <div className="flex items-center justify-between gap-2 text-on-surface-faint">
+                  <span>
+                    {gt("{type} {percent}% on {day}", {
+                      type: e.thresholdType === "actual" ? gt("Actual") : gt("Forecast"),
+                      percent: e.thresholdPercent,
+                      day: shortDay(e.triggeredAt),
+                    })}
+                  </span>
+                  {onExplain && (
+                    <button
+                      type="button"
+                      onClick={() => onExplain(e)}
+                      className="shrink-0 underline hover:text-on-surface-secondary"
+                    >
+                      {e.note ? gt("Edit note") : gt("Explain")}
+                    </button>
+                  )}
+                </div>
+                {e.note && (
+                  <p className="text-on-surface-secondary">
+                    <span className="break-words">{e.note.text}</span>{" "}
+                    <span className="text-on-surface-faint">
+                      {e.note.notedByName
+                        ? gt("({name}, {day})", {
+                            name: e.note.notedByName,
+                            day: shortDay(e.note.notedAt),
+                          })
+                        : gt("({day})", { day: shortDay(e.note.notedAt) })}
+                    </span>
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

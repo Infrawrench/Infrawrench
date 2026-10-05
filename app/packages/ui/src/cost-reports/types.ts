@@ -1,5 +1,7 @@
 import type {
   CostReport,
+  CostReportBulkRequest,
+  CostReportBulkResult,
   CostReportFolder,
   CostReportFolderInput,
   CostReportInput,
@@ -35,6 +37,12 @@ export interface CostReportsClient extends CostApi {
   createReport?(input: CostReportInput): Promise<CostReport>;
   updateReport?(reportId: string, input: CostReportInput): Promise<CostReport>;
   deleteReport?(reportId: string): Promise<void>;
+  /**
+   * Move or delete many reports and folders in one all-or-nothing request
+   * (POST /cost-reports/bulk). Optional like the other writes: without it the
+   * list renders no selection checkboxes at all.
+   */
+  bulkUpdate?(request: CostReportBulkRequest): Promise<CostReportBulkResult>;
   createFolder?(input: CostReportFolderInput): Promise<CostReportFolder>;
   /** Rename and/or reparent: the server rejects cycles and over-deep nesting. */
   updateFolder?(folderId: string, input: CostReportFolderInput): Promise<CostReportFolder>;

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.63.0",
+    "version": "1.64.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -4940,6 +4940,173 @@
         ],
         "additionalProperties": false
       },
+      "CostReportBulkResult": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "move",
+              "delete"
+            ]
+          },
+          "reports": {
+            "type": "integer",
+            "description": "Reports moved or deleted."
+          },
+          "folders": {
+            "type": "integer",
+            "description": "Folders moved or deleted."
+          }
+        },
+        "required": [
+          "action",
+          "reports",
+          "folders"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportBulkProblem": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "report",
+              "folder",
+              "target"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The item's name, or null when it does not exist or is not visible to the caller."
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportBulkError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostReportBulkProblem"
+            },
+            "description": "Every item that blocked the request. Present when the body was well-formed."
+          },
+          "issues": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "CostReportBulkRequest": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "move"
+                ]
+              },
+              "reportIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "maxItems": 500
+              },
+              "folderIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "maxItems": 500
+              },
+              "targetFolderId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Destination folder; null is the top level. Reports are filed into it and folders become its direct children. Needs editor on the destination, because a folder's sharing extends to what is filed in it.",
+                "example": "00000000-0000-0000-0000-000000000000"
+              }
+            },
+            "required": [
+              "action",
+              "reportIds",
+              "folderIds",
+              "targetFolderId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "delete"
+                ]
+              },
+              "reportIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "maxItems": 500
+              },
+              "folderIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "maxItems": 500
+              }
+            },
+            "required": [
+              "action",
+              "reportIds",
+              "folderIds"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "At least one id and at most 500 in total. Reports and folders are validated together against the tree as it will be after every move, then applied in one transaction."
+      },
       "CostReportRunResult": {
         "type": "object",
         "properties": {
@@ -6527,6 +6694,30 @@
             "format": "uuid",
             "description": "The detected cost anomaly this note was written to explain (see POST /costs/anomalies/{anomalyId}/acknowledge), or null for a note written by hand. The reverse of the anomaly's own `acknowledgement.annotationId`, resolved from that same single link rather than stored twice.",
             "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "budgetAlert": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "budgetId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "eventId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              }
+            },
+            "required": [
+              "budgetId",
+              "eventId"
+            ],
+            "additionalProperties": false,
+            "description": "The fired budget alert this note explains (see POST /budgets/{id}/events/{eventId}/note), or null. Resolved from the event's own `note.annotationId`, the same single link, never stored twice."
           }
         },
         "required": [
@@ -6538,7 +6729,8 @@
           "createdByUserId",
           "createdAt",
           "updatedAt",
-          "costAnomalyId"
+          "costAnomalyId",
+          "budgetAlert"
         ],
         "additionalProperties": false
       },
@@ -9726,6 +9918,51 @@
         ],
         "description": "The basis `actualCents` and `forecastCents` were measured on."
       },
+      "BudgetAlertNote": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "notedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the note as it now reads was written; a rewrite restamps it."
+          },
+          "notedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notedByName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The author's display name, or email when they have none."
+          },
+          "annotationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The org-wide cost annotation the note drew on the charts at the day the alert fired (see /cost-annotations). Null once that marker is deleted; the note itself stays."
+          }
+        },
+        "required": [
+          "text",
+          "notedAt",
+          "notedByUserId",
+          "notedByName",
+          "annotationId"
+        ],
+        "additionalProperties": false,
+        "description": "Somebody's explanation of this firing. Null while there is none."
+      },
       "BudgetMeasure": {
         "type": "string",
         "enum": [
@@ -9977,6 +10214,9 @@
                 "triggeredAt": {
                   "type": "string",
                   "format": "date-time"
+                },
+                "note": {
+                  "$ref": "#/components/schemas/BudgetAlertNote"
                 }
               },
               "required": [
@@ -10442,6 +10682,9 @@
               "number",
               "null"
             ]
+          },
+          "note": {
+            "$ref": "#/components/schemas/BudgetAlertNote"
           }
         },
         "required": [
@@ -10455,7 +10698,57 @@
           "periodStart",
           "periodEnd",
           "actualUsage",
-          "forecastUsage"
+          "forecastUsage",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "BudgetAlertNoteResult": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BudgetAlertEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "followUp": {
+                "type": "object",
+                "properties": {
+                  "slack": {
+                    "type": "integer",
+                    "description": "Slack threads the note was posted in as a reply."
+                  },
+                  "msTeams": {
+                    "type": "integer",
+                    "description": "Teams webhooks the note was sent to (incoming webhooks cannot thread)."
+                  }
+                },
+                "required": [
+                  "slack",
+                  "msTeams"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "followUp"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "BudgetAlertNoteInput": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "What this firing was, in a sentence. The date and scope of the chart marker it creates are derived from the event (the day it fired, org-wide), never chosen by the caller."
+          }
+        },
+        "required": [
+          "note"
         ],
         "additionalProperties": false
       },
@@ -44596,6 +44889,62 @@
         "description": "_Requires permission: `costs:write`._"
       }
     },
+    "/api/org/{orgId}/cost-reports/bulk": {
+      "post": {
+        "tags": [
+          "Cost reports"
+        ],
+        "summary": "Move or delete many reports and folders at once",
+        "description": "All or nothing. Every item is checked first: it exists, the caller's per-object sharing allows the action (editor to move, owner to delete, or editor when nobody owns it), and for a move, the folder tree that would result keeps every folder within the three-level nesting limit and free of cycles. Any problem is a 400 listing each blocking item, and nothing is written. Deleting a report removes its dashboard cards and pauses its delivery schedules; deleting a folder drops whatever remains inside it to the top level. One audit entry is written per item.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostReportBulkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReportBulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refused; nothing was changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReportBulkError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostReportsBulk",
+        "x-required-permission": "costs:write"
+      }
+    },
     "/api/org/{orgId}/cost-reports/{id}": {
       "get": {
         "tags": [
@@ -50712,6 +51061,92 @@
           }
         },
         "operationId": "getOrgOrgIdBudgetsIdEvents"
+      }
+    },
+    "/api/org/{orgId}/budgets/{id}/events/{eventId}/note": {
+      "post": {
+        "tags": [
+          "Budgets"
+        ],
+        "summary": "Explain a fired budget alert",
+        "description": "Saves a note on one firing (who and when are recorded), draws it on every cost chart as an org-wide annotation at the day the alert fired, and posts it after the alert: a reply in each Slack message's thread and a follow-up to the Teams webhooks it reached. Sending again rewrites the note and rewords the same chart marker rather than adding another; a marker somebody deleted is not recreated. Alerts that fired before notes existed, or that quiet hours held, have no recorded chat messages to follow. Needs `budgets:read` and `costs:write`.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "eventId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetAlertNoteInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The event with its note, and where the follow-up was posted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetAlertNoteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBudgetsIdEventsEventIdNote",
+        "x-required-permission": "costs:write"
       }
     },
     "/api/org/{orgId}/metric-alerts": {

@@ -156,6 +156,53 @@ const CostReportRunResult = strict({
   result: CostQueryResponse,
 }).openapi("CostReportRunResult");
 
+const BulkIds = z.array(Uuid).max(500);
+
+const CostReportBulkRequest = z
+  .union([
+    strict({
+      action: z.literal("move"),
+      reportIds: BulkIds,
+      folderIds: BulkIds,
+      targetFolderId: Uuid.nullable().describe(
+        "Destination folder; null is the top level. Reports are filed into it and folders " +
+          "become its direct children. Needs editor on the destination, because a folder's " +
+          "sharing extends to what is filed in it.",
+      ),
+    }),
+    strict({ action: z.literal("delete"), reportIds: BulkIds, folderIds: BulkIds }),
+  ])
+  .describe(
+    "At least one id and at most 500 in total. Reports and folders are validated together " +
+      "against the tree as it will be after every move, then applied in one transaction.",
+  )
+  .openapi("CostReportBulkRequest");
+
+const CostReportBulkResult = strict({
+  action: z.enum(["move", "delete"]),
+  reports: z.number().int().describe("Reports moved or deleted."),
+  folders: z.number().int().describe("Folders moved or deleted."),
+}).openapi("CostReportBulkResult");
+
+const CostReportBulkProblem = strict({
+  kind: z.enum(["report", "folder", "target"]),
+  id: z.string(),
+  name: z
+    .string()
+    .nullable()
+    .describe("The item's name, or null when it does not exist or is not visible to the caller."),
+  message: z.string(),
+}).openapi("CostReportBulkProblem");
+
+const CostReportBulkError = strict({
+  error: z.string(),
+  problems: z
+    .array(CostReportBulkProblem)
+    .optional()
+    .describe("Every item that blocked the request. Present when the body was well-formed."),
+  issues: z.array(z.unknown()).optional(),
+}).openapi("CostReportBulkError");
+
 export function registerCostReportPaths(ctx: BuildContext) {
   const { registry } = ctx;
   const params = (extra: Record<string, z.ZodType>) => OrgIdParam.extend(extra);
@@ -187,6 +234,35 @@ export function registerCostReportPaths(ctx: BuildContext) {
     responses: {
       200: { description: "Created", content: { "application/json": { schema: CostReport } } },
       400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/cost-reports/bulk",
+    tags: ["Cost reports"],
+    summary: "Move or delete many reports and folders at once",
+    description:
+      "All or nothing. Every item is checked first: it exists, the caller's per-object sharing " +
+      "allows the action (editor to move, owner to delete, or editor when nobody owns it), and " +
+      "for a move, the folder tree that would result keeps every folder within the three-level " +
+      "nesting limit and free of cycles. Any problem is a 400 listing each blocking item, and " +
+      "nothing is written. Deleting a report removes its dashboard cards and pauses its " +
+      "delivery schedules; deleting a folder drops whatever remains inside it to the top level. " +
+      "One audit entry is written per item.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: CostReportBulkRequest } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "Applied",
+        content: { "application/json": { schema: CostReportBulkResult } },
+      },
+      400: {
+        description: "Refused; nothing was changed",
+        content: { "application/json": { schema: CostReportBulkError } },
+      },
     },
   });
 

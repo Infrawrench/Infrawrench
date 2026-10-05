@@ -53,7 +53,11 @@ import type {
 import { createSharingClient, type SharingClient } from "@infrawrench/ui";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import type {
+  BudgetAlertEvent,
+  BudgetAlertNoteResult,
   CostReport,
+  CostReportBulkRequest,
+  CostReportBulkResult,
   CostReportFolder,
   CostReportFolderInput,
   CostReportInput,
@@ -166,6 +170,17 @@ export function createWebCostsClient(orgId: string): CostsClient {
     // Offered unconditionally, like the annotation writes: the server enforces
     // `costs:write`, so a viewer's 403 surfaces as the action's error rather
     // than as an action that quietly isn't there.
+    listBudgetAlertEvents: (budgetId: string) =>
+      apiGet<BudgetAlertEvent[]>(
+        `/api/org/${orgId}/budgets/${encodeURIComponent(budgetId)}/events`,
+      ),
+    // Offered unconditionally for the same reason as `acknowledgeAnomaly`
+    // below: the server enforces `costs:write` and a 403 is the action's error.
+    annotateBudgetAlert: (budgetId: string, eventId: string, note: string) =>
+      apiPost<BudgetAlertNoteResult>(
+        `/api/org/${orgId}/budgets/${encodeURIComponent(budgetId)}/events/${encodeURIComponent(eventId)}/note`,
+        { note },
+      ),
     acknowledgeAnomaly: (anomalyId: string, explanation: string) =>
       apiPost<CostAnomaly>(
         `/api/org/${orgId}/costs/anomalies/${encodeURIComponent(anomalyId)}/acknowledge`,
@@ -382,6 +397,8 @@ export function createWebCostReportsClient(orgId: string): CostReportsClient {
     deleteReport: async (reportId: string) => {
       await apiDelete(`/api/org/${orgId}/cost-reports/${reportId}`);
     },
+    bulkUpdate: (request: CostReportBulkRequest) =>
+      apiPost<CostReportBulkResult>(`/api/org/${orgId}/cost-reports/bulk`, request),
     listFolders: () => apiGet<CostReportFolder[]>(`/api/org/${orgId}/cost-report-folders`),
     createFolder: (input: CostReportFolderInput) =>
       apiPost<CostReportFolder>(`/api/org/${orgId}/cost-report-folders`, input),

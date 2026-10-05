@@ -942,6 +942,45 @@ export const budgetAlertEvents = pgTable(
     /** A usage budget's figures at the crossing (the cents columns are 0). */
     actualUsage: doublePrecision("actual_usage"),
     forecastUsage: doublePrecision("forecast_usage"),
+    /**
+     * Somebody's explanation of this firing ("Q3 load test, expected; ends
+     * Friday"), who wrote it and when. Null while nobody has said anything.
+     *
+     * The anomaly-acknowledgement arrangement (`cost_anomalies.explanation`):
+     * the note is stored here *and* as a cost annotation at the day the alert
+     * fired, written together in one transaction. This copy is the record on
+     * the alert; the annotation is the living overlay anyone may reword or
+     * delete, and deleting it does not un-explain the alert.
+     *
+     * Rewriting the note restamps `noted_at`/`noted_by_user_id`: they describe
+     * the note as it now reads, not the first one.
+     */
+    note: text("note"),
+    notedAt: timestamp("noted_at"),
+    notedByUserId: text("noted_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * The cost annotation the note created, drawn on every cost chart covering
+     * the day the alert fired. SET NULL: deleting the marker leaves the note.
+     */
+    annotationId: text("annotation_id").references(() => costAnnotations.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Where the alert landed, so a note can follow it there: the Slack
+     * messages it was posted as (a note is a reply in each one's thread) and
+     * the Teams webhooks it was sent to (Teams incoming webhooks cannot
+     * thread, so a note is a follow-up message to the same webhooks). Null for
+     * rows written before notes existed and for alerts held by quiet hours,
+     * whose delivery happens later in another pass: a note on those still
+     * lands on the budget and the charts, just not in chat.
+     */
+    slackMessages:
+      jsonb("slack_messages").$type<
+        Array<{ installationId: string; channelId: string; ts: string }>
+      >(),
+    msTeamsWebhookIds: jsonb("ms_teams_webhook_ids").$type<string[]>(),
   },
   (t) => ({
     onceUnique: uniqueIndex("budget_alert_once_unique").on(
@@ -951,6 +990,13 @@ export const budgetAlertEvents = pgTable(
       t.thresholdPercent,
     ),
     orgIdx: index("budget_alert_events_org_idx").on(t.organizationId),
+    /**
+     * The reverse of the link: which alert a chart marker explains. Unique and
+     * partial for the reasons `cost_anomalies_annotation_unique` is.
+     */
+    annotationUnique: uniqueIndex("budget_alert_events_annotation_unique")
+      .on(t.annotationId)
+      .where(sql`annotation_id is not null`),
   }),
 );
 
