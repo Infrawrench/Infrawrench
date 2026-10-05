@@ -12,7 +12,7 @@ sidebar_order: 3
 | ------------------ | ---------------------- | ---------------------- |
 | Users              | 1                      | Unlimited              |
 | Connected accounts | 3                      | Unlimited              |
-| Plugins            | All 74                 | All 74                 |
+| Plugins            | All 75                 | All 75                 |
 | Dashboards         | Yes                    | Yes                    |
 | SSH terminal / SQL | Yes                    | Yes                    |
 | Audit log          | No                     | Yes                    |

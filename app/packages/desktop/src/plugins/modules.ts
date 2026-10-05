@@ -51,6 +51,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-circleci"),
   () => import("@infrawrench/plugin-clickhouse"),
   () => import("@infrawrench/plugin-crusoe"),
+  () => import("@infrawrench/plugin-baseten"),
   () => import("@infrawrench/plugin-opensearch"),
   () => import("@infrawrench/plugin-elastic-cloud"),
   () => import("@infrawrench/plugin-anthropic"),

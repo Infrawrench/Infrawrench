@@ -104,6 +104,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   coreweave: { apiToken: "CW-SECRET-test" },
   modal: { tokenId: "ak-test-modal", tokenSecret: "as-test-modal" },
   datadog: { site: "us1", apiKey: "test-datadog-api-key", appKey: "test-datadog-app-key" },
+  baseten: { apiKey: "test-baseten-key" },
   azure: {
     tenantId: "test-tenant-id",
     clientId: "test-client-id",
