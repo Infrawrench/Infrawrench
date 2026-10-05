@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { OVH_FOCUS } from "./focus-services.js";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { OvhClient } from "./client.js";
 import { InstanceResourceType } from "./resources/instance.js";
@@ -75,7 +76,13 @@ const manifest: PluginManifest = {
   // not regions/resources. The consumer key needs the access rules
   // `GET /me/bill*` and `GET /me/consumption*` on top of the usual
   // `/cloud/project/*` rules.
-  costs: { dimensions: ["service"], maxHistoryDays: 365, restatementDays: 5, periodNative: true },
+  costs: {
+    focus: OVH_FOCUS,
+    dimensions: ["service"],
+    maxHistoryDays: 365,
+    restatementDays: 5,
+    periodNative: true,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

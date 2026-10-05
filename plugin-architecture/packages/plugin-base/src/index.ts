@@ -46,6 +46,21 @@ export {
   CostSetupError,
   normalizeCostFetchResult,
 } from "./cost.js";
+export type {
+  FocusCapabilityDeclaration,
+  FocusServiceCategory,
+  FocusServiceClassification,
+  FocusServiceSubcategory,
+} from "./focus.js";
+export {
+  classifyFocusService,
+  FOCUS_OTHER_CLASSIFICATION,
+  FOCUS_SERVICE_CATEGORIES,
+  FOCUS_SERVICE_SUBCATEGORIES,
+  isValidFocusClassification,
+  otherFocusSubcategory,
+  resolveFocusService,
+} from "./focus.js";
 export type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
 export { CreditAccessError } from "./credits.js";
 

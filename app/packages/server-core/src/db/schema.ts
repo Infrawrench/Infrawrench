@@ -3989,6 +3989,12 @@ export const costExports = pgTable(
     /** `csv` | `ndjson`: how the row stream is serialised. */
     format: text("format").notNull().default("csv"),
     /**
+     * `native` | `focus-1.3`: which columns an object carries. Orthogonal to
+     * {@link format}: a FOCUS export can be CSV or NDJSON. Named `output_schema`
+     * rather than `schema` to stay clear of the SQL keyword.
+     */
+    outputSchema: text("output_schema").notNull().default("native"),
+    /**
      * The query scope, as a `CostExportQuery`: the same `CostFilter[]` and cost
      * dimension vocabulary dashboards, budgets and reports store, plus which
      * identity columns survive into the output. Reusing that shape rather than

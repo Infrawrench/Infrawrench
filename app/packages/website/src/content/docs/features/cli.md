@@ -140,6 +140,17 @@ infrawrench exports --json
 
 `exports run` forces a run and lists the objects it wrote, then exits non-zero if the destination rejected it, so a CI step can depend on it. Running is behind an explicit verb rather than a bare positional like `reports`, because this one writes to somebody's bucket.
 
+`export --format focus` downloads cost rows as a [FOCUS 1.3](./cost-exports.md#focus-13) CSV, once, with the same range and filter flags `costs` takes. Name a saved report to start from its range and filters; range flags then override its range and `--where` narrows it further:
+
+```
+infrawrench export --format focus --last 30d > focus.csv
+infrawrench export --format focus "Monthly AWS" --out aws-focus.csv
+infrawrench export --format focus --from 2026-07-01 --to 2026-09-30 --where "provider = 'aws'" --charge-type usage
+infrawrench export --format focus --last 7d --json      # { request, rowCount, csv }
+```
+
+The CSV is the only thing written to stdout, so a redirect captures a clean file; the row count goes to stderr.
+
 <insert [Terminal showing `infrawrench exports` with a table of three exports, one row red with "failed", and its full error message printed below the table] here>
 
 `schedules` lists the org's [sleep/wake schedules](./sleep-schedules.md) — each window, its timezone, the next transition, the last run's outcome (including freeze skips and failures), and the projected monthly saving:

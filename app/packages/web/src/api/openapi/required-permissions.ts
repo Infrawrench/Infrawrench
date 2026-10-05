@@ -424,6 +424,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /resources/{pluginId}/{typeId}/metrics": "resources:read",
   // costs
   "POST /costs/query": "costs:read",
+  "POST /costs/focus-export": "costs:read",
   "GET /costs/dimensions": "costs:read",
   "GET /costs/status": "costs:read",
   "GET /costs/anomalies": "costs:read",

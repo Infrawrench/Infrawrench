@@ -66,6 +66,9 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
   },
   costs: {
+    focus: {
+      default: { category: "AI and Machine Learning", subcategory: "Natural Language Processing" },
+    },
     // `GET /v1/projects/{project_id}/billing/breakdown`: real billed USD at
     // daily resolution, grouped by `line_item` and `tags`. A line item is a
     // billed product/model pair like "streaming::nova-3" and maps onto the

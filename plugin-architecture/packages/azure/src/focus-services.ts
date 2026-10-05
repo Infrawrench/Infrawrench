@@ -1,0 +1,143 @@
+import type { FocusCapabilityDeclaration } from "@infrawrench/plugin-base";
+
+/**
+ * How Azure services map onto the FOCUS service taxonomy. The names are Cost
+ * Management's `ServiceName` dimension values (e.g. `Virtual Machines`, `Azure
+ * Cosmos DB`).
+ *
+ * Read by FOCUS-schema cost exports to fill `ServiceCategory` and
+ * `ServiceSubcategory` (FOCUS v1.3 allowed values; the manifest schema rejects
+ * a pair that is not). Rules match case-insensitively as substrings of the
+ * `service` this plugin writes, first match wins, so specific names come
+ * before the general ones that would also match them. A service no rule names
+ * falls through to the host's generic keyword classifier, then to `Other`.
+ */
+export const AZURE_FOCUS: FocusCapabilityDeclaration = {
+  services: [
+    { match: "Azure Kubernetes Service", category: "Compute", subcategory: "Containers" },
+    { match: "Container Instances", category: "Compute", subcategory: "Containers" },
+    { match: "Container Apps", category: "Compute", subcategory: "Containers" },
+    {
+      match: "Container Registry",
+      category: "Developer Tools",
+      subcategory: "Developer Platforms",
+    },
+    { match: "Virtual Machines", category: "Compute", subcategory: "Virtual Machines" },
+    { match: "Virtual Desktop", category: "Compute", subcategory: "End User Computing" },
+    { match: "Azure Batch", category: "Compute", subcategory: "Other (Compute)" },
+    { match: "Functions", category: "Compute", subcategory: "Serverless Compute" },
+    { match: "App Service", category: "Web", subcategory: "Application Platforms" },
+    { match: "Static Web Apps", category: "Web", subcategory: "Application Platforms" },
+    { match: "Spring Apps", category: "Web", subcategory: "Application Platforms" },
+    {
+      match: "Site Recovery",
+      category: "Management and Governance",
+      subcategory: "Disaster Recovery",
+    },
+    { match: "Backup", category: "Storage", subcategory: "Backup Storage" },
+    { match: "NetApp Files", category: "Storage", subcategory: "File Storage" },
+    { match: "Managed Disks", category: "Storage", subcategory: "Block Storage" },
+    { match: "Cosmos DB", category: "Databases", subcategory: "NoSQL Databases" },
+    { match: "Cache for Redis", category: "Databases", subcategory: "Caching" },
+    { match: "Managed Redis", category: "Databases", subcategory: "Caching" },
+    { match: "Data Explorer", category: "Databases", subcategory: "Time Series Databases" },
+    { match: "Synapse", category: "Databases", subcategory: "Data Warehouses" },
+    { match: "SQL Managed Instance", category: "Databases", subcategory: "Relational Databases" },
+    { match: "SQL Database", category: "Databases", subcategory: "Relational Databases" },
+    { match: "Azure Database for", category: "Databases", subcategory: "Relational Databases" },
+    { match: "SQL Server", category: "Databases", subcategory: "Relational Databases" },
+    { match: "OpenAI", category: "AI and Machine Learning", subcategory: "Generative AI" },
+    { match: "Foundry", category: "AI and Machine Learning", subcategory: "Generative AI" },
+    {
+      match: "Cognitive Services",
+      category: "AI and Machine Learning",
+      subcategory: "AI Platforms",
+    },
+    { match: "AI Services", category: "AI and Machine Learning", subcategory: "AI Platforms" },
+    {
+      match: "Machine Learning",
+      category: "AI and Machine Learning",
+      subcategory: "Machine Learning",
+    },
+    { match: "Bot Service", category: "AI and Machine Learning", subcategory: "Bots" },
+    { match: "Cognitive Search", category: "Analytics", subcategory: "Search" },
+    { match: "AI Search", category: "Analytics", subcategory: "Search" },
+    { match: "Databricks", category: "Analytics", subcategory: "Analytics Platforms" },
+    { match: "Data Factory", category: "Analytics", subcategory: "Data Processing" },
+    { match: "HDInsight", category: "Analytics", subcategory: "Data Processing" },
+    { match: "Stream Analytics", category: "Analytics", subcategory: "Streaming Analytics" },
+    { match: "Event Hubs", category: "Analytics", subcategory: "Streaming Analytics" },
+    { match: "Microsoft Fabric", category: "Analytics", subcategory: "Analytics Platforms" },
+    { match: "Power BI", category: "Analytics", subcategory: "Business Intelligence" },
+    { match: "Purview", category: "Management and Governance", subcategory: "Data Governance" },
+    { match: "Service Bus", category: "Integration", subcategory: "Messaging" },
+    { match: "Event Grid", category: "Integration", subcategory: "Messaging" },
+    { match: "Notification Hubs", category: "Integration", subcategory: "Messaging" },
+    { match: "Logic Apps", category: "Integration", subcategory: "Workflow Orchestration" },
+    { match: "API Management", category: "Integration", subcategory: "API Management" },
+    {
+      match: "Communication Services",
+      category: "Business Applications",
+      subcategory: "Other (Business Applications)",
+    },
+    { match: "Front Door", category: "Networking", subcategory: "Content Delivery" },
+    { match: "Content Delivery Network", category: "Networking", subcategory: "Content Delivery" },
+    { match: "Azure DNS", category: "Networking", subcategory: "Network Routing" },
+    { match: "Traffic Manager", category: "Networking", subcategory: "Network Routing" },
+    { match: "Application Gateway", category: "Networking", subcategory: "Application Networking" },
+    { match: "Load Balancer", category: "Networking", subcategory: "Application Networking" },
+    { match: "ExpressRoute", category: "Networking", subcategory: "Network Connectivity" },
+    { match: "VPN Gateway", category: "Networking", subcategory: "Network Connectivity" },
+    { match: "Virtual WAN", category: "Networking", subcategory: "Network Connectivity" },
+    { match: "NAT Gateway", category: "Networking", subcategory: "Network Connectivity" },
+    { match: "Private Link", category: "Networking", subcategory: "Network Connectivity" },
+    { match: "Bastion", category: "Networking", subcategory: "Network Connectivity" },
+    { match: "Bandwidth", category: "Networking", subcategory: "Network Infrastructure" },
+    { match: "Virtual Network", category: "Networking", subcategory: "Network Infrastructure" },
+    { match: "Azure Firewall", category: "Networking", subcategory: "Network Security" },
+    { match: "DDoS Protection", category: "Networking", subcategory: "Network Security" },
+    { match: "Web Application Firewall", category: "Networking", subcategory: "Network Security" },
+    { match: "Defender", category: "Security", subcategory: "Security Posture Management" },
+    { match: "Sentinel", category: "Security", subcategory: "Threat Detection and Response" },
+    { match: "Key Vault", category: "Security", subcategory: "Secret Management" },
+    { match: "Entra", category: "Identity", subcategory: "Identity and Access Management" },
+    {
+      match: "Active Directory",
+      category: "Identity",
+      subcategory: "Identity and Access Management",
+    },
+    { match: "Log Analytics", category: "Management and Governance", subcategory: "Observability" },
+    { match: "Azure Monitor", category: "Management and Governance", subcategory: "Observability" },
+    {
+      match: "Application Insights",
+      category: "Management and Governance",
+      subcategory: "Observability",
+    },
+    {
+      match: "Automation",
+      category: "Management and Governance",
+      subcategory: "Endpoint Management",
+    },
+    {
+      match: "Azure Arc",
+      category: "Management and Governance",
+      subcategory: "Endpoint Management",
+    },
+    { match: "Azure Policy", category: "Management and Governance", subcategory: "Compliance" },
+    { match: "Support", category: "Management and Governance", subcategory: "Support" },
+    {
+      match: "DevOps",
+      category: "Developer Tools",
+      subcategory: "Continuous Integration and Deployment",
+    },
+    { match: "Load Testing", category: "Developer Tools", subcategory: "Quality Assurance" },
+    { match: "Dev Box", category: "Developer Tools", subcategory: "Development Environments" },
+    { match: "IoT", category: "Internet of Things", subcategory: "IoT Platforms" },
+    { match: "Digital Twins", category: "Internet of Things", subcategory: "IoT Platforms" },
+    { match: "Media Services", category: "Media", subcategory: "Media Streaming" },
+    { match: "PlayFab", category: "Media", subcategory: "Gaming" },
+    { match: "Database Migration", category: "Migration", subcategory: "Data Migration" },
+    { match: "Azure Migrate", category: "Migration", subcategory: "Resource Migration" },
+    { match: "Storage", category: "Storage", subcategory: "Storage Platforms" },
+  ],
+};

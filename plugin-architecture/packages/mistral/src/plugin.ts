@@ -62,6 +62,7 @@ const manifest: PluginManifest = {
     caCertCredentialField,
   ],
   costs: {
+    focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // `GET /v1/admin/usage` breaks spend down by service (chat, ocr, audio,
     // fine_tuning, …) but only at monthly granularity, hence `periodNative`.
     dimensions: ["service"],

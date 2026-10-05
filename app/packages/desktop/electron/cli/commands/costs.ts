@@ -121,7 +121,7 @@ function parseBasis(raw: string | undefined): CostBasis | undefined {
 }
 
 /** Repeated `--charge-type`; empty means every kind, i.e. a net total. */
-function parseChargeTypes(raw: string[] | undefined): CostChargeType[] {
+export function parseChargeTypes(raw: string[] | undefined): CostChargeType[] {
   return (raw ?? []).map((value) => {
     const match = CHARGE_TYPES.find((t) => t === value);
     if (!match) {
@@ -148,7 +148,7 @@ function parseChargeTypes(raw: string[] | undefined): CostChargeType[] {
  * The parser is imported dynamically, like the other client-core helpers the
  * CLI uses, so the CLI still takes no new runtime dependency.
  */
-async function parseWhere(where: string | undefined): Promise<CostFilter[]> {
+export async function parseWhere(where: string | undefined): Promise<CostFilter[]> {
   const text = where?.trim();
   if (!text) return [];
   const { parseCostQuery, CostQueryParseError } = await import("@infrawrench/client-core");
@@ -172,7 +172,7 @@ async function parseWhere(where: string | undefined): Promise<CostFilter[]> {
  * unique per org, so a name can never be ambiguous. An unknown value is an
  * error listing what exists, never a silent unfiltered query.
  */
-async function resolveSavedFilterFlag(
+export async function resolveSavedFilterFlag(
   orgId: string,
   flag: string | undefined,
 ): Promise<SavedCostFilter | null> {

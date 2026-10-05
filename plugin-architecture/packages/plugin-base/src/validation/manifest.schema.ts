@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { FOCUS_SERVICE_CATEGORIES, isValidFocusClassification } from "../focus.js";
 import { findUnsafeSvgConstructs } from "../svg-safety.js";
 
 /**
@@ -18,6 +19,23 @@ function logoSvgIsInert(value: string, ctx: z.RefinementCtx): void {
 }
 
 const inertSvg = z.string().min(1).superRefine(logoSvgIsInert);
+
+/**
+ * A FOCUS category/subcategory pair. Both are closed lists in the
+ * specification and the subcategory must be a child of the category, so a
+ * typo here would otherwise ship as a non-conformant export.
+ */
+const focusClassificationShape = z.object({
+  category: z.enum(FOCUS_SERVICE_CATEGORIES),
+  subcategory: z.string(),
+});
+const FOCUS_PAIR_MESSAGE = "subcategory must be one of the FOCUS v1.3 children of category";
+const focusClassification = focusClassificationShape.refine(isValidFocusClassification, {
+  message: FOCUS_PAIR_MESSAGE,
+});
+const focusServiceRule = focusClassificationShape
+  .extend({ match: z.string().min(1) })
+  .refine(isValidFocusClassification, { message: FOCUS_PAIR_MESSAGE });
 
 export const pluginManifestSchema = z.object({
   sshInstall: z
@@ -106,6 +124,13 @@ export const pluginManifestSchema = z.object({
       amortization: z.boolean().optional(),
       /** Amounts are derived (inventory × rate card, usage × list prices). */
       estimated: z.boolean().optional(),
+      /** FOCUS service classification for FOCUS-schema exports. */
+      focus: z
+        .object({
+          services: z.array(focusServiceRule).optional(),
+          default: focusClassification.optional(),
+        })
+        .optional(),
     })
     .optional(),
   commitments: z

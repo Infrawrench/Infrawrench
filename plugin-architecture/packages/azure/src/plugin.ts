@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { AZURE_FOCUS } from "./focus-services.js";
 import { AzureClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { azureTerraformExport } from "./terraform.js";
@@ -102,6 +103,7 @@ const manifest: PluginManifest = {
   // refusal degrades to unamortized cash rows rather than failing collection:
   // exactly the fallback this flag's contract describes for a mixed estate.
   costs: {
+    focus: AZURE_FOCUS,
     dimensions: ["service", "region"],
     maxHistoryDays: 395,
     restatementDays: 3,

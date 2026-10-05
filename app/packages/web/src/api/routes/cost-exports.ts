@@ -37,6 +37,7 @@ import { z } from "zod";
 import {
   COST_EXPORT_CADENCES,
   COST_EXPORT_FORMATS,
+  COST_EXPORT_SCHEMAS,
   COST_DIMENSIONS,
   COST_CHARGE_TYPES,
   type CostExportInput,
@@ -101,6 +102,8 @@ const destinationSchema = z.union([
 const inputSchema = z.object({
   name: z.string().min(1).max(120),
   format: z.enum(COST_EXPORT_FORMATS),
+  /** Omitted keeps the stored layout (`native` on create). */
+  schema: z.enum(COST_EXPORT_SCHEMAS).optional(),
   query: querySchema,
   cadence: z.enum(COST_EXPORT_CADENCES),
   hour: z.number().int().min(0).max(23),
@@ -162,6 +165,7 @@ app.post("/", async (c) => {
       metadata: {
         name: created.name,
         format: created.format,
+        schema: created.schema,
         cadence: created.cadence,
         destinationKind: created.destination.kind,
         destination:
@@ -201,6 +205,7 @@ app.put("/:id", async (c) => {
       entityId: id,
       metadata: {
         name: updated.name,
+        schema: updated.schema,
         cadence: updated.cadence,
         enabled: updated.enabled,
         destinationKind: updated.destination.kind,

@@ -6,6 +6,7 @@ import {
   pdfFileName,
   type CostReportFolderInput,
   type CostReportInput,
+  type FocusExportRequest,
   type ReportNotificationInput,
 } from "@infrawrench/client-core";
 import { downloadPdfBytes } from "@infrawrench/ui";
@@ -19,6 +20,7 @@ import {
   deleteCloudCostReportFolder,
   deleteCloudReportNotification,
   deleteCloudWidget,
+  downloadCloudFocusExport,
   getCloudCostReport,
   listCloudCostReportFolders,
   listCloudCostReports,
@@ -47,6 +49,7 @@ export function createDesktopCostReportsClient(): CostReportsClient {
     ...createDesktopCostApi(),
     sharing: createDesktopSharingClient(),
     listReports: () => listCloudCostReports(requireOrgId()),
+    downloadFocusExport: (req: FocusExportRequest) => downloadCloudFocusExport(requireOrgId(), req),
     getReport: (reportId: string) => getCloudCostReport(requireOrgId(), reportId),
     createReport: (input: CostReportInput) => createCloudCostReport(requireOrgId(), input),
     updateReport: (reportId: string, input: CostReportInput) =>

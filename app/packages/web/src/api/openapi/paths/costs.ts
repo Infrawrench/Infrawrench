@@ -633,6 +633,50 @@ export function registerCostPaths(ctx: BuildContext) {
   });
 
   registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/costs/focus-export",
+    tags: ["Costs"],
+    summary: "Download cost rows as a FOCUS 1.3 CSV",
+    description:
+      "The rows a cost query selects, written as a CSV in the FinOps Open Cost and Usage " +
+      "Specification (FOCUS) v1.3 layout: one row per account, service, region, resource, tag " +
+      "set, charge type and commitment per day, with `BilledCost` (cash) and `EffectiveCost` " +
+      "(amortized) side by side, `ChargeCategory`, `ServiceCategory`/`ServiceSubcategory`, " +
+      "`Tags` as a JSON object and the commitment columns where the provider reports a " +
+      "commitment. Custom columns follow, prefixed `x_`. The same mapping a `focus-1.3` " +
+      "scheduled export writes (see /cost-exports).\n\n" +
+      "Takes the cost query's filter in either spelling (`filters` or `query`, never both), an " +
+      "optional saved filter, and charge types. The range spans at most 366 days; for anything " +
+      "longer, or for a recurring feed, use a scheduled export. Validation errors are a 400 " +
+      "before any CSV is written; the body is then streamed.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: {
+          "application/json": {
+            schema: CostQueryRequest.pick({
+              from: true,
+              to: true,
+              filters: true,
+              query: true,
+              savedFilterId: true,
+              chargeTypes: true,
+            }).openapi("FocusExportRequest"),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "FOCUS 1.3 CSV, with a header row",
+        content: { "text/csv": { schema: z.string() } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
     method: "get",
     path: "/api/org/{orgId}/costs/dimensions",
     tags: ["Costs"],

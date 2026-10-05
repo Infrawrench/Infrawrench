@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { SCALEWAY_FOCUS } from "./focus-services.js";
 import { ScalewayClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { InstanceResourceType } from "./resources/instance.js";
@@ -67,6 +68,7 @@ const manifest: PluginManifest = {
   // stores no organization ID). The IAM `BillingReadOnly` permission set is
   // sufficient.
   costs: {
+    focus: SCALEWAY_FOCUS,
     dimensions: ["service", "resource", "tag"],
     maxHistoryDays: 365,
     restatementDays: 5,

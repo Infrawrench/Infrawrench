@@ -757,6 +757,21 @@ export const costQueryRequestSchema = z.object({
   adjusted: z.boolean().optional(),
 });
 
+/**
+ * `POST /costs/focus-export`: an ad-hoc FOCUS download. Exactly the cost
+ * query's scope fields (range, filter in either spelling, saved filter, charge
+ * types) and nothing about drawing a graph, because the file has no buckets,
+ * no groups and no basis: FOCUS carries billed and effective cost side by side.
+ */
+export const focusExportRequestSchema = costQueryRequestSchema.pick({
+  from: true,
+  to: true,
+  filters: true,
+  query: true,
+  savedFilterId: true,
+  chargeTypes: true,
+});
+
 /* ------------------------------------------------------------------ *
  * Billing rules: POST/PUT /billing-rules.
  * ------------------------------------------------------------------ */

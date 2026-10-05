@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { DIGITALOCEAN_FOCUS } from "./focus-services.js";
 import { DigitalOceanClient } from "./client.js";
 import { digitaloceanTerraformExport } from "./terraform.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -77,7 +78,12 @@ const manifest: PluginManifest = {
   // Billing Insights (`/v2/billing/{urn}/insights/...`): daily usage deltas
   // per invoice line + region. Needs the `billing:read` token scope. Data
   // exists from 1 Dec 2025 onward; earlier backfill windows come back empty.
-  costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
+  costs: {
+    focus: DIGITALOCEAN_FOCUS,
+    dimensions: ["service", "region"],
+    maxHistoryDays: 365,
+    restatementDays: 3,
+  },
   // Droplet and reserved-IP limits from /v2/account, counted against
   // ?per_page=1 reads of /v2/droplets and /v2/reserved_ips. Needs the
   // `account:read`, `droplet:read` and `reserved_ip:read` token scopes.

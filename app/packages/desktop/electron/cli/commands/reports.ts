@@ -182,7 +182,7 @@ export async function cmdReports(ctx: CliContext): Promise<void> {
 }
 
 /** Resolve a name/id query to exactly one report, or throw a helpful error. */
-async function resolveReport(orgId: string, query: string): Promise<CostReport> {
+export async function resolveReport(orgId: string, query: string): Promise<CostReport> {
   const reports = await orgFetch<CostReport[]>(orgId, "/cost-reports");
   const found = matchCostReport(reports, query);
   if (found.match) return found.match;

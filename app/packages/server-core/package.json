@@ -89,6 +89,7 @@
     "./cost-exports/run": "./src/cost-exports/run.ts",
     "./cost-exports/pass": "./src/cost-exports/pass.ts",
     "./cost-exports/periods": "./src/cost-exports/periods.ts",
+    "./cost-exports/focus": "./src/cost-exports/focus.ts",
     "./trials/create": "./src/trials/create.ts",
     "./trials/identity": "./src/trials/identity.ts",
     "./trials/principal": "./src/trials/principal.ts",

@@ -68,6 +68,9 @@ export async function claimDueCostExports(limit: number): Promise<CostExportReco
     organizationId: String(r["organization_id"]),
     name: String(r["name"]),
     format: String(r["format"]),
+    // Without this the poller would run every FOCUS export as native: the
+    // claim reads raw rows, so a new column is invisible here until mapped.
+    outputSchema: String(r["output_schema"] ?? "native"),
     query: r["query"] as CostExportQuery,
     cadence: String(r["cadence"]),
     hour: Number(r["hour"]),

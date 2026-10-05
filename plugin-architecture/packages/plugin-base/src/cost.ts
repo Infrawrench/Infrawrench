@@ -10,6 +10,8 @@
  * the response into daily {@link CostRow}s.
  */
 
+import type { FocusCapabilityDeclaration } from "./focus.js";
+
 /** Declares that this plugin can report actual spend for an account. */
 export interface CostCapabilityDeclaration {
   /**
@@ -91,6 +93,13 @@ export interface CostCapabilityDeclaration {
    * trusted.
    */
   estimated?: boolean;
+  /**
+   * How this provider's services map onto the FOCUS service taxonomy, for
+   * FOCUS-schema cost exports. Optional: a plugin that omits it still exports,
+   * with the host's generic keyword classification (`classifyFocusService`)
+   * and `Other` for anything that matches nothing. See `./focus.ts`.
+   */
+  focus?: FocusCapabilityDeclaration;
 }
 
 /**

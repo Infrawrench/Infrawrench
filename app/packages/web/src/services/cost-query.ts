@@ -109,7 +109,9 @@ export class CostQueryError extends Error {
  * Compiling here rather than in the HTTP route is what keeps the MCP tool and
  * the API behaviourally identical: both go through `runCostQuery`.
  */
-function resolveQueryFilters(q: CostQueryRequest): CostQueryRequest["filters"] {
+function resolveQueryFilters(
+  q: Pick<CostQueryRequest, "filters" | "query">,
+): CostQueryRequest["filters"] {
   const text = q.query?.trim();
   if (!text) return q.filters;
   if (q.filters.length > 0) {
@@ -132,7 +134,27 @@ function resolveQueryFilters(q: CostQueryRequest): CostQueryRequest["filters"] {
   }
 }
 
-function daySpan(from: string, to: string): number {
+/**
+ * The structured filter a request means: its `filters` or its `query` text
+ * (never both), ANDed with the terms of its saved filter. Every surface that
+ * takes the cost-query filter vocabulary resolves it here, so a graph, an MCP
+ * call and a FOCUS download over "the same filter" select the same rows.
+ */
+export async function resolveCostRequestFilters(
+  organizationId: string,
+  q: Pick<CostQueryRequest, "filters" | "query" | "savedFilterId">,
+): Promise<CostQueryRequest["filters"]> {
+  const inlineFilters = resolveQueryFilters(q);
+  if (!q.savedFilterId) return inlineFilters;
+  try {
+    return [...(await resolveSavedCostFilters(organizationId, q.savedFilterId)), ...inlineFilters];
+  } catch (e) {
+    if (e instanceof SavedCostFilterResolutionError) throw new CostQueryError(e.message);
+    throw e;
+  }
+}
+
+export function daySpan(from: string, to: string): number {
   return (
     Math.round(
       (new Date(`${to}T00:00:00.000Z`).getTime() - new Date(`${from}T00:00:00.000Z`).getTime()) /
@@ -314,19 +336,7 @@ export async function runCostQuery(
   // resolve is an error, never a fall-through to unfiltered: unfiltered spend
   // quietly standing in for "prod only" is the failure this feature must never
   // produce.
-  const inlineFilters = resolveQueryFilters(q);
-  let filters = inlineFilters;
-  if (q.savedFilterId) {
-    try {
-      filters = [
-        ...(await resolveSavedCostFilters(organizationId, q.savedFilterId)),
-        ...inlineFilters,
-      ];
-    } catch (e) {
-      if (e instanceof SavedCostFilterResolutionError) throw new CostQueryError(e.message);
-      throw e;
-    }
-  }
+  const filters = await resolveCostRequestFilters(organizationId, q);
 
   // The org's billing rules, resolved here for exactly the reason saved
   // filters are: one resolver, so the HTTP API, MCP, chat and the CLI all get

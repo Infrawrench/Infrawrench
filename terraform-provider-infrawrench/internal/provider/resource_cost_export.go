@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -94,6 +95,7 @@ type costExportResourceModel struct {
 	ID              types.String `tfsdk:"id"`
 	Name            types.String `tfsdk:"name"`
 	Format          types.String `tfsdk:"format"`
+	Schema          types.String `tfsdk:"schema"`
 	Cadence         types.String `tfsdk:"cadence"`
 	Hour            types.Int64  `tfsdk:"hour"`
 	Timezone        types.String `tfsdk:"timezone"`
@@ -151,6 +153,20 @@ func (r *costExportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				MarkdownDescription: "`csv` for a spreadsheet-and-warehouse friendly file, `ndjson` for " +
 					"one JSON object per line.",
 				Validators: []validator.String{oneOfValidator("csv", "ndjson")},
+			},
+			"schema": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString("native"),
+				MarkdownDescription: "Which columns each object carries. `native` (the default) is " +
+					"Infrawrench's own layout, shaped by `query.dimensions` and `query.tag_keys`. " +
+					"`focus-1.3` writes the FinOps Open Cost and Usage Specification (FOCUS) v1.3 " +
+					"columns at the full row grain, with `BilledCost` (cash) and `EffectiveCost` " +
+					"(amortized) side by side, the FOCUS charge and service categories, and all tags " +
+					"as one JSON `Tags` column. `query.dimensions`, `query.tag_keys` and " +
+					"`query.cost_basis` are ignored for it (set `dimensions = []`), while filters and " +
+					"`query.charge_types` still apply. Works with either `format`.",
+				Validators: []validator.String{oneOfValidator("native", "focus-1.3")},
 			},
 			"cadence": schema.StringAttribute{
 				Required:            true,
@@ -530,6 +546,7 @@ func costExportInputFrom(ctx context.Context, model costExportResourceModel) (iw
 	return iw.CostExportInput{
 		Name:            model.Name.ValueString(),
 		Format:          model.Format.ValueString(),
+		Schema:          model.Schema.ValueString(),
 		Query:           query,
 		Cadence:         model.Cadence.ValueString(),
 		Hour:            model.Hour.ValueInt64(),
@@ -611,6 +628,7 @@ func costExportStateFrom(ctx context.Context, remote *iw.CostExport, prior costE
 		ID:              types.StringValue(remote.ID),
 		Name:            types.StringValue(remote.Name),
 		Format:          types.StringValue(remote.Format),
+		Schema:          types.StringValue(costExportSchemaOrNative(remote.Schema)),
 		Cadence:         types.StringValue(remote.Cadence),
 		Hour:            types.Int64Value(remote.Hour),
 		Timezone:        types.StringValue(remote.Timezone),
@@ -628,4 +646,14 @@ func costExportStateFrom(ctx context.Context, remote *iw.CostExport, prior costE
 		Query:       query,
 		Destination: destination,
 	}, diags
+}
+
+// costExportSchemaOrNative reads a missing `schema` (a server older than FOCUS
+// support, which only ever wrote native columns) as `native`, so state matches
+// the attribute's default instead of planning a change against an empty string.
+func costExportSchemaOrNative(schema string) string {
+	if schema == "" {
+		return "native"
+	}
+	return schema
 }

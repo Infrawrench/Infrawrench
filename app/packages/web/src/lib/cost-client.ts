@@ -48,6 +48,7 @@ import type {
   CostReportFolder,
   CostReportFolderInput,
   CostReportInput,
+  FocusExportRequest,
   ReportDeliveryTargets,
   ReportNotification,
   ReportNotificationInput,
@@ -55,7 +56,7 @@ import type {
 } from "@infrawrench/client-core";
 import { pdfFileName, withPdfTimezone } from "@infrawrench/client-core";
 import { downloadBlob } from "@infrawrench/ui";
-import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut } from "./api";
+import { apiDelete, apiGet, apiGetBlob, apiPost, apiPostText, apiPut } from "./api";
 
 /**
  * The read-only cost calls, shared by the dashboard's cost cards, the Costs
@@ -316,6 +317,8 @@ export function createWebCostReportsClient(orgId: string): CostReportsClient {
     ...createWebCostApi(orgId),
     sharing: createWebSharingClient(orgId),
     listReports: () => apiGet<CostReport[]>(`/api/org/${orgId}/cost-reports`),
+    downloadFocusExport: (req: FocusExportRequest) =>
+      apiPostText(`/api/org/${orgId}/costs/focus-export`, req),
     getReport: (reportId: string) =>
       apiGet<CostReport>(`/api/org/${orgId}/cost-reports/${reportId}`),
     createReport: (input: CostReportInput) =>

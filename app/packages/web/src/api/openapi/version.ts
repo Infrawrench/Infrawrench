@@ -170,4 +170,8 @@
 // compute-config, budget) to the resourceTypeId enum.
 // 1.49.0: Baseten plugin; `baseten` on the `pluginId` enum and its resource
 // type ids on the `resourceTypeId` enum. Additive.
-export const API_VERSION = "1.49.0";
+// 1.50.0: FOCUS 1.3. Cost exports gain `schema` (`native` | `focus-1.3`;
+// optional on input, where omitted keeps the stored value, and always present
+// on CostExport), and `POST /costs/focus-export` downloads the rows a cost
+// query selects as a FOCUS 1.3 CSV. Additive.
+export const API_VERSION = "1.50.0";

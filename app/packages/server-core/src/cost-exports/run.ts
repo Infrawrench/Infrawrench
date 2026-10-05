@@ -41,6 +41,13 @@ import { getCostCoverage } from "../clickhouse/cost-readers";
 import { isClickHouseConfigured } from "../clickhouse/client";
 import { uploadCostExportObject, CostExportUploadError } from "./destinations";
 import { nextCostExportRunAt, periodsToExport, type CostExportCadence } from "./periods";
+import {
+  loadFocusLookups,
+  mapFocusRows,
+  serializeFocusRows,
+  streamFocusSourceRows,
+  type FocusLookups,
+} from "./focus";
 import { resolveColumns, streamCostExportRows, type CostExportRow } from "./rows";
 import { serializeRows } from "./serialize";
 import {
@@ -212,6 +219,7 @@ export async function runCostExport(
   const retryDelays = opts.persistRetryDelaysMs ?? PERSIST_RETRY_DELAYS_MS;
   const cadence = row.cadence as CostExportCadence;
   const format = row.format === "ndjson" ? "ndjson" : "csv";
+  const focus = row.outputSchema === "focus-1.3";
   const query = row.query;
   const destination = row.destination;
   const guarded = !toleratesRedelivery(destination);
@@ -270,6 +278,11 @@ export async function runCostExport(
     const exportedAt = now.toISOString();
     const columns = resolveColumns(query);
     const prefix = destination.kind === "s3" ? destination.prefix : "";
+    // Loaded once per run, not per period: names do not change between the
+    // objects of one run, and a 90-day daily restatement is 91 periods.
+    const focusLookups: FocusLookups | null = focus
+      ? await loadFocusLookups(row.organizationId)
+      : null;
 
     const periods = periodsToExport({
       cadence,
@@ -295,26 +308,53 @@ export async function runCostExport(
       // a second COUNT(*) query: an export that reports a row count it did not
       // actually write would be worse than reporting none.
       let rowCount = 0;
-      const counted = (async function* (): AsyncGenerator<CostExportRow, void, undefined> {
-        for await (const r of streamCostExportRows({
-          organizationId: row.organizationId,
-          from: period.from,
-          to: period.to,
-          dimensions: query.dimensions ?? [],
-          tagKeys: query.tagKeys ?? [],
-          filters: query.filters ?? [],
-          chargeTypes: query.chargeTypes,
-          costBasis: query.costBasis,
-        })) {
+      const count = async function* <T>(
+        rows: AsyncIterable<T>,
+      ): AsyncGenerator<T, void, undefined> {
+        for await (const r of rows) {
           rowCount++;
           yield r;
         }
-      })();
+      };
+      const stamp = { exportedAt, collectionWatermark: watermark };
 
-      const { body, contentType } = serializeRows(format, counted, columns, {
-        exportedAt,
-        collectionWatermark: watermark,
-      });
+      // FOCUS fixes its own columns and grain, so only the query's scope
+      // (filters, charge types) carries over; `dimensions`, `tagKeys` and
+      // `costBasis` are native-layout settings and do not apply.
+      const { body, contentType } = focusLookups
+        ? serializeFocusRows(
+            format,
+            mapFocusRows(
+              count(
+                streamFocusSourceRows({
+                  organizationId: row.organizationId,
+                  from: period.from,
+                  to: period.to,
+                  filters: query.filters ?? [],
+                  chargeTypes: query.chargeTypes,
+                }),
+              ),
+              focusLookups,
+              stamp,
+            ),
+          )
+        : serializeRows(
+            format,
+            count<CostExportRow>(
+              streamCostExportRows({
+                organizationId: row.organizationId,
+                from: period.from,
+                to: period.to,
+                dimensions: query.dimensions ?? [],
+                tagKeys: query.tagKeys ?? [],
+                filters: query.filters ?? [],
+                chargeTypes: query.chargeTypes,
+                costBasis: query.costBasis,
+              }),
+            ),
+            columns,
+            stamp,
+          );
 
       const { byteCount } = await uploadCostExportObject({
         destination,

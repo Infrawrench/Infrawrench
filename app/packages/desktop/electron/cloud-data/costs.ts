@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { cloudFetch, cloudFetchBytes } from "./shared";
+import { cloudFetch, cloudFetchBytes, cloudFetchText } from "./shared";
 
 // Cost graphs, budgets, and dashboard widgets: cloud-mode only (there is no
 // local-SQLite equivalent; cost data lives in the cloud ClickHouse store).
@@ -8,6 +8,19 @@ ipcMain.handle(
   "cloud_costs_query",
   async (_e, { orgId, request }: { orgId: string; request: unknown }) => {
     return cloudFetch(orgId, "/costs/query", { method: "POST", body: JSON.stringify(request) });
+  },
+);
+
+// The FOCUS 1.3 CSV of a report's rows. Text, not JSON, so `cloudFetchText`;
+// the renderer hands the body to the browser's own download path.
+ipcMain.handle(
+  "cloud_costs_focus_export",
+  async (_e, { orgId, request }: { orgId: string; request: unknown }) => {
+    return cloudFetchText(orgId, "/costs/focus-export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
   },
 );
 

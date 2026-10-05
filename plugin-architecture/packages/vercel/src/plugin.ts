@@ -45,7 +45,12 @@ const manifest: PluginManifest = {
   // ServiceName + RegionId + project (surfaced as the `project` tag). Daily
   // granularity, ≤1-year window per request; works with the same access
   // token given a billing-capable team role.
-  costs: { dimensions: ["service", "region", "tag"], maxHistoryDays: 365, restatementDays: 3 },
+  costs: {
+    focus: { default: { category: "Web", subcategory: "Application Platforms" } },
+    dimensions: ["service", "region", "tag"],
+    maxHistoryDays: 365,
+    restatementDays: 3,
+  },
   statusFeed,
 };
 

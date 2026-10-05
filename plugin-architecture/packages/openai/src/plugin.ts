@@ -67,6 +67,7 @@ const manifest: PluginManifest = {
   ],
   rateLimit: { capacity: 30, refillPerSecond: 5 },
   costs: {
+    focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // `line_item` maps onto the generic service dimension; the project id rides
     // along as a tag since the cost contract has no project dimension.
     dimensions: ["service", "tag"],

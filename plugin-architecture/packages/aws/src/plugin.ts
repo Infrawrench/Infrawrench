@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { AWS_FOCUS } from "./focus-services.js";
 import { AWSClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { awsPreflight, buildAwsPolicyTemplate } from "./preflight.js";
@@ -124,6 +125,7 @@ const manifest: PluginManifest = {
   // `commitment_covered_usage` charge type instead. Only per-commitment
   // utilization is left unanswered, which is better than answered wrongly.
   costs: {
+    focus: AWS_FOCUS,
     dimensions: ["service", "region"],
     maxHistoryDays: 365,
     restatementDays: 3,

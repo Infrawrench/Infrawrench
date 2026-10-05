@@ -62,7 +62,12 @@ const manifest: PluginManifest = {
   // Cost data comes from GET /v1/organizations/cost_report, which is
   // daily-granularity only and admin-key only. Grouping is limited to
   // `description` (→ service) and `workspace_id` (→ resource).
-  costs: { dimensions: ["service", "resource"], maxHistoryDays: 365, restatementDays: 3 },
+  costs: {
+    focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
+    dimensions: ["service", "resource"],
+    maxHistoryDays: 365,
+    restatementDays: 3,
+  },
   statusFeed,
 };
 

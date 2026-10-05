@@ -56,6 +56,7 @@ const manifest: PluginManifest = {
     caCertCredentialField,
   ],
   costs: {
+    focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // POST /v1/billing/teams/{team_id}/usage returns true daily buckets.
     dimensions: ["service"],
     maxHistoryDays: 365,

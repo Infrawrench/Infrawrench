@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShareDialog, type ShareTarget } from "../sharing/ShareDialog.js";
 import { useGT } from "gt-react";
+import { focusExportFilename, focusExportRequestForConfig } from "@infrawrench/client-core";
 
 import {
   DEFAULT_COST_GRAPH_CONFIG,
@@ -21,6 +22,24 @@ import type { CostsPanelDashboard } from "../cost/types.js";
 import { ReportDeliverySection } from "./ReportDeliverySection.js";
 import type { CostReportsClient } from "./types.js";
 import { ArrowIcon } from "../components/icons/ChromeIcons.js";
+
+/**
+ * Hand generated text to the browser's own download path. Works unchanged in
+ * the desktop renderer, where Electron routes the blob download through its
+ * save dialog, so neither host needs a file API of its own for this.
+ */
+function saveTextFile(filename: string, mediaType: string, body: string): void {
+  const url = URL.createObjectURL(new Blob([body], { type: mediaType }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  // Revoked on the next tick: revoking synchronously can cancel the download
+  // before the browser has started reading the blob.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 function toInput(report: CostReport): CostReportInput {
   return {
@@ -766,6 +785,26 @@ function ReportDetail({
     }
   }
 
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // The report's own range, resolved now (a "last 30 days" report downloads
+  // the last 30 days as of today), its filters and its saved filter.
+  async function downloadFocus() {
+    if (!client.downloadFocusExport) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const request = focusExportRequestForConfig(report.config);
+      const csv = await client.downloadFocusExport(request);
+      saveTextFile(focusExportFilename(request, report.name), "text/csv;charset=utf-8", csv);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
@@ -800,6 +839,19 @@ function ReportDetail({
               className="hover:text-on-surface-secondary underline disabled:opacity-50"
             >
               {pdfBusy ? gt("Preparing PDF…") : gt("Download PDF")}
+            </button>
+          )}
+          {client.downloadFocusExport && (
+            <button
+              type="button"
+              onClick={() => void downloadFocus()}
+              disabled={exporting}
+              title={gt(
+                "Download this report's rows as a FOCUS 1.3 CSV: billed and effective cost, charge and service categories, and tags, one row per resource per day",
+              )}
+              className="hover:text-on-surface-secondary underline disabled:opacity-50"
+            >
+              {exporting ? gt("Preparing FOCUS CSV…") : gt("Download FOCUS CSV")}
             </button>
           )}
           {onShare && (
@@ -855,6 +907,11 @@ function ReportDetail({
         <div role="alert" className="text-sm text-danger">
           {gt("Couldn't export the report as a PDF: {error}", { error: pdfError })}
         </div>
+      )}
+      {exportError !== null && (
+        <p className="text-xs text-danger" role="alert">
+          {gt("Couldn’t download the FOCUS CSV — {error}", { error: exportError })}
+        </p>
       )}
 
       {/*

@@ -200,6 +200,36 @@ export async function apiGetBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
+/**
+ * POST a JSON body to an endpoint whose answer is a document (the FOCUS CSV
+ * download). Same reasoning as {@link apiGetText}: the success body is not
+ * JSON, but an error still arrives as a JSON envelope.
+ */
+export async function apiPostText(path: string, body: unknown): Promise<string> {
+  const res = await fetch(path, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    window.location.href = SIGN_IN_URL;
+    return new Promise(() => {});
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    let message = text;
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown };
+      if (typeof parsed.error === "string") message = parsed.error;
+    } catch {
+      /* not a JSON error envelope */
+    }
+    throw new Error(message || `Request failed (${res.status})`);
+  }
+  return text;
+}
+
 export function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return apiFetch<T>(path, {
     method: "POST",

@@ -65,6 +65,7 @@ const manifest: PluginManifest = {
    * throws `CostSetupError` pointing at the console page that creates it.
    */
   costs: {
+    focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     dimensions: ["service"],
     maxHistoryDays: 365,
     restatementDays: 2,

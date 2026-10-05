@@ -18,7 +18,14 @@
  * here carries a redacted hint (`…a7f2`) and nothing else; see
  * `server-core/src/cost-exports/store.ts`.
  */
-import type { CostBasis, CostChargeType, CostDimensionId, CostFilter } from "./costs";
+import {
+  resolveCostDateRange,
+  type CostBasis,
+  type CostChargeType,
+  type CostDimensionId,
+  type CostFilter,
+  type CostGraphConfig,
+} from "./costs";
 
 /** Serialisation of the row stream. */
 export const COST_EXPORT_FORMATS = ["csv", "ndjson"] as const;
@@ -28,6 +35,162 @@ export const COST_EXPORT_FORMAT_LABELS: Record<CostExportFormat, string> = {
   csv: "CSV",
   ndjson: "NDJSON (one JSON object per line)",
 };
+
+/**
+ * Which columns an object carries.
+ *
+ * - `native`: Infrawrench's own layout: `day`, the identity columns the export
+ *   keeps, the measures, then provenance. Compact, and shaped by the query's
+ *   `dimensions` and `tagKeys`.
+ * - `focus-1.3`: the FinOps Open Cost and Usage Specification, version 1.3
+ *   (https://focus.finops.org/focus-specification/v1-3/). Fixed columns at the
+ *   full row grain (account, service, region, resource, charge type,
+ *   commitment, tags), with billed and effective cost side by side. The
+ *   query's `dimensions`, `tagKeys` and `costBasis` do not apply; its
+ *   `filters` and `chargeTypes` still do. See {@link FOCUS_1_3_COLUMNS}.
+ *
+ * Versioned in the value so a later specification is an additive option
+ * rather than a silent change to what an existing export writes.
+ */
+export const COST_EXPORT_SCHEMAS = ["native", "focus-1.3"] as const;
+export type CostExportSchema = (typeof COST_EXPORT_SCHEMAS)[number];
+
+export const COST_EXPORT_SCHEMA_LABELS: Record<CostExportSchema, string> = {
+  native: "Infrawrench columns",
+  "focus-1.3": "FOCUS 1.3",
+};
+
+/**
+ * The FOCUS v1.3 columns a FOCUS-schema object carries, in the order they are
+ * written (alphabetical, which the specification allows): every Mandatory
+ * column, the Recommended `ChargeFrequency` and `ServiceSubcategory`, and the
+ * Conditional ones whose condition our cost data meets. Conditional columns
+ * we have no data for (SKU, pricing category, unit prices, invoice id, sub
+ * account, capacity reservation, allocation) are left out, which the
+ * specification permits, rather than written as all-null.
+ *
+ * Changing this list changes the header of every object an existing export
+ * writes. It only ever changes alongside a new `focus-<version>` schema value.
+ */
+export const FOCUS_1_3_COLUMNS = [
+  "BilledCost",
+  "BillingAccountId",
+  "BillingAccountName",
+  "BillingCurrency",
+  "BillingPeriodEnd",
+  "BillingPeriodStart",
+  "ChargeCategory",
+  "ChargeClass",
+  "ChargeDescription",
+  "ChargeFrequency",
+  "ChargePeriodEnd",
+  "ChargePeriodStart",
+  "CommitmentDiscountCategory",
+  "CommitmentDiscountId",
+  "CommitmentDiscountName",
+  "CommitmentDiscountStatus",
+  "CommitmentDiscountType",
+  "ContractedCost",
+  "EffectiveCost",
+  "HostProviderName",
+  "InvoiceIssuerName",
+  "ListCost",
+  "PricingQuantity",
+  "PricingUnit",
+  "ProviderName",
+  "PublisherName",
+  "RegionId",
+  "RegionName",
+  "ResourceId",
+  "ResourceName",
+  "ServiceCategory",
+  "ServiceName",
+  "ServiceProviderName",
+  "ServiceSubcategory",
+  "Tags",
+] as const;
+
+/**
+ * Custom columns appended after the FOCUS ones. The specification requires
+ * the `x_` prefix and that they come last, unmixed.
+ *
+ * - `x_InfrawrenchProviderId`: the plugin id (`aws`, `openai`…), the stable
+ *   key the provider dimension filters on.
+ * - `x_InfrawrenchChargeType`: our finer-grained charge type, which
+ *   `ChargeCategory` folds (covered and on-demand usage are both `Usage`).
+ * - `x_UsageQuantity` / `x_UsageUnit`: the consumption quantity the provider
+ *   reported. FOCUS's own quantity columns must be null without a SKU price
+ *   id, which no collector supplies, so the quantity travels here instead.
+ * - `x_ResourceType`: the resource's type in the Infrawrench inventory, when
+ *   the row's resource is in it.
+ * - `x_CostEstimated`: `true` when the provider's amounts are derived by
+ *   Infrawrench (inventory times a rate card) rather than billed.
+ * - `x_ExportedAt` / `x_CollectionWatermark`: the same provenance a native
+ *   object carries as `exported_at` / `collection_watermark`.
+ */
+export const FOCUS_CUSTOM_COLUMNS = [
+  "x_InfrawrenchProviderId",
+  "x_InfrawrenchChargeType",
+  "x_UsageQuantity",
+  "x_UsageUnit",
+  "x_ResourceType",
+  "x_CostEstimated",
+  "x_ExportedAt",
+  "x_CollectionWatermark",
+] as const;
+
+/**
+ * An ad-hoc FOCUS download (`POST /costs/focus-export`). The same filter
+ * vocabulary as a cost query (structured `filters` or cost-query-language
+ * `query`, plus an optional saved filter) over an inclusive day range.
+ */
+export interface FocusExportRequest {
+  /** First day, `YYYY-MM-DD` (UTC). */
+  from: string;
+  /** Last day, inclusive, `YYYY-MM-DD` (UTC). */
+  to: string;
+  filters?: CostFilter[] | undefined;
+  /** Cost query language text. Mutually exclusive with `filters`. */
+  query?: string | undefined;
+  /** ANDed with whichever inline filter spelling was sent. */
+  savedFilterId?: string | undefined;
+  chargeTypes?: CostChargeType[] | undefined;
+}
+
+/** Longest range one ad-hoc FOCUS download may span, in days (inclusive). */
+export const FOCUS_EXPORT_MAX_DAYS = 366;
+
+/**
+ * The FOCUS download for a saved cost report or graph: its date range resolved
+ * against `today`, its filters, and its saved filter by reference. Grouping,
+ * binning and basis are dropped because a FOCUS file has none of them; every
+ * charge type is included, because the file says which each row is.
+ */
+export function focusExportRequestForConfig(
+  config: CostGraphConfig,
+  today = new Date(),
+): FocusExportRequest {
+  const { from, to } = resolveCostDateRange(config.dateRange, today);
+  return {
+    from,
+    to,
+    filters: config.filters,
+    ...(config.savedFilterId ? { savedFilterId: config.savedFilterId } : {}),
+  };
+}
+
+/** `focus-<slug>-<from>-to-<to>.csv`, the filename a download is saved under. */
+export function focusExportFilename(
+  req: Pick<FocusExportRequest, "from" | "to">,
+  name = "",
+): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return `focus-${slug ? `${slug}-` : ""}${req.from}-to-${req.to}.csv`;
+}
 
 /**
  * How often a run happens, and (because a run writes one object per period)
@@ -149,6 +312,8 @@ export interface CostExport {
   id: string;
   name: string;
   format: CostExportFormat;
+  /** Column layout. Exports created before FOCUS existed read as `native`. */
+  schema: CostExportSchema;
   query: CostExportQuery;
   cadence: CostExportCadence;
   /** Local hour (0–23) in {@link timezone} a run fires at. */
@@ -189,6 +354,8 @@ export interface CostExport {
 export interface CostExportInput {
   name: string;
   format: CostExportFormat;
+  /** Column layout. Omitted means `native`, which is what every older client sends. */
+  schema?: CostExportSchema | undefined;
   query: CostExportQuery;
   cadence: CostExportCadence;
   hour: number;
@@ -233,6 +400,7 @@ export interface CostExportRunResult {
 export const DEFAULT_COST_EXPORT_INPUT: CostExportInput = {
   name: "",
   format: "csv",
+  schema: "native",
   query: DEFAULT_COST_EXPORT_QUERY,
   cadence: "daily",
   hour: 4,

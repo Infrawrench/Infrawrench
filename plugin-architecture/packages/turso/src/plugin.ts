@@ -39,7 +39,12 @@ const manifest: PluginManifest = {
   ],
   // Issued monthly invoices only: an org-level lump sum with no line items
   // and no period fields, dated to each invoice's due date.
-  costs: { dimensions: [], maxHistoryDays: 365, periodNative: true },
+  costs: {
+    focus: { default: { category: "Databases", subcategory: "Relational Databases" } },
+    dimensions: [],
+    maxHistoryDays: 365,
+    periodNative: true,
+  },
   // Plan allowances (rows read/written, storage, sync, databases, groups,
   // locations) against the current billing cycle's organization usage.
   quotas: { label: "Plan Limits", increaseUrl: "https://app.turso.tech" },

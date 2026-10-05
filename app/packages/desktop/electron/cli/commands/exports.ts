@@ -10,12 +10,19 @@
 // the API and the settings UI use) so a server-side change breaks this file's
 // build instead of its output. The import is type-only, so the CLI still ships
 // zero new runtime dependencies.
-import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
-import type { CostExport, CostExportRunResult } from "@infrawrench/client-core" with {
-  "resolution-mode": "import",
-};
+import { writeFileSync } from "node:fs";
+import { CliError, orgFetch, orgFetchText, resolveOrg, type CliContext } from "../context";
+import type {
+  CostExport,
+  CostExportRunResult,
+  FocusExportRequest,
+} from "@infrawrench/client-core" with { "resolution-mode": "import" };
+import type { RangeFlags } from "../args";
+import { resolveDateRange } from "../args";
 import { matchCostReport } from "../format";
-import { c, printJson, println, printTable } from "../output";
+import { c, printErr, printJson, println, printTable } from "../output";
+import { parseChargeTypes, parseWhere, resolveSavedFilterFlag } from "./costs";
+import { resolveReport } from "./reports";
 
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
@@ -81,7 +88,12 @@ export async function cmdExports(ctx: CliContext): Promise<void> {
 
   printTable(exports, [
     { header: "name", value: (e) => c.bold(e.name) },
-    { header: "format", value: (e) => c.dim(e.format) },
+    {
+      header: "format",
+      // `schema` is absent on a server older than FOCUS support, which only
+      // ever wrote native columns.
+      value: (e) => c.dim(e.schema === "focus-1.3" ? `${e.format} · FOCUS 1.3` : e.format),
+    },
     { header: "schedule", value: (e) => c.dim(describeSchedule(e)) },
     { header: "destination", value: (e) => c.dim(describeDestination(e)) },
     { header: "last run", value: (e) => statusCell(e) },
@@ -179,4 +191,95 @@ export async function cmdRunExport(ctx: CliContext, query: string): Promise<void
     { header: "bytes", value: (o) => o.byteCount.toLocaleString(), align: "right" },
     { header: "key", value: (o) => c.dim(o.key) },
   ]);
+}
+
+/**
+ * `infrawrench export --format focus [<report name|id>]`: the rows a cost query
+ * selects, as a FOCUS 1.3 CSV, written to stdout or `--out <file>`.
+ *
+ * The range and filter flags are the `costs` command's (`--last`, `--from`,
+ * `--to`, `--where`, `--filter`, `--charge-type`) so a file and the chart it
+ * explains select the same rows. Naming a saved report starts from that
+ * report's range and filters; explicit range flags then override its range,
+ * and `--where` adds to its filters.
+ *
+ * The CSV is the only thing on stdout, so `> focus.csv` captures a clean file;
+ * the summary goes to stderr. `--json` wraps the body with the request that
+ * produced it, for scripts that want both.
+ */
+export async function cmdExportFocus(
+  ctx: CliContext,
+  range: RangeFlags,
+  reportQuery: string,
+  out: string | undefined,
+): Promise<void> {
+  requireCloud(ctx);
+  const org = await resolveOrg(ctx);
+  // Dynamic, like the other client-core helpers the CLI uses, so the CLI
+  // still takes no new runtime dependency.
+  const { focusExportRequestForConfig, focusExportFilename } =
+    await import("@infrawrench/client-core");
+
+  const report = reportQuery.trim() ? await resolveReport(org.id, reportQuery.trim()) : null;
+  const base: FocusExportRequest = report
+    ? focusExportRequestForConfig(report.config)
+    : { ...resolveDateRange(range), filters: [] };
+  // Explicit range flags win over a report's own range: "this report, but for
+  // last quarter" is the reason to name a report and a range together.
+  const explicitRange = range.last || range.from || range.to ? resolveDateRange(range) : null;
+
+  const where = await parseWhere(range.where);
+  const savedFilter = await resolveSavedFilterFlag(org.id, range.filter);
+  if (savedFilter && base.savedFilterId && savedFilter.id !== base.savedFilterId) {
+    throw new CliError(
+      `--filter: "${report?.name ?? ""}" already applies a saved filter, and a request carries one. ` +
+        "Use --where to narrow it further.",
+      2,
+    );
+  }
+  const chargeTypes = parseChargeTypes(range.chargeTypes);
+
+  const request: FocusExportRequest = {
+    ...base,
+    ...(explicitRange ?? {}),
+    filters: [...(base.filters ?? []), ...where],
+    ...(savedFilter ? { savedFilterId: savedFilter.id } : {}),
+    ...(chargeTypes.length > 0 ? { chargeTypes } : {}),
+  };
+
+  const csv = await orgFetchText(org.id, "/costs/focus-export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  // Header line excluded. Counts lines, so a tag value with an embedded
+  // newline would overcount; it only feeds the summary below.
+  const rowCount = Math.max(0, csv.split("\n").filter((line) => line !== "").length - 1);
+
+  if (ctx.flags.output === "json") {
+    printJson({
+      org: org.id,
+      report: report ? { id: report.id, name: report.name } : null,
+      request,
+      rowCount,
+      csv,
+    });
+    return;
+  }
+
+  const summary = `FOCUS 1.3 · ${rowCount.toLocaleString()} rows · ${request.from} → ${request.to}`;
+  if (out) {
+    writeFileSync(out, csv, "utf8");
+    printErr(`${c.green("✓")} ${c.bold(out)} ${c.dim(`· ${summary}`)}`);
+    return;
+  }
+
+  process.stdout.write(csv);
+  printErr(
+    c.dim(
+      process.stdout.isTTY
+        ? `${summary}. Redirect to a file, or pass --out ${focusExportFilename(request, report?.name ?? "")}.`
+        : summary,
+    ),
+  );
 }

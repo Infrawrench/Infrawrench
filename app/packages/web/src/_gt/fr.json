@@ -13701,5 +13701,28 @@
   "00fa02cbadbe92b2": "Quand plein",
   "a0c2fae6bc895b79": "Écriture seule. Laissez vide pour conserver la valeur actuelle ; Baseten ne la renvoie jamais.",
   "161b5caceb1480ae": "yes lorsque le nombre min. de réplicas est supérieur à 0 et que le déploiement n'a servi aucune requête en 7 jours. Défini uniquement lorsque la clé d'API peut lire l'utilisation facturée.",
-  "1e5ebe336e6884b7": "Les 75 plugins"
+  "1e5ebe336e6884b7": "Les 75 plugins",
+  "acb704e0f006f008": "Télécharger les lignes de ce rapport au format CSV FOCUS 1.3 : coût facturé et coût effectif, catégories de frais et de service, et étiquettes, une ligne par ressource et par jour",
+  "6ed906aeaa40cac7": "Préparation du CSV FOCUS…",
+  "e1f6d08e348d26bf": "Télécharger le CSV FOCUS",
+  "ae3653fbcd315f8c": "Impossible de télécharger le CSV FOCUS — {error}",
+  "c51b15497d25a808": "Disposition des colonnes",
+  "e0ba3f12b2b6fde1": {
+    "t": "h3",
+    "i": 1,
+    "c": "Colonnes FOCUS 1.3"
+  },
+  "967a8f80aa9854a2": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Chaque objet suit la FinOps Open Cost and Usage Specification 1.3 : une ligne par compte, service, région, ressource, ensemble d'étiquettes, type de frais et engagement par jour, avec le coût facturé (trésorerie) et le coût effectif (amorti) côte à côte, les catégories de frais et de service FOCUS, et toutes les étiquettes dans une seule colonne JSON. Les compléments Infrawrench, comme la quantité d'utilisation et le filigrane de collecte, viennent en dernier, préfixés par ",
+      {
+        "t": "code",
+        "i": 2,
+        "c": "x_"
+      },
+      ". Les filtres et types de frais de l'export s'appliquent toujours."
+    ]
+  }
 }
