@@ -4,7 +4,7 @@ export const JobResourceType = rt({
   name: "Job",
   pinnable: false,
   id: "k8s-job",
-  description: "A Kubernetes Job — runs a pod to completion",
+  description: "A Kubernetes Job that runs a pod to completion",
   fields: [
     f("name", "Name"),
     f("namespace", "Namespace"),

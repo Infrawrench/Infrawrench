@@ -16,7 +16,7 @@ const DependencyGraphNode = strict({
 
 const DependencyGraphEdge = strict({
   consumerResourceId: ResourceId.openapi({
-    description: "The resource holding the reference — it depends on the provider.",
+    description: "The resource holding the reference; it depends on the provider.",
   }),
   consumerFieldKey: z.string().openapi({
     description:
@@ -26,7 +26,7 @@ const DependencyGraphEdge = strict({
   providerResourceId: ResourceId.openapi({ description: "The resource being depended on." }),
   providerOutputKey: z.string().openapi({
     description:
-      "The provider output or identity the reference reads — an output key for output " +
+      "The provider output or identity the reference reads; an output key for output " +
       'references, the matched identity ("externalId", "name", "endpoint"…) for inferred edges.',
   }),
   kind: z
@@ -70,7 +70,7 @@ export function registerDependencyGraphPaths(ctx: BuildContext) {
       query: strict({
         resourceId: ResourceId.optional().openapi({
           description:
-            "Narrow the graph to this resource's direct neighbourhood — only edges with it at " +
+            "Narrow the graph to this resource's direct neighbourhood; only edges with it at " +
             "one end, and only the nodes those edges touch. Omit for the whole org.",
         }),
       }),

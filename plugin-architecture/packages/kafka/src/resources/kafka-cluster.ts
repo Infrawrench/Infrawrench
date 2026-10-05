@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const KafkaClusterResourceType = rt({
   name: "Kafka Cluster",
   id: "kafka-cluster",
-  description: "An Apache Kafka cluster — browse topics and consumer groups",
+  description: "An Apache Kafka cluster. Browse topics and consumer groups.",
   fields: [
     f("name", "Display Name"),
     f("connectionString", "Connection URL", {

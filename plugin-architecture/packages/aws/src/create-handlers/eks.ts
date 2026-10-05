@@ -142,7 +142,7 @@ async function assertNodeRoleTrustsEc2(rctx: AwsCreateContext, nodeRoleArn: stri
     throw new Error(
       `Node Role "${roleName}" is not assumable by EC2 (ec2.amazonaws.com is missing from its ` +
         "trust policy), so the managed node group would fail to create after the control plane " +
-        "becomes ACTIVE — leaving a cluster with zero nodes. Pick an EC2-trusted role or use " +
+        "becomes ACTIVE, leaving a cluster with zero nodes. Pick an EC2-trusted role or use " +
         "+ Generate role to mint one with the standard EKS worker policies.",
     );
   }
@@ -298,7 +298,7 @@ function provisionEksNodeGroupInBackground(
         const status = String(detail.cluster["status"] ?? "");
         if (status === "ACTIVE") break;
         if (status === "FAILED") {
-          console.error(`[eks] cluster ${req.name} reached FAILED — not creating node group`);
+          console.error(`[eks] cluster ${req.name} reached FAILED, not creating node group`);
           return;
         }
       } catch (e) {

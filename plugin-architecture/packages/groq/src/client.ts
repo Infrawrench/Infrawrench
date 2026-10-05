@@ -567,7 +567,7 @@ export class GroqClient implements PluginClient {
           description:
             fileOptions.length > 0
               ? "The uploaded LoRA adapter archive to register."
-              : "No files uploaded yet — upload the adapter archive to Groq first.",
+              : "No files uploaded yet. Upload the adapter archive to Groq first.",
         },
         {
           key: "baseModel",

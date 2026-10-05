@@ -132,7 +132,7 @@ export function pemToPkcs8(pem: string): Uint8Array {
   const text = pem.replace(/\\n/g, "\n").trim();
   if (/ENCRYPTED/.test(text) || /Proc-Type:\s*4,ENCRYPTED/.test(text)) {
     throw new OciKeyError(
-      "The private key is protected by a passphrase. Export an unencrypted copy with `openssl rsa -in key.pem -out key-unencrypted.pem` (or generate the API key in the OCI Console, which downloads an unencrypted key) and paste that instead.",
+      "The private key is passphrase-protected. Export an unencrypted copy with `openssl rsa -in key.pem -out key-unencrypted.pem` and paste that instead.",
     );
   }
   const match = /-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/.exec(text);

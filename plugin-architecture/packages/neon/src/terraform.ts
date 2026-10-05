@@ -139,7 +139,7 @@ export const neonTerraformExport: TerraformExportCapability = {
             attributes,
             importId: `${projectId}/${branchId}/${name}`,
             comments: [
-              "Role passwords are not exported — rotate credentials after import if needed.",
+              "Role passwords are not exported. Rotate credentials after import if needed.",
             ],
           },
         };

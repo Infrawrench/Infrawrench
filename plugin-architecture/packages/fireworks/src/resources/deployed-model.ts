@@ -4,7 +4,7 @@ export const DeployedModelResourceType = rt({
   name: "Deployed Model",
   id: "deployed-model",
   description:
-    "A model attached to a deployment — typically a LoRA add-on loaded onto a base-model deployment",
+    "A model attached to a deployment, typically a LoRA add-on on a base-model deployment",
   fields: [
     f("displayName", "Display Name"),
     f("deployedModelId", "Deployed Model ID"),

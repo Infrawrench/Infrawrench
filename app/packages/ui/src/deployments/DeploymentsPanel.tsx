@@ -681,7 +681,7 @@ function TriggersSection({
         <T>
           <p className="text-xs text-warning">
             A run reported no answer for{" "}
-            <Var>{selectKeys.map((k) => `select("${k}")`).join(", ")}</Var>. Fill those in above — a
+            <Var>{selectKeys.map((k) => `select("${k}")`).join(", ")}</Var>. Fill those in above; a
             triggered deploy cannot ask.
           </p>
         </T>
@@ -689,10 +689,8 @@ function TriggersSection({
 
       <T>
         <p className="text-xs text-on-surface-faint">
-          A triggered deploy runs unattended, so every <code>select(…)</code> the Infrafile reaches
-          must be answered here; an unanswered key fails the run instead of prompting. Adding a
-          trigger does not deploy the current commit — the watcher records where the branch is now
-          and deploys on the <em>next</em> push to it.
+          Triggered deploys run unattended: answer every <code>select(…)</code> here or the run
+          fails. Adding a trigger doesn&apos;t deploy now; it deploys on the <em>next</em> push.
         </p>
       </T>
 

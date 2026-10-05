@@ -10,7 +10,7 @@ export const RoleResourceType = rt({
   name: "Role",
   id: "role",
   description:
-    "An environment role — assignable to organization memberships and invitations by slug. The API has no delete; remove roles in the WorkOS dashboard.",
+    "An environment role, assignable to organization memberships and invitations by slug. The API has no delete; remove roles in the WorkOS dashboard.",
   fields: [
     f("slug", "Slug", { editable: false }),
     f("name", "Name", { required: false }),

@@ -278,7 +278,7 @@ app.post("/templates/:id/instantiate", async (c) => {
 
   if (typeof body["name"] !== "string") return c.json({ error: "name is required" }, 400);
   if (typeof body["ttlHours"] !== "number") {
-    return c.json({ error: "ttlHours is required — environments must expire" }, 400);
+    return c.json({ error: "ttlHours is required; environments must expire" }, 400);
   }
 
   try {

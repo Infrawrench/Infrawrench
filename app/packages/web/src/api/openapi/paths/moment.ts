@@ -56,7 +56,7 @@ const MomentEventLink = strict({
     description: "Parent id where the target needs one (workflow id for a run).",
   }),
   url: z.string().nullable().optional().openapi({
-    description: "Absolute external URL — a provider's incident page. Wins when present.",
+    description: "Absolute external URL; a provider's incident page. Wins when present.",
   }),
 }).openapi("MomentEventLink");
 
@@ -69,12 +69,12 @@ const MomentEvent = strict({
     description:
       "Fine-grained `<noun>.<verb>` kind, e.g. `change.created`, `incident.started`, " +
       "`workflow-run.failed`, `deployment.finished`, `freeze.started`, `drift-alert.sent`. " +
-      "Open set — render unknown kinds generically.",
+      "Open set: render unknown kinds generically.",
   }),
   timestamp: IsoDateTime,
   title: z.string().openapi({ description: "One-line headline." }),
   detail: z.string().nullable().optional().openapi({
-    description: "Optional second line — diff summary, actor, error text.",
+    description: "Optional second line; diff summary, actor, error text.",
   }),
   severity: z.enum(["info", "warning", "critical"]).openapi("MomentSeverity"),
   /** Plain strings, not the live plugin enums: history may reference a removed plugin. */
@@ -98,7 +98,7 @@ const MomentIncidentSpan = strict({
   url: z.string().nullable().optional(),
 }).openapi("MomentIncidentSpan", {
   description:
-    "A provider incident whose span overlaps the window — returned alongside the events so " +
+    "A provider incident whose span overlaps the window; returned alongside the events so " +
     'clients can badge events that fall inside it ("during DigitalOcean incident").',
 });
 
@@ -111,7 +111,7 @@ const MomentResponse = strict({
   }),
   generatedAt: IsoDateTime,
   feeds: z.array(MomentFeedStatus).openapi({
-    description: "One entry per feed, in canonical order — including omitted and errored feeds.",
+    description: "One entry per feed, in canonical order; including omitted and errored feeds.",
   }),
   events: z.array(MomentEvent).openapi({ description: "Chronological, oldest first." }),
   incidents: z.array(MomentIncidentSpan),
@@ -124,7 +124,7 @@ export function registerMomentPaths(ctx: BuildContext) {
     tags: ["Moment"],
     summary: "Everything that happened around a timestamp",
     description:
-      '"What changed around 03:14?" — one merged, chronological narrative of everything the ' +
+      '"What changed around 03:14?"; one merged, chronological narrative of everything the ' +
       "platform knows happened in a window: resource changes (including sleep/wake schedule " +
       "attribution), provider status incidents that started/resolved in or overlap the window, " +
       "cost anomalies, workflow runs, deployments, audit-log entries, change freezes, and the " +

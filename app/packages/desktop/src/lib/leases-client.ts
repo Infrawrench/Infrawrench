@@ -17,7 +17,7 @@ import { invoke } from "./invoke";
 export function createDesktopLeasesClient(): LeasesClient {
   const requireOrgId = (): string => {
     const orgId = useUIStore.getState().activeCloudOrgId;
-    if (!orgId) throw new Error("Resource leases require Infrawrench Cloud — sign in first.");
+    if (!orgId) throw new Error("Resource leases require Infrawrench Cloud: sign in first.");
     return orgId;
   };
   return {

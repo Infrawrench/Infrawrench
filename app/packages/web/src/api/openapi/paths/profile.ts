@@ -47,7 +47,7 @@ const OwnershipBlocker = strict({
 
 const AccountDeletionPreview = strict({
   organizationsToDelete: z.array(OrganizationRef).openapi({
-    description: "Deleted with the account — the caller is their only member.",
+    description: "Deleted with the account; the caller is their only member.",
   }),
   organizationsToLeave: z.array(OrganizationRef).openapi({
     description: "Survive; the caller's membership is removed.",
@@ -184,7 +184,7 @@ export function registerProfilePaths(ctx: BuildContext) {
     tags: ["Profile"],
     summary: "Mint a password reset link for the signed-in user",
     description:
-      "Returns a one-time AuthKit-hosted reset URL rather than emailing it — the caller already holds a valid session for the account. Also the way to set a first password on an SSO or OAuth-only account.",
+      "Returns a one-time AuthKit-hosted reset URL rather than emailing it; the caller already holds a valid session for the account. Also the way to set a first password on an SSO or OAuth-only account.",
     responses: {
       200: {
         description: "Reset link",
@@ -264,7 +264,7 @@ export function registerProfilePaths(ctx: BuildContext) {
     tags: ["Profile"],
     summary: "List enrolled authentication factors",
     description:
-      "Includes factors whose enrolment was never confirmed — WorkOS does not expose a verified flag.",
+      "Includes factors whose enrolment was never confirmed; WorkOS does not expose a verified flag.",
     responses: {
       200: {
         description: "Factors",
@@ -366,7 +366,7 @@ export function registerProfilePaths(ctx: BuildContext) {
     path: "/api/profile/sessions/{sessionId}",
     tags: ["Profile"],
     summary: "Revoke one session",
-    description: "Refuses the session making the request — use sign-out for that.",
+    description: "Refuses the session making the request, use sign-out for that.",
     request: { params: strict({ sessionId: z.string() }) },
     responses: {
       200: { description: "Revoked", content: { "application/json": { schema: Ok } } },

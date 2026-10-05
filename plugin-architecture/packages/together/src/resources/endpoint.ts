@@ -5,7 +5,7 @@ export const EndpointResourceType = rt({
   id: "endpoint",
   plural: "Dedicated Endpoints",
   description:
-    "A dedicated inference endpoint — a model pinned to reserved GPU hardware with its own autoscaling window",
+    "A dedicated inference endpoint: a model on reserved GPU hardware with its own autoscaling",
   fields: [
     f("displayName", "Display Name"),
     f("endpointId", "Endpoint ID"),

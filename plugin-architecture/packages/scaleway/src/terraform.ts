@@ -97,7 +97,7 @@ export const scalewayTerraformExport: TerraformExportCapability = {
         const attached = fieldString(resource, "attachedInstanceId");
         if (attached) {
           comments.push(
-            `Attached to instance ${zone}/${attached} — add scaleway_instance_server`,
+            `Attached to instance ${zone}/${attached}; add scaleway_instance_server`,
             "additional_volume_ids or a separate attachment resource.",
           );
         }
@@ -148,7 +148,7 @@ export const scalewayTerraformExport: TerraformExportCapability = {
             importId: resource.externalId,
             comments: [
               "Initial user/password are required by the provider but not stored",
-              "by Infrawrench — set var.scaleway_rdb_user / var.scaleway_rdb_password.",
+              "by Infrawrench; set var.scaleway_rdb_user / var.scaleway_rdb_password.",
             ],
           },
           variables: [
@@ -175,7 +175,7 @@ export const scalewayTerraformExport: TerraformExportCapability = {
         const region = fieldString(resource, "region");
         if (region) attributes["region"] = tf.str(region);
         const comments = [
-          "Node pools are separate scaleway_k8s_pool resources — recreate pools",
+          "Node pools are separate scaleway_k8s_pool resources; recreate pools",
           "from nodeType/nodeCount/diskSizeGb fields after importing the cluster.",
         ];
         return {

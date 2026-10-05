@@ -9,7 +9,7 @@ export const OrganizationMembershipResourceType = rt({
   id: "organization-membership",
   plural: "Memberships",
   description:
-    "An organization membership — the link between a user and an organization, carrying the user's role. Can be deactivated and reactivated without losing role assignments.",
+    "A user's membership in an organization, with their role. Can be deactivated and reactivated without losing role assignments.",
   fields: [
     f("userEmail", "User", { required: false, editable: false }),
     f("userId", "User ID", { required: false, editable: false }),

@@ -46,7 +46,7 @@ export function applyReservedIpDetail(detail: DetailViewSchema, resource: Resour
           kind: "text",
           variant: "muted",
           content:
-            "DigitalOcean is still working on this address (locked). Assign and unassign are unavailable until the pending action finishes — refresh in a moment.",
+            "This address is locked while DigitalOcean finishes a pending action. Refresh in a moment.",
         },
       ],
     });
@@ -74,7 +74,7 @@ export function applyReservedIpDetail(detail: DetailViewSchema, resource: Resour
                 required: true,
                 options: droplets,
                 ...(droplets[0] ? { defaultValue: droplets[0].id } : {}),
-                description: `Only Droplets in ${region} are listed — DigitalOcean rejects a cross-region assignment.`,
+                description: `Only Droplets in ${region} are listed; cross-region assignment is rejected.`,
               },
             ],
             submitLabel: "Assign",
@@ -83,7 +83,7 @@ export function applyReservedIpDetail(detail: DetailViewSchema, resource: Resour
             type: "prompt-nosql-command",
             command: "reserved-ip-assign",
             title: "Assign reserved IP",
-            description: `No other Droplet is available in ${region}. Reserved IPs can only be assigned to a Droplet in the region they are reserved to — create one there first.`,
+            description: `No other Droplet in ${region}. Reserved IPs can only be assigned within their region; create one there first.`,
             descriptionVariant: "error",
             blocked: true,
             fields: [],
@@ -127,7 +127,7 @@ export function applyReservedIpDetail(detail: DetailViewSchema, resource: Resour
               kind: "text" as const,
               variant: "muted" as const,
               content:
-                "DigitalOcean charges $5.00/month ($0.01/hour) for a reserved IPv4 that is reserved but not assigned to a Droplet. Assign it or delete it to stop the charge.",
+                "A reserved IPv4 not assigned to a Droplet costs $5.00/month ($0.01/hour). Assign or delete it to stop the charge.",
             },
           ]),
     ],

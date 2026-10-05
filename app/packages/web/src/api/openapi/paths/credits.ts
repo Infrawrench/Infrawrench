@@ -11,12 +11,12 @@ export function registerCreditPaths(ctx: BuildContext) {
     pluginId: enums.PluginId,
     capabilityLabel: z
       .string()
-      .describe('The provider\'s own word for this pot — "Credits", "Balance".'),
+      .describe('The provider\'s own word for this pot, "Credits", "Balance".'),
     topUpUrl: z.string().nullable(),
     potKey: z
       .string()
       .describe(
-        "Stable identity for this pot within the account — a currency code, a project id — so " +
+        "Stable identity for this pot within the account (a currency code, a project id) so " +
           "successive readings line up into a series.",
       ),
     label: z.string(),
@@ -32,7 +32,7 @@ export function registerCreditPaths(ctx: BuildContext) {
       .nullable()
       .describe(
         "Spend per day over the observed span. **Null means there is not enough history to " +
-          "say** — never 0, which would read as 'nothing is being spent'.",
+          "say**: never 0, which would read as 'nothing is being spent'.",
       ),
     burnSpanDays: z.number(),
     observations: z.number().int(),
@@ -41,7 +41,7 @@ export function registerCreditPaths(ctx: BuildContext) {
       .int()
       .describe(
         "Increases seen between consecutive readings. A top-up is recorded, never netted off " +
-          "the burn — subtracting the endpoints of a window containing one reports a negative " +
+          "the burn: subtracting the endpoints of a window containing one reports a negative " +
           "burn and an infinite runway.",
       ),
     runwayDays: z.number().nullable(),
@@ -71,7 +71,7 @@ export function registerCreditPaths(ctx: BuildContext) {
     failures: z.array(CreditPollFailure),
     pendingAccountIds: z
       .array(Uuid)
-      .describe("Credit-capable accounts never yet collected — named rather than omitted."),
+      .describe("Credit-capable accounts never yet collected, named rather than omitted."),
     burnWindowDays: z.number().int(),
   }).openapi("CreditBurndown");
 
@@ -83,7 +83,7 @@ export function registerCreditPaths(ctx: BuildContext) {
     description:
       "Every prepaid pot the organization holds, most urgent first. A provider that bills in " +
       "arrears sends an invoice you can argue with; a prepaid pot that empties simply stops " +
-      "answering — so this is an availability number as much as a finance one.\n\n" +
+      "answering: so this is an availability number as much as a finance one.\n\n" +
       "The burn rate is measured from the server's own series of readings rather than reported " +
       "by the provider, and it is the sum of the **decreases** between consecutive readings: a " +
       "top-up inside the window is recorded separately, never netted off. The runway is bounded " +

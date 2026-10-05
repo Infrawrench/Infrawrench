@@ -269,7 +269,7 @@ export function githubPolicyTemplate(capabilityIds: string[]): PolicyTemplate {
     language: "text",
     document: lines.join("\n"),
     instructions:
-      "Create the token under Settings, Developer settings, Personal access tokens. Fine-grained tokens cannot reach enterprise endpoints, so enterprise accounts need a classic token. The token's owner must be an organization owner or billing manager (enterprise owner or billing manager for an enterprise).",
+      "Create the token under Settings, Developer settings, Personal access tokens. Enterprise accounts need a classic token, as fine-grained tokens cannot reach enterprise endpoints. The owner must be an organization (or enterprise) owner or billing manager.",
     helpLink: {
       label: "Create a fine-grained token",
       url: "https://github.com/settings/personal-access-tokens/new",

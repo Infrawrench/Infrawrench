@@ -70,7 +70,7 @@ export const ElastiCacheClusterResourceType = rt({
         fieldsEmpty: ["endpoint"],
         title: "Cluster endpoint is not reachable from this host.",
         suggestions: [
-          "ElastiCache clusters are VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "ElastiCache clusters are VPC-only. Connect from inside the VPC or via an SSH tunnel.",
           "Use an EC2 bastion in the same VPC.",
         ],
       },
@@ -84,7 +84,7 @@ export const ElastiCacheClusterResourceType = rt({
         fieldsEmpty: ["endpoint"],
         title: "Cluster endpoint is not reachable from this host.",
         suggestions: [
-          "ElastiCache clusters are VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "ElastiCache clusters are VPC-only. Connect from inside the VPC or via an SSH tunnel.",
           "Use an EC2 bastion in the same VPC.",
         ],
       },

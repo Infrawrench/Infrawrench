@@ -27,7 +27,7 @@ const CALLBACK_HTML = `<!doctype html><meta charset="utf-8"><title>Infrawrench</
 export async function cmdLogin(ctx: CliContext): Promise<void> {
   if (ctx.guiRunning) {
     throw new CliError(
-      "The Infrawrench desktop app is running — sign in from the app instead; the CLI shares its session.",
+      "The Infrawrench desktop app is running. Sign in from the app instead; the CLI shares its session.",
     );
   }
   const status = await getAuthStatus();
@@ -96,7 +96,7 @@ export async function cmdLogin(ctx: CliContext): Promise<void> {
 export async function cmdLogout(ctx: CliContext): Promise<void> {
   if (ctx.guiRunning) {
     throw new CliError(
-      "The Infrawrench desktop app is running — sign out from the app instead (the CLI shares its session).",
+      "The Infrawrench desktop app is running. Sign out from the app instead (the CLI shares its session).",
     );
   }
   const status = await getAuthStatus();

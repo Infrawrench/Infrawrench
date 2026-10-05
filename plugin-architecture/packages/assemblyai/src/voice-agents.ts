@@ -936,7 +936,7 @@ export class VoiceAgentSurface {
           kind: "text",
           variant: "muted",
           content:
-            "Name, voice, greeting and system prompt are editable here. Tools, a custom LLM and pre-connect requests are kept as they are on every edit; manage those through the API. Deleting an agent ends nothing already in progress, but new sessions can no longer use it.",
+            "Name, voice, greeting and system prompt are editable here. Tools, a custom LLM and pre-connect requests are preserved on edit; manage those through the API. Deleting an agent does not end sessions in progress.",
         },
       ],
     });

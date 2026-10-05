@@ -17,7 +17,7 @@ import { ok, err, type ToolDefinition } from "./types";
 const SIDECAR_RETRY_HINT =
   "If this is a managed-database provider (Neon, RDS, Cloud SQL, DO managed databases, …), retry with " +
   "`pluginId` set to the SQL sidecar plugin (e.g. 'postgres', 'mysql') and `parentResourceId` set to the " +
-  "database resource id — see list_resource_sidecars for what the resource exposes.";
+  "database resource id; see list_resource_sidecars for what the resource exposes.";
 
 const NO_SQL_DRIVER_HINT = `No SQL driver available for this account. ${SIDECAR_RETRY_HINT}`;
 
@@ -625,7 +625,7 @@ export function connectionTools(): ToolDefinition[] {
       name: "access_secret_version",
       title: "Access secret version (reveal)",
       description:
-        "Return the plaintext value of a specific secret version. Audit-logged as a reveal — handle with care, do NOT echo back the value verbatim in chat unless the user asks.",
+        "Return the plaintext value of a specific secret version. Audit-logged as a reveal; handle with care, do NOT echo back the value verbatim in chat unless the user asks.",
       inputSchema: {
         pluginId: z.string(),
         accountId: z.string(),

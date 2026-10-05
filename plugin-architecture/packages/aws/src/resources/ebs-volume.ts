@@ -45,7 +45,7 @@ export const EBSVolumeResourceType = rt({
       category: "encryption",
       conditions: [{ fieldKey: "encrypted", when: "falsy" }],
       reason:
-        "The volume is not encrypted at rest, and snapshots taken from it inherit that — encryption can only be chosen when the volume is created.",
+        "The volume is not encrypted at rest, and snapshots taken from it inherit that. Encryption can only be set at creation.",
     },
   ],
 });

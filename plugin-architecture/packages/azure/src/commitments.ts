@@ -188,7 +188,7 @@ export function mapAzureReservation(reservation: AzureReservation): CommitmentRe
   return {
     id,
     kind: "reservation",
-    description: parts.join(" — "),
+    description: parts.join(": "),
     ...(props.appliedScopeType ? { scope: props.appliedScopeType } : {}),
     ...(reservation.location ? { region: reservation.location } : {}),
     startDate,

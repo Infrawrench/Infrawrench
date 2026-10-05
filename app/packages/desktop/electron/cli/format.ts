@@ -387,7 +387,7 @@ export function parseUnitCostModeFlag(raw: string | undefined): CliUnitCostMode 
     "raw-metric": "raw_metric",
   };
   const mode = map[raw.trim().toLowerCase()];
-  if (!mode) throw new Error(`--mode must be one of unit, margin, usage, raw — got "${raw}".`);
+  if (!mode) throw new Error(`--mode must be one of unit, margin, usage, raw (got "${raw}").`);
   return mode;
 }
 
@@ -406,7 +406,7 @@ export function parseUnitCostScaleFlag(raw: string | undefined): number | null {
   };
   const scale = map[raw.trim().toLowerCase()];
   if (scale === undefined)
-    throw new Error(`--scale must be one of 1, 100, 1k, 1m, 1b — got "${raw}".`);
+    throw new Error(`--scale must be one of 1, 100, 1k, 1m, 1b (got "${raw}").`);
   return scale;
 }
 
@@ -420,7 +420,7 @@ export function parseUnitCostLabelFlag(raw: string): {
   values: string[];
 } {
   const match = /^\s*([^=!\s]+)\s*(!=|=)\s*(.+)$/.exec(raw);
-  if (!match) throw new Error(`--label must look like key=value or key!=value — got "${raw}".`);
+  if (!match) throw new Error(`--label must look like key=value or key!=value, got "${raw}".`);
   const values = match[3]!
     .split(",")
     .map((v) => v.trim())

@@ -135,9 +135,8 @@ function SharedConsoleJoinPage() {
             <SessionSummary share={preview.share} participants={[]} />
             <T>
               <p className="text-xs text-on-surface-tertiary leading-relaxed">
-                You will see everything happening in this session live. You start as an{" "}
-                <strong>observer</strong> — your keystrokes are dropped by the server, not merely
-                hidden here —{" "}
+                You will see this session live. You start as an <strong>observer</strong> (the
+                server drops your keystrokes){" "}
                 <Var>
                   {preview.share.allowHandover
                     ? gt("and the person sharing can hand you the keyboard.")

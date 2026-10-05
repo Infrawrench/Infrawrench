@@ -144,7 +144,7 @@ export async function fetchDropletInsightsLogs(
       ? `${lines.join("\n")}\n`
       : view === "errors"
         ? `No error logs from this Droplet in the last ${DROPLET_LOG_LOOKBACK}.\n`
-        : `No Insights logs from this Droplet in the last ${DROPLET_LOG_LOOKBACK}. Logs are collected by the DigitalOcean Observability agent; install it on the Droplet to see them here.\n`;
+        : `No Insights logs from this Droplet in the last ${DROPLET_LOG_LOOKBACK}. Install the DigitalOcean Observability agent on the Droplet to collect them.\n`;
   return { text, containers, activeContainer: view };
 }
 

@@ -22,7 +22,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "Admin API Key",
       description:
-        "A team API key created by a team admin in the Cursor dashboard under Settings, API Keys. Starts with crsr_. A read-only key lists everything and collects costs; editing spend limits, groups and blocklists needs a key with the admin scope. The Admin API is only available to Teams and Enterprise plans.",
+        "A team API key created by a team admin in the Cursor dashboard under Settings, API Keys. Starts with crsr_. A read-only key lists everything and collects costs; editing needs the admin scope. Teams and Enterprise plans only.",
       sensitive: true,
       placeholder: "crsr_...",
       helpLink: { label: "Create an Admin API key", url: ADMIN_API_DOCS },

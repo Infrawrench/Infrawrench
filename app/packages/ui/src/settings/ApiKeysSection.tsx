@@ -329,7 +329,7 @@ function CreateApiKeyModal({
             </div>
             <p className="mt-2 text-[11px] text-on-surface-faint">
               {gt(
-                "Pick the narrowest set that does the job. Whatever you select, a key can never exceed the role of the person who created it, and API keys can never manage keys, billing, team membership or break-glass approvals.",
+                "Pick the narrowest set. A key never exceeds its creator's role, and can never manage keys, billing, team membership or break-glass approvals.",
               )}
             </p>
           </div>

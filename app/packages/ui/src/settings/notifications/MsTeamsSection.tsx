@@ -139,7 +139,7 @@ export function MsTeamsSection({ orgId, embedded = false }: { orgId: string; emb
         </ol>
         <p className="mt-2">
           {gt(
-            "The URL is a credential — anyone holding it can post to that channel. It's stored encrypted and never shown again after you add it.",
+            "The URL is a credential: anyone holding it can post to that channel. It's stored encrypted and never shown again.",
           )}
         </p>
       </details>

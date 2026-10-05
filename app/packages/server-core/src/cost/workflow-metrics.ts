@@ -71,7 +71,7 @@ export async function writeWorkflowMetricValues(opts: {
     // look like a collection failure rather than a spelling mistake.
     throw new WorkflowBusinessMetricError(
       `infra.businessMetrics.write: no business metric "${key}" in this organization. Create ` +
-        "it on the Costs panel first — the key is the slug shown next to its name.",
+        "it on the Costs panel first; the key is the slug shown next to its name.",
     );
   }
 

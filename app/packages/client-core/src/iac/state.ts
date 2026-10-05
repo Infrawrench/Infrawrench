@@ -260,7 +260,7 @@ function clampValue(value: unknown, where: string): { value: unknown; omitted: b
     if (measured.tooDeep) {
       throw new TerraformStateParseError(
         "too-deep",
-        `Attribute \`${where}\` nests more than ${IAC_STATE_LIMITS.maxAttributeDepth} levels deep. Real Terraform state does not nest that far — check the document is a state file and not something else.`,
+        `Attribute \`${where}\` nests more than ${IAC_STATE_LIMITS.maxAttributeDepth} levels deep. Real Terraform state does not nest that far. Check the document is a state file.`,
       );
     }
     if (measured.tooLarge) return { value: IAC_OMITTED, omitted: true };
@@ -604,7 +604,7 @@ export function parseTerraformStateDocument(input: string | unknown): ParsedTerr
       if (e instanceof RangeError) {
         throw new TerraformStateParseError(
           "too-deep",
-          "State document is nested too deeply to parse. Real Terraform state does not nest that far — check the document is a state file and not something else.",
+          "State document is nested too deeply to parse. Real Terraform state does not nest that far. Check the document is a state file.",
         );
       }
       throw new TerraformStateParseError("not-json", "State document is not valid JSON.");
@@ -641,7 +641,7 @@ export function parseTerraformStateDocument(input: string | unknown): ParsedTerr
     if (!isRecord(values)) {
       throw new TerraformStateParseError(
         "unknown-format",
-        "`terraform show -json` output has no `values` object. A plan file is not a state document — run `terraform show -json` with no arguments against the workspace.",
+        "`terraform show -json` output has no `values` object. A plan file is not a state document. Run `terraform show -json` with no arguments against the workspace.",
       );
     }
     const rootModule = values["root_module"];

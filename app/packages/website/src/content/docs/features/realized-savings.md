@@ -6,9 +6,9 @@ sidebar_order: 15
 
 Every savings finder in Infrawrench tells you what an action _would_ save: [orphans](./orphan-finder.md), [right-sizing](./right-sizing.md), [sleep schedules](./sleep-schedules.md) and the [commitments planner](./commitments.md). Realized savings is the other half: what the actions you took _did_ save, measured from billing. A projection is a promise; a realized figure is the receipt you show finance.
 
-Realized savings is a cloud feature. It lives at the bottom of the **Costs** panel on web and desktop (signed in to a cloud org), as a dashboard card, in the weekly digest, in the CLI and over MCP, and read-only on mobile.
+Realized savings is a cloud feature. It lives at the bottom of the **Savings** tab of the **Costs** panel on web and desktop (signed in to a cloud org), as a dashboard card, in the weekly digest, in the CLI and over MCP, and read-only on mobile.
 
-<insert [Costs panel scrolled to the Realized savings section: the realized vs projected tiles, the bar breakdown by month, and the list of actions with one flagged as falling short] here>
+<insert [Costs panel Savings tab showing the Realized savings section: the realized vs projected tiles, the bar breakdown by month, and the list of actions with one flagged as falling short] here>
 
 ## What gets recorded
 

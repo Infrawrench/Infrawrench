@@ -788,7 +788,7 @@ function SpendGraphCard({
         */}
         {adjustment && (
           <p className="text-[11px] text-warning mt-0.5">
-            {gt("Billing rules applied — collected spend {total}.", { total: adjustedRawTotal })}
+            {gt("Billing rules applied; collected spend {total}.", { total: adjustedRawTotal })}
             {adjustment.rules.length > 0
               ? gt(" In force: {rules}.", {
                   rules: adjustment.rules.map((r) => `${r.name} (${r.summary})`).join("; "),
@@ -833,7 +833,7 @@ function SpendGraphCard({
         )}
         {(mixedCurrency || periodNativeNote || conversionNote) && (
           <p className="text-[11px] text-on-surface-faint mt-0.5">
-            {mixedCurrency && gt("Mixed currencies — series are shown per currency. ")}
+            {mixedCurrency && gt("Mixed currencies, shown per currency. ")}
             {/*
               Sits with the other caveats, under the title, for the same reason
               they do: a total that folded three currencies together at rates

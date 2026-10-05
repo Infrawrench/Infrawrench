@@ -201,7 +201,7 @@ async function apiKeyFindings(
         kind: "api_key_wildcard_scope",
         severity: "high",
         title: `API key with unrestricted scope: ${label}`,
-        detail: `Held by ${owner} with the \`*\` scope, so it can do anything its owner can — including deleting resources and reading credentials.`,
+        detail: `Held by ${owner} with the \`*\` scope, so it can do anything its owner can, including deleting resources and reading credentials.`,
         recommendation:
           "Re-mint it with the specific scopes the integration needs. A key is bounded by its owner's role, but `*` means it inherits every widening of that role too.",
         facts: { owner, scopes: "*", lastUsedAt: key.lastUsedAt?.toISOString() ?? null },
@@ -218,7 +218,7 @@ async function apiKeyFindings(
           title: `API key never used: ${label}`,
           detail: `Created ${daysSince(key.createdAt, now)} days ago by ${owner} and has never authenticated.`,
           recommendation:
-            "Revoke it. A credential that has never been used is one nobody will notice the loss of — in either direction.",
+            "Revoke it. A credential that has never been used is one nobody will notice the loss of.",
           facts: {
             owner,
             createdDaysAgo: daysSince(key.createdAt, now),
@@ -263,7 +263,7 @@ async function apiKeyFindings(
           `In the last ${windowDays} days this key exercised ${exercised.length || "none"} of its ` +
           `write scopes. Unused: ${unused.join(", ")}.`,
         recommendation:
-          "Narrow the key to what it actually calls. Only write-shaped scopes are judged here — reads leave no audit trail, so nothing is concluded about them.",
+          "Narrow the key to what it actually calls. Only write-shaped scopes are judged here; reads leave no audit trail, so nothing is concluded about them.",
         facts: { owner, unusedScopes: unused.join(", "), windowDays },
       });
     }
@@ -484,7 +484,7 @@ async function memberPermissionFindings(
       title: `${name} has not used ${unused.length} of ${grantedWitnessed} write permissions ${roleName} grants`,
       detail:
         `Over the last ${windowDays} days: ${exercised.length} exercised, ` +
-        `${unused.length} never seen — ${unused.slice(0, 8).join(", ")}` +
+        `${unused.length} never seen: ${unused.slice(0, 8).join(", ")}` +
         `${unused.length > 8 ? `, and ${unused.length - 8} more` : ""}.`,
       recommendation:
         "Consider a narrower role, with break-glass access for the occasional exception. Only write-shaped permissions are judged: reads leave no audit trail, so nothing here says anything about what they can see.",

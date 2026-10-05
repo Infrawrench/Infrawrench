@@ -58,7 +58,7 @@ export async function cmdExport(ctx: CliContext, format: string | undefined): Pr
   const capability = loaded.plugin.terraformExport;
   if (!capability) {
     throw new CliError(
-      `The ${account.pluginId} plugin has no Terraform mapping yet — nothing to export.`,
+      `The ${account.pluginId} plugin has no Terraform mapping yet. Nothing to export.`,
     );
   }
 
@@ -99,7 +99,7 @@ export async function cmdExport(ctx: CliContext, format: string | undefined): Pr
     }
   }
   if (!outcome.hcl) {
-    printErr(c.yellow("Nothing to export — no resource in this account has a Terraform mapping."));
+    printErr(c.yellow("Nothing to export. No resource in this account has a Terraform mapping."));
     return;
   }
   printErr(

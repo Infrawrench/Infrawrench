@@ -797,7 +797,9 @@ export function buildAnomalyFeedbackInput(
   if (reasonFlag !== null) {
     reason = ANOMALY_FEEDBACK_REASONS.find((r) => r === reasonFlag);
     if (!reason) {
-      usage(`--reason must be one of ${ANOMALY_FEEDBACK_REASONS.join(", ")}, got "${reasonFlag}".`);
+      usage(
+        `--reason must be one of ${ANOMALY_FEEDBACK_REASONS.join(", ")} (got "${reasonFlag}").`,
+      );
     }
   }
 
@@ -814,7 +816,7 @@ export function buildAnomalyFeedbackInput(
     const recurrence = ANOMALY_RECURRENCES.find((r) => r === flags.recurrence);
     if (!recurrence) {
       usage(
-        `--recurrence must be one of ${ANOMALY_RECURRENCES.join(", ")}, got "${flags.recurrence}".`,
+        `--recurrence must be one of ${ANOMALY_RECURRENCES.join(", ")} (got "${flags.recurrence}").`,
       );
     }
     if (verdict !== "expected") {
@@ -864,7 +866,7 @@ export function resolvePrecisionMonths(months: number | undefined): number {
 export function parseLastDays(text: string): number {
   const match = /^(\d+)([dwm])$/.exec(text);
   if (!match) {
-    throw new CliError(`Invalid --last "${text}" — use forms like 7d, 30d, 12w, 3m`, 2);
+    throw new CliError(`Invalid --last "${text}": use forms like 7d, 30d, 12w, 3m`, 2);
   }
   const n = Number(match[1]);
   return n * { d: 1, w: 7, m: 30 }[match[2] as "d" | "w" | "m"]!;
@@ -897,7 +899,7 @@ export function resolveDayWindow(range: RangeFlags, defaultDays: number, max: nu
   if (days === null) return defaultDays;
   if (days > max) {
     throw new CliError(
-      `Window too large — the server accepts at most ${max} days, asked for ${days}.`,
+      `Window too large. The server accepts at most ${max} days, asked for ${days}.`,
       2,
     );
   }
@@ -910,7 +912,7 @@ const DURATION_RE = /^(\d+)([mhdw])$/;
 export function parseDuration(text: string): number {
   const match = DURATION_RE.exec(text);
   if (!match) {
-    throw new CliError(`Invalid duration "${text}" — use forms like 30m, 6h, 7d, 2w`, 2);
+    throw new CliError(`Invalid duration "${text}": use forms like 30m, 6h, 7d, 2w`, 2);
   }
   const n = Number(match[1]);
   const unit = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 7 * 86_400_000 }[match[2]!]!;

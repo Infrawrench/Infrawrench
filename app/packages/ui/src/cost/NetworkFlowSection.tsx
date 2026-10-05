@@ -63,8 +63,7 @@ function CoverageLine({ feed }: { feed: NetworkFlowFeed }) {
           <Var>
             {leader ? (
               <>
-                {" "}
-                {gt("— mostly")}{" "}
+                {gt(", mostly")}{" "}
                 <span className="font-medium">
                   {gtData(NETWORK_FLOW_SCOPE_LABELS[leader.scope])}{" "}
                   {leader.direction === "egress" ? gt("egress") : gt("ingress")}
@@ -223,7 +222,7 @@ function CollectionSwitch({
       </label>
       <p className="text-xs text-on-surface-muted">
         {gt(
-          "Runs one query a day against your provider's flow logs. Your provider bills those queries to your own cloud account by the gigabyte scanned.",
+          "Queries your flow logs once a day. Your provider bills those queries to your cloud account per GB scanned.",
         )}
       </p>
       {saveError && <p className="text-xs text-danger">{saveError}</p>}
@@ -250,7 +249,7 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
         <p className="text-sm text-on-surface-secondary">{gt("Flow collection is off.")}</p>
         <p className="text-xs text-on-surface-muted">
           {gt(
-            "Turning it on lets Infrawrench query your provider's flow logs once a day. Those queries are billed to your own cloud account by the gigabyte scanned, so nothing runs until an admin enables it in Settings.",
+            "Collection queries your flow logs daily, billed to your cloud account per GB scanned. An admin enables it in Settings.",
           )}
         </p>
       </div>
@@ -266,7 +265,7 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
         </p>
         <p className="text-xs text-on-surface-muted">
           {gt(
-            "Flow attribution is available for AWS accounts with VPC Flow Logs delivering to CloudWatch Logs in a custom record format. Other providers are not shown as zero here, because that would be a claim about their traffic rather than about our coverage.",
+            "Requires an AWS account with VPC Flow Logs delivered to CloudWatch Logs in a custom record format.",
           )}
         </p>
       </div>
@@ -306,9 +305,7 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
       ))}
       {failing.length === 0 && blocked.length === 0 && (
         <p className="text-xs text-on-surface-muted">
-          {gt(
-            "Collection runs once a day and only reads closed days, so the first flows appear within about 24 hours of enabling it.",
-          )}
+          {gt("Collection runs daily, so the first flows appear within about 24 hours.")}
         </p>
       )}
     </div>
@@ -367,13 +364,11 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
         <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Network costs")}</h2>
         <T>
           <p className="text-xs text-on-surface-muted mt-1">
-            Egress and cross-zone traffic by source and destination pair. Every figure is an{" "}
-            <strong>estimate</strong>: bytes come from flow logs
-            <Var>{sampled ? <> {gt("(which sample)")}</> : null}</Var> and are priced at published
-            list rates
-            <Var>{asOf ? <> {gt("as of {date}", { date: asOf })}</> : null}</Var>, with no free
-            tier, volume tier or negotiated discount applied. Use the ranking; it will not reconcile
-            to the invoice line.
+            Egress and cross-zone traffic by source and destination. <strong>Estimated</strong> from
+            flow logs
+            <Var>{sampled ? <> {gt("(which sample)")}</> : null}</Var> at list prices
+            <Var>{asOf ? <> {gt("as of {date}", { date: asOf })}</> : null}</Var>, so it won&rsquo;t
+            match your invoice.
           </p>
         </T>
       </div>
@@ -396,7 +391,7 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
 
           <div className="space-y-2">
             <h3 className="text-xs font-semibold text-on-surface-secondary">
-              {gt("Where it goes — by boundary")}
+              {gt("Where it goes, by boundary")}
             </h3>
             <ul className="border border-border rounded-xl divide-y divide-border overflow-hidden">
               {feed.scopes.map((summary) => (

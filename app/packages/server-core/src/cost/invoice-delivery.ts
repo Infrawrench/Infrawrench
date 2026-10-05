@@ -100,7 +100,7 @@ export function invoiceCsvFilename(invoice: ManagedInvoice): string {
  * for; the org name is added by the caller, which knows it.
  */
 export function invoiceEmailSubject(invoice: ManagedInvoice, orgName: string | null): string {
-  const who = orgName ? `${orgName} — ` : "";
+  const who = orgName ? `${orgName}: ` : "";
   return `${who}Invoice ${invoice.number ?? "(draft)"} · ${invoice.periodFrom} to ${invoice.periodTo}`;
 }
 
@@ -138,7 +138,7 @@ function bodyLines(
     text:
       `The attached ${invoiceCsvFilename(invoice)} carries the full derivation: what each ` +
       "cost centre collected, what the billing rules added, the exchange rate and the day it " +
-      "was read, and the invoiced figure — every column needed to check the arithmetic.",
+      "was read, and the invoiced figure: every column needed to check the arithmetic.",
     bold: false,
   });
   if (orgName) lines.push({ text: `Sent by ${orgName} via Infrawrench.`, bold: false });
@@ -206,8 +206,8 @@ export function classifyInvoiceDelivery(result: {
       delivered: 0,
       error: mailConfigured
         ? `None of the ${attempted} recipient(s) could be reached. See the server logs for the ` +
-          "per-address error, fix it, and send again — nothing was delivered, so nothing will " +
-          "be duplicated."
+          "per-address error, fix it, and send again. Nothing was delivered, so nothing is " +
+          "duplicated."
         : "This deployment has no mail provider configured (MAILGUN_API_KEY, MAILGUN_DOMAIN, " +
           "EMAIL_FROM), so nothing was sent. The invoice is still recorded as issued.",
     };
@@ -218,9 +218,8 @@ export function classifyInvoiceDelivery(result: {
       delivered: succeeded,
       error:
         `Delivered to ${succeeded} of ${attempted} recipients; the rest failed. Not retried ` +
-        "automatically — a retry would put a second copy of this bill in the inboxes that " +
-        "already have it. Fix the failing address and use “Send again” if the customer needs " +
-        "another copy.",
+        "automatically: that would put a second copy of this bill in the inboxes that already " +
+        "have it. Fix the failing address and use “Send again” if the customer needs another copy.",
     };
   }
   return {

@@ -111,9 +111,7 @@ export function DesktopCalendarPanel() {
         <h1 className="text-xl font-semibold mb-1">{gt("Calendar")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted">
-            The operations calendar is a cloud feature. Sign in to an organization to see its change
-            freezes, sleep windows, expiring certificates and leases, commitment terms, scheduled
-            workflow runs and incidents on one axis.
+            The operations calendar is a cloud feature. Sign in to an organization to use it.
           </p>
         </T>
       </div>

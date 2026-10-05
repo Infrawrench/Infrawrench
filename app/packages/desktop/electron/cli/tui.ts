@@ -225,7 +225,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
           state.status = "";
         } catch (e) {
           if (token !== resourceLoadToken) return;
-          state.status = `sync failed — showing cached: ${e instanceof Error ? e.message : String(e)}`;
+          state.status = `sync failed, showing cached: ${e instanceof Error ? e.message : String(e)}`;
         }
       }
     } catch (e) {
@@ -304,7 +304,7 @@ export async function runTui(ctx: CliContext): Promise<void> {
     const scope = activeScope();
     state.costs = null;
     if (scope.kind !== "org") {
-      state.status = "Costs are a cloud feature — switch to an organization (o).";
+      state.status = "Costs are a cloud feature. Switch to an organization (o).";
       render();
       return;
     }

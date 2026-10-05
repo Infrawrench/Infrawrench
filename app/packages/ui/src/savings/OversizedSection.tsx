@@ -42,9 +42,7 @@ export function describeResizeConfirm(r: OversizedResource): string {
     }),
     r.memoryMeasured && r.memoryP95 !== null
       ? t("p95 memory: {mem}%.", { mem: r.memoryP95 })
-      : t(
-          "Memory usage is not measured for this resource — confirm the smaller size's RAM fits before applying.",
-        ),
+      : t("Memory isn't measured here; check the smaller size has enough RAM."),
     r.monthlySaving !== null
       ? t("Estimated saving: {amount}/mo.", { amount: formatMoney(r.monthlySaving, r.currency) })
       : t("No price could be quoted for this change."),
@@ -143,8 +141,8 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
           <h2 className="text-sm font-semibold text-on-surface">{gt("Oversized")}</h2>
           <T>
             <p className="mt-1 text-xs text-on-surface-secondary">
-              Machines whose p95 utilisation over the last <Var>{data?.windowDays ?? 14}</Var> days
-              sits well under their size, with the smallest size that still leaves headroom.
+              Machines well under their size at p95 over the last{" "}
+              <Var>{data?.windowDays ?? 14}</Var> days, with the smallest size that still fits.
             </p>
           </T>
         </div>
@@ -159,7 +157,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't compute right-sizing —")} {error}{" "}
+          {gt("Couldn't compute right-sizing:")} {error}{" "}
           <button type="button" onClick={() => void refresh(true)} className="underline">
             {gt("Retry")}
           </button>
@@ -173,7 +171,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
       {data !== null && data.accounts.length === 0 && (
         <p className="text-sm text-on-surface-faint">
           {gt(
-            "Nothing looks oversized. A machine is flagged when two weeks of stored metrics put its p95 CPU (and memory, where measured) well under its size — so an empty list means your fleet fits, or the metrics to prove otherwise aren't collected yet (metrics are stored for resources pinned to a dashboard).",
+            "Nothing looks oversized. Only machines with stored metrics (pinned to a dashboard) are checked.",
           )}
         </p>
       )}
@@ -355,7 +353,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
       {data !== null && data.accounts.length > 0 && (
         <p className="text-xs text-on-surface-faint">
           {gt(
-            "Savings are quoted from each provider's live size catalog. Applying a resize goes through the normal resource update — change freezes and audit logging apply — and most providers require the machine to be stopped first (the row says so before you confirm).",
+            "Savings use each provider's live size catalog. Resizes respect change freezes and are audited; most providers stop the machine first, and the row says so before you confirm.",
           )}
         </p>
       )}

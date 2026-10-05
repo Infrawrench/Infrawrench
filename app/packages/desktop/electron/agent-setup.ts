@@ -113,7 +113,7 @@ export async function reconcileAgentBranch({
     throw new Error(`The agent workspace ~/${workspaceName} is not a git repository.`);
   }
   if (marker === "NO_BRANCH") {
-    return { message: `The agent hasn't created ${branchName} yet — nothing to reconcile.` };
+    return { message: `The agent hasn't created ${branchName} yet. Nothing to reconcile.` };
   }
   if (marker === "UP_TO_DATE") {
     return { message: `${branchName} is already up to date locally.` };
@@ -155,7 +155,7 @@ export async function reconcileAgentBranch({
     const message = error instanceof Error ? error.message : String(error);
     if (/ff-only|not possible to fast-forward/i.test(message)) {
       throw new Error(
-        `${branchName} is checked out locally and has diverged from the agent's copy — commit or stash local changes, then merge FETCH_HEAD manually.`,
+        `${branchName} is checked out locally and has diverged from the agent's copy. Commit or stash local changes, then merge FETCH_HEAD manually.`,
       );
     }
     throw error;

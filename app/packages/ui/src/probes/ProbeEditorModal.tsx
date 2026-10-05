@@ -211,7 +211,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
                 </option>
                 {(suggestions ?? []).map((s) => (
                   <option key={s.url} value={s.url}>
-                    {s.displayName} — {s.url}
+                    {s.displayName} ({s.url})
                   </option>
                 ))}
                 <option value={CUSTOM}>{gt("Custom URL…")}</option>

@@ -258,7 +258,7 @@ function finalize<T>(
   if (throwOnError && (status < 200 || status >= 300)) {
     const snippet = raw.length > 400 ? `${raw.slice(0, 400)}…` : raw;
     throw new Error(
-      `OpenSearch ${method} ${url.pathname} failed: ${status}${snippet ? ` — ${snippet}` : ""}`,
+      `OpenSearch ${method} ${url.pathname} failed: ${status}${snippet ? `: ${snippet}` : ""}`,
     );
   }
   return { status, body: parsed as T, raw };

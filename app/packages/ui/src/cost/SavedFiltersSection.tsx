@@ -74,7 +74,7 @@ export function SavedFiltersSection({ client }: { client: CostsClient }) {
           <h2 className="text-sm font-semibold text-on-surface">{gt("Saved filters")}</h2>
           <p className="text-xs text-on-surface-faint mt-0.5">
             {gt(
-              "A named filter that graphs, reports and budgets apply by reference — edit it once and everything using it changes.",
+              "Named filters used by graphs, reports and budgets. Editing one updates everything using it.",
             )}
           </p>
         </div>
@@ -91,7 +91,7 @@ export function SavedFiltersSection({ client }: { client: CostsClient }) {
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn’t load saved filters — {error}", { error })}{" "}
+          {gt("Couldn’t load saved filters: {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             {gt("Retry")}
           </button>
@@ -233,7 +233,7 @@ function SavedFilterEditModal({
       return;
     }
     if (input.filters.length === 0) {
-      setError(gt("Add at least one filter row — an empty filter matches everything."));
+      setError(gt("Add at least one filter row; an empty filter matches everything."));
       return;
     }
     setSaving(true);
@@ -259,12 +259,9 @@ function SavedFilterEditModal({
         </h2>
         {filter && referents !== null && referents.length > 0 && (
           <p className="text-xs text-warning mb-3">
-            {gt(
-              "Saving changes {referents} — everything referencing this filter runs the new rows on its next query.",
-              {
-                referents: describeSavedCostFilterReferents(referents),
-              },
-            )}
+            {gt("Saving changes {referents}.", {
+              referents: describeSavedCostFilterReferents(referents),
+            })}
           </p>
         )}
 

@@ -889,7 +889,7 @@ function assertSupersedable(original: InvoiceRow | null): asserts original is In
   if (!original) throw new InvoiceError("The invoice being superseded was not found", 404);
   if (original.status !== "void") {
     throw new InvoiceError(
-      "Only a void invoice can be superseded. Void the original first — a correction that " +
+      "Only a void invoice can be superseded. Void the original first; a correction that " +
         "leaves the original standing means the customer holds two live invoices for one period.",
       409,
     );
@@ -1108,7 +1108,7 @@ export async function approveInvoice(
   if (!managedInvoiceReconciles(figures.totals)) {
     throw new InvoiceError(
       "This invoice does not reconcile: the collected amounts plus the adjustments do not equal " +
-        "the invoiced figure. Nothing has been approved. Please report this — an invoice that " +
+        "the invoiced figure. Nothing has been approved. Please report this; an invoice that " +
         "cannot be explained must not be issued.",
       409,
     );
@@ -1145,7 +1145,7 @@ export async function approveInvoice(
         const changed = figureInputsChanged(inputs, figureInputsOf(current, currentAccount));
         if (changed.length > 0) {
           throw new InvoiceError(
-            `This invoice changed while it was being approved — ${changed.join(", ")} ` +
+            `This invoice changed while it was being approved: ${changed.join(", ")} ` +
               "changed after these figures were computed, so they no longer describe it. " +
               "Nothing has been approved. Re-open the draft, check the numbers, and approve again.",
             409,
@@ -1265,7 +1265,7 @@ export async function sendInvoice(
     .returning();
   if (!claimed) {
     throw new InvoiceError(
-      "This invoice is no longer awaiting sending — it was voided, or another send is already " +
+      "This invoice is no longer awaiting sending; it was voided, or another send is already " +
         "in flight. Reload it to see where it stands.",
       409,
     );
@@ -1314,9 +1314,9 @@ export async function sendInvoice(
     .where(eq(managedInvoices.id, id))
     .returning();
 
-  const line = `[invoice-delivery] ${invoice.number ?? id} attempt ${attempt}: ${outcome.status} — ${outcome.delivered}/${outcome.recipients.length} recipient(s)`;
+  const line = `[invoice-delivery] ${invoice.number ?? id} attempt ${attempt}: ${outcome.status}: ${outcome.delivered}/${outcome.recipients.length} recipient(s)`;
   if (outcome.status === "succeeded") console.log(line);
-  else console.warn(`${line}${outcome.error ? ` — ${outcome.error}` : ""}`);
+  else console.warn(`${line}${outcome.error ? `: ${outcome.error}` : ""}`);
 
   // The response carries the outcome rather than throwing on a failed delivery:
   // the release happened and is recorded either way, and a caller that got a
@@ -1446,7 +1446,7 @@ export async function voidInvoice(
     );
   } catch (e) {
     throw new InvoiceError(
-      `${invoice.number ?? "The invoice"} was voided and its corrective draft was raised — both ` +
+      `${invoice.number ?? "The invoice"} was voided and its corrective draft was raised; both ` +
         "are saved and linked. Its figures could not be computed just now " +
         `(${e instanceof Error ? e.message : String(e)}); open the draft to see them.`,
       409,

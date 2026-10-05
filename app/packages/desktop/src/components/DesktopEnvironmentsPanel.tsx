@@ -29,7 +29,7 @@ export function DesktopEnvironmentsPanel({ openResource }: DesktopEnvironmentsPa
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        {gt("Ephemeral environments require cloud mode — sign in to sync.")}
+        {gt("Ephemeral environments require cloud mode: sign in to sync.")}
       </div>
     );
   }

@@ -4,7 +4,7 @@ export const InferenceBatchResourceType = rt({
   name: "Batch Inference Job",
   id: "inference-batch",
   description:
-    "A DigitalOcean Batch Inference job — large asynchronous workloads against OpenAI or Anthropic provider APIs. Results return within 24 hours at significantly lower cost than real-time inference.",
+    "A DigitalOcean Batch Inference job: large asynchronous workloads against OpenAI or Anthropic APIs. Results return within 24 hours at lower cost.",
   fields: [
     f("provider", "Provider", { kind: "enum", enumValues: ["openai", "anthropic"] }),
     f("endpoint", "Endpoint", {

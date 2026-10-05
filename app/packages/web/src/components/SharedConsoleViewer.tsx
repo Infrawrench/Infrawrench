@@ -305,9 +305,7 @@ export function SharedConsoleViewer({
           that is dropping the keystrokes, not this page. */}
       {!youAreDriver && !detached && (
         <div className="shrink-0 px-3 py-1 text-[11px] text-on-surface-tertiary bg-surface/60 border-b border-border/40">
-          {gt(
-            "Read-only — your keystrokes are dropped by the server, and the terminal below is shown at the driver’s window size.",
-          )}
+          {gt("Read-only: the server drops your keystrokes. Shown at the driver’s window size.")}
         </div>
       )}
 

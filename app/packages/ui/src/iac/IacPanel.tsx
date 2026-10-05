@@ -244,9 +244,8 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
           <h1 className="text-xl font-semibold text-on-surface">{gt("Infrastructure as Code")}</h1>
           <T>
             <p className="text-sm text-on-surface-muted mt-1 max-w-[70ch]">
-              Upload the Terraform state you already have and every synced resource is classified as
-              managed, drifted, or unmanaged. The unmanaged ones are what somebody made by hand —
-              and they can be turned into <code>import</code> blocks from here.
+              Upload your Terraform state to classify every synced resource as managed, drifted or
+              unmanaged. Turn unmanaged ones into <code>import</code> blocks from here.
             </p>
           </T>
         </div>
@@ -322,9 +321,8 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
           />
           <T>
             <p className="text-[11px] text-on-surface-faint leading-snug">
-              Both formats are accepted and version-checked. Attributes the state marks sensitive
-              are dropped before anything is stored, and the document itself is never kept — only
-              the attributes the drift comparison reads.
+              Sensitive attributes are dropped before storage, and only the attributes drift
+              detection needs are kept.
             </p>
           </T>
           <button
@@ -348,7 +346,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
             >
               {states.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {gt("{label} — {account} · {count} resources", {
+                  {gt("{label}: {account} · {count} resources", {
                     label: s.label,
                     account: s.accountName ?? gt("whole org"),
                     count: s.resourceCount,
@@ -398,8 +396,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
           <T>
             <p className="text-xs text-on-surface-faint mt-1 max-w-[60ch] mx-auto">
               Run <code>terraform show -json &gt; state.json</code> in your workspace and upload the
-              result. Until then Infrawrench has no way to tell a resource Terraform manages from
-              one somebody clicked into existence — and it will not guess.
+              result to see which resources Terraform manages.
             </p>
           </T>
         </div>
@@ -595,9 +592,8 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
               </h2>
               <T>
                 <p className="text-xs text-on-surface-faint mt-0.5 max-w-[70ch]">
-                  Terraform believes these exist. Either the account holding them is not connected
-                  here, the resource type is not synced yet, or the object is gone upstream and the
-                  state is stale.
+                  Terraform thinks these exist. Their account isn&apos;t connected, their type
+                  isn&apos;t synced yet, or the state is stale.
                 </p>
               </T>
               <ul className="mt-2 space-y-1">
@@ -608,22 +604,24 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                       <span className="text-on-surface-faint">
                         {" "}
                         <T>
-                          — no Infrawrench plugin maps{" "}
+                          (no Infrawrench plugin maps{" "}
                           <code>
                             <Var>{entry.terraformType}</Var>
                           </code>
+                          )
                         </T>
                       </span>
                     ) : (
                       <span className="text-on-surface-faint">
                         {" "}
                         <T>
-                          — expected{" "}
+                          (expected{" "}
                           <Var>
                             {entry.candidates
                               .map((c) => `${c.pluginId}/${c.resourceTypeId}`)
                               .join(", ")}
                           </Var>
+                          )
                         </T>
                       </span>
                     )}
@@ -638,11 +636,9 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
               <h2 className="text-sm font-semibold text-on-surface">{gt("Coverage gaps")}</h2>
               <T>
                 <p className="text-xs text-on-surface-faint mt-0.5 max-w-[70ch]">
-                  The Terraform type for these resource types could not be derived from the
-                  plugin&apos;s own export mapper, so a state entry of that type cannot be
-                  attributed back to a plugin. Resources of these types still match when Infrawrench
-                  holds the live resource — this only affects the &ldquo;in state only&rdquo; list
-                  above.
+                  No Terraform type could be derived for these, so state-only entries of these types
+                  can&apos;t be attributed. Live resources still match; only the &ldquo;in state
+                  only&rdquo; list above is affected.
                 </p>
               </T>
               <ul className="mt-2 space-y-1">
@@ -653,8 +649,8 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                   >
                     <span className="font-mono">
                       {u.pluginId}/{u.resourceTypeId}
-                    </span>{" "}
-                    — {u.reason}
+                    </span>
+                    : {u.reason}
                   </li>
                 ))}
               </ul>

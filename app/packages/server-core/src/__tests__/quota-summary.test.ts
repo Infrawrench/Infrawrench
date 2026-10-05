@@ -73,7 +73,7 @@ describe("quotaRowLine", () => {
   // redeploy: 89% of 1,024 vCPUs has 112 left, 89% of 5 Elastic IPs has none.
   it("carries the absolute figures alongside the percentage", () => {
     expect(quotaRowLine(row())).toBe(
-      "prod-aws · ec2 Running On-Demand Standard instances (eu-west-1) — " +
+      "prod-aws · ec2 Running On-Demand Standard instances (eu-west-1): " +
         "912 vCPUs of 1,024 vCPUs, 89%, full in 6 days",
     );
   });

@@ -156,7 +156,7 @@ export function InstantiateModal({
 
         <div className="mt-4">
           <span className="text-xs text-on-surface-secondary">
-            {gt("Time to live — required, at most {maxTtlHours}h", {
+            {gt("Time to live (required, at most {maxTtlHours}h)", {
               maxTtlHours: settings.maxTtlHours,
             })}
           </span>
@@ -241,7 +241,7 @@ export function InstantiateModal({
           )}
           {estimate === null && (
             <p className="text-sm text-on-surface-faint">
-              {gt("This environment could not be priced — that is not the same as free.")}
+              {gt("This environment could not be priced. That doesn't mean it's free.")}
             </p>
           )}
           {estimate && (
@@ -279,7 +279,7 @@ export function InstantiateModal({
           )}
           {estimate && estimate.monthlyAmount !== null && ttlHours !== null && (
             <p className="text-xs text-on-surface-faint">
-              {gt("Charged only while it lives — {hours}h is about {amount} {currency}.", {
+              {gt("Charged only while it runs: {hours}h is about {amount} {currency}.", {
                 hours: ttlHours,
                 amount: ((estimate.monthlyAmount * ttlHours) / 730).toFixed(2),
                 currency: estimate.currency,

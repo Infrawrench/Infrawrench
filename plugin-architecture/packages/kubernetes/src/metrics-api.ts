@@ -149,7 +149,7 @@ export function describeUtilizationGap(status: UtilizationStatus): string | null
     case "not-installed":
       return "metrics-server is not installed on this cluster, so live CPU and memory usage is unavailable. Allocation falls back to what workloads request.";
     case "unhealthy":
-      return "The metrics.k8s.io API is registered but unreachable — metrics-server is likely crash-looping or blocked from the control plane. Allocation falls back to what workloads request.";
+      return "The metrics.k8s.io API is registered but unreachable (metrics-server may be crash-looping or blocked). Allocation falls back to workload requests.";
     case "forbidden":
       return "This kubeconfig is not allowed to read metrics.k8s.io. Allocation falls back to what workloads request.";
     default:

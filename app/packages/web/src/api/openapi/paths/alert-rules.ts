@@ -48,8 +48,8 @@ const AlertDestination = z
   ])
   .openapi("AlertDestination", {
     description:
-      "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n" +
-      '`on-call` resolves to one person at delivery time, so a rule reading "database alerts → whoever is on call" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule\'s **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n' +
+      "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes; an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n" +
+      '`on-call` resolves to one person at delivery time, so a rule reading "database alerts → whoever is on call" needs no edit at handover. A rotation that resolves to nobody (disabled, empty, not yet started) contributes nobody and the rule\'s **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.\n\n' +
       "`github-issues` files the alert's finding as a GitHub issue in the repository the organization's GitHub issue settings route it to (`/github-issues`), commenting on the open issue instead when one already exists for that finding. Only alerts that carry a finding (savings findings, cost anomalies, idle commitments) can be filed; for other triggers this destination is skipped." +
       "\n\n`email-member` and `email-address` send an HTML and plain-text email with a link back into the app and a one-click unsubscribe link. Email carries no acknowledge button, so a rule routed only to email always escalates.",
   });
@@ -99,7 +99,7 @@ const AlertCondition = z
   ])
   .openapi("AlertCondition", {
     description:
-      "One clause of a rule. A rule matches when every condition matches; 'or' is expressed by writing a second rule. A condition on a fact the alert does not carry never matches — in either direction, so `accountId notIn [x]` does not match an alert with no account.",
+      "One clause of a rule. A rule matches when every condition matches; 'or' is expressed by writing a second rule. A condition on a fact the alert does not carry never matches; in either direction, so `accountId notIn [x]` does not match an alert with no account.",
   });
 
 const QuietHours = strict({
@@ -117,7 +117,7 @@ const QuietHours = strict({
   }),
 }).openapi("QuietHours", {
   description:
-    "A recurring local-time window during which the rule holds its alerts. Held, not dropped — a held alert is queued and delivered when the window closes.",
+    "A recurring local-time window during which the rule holds its alerts. Held, not dropped; a held alert is queued and delivered when the window closes.",
 });
 
 const EscalationPolicy = strict({
@@ -164,7 +164,7 @@ const AlertRulesResponse = strict({
   rules: z.array(AlertRule),
   usingDefaults: z.boolean().openapi({
     description:
-      "True when the organization has saved no rules and `rules` is the synthesized default — everything except drift, to every connected channel and to mobile push.",
+      "True when the organization has saved no rules and `rules` is the synthesized default; everything except drift, to every connected channel and to mobile push.",
   }),
   slackChannels: z.array(strict({ id: z.string(), name: z.string(), isPrivate: z.boolean() })),
   msTeamsWebhooks: z.array(strict({ id: z.string(), label: z.string() })),
@@ -234,7 +234,7 @@ export function registerAlertRulePaths(ctx: BuildContext) {
     tags: ["Alerts"],
     summary: "Replace the organization's alert routing rules",
     description:
-      "Whole-list replacement in one transaction. Order is part of the meaning — a rule is only correct relative to the ones above it — so a reorder applied as several requests would leave a window in which alerts route somewhere nobody asked for. Positions are re-derived from array order.",
+      "Whole-list replacement in one transaction. Order is part of the meaning (a rule is only correct relative to the ones above it) so a reorder applied as several requests would leave a window in which alerts route somewhere nobody asked for. Positions are re-derived from array order.",
     request: {
       params: OrgIdParam,
       body: {
@@ -314,7 +314,7 @@ export function registerAlertRulePaths(ctx: BuildContext) {
                 .optional()
                 .openapi({
                   description:
-                    "Why the acknowledgement did not take. `not_pending` means the delivery exists but was never awaiting one — still held, already sent, or expired.",
+                    "Why the acknowledgement did not take. `not_pending` means the delivery exists but was never awaiting one; still held, already sent, or expired.",
                 }),
               title: z.string().optional(),
             }),

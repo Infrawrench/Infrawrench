@@ -38,7 +38,7 @@ export function ChangeCostImpactLine({
     const why = impact.reasons.map((r) => gtData(changeCostImpactReasonLabel(r))).join("; ");
     return (
       <p className="text-xs text-on-surface-faint">
-        {why ? gt("Cost impact unknown — {why}.", { why }) : gt("Cost impact unknown.")}
+        {why ? gt("Cost impact unknown: {why}.", { why }) : gt("Cost impact unknown.")}
       </p>
     );
   }
@@ -88,11 +88,11 @@ export function ChangeCostImpactLine({
           impact.overlappingChanges > 0
             ? impact.overlappingChanges === 1
               ? gt(
-                  "{count} other change touched this resource inside the window — this delta is correlation, not proof.",
+                  "{count} other change touched this resource in the window, so this delta is correlation, not proof.",
                   { count: impact.overlappingChanges },
                 )
               : gt(
-                  "{count} other changes touched this resource inside the window — this delta is correlation, not proof.",
+                  "{count} other changes touched this resource in the window, so this delta is correlation, not proof.",
                   { count: impact.overlappingChanges },
                 )
             : undefined
@@ -114,9 +114,8 @@ export function ChangeCostImpactFootnote() {
   return (
     <T>
       <p className="text-xs text-on-surface-faint mt-2">
-        Measured from collected provider spend either side of the change, and recomputed on every
-        view — the figure moves as late-arriving cost lands. A delta is correlation, not proof of
-        cause; monthly equivalents are the daily rate × 30.
+        Spend either side of the change, updated as late cost arrives. Correlation, not proof of
+        cause; monthly figures are the daily rate × 30.
       </p>
     </T>
   );

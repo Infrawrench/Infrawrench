@@ -171,7 +171,7 @@ function ReferenceList({ references }: { references: BlastRadiusReference[] }) {
       </h3>
       <T>
         <p className="text-xs text-on-surface-faint mt-0.5">
-          These don&apos;t break — they quietly stop having anything to show.
+          These won&apos;t break; they just stop showing anything.
         </p>
       </T>
       {references.length === 0 ? (
@@ -219,7 +219,7 @@ function FlowList({ report }: { report: BlastRadiusReport }) {
       {report.flowTotals === null ? (
         <T>
           <p className="mt-2 text-sm text-on-surface-muted">
-            Traffic wasn&apos;t measured — see what wasn&apos;t checked below.
+            Traffic wasn&apos;t measured. See what wasn&apos;t checked below.
           </p>
         </T>
       ) : report.flowPeers.length === 0 ? (

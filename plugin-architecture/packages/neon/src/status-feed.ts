@@ -164,7 +164,7 @@ export function parseStatusFeed(body: string): StatusIncident[] {
       if (coveredNames.has(name.toLowerCase())) continue;
       out.push({
         externalId: `container:${child.id ?? child._id ?? name}`,
-        title: `${group?.name ?? "Neon"} ${child.status ?? "degraded"} — ${name}`,
+        title: `${group?.name ?? "Neon"} ${child.status ?? "degraded"}: ${name}`,
         state: "investigating",
         impact: impactFromStatusCode(code),
         url: statusFeed.statusPageUrl ?? statusFeed.url,

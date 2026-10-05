@@ -537,7 +537,7 @@ async function resolveSshTarget(params: {
     (instance.fields?.[sshEndpoint.hostOutputKey] as string | undefined);
   if (!host) {
     throw new Error(
-      `Could not resolve the SSH host (output "${sshEndpoint.hostOutputKey}") for this resource — is it running yet?`,
+      `Could not resolve the SSH host (output "${sshEndpoint.hostOutputKey}") for this resource. Is it running yet?`,
     );
   }
   return {
@@ -571,7 +571,7 @@ async function resolveDesktopSshConfig(params: {
   if (target.native) return target.native;
   if (!params.sshKeyId) {
     throw new Error(
-      'ssh() needs an SSH key to authenticate — pass { sshKey: "<key name or ~/.ssh file>" }.',
+      'ssh() needs an SSH key to authenticate; pass { sshKey: "<key name or ~/.ssh file>" }.',
     );
   }
   const privateKey = await resolveSshPrivateKey(params.sshKeyId);

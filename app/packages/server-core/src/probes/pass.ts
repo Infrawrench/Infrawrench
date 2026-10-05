@@ -210,7 +210,7 @@ async function notifyDown(probe: ProbeRecord, result: ProbeProxyResult): Promise
     body:
       `${probe.url} failed ${probe.failureThreshold} consecutive check` +
       `${probe.failureThreshold === 1 ? "" : "s"} (${detail}). You are recorded as its owner` +
-      `${o.purpose ? ` — ${o.purpose}` : ""}.`,
+      `${o.purpose ? `: ${o.purpose}` : ""}.`,
     data: {
       type: "probe_alert",
       orgId: probe.organizationId,
@@ -333,7 +333,7 @@ export async function runProbePass(options: { limit?: number } = {}): Promise<Pr
     if (!warnedUnconfigured) {
       warnedUnconfigured = true;
       console.warn(
-        "[probes] WORKFLOW_FETCH_PROXY_URL/_TOKEN not set — synthetic probes are disabled; no measurements or alerts will be produced",
+        "[probes] WORKFLOW_FETCH_PROXY_URL/_TOKEN not set; synthetic probes are disabled and no measurements or alerts will be produced",
       );
     }
     return { claimed: 0 };

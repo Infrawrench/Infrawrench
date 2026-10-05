@@ -16,21 +16,20 @@ export const ECRRepositoryResourceType = rt({
     o("repositoryUri", "Repository URI"),
     o("repositoryArn", "Repository ARN"),
     o("serverUrl", "Registry Server", {
-      description: "Registry host for docker login — <accountId>.dkr.ecr.<region>.amazonaws.com",
+      description: "Registry host for docker login: <accountId>.dkr.ecr.<region>.amazonaws.com",
     }),
     o("username", "Docker Username", {
       sensitive: true,
-      description: 'Always the literal "AWS" — ECR docker logins authenticate as the AWS user',
+      description: 'Always the literal "AWS"; ECR docker logins authenticate as the AWS user',
     }),
     o("password", "Docker Password", {
       sensitive: true,
-      description:
-        "Docker login password minted via ECR GetAuthorizationToken — valid for 12 hours",
+      description: "Docker login password minted via ECR GetAuthorizationToken, valid for 12 hours",
     }),
     o("dockerConfigJson", "Docker Config JSON", {
       sensitive: true,
       description:
-        "Docker credentials as a compact .dockerconfigjson document — usable directly as a " +
+        "Docker credentials as a compact .dockerconfigjson document, usable directly as a " +
         "kubernetes.io/dockerconfigjson pull secret. The embedded token is valid for 12 hours.",
     }),
   ],

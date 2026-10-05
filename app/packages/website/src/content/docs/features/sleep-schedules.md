@@ -41,7 +41,7 @@ One schedule per resource. Times are wall-clock in the chosen zone and stay corr
 
 ## Managing schedules
 
-The **Sleep schedules** section of the Costs panel lists every schedule in the org — the window, the next transition, the last run's outcome, and the projected saving — with pause/resume, edit, and delete controls.
+The **Sleep schedules** section on the Costs panel's **Savings** tab lists every schedule in the org, the window, the next transition, the last run's outcome, and the projected saving, with pause/resume, edit, and delete controls.
 
 ![Screenshot of the Sleep schedules section on the Costs panel with several schedules listed, one paused and one showing a "Skipped: freeze" badge](https://agent-assets.infrawrench.com/docs-screenshots/features/sleep-schedules/costs-panel-section.png)
 
@@ -59,7 +59,7 @@ The cloud poller executes due transitions server-side by invoking the plugin's o
 ## Other surfaces
 
 - **Remediate** on a schedule row shows the provider CLI stop and start commands for that resource, for running the same thing by hand or from your own cron. See [Remediation commands](./remediation-commands.md).
-- **Mobile** shows the schedule list on the Costs tab with a pause/resume toggle and the same commands to copy; creating and editing stays on web and desktop.
+- **Mobile** shows the schedule list on the Costs tab (under **Savings**) with a pause/resume toggle and the same commands to copy; creating and editing stays on web and desktop.
 - **CLI**: `infrawrench schedules` lists windows, next transitions, and projected savings (`--json` for scripts).
 - **MCP**: the `list_schedules` and `create_schedule` tools let agents read and create schedules under the same permissions as the UI. In the in-app [AI chat](./ai-chat.md), `create_schedule` waits for your approval, because it arms the poller to stop the resource on a timer.
 

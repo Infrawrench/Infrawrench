@@ -105,7 +105,7 @@ function savingCell(r: CommitmentRecommendationView): string {
 export async function cmdCommitments(ctx: CliContext): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Commitments live in Infrawrench Cloud — the inventory is collected server-side.",
+      "Commitments live in Infrawrench Cloud. The inventory is collected server-side.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -154,12 +154,12 @@ export async function cmdCommitments(ctx: CliContext): Promise<void> {
     if (feed.coverage.excludedAccountIds.length > 0) {
       println(
         c.dim(
-          `  ${feed.coverage.excludedAccountIds.length} account(s) excluded — provider can't tell charge types apart`,
+          `  ${feed.coverage.excludedAccountIds.length} account(s) excluded: provider can't tell charge types apart`,
         ),
       );
     }
   } else if (feed.holdings.length > 0) {
-    println(c.dim("  coverage unavailable — no account's provider distinguishes charge types"));
+    println(c.dim("  coverage unavailable: no account's provider distinguishes charge types"));
   }
   println();
 
@@ -184,7 +184,7 @@ export async function cmdCommitments(ctx: CliContext): Promise<void> {
     println(
       c.dim(
         `Sized at the p10 floor of ${feed.plannerWindowDays}d uncovered usage spend. ` +
-          "Recommendations only — nothing is purchased automatically.",
+          "Recommendations only. Nothing is purchased automatically.",
       ),
     );
     const columns: Column<CommitmentRecommendationView>[] = [

@@ -409,14 +409,14 @@ describe("transcribeAudio", () => {
         audioBase64: wavBase64,
         mimeType: "audio/webm;codecs=opus",
       }),
-    ).rejects.toThrow(/WebM on Chrome/);
+    ).rejects.toThrow(/browser recordings/);
 
     await expect(
       client().transcribeAudio("model", `${ACCOUNT}:model:m`, ACCOUNT, {
         audioBase64: wavBase64,
         mimeType: "audio/mp4",
       }),
-    ).rejects.toThrow(/MP4 on Safari/);
+    ).rejects.toThrow(/browser recordings/);
 
     expect(calls).toHaveLength(0);
   });
@@ -440,7 +440,7 @@ describe("transcribeAudio", () => {
         audioBase64: big,
         mimeType: "audio/wav",
       }),
-    ).rejects.toThrow(/at most 25 MB/);
+    ).rejects.toThrow(/over the 25 MB/);
     expect(calls).toHaveLength(0);
   });
 

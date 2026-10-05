@@ -133,9 +133,8 @@ export function SessionRecordingsSection() {
             </h2>
             <T>
               <p className="text-xs text-on-surface-muted mt-1">
-                Applies to SSH sessions opened through Infrawrench Cloud, including the web terminal
-                and desktop sessions in cloud mode. Sessions the desktop app opens directly against
-                a host never reach our servers and are not recorded.
+                Applies to SSH sessions opened through Infrawrench Cloud (web terminal and desktop
+                cloud mode). Direct desktop sessions are not recorded.
               </p>
             </T>
           </div>
@@ -168,7 +167,7 @@ export function SessionRecordingsSection() {
               {gt("Also capture keystrokes")}
               <span className="block text-xs text-on-surface-muted">
                 {gt(
-                  "Records what operators typed, including at prompts the remote host chose not to echo — a sudo password, a token pasted into an editor. A materially different promise to the people being recorded, so it is a separate decision.",
+                  "Records what operators type, including input the host doesn't echo, such as sudo passwords and pasted tokens.",
                 )}
               </span>
             </span>
@@ -339,10 +338,8 @@ function Header() {
       <h1 className="text-xl font-semibold">{gt("Session recordings")}</h1>
       <T>
         <p className="text-sm text-on-surface-muted mt-1">
-          A replayable record of every SSH session opened through the cloud — who connected, to
-          what, and exactly what crossed the terminal. Recordings download as standard{" "}
-          <code>.cast</code> files, so an auditor can play them with <code>asciinema play</code>{" "}
-          without our software.
+          Replayable records of SSH sessions opened through the cloud. Recordings download as
+          standard <code>.cast</code> files you can play with <code>asciinema play</code>.
         </p>
       </T>
     </div>

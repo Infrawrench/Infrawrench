@@ -131,7 +131,7 @@ function planField(
       ...base,
       current: undefined,
       status: "provider-derived",
-      reason: "Provider-derived output — it follows the resource's state rather than setting it.",
+      reason: "Provider-derived output; it follows the resource's state rather than setting it.",
     };
   }
 
@@ -143,7 +143,7 @@ function planField(
     return {
       ...base,
       status: "already-reverted",
-      reason: "Already back at the previous value — nothing to do.",
+      reason: "Already back at the previous value; nothing to do.",
     };
   }
 
@@ -170,7 +170,7 @@ function planField(
     return {
       ...base,
       status: "conflict",
-      reason: "Changed again since this event — reverting would discard the newer value.",
+      reason: "Changed again since this event; reverting would discard the newer value.",
     };
   }
 
@@ -202,7 +202,7 @@ export function computeRevertPlan(args: ComputeRevertPlanArgs): RevertPlan {
   if (args.changeKind !== "updated") {
     return blocked(
       args.changeKind === "created"
-        ? "Only changed resources can be reverted. Undoing an appearance means deleting the resource — do that from the resource itself."
+        ? "Only changed resources can be reverted. Undoing an appearance means deleting the resource, which you do from the resource itself."
         : "Only changed resources can be reverted. A resource that disappeared upstream has to be recreated, not reverted.",
     );
   }
@@ -231,7 +231,7 @@ export function computeRevertPlan(args: ComputeRevertPlanArgs): RevertPlan {
     reason = "Every changed field is already back at its previous value.";
   } else if (has("conflict")) {
     reason =
-      "Every field this change touched has changed again since — reverting would discard the newer values.";
+      "Every field this change touched has changed again since; reverting would discard the newer values.";
   } else {
     reason =
       "None of the fields this change touched can be written through the plugin's edit form.";
@@ -406,10 +406,10 @@ export function localRevertRefusal(entry: {
     return `Already reverted on ${new Date(entry.revertedAt).toLocaleString()}.`;
   }
   if (entry.changeKind === "created") {
-    return "Appearances can't be reverted — undoing one means deleting the resource, which you do from the resource itself.";
+    return "Appearances can't be reverted. Delete the resource from the resource itself instead.";
   }
   if (entry.changeKind === "deleted") {
-    return "Disappearances can't be reverted — a resource that's gone upstream has to be recreated.";
+    return "Disappearances can't be reverted; a resource that's gone upstream has to be recreated.";
   }
   if (entry.diff.length === 0) {
     return "This event recorded no field-level differences to put back.";

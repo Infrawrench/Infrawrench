@@ -175,8 +175,7 @@ export function MetricCsvImportModal({
         </h2>
         <T>
           <p className="text-xs text-on-surface-faint mb-4">
-            One row per day (or per day and label). Uploading a day again replaces it rather than
-            adding to it, so a corrected file can simply be uploaded again.
+            One row per day (or per day and label). Re-uploading a day replaces it.
           </p>
         </T>
 
@@ -279,7 +278,7 @@ export function MetricCsvImportModal({
                   <legend className={labelClass}>{gt("Label columns")}</legend>
                   <p className="text-[11px] text-on-surface-faint mb-1.5">
                     {gt(
-                      "Each checked column becomes a label named after its header, so values can be split and filtered by it. An empty cell leaves that label off the row.",
+                      "Each checked column becomes a label you can split and filter by. Empty cells are skipped.",
                     )}
                   </p>
                   <div className="flex flex-wrap gap-x-4 gap-y-1">

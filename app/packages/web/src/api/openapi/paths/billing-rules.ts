@@ -222,7 +222,7 @@ export const CostAdjustmentSummary = strict({
   rawTotals: CurrencyAmounts.openapi({
     description:
       "The collected, unadjusted totals for exactly the same rows, summed in the same scan. " +
-      "Always present on an adjusted answer — this is the figure that reconciles against an " +
+      "Always present on an adjusted answer; this is the figure that reconciles against an " +
       "invoice. Per-series raw figures are deliberately not offered: after a reallocation the " +
       "series are a different partition of the same money.",
   }),
@@ -236,7 +236,7 @@ export const CostAdjustmentSummary = strict({
 }).openapi("CostAdjustmentSummary", {
   description:
     "What an adjusted answer did. Present whenever the request asked to be adjusted, even for " +
-    "an organisation with no rules — its absence means, and can only mean, that every figure " +
+    "an organisation with no rules; its absence means, and can only mean, that every figure " +
     "in the response is exactly what the providers charged.",
 });
 
@@ -430,7 +430,7 @@ export function registerBillingRulePaths(ctx: BuildContext) {
     tags: ["Billing Rules"],
     summary: "List billing rules in evaluation order",
     description:
-      "Billing rules are the organisation's own adjustments to collected spend — a markup that " +
+      "Billing rules are the organisation's own adjustments to collected spend; a markup that " +
       "recovers shared overhead, a discount negotiated outside the provider's pricing, a shared " +
       "cluster reallocated onto the teams that use it.\n\n" +
       "**They are applied at query time and never written into stored cost data.** Collected " +
@@ -535,7 +535,7 @@ export function registerBillingRulePaths(ctx: BuildContext) {
     tags: ["Billing Rules"],
     summary: "Update a billing rule",
     description:
-      "A full replace, `enabled` included — switching a markup off is an edit of the rule, so " +
+      "A full replace, `enabled` included; switching a markup off is an edit of the rule, so " +
       "there is one audited action for “this rule changed” rather than two.",
     request: {
       params: idParam,

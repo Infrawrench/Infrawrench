@@ -442,9 +442,8 @@ export function BusinessMetricImporterModal({
         </h2>
         <T>
           <p className="text-xs text-on-surface-faint mb-4">
-            Each run reads the trailing days from a connected account and restates them: a day the
-            source returns replaces what was stored for it, and a day it returns nothing for stays a
-            gap rather than becoming zero. Queries are read only, with a row limit and a timeout.
+            Each run re-reads recent days from a connected account and replaces them; days with no
+            data stay gaps. Queries are read only, with a row limit and timeout.
           </p>
         </T>
 
@@ -473,9 +472,8 @@ export function BusinessMetricImporterModal({
         {sources?.length === 0 && (
           <T>
             <p className="text-sm text-on-surface-faint">
-              None of your connected accounts can feed a business metric yet. Connect an AWS, GCP,
-              Snowflake, ClickHouse, PostgreSQL, MySQL or Metronome account, or report values over
-              the API, from a workflow, or by uploading a CSV.
+              No connected account can feed a business metric yet. Connect AWS, GCP, Snowflake,
+              ClickHouse, PostgreSQL, MySQL or Metronome, or report values by API, workflow or CSV.
             </p>
           </T>
         )}
@@ -506,7 +504,7 @@ export function BusinessMetricImporterModal({
                     ? gt("Read-only access is enforced by the provider.")
                     : source.source.readOnly === "validated"
                       ? gt(
-                          "Only single SELECT or WITH statements are accepted; the account's own grants are the other line of defence, so use a read-only role.",
+                          "Only single SELECT or WITH statements are accepted. Use a read-only role as well.",
                         )
                       : ""}
                 </p>
@@ -751,8 +749,8 @@ export function BusinessMetricImporterModal({
                 </span>
                 <T>
                   <p className="text-[11px] text-on-surface-faint">
-                    Leave both dates empty to run the saved window. Set them to backfill history (up
-                    to 730 days per run). Runs use the saved configuration, so save first.
+                    Leave dates empty to run the saved window, or set them to backfill up to 730
+                    days. Runs use the saved configuration, so save first.
                   </p>
                 </T>
                 <div className="flex items-end gap-2">

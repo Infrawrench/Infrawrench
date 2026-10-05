@@ -392,7 +392,7 @@ export class CloudflareApi {
       this.cfAccountId = accountId;
       return accountId;
     }
-    throw new Error("Cloudflare plugin: no zones found — cannot determine account ID");
+    throw new Error("Cloudflare plugin: no zones found, cannot determine account ID");
   }
 
   async getZoneOptions(): Promise<Array<{ id: string; label: string }>> {

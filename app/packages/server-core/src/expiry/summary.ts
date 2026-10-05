@@ -75,7 +75,7 @@ export function expiryTitle(summary: ExpiryAlertSummary): string {
 export function expiryItemLine(item: ExpiryItem): string {
   const when =
     item.daysRemaining < 0 ? `${-item.daysRemaining}d overdue` : `in ${item.daysRemaining}d`;
-  return `${item.displayName} — ${item.label} ${when}`;
+  return `${item.displayName}: ${item.label} ${when}`;
 }
 
 function countsLine(summary: ExpiryAlertSummary): string {

@@ -61,7 +61,7 @@ export const RDSClusterResourceType = rt({
         fieldsEmpty: ["endpoint"],
         title: "Cluster writer endpoint is not reachable from this host.",
         suggestions: [
-          "Aurora clusters are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Aurora clusters are typically VPC-only. Connect from inside the VPC or via an SSH tunnel.",
           "Enable publicly accessible on the cluster instances (not recommended in production).",
           "Use an EC2 bastion in the same VPC.",
         ],
@@ -76,7 +76,7 @@ export const RDSClusterResourceType = rt({
         fieldsEmpty: ["endpoint"],
         title: "Cluster writer endpoint is not reachable from this host.",
         suggestions: [
-          "Aurora clusters are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Aurora clusters are typically VPC-only. Connect from inside the VPC or via an SSH tunnel.",
           "Enable publicly accessible on the cluster instances (not recommended in production).",
           "Use an EC2 bastion in the same VPC.",
         ],

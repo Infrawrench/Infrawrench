@@ -110,7 +110,7 @@ const BusinessMetricKind = z.enum(["count", "currency"]).openapi("BusinessMetric
   description:
     "What the metric's numbers are. `count` is a unit-less quantity (customers, requests, GB) " +
     "and supports unit cost only. `currency` is money the business took in, denominated in the " +
-    "metric's own `currency`, and is the only kind margin can be computed against — " +
+    "metric's own `currency`, and is the only kind margin can be computed against, " +
     "`(revenue − cost) ÷ revenue` subtracts money from money and is undefined otherwise.",
 });
 
@@ -130,7 +130,7 @@ const BusinessMetricInput = strict({
     .string()
     .min(1)
     .max(32)
-    .describe('Singular unit label used for display — the noun in "USD per customer".')
+    .describe('Singular unit label used for display; the noun in "USD per customer".')
     .openapi({ example: "customer" }),
   description: z.string().max(2000).optional(),
   kind: BusinessMetricKind,
@@ -139,7 +139,7 @@ const BusinessMetricInput = strict({
     .length(3)
     .optional()
     .describe(
-      "ISO-4217 code. **Required when `kind` is `currency`, and rejected otherwise** — a " +
+      "ISO-4217 code. **Required when `kind` is `currency`, and rejected otherwise**; a " +
         "revenue metric with no currency cannot have margin computed against it, and a count " +
         "metric carrying one would suggest its numbers are money when they are requests.",
     ),
@@ -177,7 +177,7 @@ const BusinessMetricCoverage = strict({
   reportedDays: z
     .number()
     .int()
-    .describe("Days carrying a value — compare against the span to spot a sparse series."),
+    .describe("Days carrying a value; compare against the span to spot a sparse series."),
 }).openapi("BusinessMetricCoverage");
 
 const BusinessMetricImporterSummary = strict({
@@ -210,7 +210,7 @@ const BusinessMetric = strict({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   coverage: BusinessMetricCoverage.nullable().describe(
-    "Null when the metric has no values at all — not an error, but every unit-cost chart drawn " +
+    "Null when the metric has no values at all; not an error, but every unit-cost chart drawn " +
       "from it is one continuous gap.",
   ),
   importer: BusinessMetricImporterSummary.nullable().describe(
@@ -396,7 +396,7 @@ const BusinessMetricValuesInput = strict({
     .max(5000)
     .describe(
       "Days to report. **Re-reporting a day (with the same labels) restates it rather than " +
-        "adding to it**, so an unattended nightly job is safe to retry — an accumulating write " +
+        "adding to it**, so an unattended nightly job is safe to retry; an accumulating write " +
         "would double every number the first time the job re-ran. A batch naming the same day " +
         "and labels twice keeps the last value, applying the same rule within a batch that " +
         "restatement applies between them.",
@@ -449,7 +449,7 @@ const UnitCostQueryRequest = strict({
     .array(BusinessMetricScopeTerm)
     .optional()
     .describe(
-      "Narrowing on top of the metric's own `costScope` — AND-composed, never a replacement.",
+      "Narrowing on top of the metric's own `costScope`: AND-composed, never a replacement.",
     ),
   query: z
     .string()
@@ -524,7 +524,7 @@ const UnitCostSeries = strict({
     .nullable()
     .describe(
       "The period ratio: **summed numerator ÷ summed denominator**, not the mean of the " +
-        "per-bucket ratios — the mean weights a quiet Sunday exactly as heavily as a peak " +
+        "per-bucket ratios: the mean weights a quiet Sunday exactly as heavily as a peak " +
         "Monday. Only buckets that produced a ratio contribute, on both sides.",
     ),
   overallCost: z.number(),
@@ -558,7 +558,7 @@ const UnitCostQueryResponse = strict({
   series: z
     .array(UnitCostSeries)
     .describe(
-      "One series per currency the numerator ended up in — usually one. More than one means " +
+      "One series per currency the numerator ended up in, usually one. More than one means " +
         "the organization has spend in a currency it holds no rate for; rather than dropping " +
         "that spend (understating every unit cost) or adding it to another currency (inventing " +
         "a number), each currency divides the same denominator on its own.",
@@ -618,7 +618,7 @@ export function registerBusinessMetricPaths(ctx: BuildContext) {
     tags: ["Business metrics"],
     summary: "Create a business metric",
     description:
-      "Keys must be unique per organization among live metrics — they are how workflows and the " +
+      "Keys must be unique per organization among live metrics; they are how workflows and the " +
       "CLI address the metric. A key collision is a 409.",
     request: {
       params: OrgIdParam,
@@ -653,8 +653,8 @@ export function registerBusinessMetricPaths(ctx: BuildContext) {
     tags: ["Business metrics"],
     summary: "Update a business metric",
     description:
-      "Replaces the whole definition. Changing `key` never orphans history — values are keyed on " +
-      "the metric's id — but it does break a workflow still writing to the old key, which is why " +
+      "Replaces the whole definition. Changing `key` never orphans history (values are keyed on " +
+      "the metric's id) but it does break a workflow still writing to the old key, which is why " +
       "the key is separate from the display name in the first place.",
     request: {
       params: idParam(),
@@ -730,7 +730,7 @@ export function registerBusinessMetricPaths(ctx: BuildContext) {
       "Write a batch of days. **Re-reporting a day restates it rather than accumulating**, which " +
       "is what makes a nightly job safe to retry. Nothing lands unless the whole batch validates, " +
       "so a bad row is a 400 rather than half a month restated. The same guarantees back " +
-      "`infra.businessMetrics.write(...)` in a workflow — both go through one validator.",
+      "`infra.businessMetrics.write(...)` in a workflow; both go through one validator.",
     request: {
       params: idParam(),
       body: {
@@ -964,7 +964,7 @@ export function registerBusinessMetricPaths(ctx: BuildContext) {
       "Divide spend by the metric, bucketed as asked. Three properties of the answer are worth " +
       "knowing before reading it:\n\n" +
       "- **The ratio is computed at the requested bucket**, from a summed numerator and a summed " +
-      "denominator — never a mean of daily ratios, which weights a quiet day as heavily as a " +
+      "denominator: never a mean of daily ratios, which weights a quiet day as heavily as a " +
       "peak one. The same holds for `overallValue`.\n" +
       "- **A missing or non-positive denominator is a gap** (`value: null` with a `gap` reason), " +
       "never 0 and never infinite.\n" +

@@ -304,7 +304,7 @@ describe("sendMsTeamsTest", () => {
     const { sendMsTeamsTest } = await import("../msteams");
     pg.setRows([webhook({ label: "#ops" })]);
     fetchSpy.mockResolvedValue(new Response("Flow not found", { status: 404 }));
-    await expect(sendMsTeamsTest(ORG)).rejects.toThrow(/#ops: HTTP 404 — Flow not found/);
+    await expect(sendMsTeamsTest(ORG)).rejects.toThrow(/#ops: HTTP 404: Flow not found/);
   });
 
   it("ignores trigger opt-ins and reports a summary", async () => {

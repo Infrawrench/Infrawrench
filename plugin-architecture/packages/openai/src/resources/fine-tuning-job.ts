@@ -35,7 +35,7 @@ export const FineTuningJobResourceType = rt({
   outputs: [
     o("jobId", "Job ID"),
     o("fineTunedModel", "Fine-tuned Model", {
-      description: "Model id produced by the run — empty until it succeeds",
+      description: "Model id produced by the run; empty until it succeeds",
     }),
     o("trainingFile", "Training File ID"),
   ],

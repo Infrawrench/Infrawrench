@@ -81,7 +81,7 @@ const SignRequest = strict({
 const SignResponse = strict({
   signature: z.string().openapi({
     description:
-      "Raw signature bytes, base64-encoded — Ed25519/RSA as-is, ECDSA in DER as node produces it.",
+      "Raw signature bytes, base64-encoded; Ed25519/RSA as-is, ECDSA in DER as node produces it.",
   }),
   algorithm: SshSignAlgorithm,
 }).openapi("SignSshKeyResponse");
@@ -141,7 +141,7 @@ export function registerSshKeyPaths(ctx: BuildContext) {
     description:
       "Signs one publickey-authentication challenge with a server-generated org key whose " +
       "private half never leaves Infrawrench Cloud. Requires the `resources:execute` " +
-      "permission — producing an auth signature is the same authority as opening a shell. " +
+      "permission: producing an auth signature is the same authority as opening a shell. " +
       "Imported keys cannot sign (only their public half is stored). Every call is audited.",
     request: {
       params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),

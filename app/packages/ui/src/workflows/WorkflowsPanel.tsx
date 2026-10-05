@@ -24,7 +24,7 @@ import { SecretsEditor } from "./SecretsEditor.js";
 import { MetricsEditor } from "./MetricsEditor.js";
 import { TriggerEditor } from "./TriggerEditor.js";
 
-const STARTER_SOURCE = `// Workflow — runs in a sandboxed isolate with a typed \`infra\` object.
+const STARTER_SOURCE = `// Workflow: runs in a sandboxed isolate with a typed \`infra\` object.
 // Example: read a JSON file from R2 and log a value.
 //
 // const cf = infra.accounts.cloudflare.getByName("production");

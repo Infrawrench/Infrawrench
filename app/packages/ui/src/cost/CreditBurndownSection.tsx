@@ -78,9 +78,9 @@ export function CreditBurndownSection({ client, onOpenExternal }: CreditBurndown
         <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Credit burndown")}</h2>
         <T>
           <p className="text-xs text-on-surface-muted mt-1">
-            Prepaid balances and how long they last at the burn measured over the last{" "}
-            <Var>{feed?.burnWindowDays ?? 30}</Var> days. Running a prepaid pot to zero is an
-            outage, not an invoice.
+            Prepaid balances and how long they last at the last{" "}
+            <Var>{feed?.burnWindowDays ?? 30}</Var> days&rsquo; burn rate. An empty balance means an
+            outage.
           </p>
         </T>
       </div>

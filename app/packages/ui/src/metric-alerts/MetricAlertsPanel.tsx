@@ -105,7 +105,7 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
             <h2 className="text-base font-semibold text-on-surface">{gt("Metric alerts")}</h2>
             <p className="text-xs text-on-surface-faint">
               {gt(
-                'Threshold rules over collected metrics — "CPU > 90% for 15 minutes". Rules select resources by query, so new resources are covered automatically.',
+                'Threshold rules over collected metrics, like "CPU > 90% for 15 minutes". New matching resources are covered automatically.',
               )}
             </p>
           </div>

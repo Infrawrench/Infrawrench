@@ -152,7 +152,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
       window.setTimeout(() => setCopiedId(null), 2_000);
     } catch {
       // Clipboard access can be denied; the URL is on screen either way.
-      setError(gt("Couldn't copy — select the link and copy it manually."));
+      setError(gt("Couldn't copy. Select the link and copy it manually."));
     }
   };
 
@@ -163,7 +163,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
           <h2 className="text-sm font-semibold text-on-surface">{gt("Status pages")}</h2>
           <p className="mt-1 text-xs text-on-surface-secondary">
             {gt(
-              "Publish the probes above at a public link — the monitoring you already run, pointed at your users. Nothing is reachable until you publish it.",
+              "Publish the probes above at a public link for your users. Nothing is public until you publish it.",
             )}
           </p>
         </div>
@@ -194,9 +194,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
           {gt("No status pages yet.")}{" "}
           {probes.length === 0 ? (
             <>
-              {gt(
-                "Create a probe first — a status page publishes probes, so there is nothing to show until at least one exists.",
-              )}
+              {gt("Create a probe first; a status page needs at least one to show.")}
               {onOpenProbes && (
                 <>
                   {" "}
@@ -242,7 +240,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                   })}
                   {page.components.some((c) => !c.probeEnabled) && (
                     <span className="ml-2 text-warning">
-                      {gt("Some probes are paused — those show as “No data”.")}
+                      {gt("Some probes are paused and show as “No data”.")}
                     </span>
                   )}
                 </p>

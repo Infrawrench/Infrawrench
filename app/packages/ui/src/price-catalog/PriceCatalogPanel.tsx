@@ -115,8 +115,7 @@ function CoverageNotes({
       {noAccount.length > 0 && (
         <T>
           <p className="text-on-surface-faint">
-            Not searched, their price APIs need credentials and this organization has no account on
-            them: <Var>{names(noAccount)}</Var>. Connect an account to include them.
+            Not searched (their price APIs need a connected account): <Var>{names(noAccount)}</Var>.
           </p>
         </T>
       )}
@@ -455,7 +454,7 @@ export function PriceCatalogPanel({
       <h1 className="text-xl font-semibold mb-1">{gt("Price catalog")}</h1>
       <p className="text-sm text-on-surface-muted mb-4">
         {gt(
-          "Providers' published list prices, normalized so instance types can be searched and compared side by side. These are list prices: your discounts, credits and negotiated rates are not applied.",
+          "Search and compare providers' published list prices. Your discounts, credits and negotiated rates are not applied.",
         )}
       </p>
 
@@ -695,7 +694,7 @@ export function PriceCatalogPanel({
               {data.mixedCurrencies && (
                 <p className="mb-3 text-xs text-warning">
                   {gt(
-                    "Prices are in more than one currency ({currencies}) and sort by their face value. Set a display currency and exchange rates in Settings to compare them in one currency.",
+                    "Prices are in several currencies ({currencies}) and sort by face value. Set a display currency in Settings to compare them.",
                     { currencies: data.currencies.join(", ") },
                   )}
                 </p>
@@ -904,7 +903,7 @@ export function PriceCatalogPanel({
               {compare.mixedCurrencies && (
                 <p className="mb-3 text-xs text-warning">
                   {gt(
-                    "Providers quote in different currencies and are ordered by face value. Set a display currency and exchange rates in Settings to compare them in one currency.",
+                    "Providers quote in different currencies, ordered by face value. Set a display currency in Settings to compare them.",
                   )}
                 </p>
               )}

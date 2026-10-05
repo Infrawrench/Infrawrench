@@ -56,13 +56,13 @@ export function LocalDeploymentsPanel() {
         <T>
           <p className="text-xs text-on-surface-secondary">
             Local deploys run from the terminal. In your project&apos;s directory run{" "}
-            <code>infrawrench deploy</code> — it reads the Infrafile at your repo root and builds
-            with your own Docker daemon. Runs show up here.
+            <code>infrawrench deploy</code>. It builds the Infrafile at your repo root with your own
+            Docker daemon. Runs show up here.
           </p>
         </T>
         <p className="text-xs text-on-surface-faint">
           {gt(
-            "Deploying from the app, deploy-on-push triggers and rollbacks need an organization — switch to one in the sidebar to get the full Deploy screen.",
+            "Deploying from the app, deploy-on-push and rollbacks need an organization. Switch to one in the sidebar.",
           )}
         </p>
         {error && (

@@ -30,9 +30,7 @@ function DeliveryNote({ delivery }: { delivery: ManagedInvoiceDelivery | null })
   if (!delivery) {
     return (
       <p className="text-xs text-on-surface-faint">
-        {gt(
-          "No delivery has been attempted from here. Sending emails the invoice to the customer's contact addresses with the CSV attached.",
-        )}
+        {gt("Not sent yet. Sending emails the invoice and CSV to the customer's contacts.")}
       </p>
     );
   }
@@ -46,14 +44,14 @@ function DeliveryNote({ delivery }: { delivery: ManagedInvoiceDelivery | null })
           : "text-danger";
   const recipientsLine =
     delivery.recipients.length === 1
-      ? gt("{label} — {delivered} of {count} recipient on {date} (attempt {attempts})", {
+      ? gt("{label}: {delivered} of {count} recipient on {date} (attempt {attempts})", {
           label: MANAGED_INVOICE_DELIVERY_STATUS_LABELS[delivery.status],
           delivered: delivery.delivered,
           count: delivery.recipients.length,
           date: new Date(delivery.attemptedAt).toLocaleString(),
           attempts: delivery.attempts,
         })
-      : gt("{label} — {delivered} of {count} recipients on {date} (attempt {attempts})", {
+      : gt("{label}: {delivered} of {count} recipients on {date} (attempt {attempts})", {
           label: MANAGED_INVOICE_DELIVERY_STATUS_LABELS[delivery.status],
           delivered: delivery.delivered,
           count: delivery.recipients.length,
@@ -188,17 +186,15 @@ export function InvoiceDetail({
         {/* The one sentence that separates a working document from a sent one. */}
         <p className="text-xs text-on-surface-faint">
           {invoice.live
-            ? gt(
-                "Draft — these figures are recomputed from live spend every time this page loads, and will keep moving as providers restate. Approving freezes them.",
-              )
+            ? gt("Draft: figures track live spend and may change. Approving freezes them.")
             : gt(
-                "Frozen at approval on {date}. Nothing that happens to spend, exchange rates, billing rules or names can change what this document says.",
+                "Frozen at approval on {date}. Later changes to spend, rates or rules don't affect it.",
                 { date: new Date(invoice.computedAt).toLocaleString() },
               )}
         </p>
         {invoice.status === "void" && invoice.voidReason && (
           <p className="text-xs text-danger">
-            {gt("Voided — {reason}", { reason: invoice.voidReason })}
+            {gt("Voided: {reason}", { reason: invoice.voidReason })}
           </p>
         )}
         {invoice.status !== "draft" && <DeliveryNote delivery={invoice.delivery} />}
@@ -524,7 +520,7 @@ function Derivation({ invoice }: { invoice: ManagedInvoice }) {
           {d.applyBillingRules
             ? d.rules.length === 0
               ? gt(
-                  "Billing rules apply to this customer, but the organisation has none — the invoiced figure equals what the providers charged.",
+                  "Billing rules apply to this customer, but the organisation has none, so the invoice equals what the providers charged.",
                 )
               : d.rules.length === 1
                 ? gt("1 billing rule applied: {list}.", { list: rulesList })
@@ -532,9 +528,7 @@ function Derivation({ invoice }: { invoice: ManagedInvoice }) {
                     count: d.rules.length,
                     list: rulesList,
                   })
-            : gt(
-                "Pass-through contract: no billing rule was applied, so the invoiced figure is exactly what the providers charged.",
-              )}
+            : gt("Pass-through contract: the invoice equals what the providers charged.")}
         </p>
         <p className="text-on-surface-faint">
           {d.rates.length === 0
@@ -545,13 +539,12 @@ function Derivation({ invoice }: { invoice: ManagedInvoice }) {
                 date: d.rateDate,
                 list: ratesList,
               })}
-          {!invoice.live &&
-            gt(" These rates are frozen — restating one later cannot change this invoice.")}
+          {!invoice.live && gt(" These rates are frozen.")}
         </p>
         {d.unconverted.length > 0 && (
           <p className="text-warning">
             {gt(
-              "No exchange rate was stated for {currencies}, so those amounts are carried in their own currency. Add the rate in Settings → Currency before approving.",
+              "No exchange rate for {currencies}, so those amounts stay in their own currency. Add a rate in Settings → Currency before approving.",
               { currencies: d.unconverted.join(", ") },
             )}
           </p>
@@ -613,11 +606,11 @@ function VoidModal({
         <div className="flex flex-col gap-3">
           <p className="text-xs text-on-surface-faint">
             {gt(
-              "The invoice keeps every figure it was sent with. Voiding records that it was withdrawn — it does not edit or delete it, because the customer holds a copy.",
+              "Voiding marks the invoice as withdrawn. It isn't edited or deleted, since the customer has a copy.",
             )}
           </p>
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            {gt("Reason (required — the only record of why)")}
+            {gt("Reason (required)")}
             <textarea
               className={FIELD}
               rows={3}

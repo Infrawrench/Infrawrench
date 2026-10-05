@@ -62,8 +62,8 @@ function dayColor(day: StatusHistoryDay): string {
 }
 
 function dayTitle(day: StatusHistoryDay, gt: ReturnType<typeof useGT>): string {
-  if (day.uptime === null) return gt("{day} — no data", { day: day.day });
-  return gt("{day} — {uptime} uptime", { day: day.day, uptime: formatUptime(day.uptime) });
+  if (day.uptime === null) return gt("{day}: no data", { day: day.day });
+  return gt("{day}: {uptime} uptime", { day: day.day, uptime: formatUptime(day.uptime) });
 }
 
 function ComponentRow({

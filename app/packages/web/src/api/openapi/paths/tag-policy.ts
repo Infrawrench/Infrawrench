@@ -173,7 +173,7 @@ export function registerTagPolicyPaths(ctx: BuildContext) {
     description:
       "Spend on cost rows missing at least one of the org's required tag keys, overall and per " +
       "key, plus the largest untagged (account, service) buckets. Empty when no tag policy is " +
-      "configured — untagged is only meaningful against a policy.",
+      "configured: untagged is only meaningful against a policy.",
     request: { params: OrgIdParam, query: RangeQuery },
     responses: {
       200: {

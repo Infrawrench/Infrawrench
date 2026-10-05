@@ -120,9 +120,7 @@ export function DesktopQueryMonitorsPanel() {
         <h1 className="text-xl font-semibold mb-1">{gt("Query monitors")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted">
-            Query monitors are a cloud feature — the schedule runs in the cloud, so a monitor set up
-            here would only run while this app was open. Sign in to an organization to watch what
-            your data says.
+            Query monitors run on a cloud schedule. Sign in to an organization to use them.
           </p>
         </T>
       </div>

@@ -163,7 +163,7 @@ export function leaseOutcomeMessage(
     lines: [
       `${lease.displayName}'s lease expired but the delete kept failing and was given up on.`,
       ...(error ? [`Last error: ${error}`] : []),
-      "The resource still exists — delete it manually or re-arm the lease.",
+      "The resource still exists. Delete it manually or re-arm the lease.",
     ],
   };
 }

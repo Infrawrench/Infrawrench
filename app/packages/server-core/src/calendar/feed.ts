@@ -132,7 +132,7 @@ async function freezeEvents(organizationId: string, window: TimeWindow): Promise
       title: row.name,
       detail:
         row.reason ??
-        (row.active && row.endsAt === null ? "Open-ended — holds until someone ends it" : null),
+        (row.active && row.endsAt === null ? "Open-ended until someone ends it" : null),
       ...span,
       allDay: false,
       // A freeze in effect is the single most consequential thing on the
@@ -225,7 +225,7 @@ async function expiryEvents(
     events.push({
       id: `expiry:${item.resourceId}:${item.fieldKey}`,
       kind: "expiry",
-      title: `${item.displayName} — ${item.label.toLowerCase()}`,
+      title: `${item.displayName}: ${item.label.toLowerCase()}`,
       detail: `${item.resourceTypeName} · ${item.pluginName} · ${item.accountName}`,
       startsAt: iso(due),
       endsAt: null,

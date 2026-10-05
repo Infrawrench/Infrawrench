@@ -31,7 +31,7 @@ const CostChangeCadence = z
     "Which window is compared to which, in complete UTC days (the accruing current day never " +
       "counts). daily: one complete day vs the same weekday one week earlier. weekly: the last " +
       "7 complete days vs the 7 before them. monthly: month-to-date vs the same number of days " +
-      "at the start of the prior month — never MTD vs the full prior month.",
+      "at the start of the prior month; never MTD vs the full prior month.",
   )
   .openapi("CostChangeCadence");
 
@@ -115,7 +115,7 @@ const CostAlertEvent = strict({
   periodKey: z
     .string()
     .describe(
-      "The cadence period the firing belongs to — a day, an ISO week (2026-W32) or a month " +
+      "The cadence period the firing belongs to; a day, an ISO week (2026-W32) or a month " +
         "(2026-08). One period fires at most once per group and currency.",
     ),
   windowFrom: IsoDate,
@@ -131,7 +131,7 @@ const CostAlertEvent = strict({
     .int()
     .nullable()
     .describe(
-      "Signed percent change. Null when the prior window had no spend at all (new spend — the " +
+      "Signed percent change. Null when the prior window had no spend at all (new spend; the " +
         "change is infinite); -100 when the group vanished.",
     ),
   direction: z.enum(["increase", "decrease"]),

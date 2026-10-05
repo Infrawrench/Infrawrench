@@ -59,7 +59,7 @@ export function ExtendedSupportSection() {
       {query.isError ? (
         <Card>
           <Text style={styles.error}>
-            Couldn&apos;t check support calendars —{" "}
+            Couldn&apos;t check support calendars:{" "}
             {query.error instanceof Error ? query.error.message : "request failed"}
           </Text>
         </Card>

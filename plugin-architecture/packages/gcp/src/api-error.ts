@@ -72,7 +72,7 @@ export function describeDisabledApi(status: number, body: string, project?: stri
   const link = target
     ? ` Enable it at https://console.cloud.google.com/apis/library/${service}?project=${encodeURIComponent(target)}`
     : ` Enable it in the API library: https://console.cloud.google.com/apis/library/${service}`;
-  return `The ${name} (${service}) is not enabled${where}.${link} — it can take a few minutes to take effect.`;
+  return `The ${name} (${service}) is not enabled${where}.${link}. It can take a few minutes to take effect.`;
 }
 
 /**

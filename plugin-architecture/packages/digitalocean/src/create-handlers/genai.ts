@@ -88,7 +88,7 @@ export async function genaiGetCreateConfig(
           ...(workspaceOptions[0] ? { defaultValue: workspaceOptions[0].id } : {}),
           description:
             workspaceOptions.length === 0
-              ? "No workspaces in this team yet — leave empty to auto-create a 'default' workspace, or click '+ New workspace' to pick a name."
+              ? "No workspaces yet. Leave empty to create a 'default' workspace, or click '+ New workspace'."
               : "Workspace this agent will belong to. Use '+ New workspace' to create another.",
           actions: [
             {
@@ -134,7 +134,7 @@ export async function genaiGetCreateConfig(
               id: "router",
               label: hasRouters
                 ? "Inference Router (auto-pick model per call)"
-                : "Inference Router (none configured yet — create one first)",
+                : "Inference Router (none configured yet, create one first)",
             },
           ],
           description:
@@ -158,8 +158,7 @@ export async function genaiGetCreateConfig(
           required: false,
           options: routerOptions,
           ...(routerOptions[0] ? { defaultValue: routerOptions[0].id } : {}),
-          description:
-            "Pick an existing Inference Router or create a new one inline. The router's policies and fallback models govern which underlying model serves each request.",
+          description: "Pick an existing Inference Router or create a new one inline.",
           showWhen: { fieldKey: "modelSource", fieldValue: "router" },
           actions: [
             {
@@ -187,8 +186,7 @@ export async function genaiGetCreateConfig(
                   kind: "select",
                   required: false,
                   options: modelOptions,
-                  description:
-                    "Comma-separated list of fallback model UUIDs the router can use. Optional — the router can be configured fully later.",
+                  description: "Comma-separated fallback model UUIDs. Optional; can be set later.",
                 },
               ],
             },
@@ -200,8 +198,7 @@ export async function genaiGetCreateConfig(
           kind: "text",
           required: false,
           multiline: true,
-          description:
-            "System prompt — guidance for the agent's behaviour and persona. Long-form supported.",
+          description: "System prompt: guidance for the agent's behaviour and persona.",
         },
         {
           key: "description",
@@ -302,7 +299,7 @@ export async function genaiGetCreateConfig(
                 label: "Routing preset",
                 kind: "select" as const,
                 required: false,
-                options: [{ id: "", label: "None — configure models later" }, ...presetOptions],
+                options: [{ id: "", label: "None (configure models later)" }, ...presetOptions],
                 defaultValue: presetOptions[0]?.id ?? "",
                 description:
                   "Prefills the router with DigitalOcean's recommended models and routing policies. You can refine them later in the DO console.",
@@ -385,7 +382,7 @@ export async function genaiGetCreateConfig(
           kind: "select",
           required: true,
           options: sizeOptions,
-          description: "Accelerator size — GPU count and monthly price.",
+          description: "Accelerator size: GPU count and monthly price.",
         },
         {
           key: "modelId",
@@ -505,7 +502,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
         workspaceUuid = String(created.workspace?.uuid ?? "");
         if (!workspaceUuid) {
           throw new Error(
-            "DigitalOcean did not return a workspace UUID after auto-creating the default workspace. Create one manually in the DO console under Agent Platform → Workspaces and try again.",
+            "DigitalOcean returned no workspace UUID. Create a workspace in the DO console (Agent Platform, Workspaces) and try again.",
           );
         }
       }

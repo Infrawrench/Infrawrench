@@ -31,7 +31,7 @@ import {
  */
 export function requireCloudOrgId(): string {
   const orgId = useUIStore.getState().activeCloudOrgId;
-  if (!orgId) throw new Error(t("Costs require cloud mode — sign in to sync."));
+  if (!orgId) throw new Error(t("Costs require cloud mode: sign in to sync."));
   return orgId;
 }
 

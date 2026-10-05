@@ -124,7 +124,7 @@ export async function buildOverSsh(
 ): Promise<BuildResult & { workspace: string }> {
   const deps = buildWorkflowSshDeps(ctx.organizationId, ctx.signal ? { signal: ctx.signal } : {});
   if (!deps.sshExec || !deps.sftpPut) {
-    throw new Error("The build host does not support SSH — pick a resource with an SSH endpoint.");
+    throw new Error("The build host does not support SSH. Pick a resource with an SSH endpoint.");
   }
 
   const workspace = workspaceFor(ctx.gitSha);

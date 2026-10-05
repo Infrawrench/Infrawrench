@@ -147,7 +147,7 @@ export function SharedConsolePanel({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError(gt("Could not reach the clipboard — select the link and copy it manually."));
+      setError(gt("Couldn't reach the clipboard. Select the link and copy it manually."));
     }
   };
 
@@ -185,8 +185,8 @@ export function SharedConsolePanel({
                   <T>
                     <Var>
                       {share.username}@{share.host}
-                    </Var>{" "}
-                    — everyone here sees this terminal live.
+                    </Var>
+                    : everyone here sees this terminal live.
                   </T>
                 ) : (
                   gt(
@@ -201,11 +201,9 @@ export function SharedConsolePanel({
                 about a link like this is that the link is the access. */}
             <T>
               <p className="text-xs text-on-surface-tertiary border border-border rounded-lg p-3 leading-relaxed">
-                Anyone you invite must already be a member of this organization with permission to
-                open a terminal on this resource — the link says <em>which</em> session, never{" "}
-                <em>whether</em>. Every join, handover and departure is written to the audit log,
-                and if this organization records sessions, everyone on the console is named in the
-                recording.
+                Guests must be members of this organization with terminal access to this resource;
+                the link alone grants nothing. Joins, handovers and departures are audit-logged, and
+                recordings name everyone on the console.
               </p>
             </T>
 
@@ -228,9 +226,7 @@ export function SharedConsolePanel({
                     <span>
                       Allow handing over the keyboard.
                       <span className="block text-on-surface-tertiary">
-                        Leave this off for a strictly read-only share — nobody but you will ever be
-                        able to type, and that is enforced on the server rather than inferred from
-                        what anyone types.
+                        Leave off for a read-only share: only you can type, enforced by the server.
                       </span>
                     </span>
                   </T>
@@ -265,8 +261,9 @@ export function SharedConsolePanel({
                       </div>
                       <T>
                         <p className="text-[11px] text-on-surface-tertiary">
-                          Shown once — <Var>{formatInviteExpiry(share.inviteExpiresAt)}</Var>, and
-                          spent by the first person it admits. Mint another for a second guest.
+                          Shown once, single use (
+                          <Var>{formatInviteExpiry(share.inviteExpiresAt)}</Var>). Create another
+                          for a second guest.
                         </p>
                       </T>
                     </div>
@@ -361,7 +358,7 @@ export function SharedConsolePanel({
                   </ul>
                   {!share.allowHandover && (
                     <p className="text-[11px] text-on-surface-tertiary">
-                      {gt("Read-only share — the keyboard cannot move.")}
+                      {gt("Read-only share: the keyboard cannot be handed over.")}
                     </p>
                   )}
                 </section>

@@ -6,7 +6,7 @@ const RunbookStepKind = z.enum(["manual", "workflow", "link"]).openapi({
   description:
     "What the step does. Three kinds and not a scripting language: a runbook is written by " +
     "whoever is on call for whoever is on call next, and the moment it needs a language it " +
-    "stops being written. `workflow` is the escape hatch — anything genuinely automated " +
+    "stops being written. `workflow` is the escape hatch; anything genuinely automated " +
     "belongs in a workflow, which already has a sandbox, approvals, secrets and a history.",
 });
 
@@ -26,7 +26,7 @@ export function registerRunbookPaths(ctx: BuildContext) {
       ),
     kind: RunbookStepKind,
     title: z.string(),
-    body: z.string().describe("Markdown — the detail nobody remembers at 03:00."),
+    body: z.string().describe("Markdown: the detail nobody remembers at 03:00."),
     workflowId: Uuid.optional().describe("For `workflow` steps: which workflow the button runs."),
     url: z.string().optional().describe("For `link` steps. `https:` only."),
   }).openapi("RunbookStep");
@@ -40,7 +40,7 @@ export function registerRunbookPaths(ctx: BuildContext) {
       .array(z.string())
       .describe(
         "Resource types this runbook is about; empty means it is not scoped to a type. Used to " +
-          "answer 'which runbooks apply here', **never** to restrict who may open it — a " +
+          "answer 'which runbooks apply here', **never** to restrict who may open it; a " +
           "runbook nobody can find is the failure this feature exists to fix.",
       ),
     tagKey: z.string().nullable().describe("Optional tag narrowing. Matched case-insensitively."),
@@ -96,7 +96,7 @@ export function registerRunbookPaths(ctx: BuildContext) {
     note: z
       .string()
       .nullable()
-      .describe("What the responder typed — output, or why it was skipped."),
+      .describe("What the responder typed; output, or why it was skipped."),
     workflowRunId: Uuid.nullable().describe(
       "The workflow run this step kicked off. Recorded here; the run itself goes through the " +
         "workflow routes with their own permission, approvals and secrets.",
@@ -169,7 +169,7 @@ export function registerRunbookPaths(ctx: BuildContext) {
     tags: ["Runbooks"],
     summary: "Write a runbook",
     description:
-      "Editing takes `org:settings:write` — a procedure is an org-wide statement about how " +
+      "Editing takes `org:settings:write`: a procedure is an org-wide statement about how " +
       "something is done, and it is read by strangers under pressure. Names are unique within " +
       'an organization: two runbooks called "Failover" is how the wrong one gets run.',
     request: {
@@ -244,7 +244,7 @@ export function registerRunbookPaths(ctx: BuildContext) {
       "to do survives the runbook being rewritten next week.\n\n" +
       "Takes `resources:read`, like ticking a step: performing a checklist is not an act of " +
       "configuration, and requiring an admin mid-incident is how a team stops using it. " +
-      "Deliberately not deduplicated against a run already in progress — performing the failover " +
+      "Deliberately not deduplicated against a run already in progress; performing the failover " +
       "twice in one incident is a real thing, and refusing the second would mean it goes " +
       "unrecorded rather than not happening.",
     request: {
@@ -327,8 +327,8 @@ export function registerRunbookPaths(ctx: BuildContext) {
     summary: "Close a run out",
     description:
       "Closing does **not** settle outstanding steps. A run completed with three steps still " +
-      "pending is a true and useful record — it says the incident ended before the checklist " +
-      "did — and quietly marking them done would erase the one thing a postmortem wants to know.",
+      "pending is a true and useful record (it says the incident ended before the checklist " +
+      "did) and quietly marking them done would erase the one thing a postmortem wants to know.",
     request: {
       params: OrgIdParam.extend({ runId: Uuid }),
       body: { content: { "application/json": { schema: RunbookRunClose } } },

@@ -68,7 +68,7 @@ export function CostAnomaliesSection() {
       {anomalies.isError ? (
         <Card>
           <Text style={styles.error}>
-            Couldn&apos;t load anomalies —{" "}
+            Couldn&apos;t load anomalies:{" "}
             {anomalies.error instanceof Error ? anomalies.error.message : "request failed"}
           </Text>
         </Card>

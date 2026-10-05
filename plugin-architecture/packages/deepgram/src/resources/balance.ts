@@ -10,7 +10,7 @@ export const BalanceResourceType = rt({
   plural: "Balances",
   id: "balance",
   description:
-    "A prepaid credit balance on a Deepgram project. Read-only — balances are topped up through Deepgram's billing console, not the API.",
+    "A prepaid credit balance on a Deepgram project. Read-only. Top up balances in Deepgram's billing console.",
   fields: [
     f("amount", "Amount", { kind: "number", editable: false }),
     f("units", "Units", { required: false, editable: false }),

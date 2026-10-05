@@ -915,7 +915,7 @@ export function DetailView({
               <p>{gt("No metric data yet.")}</p>
               <p className="text-xs text-on-surface-faint max-w-md text-center">
                 {gt(
-                  "Brand-new resources usually take a few minutes to show up here. Some series (memory, disk, load, filesystem on Droplets) also require the provider's metrics agent to be installed on the host.",
+                  "New resources take a few minutes to appear. Some series (memory, disk, load, filesystem on Droplets) need the provider's metrics agent on the host.",
                 )}
               </p>
             </div>

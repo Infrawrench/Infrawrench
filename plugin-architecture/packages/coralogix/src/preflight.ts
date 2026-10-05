@@ -241,7 +241,7 @@ export function coralogixPolicyTemplate(capabilityIds: string[]): PolicyTemplate
     language: "text",
     document: lines.join("\n"),
     instructions:
-      "In Coralogix, open Settings, then API Keys, and create a Team key (or a Personal key for testing). Pick the presets listed here under Role Presets; presets are kept up to date by Coralogix. For anything without a preset, open Advanced and tick the permissions by name. The Update, Manage and UpdateConfig permissions are only needed for the matching actions; leave them out for a read-only account.",
+      "In Coralogix, open Settings, then API Keys, and create a Team key (or a Personal key for testing). Pick the presets listed here under Role Presets. For anything without a preset, open Advanced and tick the permissions by name. Update, Manage and UpdateConfig are only needed for the matching actions.",
     helpLink: KEYS_HELP,
   };
 }

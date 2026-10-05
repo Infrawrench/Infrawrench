@@ -14,7 +14,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "GitHub",
   description:
-    "GitHub billing and spend. Track Actions, Copilot, Codespaces, Packages, Git LFS and Advanced Security cost by product, SKU, repository and cost centre with discounts, chart Actions minutes, Copilot activity and premium requests, and manage Copilot seats, larger and self-hosted runners, Actions caches, codespaces, budgets and cost centres.",
+    "GitHub billing and spend. Track Actions, Copilot, Codespaces, Packages, Git LFS and Advanced Security cost by product, SKU, repository and cost centre, chart Actions minutes and Copilot activity, and manage Copilot seats, runners, caches, codespaces, budgets and cost centres.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -23,7 +23,7 @@ const manifest: PluginManifest = {
       key: "token",
       label: "Personal Access Token",
       description:
-        "For an organization, a fine-grained token with the organization as resource owner and the permissions listed under Check credentials. For an enterprise, a classic token with manage_billing:enterprise (fine-grained tokens cannot reach enterprise endpoints). The token's owner must be an owner or billing manager.",
+        "For an organization, a fine-grained token with the organization as resource owner and the permissions listed under Check credentials. For an enterprise, a classic token with manage_billing:enterprise. The owner must be an owner or billing manager.",
       sensitive: true,
       placeholder: "github_pat_… or ghp_…",
       helpLink: {
@@ -44,7 +44,7 @@ const manifest: PluginManifest = {
       key: "owner",
       label: "Organization or Enterprise",
       description:
-        "Whose bill to read. Pick from the organizations and enterprises the token can see. Enterprise accounts cover billing, budgets, cost centres, Copilot seats and larger runners; runners, caches and codespaces are listed per organization.",
+        "Whose bill to read, from the organizations and enterprises the token can see. Runners, caches and codespaces are listed per organization.",
       sensitive: false,
       placeholder: "octo-org or enterprise:octo-enterprise",
       providerOptions: { dependsOn: ["token", "host"] },

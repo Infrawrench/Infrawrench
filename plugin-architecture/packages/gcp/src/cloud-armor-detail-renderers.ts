@@ -128,7 +128,7 @@ export function renderCloudArmorPolicy(resource: ResourceInstance, base: DetailV
         defaultValue: "false",
         options: [
           { id: "false", label: "Off" },
-          { id: "true", label: "On — log but don't enforce" },
+          { id: "true", label: "On (log only, don't enforce)" },
         ],
       },
       {

@@ -18,7 +18,7 @@ const BlastRadiusVia = strict({
   fieldKey: z.string().openapi({ description: "The dependant's field holding the reference." }),
   outputKey: z.string().openapi({ description: "The output or identity the reference reads." }),
   kind: z.enum(["output-ref", "declared", "containment", "field-match"]).optional().openapi({
-    description: "Where the edge came from. Absent means `output-ref` — a reference wired by hand.",
+    description: "Where the edge came from. Absent means `output-ref`: a reference wired by hand.",
   }),
   label: z.string().optional().openapi({
     description: 'How the plugin words the relationship ("in VPC"), when it declared one.',
@@ -65,7 +65,7 @@ const BlastRadiusReference = strict({
     .optional()
     .openapi({
       description:
-        "Set when the reference is visible outside the organization — a published status page " +
+        "Set when the reference is visible outside the organization; a published status page " +
         "component, or the probe behind one. Any user-facing reference makes the report high " +
         "severity on its own.",
     }),
@@ -73,7 +73,7 @@ const BlastRadiusReference = strict({
 
 const BlastRadiusFlowPeer = strict({
   ref: z.string().openapi({
-    description: "The peer's flow ref — a provider resource id, or a class token like `internet`.",
+    description: "The peer's flow ref; a provider resource id, or a class token like `internet`.",
   }),
   label: z.string(),
   direction: z.enum(["egress", "ingress"]).openapi({
@@ -84,13 +84,13 @@ const BlastRadiusFlowPeer = strict({
   estimatedCost: z.number(),
   currency: z.string(),
   days: z.number().int().openapi({
-    description: "Days in the window this peer appeared on — a spike versus a standing flow.",
+    description: "Days in the window this peer appeared on; a spike versus a standing flow.",
   }),
   resourceId: ResourceId.nullable().openapi({
     description:
       "The peer's Infrawrench resource id when its flow ref resolved to exactly one synced " +
       "resource. Null when it resolved to none (an endpoint outside the organization) and " +
-      "also when it resolved to several — a provider id is only unique within one plugin and " +
+      "also when it resolved to several; a provider id is only unique within one plugin and " +
       "account, and a flow record does not name the peer's account, so a contested ref is " +
       "reported unlinked with the reason in `unchecked` rather than attributed to a guess.",
   }),
@@ -125,7 +125,7 @@ const BlastRadiusReport = strict({
   flowPeers: z.array(BlastRadiusFlowPeer).openapi({
     description:
       "Measured network peers over the last 14 days, heaviest first. Empty when flow " +
-      "collection is off — see `unchecked`.",
+      "collection is off, see `unchecked`.",
   }),
   flowTotals: strict({
     bytes: z.number(),

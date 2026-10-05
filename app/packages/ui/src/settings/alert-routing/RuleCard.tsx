@@ -103,7 +103,7 @@ export function RuleCard({
         </p>
         {rule.conditions.length === 0 ? (
           <p className="text-xs text-on-surface-faint">
-            {gt("No conditions — this rule matches every alert.")}
+            {gt("No conditions. This rule matches every alert.")}
           </p>
         ) : (
           rule.conditions.map((condition, i) => (
@@ -161,9 +161,7 @@ export function RuleCard({
         />
         {rule.destinations.length === 0 && (
           <p className="text-xs text-warning">
-            {gt(
-              "No destinations — this rule swallows matching alerts and stops the rules below it from seeing them.",
-            )}
+            {gt("No destinations. Matching alerts are dropped and never reach the rules below.")}
           </p>
         )}
       </div>
@@ -174,7 +172,7 @@ export function RuleCard({
           checked={!rule.continueOnMatch}
           onChange={(e) => onChange({ ...rule, continueOnMatch: !e.target.checked })}
         />
-        <span>{gt("Stop here — don't evaluate the rules below this one")}</span>
+        <span>{gt("Stop here (don't evaluate the rules below)")}</span>
       </label>
 
       <details className="text-sm">

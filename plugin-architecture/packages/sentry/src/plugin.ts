@@ -42,7 +42,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Sentry",
   description:
-    "Error and performance monitoring. Track estimated Sentry spend by data category (errors, spans, replays, attachments, logs, profiling, cron and uptime monitors) and project, and manage projects, teams, releases, issues, client keys, alerts, monitors, cron monitors and uptime monitors with their metrics.",
+    "Error and performance monitoring. Track estimated Sentry spend by data category and project, and manage projects, teams, releases, issues, client keys, alerts and monitors with their metrics.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -74,7 +74,7 @@ const manifest: PluginManifest = {
       key: "authToken",
       label: "Auth Token",
       description:
-        "An internal integration token (Settings, Developer Settings, New Internal Integration; it starts with sntryi_) or a personal token (User Settings, Personal Tokens; sntryu_). Grant Organization, Project, Team, Issue & Event, Release and Alerts permissions: Read for a read-only connection, Read & Write for the actions. Organization tokens (sntrys_) only cover CI uploads and cannot be used.",
+        "An internal integration token (Settings, Developer Settings, New Internal Integration; it starts with sntryi_) or a personal token (User Settings, Personal Tokens; sntryu_). Grant Organization, Project, Team, Issue & Event, Release and Alerts permissions: Read for read-only, Read & Write for actions. Organization tokens (sntrys_) cannot be used.",
       sensitive: true,
       placeholder: "sntryi_…",
       helpLink: {

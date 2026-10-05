@@ -153,7 +153,7 @@ export function renderAzureDetail(
       bodyFormat: "json",
       defaultBody: '{\n  "hello": "world"\n}',
       helpText:
-        "Posted to the Service Bus REST API. The body becomes the message payload — JSON is recommended for SDK consumers.",
+        "Posted to the Service Bus REST API. The body becomes the message payload. JSON is recommended.",
       submitLabel: "Send",
       extraFields: [
         {

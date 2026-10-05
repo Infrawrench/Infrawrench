@@ -89,9 +89,7 @@ export function CostAnnotationModal({
           {annotation ? gt("Edit annotation") : gt("Add annotation")}
         </h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          {gt(
-            "A dated note drawn over the chart. It never changes the numbers — it explains them.",
-          )}
+          {gt("A dated note on the chart. It doesn't change the numbers.")}
         </p>
 
         {error !== null && (

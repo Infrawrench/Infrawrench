@@ -91,17 +91,15 @@ export function CostConversionNotice({ conversion }: CostConversionNoticeProps) 
           {usedManual && (
             <T>
               <p className="mt-1.5 text-xs text-on-surface-faint">
-                &ldquo;Your rate&rdquo; is a rate your organization stated in Settings → Currency;
-                it always takes precedence over automatic rates for the days it covers.
+                &ldquo;Your rate&rdquo; is set in Settings → Currency and overrides automatic rates.
               </p>
             </T>
           )}
           {usedFeed && (
             <T>
               <p className="mt-1.5 text-xs text-on-surface-faint">
-                Automatic rates are the European Central Bank&apos;s euro reference rates, crossed
-                through EUR where needed. Weekends and holidays use the last published rate, which
-                is why a date can be earlier than the day it converted.
+                Automatic rates are the European Central Bank&apos;s euro reference rates. Weekends
+                and holidays use the last published rate.
               </p>
             </T>
           )}
@@ -140,11 +138,10 @@ export function CostConversionNotice({ conversion }: CostConversionNoticeProps) 
           )}
           <T>
             <p className="mt-1.5 text-xs text-on-surface-faint">
-              No exchange rate covers every day in this range for{" "}
-              <Var>{unconverted.length === 1 ? gt("it") : gt("them")}</Var> (automatic rates may be
-              off, or the ECB may not publish the currency), so the amounts are shown separately in
-              their own currency rather than folded in or dropped. Add a rate in Settings → Currency
-              to include <Var>{unconverted.length === 1 ? gt("it") : gt("them")}</Var>.
+              No exchange rate covers this whole range for{" "}
+              <Var>{unconverted.length === 1 ? gt("it") : gt("them")}</Var>, so they are shown
+              separately. Add a rate in Settings → Currency to include{" "}
+              <Var>{unconverted.length === 1 ? gt("it") : gt("them")}</Var>.
             </p>
           </T>
         </div>

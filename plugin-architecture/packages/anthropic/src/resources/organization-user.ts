@@ -14,7 +14,7 @@ export const OrganizationUserResourceType = rt({
   plural: "Organization Members",
   id: "organization-user",
   description:
-    "A member of the Console organization. Requires an Admin API key. Roles assignable through the API are user, developer, billing, claude_code_user and (Claude Enterprise) managed — admins and owners can only be changed in the Console.",
+    "A member of the Console organization. Requires an Admin API key. Assignable roles: user, developer, billing, claude_code_user and (Enterprise) managed. Admins and owners are changed in the Console.",
   fields: [
     f("email", "Email", { editable: false }),
     f("name", "Name", { required: false, editable: false }),

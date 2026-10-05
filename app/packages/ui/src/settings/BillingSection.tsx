@@ -132,10 +132,10 @@ export function BillingSection() {
             </h2>
             <p className="text-xs text-on-surface-muted mt-1">
               {complimentary
-                ? gt("All Pro features included, on the house — this organization is never billed")
+                ? gt("All Pro features included. This organization is never billed")
                 : isFree
                   ? gt("1 user, 3 accounts, no audit trail")
-                  : gt("{count} seat{plural} — {summary}", {
+                  : gt("{count} seat{plural}: {summary}", {
                       count: totalSeats,
                       plural: totalSeats !== 1 ? "s" : "",
                       summary: seatSummary,
@@ -228,7 +228,7 @@ export function BillingSection() {
           </div>
           <p className="text-xs text-on-surface-muted mb-4">
             {gt(
-              "A capacity slot is one seat bought outright for {term} — ${price} once, then nothing monthly for that seat. Slots add to any monthly seats you have, and stop counting when their term ends.",
+              "A capacity slot is one seat prepaid for {term} at ${price}, with no monthly charge. Slots add to your monthly seats and expire at the end of their term.",
               { term: formatTerm(capacity.termMonths, gt), price: capacity.priceUsd },
             )}
           </p>
@@ -261,7 +261,7 @@ export function BillingSection() {
               >
                 {loading
                   ? gt("Redirecting...")
-                  : gt("Buy for ${price} — {term}", {
+                  : gt("Buy for ${price} ({term})", {
                       price: capacity.priceUsd * slotQuantity,
                       term: formatTerm(capacity.termMonths, gt),
                     })}

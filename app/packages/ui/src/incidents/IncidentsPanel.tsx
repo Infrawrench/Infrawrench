@@ -295,7 +295,7 @@ export function IncidentsPanel({
                       <span className="text-on-surface">
                         {gtData(artifactLabel(artifact.kind))}
                       </span>
-                      {artifact.status === "close_failed" ? ` ${gt("is still open")} — ` : " — "}
+                      {artifact.status === "close_failed" ? ` ${gt("is still open")}: ` : ": "}
                       {artifact.error}
                     </li>
                   ))}
@@ -387,8 +387,8 @@ export function IncidentsPanel({
             />
             <T>
               <p className="text-xs text-on-surface-faint">
-                The facts are filled in. Impact, root cause and action items are deliberately left
-                blank — paste this into your tracker and finish it there.
+                Impact, root cause and action items are left blank. Paste this into your tracker and
+                finish it there.
               </p>
             </T>
           </section>
@@ -405,7 +405,7 @@ export function IncidentsPanel({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void submitNote();
                 }}
-                placeholder={gt("Add a note — failed over to the replica…")}
+                placeholder={gt("Add a note, e.g. failed over to the replica…")}
                 className="flex-1 rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-on-surface"
               />
               <button
@@ -450,9 +450,8 @@ export function IncidentsPanel({
           <h2 className="text-base font-semibold text-on-surface">{gt("Incidents")}</h2>
           <T>
             <p className="text-xs text-on-surface-faint">
-              Incidents you declared — not provider outages, which live under Changes. Declaring
-              records the incident and, if you ask it to, freezes changes, pins the moment, tells
-              your org and tells the public.
+              Incidents you declared (provider outages are under Changes). Declaring can also freeze
+              changes, pin the moment and notify your org and the public.
             </p>
           </T>
         </div>

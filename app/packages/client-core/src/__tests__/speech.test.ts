@@ -54,7 +54,7 @@ describe("speechTextError", () => {
   });
 
   it("enforces the plugin's character cap", () => {
-    expect(speechTextError("abcdef", 5)).toBe("Text is 6 characters — the limit is 5.");
+    expect(speechTextError("abcdef", 5)).toBe("Text is 6 characters; the limit is 5.");
     expect(speechTextError("abcde", 5)).toBeNull();
   });
 
@@ -70,13 +70,13 @@ describe("audioSizeError", () => {
 
   it("names the file when one was picked", () => {
     expect(audioSizeError(2 * 1024 * 1024, 1024 * 1024, "meeting.m4a")).toBe(
-      "meeting.m4a is 2.0 MB — the limit is 1.0 MB.",
+      "meeting.m4a is 2.0 MB; the limit is 1.0 MB.",
     );
   });
 
   it("defaults to talking about the clip", () => {
     expect(audioSizeError(2 * 1024 * 1024, 1024 * 1024)).toBe(
-      "Clip is 2.0 MB — the limit is 1.0 MB.",
+      "Clip is 2.0 MB; the limit is 1.0 MB.",
     );
   });
 });

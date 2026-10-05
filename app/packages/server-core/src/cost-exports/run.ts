@@ -242,7 +242,7 @@ export async function runCostExport(
     const message =
       `A previous run of this export started delivering to the HTTPS destination and never recorded ` +
       `its outcome (${row.lastError}). This run was skipped rather than risk sending the endpoint ` +
-      `the same objects twice — an HTTPS delivery, unlike an S3 object, cannot be overwritten. ` +
+      `the same objects twice; an HTTPS delivery, unlike an S3 object, cannot be overwritten. ` +
       `Check whether the destination received the last export; the next scheduled run will proceed ` +
       `normally, or use "Run now" to force one.`;
     console.error(`[cost-export] ${row.id} skipped: ${message}`);

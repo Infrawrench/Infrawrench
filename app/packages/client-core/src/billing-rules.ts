@@ -321,7 +321,7 @@ export function billingRuleInputError(input: BillingRuleInput): string | null {
 
   const m = input.match;
   if (m.tagValue?.trim() && !m.tagKey?.trim()) {
-    return "A tag value needs a tag key — a value on its own matches nothing.";
+    return "A tag value needs a tag key; a value on its own matches nothing.";
   }
 
   const a = input.adjustment;
@@ -340,7 +340,7 @@ export function billingRuleInputError(input: BillingRuleInput): string | null {
       // Refused rather than stored: a 0% rule appears in every "these rules are
       // in force" caption and changes nothing, which is the most confusing
       // possible state for a feature whose whole job is to be legible.
-      return "A markup or discount of 0% changes nothing — delete the rule or give it a percentage.";
+      return "A markup or discount of 0% changes nothing. Delete the rule or give it a percentage.";
     }
   } else if (a.percent !== null && a.percent !== undefined) {
     return `A ${BILLING_RULE_KIND_LABELS[a.kind].toLowerCase()} rule cannot carry a percentage.`;
@@ -369,7 +369,7 @@ export function billingRuleInputError(input: BillingRuleInput): string | null {
     }
     if (!a.targetId?.trim()) return "A reallocation rule needs a target to move spend onto.";
   } else if (a.kind === "percentage" && (a.targetKind || a.targetId)) {
-    return "A markup or discount cannot move spend — use a reallocation rule for that.";
+    return "A markup or discount cannot move spend. Use a reallocation rule for that.";
   } else if (a.kind === "fixed" && a.targetKind && !a.targetId?.trim()) {
     return "A fixed-amount rule with a target needs the target itself.";
   } else if ((a.kind === "tiered" || a.kind === "expression") && (a.targetKind || a.targetId)) {

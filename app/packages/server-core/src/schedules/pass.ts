@@ -303,7 +303,7 @@ async function executeSchedule(
     );
     await completeRun(row, due, now, claimToken, {
       status: "failed",
-      error: "Resource is no longer synced (deleted upstream?) — delete this schedule",
+      error: "Resource is no longer synced (deleted upstream?). Delete this schedule",
     });
     return "failed";
   }

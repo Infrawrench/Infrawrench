@@ -130,7 +130,7 @@ export async function cmdSshFanout(
   }
   if (runnable.length > MAX_TARGETS) {
     throw new CliError(
-      `${runnable.length} hosts match — the server accepts at most ${MAX_TARGETS} per run. Narrow with --hosts/--plugin/--tag.`,
+      `${runnable.length} hosts match. The server accepts at most ${MAX_TARGETS} per run. Narrow with --hosts/--plugin/--tag.`,
       2,
     );
   }
@@ -140,7 +140,7 @@ export async function cmdSshFanout(
   if (needsKey) {
     if (!flags.key) {
       throw new CliError(
-        "Some selected hosts are VMs that need one of your org SSH keys — pass --key <id|name>.",
+        "Some selected hosts are VMs that need one of your org SSH keys. Pass --key <id|name>.",
         2,
       );
     }

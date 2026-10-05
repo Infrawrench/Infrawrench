@@ -317,7 +317,7 @@ describe("blastRadiusHeadline", () => {
   it("never claims a clean bill of health when the check was incomplete", () => {
     expect(
       blastRadiusHeadline({ ...base, unchecked: [{ kind: "network-flows", reason: "off" }] }),
-    ).toBe("Nothing found that depends on this — but the check was incomplete.");
+    ).toBe("Nothing found that depends on this, but the check was incomplete.");
     expect(
       blastRadiusHeadline({
         ...base,

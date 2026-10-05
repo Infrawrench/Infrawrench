@@ -158,10 +158,10 @@ export function registerQueryMonitorPaths(ctx: BuildContext) {
     summary: "List what a monitor can run against",
     description:
       "The editor's target picker: each account with a SQL driver of its own, plus the " +
-      "SQL-capable resources inside it — a database that is a *resource* (a ClickHouse service, " +
+      "SQL-capable resources inside it; a database that is a *resource* (a ClickHouse service, " +
       "a D1 or Turso database, a Databricks SQL warehouse, a BigQuery dataset) rather than the " +
       "account's own connection. Accounts with neither are omitted; a monitor pointed at one " +
-      "could only ever fail. Pass a resource's `id` (and optionally its `resourceTypeId` — the " +
+      "could only ever fail. Pass a resource's `id` (and optionally its `resourceTypeId`: the " +
       "server fills it from the synced resource either way) when creating a monitor to scope " +
       "the query to that resource.",
     request: { params: OrgIdParam },
@@ -179,9 +179,9 @@ export function registerQueryMonitorPaths(ctx: BuildContext) {
     tags: ["Query monitors"],
     summary: "Run a query once without saving it",
     description:
-      "The editor's 'try it' button. Goes through the same read-only guard as a scheduled run — " +
+      "The editor's 'try it' button. Goes through the same read-only guard as a scheduled run; " +
       "a query that could not be saved as a monitor must not be runnable through the monitor's " +
-      "own preview — and applies the threshold, so the answer says whether it *would* be " +
+      "own preview: and applies the threshold, so the answer says whether it *would* be " +
       "breaching rather than leaving the reader to compare two numbers.",
     request: {
       params: OrgIdParam,

@@ -37,7 +37,7 @@ export function PostureScreen() {
   const confirmDismiss = (finding: PostureFinding) =>
     Alert.alert(
       "Dismiss this finding?",
-      `${finding.displayName} — ${finding.title}\n\nIt leaves the list and stops feeding the daily posture alerts until it is restored.`,
+      `${finding.displayName}: ${finding.title}\n\nIt leaves the list and the daily alerts until restored.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -75,7 +75,7 @@ export function PostureScreen() {
   const data = posture.data;
   if (!data || (data.totalCount === 0 && data.dismissedCount === 0)) {
     return (
-      <EmptyView message="No findings. Checks appear when a plugin declares posture rules over synced fields — a bucket's public-access setting, a firewall's source ranges, a disk's encryption flag." />
+      <EmptyView message="No findings. Checks appear when a plugin declares posture rules over synced fields, such as bucket access or disk encryption." />
     );
   }
 
@@ -115,7 +115,7 @@ export function PostureScreen() {
 
       {data.totalCount === 0 && data.dismissedCount > 0 && (
         <Text style={styles.footnote}>
-          No open findings — everything currently flagged has been dismissed as an accepted risk.
+          No open findings. Everything flagged has been dismissed as an accepted risk.
         </Text>
       )}
 
@@ -158,9 +158,8 @@ export function PostureScreen() {
       )}
 
       <Text style={styles.footnote}>
-        Computed from fields the org has already synced — no provider calls. Rules are declared by
-        each plugin; critical and high findings feed the daily posture alerts. Dismissed findings
-        are still evaluated — they are kept off the list and out of the alerts until restored.
+        Computed from synced fields. Critical and high findings feed the daily posture alerts.
+        Dismissed findings stay off the list and out of alerts until restored.
       </Text>
     </Screen>
   );
@@ -183,7 +182,7 @@ function dismissalLine(finding: DismissedPostureFinding): string {
     ? finding.dismissal.dismissedAt
     : new Date(finding.dismissal.dismissedAt).toLocaleDateString();
   const by = finding.dismissal.dismissedBy ? ` by ${finding.dismissal.dismissedBy}` : "";
-  const why = finding.dismissal.reason ? ` — ${finding.dismissal.reason}` : "";
+  const why = finding.dismissal.reason ? `: ${finding.dismissal.reason}` : "";
   return `Dismissed ${when}${by}${why}`;
 }
 

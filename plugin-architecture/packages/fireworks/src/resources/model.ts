@@ -24,7 +24,7 @@ export const ModelResourceType = rt({
   ],
   outputs: [
     o("modelName", "Model Resource Name", {
-      description: "`accounts/{account}/models/{id}` — this is the inference `model` string",
+      description: "`accounts/{account}/models/{id}`, the inference `model` string",
     }),
     o("modelId", "Model ID"),
   ],

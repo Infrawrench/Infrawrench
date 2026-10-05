@@ -58,7 +58,7 @@ function metricToInput(metric: BusinessMetric): BusinessMetricInput {
  */
 function describeCoverage(metric: BusinessMetric, gt: ReturnType<typeof useGT>): string {
   if (!metric.coverage) {
-    return gt("No values reported yet — unit costs will be one continuous gap.");
+    return gt("No values reported yet, so unit costs will be blank.");
   }
   const { firstDay, lastDay, reportedDays } = metric.coverage;
   const span =
@@ -150,7 +150,7 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
     if (
       !window.confirm(
         gt(
-          'Delete the metric "{name}"? Its reported values go with it, and any unit-cost card using it will show an error rather than falling back to plain spend.',
+          'Delete the metric "{name}" and its reported values? Unit-cost cards using it will show an error.',
           { name: metric.name },
         ),
       )
@@ -173,8 +173,8 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
           <h2 className="text-sm font-semibold text-on-surface">{gt("Unit costs")}</h2>
           <T>
             <p className="text-xs text-on-surface-faint mt-0.5">
-              What one of the things you do costs. Declare the number your business runs on —
-              customers, requests, GB — report it daily, and any cost graph can divide spend by it.
+              Report a business number daily (customers, requests, GB) and any cost graph can divide
+              spend by it.
             </p>
           </T>
         </div>
@@ -191,7 +191,7 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn’t load business metrics — {error}", { error })}{" "}
+          {gt("Couldn’t load business metrics: {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             {gt("Retry")}
           </button>
@@ -207,8 +207,8 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
       {metrics?.length === 0 && (
         <T>
           <p className="text-sm text-on-surface-faint">
-            No business metrics yet. Add one, then import its daily values on a schedule from a
-            connected account, upload a CSV, or report them from a workflow with{" "}
+            No business metrics yet. Add one, then import daily values from a connected account, a
+            CSV, a workflow with{" "}
             <Var>
               <code className="text-on-surface-secondary">infra.businessMetrics.write</code>
             </Var>
@@ -545,8 +545,8 @@ function BusinessMetricModal({
               />
               <T>
                 <p className="text-[11px] text-on-surface-faint mt-1">
-                  Margin subtracts spend from revenue, so both have to be in this currency. Spend in
-                  a currency you have stated no rate for is shown as a gap rather than folded in.
+                  Margin is revenue minus spend, both in this currency. Spend with no exchange rate
+                  shows as a gap.
                 </p>
               </T>
             </div>
@@ -570,8 +570,7 @@ function BusinessMetricModal({
             <span className={labelClass}>{gt("Spend this metric divides")}</span>
             <T>
               <p className="text-[11px] text-on-surface-faint mb-2">
-                Empty means all of your spend. A unit-cost graph can narrow this further, but never
-                widen it — the scope is part of what the metric means.
+                Empty means all of your spend. Unit-cost graphs can narrow this but not widen it.
               </p>
             </T>
             <CostFilterEditor
@@ -714,10 +713,9 @@ function MetricValuesModal({
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[460px] max-h-[85vh] overflow-y-auto p-6">
         <h2 className="text-base font-semibold text-on-surface mb-1">{metric.name}</h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          {gt(
-            "One value per UTC day, in {unit}s. Reporting a day again replaces it rather than adding to it, so a nightly job is safe to re-run.",
-            { unit: metric.unit },
-          )}
+          {gt("One value per UTC day, in {unit}s. Reporting a day again replaces it.", {
+            unit: metric.unit,
+          })}
         </p>
 
         {error !== null && (
@@ -788,9 +786,7 @@ function MetricValuesModal({
         )}
         {values?.length === 0 && (
           <p className="text-sm text-on-surface-faint">
-            {gt(
-              "Nothing reported yet — every unit-cost chart for this metric is one continuous gap.",
-            )}
+            {gt("Nothing reported yet, so unit-cost charts for this metric are blank.")}
           </p>
         )}
 

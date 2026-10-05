@@ -3,8 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const PostgresDatabaseResourceType = rt({
   name: "PostgreSQL Database",
   id: "pg-database",
-  description:
-    "A PostgreSQL database — connects via connection string (literal or from a DO Managed Database)",
+  description: "A PostgreSQL database, connected via connection string",
   fields: [
     f("name", "Display Name"),
     f("connectionString", "Connection String", {

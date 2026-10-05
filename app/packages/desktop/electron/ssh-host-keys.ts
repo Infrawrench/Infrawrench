@@ -24,7 +24,7 @@ export class HostKeyMismatchError extends Error {
   constructor(host: string, port: number, stored: string, presented: string) {
     super(
       `SSH host key for ${host}:${port} changed (stored=${stored}, presented=${presented}). ` +
-        `Refusing to connect — delete the pin in ssh_host_keys to accept the new key.`,
+        `Refusing to connect. Delete the pin in ssh_host_keys to accept the new key.`,
     );
     this.name = "HostKeyMismatchError";
     this.host = host;

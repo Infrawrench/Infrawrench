@@ -228,7 +228,7 @@ export function applyGenAiModelRouterDetail(
           kind: "text",
           variant: "muted",
           content:
-            "No per-task routing policies configured. Requests fall through to the fallback models — use “+ Add policy” to route specific tasks to specific models.",
+            "No routing policies. Requests use the fallback models; use “+ Add policy” to route specific tasks.",
         },
       ],
     });

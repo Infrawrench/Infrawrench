@@ -20,7 +20,7 @@ export const ApiKeyResourceType = rt({
   name: "API Key",
   id: "api-key",
   description:
-    "An organization API key. Requires an Admin API key. Keys cannot be created or deleted through the API — only renamed and moved between active, inactive and archived status.",
+    "An organization API key. Requires an Admin API key. Keys can only be renamed and moved between active, inactive and archived; create them in the Console.",
   fields: [
     f("name", "Name"),
     f("status", "Status", {

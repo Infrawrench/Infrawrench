@@ -143,7 +143,7 @@ export async function requirePaidPlan(organizationId: string, feature: string): 
   if (access.paid) return;
   throw new PlanRequiredError(
     access.reason === "inactive"
-      ? `${feature} needs an active plan — this organization's subscription is ${access.status}. ` +
+      ? `${feature} needs an active plan. This organization's subscription is ${access.status}. ` +
           `Reactivate it under Settings → Billing.`
       : `${feature} is available on the paid plan. Upgrade under Settings → Billing.`,
   );

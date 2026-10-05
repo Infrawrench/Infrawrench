@@ -16,7 +16,7 @@ import { c, printJson, println } from "../output";
 export async function cmdBlastRadius(ctx: CliContext, resourceId: string | undefined) {
   if (ctx.flags.local) {
     throw new CliError(
-      "The impact report is assembled by Infrawrench Cloud — it reads the org's dashboards, probes, leases and flow data, none of which a local workspace has.",
+      "The impact report is assembled by Infrawrench Cloud. It reads the org's dashboards, probes, leases and flow data, none of which a local workspace has.",
     );
   }
   if (!resourceId) {
@@ -53,7 +53,7 @@ export async function cmdBlastRadius(ctx: CliContext, resourceId: string | undef
     for (const ref of report.references) {
       const suffix = ref.userFacing ? `  ${c.red("customer-visible")}` : "";
       println(
-        `  ${c.dim(`[${ref.kind}]`)} ${ref.name}${ref.detail ? c.dim(` — ${ref.detail}`) : ""}${suffix}`,
+        `  ${c.dim(`[${ref.kind}]`)} ${ref.name}${ref.detail ? c.dim(`, ${ref.detail}`) : ""}${suffix}`,
       );
     }
     println();

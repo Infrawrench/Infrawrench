@@ -12,7 +12,7 @@ export const EvalResourceType = rt({
   name: "Eval",
   id: "eval",
   description:
-    "An evaluation definition — a data source config plus the graders that score each run against it.",
+    "An evaluation definition: a data source config plus the graders that score each run.",
   fields: [
     f("name", "Name"),
     f("dataSourceType", "Data Source", { required: false }),

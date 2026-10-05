@@ -323,7 +323,7 @@ function BlockBody({
           {result.withheld ? (
             <div className="text-sm text-on-surface-faint">
               {gt(
-                "Anomalies are detected over all of the organization's spend, so they are not shown to viewers with a cost visibility scope.",
+                "Anomalies cover all of the organization's spend, so they are hidden from viewers with a limited cost scope.",
               )}
             </div>
           ) : result.anomalies.length === 0 ? (

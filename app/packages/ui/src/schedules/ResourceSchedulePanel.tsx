@@ -86,7 +86,7 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
         <h2 className="text-sm font-semibold text-on-surface">{gt("Sleep schedule")}</h2>
         <p className="mt-1 text-xs text-on-surface-secondary">
           {gt(
-            "Stop this resource outside working hours and start it back up automatically. Executed server-side; transitions respect change freezes and show up in the change timeline.",
+            "Stop this resource outside working hours and start it again automatically. Respects change freezes.",
           )}
         </p>
       </div>

@@ -450,7 +450,7 @@ export class WorkosClient implements PluginClient {
     // console is the one place this can surface (visible in poller logs).
     if (after) {
       console.warn(
-        `WorkOS plugin: list ${path} truncated at ${MAX_LIST_PAGES} pages (${out.length} items) — a continuation cursor remains`,
+        `WorkOS plugin: list ${path} truncated at ${MAX_LIST_PAGES} pages (${out.length} items); a continuation cursor remains`,
       );
     }
 
@@ -1422,7 +1422,7 @@ export class WorkosClient implements PluginClient {
               required: false,
               addLabel: "+ Add domain",
               description:
-                "Optional organization domains. Added in pending state — verify them in the WorkOS dashboard.",
+                "Optional organization domains. Added as pending; verify them in the WorkOS dashboard.",
             },
           ],
         };
@@ -1446,8 +1446,8 @@ export class WorkosClient implements PluginClient {
               kind: "select",
               required: false,
               options: [
-                { id: "false", label: "No — WorkOS verifies on first sign-in" },
-                { id: "true", label: "Yes — mark as already verified" },
+                { id: "false", label: "No, WorkOS verifies on first sign-in" },
+                { id: "true", label: "Yes, mark as already verified" },
               ],
               defaultValue: "false",
             },
@@ -2773,7 +2773,7 @@ export class WorkosClient implements PluginClient {
                   {
                     kind: "text" as const,
                     content:
-                      "This membership is managed by Directory Sync — changes made here would be overwritten by the directory provider.",
+                      "This membership is managed by Directory Sync; the directory provider would overwrite changes made here.",
                     variant: "muted" as const,
                   },
                 ]
@@ -2937,7 +2937,7 @@ export class WorkosClient implements PluginClient {
                   {
                     kind: "text" as const,
                     content:
-                      "The directory provider is rejecting WorkOS's credentials — reconnect it from the dashboard or an Admin Portal session.",
+                      "The directory provider is rejecting WorkOS's credentials. Reconnect it from the dashboard or an Admin Portal session.",
                   },
                 ]
               : []),
@@ -2998,7 +2998,7 @@ export class WorkosClient implements PluginClient {
             },
             {
               kind: "text",
-              content: "Read-only — the identity provider owns this record; WorkOS mirrors it.",
+              content: "Read-only. The identity provider owns this record.",
               variant: "muted",
             },
           ],
@@ -3031,7 +3031,7 @@ export class WorkosClient implements PluginClient {
             },
             {
               kind: "text",
-              content: "Read-only — the identity provider owns this group; WorkOS mirrors it.",
+              content: "Read-only. The identity provider owns this group.",
               variant: "muted",
             },
           ],
@@ -3508,7 +3508,7 @@ export class WorkosClient implements PluginClient {
           {
             kind: "text",
             content:
-              "The signing secret is available as the sensitive `signingSecret` output — use it to verify webhook payload signatures.",
+              "The signing secret is available as the sensitive `signingSecret` output, for verifying webhook payload signatures.",
             variant: "muted",
           },
         ],

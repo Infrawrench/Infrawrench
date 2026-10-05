@@ -284,15 +284,14 @@ export function QueryMonitorsSection({
       <h1 className="text-xl font-semibold mb-1">{gt("Query monitors")}</h1>
       <T>
         <p className="text-sm text-on-surface-muted mb-6">
-          Metric alerts watch what your provider reports. This watches what your data says — the
-          orders table that stopped growing, the dead-letter queue with four thousand rows in it,
-          yesterday's ETL that wrote nothing. One read-only query, on a schedule, with a threshold.
+          Watch what your data says, like a table that stopped growing or a filling dead-letter
+          queue. One read-only query, on a schedule, with a threshold.
         </p>
       </T>
 
       {error != null && monitors === null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load the monitors — {error}", { error })}{" "}
+          {gt("Couldn't load the monitors: {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
               {gt("Retry")}

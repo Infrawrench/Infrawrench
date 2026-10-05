@@ -1536,7 +1536,7 @@ export class TogetherClient implements PluginClient {
             .join(" · ");
           return {
             id: entry.id ?? "",
-            label: detail ? `${entry.id} — ${detail}` : (entry.id ?? ""),
+            label: detail ? `${entry.id} (${detail})` : (entry.id ?? ""),
           };
         });
 
@@ -1565,7 +1565,7 @@ export class TogetherClient implements PluginClient {
             kind: "select",
             required: true,
             description:
-              "GPU configuration each replica runs on. Not every model fits every configuration — Together rejects mismatched pairs.",
+              "GPU configuration each replica runs on. Not every model fits every configuration.",
             options: hardwareOptions,
             ...(hardwareOptions[0] ? { defaultValue: hardwareOptions[0].id } : {}),
           },
@@ -1606,8 +1606,8 @@ export class TogetherClient implements PluginClient {
             kind: "select",
             required: true,
             options: [
-              { id: "STARTED", label: "Yes — start now" },
-              { id: "STOPPED", label: "No — create stopped" },
+              { id: "STARTED", label: "Yes, start now" },
+              { id: "STOPPED", label: "No, create stopped" },
             ],
             defaultValue: "STARTED",
           },
@@ -3110,7 +3110,7 @@ export class TogetherClient implements PluginClient {
       modes: ["tts", "stt"],
       subtitle: `Together text-to-speech and Whisper transcription · ${activeTtsModel}`,
       helpText:
-        "Both halves bill against your Together account at the published per-character and per-minute rates. Transcription always runs on openai/whisper-large-v3 regardless of the model picker, and is requested with diarization on so the word table carries speaker labels.",
+        "Both halves bill your Together account at published rates. Transcription always runs on openai/whisper-large-v3 with speaker labels, regardless of the model picker.",
       ...(voiceOptions.length ? { voices: voiceOptions } : {}),
       ...(defaultVoice ? { defaultVoice } : {}),
       voiceLabel: "Voice",
@@ -3303,7 +3303,7 @@ export class TogetherClient implements PluginClient {
             {
               kind: "text",
               content:
-                "Together refuses to delete a managed endpoint that still has deployments. Deleting from here removes its deployments first, then the endpoint itself — the traffic split disappears with them.",
+                "Deleting removes the endpoint's deployments first, then the endpoint and its traffic split.",
               variant: "muted",
             },
           ],

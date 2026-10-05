@@ -642,7 +642,7 @@ export function classifyDelivery(result: DigestDeliveryResult): {
   if (result.succeeded < result.attempted) {
     return {
       status: "partial",
-      error: `Delivered to ${result.succeeded} of ${result.attempted} destinations; the rest failed. Not retried automatically — a retry would post the digest twice where it already landed. Use “Send now” once the failing destination is fixed.`,
+      error: `Delivered to ${result.succeeded} of ${result.attempted} destinations; the rest failed. Not retried automatically, as that would post the digest twice where it already landed. Use “Send now” once the failing destination is fixed.`,
       retryable: false,
     };
   }
@@ -872,9 +872,9 @@ async function runOneDigest(
     const result = await deliverWeeklyDigest(organizationId, digest, narrative);
     const outcome = classifyDelivery(result);
     await recordAttempt(organizationId, now, row.attemptCount, outcome);
-    const line = `[digest] org ${organizationId} week ${weekStart} ${attemptLabel} ${row.attemptCount}/${MAX_DIGEST_ATTEMPTS}: ${outcome.status} — slack ${result.slack.succeeded}/${result.slack.attempted}, teams ${result.teams.succeeded}/${result.teams.attempted}, email ${result.email.succeeded}/${result.email.attempted}`;
+    const line = `[digest] org ${organizationId} week ${weekStart} ${attemptLabel} ${row.attemptCount}/${MAX_DIGEST_ATTEMPTS}: ${outcome.status}, slack ${result.slack.succeeded}/${result.slack.attempted}, teams ${result.teams.succeeded}/${result.teams.attempted}, email ${result.email.succeeded}/${result.email.attempted}`;
     if (outcome.status === "succeeded") console.log(line);
-    else console.warn(`${line}${outcome.error ? ` — ${outcome.error}` : ""}`);
+    else console.warn(`${line}${outcome.error ? `: ${outcome.error}` : ""}`);
   } catch (err) {
     // A build failure (ClickHouse down, Postgres blip) is as retryable as a
     // total delivery failure, and just as invisible if we only logged it.

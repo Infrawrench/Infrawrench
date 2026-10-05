@@ -29,7 +29,7 @@ Typing a member's own address adds the member rather than the address.
 
 By default an extra address must be on a domain one of your members signs in with. If your members sign in as `@acme.com`, `finance@acme.com` is fine and `someone@gmail.com` is refused. This matters because anyone who can edit a budget or cost alert can add recipients, and alert emails carry spend figures; without the check, that permission would be a way to send your costs to any inbox.
 
-An admin can change this under **Settings → Notifications → Email**:
+An admin can change this under **Settings → Notifications → Channels → Email**:
 
 - **Only our own domains** (the default), optionally with extra **allowed domains**, such as a finance agency you work with. Subdomains are not included automatically: allowing `acme.com` does not allow `mail.acme.com`.
 - **Any address.**
@@ -53,7 +53,7 @@ Each alert is one email per recipient (never one email with everyone on it), wit
 
 Every email has an unsubscribe link, and mailbox providers that support one-click unsubscribe (Gmail, Outlook, Apple Mail) show their own Unsubscribe button. Unsubscribing stops **all** alert email from that organization to that address, whichever budget, alert or rule names it. It does not affect other organizations or the [weekly digest](./weekly-digest.md), which has its own recipient list.
 
-Unsubscribed addresses are listed under **Settings → Notifications → Email**, where an admin can resume delivery. Only do that for someone who asked for it.
+Unsubscribed addresses are listed under **Settings → Notifications → Channels → Email**, where an admin can resume delivery. Only do that for someone who asked for it.
 
 ## Requirements
 

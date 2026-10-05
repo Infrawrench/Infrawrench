@@ -35,7 +35,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Inference API key (starts with `xai-`), created at console.x.ai → API Keys. This is the key that talks to https://api.x.ai — models, files, batches, voices, and the Speech tab all use it.",
+        "Inference API key (starts with `xai-`), created at console.x.ai → API Keys. Used for models, files, batches, voices and Speech.",
       sensitive: true,
       placeholder: "xai-…",
       helpLink: { label: "Create an API key", url: "https://console.x.ai" },
@@ -44,7 +44,7 @@ const manifest: PluginManifest = {
       key: "managementKey",
       label: "Management Key (optional)",
       description:
-        "A separate key for https://management-api.x.ai, created at console.x.ai → Settings → Management Keys (your account needs Management Keys read + write). Without it, billing and usage, invoices, the spending limit, prepaid credit, collections, team API-key management, and the audit log are unavailable; everything on the inference key keeps working.",
+        "A separate key for https://management-api.x.ai, created at console.x.ai → Settings → Management Keys (needs Management Keys read + write). Without it, billing, invoices, spending limit, prepaid credit, collections, team API-key management and the audit log are unavailable.",
       sensitive: true,
       optional: true,
       placeholder: "xai-…",

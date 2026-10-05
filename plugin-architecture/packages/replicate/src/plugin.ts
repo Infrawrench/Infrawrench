@@ -38,7 +38,7 @@ const manifest: PluginManifest = {
       key: "apiToken",
       label: "API Token",
       description:
-        "Your Replicate API token, sent as `Authorization: Bearer`. Create one at replicate.com/account/api-tokens. Replicate has a single token type — the same token covers predictions, models, trainings, deployments and files. Note that Replicate exposes no billing or usage API, so this plugin cannot show spend; use the Replicate dashboard for that.",
+        "Your Replicate API token, sent as `Authorization: Bearer`. Create one at replicate.com/account/api-tokens. One token covers predictions, models, trainings, deployments and files. Replicate has no billing or usage API, so spend is only in its dashboard.",
       sensitive: true,
       placeholder: "r8_0123456789abcdefghijklmnopqrstuvwx",
       helpLink: {

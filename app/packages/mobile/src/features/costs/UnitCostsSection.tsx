@@ -82,7 +82,7 @@ export function UnitCostsSection() {
       {metricsQuery.isError ? (
         <Card>
           <Text style={styles.error}>
-            Couldn&apos;t load business metrics —{" "}
+            Couldn&apos;t load business metrics:{" "}
             {metricsQuery.error instanceof Error ? metricsQuery.error.message : "request failed"}
           </Text>
         </Card>

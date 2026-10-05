@@ -277,8 +277,8 @@ export function GithubPermissionPrompt({
           <code>
             <Var>{list}</Var>
           </code>{" "}
-          write access yet. An owner of that GitHub account needs to review and accept the
-          app&apos;s updated permissions; workflows and agents keep working in the meantime.
+          write access yet. An owner of that GitHub account needs to accept the app&apos;s updated
+          permissions.
         </p>
       </T>
       {manageUrl && (

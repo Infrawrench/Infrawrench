@@ -14,7 +14,7 @@ export const PronunciationDictResourceType = rt({
   plural: "Pronunciation Dictionaries",
   id: "pronunciation-dict",
   description:
-    "A set of text-to-pronunciation overrides Cartesia applies while synthesizing — brand names, acronyms, and proper nouns the model would otherwise mispronounce",
+    "A set of text-to-pronunciation overrides Cartesia applies while synthesizing, for brand names, acronyms and proper nouns",
   fields: [
     f("name", "Name"),
     f("dictId", "Dictionary ID", { editable: false }),

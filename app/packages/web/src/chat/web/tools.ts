@@ -81,7 +81,7 @@ const SEARCH_DESCRIPTION =
 
 const FETCH_DESCRIPTION =
   "Fetch one URL and read it as text (HTML is converted to Markdown, JSON is pretty-printed). " +
-  "GET only — this cannot submit anything. Use it to read a page web_search surfaced, or a " +
+  "GET only; this cannot submit anything. Use it to read a page web_search surfaced, or a " +
   "documentation URL the user gave you. Only public addresses are reachable: private, " +
   "loopback and cluster-internal URLs are refused, so this cannot be used to probe the " +
   "user's own network. A URL the user typed or web_search returned runs immediately; any " +
@@ -188,7 +188,7 @@ async function runSearch(query: string, ctx: WebToolContext): Promise<ToolResult
                 "",
                 "Sources:",
                 ...sources.map(
-                  (s) => `[${s.n}] ${s.title} — ${s.url}${s.age ? ` (${s.age})` : ""}`,
+                  (s) => `[${s.n}] ${s.title} | ${s.url}${s.age ? ` (${s.age})` : ""}`,
                 ),
               ].join("\n"),
             ),

@@ -95,7 +95,7 @@ export const COST_BASIS_HINTS = {
   cash: msg("What the provider charged, on the day it charged it."),
   amortized: msg("Commitment fees spread across the days they cover."),
   blended: msg(
-    "Amortized, with each commitment's discount shared evenly across all the usage it could cover, so every team pays the same effective rate.",
+    "Amortized, with commitment discounts shared evenly so every team pays the same rate.",
   ),
 } satisfies Record<CostBasis, string>;
 
@@ -425,9 +425,7 @@ export function CostGraphConfigModal({
               </select>
               {!hourlyAvailable && (
                 <p id={`${uid}-binning-hint`} className="mt-1 text-[11px] text-on-surface-faint">
-                  {gt(
-                    "Hourly is unavailable: every connected provider reports spend per day, so there are no hourly rows to bin.",
-                  )}
+                  {gt("Hourly is unavailable: your providers only report daily spend.")}
                 </p>
               )}
             </div>
@@ -547,7 +545,7 @@ export function CostGraphConfigModal({
                       "No connected provider reports usage quantities yet, so there is no unit to pick.",
                     )
                   : gt(
-                      "Sums the usage quantity providers report beside the money. Quantities in different units can't be added, so only rows in the chosen unit count.",
+                      "Sums the usage quantity providers report. Only rows in the chosen unit count.",
                     )
                 : config.groupBy === "none"
                   ? gt(
@@ -797,7 +795,7 @@ function ScenarioModelPicker({
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
       >
-        <option value="">{gt("None — trend only")}</option>
+        <option value="">{gt("None (trend only)")}</option>
         {models.map((model) => (
           <option key={model.id} value={model.id}>
             {gtData(model.name)}
@@ -806,17 +804,12 @@ function ScenarioModelPicker({
       </select>
       <p className="text-[11px] text-on-surface-faint">
         {!enabled
-          ? gt(
-              "Turn on Forecast to overlay a scenario — there is no projection to adjust otherwise.",
-            )
+          ? gt("Turn on Forecast to overlay a scenario.")
           : selected
-            ? gt(
-                'The card draws the trend and "{name}" as two separate dashed lines, and says so under its title.',
-                { name: gtData(selected.name) },
-              )
-            : gt(
-                "Known future cost the trend can\u2019t see, drawn beside the forecast rather than instead of it.",
-              )}
+            ? gt('Draws the trend and "{name}" as two dashed lines.', {
+                name: gtData(selected.name),
+              })
+            : gt("Known future cost the trend can\u2019t see, drawn beside the forecast.")}
       </p>
     </div>
   );

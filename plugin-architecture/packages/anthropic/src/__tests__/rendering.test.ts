@@ -111,7 +111,7 @@ describe("renderDetail", () => {
     expect(archive!.variant).toBe("danger");
     if (archive!.action.type !== "plugin-action") throw new Error("expected a plugin-action");
     expect(archive!.action.confirmMessage).toMatch(/revokes EVERY API key/);
-    expect(archive!.action.confirmMessage).toMatch(/no unarchive/);
+    expect(archive!.action.confirmMessage).toMatch(/cannot be undone/);
 
     // Already archived → no second archive button.
     const archived = client().renderDetail(

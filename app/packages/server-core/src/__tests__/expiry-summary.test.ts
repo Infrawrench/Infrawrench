@@ -79,13 +79,13 @@ describe("summarizeExpiry", () => {
 describe("expiryItemLine", () => {
   it("renders a future deadline as 'in Nd'", () => {
     expect(expiryItemLine(item({ daysRemaining: 12 }))).toBe(
-      "example.com — Certificate expires in 12d",
+      "example.com: Certificate expires in 12d",
     );
   });
 
   it("renders a passed deadline as 'Nd overdue'", () => {
     expect(expiryItemLine(item({ daysRemaining: -3, severity: "expired" }))).toBe(
-      "example.com — Certificate expires 3d overdue",
+      "example.com: Certificate expires 3d overdue",
     );
   });
 
@@ -116,7 +116,7 @@ describe("titles and bodies", () => {
       item({ displayName: `cert-${i}`, daysRemaining: i }),
     );
     const lines = expiryLines(summarizeExpiry(many, 60), (s) => s);
-    expect(lines).toContain("• cert-0 — Certificate expires in 0d");
+    expect(lines).toContain("• cert-0: Certificate expires in 0d");
     expect(lines[lines.length - 1]).toBe("…and 2 more deadlines on the expiry radar");
   });
 
@@ -126,7 +126,7 @@ describe("titles and bodies", () => {
       60,
     );
     const body = formatExpiryPushBody(summary);
-    expect(body).toContain("example.com — Certificate expires in 2d");
+    expect(body).toContain("example.com: Certificate expires in 2d");
     expect(body).toContain("0 expired · 1 critical · 1 warning · 0 upcoming");
   });
 

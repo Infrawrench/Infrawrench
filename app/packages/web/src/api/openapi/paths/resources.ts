@@ -156,7 +156,7 @@ const LogsRequest = strict({
 const LogsResponse = strict({
   text: z.string().openapi({ description: "Raw log text; each entry keeps its trailing newline." }),
   containers: z.array(z.string()).openapi({
-    description: "Container names available for this resource — drives the container picker.",
+    description: "Container names available for this resource, drives the container picker.",
   }),
   activeContainer: z.string().openapi({ description: "Container `text` was read from." }),
 }).openapi("LogsResponse");
@@ -896,7 +896,7 @@ export function registerResourcePaths(ctx: BuildContext) {
     tags: ["Resources"],
     summary: "Get the dynamic create form for a resource type",
     description:
-      "Calls the plugin's `getCreateConfig`. The returned `CreateResourceConfig` is plugin-shaped — see `JsonObject`.",
+      "Calls the plugin's `getCreateConfig`. The returned `CreateResourceConfig` is plugin-shaped, see `JsonObject`.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: CreateConfigRequest } }, required: true },
@@ -972,7 +972,7 @@ export function registerResourcePaths(ctx: BuildContext) {
     description:
       "Calls the plugin's `estimateCost` and returns a monthly total with the line items behind " +
       "it. Price a proposed resource by passing `fields`, an existing one by passing " +
-      "`resourceId`, or a proposed change to an existing one by passing both — `fields` is " +
+      "`resourceId`, or a proposed change to an existing one by passing both; `fields` is " +
       "merged over the resource's stored fields, so the caller only sends what changed. " +
       "`estimate` is null when the plugin cannot price the configuration; that is not the same " +
       "as an estimate of zero, and it should not be rendered as one.",

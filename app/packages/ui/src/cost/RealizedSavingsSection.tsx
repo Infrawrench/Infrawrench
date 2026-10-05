@@ -307,7 +307,7 @@ export function RealizedSavingsSection({ client }: RealizedSavingsSectionProps) 
           <h2 className="text-sm font-semibold text-on-surface">{gt("Realized savings")}</h2>
           <p className="text-xs text-on-surface-muted mt-1">
             {gt(
-              "What resizes, orphan cleanups, sleep schedules, commitments and logged actions actually saved, measured against each resource's own spend before the action.",
+              "What resizes, cleanups, sleep schedules, commitments and logged actions actually saved, against each resource's prior spend.",
             )}
           </p>
         </div>
@@ -375,7 +375,7 @@ export function RealizedSavingsSection({ client }: RealizedSavingsSectionProps) 
       {report && report.events.length === 0 && (
         <p className="text-sm text-on-surface-faint">
           {gt(
-            "No savings recorded yet. Applying a right-sizing recommendation, deleting a flagged orphan or creating a sleep schedule records one automatically, as does a resize or cleanup done in the provider's console. Anything else can be logged by hand.",
+            "No savings recorded yet. Resizes, orphan cleanups and sleep schedules are recorded automatically; log anything else by hand.",
           )}
         </p>
       )}
@@ -825,7 +825,7 @@ function SavingsEntryModal({
         </h2>
         <p className="text-xs text-on-surface-faint">
           {gt(
-            "For savings Infrawrench could not see happen: a renegotiated contract, a cancelled vendor, a migrated workload. Link a resource and the realized figure is measured from its billing instead.",
+            "For savings Infrawrench can't see, like a renegotiated contract. Link a resource to measure it from billing instead.",
           )}
         </p>
         <div>
@@ -1070,7 +1070,7 @@ function SavingsAnnotateModal({
         <h2 className="text-base font-semibold text-on-surface">{event.title}</h2>
         <p className="text-xs text-on-surface-faint">
           {gt(
-            "What was done and what it was projected to save are as observed. You can add context, attribute it to a cost centre, change how long it counts, or end it.",
+            "The action and its projected saving are fixed. You can add context, assign a cost centre, change how long it counts, or end it.",
           )}
         </p>
         {centres.length > 0 && (

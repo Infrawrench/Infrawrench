@@ -297,7 +297,7 @@ describe("exportCredential", () => {
     expect(authOf(calls[0]!.init)).toBe("Bearer sk-admin-test");
     expect(result.content).toBe("sk-svcacct-secret");
     expect(result.fields?.some((f) => f.sensitive && f.value === "sk-svcacct-secret")).toBe(true);
-    expect(result.warning).toMatch(/never returns it again/i);
+    expect(result.warning).toMatch(/never shows it again/i);
   });
 });
 
@@ -499,7 +499,7 @@ describe("transcribeAudio", () => {
     expect(entries["response_format"]).toEqual(["json"]);
     expect(entries["timestamp_granularities[]"]).toBeUndefined();
     expect(result.words).toBeUndefined();
-    expect(result.summary).toContain("whisper-1 is the only model");
+    expect(result.summary).toContain("only whisper-1 returns them");
     expect(result.durationSeconds).toBe(2);
   });
 

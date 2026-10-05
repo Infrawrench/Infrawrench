@@ -275,7 +275,7 @@ export async function runDeployment(
     .update(deploymentRuns)
     .set({
       status: "failure",
-      error: { message: "Abandoned — the process running this deploy went away." },
+      error: { message: "Abandoned: the process running this deploy went away." },
       finishedAt: new Date(),
     })
     .where(
@@ -427,7 +427,7 @@ export async function runDeployment(
       // different question than the one the Infrafile asked.
       if (request.target?.kind === "local") {
         throw new Error(
-          'plan().buildOn is "local", which means the machine running the deploy — ' +
+          'plan().buildOn is "local", which means the machine running the deploy: ' +
             "there is no such machine for a web deploy. Omit buildOn to use a hosted " +
             "build, or set it to an SSH-reachable resource.",
         );
@@ -534,7 +534,7 @@ export async function runDeployment(
         message:
           `Deploy to ${result.env} failed for ${resolved.fullName}@${resolved.sha.slice(0, 7)}: ` +
           `${result.error?.message ?? "unknown error"}`,
-        title: `Deploy failed — ${result.env}`,
+        title: `Deploy failed: ${result.env}`,
         key: `deploy:${result.env}`,
       },
     ).catch(() => {

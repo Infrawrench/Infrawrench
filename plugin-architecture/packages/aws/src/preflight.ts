@@ -89,7 +89,7 @@ export const awsPreflight: PreflightDeclaration = {
     {
       id: "costs",
       label: "Cost reporting",
-      description: "Daily spend via Cost Explorer — not part of typical read-only infra policies.",
+      description: "Daily spend via Cost Explorer. Not part of typical read-only infra policies.",
       requiredPermissions: COSTS_PERMISSIONS,
     },
     {
@@ -387,7 +387,7 @@ export async function runAwsPreflight(creds: AwsCredentials): Promise<PreflightR
     return {
       checks: capabilities.map((c) =>
         invalid
-          ? missingCheck(c, [], "The access keys were rejected by AWS — check both values.")
+          ? missingCheck(c, [], "The access keys were rejected by AWS. Check both values.")
           : { capabilityId: c.id, status: "unknown", message: shortMessage(e) },
       ),
     };
@@ -440,7 +440,7 @@ export async function runAwsPreflight(creds: AwsCredentials): Promise<PreflightR
           missingCheck(
             c,
             [PROBE_PERMISSION[c.id]!],
-            "Detected by a sample request — grant iam:SimulatePrincipalPolicy for an exact per-permission report.",
+            "Detected by a sample request. Grant iam:SimulatePrincipalPolicy for an exact report.",
           ),
         );
       } else {

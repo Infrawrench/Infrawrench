@@ -31,7 +31,7 @@ export function registerEnvironmentDiffPaths(ctx: BuildContext) {
     key: z
       .string()
       .describe(
-        "The pairing key both sides matched on — the resource type plus the resource name with " +
+        "The pairing key both sides matched on; the resource type plus the resource name with " +
           "environment words removed. Stable across runs.",
       )
       .openapi({ example: "droplet api#0" }),
@@ -108,8 +108,8 @@ export function registerEnvironmentDiffPaths(ctx: BuildContext) {
     unavailableTypes: z
       .array(EnvironmentDiffUnavailableType)
       .describe(
-        "Resource types excluded because they could not be listed. Always empty over this API — " +
-          "it reads already-synced rows, which cannot half-fail — and populated only by the " +
+        "Resource types excluded because they could not be listed. Always empty over this API; " +
+          "it reads already-synced rows, which cannot half-fail; and populated only by the " +
           "desktop and CLI local modes, which list live.",
       ),
     includeIdentityFields: z.boolean(),
@@ -122,14 +122,14 @@ export function registerEnvironmentDiffPaths(ctx: BuildContext) {
     tags: ["Environment diff"],
     summary: "Compare two accounts' resource inventories",
     description:
-      "Compares two accounts of the same provider — typically staging against production — over " +
+      "Compares two accounts of the same provider (typically staging against production) over " +
       "already-synced state: which resource types exist in one and not the other, the per-type " +
       "count deltas, and the fields on which two corresponding resources disagree (instance " +
       "class, engine version, feature flags).\n\n" +
       "Resources are paired by resource type plus name with environment words removed, so " +
       "`api-staging` lines up with `api-prod` without any naming convention to configure. By " +
       "default the comparison hides divergences that are artefacts of being two different " +
-      "resources — ids, links, network addresses and timestamps — because every resource has " +
+      "resources (ids, links, network addresses and timestamps) because every resource has " +
       "different ones; pass `includeIdentityFields=true` to see them.\n\n" +
       "Read-only and cheap: no provider API calls are made, so results reflect the last sync.",
     request: {
@@ -137,7 +137,7 @@ export function registerEnvironmentDiffPaths(ctx: BuildContext) {
       query: strict({
         a: Uuid.openapi({
           param: { name: "a", in: "query" },
-          description: "Baseline account id — by convention the environment that works.",
+          description: "Baseline account id; by convention the environment that works.",
         }),
         b: Uuid.openapi({
           param: { name: "b", in: "query" },

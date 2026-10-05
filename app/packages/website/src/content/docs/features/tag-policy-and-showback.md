@@ -48,7 +48,7 @@ Every block and every override is recorded in the [audit log](../team-and-billin
 
 ## Untagged spend
 
-The payoff for the policy is on the money side: the **Tags & allocation** section of the Costs panel reports how much of the org's spend (from provider billing data) sits on rows missing at least one required tag key — overall, per key, and as a top list of the (account, service) buckets responsible. That's the spend nobody can allocate; the top list is the shortest path to fixing it.
+The payoff for the policy is on the money side: the **Tags & allocation** section on the Costs panel's **Allocation** tab reports how much of the org's spend (from provider billing data) sits on rows missing at least one required tag key, overall, per key, and as a top list of the (account, service) buckets responsible. That's the spend nobody can allocate; the top list is the shortest path to fixing it.
 
 ![Costs panel "Tags & allocation" section showing the untagged spend card with "$1,234 of $9,876 missing a required tag", the per-account compliance bars, and the showback list below](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/tags-allocation-section.png)
 

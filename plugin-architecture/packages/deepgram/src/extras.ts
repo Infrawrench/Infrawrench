@@ -845,7 +845,7 @@ export class DeepgramExtras {
                 kind: "text",
                 variant: "muted",
                 content:
-                  "Send this agent_id in a Settings message instead of the full agent block. Only the labels can be edited: Deepgram treats the configuration itself as immutable, so changing it means creating a new one, moving sessions over, and deleting this one.",
+                  "Send this agent_id in a Settings message instead of the full agent block. Only labels can be edited; to change the configuration, create a new one and delete this one.",
               },
             ],
           },

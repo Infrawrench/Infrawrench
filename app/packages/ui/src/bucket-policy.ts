@@ -184,7 +184,7 @@ export function lintPolicy(doc: BucketPolicyDoc, bucketArn: string): LintFinding
       findings.push({
         statementIndex: i,
         severity: "warning",
-        message: "Grants every action on the bucket to everyone — almost never what you want.",
+        message: "Grants every action on the bucket to everyone. Almost never what you want.",
       });
     }
 
@@ -193,7 +193,7 @@ export function lintPolicy(doc: BucketPolicyDoc, bucketArn: string): LintFinding
       findings.push({
         statementIndex: i,
         severity: "warning",
-        message: "Public (Principal: *) — anyone on the internet can call these actions.",
+        message: "Public (Principal: *): anyone on the internet can call these actions.",
       });
     }
 
@@ -204,7 +204,7 @@ export function lintPolicy(doc: BucketPolicyDoc, bucketArn: string): LintFinding
         findings.push({
           statementIndex: i,
           severity: "warning",
-          message: "Resource is `*` — bucket policies only affect this bucket and its objects.",
+          message: "Resource is `*`, but bucket policies only affect this bucket and its objects.",
         });
       } else if (!r.startsWith(bucketArn)) {
         findings.push({
@@ -223,7 +223,7 @@ export function lintPolicy(doc: BucketPolicyDoc, bucketArn: string): LintFinding
           findings.push({
             statementIndex: i,
             severity: "info",
-            message: `Action ${action} acts on objects — Resource usually ends in "/*" (e.g. ${objectArn}).`,
+            message: `Action ${action} acts on objects; Resource usually ends in "/*" (e.g. ${objectArn}).`,
           });
           break; // one nudge per statement is plenty
         }
@@ -234,7 +234,7 @@ export function lintPolicy(doc: BucketPolicyDoc, bucketArn: string): LintFinding
           findings.push({
             statementIndex: i,
             severity: "info",
-            message: `Action ${action} acts on the bucket itself — Resource is usually ${bucketArn} (no trailing /*).`,
+            message: `Action ${action} acts on the bucket itself; Resource is usually ${bucketArn} (no trailing /*).`,
           });
           break;
         }
@@ -260,7 +260,7 @@ export function summarizeStatement(stmt: BucketPolicyStatement, bucketName: stri
   const what = describeActions(stmt.Action, stmt.NotAction);
   const where = describeResources(stmt.Resource, stmt.NotResource, bucketName);
   const cond = stmt.Condition ? ` ${describeCondition(stmt.Condition)}` : "";
-  return `${verb} ${who} to ${what} on ${where}${cond ? ` —${cond}` : ""}.`;
+  return `${verb} ${who} to ${what} on ${where}${cond ? `,${cond}` : ""}.`;
 }
 
 function describePrincipal(p?: PolicyPrincipal, notP?: PolicyPrincipal): string {
@@ -445,7 +445,7 @@ const POLICY_TEMPLATES: PolicyTemplate[] = [
     id: "force-tls",
     label: "Deny non-HTTPS requests",
     description:
-      "Reject any request that isn't over TLS. Standard hardening baseline — pair it with a more specific Allow.",
+      "Reject any request that isn't over TLS. A standard baseline; pair it with a more specific Allow.",
     build: ({ bucketArn }) => [
       {
         Sid: "DenyInsecureTransport",

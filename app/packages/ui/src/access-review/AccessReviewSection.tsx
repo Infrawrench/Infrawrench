@@ -359,7 +359,7 @@ function DismissedFindingRow({
           {finding.dismissal.dismissedBy
             ? ` ${gt("by {name}", { name: finding.dismissal.dismissedBy })}`
             : ""}
-          {finding.dismissal.reason ? ` — ${finding.dismissal.reason}` : ""}
+          {finding.dismissal.reason ? `: ${finding.dismissal.reason}` : ""}
         </span>
       </td>
       <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
@@ -542,7 +542,7 @@ export function AccessReviewSection({
       <h1 className="text-xl font-semibold mb-1">{gt("Access review")}</h1>
       <p className="text-sm text-on-surface-muted mb-4">
         {gt(
-          "Every principal inside your connected clouds — IAM users and roles, service accounts, app registrations, groups, role bindings and long-lived keys — read from the state your accounts last synced. This is not your Infrawrench team's roles, and not the credentials Infrawrench stores on your behalf.",
+          "Every principal in your connected clouds (IAM users and roles, service accounts, groups, role bindings, long-lived keys), from the last sync. Not your Infrawrench team roles.",
         )}
       </p>
 
@@ -596,7 +596,7 @@ export function AccessReviewSection({
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load the access review — {error}", { error })}{" "}
+          {gt("Couldn't load the access review: {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
               {gt("Retry")}
@@ -611,7 +611,7 @@ export function AccessReviewSection({
       )}
       {error != null && data !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          {gt("Couldn't refresh — showing the last loaded review. {error}", { error })}
+          {gt("Couldn't refresh; showing the last loaded review. {error}", { error })}
         </p>
       )}
 
@@ -628,7 +628,7 @@ export function AccessReviewSection({
           {data.principals.length === 0 ? (
             <p className="text-sm text-on-surface-faint">
               {gt(
-                "No principals synced. This page fills in when a connected provider syncs an identity type — IAM users and roles, service accounts, app registrations, directory users, memberships or long-lived API keys. An empty list means none of your accounts have synced one, not that you have none.",
+                "No principals synced yet. They appear once a connected provider syncs identities (users, roles, service accounts, API keys). Empty doesn't mean you have none.",
               )}
             </p>
           ) : (
@@ -702,7 +702,7 @@ export function AccessReviewSection({
                 <p className="text-sm text-on-surface-faint">
                   {data.dismissedCount > 0
                     ? gt(
-                        "No open findings — everything currently flagged has been accepted. The dismissed list is below.",
+                        "No open findings. Everything flagged has been accepted; see the dismissed list below.",
                       )
                     : gt("No open findings across your synced principals.")}
                 </p>
@@ -788,7 +788,7 @@ export function AccessReviewSection({
               </button>
               <p className="mt-1 text-xs text-on-surface-faint">
                 {gt(
-                  "Accepted risks. Still evaluated on every review, but kept off the list above and out of the security alerts until restored. They stay in the exported evidence file.",
+                  "Accepted risks. Still evaluated, but hidden from the list above and from security alerts until restored. Included in the exported evidence file.",
                 )}
               </p>
               {showDismissed && (
@@ -817,7 +817,7 @@ export function AccessReviewSection({
 
           {data.principals.length > 0 && (
             <p className="mt-4 text-xs text-on-surface-faint">
-              {gt("Computed from already-synced fields — nothing here contacts a provider.")}{" "}
+              {gt("Computed from synced data; nothing here contacts a provider.")}{" "}
               {data.unknownActivityCount > 0 && (
                 <T>
                   <>

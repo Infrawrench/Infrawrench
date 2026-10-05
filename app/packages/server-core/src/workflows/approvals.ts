@@ -170,7 +170,7 @@ async function notifyApprovalRequest(args: {
     `${message}\n\n` +
     `Workflow: ${ctx.workflowName} · run ${runId}\n` +
     `Requested by: the run, ${requester}\n` +
-    `Timeout: ${expiry} — no decision counts as a denial.`;
+    `Timeout: ${expiry}; no decision counts as a denial.`;
   const context = `${ctx.workflowName} · run ${runId} · ${expiry}`;
   const url = approvalsUrl(ctx.organizationId);
 
@@ -233,7 +233,7 @@ async function notifyApprovalRequest(args: {
 
   await pageAboutApproval(
     ctx,
-    `infrawrench approval needed: ${title} — ${message} (${ctx.workflowName}, ${expiry})`,
+    `infrawrench approval needed: ${title}: ${message} (${ctx.workflowName}, ${expiry})`,
   );
 }
 

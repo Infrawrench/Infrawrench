@@ -1,7 +1,11 @@
-import { useMemo } from "react";
-import { useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import type { CostGraphConfig } from "@infrawrench/client-core";
+import {
+  isCostsPanelTab,
+  type CostGraphConfig,
+  type CostsPanelTab,
+} from "@infrawrench/client-core";
 import { CostCollectionNotice } from "@/components/CostCollectionNotice";
 import { CostVisibilityNotice } from "@/components/CostVisibilityNotice";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
@@ -13,6 +17,7 @@ import {
   Row,
   Screen,
   SectionTitle,
+  TabStrip,
 } from "@/components/ui";
 import { CarbonSection } from "@/features/costs/CarbonSection";
 import { CommitmentsSection } from "@/features/costs/CommitmentsSection";
@@ -33,9 +38,7 @@ import { RealizedSavingsSection } from "@/features/savings/RealizedSavingsSectio
 
 /**
  * The org's spend, budgets, anomalies, and potential savings; the Costs panel
- * of web and desktop, in the same order, so the four sections answer one
- * question together: what is this org spending, what did we promise to spend,
- * what changed unexpectedly, and what of it is wasted.
+ * of web and desktop, split into the same tabs (minus Network).
  *
  * This is where a budget lives, independent of any dashboard: it keeps
  * evaluating and alerting whether or not a dashboard shows it, so a budget push
@@ -48,6 +51,16 @@ import { RealizedSavingsSection } from "@/features/savings/RealizedSavingsSectio
  * the anomaly it is about has to be readable regardless of what else on the
  * tab is having a bad day.
  */
+/** Mobile has no network tab: flow collection is set up on web or desktop. */
+const TABS: ReadonlyArray<{ id: CostsPanelTab; label: string }> = [
+  { id: "overview", label: "Overview" },
+  { id: "alerts", label: "Alerts" },
+  { id: "savings", label: "Savings" },
+  { id: "commitments", label: "Commitments" },
+  { id: "carbon", label: "Carbon" },
+  { id: "allocation", label: "Allocation" },
+];
+
 const OVERVIEW_CONFIG: CostGraphConfig = {
   version: 1,
   chartType: "stacked_bar",
@@ -66,6 +79,15 @@ export default function CostsScreen() {
   const { orgId } = useOrgApi();
   const budgets = useBudgets();
   const costStatus = useCostStatus();
+  // A push names the tab holding the section it is about.
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const linkedTab =
+    isCostsPanelTab(params.tab) && TABS.some((t) => t.id === params.tab) ? params.tab : null;
+  const [tab, setTab] = useState<CostsPanelTab>(linkedTab ?? "overview");
+  // A second push while the screen is open changes the param, not the mount.
+  useEffect(() => {
+    if (linkedTab) setTab(linkedTab);
+  }, [linkedTab]);
 
   const rows = useMemo(() => [...(budgets.data?.values() ?? [])], [budgets.data]);
 
@@ -96,70 +118,75 @@ export default function CostsScreen() {
       <CostVisibilityNotice />
       <CostCollectionNotice statuses={costStatus.data ?? []} />
 
-      <SectionTitle>This month</SectionTitle>
-      <CostGraphCard title="Month to date" config={OVERVIEW_CONFIG} />
+      <TabStrip tabs={TABS} value={tab} onChange={setTab} />
 
-      {/*
-        Reports are their own page, not a section: the list can be long, and a
-        report is an object you navigate to rather than a summary you scan.
-      */}
-      <Card list>
-        <Row
-          title="Cost reports"
-          subtitle="Saved cost graphs — named, and shared across dashboards"
-          onPress={() => router.push(`/org/${orgId}/cost-reports`)}
-        />
-        <Row
-          title="Canvases"
-          subtitle="Reports built from a description, refreshed on open"
-          onPress={() => router.push(`/org/${orgId}/cost-canvases`)}
-        />
-      </Card>
+      {tab === "overview" && (
+        <>
+          <SectionTitle>This month</SectionTitle>
+          <CostGraphCard title="Month to date" config={OVERVIEW_CONFIG} />
 
-      <SectionTitle>Budgets</SectionTitle>
-      {budgets.isLoading ? (
-        <LoadingView />
-      ) : budgets.isError ? (
-        <ErrorView
-          message={budgets.error instanceof Error ? budgets.error.message : "Failed to load"}
-          onRetry={() => void budgets.refetch()}
-        />
-      ) : rows.length === 0 ? (
-        <EmptyView message="No budgets yet. Add one from a dashboard — edit it, add a card, and pick New budget — to track spend or a usage quantity per period and get alerted before the bill does." />
-      ) : (
-        <BudgetTree budgets={rows} />
+          {/*
+            Reports are their own page, not a section: the list can be long, and a
+            report is an object you navigate to rather than a summary you scan.
+          */}
+          <Card list>
+            <Row
+              title="Cost reports"
+              subtitle="Saved cost graphs, shared across dashboards"
+              onPress={() => router.push(`/org/${orgId}/cost-reports`)}
+            />
+            <Row
+              title="Canvases"
+              subtitle="Reports built from a description, refreshed on open"
+              onPress={() => router.push(`/org/${orgId}/cost-canvases`)}
+            />
+          </Card>
+
+          <SectionTitle>Budgets</SectionTitle>
+          {budgets.isLoading ? (
+            <LoadingView />
+          ) : budgets.isError ? (
+            <ErrorView
+              message={budgets.error instanceof Error ? budgets.error.message : "Failed to load"}
+              onRetry={() => void budgets.refetch()}
+            />
+          ) : rows.length === 0 ? (
+            <EmptyView message="No budgets yet. Add one from a dashboard card (New budget) to track spend and get alerted before the bill does." />
+          ) : (
+            <BudgetTree budgets={rows} />
+          )}
+        </>
       )}
 
-      {/* Above tag governance, mirroring the web panel's order: "what does a
-          customer cost" is the question a phone is most likely opened for. */}
-      <UnitCostsSection />
+      {/* Same grouping and order as the web/desktop tabs. */}
+      {tab === "alerts" && (
+        <>
+          <CostAnomaliesSection />
+          <CostChangeAlertsSection />
+          <EfficiencyAlertsSection />
+        </>
+      )}
 
-      <TagGovernanceSection />
+      {tab === "savings" && (
+        <>
+          <SavingsSection />
+          <OversizedSection />
+          <ExtendedSupportSection />
+          <SchedulesSection />
+          <RealizedSavingsSection />
+        </>
+      )}
 
-      <CostAnomaliesSection />
+      {tab === "commitments" && <CommitmentsSection />}
 
-      <CostChangeAlertsSection />
-      {/* Same order as web: the two "did something happen yesterday" sections
-          first, then the three "is something quietly wrong" ones. */}
-      <EfficiencyAlertsSection />
+      {tab === "carbon" && <CarbonSection />}
 
-      {/* First of the savings-shaped sections, matching web/desktop:
-          commitments are the largest single lever on a big bill. */}
-      <CommitmentsSection />
-
-      <SavingsSection />
-
-      <OversizedSection />
-
-      <ExtendedSupportSection />
-
-      <SchedulesSection />
-
-      {/* After the finders, as on web/desktop: the receipt for what was saved. */}
-      <RealizedSavingsSection />
-
-      {/* A whole-estate figure beside spend, like the web/desktop section. */}
-      <CarbonSection />
+      {tab === "allocation" && (
+        <>
+          <UnitCostsSection />
+          <TagGovernanceSection />
+        </>
+      )}
     </Screen>
   );
 }

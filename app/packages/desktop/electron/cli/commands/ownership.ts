@@ -33,7 +33,7 @@ function ownerCell(record: ResourceOwnership): string {
 export async function cmdOwnership(ctx: CliContext, query?: string): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Ownership lives in Infrawrench Cloud — it names an org member. Drop --local.",
+      "Ownership lives in Infrawrench Cloud. It names an org member. Drop --local.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -62,7 +62,7 @@ export async function cmdOwnership(ctx: CliContext, query?: string): Promise<voi
       c.dim(
         query
           ? `Nothing recorded matches "${query}".`
-          : "No ownership recorded yet. Set an owner from a resource's Ownership tab — the orphan finder will then name them against anything it flags.",
+          : "No ownership recorded yet. Set an owner from a resource's Ownership tab. The orphan finder will then name them against anything it flags.",
       ),
     );
     return;
@@ -84,7 +84,7 @@ export async function cmdOwnership(ctx: CliContext, query?: string): Promise<voi
   println();
   println(
     c.dim(
-      "Only resources with something recorded appear here — everything else is unowned. " +
+      "Only resources with something recorded appear here. Everything else is unowned. " +
         "Run `infrawrench orphans` to see the unowned resources that also look wasted.",
     ),
   );

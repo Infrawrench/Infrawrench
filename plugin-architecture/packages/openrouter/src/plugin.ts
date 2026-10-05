@@ -31,7 +31,7 @@ const manifest: PluginManifest = {
       key: "managementKey",
       label: "Management Key",
       description:
-        "OpenRouter's privileged credential (formerly called a provisioning key), created at openrouter.ai/settings/management-keys. A plain inference key gets a 403 from /credits, /activity, /keys, /guardrails, /workspaces, /byok and /generation, which is almost the whole console surface, so this is the key the plugin lists resources with.",
+        "OpenRouter's privileged credential (formerly called a provisioning key), created at openrouter.ai/settings/management-keys. A plain inference key gets a 403 on most of the console API, so this is the key used to list resources.",
       sensitive: true,
       placeholder: "sk-or-v1-…",
       helpLink: {

@@ -67,7 +67,7 @@ export const flyTerraformExport: TerraformExportCapability = {
         const machineName = fieldString(resource, "name");
         if (machineName) attributes["name"] = tf.str(machineName);
         const comments = [
-          "Machine services, mounts, and guest sizing are not reconstructed —",
+          "Machine services, mounts, and guest sizing are not reconstructed;",
           "add guest/service/mount blocks manually after import.",
         ];
         return {
@@ -97,7 +97,7 @@ export const flyTerraformExport: TerraformExportCapability = {
         const attached = fieldString(resource, "attachedMachineId");
         if (attached) {
           comments.push(
-            `Attached to machine ${attached} — model the mount on fly_machine separately`,
+            `Attached to machine ${attached}; model the mount on fly_machine separately`,
             `(mount { volume = fly_volume.${name}.id path = \"…\" }).`,
           );
         }

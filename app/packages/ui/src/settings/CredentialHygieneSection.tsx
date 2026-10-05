@@ -112,8 +112,7 @@ export function CredentialHygieneSection() {
         <T>
           <p className="text-xs text-on-surface-muted">
             &ldquo;Unused&rdquo; means <em>no write recorded in the audit log</em> over the window.
-            Reads are not audit-logged, so nothing here concludes anything about what someone can{" "}
-            <em>see</em> — only about what they never <em>did</em>.
+            Reads are not logged, so read access is never flagged.
           </p>
         </T>
 
@@ -124,7 +123,7 @@ export function CredentialHygieneSection() {
                   "This organization has no audit history yet, so the unused-permission findings are withheld.",
                 )
               : gt(
-                  "This organization has {days} days of audit history — not enough to judge unused permissions, so those findings are withheld rather than guessed at.",
+                  "This organization has only {days} days of audit history, so unused-permission findings are withheld.",
                   { days: report.auditHistoryDays },
                 )}
           </p>
@@ -134,7 +133,7 @@ export function CredentialHygieneSection() {
       {report && report.findings.length === 0 && !loading && (
         <p className="text-sm text-on-surface-muted">
           {gt(
-            "Nothing to flag. Every API key is in use, every SSH key has been used, and no member is sitting on write permissions they have never exercised.",
+            "Nothing to flag. Every API key and SSH key is in use, and no member holds unused write permissions.",
           )}
         </p>
       )}
@@ -157,7 +156,7 @@ function Header() {
       <h1 className="text-xl font-semibold">{gt("Credential hygiene")}</h1>
       <p className="text-sm text-on-surface-muted mt-1">
         {gt(
-          "API keys nobody uses, SSH keys nothing references, and members holding write permissions they never exercise — all of it from data already in the system. Nothing to install, no provider to ask.",
+          "Unused API keys, unreferenced SSH keys, and members holding write permissions they never use.",
         )}
       </p>
     </div>

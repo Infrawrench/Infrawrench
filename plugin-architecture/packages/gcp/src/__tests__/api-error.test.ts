@@ -31,8 +31,8 @@ describe("describeDisabledApi", () => {
     const msg = describeDisabledApi(403, SERVICE_DISABLED_BODY, "my-project");
     expect(msg).toBe(
       "The Cloud SQL Admin API (sqladmin.googleapis.com) is not enabled for project my-project. " +
-        "Enable it at https://console.cloud.google.com/apis/library/sqladmin.googleapis.com?project=my-project " +
-        "— it can take a few minutes to take effect.",
+        "Enable it at https://console.cloud.google.com/apis/library/sqladmin.googleapis.com?project=my-project" +
+        ". It can take a few minutes to take effect.",
     );
   });
 

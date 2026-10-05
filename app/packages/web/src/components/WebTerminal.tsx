@@ -236,8 +236,8 @@ export function WebTerminal({
         try {
           const fresh = await apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`, {});
           if (disposed) return;
-          term?.write(`\x1b[90mHost key trusted — reconnecting…\x1b[0m\r\n`);
-          setStatusMessage("Host key trusted — reconnecting…");
+          term?.write(`\x1b[90mHost key trusted, reconnecting…\x1b[0m\r\n`);
+          setStatusMessage("Host key trusted, reconnecting…");
           wsRef.current?.close();
           openSocket(fresh.token);
         } catch (err) {

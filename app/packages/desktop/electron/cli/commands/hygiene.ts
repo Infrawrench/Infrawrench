@@ -64,16 +64,16 @@ export async function cmdHygiene(
   // evidence, and the caveat is what stops that.
   println(
     c.dim(
-      "Unused means no write recorded in the audit log. Reads are not audit-logged, so nothing " +
-        "here says anything about what a person or key can see — only about what they never did.",
+      "Unused means no write recorded in the audit log. Reads are not logged, so this says " +
+        "nothing about what a person or key can see.",
     ),
   );
   if (report.permissionFindingsWithheld) {
     println(
       c.yellow(
         report.auditHistoryDays === null
-          ? "No audit history yet — unused-permission findings were withheld."
-          : `Only ${report.auditHistoryDays} days of audit history — unused-permission findings were withheld rather than guessed at.`,
+          ? "No audit history yet. Unused-permission findings were withheld."
+          : `Only ${report.auditHistoryDays} days of audit history. Unused-permission findings were withheld.`,
       ),
     );
   }

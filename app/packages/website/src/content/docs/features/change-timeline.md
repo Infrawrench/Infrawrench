@@ -127,7 +127,7 @@ So drift alerting works like a digest:
 
 ### Choosing what counts
 
-**Settings → Notifications → Resource drift alerts** configures this once for the whole organization. It needs the **Organization settings** permission, and it is separate from the per-channel toggles above: those decide _who_ hears, this decides _what_ and _how often_.
+**Settings → Notifications → Alerts & digest → Resource drift alerts** configures this once for the whole organization. It needs the **Organization settings** permission, and it is separate from the per-channel toggles above: those decide _who_ hears, this decides _what_ and _how often_.
 
 | Setting                    | Default    | What it does                                                                                                                                      |
 | -------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |

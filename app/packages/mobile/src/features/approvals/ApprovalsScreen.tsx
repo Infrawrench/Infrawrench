@@ -102,7 +102,7 @@ export default function ApprovalsScreen() {
       "",
       decision === "approve"
         ? "Approving releases the suspended run, which continues against this organization's real infrastructure."
-        : "Denying fails the run at this step. It cannot be undone — the workflow has to be run again.",
+        : "Denying fails the run at this step. It cannot be undone; the workflow has to be run again.",
     ].join("\n");
 
     Alert.alert(
@@ -166,8 +166,8 @@ export default function ApprovalsScreen() {
       {focusedMissing ? (
         <Card>
           <Text style={{ color: colors.warning, fontSize: 13 }}>
-            The request your notification was about is no longer pending — someone decided it, or it
-            expired and was treated as a denial.
+            That request is no longer pending. Someone decided it, or it expired (treated as a
+            denial).
           </Text>
         </Card>
       ) : null}
@@ -196,7 +196,7 @@ export default function ApprovalsScreen() {
 
       <Text style={{ color: colors.textFaint, fontSize: 12 }}>
         Approval requests also go to Slack, Teams and SMS wherever the Pages trigger is on. Whoever
-        answers first decides — a second answer is refused rather than overwriting the first.
+        answers first decides.
       </Text>
     </Screen>
   );

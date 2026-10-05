@@ -51,7 +51,7 @@ export async function runUnitCostQuery(
   if (!metric) throw new BusinessMetricNotFoundError(metricKeyOrId);
   if (request.mode === "usage_unit_cost") {
     throw new CostQueryError(
-      "Cost per usage unit divides by provider usage, not by a metric — use " +
+      "Cost per usage unit divides by provider usage, not by a metric; use " +
         "POST /business-metrics/usage-unit-costs.",
     );
   }

@@ -264,7 +264,7 @@ export function renderDetail(
             databaseLabel: String(fields["tableName"] ?? resource.externalId ?? ""),
             singleCollection: true,
             helpText:
-              "Scan the table to browse items. Item keys are encoded into the `_name` field — strip it before re-inserting.",
+              "Scan the table to browse items. Item keys are encoded into the `_name` field; strip it before re-inserting.",
           },
           customTabs: dynamoCustomTabs,
         }
@@ -290,7 +290,7 @@ export function renderDetail(
             bodyFormat: "json" as const,
             defaultBody: '{\n  "hello": "world"\n}',
             helpText:
-              "Posted as the `MessageBody` of a single SendMessage call. JSON is sent as a string — consumers parse it themselves.",
+              "Posted as the `MessageBody` of a single SendMessage call. JSON is sent as a string; consumers parse it themselves.",
             submitLabel: "Send message",
             extraFields: [
               {
@@ -335,7 +335,7 @@ export function renderDetail(
                 label: "Subject",
                 kind: "text" as const,
                 optional: true,
-                helpText: "Optional — used by email subscribers as the email subject.",
+                helpText: "Optional. Used as the email subject for email subscribers.",
               },
               {
                 key: "attributes",

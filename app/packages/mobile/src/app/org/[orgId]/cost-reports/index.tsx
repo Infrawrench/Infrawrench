@@ -97,8 +97,7 @@ export default function CostReportsRoute() {
       refreshing={reports.isRefetching || folders.isRefetching}
     >
       <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-        A saved cost graph with a name. One report can appear on many dashboards — editing it on web
-        or desktop updates all of them.
+        A saved cost graph that can appear on many dashboards. Edit it on web or desktop.
       </Text>
 
       {rows.length === 0 ? (

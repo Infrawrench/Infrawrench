@@ -39,14 +39,14 @@ export async function cmdCli(ctx: CliContext, action: string | undefined): Promi
         println("Shell command is not installed. Run `infrawrench cli install`.");
       } else {
         println(
-          `Installed at ${c.bold(status.path!)}${status.stale ? c.yellow(" (points at a different app build — reinstall)") : ""}`,
+          `Installed at ${c.bold(status.path!)}${status.stale ? c.yellow(" (points at a different app build; reinstall)") : ""}`,
         );
       }
       return;
     }
     default:
       throw new CliError(
-        `Unknown subcommand "cli ${action}" — use install, uninstall, or status.`,
+        `Unknown subcommand "cli ${action}": use install, uninstall, or status.`,
         2,
       );
   }

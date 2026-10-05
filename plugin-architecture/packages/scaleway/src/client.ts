@@ -743,7 +743,7 @@ export class ScalewayClient implements PluginClient {
       const instanceZone = String(instance.fields["zone"] ?? "");
       if (volumeZone && instanceZone && volumeZone !== instanceZone) {
         throw new Error(
-          `Volume zone ${volumeZone} does not match instance zone ${instanceZone} — Scaleway block volumes must be in the same AZ as the instance.`,
+          `Volume zone ${volumeZone} does not match instance zone ${instanceZone}. Block volumes must be in the same AZ as the instance.`,
         );
       }
       const instanceExternalId = instance.externalId ?? "";

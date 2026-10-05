@@ -190,22 +190,22 @@ export function pushDataToPath(data: MobilePushData): string {
     case "api_page":
       return `/org/${data.orgId}`;
     case "budget_breach":
-      return `/org/${data.orgId}/costs`;
+      return `/org/${data.orgId}/costs?tab=overview`;
     // A change alert lands on the Costs tab too: the change-alerts section
     // there lists the fired events with their previous → current amounts,
     // which is exactly what the push summarised.
     case "cost_change":
-      return `/org/${data.orgId}/costs`;
+      return `/org/${data.orgId}/costs?tab=alerts`;
     // The three efficiency alerts are all "here is a standing condition, go
     // look at it when you can" rather than "what just happened", so they open
-    // the Costs tab where the commitments, unit-costs and efficiency-alert
-    // sections all live, never the moment view, which centres on an instant
-    // these alerts do not have.
+    // the Alerts tab of Costs, where the efficiency-alert section lives,
+    // never the moment view, which centres on an instant these alerts do not
+    // have.
     case "commitment_expiry":
     case "commitment_idle":
     case "unit_cost_regression":
     case "unit_cost_threshold":
-      return `/org/${data.orgId}/costs`;
+      return `/org/${data.orgId}/costs?tab=alerts`;
     // A cost anomaly is a "what happened just now?" alert, so it opens the
     // moment view centred on the tap: the anomaly event, plus whatever else
     // (deploys, incidents, drift) coincided with it. The Costs tab is one tap
@@ -250,7 +250,7 @@ export function pushDataToPath(data: MobilePushData): string {
     case "savings_finding":
     // Extended-support findings are a section of the Costs screen.
     case "extended_support_alert":
-      return `/org/${data.orgId}/costs`;
+      return `/org/${data.orgId}/costs?tab=savings`;
     // A log-match alert names the saved query that fired; open its viewer so
     // the matching lines are one refresh away.
     case "log_match":

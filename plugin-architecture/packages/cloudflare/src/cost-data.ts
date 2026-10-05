@@ -153,9 +153,9 @@ function setupError(err: unknown): CostSetupError {
   const status = (err as { status?: unknown }).status;
   const reason =
     status === 403
-      ? "the API token is missing the Billing Read permission — re-create the token " +
+      ? "the API token is missing the Billing Read permission; re-create the token " +
         "with that scope added"
-      : "the Billable Usage API is not available for this account yet — Cloudflare is " +
+      : "the Billable Usage API is not available for this account yet; Cloudflare is " +
         "rolling it out to self-serve accounts first";
   return new CostSetupError(
     `Cloudflare plugin: ${reason}. (${formatCloudflareError(err)})`,
@@ -178,8 +178,8 @@ export async function fetchCloudflareCostData(
   }
   if (!info.covered) {
     throw new CostSetupError(
-      "Cloudflare plugin: this account is not yet covered by the Billable Usage API — " +
-        "Cloudflare is rolling it out to self-serve accounts first, with Enterprise to follow.",
+      "Cloudflare plugin: this account is not yet covered by the Billable Usage API; " +
+        "Cloudflare is rolling it out to self-serve accounts first, then Enterprise.",
       BILLABLE_USAGE_HELP,
     );
   }

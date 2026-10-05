@@ -57,7 +57,7 @@ export class CostScenarioResolutionError extends Error {
 
   constructor(scenarioModelId: string) {
     super(
-      `Scenario model ${scenarioModelId} not found — it may have been deleted. ` +
+      `Scenario model ${scenarioModelId} not found; it may have been deleted. ` +
         "Refusing to project without it: a chart labelled with a scenario that silently " +
         "contains none is worse than one that does not draw.",
     );
@@ -245,8 +245,7 @@ function resolveScenarioCurrency(options: ScenarioForecastOptions): {
     throw new CostScenarioApplicationError(
       `Scenario "${model.name}" is in ${model.currency} but this chart is in ${target}, and no ` +
         `${model.currency} → ${target} rate is configured. Add one (Settings → Currency) or ` +
-        "write the scenario in the chart's currency — a projection must not silently sum two " +
-        "kinds of money.",
+        "write the scenario in the chart's currency.",
     );
   }
   return { amountRate: parsed, currency: target, convertedFrom: model.currency };

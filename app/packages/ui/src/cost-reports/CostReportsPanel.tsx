@@ -486,7 +486,7 @@ export function CostReportsPanel({
       <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
         {error !== null && (
           <div role="alert" className="text-sm text-danger">
-            {gt("Couldn’t load reports — {error}", { error })}{" "}
+            {gt("Couldn’t load reports: {error}", { error })}{" "}
             <button type="button" onClick={() => void refresh()} className="underline">
               {gt("Retry")}
             </button>
@@ -761,7 +761,7 @@ function ReportList({
           <h2 className="text-sm font-semibold text-on-surface">{gt("Cost reports")}</h2>
           <p className="text-xs text-on-surface-faint mt-0.5">
             {gt(
-              "A saved cost graph with a name and an address. Put one on as many dashboards as you like — editing the report updates all of them.",
+              "Saved cost graphs you can put on any dashboard. Editing a report updates every copy.",
             )}
           </p>
         </div>
@@ -795,9 +795,7 @@ function ReportList({
 
       {reports?.length === 0 && folders.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          {gt(
-            "No reports yet. A one-off chart can still go straight onto a dashboard — a report is for the ones you want to keep, name, and share.",
-          )}
+          {gt("No reports yet. Save a chart as a report to keep, name and share it.")}
         </p>
       )}
 
@@ -1192,7 +1190,7 @@ function ReportDetail({
               onClick={() => void downloadFocus()}
               disabled={exporting}
               title={gt(
-                "Download this report's rows as a FOCUS 1.4 CSV: billed and effective cost, charge and service categories, and tags, one row per resource per day",
+                "Download this report's rows as a FOCUS 1.4 CSV, one row per resource per day",
               )}
               className="hover:text-on-surface-secondary underline disabled:opacity-50"
             >
@@ -1255,7 +1253,7 @@ function ReportDetail({
       )}
       {exportError !== null && (
         <p className="text-xs text-danger" role="alert">
-          {gt("Couldn’t download the FOCUS CSV — {error}", { error: exportError })}
+          {gt("Couldn’t download the FOCUS CSV: {error}", { error: exportError })}
         </p>
       )}
 
@@ -1385,7 +1383,7 @@ function MoveToFolderModal({
           {gt("Move “{name}”", { name: subjectName })}
         </h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          {gt("Folders only organize this list — moving changes nothing about the report itself.")}
+          {gt("Folders only organize this list; moving doesn't change the report.")}
         </p>
 
         {error !== null && (
@@ -1473,9 +1471,7 @@ function PlacementModal({
           {gt("Show on a dashboard")}
         </h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          {gt(
-            "A card is a view onto this report. Removing one leaves the report intact; editing the report changes every card at once.",
-          )}
+          {gt("Removing a card leaves the report intact; editing the report updates every card.")}
         </p>
 
         {error !== null && (

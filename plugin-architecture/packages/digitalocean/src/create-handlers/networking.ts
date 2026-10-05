@@ -194,8 +194,8 @@ export async function networkingGetCreateConfig(
           required: true,
           defaultValue: droplets.length > 0 ? "droplet" : "region",
           options: [
-            { id: "droplet", label: "A Droplet (assign now — no charge)" },
-            { id: "region", label: "A region (unassigned — billed monthly)" },
+            { id: "droplet", label: "A Droplet (assign now, no charge)" },
+            { id: "region", label: "A region (unassigned, billed monthly)" },
           ],
           description:
             "A reserved IP is free while it is assigned to a Droplet, and $5.00/month while it is only reserved to a region.",
@@ -211,7 +211,7 @@ export async function networkingGetCreateConfig(
           description:
             droplets.length > 0
               ? "The address is reserved in this Droplet's region and assigned to it immediately."
-              : "No Droplets in this account — reserve to a region instead.",
+              : "No Droplets in this account. Reserve to a region instead.",
         },
         {
           key: "region",

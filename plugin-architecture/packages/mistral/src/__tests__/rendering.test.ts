@@ -64,12 +64,12 @@ describe("renderDetail — voice", () => {
     const preset = client().renderDetail(
       resource("mistral-voice", { voiceId: "amelie", name: "Amélie", custom: false }),
     );
-    expect(JSON.stringify(preset)).toContain("belong to Mistral");
+    expect(JSON.stringify(preset)).toContain("Preset voices can be used");
 
     const clone = client().renderDetail(
       resource("mistral-voice", { voiceId: "mine", name: "Mine", custom: true }),
     );
-    expect(JSON.stringify(clone)).not.toContain("belong to Mistral");
+    expect(JSON.stringify(clone)).not.toContain("Preset voices can be used");
   });
 
   it("still renders a usable panel when nothing has been stashed yet", () => {

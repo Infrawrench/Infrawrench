@@ -18,7 +18,7 @@ import { c, formatMoney, printErr, printJson, println, printTable } from "../out
 
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
-    throw new CliError("Cost data lives in Infrawrench Cloud — there is no local cost history.");
+    throw new CliError("Cost data lives in Infrawrench Cloud. There is no local cost history.");
   }
 }
 

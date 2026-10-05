@@ -215,10 +215,10 @@ function linkPrompt(installs: InstallOrg[], teamId: string, slackUserId: string)
 
 const USAGE =
   "*`/infrawrench` commands*\n" +
-  "• `/infrawrench costs` — this month's cloud spend so far\n" +
-  "• `/infrawrench status <resource>` — a resource's current status\n" +
-  "• `/infrawrench link` — link your Slack account to Infrawrench\n" +
-  "• `/infrawrench unlink` — remove that link";
+  "• `/infrawrench costs`: this month's cloud spend so far\n" +
+  "• `/infrawrench status <resource>`: a resource's current status\n" +
+  "• `/infrawrench link`: link your Slack account to Infrawrench\n" +
+  "• `/infrawrench unlink`: remove that link";
 
 function relativeTime(date: Date | null, now = Date.now()): string {
   if (!date) return "never";
@@ -262,8 +262,8 @@ async function costSummaryMrkdwn(member: LinkedMember, showOrgName: boolean): Pr
   const from = `${to.slice(0, 8)}01`;
   const monthLabel = MONTHS[Number(to.slice(5, 7)) - 1] ?? to.slice(0, 7);
   const heading = showOrgName
-    ? `*${escapeMrkdwn(member.orgName)} — ${monthLabel}, month to date*`
-    : `*Cloud costs — ${monthLabel}, month to date*`;
+    ? `*${escapeMrkdwn(member.orgName)}, ${monthLabel}, month to date*`
+    : `*Cloud costs, ${monthLabel}, month to date*`;
 
   try {
     // Within the linked member's cost visibility scope, per org: the reply
@@ -316,7 +316,7 @@ async function costSummaryMrkdwn(member: LinkedMember, showOrgName: boolean): Pr
     const topLines =
       ranked.length > 0
         ? ["Top services:"].concat(
-            ranked.map((s) => `• ${escapeMrkdwn(s.label)} — ${formatMoney(s.total, s.currency)}`),
+            ranked.map((s) => `• ${escapeMrkdwn(s.label)}: ${formatMoney(s.total, s.currency)}`),
           )
         : [];
 
@@ -326,7 +326,7 @@ async function costSummaryMrkdwn(member: LinkedMember, showOrgName: boolean): Pr
     const message =
       err instanceof CostQueryError
         ? err.message
-        : "cost data is unavailable right now — try the dashboard.";
+        : "cost data is unavailable right now. Try the dashboard.";
     return `${heading}\nCouldn't compute costs: ${escapeMrkdwn(message)}`;
   }
 }
@@ -456,7 +456,7 @@ async function resourceStatusMessage(
   const url = `${appUrl()}/org/${organizationId}/resources/${r.pluginId}/${r.resourceTypeId}/${r.id}`;
   lines.push(`<${url}|View in Infrawrench>`);
   return {
-    text: `${r.displayName} — synced ${relativeTime(r.lastSyncedAt)}`,
+    text: `${r.displayName}, synced ${relativeTime(r.lastSyncedAt)}`,
     blocks: [section(lines.join("\n"))],
   };
 }
@@ -491,9 +491,9 @@ async function handleStatusCommand(members: LinkedMember[], query: string): Prom
 
   const multiOrg = new Set(hits.map((h) => h.organizationId)).size > 1;
   const choices = hits.slice(0, 5);
-  return ephemeral(`Multiple resources match “${query}” — pick one.`, [
+  return ephemeral(`Multiple resources match “${query}”. Pick one.`, [
     section(
-      `*Multiple resources match “${escapeMrkdwn(query)}”* — pick one:\n` +
+      `*Multiple resources match “${escapeMrkdwn(query)}”*: pick one:\n` +
         choices
           .map(
             (h) =>
@@ -694,14 +694,14 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
       // who took it is the `alert_deliveries` row, not the channel.
       await respond(
         ephemeral(
-          `Acknowledged — escalation for "${escapeMrkdwn(result.title ?? "this alert")}" is cancelled.`,
+          `Acknowledged. Escalation for "${escapeMrkdwn(result.title ?? "this alert")}" is cancelled.`,
         ),
       );
       return;
     }
     if (result.reason === "already_escalated") {
       await respond(
-        ephemeral("That alert already escalated — the escalation channel has been notified."),
+        ephemeral("That alert already escalated. The escalation channel has been notified."),
       );
       return;
     }
@@ -863,9 +863,7 @@ async function handleBlockAction(payload: SlackInteractionPayload): Promise<void
     if (result.outcome === "not_found") {
       await respond(ephemeral("This access request no longer exists."));
     } else if (result.outcome === "self_approval") {
-      await respond(
-        ephemeral("You cannot decide your own access request — that is the point of the approval."),
-      );
+      await respond(ephemeral("You cannot decide your own access request."));
     } else if (result.outcome === "exceeds_approver") {
       await respond(
         ephemeral(

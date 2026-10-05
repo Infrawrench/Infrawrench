@@ -4,7 +4,7 @@ export const GenAiModelRouterResourceType = rt({
   name: "Inference Router",
   id: "gen-ai-model-router",
   description:
-    "A DigitalOcean Inference Router — picks the right model per request based on prompt complexity, balancing cost and latency across multiple foundation models. Use when your workload has mixed prompt complexity and you want automatic routing.",
+    "A DigitalOcean Inference Router: picks a model per request by prompt complexity, balancing cost and latency.",
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),

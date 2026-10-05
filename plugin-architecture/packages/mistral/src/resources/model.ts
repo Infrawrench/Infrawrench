@@ -19,8 +19,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MistralModelResourceType = rt({
   name: "Model",
   id: "mistral-model",
-  description:
-    "A Mistral model — base or fine-tuned — with its capability flags and context window",
+  description: "A Mistral model (base or fine-tuned) with its capabilities and context window",
   fields: [
     f("modelId", "Model ID"),
     f("name", "Name", { required: false }),

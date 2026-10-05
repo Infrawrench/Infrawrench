@@ -56,7 +56,7 @@ export class PostgresClient implements PluginClient {
   private requireConnection(): string {
     if (!this.connectionString) {
       throw new Error(
-        "PostgreSQL connection is not available yet. The parent resource hasn't published a reachable endpoint — wait for it to come online, or check that a public/private IP and credentials are configured.",
+        "PostgreSQL connection is not available yet. The parent resource hasn't published a reachable endpoint. Wait for it to come online, or check its IP and credentials.",
       );
     }
     return this.connectionString;
@@ -426,7 +426,7 @@ export class PostgresClient implements PluginClient {
     const sql = this.services?.sql;
     if (!sql?.queryReadOnly) {
       throw new Error(
-        "This host cannot guarantee a read-only query against PostgreSQL, so the importer will not run. Business-metric imports only run where the database itself refuses writes.",
+        "This host cannot guarantee a read-only query against PostgreSQL, so the importer will not run.",
       );
     }
     const rows = await withBusinessMetricTimeout(sql.queryReadOnly(bound), range);

@@ -11,7 +11,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Twilio",
   description:
-    "Communications APIs. Track Twilio spend by product, usage category and subaccount from billed usage records, watch the account balance burn down, chart daily message and call volume, and manage phone numbers, messaging services, Verify services, TwiML apps, subaccounts, usage triggers and API keys.",
+    "Communications APIs. Track Twilio spend by product, usage category and subaccount, watch the account balance, chart daily message and call volume, and manage phone numbers, messaging and Verify services, TwiML apps, subaccounts, usage triggers and API keys.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -29,7 +29,7 @@ const manifest: PluginManifest = {
       key: "apiKeySid",
       label: "API Key SID",
       description:
-        "Recommended: an API key created under Account, API keys and tokens (it starts with SK). A Standard key lists resources and reads main-account spend; a Main key can also manage subaccounts and keys and read the balance. Leave blank to use the auth token instead.",
+        "Recommended: an API key created under Account, API keys and tokens (it starts with SK). A Standard key lists resources and reads main-account spend; a Main key can also manage subaccounts and keys and read the balance. Leave blank to use the auth token.",
       sensitive: false,
       optional: true,
       placeholder: "SK…",

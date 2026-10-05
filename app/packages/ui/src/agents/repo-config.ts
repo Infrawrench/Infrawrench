@@ -34,7 +34,7 @@ export function resolveAgentEnvTemplate(template: string, resource: TemplateReso
  * valid shell identifiers; values are single-quote escaped.
  */
 export function buildAgentEnvFile(env: Record<string, string>): string {
-  const lines: string[] = ["# Written by Infrawrench from .infrawrench/agent.json — do not edit."];
+  const lines: string[] = ["# Written by Infrawrench from .infrawrench/agent.json. Do not edit."];
   for (const [key, value] of Object.entries(env)) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
       throw new Error(`agent.json env key ${JSON.stringify(key)} is not a valid shell identifier`);

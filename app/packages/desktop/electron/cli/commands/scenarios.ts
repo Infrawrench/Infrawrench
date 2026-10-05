@@ -64,7 +64,7 @@ function resolveModel(models: CostScenarioModel[], wanted: string): CostScenario
       `No scenario model named "${wanted}".` +
         (models.length > 0
           ? ` Scenario models: ${names}.`
-          : " This organization has no scenario models yet — create one on the Costs panel."),
+          : " This organization has no scenario models yet. Create one on the Costs panel."),
       2,
     );
   }
@@ -75,7 +75,7 @@ function resolveModel(models: CostScenarioModel[], wanted: string): CostScenario
 export async function cmdScenarios(ctx: CliContext): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Scenario models are org-level cloud state — there is no local forecast to adjust.",
+      "Scenario models are org-level cloud state. There is no local forecast to adjust.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -89,8 +89,8 @@ export async function cmdScenarios(ctx: CliContext): Promise<void> {
   if (models.length === 0) {
     println(
       c.dim(
-        "No scenario models. A scenario is known future cost the trend can't see — a purchase, " +
-          "a new team, a migration. Create one on the Costs panel.",
+        "No scenario models. A scenario is known future cost the trend can't see, such as a purchase " +
+          "or migration. Create one on the Costs panel.",
       ),
     );
     return;
@@ -119,7 +119,7 @@ export async function cmdScenarios(ctx: CliContext): Promise<void> {
     println();
   }
   println(
-    c.dim("Apply one with `infrawrench scenarios <name>` — the trend is always shown alongside."),
+    c.dim("Apply one with `infrawrench scenarios <name>`. The trend is always shown alongside."),
   );
 }
 
@@ -138,7 +138,7 @@ export async function cmdApplyScenario(
 ): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Scenario models are org-level cloud state — there is no local forecast to adjust.",
+      "Scenario models are org-level cloud state. There is no local forecast to adjust.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -185,10 +185,7 @@ export async function cmdApplyScenario(
 
   if (trend.length === 0) {
     println(
-      c.dim(
-        "No forecast for this range — a trend fit needs at least 7 days of collected spend, " +
-          "and a scenario adjusts a projection rather than replacing one.",
-      ),
+      c.dim("No forecast for this range. A trend fit needs at least 7 days of collected spend."),
     );
     return;
   }

@@ -143,7 +143,7 @@ export function registerPosturePaths(ctx: BuildContext) {
     tags: ["Posture checks"],
     summary: "Dismiss a posture finding",
     description:
-      "Accept a finding — the bucket really is meant to be public, the key really is rotated " +
+      "Accept a finding; the bucket really is meant to be public, the key really is rotated " +
       "out of band. The finding leaves `findings` and stops feeding the daily posture alerts, " +
       "but the rule keeps being evaluated and the finding is reported back under `dismissed` " +
       "for as long as it still matches. Idempotent: dismissing an already-dismissed finding " +

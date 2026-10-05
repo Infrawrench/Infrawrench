@@ -20,7 +20,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "A Devin service user credential (it starts with cog_) or a personal access token. An organization service user covers its organization; an enterprise service user covers every organization in the enterprise. For cost data its role needs View Org Consumption (View Account Consumption for an enterprise service user). Create one under Settings, Service users.",
+        "A Devin service user credential (it starts with cog_) or a personal access token. An organization service user covers its organization; an enterprise service user covers the whole enterprise. Cost data needs View Org Consumption (View Account Consumption for enterprise). Create one under Settings, Service users.",
       sensitive: true,
       placeholder: "cog_…",
       helpLink: { label: "Devin API keys", url: "https://docs.devin.ai/api-reference/overview" },

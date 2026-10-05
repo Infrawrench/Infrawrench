@@ -46,7 +46,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your Cohere API key, sent as an Authorization: Bearer header. Create one at dashboard.cohere.com/api-keys. Cohere issues two kinds: a Trial key (free, heavily rate-limited, not for production) and a Production key (paid, billed per token) — either works here, and both see the same models, datasets, fine-tunes, embed jobs and batches. Cohere has no key-management API, so keys can only be created, rotated, or revoked from that dashboard page, and no usage or spend figures are readable over the API at all.",
+        "Your Cohere API key. Create one at dashboard.cohere.com/api-keys. Trial and Production keys both work here. Keys can only be created, rotated or revoked from the dashboard.",
       sensitive: true,
       placeholder: "abcDEF123456ghiJKL789012mnoPQR345678stuVW",
     },

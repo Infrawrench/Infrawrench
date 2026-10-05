@@ -38,7 +38,7 @@ export function EfficiencyAlertsSection() {
       {alerts.isError ? (
         <Card>
           <Text style={styles.error}>
-            Couldn&apos;t load efficiency alerts —{" "}
+            Couldn&apos;t load efficiency alerts:{" "}
             {alerts.error instanceof Error ? alerts.error.message : "request failed"}
           </Text>
         </Card>

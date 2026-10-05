@@ -17,7 +17,7 @@ import {
  */
 function requireOrgId(): string {
   const orgId = useUIStore.getState().activeCloudOrgId;
-  if (!orgId) throw new Error("Synthetic probes require cloud mode — sign in to sync.");
+  if (!orgId) throw new Error("Synthetic probes require cloud mode: sign in to sync.");
   return orgId;
 }
 

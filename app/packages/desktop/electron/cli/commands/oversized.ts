@@ -34,7 +34,7 @@ export async function cmdOversized(ctx: CliContext): Promise<void> {
   if (response.accounts.length === 0) {
     println(
       c.dim(
-        "Nothing looks oversized. A machine is flagged when two weeks of stored metrics put its p95 CPU (and memory, where measured) well under its size — metrics are stored for resources pinned to a dashboard.",
+        "Nothing looks oversized. A machine is flagged when two weeks of stored metrics put its p95 CPU (and memory, where measured) well under its size. Metrics are stored for resources pinned to a dashboard.",
       ),
     );
     return;

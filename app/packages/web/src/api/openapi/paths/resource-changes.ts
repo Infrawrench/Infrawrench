@@ -32,7 +32,7 @@ const ResourceChangeEntry = strict({
   pluginId: z.string(),
   resourceTypeId: z.string(),
   displayName: z.string().openapi({
-    description: "Resource display name at the time of the change — survives deletion.",
+    description: "Resource display name at the time of the change, survives deletion.",
   }),
   changeKind: ResourceChangeKind,
   diff: z.array(ResourceFieldChange).openapi({
@@ -74,7 +74,7 @@ const DriftAlertSettings = strict({
   notifyCreated: z.boolean().openapi({ description: "Alert on resources that appeared." }),
   notifyUpdated: z.boolean().openapi({
     description:
-      "Alert on field-level updates. Defaults to false — updates are the bulk of the volume and are usually a provider restating a value.",
+      "Alert on field-level updates. Defaults to false; updates are the bulk of the volume and are usually a provider restating a value.",
   }),
   notifyDeleted: z.boolean().openapi({ description: "Alert on resources that disappeared." }),
   cooldownMinutes: z.number().int().min(5).max(1440).openapi({
@@ -107,11 +107,11 @@ const RevertFieldStatus = z
   .enum(["revertible", "already-reverted", "conflict", "not-writable", "provider-derived"])
   .openapi("RevertFieldStatus", {
     description:
-      "What a revert would do to one field. `revertible` — the field still holds the value the " +
-      "change set, and the plugin's edit form can write the old one back. `already-reverted` — it " +
-      "is already at the old value; nothing to do. `conflict` — it changed again since, so " +
-      "reverting would discard the newer value. `not-writable` — outside the plugin's editable " +
-      "surface, or the old value is not something the edit form can submit. `provider-derived` — " +
+      "What a revert would do to one field. `revertible`: the field still holds the value the " +
+      "change set, and the plugin's edit form can write the old one back. `already-reverted`: it " +
+      "is already at the old value; nothing to do. `conflict`: it changed again since, so " +
+      "reverting would discard the newer value. `not-writable`: outside the plugin's editable " +
+      "surface, or the old value is not something the edit form can submit. `provider-derived`: " +
       "an `outputs.*` entry, which the provider computes rather than accepts.",
   });
 
@@ -165,7 +165,7 @@ const RevertApplyResponse = strict({
     .openapi({
       description:
         "True when this request wrote nothing and instead recorded an *earlier* interrupted " +
-        "attempt's write — the resource was already back, and the event is now marked reverted. " +
+        "attempt's write: the resource was already back, and the event is now marked reverted. " +
         "Nothing was sent to the provider by this request.",
     }),
   auditRecorded: z
@@ -175,7 +175,7 @@ const RevertApplyResponse = strict({
       description:
         "Present and `false` only when the audit entry could not be written. The provider change " +
         "still happened; its attribution did not reach the audit table and was written to the " +
-        "server log instead. Attribution is best-effort — nothing transactional spans a " +
+        "server log instead. Attribution is best-effort; nothing transactional spans a " +
         "third-party cloud API and Infrawrench's database.",
     }),
 }).openapi("RevertApplyResponse");
@@ -189,7 +189,7 @@ export function registerResourceChangePaths(ctx: BuildContext) {
     description:
       "Change events recorded by the resource poller: each poll cycle diffs the freshly fetched " +
       "state against the stored snapshot and records resources that appeared, changed a stored " +
-      "field, or disappeared upstream. Cross-provider by construction — the diff runs on the " +
+      "field, or disappeared upstream. Cross-provider by construction; the diff runs on the " +
       "generic stored record, so every plugin's resources show up here.",
     request: {
       params: OrgIdParam,
@@ -235,7 +235,7 @@ export function registerResourceChangePaths(ctx: BuildContext) {
       "Drift notifications are batched: at most one message per organization per `cooldownMinutes`, " +
       "covering every change since the previous one. These settings decide which changes count and " +
       "how often a message may go out. Who receives it is the `resourceDrift` opt-in on push " +
-      "preferences, Slack channels and Teams webhooks — off by default on all three.",
+      "preferences, Slack channels and Teams webhooks; off by default on all three.",
     request: { params: OrgIdParam },
     responses: {
       200: {
@@ -312,7 +312,7 @@ export function registerResourceChangePaths(ctx: BuildContext) {
     description:
       "Inverts the recorded diff and reconciles it against the resource's *current* live fields, " +
       "which is the whole point: the poller may have recorded this hours ago and the world may " +
-      "have moved on. Read-only — it reads from the provider and writes nothing.\n\n" +
+      "have moved on. Read-only: it reads from the provider and writes nothing.\n\n" +
       "Only `updated` events with a field diff can be reverted. `outputs.*` entries are " +
       "provider-derived and are never written back, and whether a field is writable at all is the " +
       "plugin's own edit-form rule (`editable`, minus `secret` and `association` kinds), so a " +
@@ -341,8 +341,8 @@ export function registerResourceChangePaths(ctx: BuildContext) {
     tags: ["Changes"],
     summary: "Revert one change event",
     description:
-      "Applies the inverse patch through the plugin's ordinary `updateResource` path — the same " +
-      "call the Edit form makes — and only for the fields the dry run marked `revertible`.\n\n" +
+      "Applies the inverse patch through the plugin's ordinary `updateResource` path (the same " +
+      "call the Edit form makes) and only for the fields the dry run marked `revertible`.\n\n" +
       "The plan is rebuilt against a fresh live read immediately before the write, so a field that " +
       "moved between the preview and the apply becomes a conflict and drops out of the patch.\n\n" +
       "**This is a last-moment re-read, not an atomic compare-and-swap.** The gap between reading " +
@@ -358,12 +358,12 @@ export function registerResourceChangePaths(ctx: BuildContext) {
       "than permanently stuck. `revertedAt` is only set once the provider accepted the write.\n\n" +
       "The claim carries an owner token, and every write that ends a revert is fenced on it. An " +
       "attempt whose provider call outlives the lease can therefore neither release nor complete " +
-      "the claim that replaced it — it gets `409` with `appliedFields` naming what it did write, " +
+      "the claim that replaced it; it gets `409` with `appliedFields` naming what it did write, " +
       "so the caller can reconcile rather than assume. Two attempts can overlap in that case, but " +
       "they cannot disagree: both invert the same recorded event to the same values, so the second " +
       "one's patch is a subset of the first's.\n\n" +
       "If a write reaches the provider but recording it fails, the response is `500` with " +
-      "`appliedFields` — the resource moved and the timeline has not caught up. The claim is " +
+      "`appliedFields`: the resource moved and the timeline has not caught up. The claim is " +
       "deliberately held in that case, and the next attempt after the lease expires finds every " +
       "field already back and records the revert without touching the provider again, answering " +
       "`200` with `reconciled: true` and an empty `appliedFields`. A resource put back by hand is " +
@@ -371,7 +371,7 @@ export function registerResourceChangePaths(ctx: BuildContext) {
       "outstanding, which is the only state in which an unrecorded write is possible.\n\n" +
       "Blocked with `423` while an org change freeze is in effect. Every attempt whose write " +
       "reached the provider is audit-logged as `resource.change_revert`, including one that lost " +
-      "its claim or could not record — the entry's `outcome` is `recorded`, `superseded`, " +
+      "its claim or could not record; the entry's `outcome` is `recorded`, `superseded`, " +
       "`unrecorded` or `reconciled`, so a contested outcome reads as one mutation rather than as " +
       "several reverts. An attempt that neither wrote nor recorded anything logs nothing. " +
       "Attribution is best-effort: no transaction spans a third-party cloud API and Infrawrench's " +

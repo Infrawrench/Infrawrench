@@ -115,7 +115,7 @@ export function parseWebhookUrl(raw: string): ParsedWebhookUrl {
   );
   if (!allowed) {
     throw new Error(
-      `${host} is not a Microsoft Teams webhook host. Copy the URL from a Teams channel's Workflows automation — it ends in ${ALLOWED_HOST_SUFFIXES.slice(0, 3).join(", ")} or similar.`,
+      `${host} is not a Microsoft Teams webhook host. Copy the URL from a Teams channel's Workflows automation; it ends in ${ALLOWED_HOST_SUFFIXES.slice(0, 3).join(", ")} or similar.`,
     );
   }
 
@@ -353,7 +353,7 @@ async function postToWebhook(url: string, payload: unknown, label: string): Prom
       // Power Automate returns a JSON error body; the first 200 chars of it are
       // far more useful to the user than a bare status code.
       const detail = (await res.text().catch(() => "")).slice(0, 200).trim();
-      throw new Error(`${label}: HTTP ${res.status}${detail ? ` — ${detail}` : ""}`);
+      throw new Error(`${label}: HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
     }
     return;
   }

@@ -45,7 +45,7 @@ export function registerExpiringPaths(ctx: BuildContext) {
       .openapi({ example: "Certificate expires" }),
     basis: z.enum(["expiry", "age"]).openapi({
       description:
-        "`expiry` — the field held the deadline itself; `age` — the deadline was derived " +
+        "`expiry`: the field held the deadline itself; `age`: the deadline was derived " +
         "from a creation/rotation date plus an age budget.",
     }),
     dueAt: IsoDateTime.describe("The deadline."),

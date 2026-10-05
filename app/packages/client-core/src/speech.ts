@@ -114,7 +114,7 @@ export function formatAudioBytes(bytes: number): string {
 export function speechTextError(text: string, maxCharacters?: number): string | null {
   if (!text.trim()) return "Enter some text to synthesize.";
   if (maxCharacters != null && text.length > maxCharacters) {
-    return `Text is ${text.length} characters — the limit is ${maxCharacters}.`;
+    return `Text is ${text.length} characters; the limit is ${maxCharacters}.`;
   }
   return null;
 }
@@ -127,7 +127,7 @@ export function speechTextError(text: string, maxCharacters?: number): string | 
  */
 export function audioSizeError(bytes: number, maxBytes: number, label = "Clip"): string | null {
   if (bytes <= maxBytes) return null;
-  return `${label} is ${formatAudioBytes(bytes)} — the limit is ${formatAudioBytes(maxBytes)}.`;
+  return `${label} is ${formatAudioBytes(bytes)}; the limit is ${formatAudioBytes(maxBytes)}.`;
 }
 
 /** One-line summary under a synthesized clip when the plugin didn't supply one. */

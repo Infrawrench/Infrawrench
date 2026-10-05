@@ -292,7 +292,7 @@ export async function buildOrgCustomGraphInfra(
     },
     readStorageObject: async () => {
       throw new Error(
-        "storage.get() is not available in a custom graph yet — list with " +
+        "storage.get() is not available in a custom graph yet; list with " +
           "storage.list() or fetch the object over HTTP.",
       );
     },

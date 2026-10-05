@@ -57,7 +57,7 @@ export async function publishPubsubTopic(
   const id = json.messageIds?.[0];
   return {
     ...(id ? { id } : {}),
-    summary: id ? `Published — messageId ${id}` : "Published.",
+    summary: id ? `Published, messageId ${id}` : "Published.",
   };
 }
 
@@ -109,6 +109,6 @@ export async function publishCloudTasksQueue(
   const id = json.name ? json.name.split("/").pop() : undefined;
   return {
     ...(id ? { id } : {}),
-    summary: id ? `Created — task ${id}` : "Task created.",
+    summary: id ? `Created task ${id}` : "Task created.",
   };
 }

@@ -78,7 +78,7 @@ export async function cmdMetrics(
     println(
       c.dim(
         series.length === 0
-          ? "No metric points — the provider reported nothing for this resource and range."
+          ? "No metric points. The provider reported nothing for this resource and range."
           : `No series matches "${range.series}". Available: ${series.map((s) => s.label).join(", ")}`,
       ),
     );

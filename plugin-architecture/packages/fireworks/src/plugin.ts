@@ -48,7 +48,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your Fireworks API key, sent as `Authorization: Bearer`. Create one at app.fireworks.ai under Account Settings → API Keys. The same key works for both planes — inference at api.fireworks.ai/inference/v1 and the control plane at api.fireworks.ai/v1/accounts/…",
+        "Your Fireworks API key, sent as `Authorization: Bearer`. Create one at app.fireworks.ai under Account Settings → API Keys. The same key works for inference and the control plane.",
       sensitive: true,
       placeholder: "fw_0123456789abcdefghijklmn",
       helpLink: {
@@ -60,7 +60,7 @@ const manifest: PluginManifest = {
       key: "accountId",
       label: "Account ID",
       description:
-        "Your Fireworks account id — required, because Fireworks has no whoami endpoint for the plugin to discover it. It is the `accounts/<id>/` prefix on any of your model strings (e.g. `accounts/my-team/models/my-model` → `my-team`), and it is shown at the top of app.fireworks.ai. Without it every control-plane call 404s and nothing lists.",
+        "Your Fireworks account id. It is the `accounts/<id>/` prefix on your model strings (e.g. `accounts/my-team/models/my-model` → `my-team`). Required; without it nothing lists.",
       sensitive: false,
       placeholder: "my-team",
       helpLink: { label: "Find your account id", url: "https://app.fireworks.ai/" },

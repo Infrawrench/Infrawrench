@@ -301,7 +301,7 @@ function assertFetchableUrl(raw: string): void {
     /^f[cd][0-9a-f]{2}:/i.test(host);
   if (blocked) {
     throw new Error(
-      `Refusing to upload from "${parsed.hostname}" — private and loopback addresses are not reachable sources.`,
+      `Refusing to upload from "${parsed.hostname}": private and loopback addresses are not reachable sources.`,
     );
   }
 }
@@ -692,8 +692,8 @@ export class UploadThingClient implements PluginClient {
                 required: false,
                 defaultValue: info.defaultACL,
                 options: [
-                  { id: "public-read", label: "Public — served at its URL" },
-                  { id: "private", label: "Private — needs a signed URL" },
+                  { id: "public-read", label: "Public: served at its URL" },
+                  { id: "private", label: "Private: needs a signed URL" },
                 ],
                 description: `The app default is ${info.defaultACL}.`,
               },
@@ -1061,7 +1061,7 @@ export class UploadThingClient implements PluginClient {
    */
   async makeStorageFolder(_bucket: string, _key: string): Promise<void> {
     throw new Error(
-      "UploadThing has no folders — the ones shown here are derived from file names, " +
+      "UploadThing has no folders; the ones shown are derived from file names, " +
         "so an empty one cannot exist. Upload a folder, or a file named `folder/file.ext`.",
     );
   }
@@ -1372,7 +1372,7 @@ export class UploadThingClient implements PluginClient {
         kind: "text",
         variant: "muted",
         content: overrides
-          ? "This app allows per-file access control. A private file is not readable at the URL above — resolve its Signed URL output instead."
+          ? "This app allows per-file access control. A private file is not readable at the URL above; use its Signed URL output instead."
           : `This app does not allow per-file access control, so this file is ${defaultAcl || "using the app default"}. Change the default in the UploadThing dashboard.`,
       },
     ];

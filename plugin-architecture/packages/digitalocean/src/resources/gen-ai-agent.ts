@@ -4,7 +4,7 @@ export const GenAiAgentResourceType = rt({
   name: "Agent",
   id: "gen-ai-agent",
   description:
-    "A DigitalOcean Gradient AI Platform agent — a deployed conversational endpoint built on a foundation model, optionally augmented with knowledge bases, function routes, and child agents.",
+    "A DigitalOcean Gradient AI agent: a conversational endpoint on a foundation model, optionally with knowledge bases, function routes, and child agents.",
   fields: [
     f("name", "Name"),
     f("region", "Region", { required: false }),

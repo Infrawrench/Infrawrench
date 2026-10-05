@@ -232,9 +232,8 @@ export function HostSetupPanel({
         // No package fixes this, so it is said separately and without a button.
         <p className="rounded-lg border border-danger-border bg-danger-surface p-3 text-sm text-danger-on-surface">
           <T>
-            There is no directory on this host we can run the app server from — /tmp and /dev/shm
-            are either unwritable or mounted noexec. Applications cannot run here until one of them
-            allows execution.
+            Applications can&apos;t run on this host: /tmp and /dev/shm are unwritable or mounted
+            noexec. One of them must allow execution.
           </T>
         </p>
       )}
@@ -265,8 +264,8 @@ export function HostSetupPanel({
             <T>These packages have to be installed on the host by hand.</T>
           ) : (
             <T>
-              Infrawrench cannot install these itself on this host — run the commands above over
-              SSH, then check again.
+              Infrawrench can&apos;t install these here. Run the commands above over SSH, then check
+              again.
             </T>
           )}
         </p>

@@ -80,7 +80,7 @@ export async function databaseGetCreateConfig(
           required: false,
           multiline: true,
           description:
-            'Optional JSON for GSIs/LSIs. Leave blank to skip. Schema: { "gsis": [{ "name": "byEmail", "partitionKey": "email", "partitionKeyType": "S", "sortKey": "createdAt", "sortKeyType": "S", "projection": "ALL" }], "lsis": [{ "name": "bySortAttr", "sortKey": "score", "sortKeyType": "N", "projection": "KEYS_ONLY" }] }. LSIs are creation-only — they cannot be added later.',
+            'Optional JSON for GSIs/LSIs. Leave blank to skip. Schema: { "gsis": [{ "name": "byEmail", "partitionKey": "email", "partitionKeyType": "S", "sortKey": "createdAt", "sortKeyType": "S", "projection": "ALL" }], "lsis": [{ "name": "bySortAttr", "sortKey": "score", "sortKeyType": "N", "projection": "KEYS_ONLY" }] }. LSIs can only be set at creation.',
           placeholder: '{ "gsis": [], "lsis": [] }',
         },
       ],

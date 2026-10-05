@@ -18,7 +18,7 @@ export class BastionError extends Error {
 /** Account is bound to a bastion, but no agent is currently connected. */
 export class BastionDisconnectedError extends BastionError {
   constructor(bastionId: string) {
-    super(`Bastion ${bastionId} is offline — start the agent to restore connectivity.`, bastionId);
+    super(`Bastion ${bastionId} is offline. Start the agent to restore connectivity.`, bastionId);
     this.name = "BastionDisconnectedError";
   }
 }

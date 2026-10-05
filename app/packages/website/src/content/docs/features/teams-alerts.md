@@ -31,7 +31,7 @@ First, create the webhook in Teams:
 
 <insert [Microsoft Teams channel menu with More options expanded and Workflows highlighted] here>
 
-Then, in Infrawrench, go to **Settings → Notifications**, find the **Microsoft Teams** section, and enter:
+Then, in Infrawrench, go to **Settings → Notifications**, open the **Channels** tab, find the **Microsoft Teams** section, and enter:
 
 - **Label** — a name for the channel, e.g. `#alerts (Platform)`. This is only for your own reference in this list.
 - **Webhook URL** — the URL you copied.

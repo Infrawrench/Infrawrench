@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { T, useGT } from "gt-react";
 import type { Recipient } from "../api-types.js";
 import { useSettingsHost } from "./host.js";
+import { SectionTabs } from "../components/SectionTabs.js";
 import { AlertRoutingSection } from "./AlertRoutingSection.js";
 import { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 import { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
@@ -91,109 +92,122 @@ export function NotificationsSection() {
         <h1 className="text-xl font-semibold">{gt("Notifications")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1 max-w-3xl">
-            Alert your team when a resource type fails to sync repeatedly, a budget threshold is
-            crossed, your infrastructure drifts, or a workflow calls <code>infra.page()</code> or{" "}
-            <code>infra.waitForApproval()</code>. Incidents are triggered by the background poller;
-            manual syncs from the UI never page. Delivery goes to mobile push (the Infrawrench app),
-            any Slack or Microsoft Teams channels you connect below, email, and (when Twilio
-            credentials are configured) SMS and voice calls.
+            Alert your team when syncs keep failing, a budget is crossed, infrastructure drifts, or
+            a workflow calls <code>infra.page()</code> or <code>infra.waitForApproval()</code>. Only
+            the background poller pages; manual syncs never do.
           </p>
         </T>
       </div>
 
-      {/*
-        Master–detail for delivery channels: the left rail is always the same four
-        connection kinds; the right pane is only the setup for the selected one.
-        Alert routing and the batch filters below need the full width, so they
-        stay outside this split.
-      */}
-      <section className="border border-border rounded-xl overflow-hidden">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Connections")}</h2>
-          <T>
-            <p className="text-xs text-on-surface-muted mt-1">
-              Add Slack, Teams, email, mobile push, or phone numbers, then route alerts to them with
-              the rules below.
-            </p>
-          </T>
-        </div>
-        <div className="flex min-h-[32rem] flex-col md:flex-row">
-          <nav
-            aria-label={gt("Notification connections")}
-            className="w-full shrink-0 border-b border-border md:w-60 md:border-b-0 md:border-r md:overflow-y-auto"
-          >
-            <ul className="flex gap-1 overflow-x-auto p-2 md:flex-col md:overflow-x-visible">
-              {CONNECTION_IDS.map((id) => {
-                const selected = selectedConnection === id;
-                return (
-                  <li key={id} className="min-w-[9.5rem] md:min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedConnection(id)}
-                      aria-current={selected ? "true" : undefined}
-                      className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
-                        selected
-                          ? "bg-surface-overlay text-on-surface-secondary"
-                          : "text-on-surface-muted hover:bg-surface-overlay/60 hover:text-on-surface-secondary"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2 text-sm font-medium">
-                        {id === "slack" && <SlackMark className="h-3.5 w-3.5 shrink-0" />}
-                        {id === "teams" && <TeamsMark className="h-3.5 w-3.5 shrink-0" />}
-                        {connectionLabel(id)}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-on-surface-tertiary">
-                        {connectionDescription(id)}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
+      <SectionTabs
+        ariaLabel={gt("Notification settings")}
+        storageKey="infrawrench-notifications-tab"
+        tabs={[
+          {
+            id: "channels",
+            label: gt("Channels"),
+            content: (
+              <section className="border border-border rounded-xl overflow-hidden">
+                <div className="border-b border-border px-5 py-4">
+                  <h2 className="text-sm font-semibold text-on-surface-secondary">
+                    {gt("Connections")}
+                  </h2>
+                  <T>
+                    <p className="text-xs text-on-surface-muted mt-1">
+                      Add Slack, Teams, email, mobile push, or phone numbers, then route alerts to
+                      them under Routing.
+                    </p>
+                  </T>
+                </div>
+                <div className="flex min-h-[32rem] flex-col md:flex-row">
+                  <nav
+                    aria-label={gt("Notification connections")}
+                    className="w-full shrink-0 border-b border-border md:w-60 md:border-b-0 md:border-r md:overflow-y-auto"
+                  >
+                    <ul className="flex gap-1 overflow-x-auto p-2 md:flex-col md:overflow-x-visible">
+                      {CONNECTION_IDS.map((id) => {
+                        const selected = selectedConnection === id;
+                        return (
+                          <li key={id} className="min-w-[9.5rem] md:min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedConnection(id)}
+                              aria-current={selected ? "true" : undefined}
+                              className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
+                                selected
+                                  ? "bg-surface-overlay text-on-surface-secondary"
+                                  : "text-on-surface-muted hover:bg-surface-overlay/60 hover:text-on-surface-secondary"
+                              }`}
+                            >
+                              <span className="flex items-center gap-2 text-sm font-medium">
+                                {id === "slack" && <SlackMark className="h-3.5 w-3.5 shrink-0" />}
+                                {id === "teams" && <TeamsMark className="h-3.5 w-3.5 shrink-0" />}
+                                {connectionLabel(id)}
+                              </span>
+                              <span className="mt-0.5 block text-xs text-on-surface-tertiary">
+                                {connectionDescription(id)}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </nav>
 
-          <div className="min-w-0 flex-1 p-5 md:overflow-y-auto">
-            {/*
+                  <div className="min-w-0 flex-1 p-5 md:overflow-y-auto">
+                    {/*
               Keep every pane mounted so in-progress forms (Twilio creds, Teams
               webhook paste, etc.) survive switching the left rail. Hidden panes
               stay out of the accessibility tree via `hidden`.
             */}
-            <div hidden={selectedConnection !== "slack"}>
-              <SlackSection orgId={orgId} embedded />
-            </div>
-            <div hidden={selectedConnection !== "teams"}>
-              <MsTeamsSection orgId={orgId} embedded />
-            </div>
-            <div hidden={selectedConnection !== "email"}>
-              <EmailSection orgId={orgId} />
-            </div>
-            <div hidden={selectedConnection !== "mobile"} className="space-y-6">
-              <PushPreferencesSection orgId={orgId} embedded />
-              <PushRosterSection orgId={orgId} embedded />
-            </div>
-            <div hidden={selectedConnection !== "sms"}>
-              <TwilioSection
-                orgId={orgId}
-                settings={settings}
-                recipients={recipients}
-                onChanged={() => void load()}
-                embedded
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <AlertRoutingSection orgId={orgId} />
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <DriftAlertsSection orgId={orgId} />
-        <ExpiryAlertsSection />
-        <ExtendedSupportAlertsSection />
-        <div className="lg:col-span-2">
-          <WeeklyDigestSection />
-        </div>
-      </div>
+                    <div hidden={selectedConnection !== "slack"}>
+                      <SlackSection orgId={orgId} embedded />
+                    </div>
+                    <div hidden={selectedConnection !== "teams"}>
+                      <MsTeamsSection orgId={orgId} embedded />
+                    </div>
+                    <div hidden={selectedConnection !== "email"}>
+                      <EmailSection orgId={orgId} />
+                    </div>
+                    <div hidden={selectedConnection !== "mobile"} className="space-y-6">
+                      <PushPreferencesSection orgId={orgId} embedded />
+                      <PushRosterSection orgId={orgId} embedded />
+                    </div>
+                    <div hidden={selectedConnection !== "sms"}>
+                      <TwilioSection
+                        orgId={orgId}
+                        settings={settings}
+                        recipients={recipients}
+                        onChanged={() => void load()}
+                        embedded
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ),
+          },
+          {
+            id: "routing",
+            label: gt("Routing"),
+            content: <AlertRoutingSection orgId={orgId} />,
+          },
+          {
+            id: "alerts",
+            label: gt("Alerts & digest"),
+            content: (
+              <div className="grid gap-6 lg:grid-cols-2">
+                <DriftAlertsSection orgId={orgId} />
+                <ExpiryAlertsSection />
+                <ExtendedSupportAlertsSection />
+                <div className="lg:col-span-2">
+                  <WeeklyDigestSection />
+                </div>
+              </div>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

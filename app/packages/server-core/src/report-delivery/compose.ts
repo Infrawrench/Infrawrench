@@ -215,7 +215,7 @@ export function reportDeliverySegments(data: ReportDeliveryData): DigestLine[] {
       lines.push([
         head,
         {
-          text: ` — ${formatDelta(delta, t.currency)} (${formatPct(t.currentAmount, t.previousAmount)}) vs ${formatAmount(t.previousAmount, t.currency)} the period before`,
+          text: `, ${formatDelta(delta, t.currency)} (${formatPct(t.currentAmount, t.previousAmount)}) vs ${formatAmount(t.previousAmount, t.currency)} the period before`,
           bold: false,
         },
       ]);
@@ -319,7 +319,7 @@ export function classifyReportDelivery(result: ReportDeliveryResult): {
   if (result.succeeded < result.attempted) {
     return {
       status: "partial",
-      error: `Delivered to ${result.succeeded} of ${result.attempted} destinations; the rest failed. Not retried automatically — a retry would post the report twice where it already landed. Use “Send now” once the failing destination is fixed.`,
+      error: `Delivered to ${result.succeeded} of ${result.attempted} destinations; the rest failed. Not retried automatically, as that would post the report twice where it already landed. Use “Send now” once the failing destination is fixed.`,
       retryable: false,
     };
   }

@@ -341,7 +341,7 @@ export function formatChangeCostImpact(
   if (impact.status !== "measured") {
     if (!opts.verbose) return null;
     const why = impact.reasons.map(changeCostImpactReasonLabel).join("; ");
-    return why ? `Cost impact unknown — ${why}.` : "Cost impact unknown.";
+    return why ? `Cost impact unknown: ${why}.` : "Cost impact unknown.";
   }
   const parts = impact.series.map((s) => {
     const money = formatSignedPerDay(s.deltaPerDay, s.currency);
@@ -401,7 +401,7 @@ export function changeCostImpactAnnotationText(
   if (line === null) return null;
   const noun = subject.kind === "deployment" ? "Deploy" : "Change";
   const caveat = impact.overlappingChanges > 0 ? " (other changes overlapped)" : "";
-  return `${noun}: ${subject.label} — ${line}${caveat}`;
+  return `${noun} ${subject.label}: ${line}${caveat}`;
 }
 
 /** Batched cost impacts for a page of the change feed. */

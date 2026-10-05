@@ -47,7 +47,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your Google AI Studio API key, sent as the x-goog-api-key header. Create one at aistudio.google.com/app/apikey; keys start with 'AIza'. This is the AI Studio key, not a Vertex AI service account and not a Google Cloud OAuth credential; Infrawrench has a separate Google Cloud plugin for those. Note that generativelanguage.googleapis.com has no admin, usage, quota or billing endpoints of any kind, so this plugin can list and manage your models, files, caches, batches, File Search stores, custom voices and webhooks but cannot report spend or remaining quota; those stay in AI Studio.",
+        "Your Google AI Studio API key, sent as the x-goog-api-key header. Create one at aistudio.google.com/app/apikey; keys start with 'AIza'. This is an AI Studio key, not a Vertex AI or Google Cloud credential (use the Google Cloud plugin for those). The API has no usage, quota or billing endpoints, so spend and quota stay in AI Studio.",
       sensitive: true,
       placeholder: "AIzaSy...",
     },

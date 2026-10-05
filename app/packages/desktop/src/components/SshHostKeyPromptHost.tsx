@@ -63,7 +63,7 @@ export function SshHostKeyPromptHost() {
             <p className="text-xs text-on-surface-tertiary mt-1">
               {isMismatch
                 ? gt(
-                    "The host key for {host}:{port} does not match the one previously pinned. This could mean the server was rebuilt — or someone is intercepting the connection. Only accept if you expected the change.",
+                    "The host key for {host}:{port} does not match the one previously pinned. The server may have been rebuilt, or someone may be intercepting the connection. Only accept if you expected the change.",
                     { host: current.host, port: current.port },
                   )
                 : gt(

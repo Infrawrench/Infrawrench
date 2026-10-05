@@ -58,7 +58,7 @@ describe("fetchSigned over global fetch", () => {
         service: "s3",
         credentials: baseCreds,
       }),
-    ).rejects.toThrow(/failed: 403 — AccessDenied/);
+    ).rejects.toThrow(/failed: 403: AccessDenied/);
   });
 });
 
@@ -129,6 +129,6 @@ describe("fetchSigned over the host http transport", () => {
         service: "ec2",
         credentials: httpCreds(request) as never,
       }),
-    ).rejects.toThrow(/failed: 500 — boom/);
+    ).rejects.toThrow(/failed: 500: boom/);
   });
 });

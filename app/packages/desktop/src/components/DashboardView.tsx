@@ -1323,7 +1323,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                       // would fall through and render as a budget card.
                       <div className="rounded-2xl border border-border bg-surface-raised flex items-center justify-center min-h-[10rem] px-4 text-sm text-on-surface-faint text-center">
                         <T>
-                          <Var>{card.widget.title || gt("Custom graph")}</Var> — sign in to
+                          <Var>{card.widget.title || gt("Custom graph")}</Var>: sign in to
                           Infrawrench Cloud to render this graph
                         </T>
                       </div>

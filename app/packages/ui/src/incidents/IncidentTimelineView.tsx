@@ -99,9 +99,7 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
 
       {timeline.entries.length === 0 ? (
         <p className="text-sm text-on-surface-faint">
-          {gt(
-            "Nothing else was recorded in this window. That is a finding too — it means the change feed, deploys and alerts were all quiet while this was happening.",
-          )}
+          {gt("Nothing else was recorded in this window: no changes, deploys or alerts.")}
         </p>
       ) : (
         <ol className="space-y-1.5">
@@ -151,9 +149,7 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
 
       {timeline.truncated && (
         <p className="text-xs text-on-surface-faint">
-          {gt(
-            "The timeline was truncated — this incident's window contains more events than one view can carry.",
-          )}
+          {gt("The timeline was truncated: this window has more events than one view can show.")}
         </p>
       )}
     </div>

@@ -21,7 +21,7 @@ export const ContainerRegistryResourceType = rt({
     o("dockerConfigJson", "Docker Config JSON", {
       sensitive: true,
       description:
-        "Admin docker credentials as a .dockerconfigjson document — usable directly as a kubernetes.io/dockerconfigjson pull secret.",
+        "Admin docker credentials as a .dockerconfigjson document, usable directly as a kubernetes.io/dockerconfigjson pull secret.",
     }),
   ],
   dependsOn: [

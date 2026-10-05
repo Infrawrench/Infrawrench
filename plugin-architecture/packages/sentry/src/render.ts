@@ -140,7 +140,7 @@ function renderOrganization(r: ResourceInstance, rates: SentryRates): DetailView
           kind: "text",
           variant: "muted",
           content:
-            "Estimated: Sentry's API reports usage but not prices or your contract. Each category's accepted volume beyond its included amount is priced at the rate in this connection's credentials (pay-as-you-go list prices by default), plus the monthly plan fee. Change the rates and included amounts to your plan's under Edit credentials.",
+            "Estimated: Sentry's API reports usage but not prices. Volume beyond each category's included amount is priced at the rates in this connection's credentials (pay-as-you-go list prices by default), plus the plan fee. Set your plan's rates under Edit credentials.",
         },
       ]),
     );

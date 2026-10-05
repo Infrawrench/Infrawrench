@@ -208,7 +208,7 @@ async function guarded<T>(load: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (isPermissionError(err)) {
       throw new CostSetupError(
-        "Fastly refused the billing request. Invoices are readable by users with the Billing or Superuser role, using a token with the global or global:read scope. Create the token as such a user, then update the account's credentials.",
+        "Fastly refused the billing request. Invoices need a token with the global or global:read scope, created by a user with the Billing or Superuser role. Update the account's credentials.",
         BILLING_HELP,
       );
     }

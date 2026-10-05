@@ -21,7 +21,7 @@ export const createKafkaKeyAction: PeerGuidanceAction = {
   command: CREATE_KAFKA_KEY_COMMAND,
   title: "Create a Kafka API key",
   description:
-    "Confluent shows a cluster API key's secret exactly once, when it is created. Infrawrench creates the key, stores the secret with this account, and uses it to browse topics and consumer groups and to produce records.",
+    "Confluent shows a cluster API key's secret only once. Infrawrench creates the key and stores the secret with this account to browse topics and produce records.",
   submitLabel: "Create key",
   fields: [
     {
@@ -89,7 +89,7 @@ export const KafkaClusterResourceType = rt({
   name: "Kafka Cluster",
   id: "kafka-cluster",
   description:
-    "A Confluent Cloud Kafka cluster with its type, cloud, region and capacity, throughput, partition and topic counts, connections, consumer lag and CKU utilization. Resize a Dedicated cluster's CKUs or an elastic cluster's eCKU ceiling, and browse topics and consumer groups through the Kafka tab.",
+    "A Confluent Cloud Kafka cluster with capacity, throughput, consumer lag and CKU utilization. Resize it and browse topics and consumer groups through the Kafka tab.",
   parentTypeId: "environment",
   showInSidebar: true,
   fields: [

@@ -9,7 +9,7 @@ export const ApiKeyResourceType = rt({
   name: "API Key",
   id: "api-key",
   description:
-    "An API key belonging to a Deepgram project. The secret is returned once at creation and never again — Deepgram only stores the key id and a truncated prefix.",
+    "An API key belonging to a Deepgram project. The secret is shown once at creation; Deepgram keeps only the key id and a truncated prefix.",
   fields: [
     f("comment", "Comment", { required: false }),
     f("scopes", "Scopes", { required: false, editable: false }),

@@ -306,7 +306,7 @@ async function fetchUsageDay(
     if (res.status === 403) {
       throw new CostSetupError(
         "Speechmatics returned 403 Forbidden for GET /v2/usage. This endpoint rejects " +
-          "temporary keys created with a `client_ref` — those are scoped to that client's " +
+          "temporary keys created with a `client_ref`, which are scoped to that client's " +
           "jobs and cannot read account usage. Set this account's API Key credential to a " +
           "long-lived batch API key from the Portal (Manage workspace › API keys) rather " +
           "than a temporary key. Note the Management Token is not an alternative: the " +

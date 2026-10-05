@@ -16,7 +16,7 @@ export const ProjectApiKeyResourceType = rt({
   plural: "Project API Keys",
   id: "project-api-key",
   description:
-    "An API key scoped to a project. Keys can be listed and revoked through the API but never created — see the project's 'Get credentials' action for service-account keys. Requires an Admin API key.",
+    "An API key scoped to a project. Keys can be listed and revoked but not created; use the project's 'Get credentials' action for service-account keys. Requires an Admin API key.",
   fields: [
     f("name", "Name", { required: false }),
     f("redactedValue", "Key", { required: false }),
@@ -40,7 +40,7 @@ export const ProjectApiKeyResourceType = rt({
   outputs: [
     o("apiKeyId", "API Key ID"),
     o("redactedValue", "Redacted Value", {
-      description: "Masked key value — the full secret is only ever shown at creation time",
+      description: "Masked key value; the full secret is only shown at creation",
     }),
     o("projectId", "Project ID"),
   ],

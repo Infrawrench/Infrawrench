@@ -66,7 +66,7 @@ export function AccessRequestCard({
 
       <Text style={{ color: colors.textMuted, fontSize: 12 }}>
         {live && request.grantExpiresAt
-          ? `Live — ${formatElevationCountdown(request.grantExpiresAt)}`
+          ? `Live: ${formatElevationCountdown(request.grantExpiresAt)}`
           : `${formatGrantDuration(request.durationMinutes)} if granted · request ${formatElevationCountdown(request.expiresAt)}`}
       </Text>
 

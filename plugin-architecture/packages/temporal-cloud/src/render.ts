@@ -110,7 +110,7 @@ function renderAccount(r: ResourceInstance): DetailViewSchema {
           ["Legacy metrics endpoint", f["metricsUri"], true],
         ]),
         muted(
-          "Costs come from Temporal Cloud billing reports, which need a key with the Owner or Finance Admin role. With any other role, the last 90 days are estimated from usage at the rates set on this account (edit the account to change them).",
+          "Costs come from Temporal Cloud billing reports, which need the Owner or Finance Admin role. With any other role, the last 90 days are estimated from usage at this account's rates (editable).",
         ),
       ]),
       ...(regions.length > 0
@@ -177,7 +177,7 @@ function namespaceActions(r: ResourceInstance): ActionNode[] {
         command: "add-search-attribute",
         title: "Add custom search attribute",
         description:
-          "Custom search attributes let you filter workflows in visibility queries. Temporal Cloud cannot remove a custom search attribute once added; it can only be renamed. Limits per namespace: 40 Keyword, 20 each of Int, Double, Bool and Datetime, 5 each of Text and KeywordList.",
+          "Custom search attributes filter workflows in visibility queries. They cannot be removed once added, only renamed. Limits per namespace: 40 Keyword, 20 each of Int, Double, Bool and Datetime, 5 each of Text and KeywordList.",
         fields: [
           {
             key: "name",
@@ -435,7 +435,7 @@ function renderNamespace(r: ResourceInstance): DetailViewSchema {
     ]),
     section("Metrics", [
       muted(
-        "Metrics come from the Temporal Cloud OpenMetrics endpoint, which reports only the latest minute. History builds up while the namespace is pinned to a dashboard. Temporal Cloud does not publish a schedule-to-start latency; backlog, tasks with no poller and schedule start delay stand in for it.",
+        "Metrics come from the Temporal Cloud OpenMetrics endpoint, which reports only the latest minute; history builds up while the namespace is pinned to a dashboard. Schedule-to-start latency is not published, so backlog, tasks with no poller and schedule start delay stand in for it.",
       ),
     ]),
   ];

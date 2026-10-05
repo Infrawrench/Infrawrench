@@ -16,8 +16,7 @@ export const CustomVoiceResourceType = rt({
   name: "Voice",
   plural: "Voices",
   id: "custom-voice",
-  description:
-    "A text-to-speech voice — xAI's built-in voices plus any custom voices cloned by this team",
+  description: "A text-to-speech voice: xAI's built-in voices plus this team's custom clones",
   fields: [
     f("voiceId", "Voice ID"),
     f("name", "Name", { required: false }),

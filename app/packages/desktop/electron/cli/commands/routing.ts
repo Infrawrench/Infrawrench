@@ -110,7 +110,7 @@ function describeRule(rule: AlertRule, data: AlertRulesResponse, index: number):
 
   const to =
     rule.destinations.length === 0
-      ? c.dim("nowhere — this rule swallows matching alerts")
+      ? c.dim("nowhere (this rule swallows matching alerts)")
       : rule.destinations.map((d) => destinationName(d, data)).join(", ");
   lines.push(`   ${c.dim("→")}     ${to}`);
 
@@ -141,7 +141,7 @@ function describeRule(rule: AlertRule, data: AlertRulesResponse, index: number):
 export async function cmdRouting(ctx: CliContext): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Alert routing lives in Infrawrench Cloud — the poller routes alerts server-side. Drop --local.",
+      "Alert routing lives in Infrawrench Cloud. The poller routes alerts server-side. Drop --local.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -155,7 +155,7 @@ export async function cmdRouting(ctx: CliContext): Promise<void> {
   if (data.usingDefaults) {
     println(
       c.dim(
-        "No rules saved — showing the default: everything except drift, to every connected channel and to mobile push.",
+        "No rules saved. Showing the default: everything except drift, to every connected channel and to mobile push.",
       ),
     );
     println("");

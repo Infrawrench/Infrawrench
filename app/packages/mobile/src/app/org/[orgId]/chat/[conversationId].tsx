@@ -415,7 +415,7 @@ export default function ConversationScreen() {
               : spend.data.complimentary
                 ? " (complimentary)"
                 : ""}
-            {spend.data.exceeded ? " — cap reached" : ""}
+            {spend.data.exceeded ? " (cap reached)" : ""}
           </Text>
         ) : null}
       </View>

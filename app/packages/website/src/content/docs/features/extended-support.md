@@ -15,11 +15,11 @@ Infrawrench checks the version of every synced cluster and database against its 
 
 ## Where to find it
 
-Open **Costs** in the sidebar and scroll to **Extended support**, below Oversized. A line at the top totals what you pay now and what is about to start. Each row shows the resource, its current and target version, where it stands on the calendar (when standard support ended or ends, and when the provider upgrades it), the monthly surcharge, and a link to the provider's upgrade guide.
+Open **Costs** in the sidebar, go to the **Savings** tab, and find **Extended support**. A line at the top totals what you pay now and what is about to start. Each row shows the resource, its current and target version, where it stands on the calendar (when standard support ended or ends, and when the provider upgrades it), the monthly surcharge, and a link to the provider's upgrade guide.
 
-<insert [Costs page scrolled to the Extended support section: the "Paying now / Starting soon" totals line, an EKS cluster row "Amazon EKS 1.32 → 1.35" marked "Paying extended support" with $365/mo billed, an RDS for MySQL 5.7 row in year 3, and an upcoming row] here>
+<insert [Costs page Savings tab showing the Extended support section: the "Paying now / Starting soon" totals line, an EKS cluster row "Amazon EKS 1.32 → 1.35" marked "Paying extended support" with $365/mo billed, an RDS for MySQL 5.7 row in year 3, and an upcoming row] here>
 
-The same list is on the mobile app's Costs tab, in the `infrawrench extended-support` CLI subcommand, and as the `list_extended_support` [MCP tool](./mcp.md). On desktop it works in both modes: signed in it shows your organization, in local-only mode it checks the resources in your local workspace (at list price, since billing is not read locally).
+The same list is on the mobile app's Costs tab (under **Savings**), in the `infrawrench extended-support` CLI subcommand, and as the `list_extended_support` [MCP tool](./mcp.md). On desktop it works in both modes: signed in it shows your organization, in local-only mode it checks the resources in your local workspace (at list price, since billing is not read locally).
 
 ## Where the monthly figure comes from
 
@@ -60,7 +60,7 @@ The next date for each matching resource (the day the surcharge starts, or the d
 
 ## The weekly alert
 
-Once a week, the cloud poller sends one message naming every resource that is paying a surcharge or is past the end of support, with the monthly total an upgrade would remove. It goes out through [alert routing](./alert-routing.md) under the **Extended support** trigger, to Slack, Microsoft Teams or mobile push like every other alert. Turn it off in **Settings → Notifications → Extended support**, or manage the setting with the `infrawrench_extended_support_settings` [Terraform resource](./terraform-provider.md) or [config as code](./config-as-code.md) (`alertSettings.extendedSupport`).
+Once a week, the cloud poller sends one message naming every resource that is paying a surcharge or is past the end of support, with the monthly total an upgrade would remove. It goes out through [alert routing](./alert-routing.md) under the **Extended support** trigger, to Slack, Microsoft Teams or mobile push like every other alert. Turn it off in **Settings → Notifications → Alerts & digest → Extended support**, or manage the setting with the `infrawrench_extended_support_settings` [Terraform resource](./terraform-provider.md) or [config as code](./config-as-code.md) (`alertSettings.extendedSupport`).
 
 <insert [Settings → Notifications showing the Extended support card with the weekly alert toggle and the "List upcoming surcharges (days ahead)" input set to 90] here>
 

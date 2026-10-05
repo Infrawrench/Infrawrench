@@ -77,7 +77,7 @@ export async function cmdPostureDismiss(ctx: CliContext, rest: string[]): Promis
     // persisted (the DB is read-only), so refuse rather than silently lose it.
     if (ctx.guiRunning) {
       throw new CliError(
-        "The Infrawrench desktop app is running — dismiss the finding from the app instead; the CLI shares its workspace.",
+        "The Infrawrench desktop app is running. Dismiss the finding from the app instead; the CLI shares its workspace.",
       );
     }
     // Report the note as stored, not as typed: a blank `--reason " "` is
@@ -118,7 +118,7 @@ export async function cmdPostureRestore(ctx: CliContext, rest: string[]): Promis
   if (ctx.flags.local) {
     if (ctx.guiRunning) {
       throw new CliError(
-        "The Infrawrench desktop app is running — restore the finding from the app instead; the CLI shares its workspace.",
+        "The Infrawrench desktop app is running. Restore the finding from the app instead; the CLI shares its workspace.",
       );
     }
     const restored = await restoreLocalPostureFinding(resourceId, ruleId);
@@ -164,10 +164,10 @@ export async function cmdPosture(ctx: CliContext): Promise<void> {
     println(
       response.dismissedCount > 0
         ? c.dim(
-            "No open findings — everything currently flagged has been dismissed as an accepted risk.",
+            "No open findings. Everything currently flagged has been dismissed as an accepted risk.",
           )
         : c.dim(
-            "No findings. Checks appear when a plugin declares posture rules over synced fields — a bucket's public-access setting, a firewall's source ranges, a disk's encryption flag.",
+            "No findings. Checks appear when a plugin declares posture rules over synced fields. A bucket's public-access setting, a firewall's source ranges, a disk's encryption flag.",
           ),
     );
     if (response.dismissedCount > 0) printDismissed(response.dismissed);
@@ -206,7 +206,7 @@ export async function cmdPosture(ctx: CliContext): Promise<void> {
   println();
   println(
     c.dim(
-      "Computed from already-synced fields — no provider was contacted. Rules are declared by each plugin; critical & high findings feed the daily posture alerts.",
+      "Computed from already-synced fields. No provider was contacted. Rules are declared by each plugin; critical & high findings feed the daily posture alerts.",
     ),
   );
 }

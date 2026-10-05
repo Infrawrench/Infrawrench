@@ -15,7 +15,7 @@ export const BillingAccountResourceType = rt({
   name: "Billing Account",
   id: "billing-account",
   description:
-    "The GitHub organization or enterprise this account is scoped to. Shows this month's gross, discount and net spend by product and SKU, premium requests and AI credits by model, Copilot seat counts and Actions cache totals, and charts Actions minutes by runner OS, Copilot active users, premium requests and daily spend.",
+    "The GitHub organization or enterprise this account is scoped to. Shows this month's gross, discount and net spend by product and SKU, premium requests and AI credits by model, Copilot seats and Actions cache totals, and charts Actions minutes, Copilot users and daily spend.",
   fields: [
     f("name", "Name", { editable: false }),
     f("slug", "Slug", { editable: false }),
@@ -53,7 +53,7 @@ export const CopilotSeatResourceType = rt({
   name: "Copilot Seat",
   id: "copilot-seat",
   description:
-    "A Copilot Business or Enterprise seat assigned to a user, with when they last used Copilot and in which editor. Seats with no activity for 30 days are flagged as idle. Remove a seat to stop paying for it from the next billing cycle, or assign a new one to an organization member.",
+    "A Copilot Business or Enterprise seat assigned to a user, with last use and editor. Seats idle for 30 days are flagged. Remove a seat to stop paying for it from the next billing cycle, or assign one to a member.",
   fields: [
     f("login", "User", { editable: false }),
     f("name", "Name", { required: false, editable: false }),
@@ -95,7 +95,7 @@ export const HostedRunnerResourceType = rt({
   name: "Larger Runner",
   id: "hosted-runner",
   description:
-    "A GitHub-hosted larger runner: its platform, machine size, image, runner group and scaling limit, with this month's spend on its SKU. Create one from GitHub's own image and machine-size lists, change its name, size or maximum concurrency, or delete it.",
+    "A GitHub-hosted larger runner: platform, machine size, image, runner group and scaling limit, with this month's spend on its SKU. Create, resize, rename or delete it.",
   fields: [
     f("name", "Name"),
     f("maximumRunners", "Maximum Concurrent Runners", {
@@ -139,7 +139,7 @@ export const RunnerResourceType = rt({
   name: "Self-Hosted Runner",
   id: "runner",
   description:
-    "A self-hosted Actions runner registered with the organization: its OS, labels, whether it is online and busy, and its version. Remove a runner's registration when the machine is gone. GitHub does not bill self-hosted minutes; the machine's own cost is with whoever hosts it.",
+    "A self-hosted Actions runner registered with the organization: OS, labels, online and busy state, and version. Remove the registration when the machine is gone. GitHub does not bill self-hosted minutes.",
   fields: [
     f("name", "Name", { editable: false }),
     f("os", "OS", { required: false, editable: false }),
@@ -182,7 +182,7 @@ export const CodespaceResourceType = rt({
   name: "Codespace",
   id: "codespace",
   description:
-    "A codespace in the organization: owner, repository, machine type, state and when it was last used. A stopped codespace still bills for its storage, so ones unused for 14 days are flagged. Stop a running codespace or delete it.",
+    "A codespace in the organization: owner, repository, machine type, state and last use. Stopped codespaces still bill for storage, so ones unused for 14 days are flagged. Stop or delete it.",
   fields: [
     f("displayName", "Name", { editable: false }),
     f("owner", "Owner", { editable: false }),
@@ -222,7 +222,7 @@ export const BudgetResourceType = rt({
   name: "Budget",
   id: "budget",
   description:
-    "A GitHub spending budget for a product, a SKU or AI credits, scoped to the organization or enterprise, a repository, a cost centre or a user. Shows this month's spend against it. Create one from pickers, change its amount, stop-usage and alert settings, or delete it.",
+    "A GitHub spending budget for a product, SKU or AI credits, scoped to the organization, enterprise, repository, cost centre or user. Shows this month's spend against it. Create, edit or delete it.",
   fields: [
     f("budgetAmount", "Amount (USD)", {
       kind: "number",
@@ -264,7 +264,7 @@ export const CostCenterResourceType = rt({
   name: "Cost Center",
   id: "cost-center",
   description:
-    "An enterprise billing cost centre and the users, organizations, repositories and enterprise teams whose usage it collects, with this month's spend. Create one, rename it, change its members, or delete it. Enterprise accounts only.",
+    "An enterprise cost centre and the users, organizations, repositories and teams whose usage it collects, with this month's spend. Create, rename, edit members or delete it. Enterprise accounts only.",
   fields: [
     f("name", "Name"),
     f("users", "Users", { required: false, description: "GitHub usernames, comma-separated." }),

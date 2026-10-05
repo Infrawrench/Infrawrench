@@ -50,7 +50,7 @@ export const NeonEndpointResourceType = rt({
   name: "Endpoint",
   pinnable: false,
   id: "neon-endpoint",
-  description: "A Neon compute endpoint — the serverless Postgres connection point",
+  description: "A Neon compute endpoint: the serverless Postgres connection point",
   fields: [
     f("host", "Host", { editable: false }),
     f("name", "Name", { required: false }),

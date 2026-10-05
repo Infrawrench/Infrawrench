@@ -66,8 +66,7 @@ export function applyGenAiAgentDetail(detail: DetailViewSchema, resource: Resour
   detail.chatPanel = {
     tabLabel: "Playground",
     subtitle: modelLabel ? `Chat with this agent · ${modelLabel}` : "Chat with this agent",
-    greeting:
-      "Hi! This is the deployed agent — try out a prompt to see how it responds. The full conversation history is sent on each turn.",
+    greeting: "Hi! This is the deployed agent. Try a prompt to see how it responds.",
     inputPlaceholder: "Send a message…",
     ...(deploymentReady
       ? {}
@@ -210,7 +209,7 @@ export function applyGenAiAgentDetail(detail: DetailViewSchema, resource: Resour
                 kind: "text" as const,
                 required: true,
                 description:
-                  "Functions namespace id (fn-…). No namespaces found on this account — create one in DigitalOcean Functions first.",
+                  "Functions namespace id (fn-…). None found; create one in DigitalOcean Functions first.",
               },
           {
             key: "inputSchema",
@@ -260,7 +259,7 @@ export function applyGenAiAgentDetail(detail: DetailViewSchema, resource: Resour
             label: "Route name",
             kind: "text",
             required: false,
-            description: "Display label for this route — visible to the agent during routing.",
+            description: "Display label for this route, visible to the agent.",
           },
           {
             key: "ifCase",

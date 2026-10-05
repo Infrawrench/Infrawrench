@@ -128,10 +128,7 @@ function resolveQueryFilters(
   const text = q.query?.trim();
   if (!text) return q.filters;
   if (q.filters.length > 0) {
-    throw new CostQueryError(
-      "Send either `filters` or `query`, not both — they are two spellings of the same filter, " +
-        "and running one while ignoring the other would silently answer a different question.",
-    );
+    throw new CostQueryError("Send either `filters` or `query`, not both.");
   }
   try {
     return parseCostQuery(text);
@@ -412,7 +409,7 @@ export async function runCostQuery(
   // exists to prevent.
   if (q.scenarioModelId && !q.forecast) {
     throw new CostQueryError(
-      "scenarioModelId requires forecast: true — there is nothing to adjust otherwise",
+      "scenarioModelId requires forecast: true; there is nothing to adjust otherwise",
     );
   }
   // The display rules shared with the editors and the CLI (a usage query

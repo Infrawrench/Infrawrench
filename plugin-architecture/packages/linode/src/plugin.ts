@@ -34,7 +34,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Linode (Akamai Cloud)",
   description:
-    "Akamai Cloud Computing, formerly Linode. Billed spend from invoices plus the open month by service, resource and region, promotional credit burndown, and Linodes, Block Storage, NodeBalancers, Kubernetes (LKE), Object Storage, Managed Databases, Cloud Firewalls, DNS Manager, VPCs, reserved IPs, images and StackScripts with live prices.",
+    "Akamai Cloud Computing, formerly Linode. Billed spend by service, resource and region, credit burndown, and Linodes, Block Storage, NodeBalancers, LKE, Object Storage, Managed Databases, Cloud Firewalls, DNS, VPCs, reserved IPs, images and StackScripts.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -43,7 +43,7 @@ const manifest: PluginManifest = {
       key: "apiToken",
       label: "Personal Access Token",
       description:
-        "Create one in Cloud Manager under your profile, API Tokens. Read Only on Account is enough for costs; give Read/Write on the other areas to manage resources. Check credentials after adding the account to see exactly which scopes are missing.",
+        "Create one in Cloud Manager under your profile, API Tokens. Read Only on Account is enough for costs; give Read/Write elsewhere to manage resources. Check credentials to see missing scopes.",
       sensitive: true,
       placeholder: "64 hexadecimal characters",
       helpLink: {

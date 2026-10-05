@@ -241,7 +241,7 @@ function renderModel(r: ResourceInstance): DetailViewSchema {
         [
           muted(
             f["sampled"]
-              ? "Token cost is what the requests would cost at the model's token prices; only usage-based requests are billed on top of the plan. This team has more than 20,000 events in 30 days, so these totals cover the most recent 20,000. The Costs page reads every event."
+              ? "Token cost is an estimate at the model's token prices; only usage-based requests are billed on top of the plan. These totals cover the most recent 20,000 of this team's events in 30 days; the Costs page reads every event."
               : "Token cost is what the requests would cost at the model's token prices; only usage-based requests are billed on top of the plan.",
           ),
         ],

@@ -51,7 +51,7 @@ export async function cmdLeases(ctx: CliContext): Promise<void> {
   if (response.leases.length === 0) {
     println(
       c.dim(
-        "No resource leases. Set one from a resource's Lease tab (web or desktop) to put an expiry on it — optionally auto-deleting it when the lease runs out.",
+        "No resource leases. Set one from a resource's Lease tab (web or desktop) to put an expiry on it, optionally auto-deleting it when the lease runs out.",
       ),
     );
     return;

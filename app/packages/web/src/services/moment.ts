@@ -248,7 +248,7 @@ const loadChanges: FeedLoader = async (organizationId, from, to) => {
       detail:
         row.changeKind === "updated"
           ? row.origin === "schedule"
-            ? `${summary} — via sleep/wake schedule`
+            ? `${summary}, via sleep/wake schedule`
             : summary
           : row.origin === "schedule"
             ? "via sleep/wake schedule"
@@ -550,7 +550,7 @@ const loadAudit: FeedLoader = async (organizationId, from, to) => {
       kind: `audit.${row.action}`,
       timestamp: row.createdAt.toISOString(),
       title: humanizeAuditAction(row.action),
-      detail: `${actor}${row.entityId ? ` — ${row.entityType} ${row.entityId}` : ""}`,
+      detail: `${actor}${row.entityId ? `, ${row.entityType} ${row.entityId}` : ""}`,
       severity: destructive ? "warning" : "info",
       link: { kind: "audit" },
     };
@@ -642,7 +642,7 @@ const loadDriftAlert: FeedLoader = async (organizationId, from, to) => {
         kind: "drift-alert.sent",
         timestamp: notifiedAt.toISOString(),
         title: "Drift alert delivered",
-        detail: "The org's most recent drift digest — see the change timeline for its contents",
+        detail: "The org's most recent drift digest; see the change timeline for its contents",
         severity: "info",
         link: { kind: "changes" },
       },
@@ -663,7 +663,7 @@ const loadExpiryAlert: FeedLoader = async (organizationId, from, to) => {
         kind: "expiry-alert.sent",
         timestamp: notifiedAt.toISOString(),
         title: "Expiry alert delivered",
-        detail: "The org's most recent expiry scan notified — see Expiring for current deadlines",
+        detail: "The org's most recent expiry scan notified; see Expiring for current deadlines",
         severity: "info",
         link: { kind: "expiring" },
       },

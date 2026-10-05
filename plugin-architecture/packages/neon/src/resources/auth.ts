@@ -4,7 +4,7 @@ export const NeonAuthResourceType = rt({
   name: "Auth",
   plural: "Auth",
   id: "neon-auth",
-  description: "Neon Auth on a branch — managed Better Auth backed by the branch's database",
+  description: "Neon Auth on a branch: managed Better Auth backed by the branch's database",
   fields: [
     f("authProvider", "Provider"),
     f("projectId", "Project ID"),

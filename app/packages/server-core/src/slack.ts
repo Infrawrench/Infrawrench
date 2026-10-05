@@ -615,7 +615,7 @@ function alertBlocks(alert: SlackAlert): { text: string; blocks: unknown[] } {
       elements: [{ type: "mrkdwn", text: escapeMrkdwn(truncate(alert.context, 150)) }],
     });
   }
-  return { text: `${title} — ${body}`, blocks };
+  return { text: `${title}: ${body}`, blocks };
 }
 
 /**

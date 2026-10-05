@@ -172,10 +172,8 @@ export function TagKeysSection() {
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
             Hide tag keys nobody reports on (provider bookkeeping like{" "}
-            <code>aws:cloudformation:stack-id</code>) and pin the ones your team groups by to the
-            top. This applies to every tag picker and group-by dropdown: cost reports, dashboards,
-            saved filters, budgets, alerts, cost centre rules and the resource selector. Hidden keys
-            are only hidden from pickers; their data is kept, exported and still queryable.
+            <code>aws:cloudformation:stack-id</code>) and pin the ones your team groups by, in every
+            tag picker. Hidden keys keep their data and stay queryable.
           </p>
         </T>
       </div>

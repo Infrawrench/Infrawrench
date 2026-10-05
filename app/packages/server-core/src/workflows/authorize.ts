@@ -179,7 +179,7 @@ export class WorkflowUnmappedOperationError extends Error {
   constructor(readonly method: string) {
     super(
       `Not permitted: the operation "${method}" has no entry in the workflow permission ` +
-        `policy, so it is refused. This is a bug in Infrawrench, not in your workflow — ` +
+        `policy, so it is refused. This is a bug in Infrawrench, not in your workflow: ` +
         `add it to WORKFLOW_OPERATION_PERMISSIONS.`,
     );
     this.name = "WorkflowUnmappedOperationError";

@@ -85,13 +85,9 @@ const WEBHOOK_EVENTS: Array<{ id: string; label: string }> = [
 ];
 
 const SPEECH_HELP_TEXT =
-  "Text-to-speech runs through the Interactions API and returns raw 24 kHz mono PCM, which this " +
-  "plugin wraps in a WAV header so the player below can play it. Speech-to-text sends the clip " +
-  "inline to generateContent. Google documents WAV, MP3, AIFF, AAC, OGG and FLAC as accepted " +
-  "input — notably not the WebM your browser records on Chrome, Edge and Firefox, nor the MP4 " +
-  "Safari records. Those are very likely accepted anyway (Firebase AI Logic, which fronts this " +
-  "same endpoint, lists both), so a recording is still worth trying — but upload one of the six " +
-  "documented formats if you want a guarantee. Inline requests are capped at 20 MB.";
+  "Text-to-speech returns 24 kHz mono audio. Speech-to-text sends the clip inline (20 MB max). " +
+  "Google documents WAV, MP3, AIFF, AAC, OGG and FLAC; browser recordings (WebM, MP4) usually " +
+  "work too, but upload a documented format if you need a guarantee.";
 
 /**
  * Gemini (AI Studio) plugin client.
@@ -116,7 +112,7 @@ const SPEECH_HELP_TEXT =
  */
 function transcriptionPrompt(language: string | undefined): string {
   const base =
-    "Transcribe this audio verbatim. Reply with the transcript only — no preamble, no commentary, no formatting.";
+    "Transcribe this audio verbatim. Reply with the transcript only, with no preamble, commentary or formatting.";
   if (!language) return base;
   return `${base} The audio is in ${language}; transcribe it in that language and do not translate it.`;
 }
@@ -1223,7 +1219,7 @@ export class GeminiClient implements PluginClient {
       const ttl = fields["ttl"];
       if (!ttl) {
         throw new Error(
-          'Gemini plugin: only a cache\'s ttl is updatable — supply a duration such as "3600s"',
+          'Gemini plugin: only a cache\'s ttl is updatable; supply a duration such as "3600s"',
         );
       }
       const cache = await this.fetch<CachedContent>(
@@ -1541,11 +1537,8 @@ export class GeminiClient implements PluginClient {
           kind: "text" as const,
           variant: "muted" as const,
           content:
-            "The Gemini API on AI Studio has no admin, usage, quota or billing endpoints at all — " +
-            "generativelanguage.googleapis.com exposes only inference and storage. Rate limits, " +
-            "token consumption and spend are visible in AI Studio and in the Google Cloud console " +
-            "for the project behind the key. The only cost signal in the API itself is the " +
-            "per-response usageMetadata token count.",
+            "The Gemini API has no admin, usage, quota or billing endpoints. Rate limits, usage and " +
+            "spend are in AI Studio and the Google Cloud console for the key's project.",
         },
         {
           kind: "link" as const,
@@ -1818,9 +1811,8 @@ export class GeminiClient implements PluginClient {
               kind: "text",
               variant: "muted",
               content:
-                "Cached tokens are billed at a reduced rate on every request that references this " +
-                "cache. Expiry is the only property the API lets you change after creation — edit " +
-                'the ttl (for example "3600s") to extend or shorten it.',
+                "Cached tokens are billed at a reduced rate on every request that uses this cache. " +
+                'Only the expiry can be changed after creation: edit the ttl (for example "3600s").',
             },
           ],
         },
@@ -2217,7 +2209,7 @@ export class GeminiClient implements PluginClient {
         {
           id: DEFAULT_STT_MODEL,
           label: DEFAULT_STT_MODEL,
-          description: "Transcription — audio understanding via generateContent",
+          description: "Transcription via generateContent",
         },
       ];
     }
@@ -2290,7 +2282,7 @@ export class GeminiClient implements PluginClient {
     const base64 = audio?.data;
     if (!base64) {
       throw new Error(
-        `Gemini plugin: ${model} returned no audio. TTS is only available on the *-tts models — ` +
+        `Gemini plugin: ${model} returned no audio. TTS is only available on the *-tts models; ` +
           `pick one of ${TTS_MODELS.map((m) => m.id).join(", ")}.`,
       );
     }

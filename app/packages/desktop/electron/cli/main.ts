@@ -101,7 +101,7 @@ import { cmdApps } from "./commands/apps";
 import { cmdConfig } from "./commands/config";
 import { runTui } from "./tui";
 
-const HELP = `infrawrench — manage your infrastructure from the terminal
+const HELP = `infrawrench: manage your infrastructure from the terminal
 
 USAGE
   infrawrench [command] [flags]
@@ -147,7 +147,7 @@ COMMANDS
     precision         per-month share of reviewed findings marked unexpected   [--months 6]
     sensitivity       providers/services whose threshold feedback has raised, and why
   costs --alerts      change-based cost alerts + recent firings ("spend moved >X% vs the
-                      prior period" — distinct from budgets and anomalies)   [--limit 20]
+                      prior period", distinct from budgets and anomalies)   [--limit 20]
   costs tag-keys      the tag keys in your cost data, Kubernetes node and volume labels grouped   [--json]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
                       into a custom source: --format csv|focus [--map date=Day --map tag=Team]
@@ -194,12 +194,12 @@ COMMANDS
   tag-keys hide <k>   hide a key, or a prefix like 'aws:cloudformation:*', from every picker
                       (data untouched; still queryable)   also: unhide <k>, pin <k>, unpin <k>
   showback            spend by cost centre via the org's allocation rules, as an indented
-                      tree — a parent's bar is its subtree total   [--last 30d]
+                      tree; a parent's bar is its subtree total   [--last 30d]
   ai-spend [dim]      billed AI spend split by a caller dimension (team, user, feature…), with
                       per-source match rates and per-provider coverage   [--last 30d]
   ai-spend sources    the org's AI request-log sources and their collection state
   billing-rules       the org's own adjustments to collected spend (markups, discounts, fixed
-                      charges, reallocations) — why a report may not match the invoice
+                      charges, reallocations): why a report may not match the invoice
   billing-rules <n>   one rule in full, by name or id
   billing-rules preview <n>
                       dry-run one rule against a month of real spend: totals without and
@@ -216,15 +216,15 @@ COMMANDS
                       (stated or ECB) and date, and why
   currency feed [YYYY-MM-DD]
                       the ECB reference rates for a day   [--currency USD  express them in USD]
-  invoices            invoices raised against managed accounts (customers), newest first — a
+  invoices            invoices raised against managed accounts (customers), newest first; a
                       draft's total is not computed in the list, an issued one is frozen
   invoices customers  the managed accounts themselves: billing currency, cost basis and the
                       cost centres whose spend is theirs
-  invoices <n|id>     one invoice in full, by number, id or customer — lines, the adjustments
+  invoices <n|id>     one invoice in full, by number, id or customer: lines, the adjustments
                       applied, the rate used and the day it was read
   unit-costs          the org's business metrics (the denominators unit costs divide by) and
                       how well each one is being reported
-  scenarios           scenario models — known future cost the trend can't see (a purchase, a
+  scenarios           scenario models: known future cost the trend can't see (a purchase, a
                       new team, a migration)
   scenarios <name>    apply one to the forecast; prints the unadjusted trend alongside, always
                       [--last 30d]
@@ -234,7 +234,7 @@ COMMANDS
                       a metric's scheduled importer: config + recent runs, run now
                       [--from --to to backfill], or set [--account <id|name>]
                       [--set field=value …, @file reads a value] [--file importer.json]
-  unit-costs <key>    cost per unit of a business metric over time — a period with no reported
+  unit-costs <key>    cost per unit of a business metric over time; a period with no reported
                       value prints as "—", never as 0   [--last 30d]
                       [--group-by daily|weekly|monthly|cumulative] [--basis cash|amortized|blended]
                       [--currency USD] [--where "…"] [--margin  revenue metrics only]
@@ -279,7 +279,7 @@ COMMANDS
                       (--local scans this machine's workspace)
   posture             security posture findings (public buckets, world-open ingress, unencrypted
                       disks), ranked by severity   (--local scans this machine's workspace)
-  posture dismiss     accept a finding as a known risk — it leaves the list and the daily alerts
+  posture dismiss     accept a finding as a known risk; it leaves the list and the daily alerts
                       <resourceId> <ruleId> [--reason <text>]   (ids from posture --json)
   posture restore     put a dismissed finding back   <resourceId> <ruleId>
   dns                 every DNS zone & record across your providers, with dangling targets
@@ -317,7 +317,7 @@ COMMANDS
                       URL it is live at (give a name/id for its components)
   declared-incidents  incidents YOU declared (incident mode): severity, status, duration & whether
        [id|title]     anything the declaration asked for failed (give an id/title for its joined
-                      timeline). "incidents" above is the other kind — the providers'.
+                      timeline). "incidents" above is the other kind, the providers'.
   ownership [query]   who owns each resource, what it's for & its ticket (a resource absent
                       from this list is unowned; see orphans for the wasted ones)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
@@ -345,7 +345,7 @@ COMMANDS
   deploy rollback     ship a previous deploy's image again   [-e <env>] [--to-run <id>] [--delete-created]
   deploy outputs      print the last successful deploy's infra.output(...) value   [-e <env>]
   deploy status       check the resources the local ledger says exist   [-e <env>]
-  deploy destroy      run the Infrafile's destroy() stage — tear the env down   [-e <env>] [--created]
+  deploy destroy      run the Infrafile's destroy() stage: tear the env down   [-e <env>] [--created]
   cli install         install this shell command (also: uninstall, status)
   help                show this help
 
@@ -374,13 +374,13 @@ FLAGS
                       (one_off | weekly | monthly | seasonal)
   --expires <date>    costs --anomalies feedback: last day the suppression covers (YYYY-MM-DD)
   --months <n>        costs --anomalies precision: months to report (default 6, max 24)
-  --where <query>     costs: filter in the cost query language — terms joined by AND, each
+  --where <query>     costs: filter in the cost query language; terms joined by AND, each
                       dimension = 'v' | != 'v' | IN ('a','b') | NOT IN ('a','b'), plus
                       tag['key'] = 'v', k8s_node_label['key'] = 'v', k8s_pvc_label['key'] = 'v'.
                       Dimensions: provider, account, service, region,
                       resource, tag, charge_type, commitment. OR is not supported (the filter
-                      is a conjunction) — use IN ('a','b') for several values of one dimension
-  --filter <name|id>  costs: apply a saved cost filter by reference — resolved on the server
+                      is a conjunction); use IN ('a','b') for several values of one dimension
+  --filter <name|id>  costs: apply a saved cost filter by reference, resolved on the server
                       at query time, so it always means what it means everywhere else; combines
                       with --where by AND
   --measure <m>       costs/reports: what to sum. cost (default, money), usage (the usage
@@ -393,7 +393,7 @@ FLAGS
                       (refused while every provider reports daily rows)
   --cumulative        costs/reports: running totals from the start of the range
   --margin            unit-costs: draw (revenue − cost) ÷ revenue instead of cost per unit.
-                      Only for a metric declared revenue-shaped — the server refuses it for a
+                      Only for a metric declared revenue-shaped; the server refuses it for a
                       count metric rather than returning a plausible wrong number
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice

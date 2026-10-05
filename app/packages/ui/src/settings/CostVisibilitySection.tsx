@@ -179,7 +179,7 @@ export function CostVisibilitySection() {
         <h1 className="text-xl font-semibold">{gt("Cost Visibility")}</h1>
         <p className="text-sm text-on-surface-muted mt-1">
           {gt(
-            "Restrict which costs a role, member or API key can see. A scoped person sees only matching spend everywhere: reports, dashboards, budgets, showback, forecasts, chat, MCP and the CLI. Scopes that apply to the same person are combined, so each one can only narrow access. Owners always see everything.",
+            "Restrict which costs a role, member or API key can see, everywhere spend appears. Combined scopes only narrow access. Owners always see everything.",
           )}
         </p>
       </div>
@@ -394,7 +394,7 @@ export function CostVisibilitySection() {
           <div className="text-xs text-on-surface-muted space-y-1">
             <p>
               {gt(
-                "Scoped people cannot use cost exports, invoices, the weekly digest or config as code, and cannot change roles, invitations or scopes, because each of those covers the whole organization.",
+                "Scoped people cannot use cost exports, invoices, the weekly digest or config as code, or change roles, invitations or scopes.",
               )}
             </p>
             <p>

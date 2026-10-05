@@ -765,7 +765,7 @@ function resolveTrigger(
     plan.miss(
       "workflows",
       workflowKey,
-      `budget trigger names "${trigger.budgetKey}", which is not in this document or this organization — the workflow is set to manual`,
+      `budget trigger names "${trigger.budgetKey}", which is not in this document or this organization; the workflow is set to manual`,
     );
     return { kind: "manual" };
   }
@@ -1001,7 +1001,7 @@ function resolveCards(
         plan.miss(
           "dashboards",
           dashboard.key,
-          `resource card pins ${card.pluginId}/${card.resourceTypeId} "${card.externalId}" on account "${card.account}", which is not in this organization's inventory yet — sync the account and re-apply`,
+          `resource card pins ${card.pluginId}/${card.resourceTypeId} "${card.externalId}" on account "${card.account}", which is not in this organization's inventory yet; sync the account and re-apply`,
         );
         continue;
       }
@@ -1048,7 +1048,7 @@ function resolveCards(
     const parsed = widgetConfigSchemaFor(card.widgetKind).safeParse(config);
     if (!parsed.success) {
       throw new OrgConfigError(
-        `Dashboard "${dashboard.name}": invalid ${card.widgetKind} card — ${parsed.error.issues[0]?.message ?? "bad config"}`,
+        `Dashboard "${dashboard.name}": invalid ${card.widgetKind} card, ${parsed.error.issues[0]?.message ?? "bad config"}`,
       );
     }
     rows.push({
@@ -1196,7 +1196,7 @@ function resolveAllocationRules(
         plan.miss(
           "costCentres",
           centreKey,
-          `allocation rule names account "${rule.match.account}", which this organization has not connected — the rule is dropped rather than applied without its account clause`,
+          `allocation rule names account "${rule.match.account}", which this organization has not connected; the rule is dropped rather than applied without its account clause`,
         );
         continue;
       }

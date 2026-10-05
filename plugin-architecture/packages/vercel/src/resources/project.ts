@@ -4,7 +4,7 @@ import { FRAMEWORK_IDS, FUNCTION_REGIONS, NODE_VERSIONS } from "../catalog.js";
 export const VercelProjectResourceType = rt({
   name: "Project",
   id: "vercel-project",
-  description: "A Vercel project — deploys from Git or CLI",
+  description: "A Vercel project, deployed from Git or the CLI",
   fields: [
     f("name", "Name"),
     f("framework", "Framework", { kind: "enum", enumValues: FRAMEWORK_IDS, required: false }),

@@ -148,7 +148,7 @@ export function validateRestoreDrill(input: RestoreDrillInput): string | null {
     if (input.outcome === "blocked") {
       // A blocked drill never started, so a duration is meaningless, and a
       // meaningless RTO on this page is the most dangerous number on it.
-      return "A blocked drill has no restore time — it never got that far.";
+      return "A blocked drill has no restore time; it never got that far.";
     }
   }
   if ((input.notes?.length ?? 0) > RESTORE_DRILL_LIMITS.maxNotesLength) {
@@ -160,7 +160,7 @@ export function validateRestoreDrill(input: RestoreDrillInput): string | null {
   if (input.outcome === "verified" && input.rtoMinutes == null) {
     // The measured time is the entire point of a verified drill: an RPO comes
     // from the backup, and an RTO can only come from somebody with a stopwatch.
-    return "A verified drill needs the measured time to restore — that is the number nobody else can supply.";
+    return "A verified drill needs the measured time to restore; that is the number nobody else can supply.";
   }
   return null;
 }

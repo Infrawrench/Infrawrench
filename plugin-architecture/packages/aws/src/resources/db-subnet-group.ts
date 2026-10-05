@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const DBSubnetGroupResourceType = rt({
   name: "DB Subnet Group",
   id: "db-subnet-group",
-  description: "An RDS DB subnet group — the VPC subnets an RDS-family cluster or instance runs in",
+  description: "An RDS DB subnet group: the VPC subnets an RDS cluster or instance runs in",
   fields: [
     f("name", "Name"),
     f("region", "Region", { required: false }),

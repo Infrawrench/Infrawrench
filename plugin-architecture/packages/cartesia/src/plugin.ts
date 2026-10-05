@@ -37,7 +37,7 @@ const manifest: PluginManifest = {
       key: "adminApiKey",
       label: "Admin API Key (optional)",
       description:
-        "A separate Cartesia *admin* key, created in the console with the Admin key type. It starts with sk_car_admin_ and is NOT interchangeable with the key above. Cartesia only accepts an admin key on /usage/credits, /api-keys and /organizations/users, so leaving this blank hides the API Keys and Organization Members lists and the credit-usage stats and charts, and cost collection cannot run; voices, pronunciation dictionaries, synthesis, and transcription all keep working.",
+        "Optional. A separate Cartesia *admin* key (sk_car_admin_…) created in the console with the Admin key type; it is not interchangeable with the key above. Without it, the API Keys and Organization Members lists, credit-usage stats and cost collection are unavailable. Everything else keeps working.",
       sensitive: true,
       optional: true,
       placeholder: "sk_car_admin_...",

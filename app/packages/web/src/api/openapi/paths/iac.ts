@@ -29,7 +29,7 @@ export function registerIacPaths(ctx: BuildContext) {
       .describe("Which document shape was uploaded: a raw state file, or `terraform show -json`."),
     formatVersion: z
       .string()
-      .describe('The document\'s own version — "4" for a state file, "1.0"-style otherwise.'),
+      .describe('The document\'s own version; "4" for a state file, "1.0"-style otherwise.'),
     terraformVersion: z.string().nullable(),
     serial: z.number().int().nullable().describe("State file serial; null for show output."),
     lineage: z.string().nullable().describe("State file lineage; null for show output."),
@@ -42,7 +42,7 @@ export function registerIacPaths(ctx: BuildContext) {
       .number()
       .int()
       .describe(
-        "Attribute values dropped because the state marked them sensitive. Redaction happens at parse time — no sensitive value is ever stored.",
+        "Attribute values dropped because the state marked them sensitive. Redaction happens at parse time; no sensitive value is ever stored.",
       ),
     parseWarnings: z.array(z.string()),
     uploadedByUserId: Uuid.nullable(),
@@ -78,7 +78,7 @@ export function registerIacPaths(ctx: BuildContext) {
     status: z
       .enum(["managed", "drifted", "unmanaged"])
       .describe(
-        "`managed`: matched a state entry and agrees with it. `drifted`: matched, but live fields differ. `unmanaged`: in inventory, absent from state — somebody made it by hand.",
+        "`managed`: matched a state entry and agrees with it. `drifted`: matched, but live fields differ. `unmanaged`: in inventory, absent from state; somebody made it by hand.",
       ),
     terraformType: z.string().nullable(),
     terraformAddress: z.string().nullable(),
@@ -116,7 +116,7 @@ export function registerIacPaths(ctx: BuildContext) {
     resources: z.array(IacReconciledResource),
     stateOnly: z
       .array(IacStateOnlyResource)
-      .describe("State entries with no inventory match — their own category."),
+      .describe("State entries with no inventory match, their own category."),
     summary: strict({
       inventoryTotal: z.number().int(),
       managed: z.number().int(),
@@ -162,7 +162,7 @@ export function registerIacPaths(ctx: BuildContext) {
     tags: ["IaC"],
     summary: "List uploaded Terraform state documents",
     description:
-      "Every state document the organization has uploaded, newest first. The documents themselves are never stored — only the parsed, redacted projection.",
+      "Every state document the organization has uploaded, newest first. The documents themselves are never stored; only the parsed, redacted projection.",
     request: { params: OrgIdParam },
     responses: {
       200: {
@@ -256,7 +256,7 @@ export function registerIacPaths(ctx: BuildContext) {
     tags: ["IaC"],
     summary: "IaC status for one resource",
     description:
-      "The managed/unmanaged badge for a resource detail page, computed against the newest state document. `status` is null when the organization has uploaded none — absence of a state is not evidence of ClickOps. A query parameter rather than a path segment because composite resource ids contain slashes.",
+      "The managed/unmanaged badge for a resource detail page, computed against the newest state document. `status` is null when the organization has uploaded none; absence of a state is not evidence of ClickOps. A query parameter rather than a path segment because composite resource ids contain slashes.",
     request: {
       params: OrgIdParam,
       query: strict({

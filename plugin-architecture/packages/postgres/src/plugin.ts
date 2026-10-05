@@ -30,7 +30,7 @@ const manifest: PluginManifest = {
       key: "caCert",
       label: "CA Certificate",
       description:
-        "Optional PEM-encoded CA certificate to trust for the TLS connection. Required for vendor-managed CAs (e.g. DigitalOcean managed PostgreSQL); leave empty to rely on the system trust store.",
+        "Optional PEM CA certificate for TLS. Needed for vendor-managed CAs (e.g. DigitalOcean); leave empty to use the system trust store.",
       sensitive: false,
       multiline: true,
       optional: true,

@@ -113,6 +113,6 @@ export const GceInstanceResourceType = rt({
     // (t2a) and generation jumps out, which setMachineType can't cross.
     sizeFamilyPattern: "^([a-z0-9]+)-",
     resizeNote:
-      "Google Compute Engine only changes the machine type of a stopped instance — stop it first, apply the resize, then start it again.",
+      "The machine type can only change on a stopped instance. Stop it, resize, then start it again.",
   },
 });

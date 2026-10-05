@@ -79,7 +79,7 @@ export const BUSINESS_METRIC_SOURCE: BusinessMetricSourceDeclaration = {
       type: "select",
       dependsOn: ["measure"],
       description:
-        "The metric to import for usage. Metronome reports usage in UTC days; for SUM and COUNT metrics the importer reads hourly usage and adds it up into days in the importer's timezone, while other aggregations (MAX, UNIQUE, LATEST, SQL) are stored on the UTC day they were measured.",
+        "The metric to import for usage. Metronome reports usage in UTC days. SUM and COUNT metrics are summed from hourly usage into days in the importer's timezone; other aggregations (MAX, UNIQUE, LATEST, SQL) stay on their UTC day.",
     },
     {
       key: "creditType",

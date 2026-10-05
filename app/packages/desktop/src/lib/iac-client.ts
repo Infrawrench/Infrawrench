@@ -22,7 +22,7 @@ export function createDesktopIacClient(): IacClient {
   const requireOrg = (): string => {
     const orgId = useUIStore.getState().activeCloudOrgId;
     if (!orgId) {
-      throw new Error("IaC reconciliation requires cloud mode — sign in to sync.");
+      throw new Error("IaC reconciliation requires cloud mode: sign in to sync.");
     }
     return orgId;
   };

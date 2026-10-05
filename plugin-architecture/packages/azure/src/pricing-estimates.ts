@@ -187,9 +187,7 @@ export function estimateAzureCost(
         },
       ],
       {
-        notes: [
-          "Billed per second while the container group runs — this assumes it runs all month.",
-        ],
+        notes: ["Billed per second while the container group runs; assumes it runs all month."],
       },
     );
   }
@@ -215,7 +213,7 @@ export function estimateAzureCost(
     return buildCostEstimate([line], {
       notes:
         sku === "Y1"
-          ? ["Consumption plan — executions beyond the free grant are billed on top."]
+          ? ["Consumption plan; executions beyond the free grant are billed on top."]
           : [],
     });
   }

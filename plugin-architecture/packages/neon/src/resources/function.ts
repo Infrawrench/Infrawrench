@@ -9,7 +9,7 @@ export const NeonFunctionResourceType = rt({
   name: "Function",
   plural: "Functions",
   id: "neon-function",
-  description: "A Neon Function — Node.js compute deployed next to a branch's database",
+  description: "A Neon Function: Node.js compute deployed next to a branch's database",
   fields: [
     f("name", "Name"),
     f("slug", "Slug"),

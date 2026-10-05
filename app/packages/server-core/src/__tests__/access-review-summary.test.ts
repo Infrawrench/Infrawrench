@@ -81,7 +81,7 @@ describe("accessFindingLine", () => {
   // be in the line or the reader cannot tell which one is flagged.
   it("names the account alongside the principal", () => {
     expect(accessFindingLine(finding("high", "deploy"))).toBe(
-      "deploy (Production) — Administrative or wildcard permissions (high)",
+      "deploy (Production): Administrative or wildcard permissions (high)",
     );
   });
 });
@@ -144,7 +144,7 @@ describe("bodies", () => {
 
   it("leads the push body with the single worst finding", () => {
     expect(formatAccessReviewPushBody(summary)).toBe(
-      "root (Production) — Administrative or wildcard permissions (critical). 1 critical · 1 high",
+      "root (Production): Administrative or wildcard permissions (critical). 1 critical · 1 high",
     );
   });
 
@@ -211,7 +211,7 @@ describe("Slack mrkdwn injection through synced names", () => {
     const body = formatAccessReviewSlackBody(summarizeAccessReview([named("a`b*c*d")]));
     const line = body.split("\n").find((l) => l.startsWith("•"));
     expect(line).toBe(
-      "• `a′b*c*d` (`Production`) — Administrative or wildcard permissions (critical)",
+      "• `a′b*c*d` (`Production`): Administrative or wildcard permissions (critical)",
     );
   });
 

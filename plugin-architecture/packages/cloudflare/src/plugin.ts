@@ -78,7 +78,7 @@ const manifest: PluginManifest = {
       key: "apiToken",
       label: "API Token",
       description:
-        "A Cloudflare API token. Use the link below to open Cloudflare's token creator with the recommended scopes pre-filled, then paste the generated token here.",
+        "A Cloudflare API token. Use the link below to open the token creator with recommended scopes pre-filled, then paste the token here.",
       sensitive: true,
       placeholder: "Scoped API token...",
       helpLink: {

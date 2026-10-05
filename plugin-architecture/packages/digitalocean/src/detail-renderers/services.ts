@@ -1107,7 +1107,7 @@ export function applyAutoscalePoolDetail(detail: DetailViewSchema, resource: Res
         type: "plugin-action",
         actionId: "autoscale-delete-with-droplets",
         confirmMessage:
-          "Delete this autoscale pool AND destroy every Droplet in it? This cannot be undone. (The regular Delete removes only the pool and leaves the Droplets running.)",
+          "Delete this autoscale pool AND destroy every Droplet in it? This cannot be undone. Regular Delete keeps the Droplets.",
         successMessage: "Pool and Droplets are being deleted.",
         destructive: true,
       },

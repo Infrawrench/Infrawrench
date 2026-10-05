@@ -103,10 +103,9 @@ export function CostAnomalyExplainModal({
         </h2>
         <T>
           <p className="text-xs text-on-surface-faint mb-4">
-            What this was, in a sentence. It is saved on the finding and drawn as a note on{" "}
+            What this was, in a sentence. Shown as a note on{" "}
             <strong className="font-medium">every cost chart</strong> covering{" "}
-            <Var>{formatDay(anomaly.day)}</Var>, so the next person to look at that step already has
-            the answer.
+            <Var>{formatDay(anomaly.day)}</Var>.
           </p>
         </T>
 
@@ -155,7 +154,7 @@ export function CostAnomalyExplainModal({
         {hints.length > 0 && (
           <div className="mt-2 flex flex-col gap-1">
             <span className="text-[11px] text-on-surface-faint">
-              {gt("Detection found these around then — click to use one:")}
+              {gt("Detection found these around then (click to use one):")}
             </span>
             <div className="flex flex-wrap gap-1">
               {hints.map((hint) => (
@@ -177,9 +176,7 @@ export function CostAnomalyExplainModal({
         <p className="mt-3 text-[11px] text-on-surface-faint">
           {rewording
             ? gt("This rewords the note already on the charts rather than adding a second one.")
-            : gt(
-                "Explaining doesn’t stop detection — if this spikes again, it will be found again.",
-              )}
+            : gt("Explaining doesn’t stop detection; a repeat spike is still flagged.")}
         </p>
 
         <div className="mt-5 flex items-center justify-end gap-2">

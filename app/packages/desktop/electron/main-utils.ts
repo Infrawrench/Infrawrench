@@ -114,7 +114,7 @@ export class UserFacingError extends Error {
 class MasterKeyUnavailableError extends UserFacingError {
   constructor() {
     super(
-      "Could not read this workspace's master key. Nothing was changed — a new key would " +
+      "Could not read this workspace's master key. Nothing was changed. A new key would " +
         "make every stored credential unreadable. Unlock your login keychain (or open the " +
         "desktop app once) and try again.",
     );

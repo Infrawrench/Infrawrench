@@ -73,7 +73,7 @@ export const hetznerTerraformExport: TerraformExportCapability = {
       const serverId = fieldString(resource, "serverId");
       if (serverId) {
         comments.push(
-          `Currently attached to server ${serverId} — model the attachment with a`,
+          `Currently attached to server ${serverId}; model the attachment with a`,
           "separate hcloud_volume_attachment resource (server_id conflicts with location).",
         );
       }

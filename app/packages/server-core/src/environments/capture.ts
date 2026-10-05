@@ -108,7 +108,7 @@ async function selectResources(
     throw new EnvironmentInputError("That selection matched no resources", 404);
   if (rows.length > ENVIRONMENT_LIMITS.maxMembers) {
     throw new EnvironmentInputError(
-      `That selection is larger than the ${ENVIRONMENT_LIMITS.maxMembers}-resource limit — narrow it with a tag or pick resources explicitly`,
+      `That selection is larger than the ${ENVIRONMENT_LIMITS.maxMembers}-resource limit. Narrow it with a tag or pick resources explicitly`,
     );
   }
   return rows;

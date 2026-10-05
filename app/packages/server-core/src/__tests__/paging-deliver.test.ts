@@ -117,7 +117,7 @@ describe("deliverPage", () => {
 
   it("prefers an explicit title over the source name", async () => {
     await deliverPage(AUDIENCE, fakeStore(), { message: "disk full", title: "Checkout" });
-    expect(sendOneShotPage).toHaveBeenCalledWith("org1", "infrawrench: Checkout — disk full", {});
+    expect(sendOneShotPage).toHaveBeenCalledWith("org1", "infrawrench: Checkout: disk full", {});
     expect(routeAlert).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Checkout" }),
       expect.anything(),

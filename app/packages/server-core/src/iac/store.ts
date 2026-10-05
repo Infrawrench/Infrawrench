@@ -213,7 +213,7 @@ export async function saveIacState(args: SaveIacStateArgs): Promise<SaveIacState
     parsed = parseTerraformStateDocument(args.document);
   } catch (e) {
     if (e instanceof TerraformStateParseError) throw new IacInputError(e.message, 400);
-    console.error("[iac] unclassified parse failure — the parser should have caught this:", e);
+    console.error("[iac] unclassified parse failure; the parser should have caught this:", e);
     const detail = e instanceof Error ? e.message : String(e);
     throw new IacInputError(
       `State document could not be parsed (${detail}). It must be a \`.tfstate\` (format version 4) or the output of \`terraform show -json\`.`,

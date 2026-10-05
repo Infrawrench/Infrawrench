@@ -42,10 +42,10 @@ function describeIncident(
           : "";
   const count = match.affectedResourceCount;
   const body =
-    `${incident.title} — ${count} of your ${count === 1 ? "resource" : "resources"}` +
+    `${incident.title}: ${count} of your ${count === 1 ? "resource" : "resources"}` +
     `${where} may be affected.`;
   const context = `Provider status: ${incident.state}${
-    incident.lastUpdateText ? ` — ${incident.lastUpdateText.slice(0, 200)}` : ""
+    incident.lastUpdateText ? `: ${incident.lastUpdateText.slice(0, 200)}` : ""
   }`;
   return { body, context };
 }

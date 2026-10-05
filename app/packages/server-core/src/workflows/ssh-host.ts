@@ -131,14 +131,14 @@ async function resolveResourceSshConfig(
   }
   if (!params.sshKeyId) {
     throw new Error(
-      'ssh() needs an org SSH key to authenticate — pass { sshKey: "<key id or name>" }.',
+      'ssh() needs an org SSH key to authenticate. Pass { sshKey: "<key id or name>" }.',
     );
   }
 
   const host = await resolveHostFromResource(client, sshEndpoint.hostOutputKey, params);
   if (!host) {
     throw new Error(
-      `Could not resolve the SSH host (output "${sshEndpoint.hostOutputKey}") for this resource — is it running yet?`,
+      `Could not resolve the SSH host (output "${sshEndpoint.hostOutputKey}") for this resource. Is it running yet?`,
     );
   }
 

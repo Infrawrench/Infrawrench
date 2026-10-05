@@ -4,7 +4,7 @@ export const NeonBranchResourceType = rt({
   name: "Branch",
   plural: "Branches",
   id: "neon-branch",
-  description: "A Neon branch — an isolated copy-on-write fork of your database",
+  description: "A Neon branch: an isolated copy-on-write fork of your database",
   fields: [
     f("name", "Name"),
     f("projectId", "Project ID", { editable: false }),

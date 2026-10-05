@@ -108,7 +108,7 @@ export function CostCanvasesPanel({
           <h2 className="text-sm font-semibold text-on-surface">{gt("Canvases")}</h2>
           <p className="text-xs text-on-surface-faint mt-0.5">
             {gt(
-              "Describe a report and the assistant builds it from your cost data, budgets, anomalies, unit costs and connected tools. A canvas saves its queries, not its numbers, so it is always current.",
+              "Describe a report and the assistant builds it from your cost data and connected tools. Canvases re-run their queries, so they stay current.",
             )}
           </p>
         </div>
@@ -672,10 +672,10 @@ function CanvasDetail({
               supportsPdf
               copy={{
                 description: gt(
-                  "Send this canvas on a schedule to Slack, Microsoft Teams or email: its headline figures and the canvas as a PDF. The queries re-run at every send.",
+                  "Send this canvas's headline figures and a PDF to Slack, Microsoft Teams or email on a schedule.",
                 ),
                 editorDescription: gt(
-                  "The canvas runs server-side at each send, inside its creator's cost visibility, and never calls the assistant.",
+                  "Each send uses its creator's cost visibility and doesn't call the assistant.",
                 ),
               }}
             />
@@ -808,9 +808,7 @@ function PlacementModal({
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
         <h2 className="text-base font-semibold text-on-surface mb-1">{gt("Pin to a dashboard")}</h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          {gt(
-            "A card is a view onto this canvas. Removing one leaves the canvas intact; editing the canvas changes every card at once.",
-          )}
+          {gt("Removing a card leaves the canvas intact; editing the canvas updates every card.")}
         </p>
         {error !== null && (
           <div role="alert" className="mb-3 text-sm text-danger">

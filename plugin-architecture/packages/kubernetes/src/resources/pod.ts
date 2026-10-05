@@ -12,15 +12,15 @@ export const PodResourceType = rt({
     f("status", "Status", { required: false }),
     f("statusReason", "Status Reason", {
       required: false,
-      description: "Why a Pending pod is pending — the scheduler's own words",
+      description: "Why a Pending pod is pending, in the scheduler's words",
     }),
     f("nodeName", "Node", {
       required: false,
-      description: "The node the scheduler placed this pod on — empty while unscheduled",
+      description: "The node this pod is scheduled on (empty while unscheduled)",
     }),
     f("requestCpu", "CPU Request", {
       required: false,
-      description: "Effective pod CPU request — init/sidecar rules applied, not a naive sum",
+      description: "Effective pod CPU request, with init and sidecar rules applied",
     }),
     f("requestMemory", "Memory Request", { required: false }),
     f("limitCpu", "CPU Limit", { required: false }),

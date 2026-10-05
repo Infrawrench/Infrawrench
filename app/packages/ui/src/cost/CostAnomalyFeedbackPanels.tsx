@@ -75,9 +75,7 @@ export function AnomalySuppressionsPanel({ client }: { client: CostsClient }) {
         )}
       </div>
       <p className="text-xs text-on-surface-faint">
-        {gt(
-          "Patterns somebody marked as expected. On covered days their spend is set aside before detection judges the day, so the same pattern does not alert again until it expires.",
-        )}
+        {gt("Patterns marked as expected. They won't alert again until they expire.")}
       </p>
       {error !== null && (
         <div role="alert" className="text-sm text-danger">

@@ -193,7 +193,7 @@ const CostConversion = strict({
   unconverted: z.array(CurrencyCode).openapi({
     description:
       "Currencies present in the data that your organization holds no usable rate for. These " +
-      "are **not** dropped — they keep their own series and their own `totals` entry, because " +
+      "are **not** dropped; they keep their own series and their own `totals` entry, because " +
       "silently omitting a currency would understate the total.",
   }),
   rateBasis: RateBasis.optional().openapi({

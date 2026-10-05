@@ -9,7 +9,7 @@ const PageSource = z
     example: "checkout-api",
     description:
       "Stable name for the system raising the page: letters, digits, `.`, `_` and `-`. " +
-      "It is the notification's sender, and it scopes the cooldown — two services paging under " +
+      "It is the notification's sender, and it scopes the cooldown; two services paging under " +
       "the same key never throttle each other.",
   });
 
@@ -51,7 +51,7 @@ const PageRequest = strict({
     .boolean()
     .optional()
     .describe(
-      "Also place a voice call to recipients who opted into voice. Off by default — reserve it " +
+      "Also place a voice call to recipients who opted into voice. Off by default; reserve it " +
         "for things worth waking someone up for.",
     ),
 }).openapi("PageRequest");
@@ -81,8 +81,8 @@ export function registerPagePaths(ctx: BuildContext) {
     tags: ["Pages"],
     summary: "Raise an alert to the organization's on-call transports",
     description:
-      "Fans an alert out over whatever the org has configured — Twilio SMS (and voice on " +
-      "request), mobile push, Slack channels, and Microsoft Teams webhooks — honouring each " +
+      "Fans an alert out over whatever the org has configured (Twilio SMS (and voice on " +
+      "request), mobile push, Slack channels, and Microsoft Teams webhooks) honouring each " +
       "recipient's opt-ins. This is the same alert a workflow raises with `infra.page(...)`, for " +
       "code that runs somewhere Infrawrench does not: a health check, a deploy script, a cron on " +
       "a box.\n\n" +
@@ -97,7 +97,7 @@ export function registerPagePaths(ctx: BuildContext) {
     },
     responses: {
       200: {
-        description: "Delivery outcome — check `suppressed` and `delivered`.",
+        description: "Delivery outcome: check `suppressed` and `delivered`.",
         content: { "application/json": { schema: PageResponse } },
       },
       400: ErrorResponses[400],
@@ -111,7 +111,7 @@ export function registerPagePaths(ctx: BuildContext) {
     summary: "Clear a page key's cooldown",
     description:
       "Drops the cooldown for one `(source, key)` so the next page under it delivers immediately. " +
-      "Call it when the condition you alerted on recovers — the workflow equivalent is " +
+      "Call it when the condition you alerted on recovers; the workflow equivalent is " +
       "`infra.page.clear(key)`. Clearing a key that was never paged is not an error.",
     request: {
       params: OrgIdParam,

@@ -18,7 +18,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "MongoDB Atlas",
   description:
-    "MongoDB's managed database cloud. Track Atlas spend by service, project and cluster from your invoices, and manage projects, dedicated and Flex clusters (pause, resume, scale, snapshot, metrics), database users, the IP access list, backups, alerts, Atlas Search indexes, online archives and private endpoints. Browse a cluster's data through the MongoDB plugin.",
+    "MongoDB's managed database cloud. Track spend by service, project and cluster, and manage clusters, database users, the IP access list, backups, alerts, search indexes, online archives and private endpoints.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -27,7 +27,7 @@ const manifest: PluginManifest = {
       key: "clientId",
       label: "Client ID or Public Key",
       description:
-        "A service account's client ID (it starts with mdb_sa_id_), or a programmatic API key's public key. Create a service account under Organization Access Manager, Applications, Service Accounts, and give it Organization Read Only plus Organization Billing Viewer to see costs (Project Owner on the projects you want to change).",
+        "A service account's client ID (it starts with mdb_sa_id_), or a programmatic API key's public key. Create one under Organization Access Manager, Service Accounts, with Organization Read Only plus Organization Billing Viewer for costs (Project Owner to make changes).",
       sensitive: false,
       placeholder: "mdb_sa_id_…",
       helpLink: {

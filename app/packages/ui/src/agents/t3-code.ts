@@ -142,7 +142,7 @@ export function createT3CodeSetupPlan(
     packageManagers: [],
     configSources: [],
     warnings: [
-      "T3 Code manages its own projects, so this VM is provisioned without a repository checkout — add projects from inside T3 Code.",
+      "No repository checkout on this VM. Add projects from inside T3 Code.",
       access === "tailscale"
         ? `T3 Code is reached over your tailnet (Tailscale Serve), not T3 Connect. Pairing and the ${agentToolLabel(tool)} sign-in are interactive; finish them from the session's Authorize terminal.`
         : `T3 Connect authorization and the ${agentToolLabel(tool)} sign-in are interactive browser flows; finish them from the session's Authorize terminal.`,
@@ -571,8 +571,7 @@ if [ "$link_ready" = "1" ]; then
   printf '\\n\\033[1mReady.\\033[0m Switch back to the T3 Code tab.\\n\\n'
 else
   printf '\\nThe environment link is still pending. If it stays that way, read the\\n'
-  printf 'server log — the unit redirects stdout/stderr to a file, so journalctl\\n'
-  printf 'only shows systemd start/stop lines, not the server error:\\n'
+  printf 'server log (journalctl only shows systemd start/stop lines, not the server error):\\n'
   printf '  t3 service status                                 # shows the log path\\n'
   printf '  tail -n 200 ~/.t3/userdata/logs/boot-service.log\\n\\n'
 fi
@@ -646,7 +645,7 @@ export function buildT3CodeConnectCommand(input: T3CodeConnectCommandInput): str
   let step = 0;
   const heading = (title: string) => {
     step += 1;
-    return `printf '\\n\\033[1m== Step ${step}/${steps} — ${title} ==\\033[0m\\n'`;
+    return `printf '\\n\\033[1m== Step ${step}/${steps}: ${title} ==\\033[0m\\n'`;
   };
   const script = `
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:$PATH"
@@ -656,7 +655,7 @@ fi
 hash -r
 
 if ! command -v t3 >/dev/null 2>&1; then
-  echo "The t3 CLI is not installed yet — wait for VM setup to finish, then reopen this terminal." >&2
+  echo "The t3 CLI is not installed yet. Wait for VM setup to finish, then reopen this terminal." >&2
   exec "\${SHELL:-/bin/bash}" -l
 fi
 
@@ -669,7 +668,7 @@ ${
     : `${heading("Authorize T3 Connect")}
 # Over SSH the CLI prints a hosted authorization URL and waits for a pasted
 # code, so this works without forwarding port 34338.
-t3 connect link || echo "t3 connect link did not complete — rerun it with 't3 connect link'." >&2
+t3 connect link || echo "t3 connect link did not complete. Rerun it with 't3 connect link'." >&2
 `
 }
 ${heading(`Sign in to ${toolLabel}`)}
@@ -678,7 +677,7 @@ ${heading(`Sign in to ${toolLabel}`)}
 if ${agentToolAuthStatusCommand(input.tool)} >/dev/null 2>&1; then
   printf '${toolLabel} is already signed in.\\n'
 else
-  ${agentToolLoginCommand(input.tool)} || echo "Sign-in did not complete — rerun it with '${agentToolLoginCommand(input.tool)}'." >&2
+  ${agentToolLoginCommand(input.tool)} || echo "Sign-in did not complete. Rerun it with '${agentToolLoginCommand(input.tool)}'." >&2
 fi
 ${
   includeGithubLogin
@@ -689,7 +688,7 @@ if ! command -v gh >/dev/null 2>&1; then
 elif gh auth status >/dev/null 2>&1; then
   printf 'The GitHub CLI is already signed in.\\n'
 else
-  gh auth login || echo "gh auth login did not complete — rerun it with 'gh auth login'." >&2
+  gh auth login || echo "gh auth login did not complete. Rerun it with 'gh auth login'." >&2
 fi
 ${GH_PROTOCOL_ALIGN_SNIPPET}
 align_git_protocol_with_gh

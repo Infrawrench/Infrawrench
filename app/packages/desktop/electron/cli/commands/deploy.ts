@@ -172,7 +172,7 @@ async function resolveDeployOrg(
   } catch (e) {
     if (ctx.flags.org) throw e;
     const msg = e instanceof Error ? e.message : String(e);
-    printErr(c.dim(`org accounts unavailable (${msg}) — using local accounts only`));
+    printErr(c.dim(`org accounts unavailable (${msg}). Using local accounts only`));
     return null;
   }
 }
@@ -529,7 +529,7 @@ function cmdDeployLogLocal(ctx: CliContext, flags: DeployFlags): void {
  */
 async function cmdDeployRollback(ctx: CliContext, flags: DeployFlags): Promise<void> {
   if (ctx.flags.local) {
-    throw new CliError("Rollback needs the cloud deploy history — pass --org instead.", 2);
+    throw new CliError("Rollback needs the cloud deploy history. Pass --org instead.", 2);
   }
   const org = await resolveOrg(ctx);
 
@@ -810,9 +810,7 @@ async function cmdDeployOutputs(ctx: CliContext, flags: DeployFlags): Promise<vo
   }
   if (output === undefined || output === null) {
     println(
-      c.dim(
-        "The last successful deploy recorded no output — call infra.output({...}) in deploy().",
-      ),
+      c.dim("The last successful deploy recorded no output. Call infra.output({...}) in deploy()."),
     );
     return;
   }
@@ -854,7 +852,7 @@ async function cmdDeployStatus(ctx: CliContext, flags: DeployFlags): Promise<voi
   const resources = collectLedgerResources(flags.env);
   if (resources.length === 0) {
     if (json) printJson([]);
-    else println(c.dim("Nothing recorded — deploys that create resources will appear here."));
+    else println(c.dim("Nothing recorded. Deploys that create resources will appear here."));
     return;
   }
 
@@ -934,7 +932,7 @@ async function cmdDeployDestroyCreated(ctx: CliContext, flags: DeployFlags): Pro
 
   if (!json && process.stdin.isTTY === true) {
     if (!(await confirm(`Delete every resource the local ledger says "${env}" created?`))) {
-      throw new CliError("Aborted — nothing was deleted.", 1);
+      throw new CliError("Aborted. Nothing was deleted.", 1);
     }
   }
 
@@ -942,7 +940,7 @@ async function cmdDeployDestroyCreated(ctx: CliContext, flags: DeployFlags): Pro
   const resources = collectLedgerResources(env);
   if (resources.length === 0) {
     if (json) printJson({ env, deleted: 0, failed: 0, notes: [] });
-    else println(c.dim("Nothing recorded — deploys that create resources will appear here."));
+    else println(c.dim("Nothing recorded. Deploys that create resources will appear here."));
     return;
   }
 
@@ -1053,7 +1051,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
   if (destroy && !json && process.stdin.isTTY === true) {
     const target = flags.env ? `"${flags.env}"` : "this project's environment";
     if (!(await confirm(`Tear down ${target}? This runs the Infrafile's destroy() stage.`))) {
-      throw new CliError("Aborted — nothing was torn down.", 1);
+      throw new CliError("Aborted. Nothing was torn down.", 1);
     }
   }
 
@@ -1179,7 +1177,7 @@ export async function cmdDeploy(ctx: CliContext, flags: DeployFlags): Promise<vo
       if (!json) println(entry.level === "error" ? c.red(entry.message) : entry.message);
     },
     onStage: (stage) => {
-      if (!json) println(c.dim(`— ${stage} —`));
+      if (!json) println(c.dim(`[${stage}]`));
     },
   });
 

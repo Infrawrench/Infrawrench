@@ -66,7 +66,7 @@ export const gcpPreflight: PreflightDeclaration = {
       id: "costs",
       label: "Cost reporting",
       description:
-        "Daily spend read from the Cloud Billing BigQuery export — needs the export configured plus BigQuery access.",
+        "Daily spend, read from the Cloud Billing BigQuery export. Needs the export configured and BigQuery access.",
       requiredPermissions: COSTS_PERMISSIONS,
     },
   ],
@@ -179,7 +179,7 @@ export function buildGcpPolicyTemplate(capabilityIds: string[]): PolicyTemplate 
     language: "yaml",
     document: `${lines.join("\n")}\n`,
     instructions:
-      "Save as role.yaml, create it with `gcloud iam roles create infrawrench --project=YOUR_PROJECT --file=role.yaml`, then grant the role to the service account whose key you pasted. Cost reporting also needs the role (or BigQuery Data Viewer) on the billing export dataset.",
+      "Save as role.yaml, create it with `gcloud iam roles create infrawrench --project=YOUR_PROJECT --file=role.yaml`, then grant it to the service account whose key you pasted. Cost reporting also needs it (or BigQuery Data Viewer) on the billing export dataset.",
     helpLink: IAM_HELP_LINK,
   };
 }
@@ -209,7 +209,7 @@ async function testIamPermissions(
       },
     );
     if (!res.ok) {
-      throw new Error(`testIamPermissions failed: ${res.status} — ${await res.text()}`);
+      throw new Error(`testIamPermissions failed: ${res.status}: ${await res.text()}`);
     }
     const body = (await res.json()) as TestIamPermissionsResponse;
     for (const p of body.permissions ?? []) granted.add(p);

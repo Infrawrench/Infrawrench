@@ -7,7 +7,7 @@ export const MachineResourceType = rt({
     regionFieldKey: "region",
     vcpus: { from: "field", fieldKey: "cpus" },
   },
-  description: "A Fly Machine — a fast-launching microVM",
+  description: "A Fly Machine: a fast-launching microVM",
   parentTypeId: "app",
   fields: [
     f("name", "Name", { required: false }),

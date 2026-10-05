@@ -152,14 +152,14 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
       <h1 className="text-xl font-semibold mb-1">{gt("Expiring")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
         {gt(
-          "Certificates, domains, tokens and keys approaching their deadlines, across every provider — read from the state your accounts last synced.",
+          "Certificates, domains, tokens and keys nearing their deadlines across every provider, from the last sync.",
         )}
       </p>
 
       {error != null && data === null && (
         <T>
           <div role="alert" className="text-sm text-danger">
-            Couldn&apos;t load the expiry feed — <Var>{error}</Var>{" "}
+            Couldn&apos;t load the expiry feed: <Var>{error}</Var>{" "}
             <Var>
               {onRetry ? (
                 <button type="button" onClick={onRetry} className="underline">
@@ -178,7 +178,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
       {error != null && data !== null && (
         <T>
           <p role="alert" className="mb-4 text-xs text-danger">
-            Couldn&apos;t refresh — showing the last loaded feed. <Var>{error}</Var>
+            Couldn&apos;t refresh; showing the last loaded feed. <Var>{error}</Var>
           </p>
         </T>
       )}
@@ -200,7 +200,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
           {data.items.length === 0 ? (
             <p className="text-sm text-on-surface-faint">
               {gt(
-                "Nothing is on the clock. Deadlines appear when a plugin marks a synced field as expiry-bearing — a certificate's not-after date, a domain's renewal date, a token's expiration or an access key's age — so an empty list means nothing tracked is due.",
+                "Nothing is due. Tracked deadlines (certificate, domain and token expiries, access key age) appear here as they approach.",
               )}
             </p>
           ) : (
@@ -341,8 +341,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
 
               <T>
                 <p className="mt-4 text-xs text-on-surface-faint">
-                  Deadlines come from fields your plugins mark as expiry-bearing on already-synced
-                  resources — nothing here contacts a provider. &ldquo;Within{" "}
+                  Deadlines come from synced data; nothing here contacts a provider. &ldquo;Within{" "}
                   <Var>{data.leadDays}</Var>d lead&rdquo; follows the organization&apos;s
                   expiry-alert lead time.
                 </p>

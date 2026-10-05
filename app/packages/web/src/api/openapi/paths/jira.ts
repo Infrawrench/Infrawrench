@@ -46,7 +46,7 @@ const JiraIntegrationInput = strict({
       example: "https://acme.atlassian.net",
     }),
   accountEmail: z.string().email().max(255).openapi({
-    description: "Atlassian account email — the username half of the basic-auth pair.",
+    description: "Atlassian account email; the username half of the basic-auth pair.",
   }),
   apiToken: z.string().min(1).max(1024).optional().openapi({
     description:
@@ -83,7 +83,7 @@ const JiraIssueType = strict({
   id: z.string().openapi({ example: "10004" }),
   name: z.string().openapi({ example: "Task" }),
   subtask: z.literal(false).openapi({
-    description: "Always false — subtasks need a parent issue, so they are filtered out.",
+    description: "Always false: subtasks need a parent issue, so they are filtered out.",
   }),
   description: z.string().nullable(),
 }).openapi("JiraIssueType");
@@ -137,7 +137,7 @@ const JiraLinksQuery = strict({
     .optional()
     .openapi({
       description:
-        "Repeat to narrow to specific findings. Omit to return every link of the kind — this is " +
+        "Repeat to narrow to specific findings. Omit to return every link of the kind; this is " +
         "the batch lookup a list view makes once instead of one request per row.",
     }),
 });

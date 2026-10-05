@@ -16,8 +16,7 @@ export const FileResourceType = rt({
   outputs: [
     o("fileId", "File ID"),
     o("fileUrl", "File URL", {
-      description:
-        "Signed download URL. Uploaded input files expire at the object's own `expires_at` — read it rather than assuming a fixed window.",
+      description: "Signed download URL. Uploaded input files expire at the object's `expires_at`.",
     }),
   ],
   iconKey: "storage",

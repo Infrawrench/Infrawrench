@@ -79,7 +79,7 @@ export async function getCreateConfig(
           ? {
               kind: "hostname" as const,
               hostnameSuffix: zoneSuffix,
-              description: "Subdomain — leave blank for the root domain.",
+              description: "Subdomain. Leave blank for the root domain.",
             }
           : {
               kind: "text" as const,
@@ -1205,7 +1205,7 @@ export async function getCreateConfig(
           kind: "text",
           required: true,
           description:
-            "Gateway slug (lowercase letters, numbers, hyphens) — used in the gateway URL",
+            "Gateway slug (lowercase letters, numbers, hyphens), used in the gateway URL",
         },
         {
           key: "collectLogs",

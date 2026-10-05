@@ -80,18 +80,17 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn’t load tag governance — {error}", { error })}
+          {gt("Couldn’t load tag governance: {error}", { error })}
         </div>
       )}
 
       {error === null && !hasPolicy && !hasShowback && (
         <T>
           <p className="text-sm text-on-surface-faint">
-            No tag policy or cost centres configured. An org admin can require tags like{" "}
+            No tag policy or cost centres yet. An admin can require tags like{" "}
             <code className="text-on-surface-secondary">owner</code> and{" "}
-            <code className="text-on-surface-secondary">env</code> on every resource under Settings
-            → Tag Policy, and build the cost centre tree spend is allocated to under Settings → Cost
-            Centres.
+            <code className="text-on-surface-secondary">env</code> under Settings → Tag Policy, and
+            set up cost centres under Settings → Cost Centres.
           </p>
         </T>
       )}

@@ -16,7 +16,7 @@ A **business metric** is the missing half: a number only you know — active cus
 2. Feed it a value for each day: import it on a schedule from a connected account, upload a CSV, or report it from a workflow, over the API, or by hand.
 3. On any cost graph, pick a **Calculation**: cost per unit, gross margin, cost per usage unit, or the raw metric.
 
-![Costs panel Unit costs section listing two business metrics, one showing "412 days reported" and one showing "never reported" in amber](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/metrics-list.png)
+![Costs panel Allocation tab, Unit costs section listing two business metrics, one showing "412 days reported" and one showing "never reported" in amber](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/metrics-list.png)
 
 ## Declare a metric
 

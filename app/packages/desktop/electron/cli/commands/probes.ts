@@ -45,7 +45,7 @@ function uptimeCell(probe: SyntheticProbe): string {
 export async function cmdProbes(ctx: CliContext, probeArg?: string): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Synthetic probes live in Infrawrench Cloud — the poller runs them through the egress proxy. Drop --local.",
+      "Synthetic probes live in Infrawrench Cloud. The poller runs them through the egress proxy. Drop --local.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -72,7 +72,7 @@ export async function cmdProbes(ctx: CliContext, probeArg?: string): Promise<voi
   if (probes.length === 0) {
     println(
       c.dim(
-        "No probes yet. Create one from the Probes tab — the editor suggests endpoints from your synced resources.",
+        "No probes yet. Create one from the Probes tab. The editor suggests endpoints from your synced resources.",
       ),
     );
     return;

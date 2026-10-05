@@ -97,7 +97,7 @@ export function CostGraphCard({
         </Text>
       )}
       {mixedCurrency && (
-        <Text style={styles.note}>Mixed currencies — series are shown per currency.</Text>
+        <Text style={styles.note}>Mixed currencies: series are shown per currency.</Text>
       )}
       {/*
         A converted total has to carry its caveat on the card, next to the

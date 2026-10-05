@@ -103,7 +103,7 @@ export function costTools(): ToolDefinition[] {
         "showback between teams. Its day totals equal the amortized totals. chargeTypes narrows to particular kinds of charge (usage, " +
         "commitment_covered_usage, commitment_fee, commitment_discount, credit, tax, refund, " +
         "adjustment, support, other); omitting it includes all of them, which is what makes a " +
-        "total net rather than gross — filter to ['usage','commitment_covered_usage'] to see " +
+        "total net rather than gross, filter to ['usage','commitment_covered_usage'] to see " +
         "whether consumption is growing underneath a credit that is masking it. Note that " +
         "commitment-covered usage is priced at zero on the cash basis by both AWS and Azure, " +
         "so pair it with costBasis 'amortized' to see what those hours are worth." +
@@ -118,24 +118,24 @@ export function costTools(): ToolDefinition[] {
         "which is usually easier than assembling `filters` by hand: " +
         "`provider = 'aws' AND service IN ('AmazonEC2','AmazonS3') AND tag['env'] != 'dev'`. " +
         COST_QUERY_LANGUAGE_SUMMARY +
-        " Send `query` or `filters`, never both — both is an error, not a precedence rule. A " +
+        " Send `query` or `filters`, never both: both is an error, not a precedence rule. A " +
         "query that does not parse comes back with the character offset of the mistake and the " +
         "valid alternatives there; use list_cost_dimension_values to discover real values first." +
         "\n\n`savedFilterId` applies one of the organization's saved cost filters (see " +
         "list_saved_cost_filters) by reference: it is resolved server-side at query time and " +
         "AND-composed with whichever of `filters`/`query` is present. Prefer it when the user " +
-        "names a scope they have saved ('prod only') — it is guaranteed to mean exactly what " +
+        "names a scope they have saved ('prod only'); it is guaranteed to mean exactly what " +
         "that name means in their graphs, reports and budgets. An id that no longer resolves " +
         "is an error, never an unfiltered result." +
         "\n\n`adjusted: true` applies the organization's billing rules (see " +
-        "list_billing_rules) — markups, discounts, reallocations. Omitted is raw collected " +
+        "list_billing_rules): markups, discounts, reallocations. Omitted is raw collected " +
         "spend, which is what you should quote unless the user explicitly asks for their " +
         "internal or charged-back figure. When set, the response carries `adjustment` with " +
         "`rawTotals` (what the providers actually charged for exactly these rows) and the rules " +
         "that moved the number: **always state both, and say which is which.** An adjusted " +
         "total reported as if it were the bill is a number nobody can reconcile against an " +
         "invoice. `adjustment.fixedTotals` are flat per-period charges that are deliberately " +
-        "not included in `totals` — the internal figure is the total plus those.",
+        "not included in `totals`; the internal figure is the total plus those.",
       inputSchema: costQueryRequestSchema.shape,
       risk: "read",
       permission: "costs:read",
@@ -157,7 +157,7 @@ export function costTools(): ToolDefinition[] {
       name: "list_saved_cost_filters",
       title: "List saved cost filters",
       description:
-        "The organization's saved cost filters — named, reusable filter sets ('prod only', " +
+        "The organization's saved cost filters, named, reusable filter sets ('prod only', " +
         "'team platform') that graphs, reports and budgets apply by reference. Each row " +
         "carries the structured filters and the same filter as cost-query-language text. Use " +
         "an id from here as query_costs' savedFilterId, or to set a budget's or graph " +
@@ -176,7 +176,7 @@ export function costTools(): ToolDefinition[] {
       name: "list_scenario_models",
       title: "List scenario models",
       description:
-        "The organization's scenario models — named, reusable sets of adjustments overlaid on a " +
+        "The organization's scenario models, named, reusable sets of adjustments overlaid on a " +
         "cost forecast. A forecast is a least-squares fit over trailing daily totals, so it can " +
         "only extrapolate what already happened; a scenario is where the org has written down " +
         "what it already *knows* is coming: a purchase next quarter, a team starting in " +
@@ -201,18 +201,18 @@ export function costTools(): ToolDefinition[] {
       description:
         "Run a cost query with a scenario model applied, and get back **both** projections: " +
         "`forecast` is the untouched trend, `scenario.points` is the same days with the model's " +
-        "adjustments applied. Never report only one of them — the whole point of a scenario is " +
+        "adjustments applied. Never report only one of them; the whole point of a scenario is " +
         "that a reader can see what the trend said before somebody's assumptions touched it.\n\n" +
         "Everything else is a normal query_costs call (same dates, filters, binning, basis), " +
         "and `forecast` is forced on because there is nothing to adjust otherwise.\n\n" +
         "How to read the result. `scenario.contributions` gives the signed total each " +
         "adjustment added over the horizon, so 'the line moved because of X' is answerable " +
         "without re-reading the model. `scenario.outOfScope` names adjustments this query's own " +
-        "filters excluded — a GCP commitment on an AWS-filtered chart is correctly left out, " +
+        "filters excluded; a GCP commitment on an AWS-filtered chart is correctly left out, " +
         "and you should say so rather than let the reader assume it was counted. " +
         "`scenario.convertedFrom` means the amounts were converted at the org's stated rates, " +
         "which is a caveat worth repeating next to the number.\n\n" +
-        "A scenario never alters recorded history — only days after the last observed one — and " +
+        "A scenario never alters recorded history, only days after the last observed one, and " +
         "it does **not** change any budget's alerting unless that budget separately opted into " +
         "the same model (see list_budgets' scenarioModelId).",
       inputSchema: {
@@ -321,7 +321,7 @@ export function costTools(): ToolDefinition[] {
         "`chargeTypes` says it distinguishes usage from credits, tax and commitments (when " +
         "false, every one of its rows is 'usage'); and `estimated` says the amounts were " +
         "computed by Infrawrench from inventory and a published rate card rather than billed by " +
-        "the provider — those cannot be reconciled against an invoice, run low for anything " +
+        "the provider; those cannot be reconciled against an invoice, run low for anything " +
         "deleted mid-period, price everything at list, and never include credits, tax or refunds. " +
         "Say so when reporting a total that includes an estimated account.",
       inputSchema: {},
@@ -342,11 +342,11 @@ export function costTools(): ToolDefinition[] {
         "share the list and read differently: a `spike` is a day whose spend for one provider " +
         "or service cleared its own trailing 28-day baseline (mean + N standard deviations, " +
         "plus an absolute floor), and a `new_source` is a key with no prior spend at all that " +
-        "started costing money — it has no baseline, so never quote a percentage for one.\n\n" +
+        "started costing money; it has no baseline, so never quote a percentage for one.\n\n" +
         "`hints` are facts the detector collected from the change timeline and audit log around " +
         "the anomalous day ('12 gce-instance resources appeared'); they are leads, not " +
         "conclusions. `acknowledgement` is present when somebody has already established what " +
-        "the finding was — say so rather than re-deriving it, and never contradict it without " +
+        "the finding was; say so rather than re-deriving it, and never contradict it without " +
         "saying you are. Use an id from here with acknowledge_cost_anomaly or " +
         "give_cost_anomaly_feedback. `feedback` is the verdict (expected or unexpected) and who " +
         "gave it; `suppressionId` is set when a suppression kept the finding from alerting.",
@@ -375,13 +375,13 @@ export function costTools(): ToolDefinition[] {
       description:
         "Record what a detected anomaly actually was, in a sentence, and publish that sentence " +
         "as a dated annotation on **every** cost chart covering the anomalous day. This is the " +
-        "tool for the case where you have worked out the cause — from the hints, the change " +
-        "timeline, a deployment, a workflow run — and the knowledge would otherwise be lost the " +
+        "tool for the case where you have worked out the cause, from the hints, the change " +
+        "timeline, a deployment, a workflow run, and the knowledge would otherwise be lost the " +
         "moment the conversation ends.\n\n" +
         "Write what happened, not what the numbers did: the row already says spend tripled, and " +
         "the reader six weeks from now needs 'migrated the API fleet from m5 to m7g' or " +
         "'backfill job re-ran over the whole bucket'. **Only acknowledge a cause you have " +
-        "evidence for** — this writes an explanation into the organization's shared record of " +
+        "evidence for**; this writes an explanation into the organization's shared record of " +
         "its own spending, and a confident guess is worse than an open question. If you are " +
         "inferring, say so in the sentence.\n\n" +
         "The annotation's date and scope are derived server-side from the anomaly, so there is " +
@@ -441,18 +441,18 @@ export function costTools(): ToolDefinition[] {
       name: "get_commitments",
       title: "Get commitments and savings planner",
       description:
-        "The org's purchased commitments — reserved instances, savings plans, committed-use " +
-        "discounts — with coverage, utilization, and commitment-size recommendations.\n\n" +
-        "Read the numbers as documented, they are deliberately conservative: coverage is a " +
+        "The org's purchased commitments (reserved instances, savings plans, committed-use " +
+        "discounts) with coverage, utilization, and commitment-size recommendations.\n\n" +
+        "Read the numbers as documented; they are deliberately conservative: coverage is a " +
         "*range* (broadRatio is a lower bound over all usage; narrowRatio an upper bound over " +
         "commitment-eligible cells) and accounts whose plugin cannot distinguish charge types " +
         "are excluded (`excludedAccountIds`) rather than dragging the ratio down. Utilization " +
-        "is measured only over days with collected cost data — `missingDays` are reported, " +
-        "never counted as idle — and null utilization means 'not measurable' (see `reason`), " +
+        "is measured only over days with collected cost data, `missingDays` are reported, " +
+        "never counted as idle, and null utilization means 'not measurable' (see `reason`), " +
         "never 0%. Planner savings are quoted against published 'up to' discount rates; " +
         "respect `savingBasis` when reporting them ('up to $X', not '$X'). Every " +
         "recommendation carries its own break-even: at discount d the workload can shrink by d " +
-        "before the commitment loses money. Never suggest an automatic purchase — there is no " +
+        "before the commitment loses money. Never suggest an automatic purchase; there is no " +
         "purchase surface, by design.",
       inputSchema: {},
       risk: "read",
@@ -516,7 +516,7 @@ export function costTools(): ToolDefinition[] {
         "trailing 30 days.\n\n" +
         "Cost centres nest, so `centres` is a depth-first tree: each entry carries `parentId` " +
         "and `depth` alongside two sets of amounts. `totals` is spend allocated **directly** to " +
-        "that centre — a cost row is allocated exactly once, so summing `totals` across every " +
+        "that centre; a cost row is allocated exactly once, so summing `totals` across every " +
         "entry equals the organization's spend for the period. `subtreeTotals` is that centre " +
         'plus every descendant, which is the number to quote for "what does Engineering cost"; ' +
         "never sum `subtreeTotals` across entries, because parents already contain their " +
@@ -551,7 +551,7 @@ export function costTools(): ToolDefinition[] {
       name: "list_billing_rules",
       title: "List billing rules",
       description:
-        "The organization's billing rules — its own adjustments to collected spend. A rule " +
+        "The organization's billing rules, its own adjustments to collected spend. A rule " +
         "matches spend (tag key/value, account, provider, service, charge type) and adjusts " +
         "it: a percentage markup or discount, a fixed amount per day or month, or a " +
         "reallocation that moves the spend onto another cost centre or account.\n\n" +
@@ -884,7 +884,7 @@ export function costTools(): ToolDefinition[] {
       name: "delete_budget",
       title: "Delete budget",
       description:
-        "Delete a budget (soft delete — alert history is retained). Audit-logged. The chat " +
+        "Delete a budget (soft delete, alert history is retained). Audit-logged. The chat " +
         "surface confirms with the user before invoking.",
       inputSchema: { budgetId: z.string() },
       risk: "destructive",

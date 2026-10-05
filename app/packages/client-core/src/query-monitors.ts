@@ -182,7 +182,7 @@ export function monitorSqlProblem(sql: string): string | null {
 
   const firstWord = withoutTrailing.split(/[\s(]+/)[0]?.toLowerCase() ?? "";
   if (!(ALLOWED_LEADING_KEYWORDS as readonly string[]).includes(firstWord)) {
-    return `A monitor may only run ${ALLOWED_LEADING_KEYWORDS.join(", ")} statements — it runs unattended, on a schedule, with your account's credentials.`;
+    return `A monitor may only run ${ALLOWED_LEADING_KEYWORDS.join(", ")} statements; it runs unattended, on a schedule, with your account's credentials.`;
   }
   return null;
 }

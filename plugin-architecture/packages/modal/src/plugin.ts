@@ -19,7 +19,7 @@ const manifest: PluginManifest = {
       key: "tokenId",
       label: "Token ID",
       description:
-        "The ID half of a Modal API token, from Settings, API Tokens in the Modal dashboard (or `token_id` in ~/.modal.toml after `modal token new`). A token sees every environment of its workspace; use one from a workspace on the Team or Enterprise plan for cost data.",
+        "The ID half of a Modal API token, from Settings, API Tokens in the Modal dashboard (or `token_id` in ~/.modal.toml after `modal token new`). A token sees every environment of its workspace. Cost data needs a Team or Enterprise workspace.",
       sensitive: false,
       placeholder: "ak-…",
       helpLink: { label: "Manage Modal API tokens", url: "https://modal.com/settings/tokens" },

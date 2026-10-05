@@ -84,7 +84,7 @@ export function DependenciesScreen({ resourceId }: DependenciesScreenProps) {
   }
   if (!focus) {
     return (
-      <EmptyView message="This resource has no links in either direction, so it isn't in the dependency graph — the graph is about wiring, not inventory." />
+      <EmptyView message="This resource has no links in either direction, so it isn't in the dependency graph." />
     );
   }
 
@@ -114,7 +114,7 @@ export function DependenciesScreen({ resourceId }: DependenciesScreenProps) {
         <Tree
           rows={providers}
           onOpen={open}
-          emptyText="Nothing — this resource points at no others."
+          emptyText="Nothing; this resource points at no others."
         />
       </Card>
 
@@ -129,8 +129,8 @@ export function DependenciesScreen({ resourceId }: DependenciesScreenProps) {
       </Card>
 
       <Text style={styles.legend}>
-        Each row is one link. ↺ marks a link back to a resource already on the branch — references
-        can be circular; … marks a branch stopped at the depth limit.
+        Each row is one link. ↺ marks a link back to a resource already on the branch; … marks a
+        branch stopped at the depth limit.
       </Text>
     </Screen>
   );

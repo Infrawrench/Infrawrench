@@ -415,7 +415,7 @@ export async function instantiateEnvironment(
   const live = await countLiveInstances(organizationId);
   if (live >= ENVIRONMENT_LIMITS.maxLiveInstancesPerOrg) {
     throw new EnvironmentInputError(
-      `Organizations are limited to ${ENVIRONMENT_LIMITS.maxLiveInstancesPerOrg} live environments — tear one down first`,
+      `Organizations are limited to ${ENVIRONMENT_LIMITS.maxLiveInstancesPerOrg} live environments. Tear one down first`,
       409,
     );
   }
@@ -575,7 +575,7 @@ export async function instantiateEnvironment(
           createdRecord = null;
         } else {
           failure =
-            `${member.sourceName}: ${errorMessage(error)} — it has no expiry and could not be ` +
+            `${member.sourceName}: ${errorMessage(error)}. It has no expiry and could not be ` +
             `rolled back, so tear this environment down`;
         }
       }
@@ -614,7 +614,7 @@ export async function instantiateEnvironment(
             createdRecord = null;
           } else {
             failure =
-              `${member.sourceName}: ${errorMessage(error)} — its resource ` +
+              `${member.sourceName}: ${errorMessage(error)}; its resource ` +
               `${createdRecord.externalId ?? createdRecord.resourceId} ` +
               `("${createdRecord.displayName}") could not be recorded or rolled back. It has ` +
               `no expiry: delete it in the provider, then tear this environment down`;
@@ -855,7 +855,7 @@ async function checkMemberAgainstProvider(
   return {
     outcome: "needs-attention",
     detail:
-      `${finding.reason}. It has been left running — delete it yourself if it is not wanted, ` +
+      `${finding.reason}. It has been left running. Delete it yourself if it is not wanted, ` +
       `then tear this environment down again to close it out`,
   };
 }
@@ -1094,8 +1094,8 @@ async function failStalledInstantiations(organizationId: string): Promise<void> 
     .set({
       status: "partial",
       error:
-        "This run stopped before it finished. Tear the environment down — any resources it " +
-        "created will be checked against the provider.",
+        "This run stopped before it finished. Tear the environment down to check any resources " +
+        "it created against the provider.",
       updatedAt: new Date(),
     })
     .where(

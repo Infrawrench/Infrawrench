@@ -94,7 +94,7 @@ function explainStartFailure(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
   if (!/socket name is already in use/i.test(message)) return error;
   return new AppsHostError(
-    "Another Infrawrench session is already driving applications on this host, and this request reached a different server from the one holding it. Run the call again — it will usually reach the right one. An idle session is released five minutes after its last use.",
+    "Another Infrawrench session is already driving applications on this host and this request reached a different server. Run the call again. Idle sessions are released after five minutes.",
   );
 }
 
@@ -185,7 +185,7 @@ async function resolveTarget(
     )?.sshEndpoint;
     if (!endpoint) {
       throw new AppsHostError(
-        `${row.resourceTypeId} has no SSH endpoint — applications run over the same connection as the terminal, and this resource type exposes none`,
+        `${row.resourceTypeId} has no SSH endpoint; applications run over the same connection as the terminal, and this resource type exposes none`,
       );
     }
     const fields = (row.fieldsJson ?? {}) as Record<string, unknown>;
@@ -198,9 +198,7 @@ async function resolveTarget(
     }
     host = String(outputs[endpoint.hostOutputKey] ?? fields[endpoint.hostOutputKey] ?? "");
     if (!host) {
-      throw new AppsHostError(
-        "This resource has no reachable address yet — it may be provisioning",
-      );
+      throw new AppsHostError("This resource has no reachable address yet; it may be provisioning");
     }
     if (!username && endpoint.usernameFieldKey) {
       username = String(fields[endpoint.usernameFieldKey] ?? "") || undefined;
@@ -208,7 +206,7 @@ async function resolveTarget(
     username ??= endpoint.defaultUsername ?? "root";
     if (!options.sshKeyId) {
       throw new AppsHostError(
-        "This host needs an SSH key. Pass sshKeyId (see list_ssh_keys) — the same key the terminal uses.",
+        "This host needs an SSH key. Pass sshKeyId (see list_ssh_keys); the same key the terminal uses.",
         true,
       );
     }

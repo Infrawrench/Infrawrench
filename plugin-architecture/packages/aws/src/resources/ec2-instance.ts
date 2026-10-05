@@ -106,7 +106,7 @@ export const EC2InstanceResourceType = rt({
     // apart, which ModifyInstanceAttribute can't cross without new drivers.
     sizeFamilyPattern: "^([a-z0-9-]+)\\.",
     resizeNote:
-      "EC2 only changes the instance type of a stopped instance — stop it first, apply the resize, then start it again.",
+      "EC2 only changes the instance type of a stopped instance. Stop it, resize, then start it again.",
   },
   // The lister precomputes `sshAccess` from a DescribeSecurityGroups pass, so
   // the world-open case is an exact stored string, not a CIDR parse.

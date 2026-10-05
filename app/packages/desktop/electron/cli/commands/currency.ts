@@ -137,7 +137,7 @@ export async function cmdCurrencyFeed(
     throw new CliError("Usage: infrawrench currency feed [YYYY-MM-DD] [--currency USD]", 2);
   }
   if (base !== undefined && !CODE.test(base.toUpperCase())) {
-    throw new CliError(`--currency must be a three-letter code like USD, got "${base}".`, 2);
+    throw new CliError(`--currency must be a three-letter code like USD (got "${base}").`, 2);
   }
   const org = await resolveOrg(ctx);
   const params = new URLSearchParams();

@@ -9,7 +9,7 @@ const ProbeStatus = z.enum(["up", "down", "unknown"]).openapi({
 });
 
 const ProbeMethod = z.string().openapi({
-  description: "HTTP method the probe uses — GET, HEAD or OPTIONS. Unknown values become GET.",
+  description: "HTTP method the probe uses, GET, HEAD or OPTIONS. Unknown values become GET.",
   example: "GET",
 });
 
@@ -98,7 +98,7 @@ export function registerProbePaths(ctx: BuildContext) {
   }).openapi("SyntheticProbeUpdate");
 
   const ProbeSuggestion = strict({
-    url: z.string().describe("Normalized to an absolute URL — bare hosts get https://."),
+    url: z.string().describe("Normalized to an absolute URL, bare hosts get https://."),
     resourceId: z.string(),
     displayName: z.string(),
     pluginId: enums.PluginId,
@@ -151,7 +151,7 @@ export function registerProbePaths(ctx: BuildContext) {
     summary: "Suggest endpoints from synced resources",
     description:
       "Endpoint candidates mined from the organization's synced resource outputs and fields " +
-      "(keys like url, endpoint, host, domain, publicIp). A cheap read over stored state — no " +
+      "(keys like url, endpoint, host, domain, publicIp). A cheap read over stored state; no " +
       "provider API calls. Deduplicated by URL.",
     request: { params: OrgIdParam },
     responses: {
@@ -192,7 +192,7 @@ export function registerProbePaths(ctx: BuildContext) {
     summary: "Update or disable a probe",
     description:
       "Edit settings and/or toggle `enabled`. Changing the URL or method resets the probe's " +
-      "state to `unknown` — the history belongs to the old endpoint. Audit-logged.",
+      "state to `unknown`: the history belongs to the old endpoint. Audit-logged.",
     request: {
       params: OrgIdParam.extend({ probeId: Uuid }),
       body: { content: { "application/json": { schema: ProbeUpdate } } },

@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MongoDBDatabaseResourceType = rt({
   name: "MongoDB Database",
   id: "mongodb-database",
-  description: "A MongoDB database — browse collections and documents",
+  description: "A MongoDB database. Browse collections and documents.",
   fields: [
     f("host", "Host", { required: false }),
     f("database", "Database"),

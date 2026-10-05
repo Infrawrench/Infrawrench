@@ -581,7 +581,7 @@ function findingsFor(
       severity: principal.admin === true ? "high" : "medium",
       reason:
         `${where} was last used ${plural(principal.daysSinceLastUsed, "day")} ago. ` +
-        `Standing access nobody exercises is access nobody notices being abused — revoke it, ` +
+        `Standing access nobody exercises is access nobody notices being abused. Revoke it, ` +
         `or record why it has to stay.`,
       principal,
     });
@@ -623,7 +623,7 @@ function findingsFor(
       severity: "low",
       reason:
         `Nobody is recorded as owning ${where}. An access review is only as good as its ` +
-        `ability to ask somebody "do you still need this?" — record an owner on the resource.`,
+        `ability to ask somebody "do you still need this?" Record an owner on the resource.`,
       principal,
     });
   }

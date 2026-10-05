@@ -60,7 +60,7 @@ export async function loadLocalEnvironmentDiff(
     // computeEnvironmentDiff refuses this too; failing before the provider
     // calls saves a round of listing that could never be compared.
     throw new Error(
-      `"${accountA.display_name}" and "${accountB.display_name}" use different providers — ` +
+      `"${accountA.display_name}" and "${accountB.display_name}" use different providers; ` +
         `an environment diff compares two accounts of the same provider.`,
     );
   }

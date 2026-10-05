@@ -36,7 +36,7 @@ export const ApiKeyResourceType = rt({
     o("hash", "Key Hash"),
     o("apiKey", "API Key", {
       sensitive: true,
-      description: "Plaintext key — only ever returned by the create call",
+      description: "Plaintext key, returned only when created",
     }),
   ],
   dependsOn: [{ fieldKey: "workspaceId", targetTypeId: "workspace", label: "belongs to" }],

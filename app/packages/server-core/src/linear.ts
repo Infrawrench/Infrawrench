@@ -158,13 +158,13 @@ export function describeLinearGraphqlErrors(errors: readonly LinearGraphqlErrorS
     .map((e) => (typeof e.message === "string" ? e.message : ""))
     .filter((m) => m.length > 0);
   const detail = messages.join("; ").slice(0, 300);
-  return detail ? `Linear returned an error — ${detail}` : "Linear returned an error";
+  return detail ? `Linear returned an error: ${detail}` : "Linear returned an error";
 }
 
 /** Map an HTTP-level (non-GraphQL) failure onto one user-readable line. */
 export function describeLinearHttpError(status: number, body: string): string {
   const trimmed = body.trim().slice(0, 200);
-  const suffix = trimmed ? ` — ${trimmed}` : "";
+  const suffix = trimmed ? `: ${trimmed}` : "";
   switch (status) {
     case 401:
     case 403:

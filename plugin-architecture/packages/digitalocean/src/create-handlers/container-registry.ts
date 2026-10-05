@@ -24,7 +24,7 @@ export async function containerRegistryGetCreateConfig(
     // project-scoped, and DO refuses a second registry with a 409.
     const regionOptions = REGISTRY_REGIONS.map((slug) => {
       const info = regionDisplay(slug);
-      return { id: slug, label: info ? `${slug} — ${info.location}` : slug };
+      return { id: slug, label: info ? `${slug} (${info.location})` : slug };
     });
     return {
       fields: [

@@ -326,10 +326,9 @@ export function FileIssueModal({
         <h2 className="text-base font-semibold text-on-surface mb-1">{heading}</h2>
         <p className="text-xs text-on-surface-faint mb-4">
           {tracker
-            ? gt(
-                "Creates an issue in {destination} and keeps the link on this finding, so it will show as filed instead of offering this button again.",
-                { destination },
-              )
+            ? gt("Creates an issue in {destination} and keeps the link on this finding.", {
+                destination,
+              })
             : gt("Several trackers are connected. Pick where this finding should be tracked.")}
         </p>
 

@@ -16,7 +16,7 @@ export const OrganizationResourceType = rt({
   name: "Organization",
   id: "organization",
   description:
-    "A Datadog organization: the parent the keys belong to and, on a multi-organization account, each child organization. Shows month-to-date and projected month-end cost by product, cost attribution by tag, and charts hourly usage by product.",
+    "A Datadog organization (the parent, or each child on a multi-organization account). Shows month-to-date and projected cost by product, cost attribution by tag, and hourly usage.",
   fields: [
     f("name", "Name", { editable: false }),
     f("publicId", "Public ID", { required: false, editable: false }),

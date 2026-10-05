@@ -979,14 +979,14 @@ export class FlyClient implements PluginClient {
       const machineRegion = String(machine.fields["region"] ?? "");
       if (volumeRegion && machineRegion && volumeRegion !== machineRegion) {
         throw new Error(
-          `Volume region ${volumeRegion} does not match machine region ${machineRegion} — Fly volumes must be in the same region as the machine.`,
+          `Volume region ${volumeRegion} does not match machine region ${machineRegion}. Volumes must be in the same region as the machine.`,
         );
       }
       const machineParts = parseMachineId(machine.id);
       const volumeParts = parseVolumeId(volume.id);
       if (volumeParts.appName !== machineParts.appName) {
         throw new Error(
-          `Volume app ${volumeParts.appName} does not match machine app ${machineParts.appName} — Fly volumes can only mount on machines of the same app.`,
+          `Volume app ${volumeParts.appName} does not match machine app ${machineParts.appName}. Volumes can only mount on machines of the same app.`,
         );
       }
       // Fetch current machine config so we can preserve image/env/etc.

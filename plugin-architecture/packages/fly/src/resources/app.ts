@@ -30,7 +30,7 @@ export const AppResourceType = rt({
   outputs: [
     o("hostname", "Hostname", { description: "Public hostname (<app>.fly.dev)" }),
     o("appName", "App Name", {
-      description: "The app's name — used by machines/volumes to reference their parent app",
+      description: "The app's name, used by machines and volumes to reference their parent app",
     }),
   ],
   iconKey: "app",
@@ -43,7 +43,7 @@ export const AppResourceType = rt({
       label: "Fly.io app hostname",
       hostPattern: String.raw`([a-z0-9][a-z0-9-]*)\.fly\.dev`,
       reason:
-        "Fly app names are globally unique and released when the app is destroyed, so anyone can create an app with the same name and serve it under your hostname.",
+        "Fly app names are released when the app is destroyed, so anyone can reuse the name and serve under your hostname.",
     },
   ],
   supportsCreate: true,

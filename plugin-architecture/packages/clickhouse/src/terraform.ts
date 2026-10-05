@@ -82,8 +82,8 @@ export const clickhouseTerraformExport: TerraformExportCapability = {
         attributes,
         importId: fieldString(resource, "serviceId") || resource.externalId,
         comments: [
-          "Set var.clickhouse_service_password_hash (sha256 of the default user password)",
-          "— Infrawrench never exports SQL passwords inline.",
+          "Set var.clickhouse_service_password_hash (sha256 of the default user password).",
+          "Infrawrench never exports SQL passwords inline.",
         ],
       },
       variables: [

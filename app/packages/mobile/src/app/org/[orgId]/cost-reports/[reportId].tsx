@@ -79,8 +79,7 @@ export default function CostReportDetailRoute() {
       <SectionTitle>On dashboards</SectionTitle>
       {report.placements.length === 0 ? (
         <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-          No dashboard shows this report. It still exists and still runs — a report is an org
-          object, not a dashboard card.
+          No dashboard shows this report. It still exists and still runs.
         </Text>
       ) : (
         <Card list>

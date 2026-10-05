@@ -110,7 +110,7 @@ export const BucketResourceType = rt({
       hostPattern: "([a-z0-9][a-z0-9.-]*?)\\.[a-z0-9-]+\\.linodeobjects\\.com",
       labelIs: "name",
       reason:
-        "The record points at a Linode Object Storage bucket name that no synced bucket owns; anyone can create a bucket with that name and serve content from your domain.",
+        "The record points at a Linode Object Storage bucket name no synced bucket owns; anyone can create it and serve content from your domain.",
     },
   ],
 });

@@ -71,7 +71,7 @@ export function TagGovernanceSection() {
           {compliance.isError ? (
             <Card>
               <Text style={styles.error}>
-                Couldn&apos;t load tag compliance —{" "}
+                Couldn&apos;t load tag compliance:{" "}
                 {compliance.error instanceof Error ? compliance.error.message : "request failed"}
               </Text>
             </Card>

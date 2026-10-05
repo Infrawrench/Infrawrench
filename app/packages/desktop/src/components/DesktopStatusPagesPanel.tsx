@@ -15,7 +15,7 @@ export function DesktopStatusPagesPanel() {
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        {gt("Status pages require cloud mode — sign in to sync.")}
+        {gt("Status pages require cloud mode: sign in to sync.")}
       </div>
     );
   }

@@ -142,7 +142,7 @@ export const GLADIA_MODEL_OPTIONS: SpeechPanelOption[] = [
   {
     id: "solaria-1",
     label: "Solaria-1",
-    description: "Gladia's default model — 100+ languages",
+    description: "Gladia's default model, 100+ languages",
   },
   {
     id: "solaria-3",

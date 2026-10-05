@@ -16,7 +16,7 @@ export const ServiceAccountResourceType = rt({
     o("key", "JSON Key File", {
       sensitive: true,
       description:
-        "Creates a new JSON credentials file on resolve. Contents match the standard Google application credentials format (gcloud, ADC, client libraries). Each resolve creates a fresh key — old keys keep working until rotated.",
+        "Creates a new JSON credentials file on resolve, in the standard Google application credentials format. Each resolve creates a fresh key; old keys keep working until rotated.",
     }),
   ],
   // The IAM serviceAccounts.list response carries no creation date, no last

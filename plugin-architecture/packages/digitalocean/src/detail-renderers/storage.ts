@@ -38,7 +38,7 @@ export function applyVolumeDetail(detail: DetailViewSchema, resource: ResourceIn
         command: "volume-resize",
         title: "Resize volume",
         description:
-          "Block storage volumes can only grow \u2014 DigitalOcean does not support shrinking. The filesystem may need a manual `resize2fs` / `xfs_growfs` call after.",
+          "Volumes can only grow; shrinking is not supported. The filesystem may need a manual `resize2fs` / `xfs_growfs` afterwards.",
         fields: [
           {
             key: "sizeGb",

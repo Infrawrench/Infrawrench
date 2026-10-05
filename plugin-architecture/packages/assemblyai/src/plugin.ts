@@ -31,7 +31,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "AssemblyAI",
   description:
-    "Speech-to-text and voice agents. Lists the account's transcripts, manages Voice Agent API agents, their sessions and webhooks, browses the LLM Gateway catalogue, and provides a Speech tab that uploads a clip, submits a job, and polls it to completion in one step.",
+    "Speech-to-text and voice agents. Browse transcripts, manage Voice Agent agents, sessions and webhooks, explore the LLM Gateway catalogue, and transcribe a clip from the Speech tab.",
   logoSvg,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -40,7 +40,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your AssemblyAI API key, from the dashboard's API Keys page. AssemblyAI has only one kind of key — the same key submits and reads transcripts and manages voice agents — but keys are scoped to a project: a transcript submitted with one project's key cannot be read with another's.",
+        "Your AssemblyAI API key, from the dashboard's API Keys page. It covers transcripts and voice agents, but is scoped to one project.",
       sensitive: true,
       placeholder: "0123456789abcdef0123456789abcdef",
       helpLink: { label: "Get an API key", url: "https://www.assemblyai.com/app/api-keys" },
@@ -49,7 +49,7 @@ const manifest: PluginManifest = {
       key: "region",
       label: "API Region",
       description:
-        "Which AssemblyAI host to talk to. EU (api.eu.assemblyai.com) keeps audio and transcripts inside the European Union. Transcripts live on the host they were created against, so an account pointed at EU will not see transcripts submitted through the default host, and vice versa — pick the one your key already uses.",
+        "Which AssemblyAI host to use. EU (api.eu.assemblyai.com) keeps audio and transcripts in the European Union. Transcripts are only visible on the host they were created on, so pick the one your key already uses.",
       sensitive: false,
       optional: true,
       defaultValue: "us",

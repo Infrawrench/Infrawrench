@@ -35,7 +35,7 @@ function OwnerCell({ owner }: { owner: ResourceOwnerAnnotation | null }) {
       {owner.isLabel && (
         <span
           className="text-xs text-on-surface-faint"
-          title={gt("A team name, not an Infrawrench member — alerts can't be routed to it.")}
+          title={gt("A team name, not an Infrawrench member, so alerts can't reach it.")}
         >
           {gt("team")}
         </span>
@@ -146,7 +146,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load potential savings — {error}", { error })}{" "}
+          {gt("Couldn't load potential savings: {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             {gt("Retry")}
           </button>
@@ -159,14 +159,12 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
       )}
       {data !== null && data.accounts.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          {gt(
-            "Nothing looks wasted right now. Resources are flagged when a provider plugin's heuristic matches — unattached volumes, unassigned IPs — so an empty list is the good outcome.",
-          )}
+          {gt("Nothing looks wasted right now, such as unattached volumes or unassigned IPs.")}
           {!showCost && (
             <>
               {" "}
               {gt(
-                "This scan covers the resources stored in the local workspace; sign in to classify everything your accounts sync.",
+                "This scan covers the local workspace only; sign in to scan everything your accounts sync.",
               )}
             </>
           )}
@@ -318,8 +316,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
               <strong className="font-medium text-on-surface">
                 <Var>{data.unownedCount}</Var> of <Var>{data.totalCount}</Var>
               </strong>{" "}
-              has no recorded owner — nobody to ask before deleting, and nobody an alert can reach.
-              Open a resource and set an owner on its{" "}
+              has no owner to ask before deleting or to alert. Set one on a resource&rsquo;s{" "}
               <span className="text-on-surface">Ownership</span> tab.
             </p>
           </T>
@@ -329,8 +326,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
               <strong className="font-medium text-on-surface">
                 <Var>{data.unownedCount}</Var> of <Var>{data.totalCount}</Var>
               </strong>{" "}
-              have no recorded owner — nobody to ask before deleting, and nobody an alert can reach.
-              Open a resource and set an owner on its{" "}
+              have no owner to ask before deleting or to alert. Set one on a resource&rsquo;s{" "}
               <span className="text-on-surface">Ownership</span> tab.
             </p>
           </T>

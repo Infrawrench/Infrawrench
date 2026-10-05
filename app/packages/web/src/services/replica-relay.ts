@@ -110,7 +110,7 @@ export function relayEnabled(): boolean {
   if (!warnedAboutSecret) {
     warnedAboutSecret = true;
     console.warn(
-      "[relay] POD_IP is set but INTERNAL_RELAY_SECRET is not — cross-replica routing is off, " +
+      "[relay] POD_IP is set but INTERNAL_RELAY_SECRET is not; cross-replica routing is off, " +
         "so sessions held by another replica will fail rather than being forwarded to it.",
     );
   }

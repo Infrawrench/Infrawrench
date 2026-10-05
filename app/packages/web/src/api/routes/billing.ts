@@ -108,7 +108,7 @@ app.get("/status", async (c) => {
 app.post("/checkout", async (c) => {
   requirePermission(c, "billing:write");
   if (await isComplimentary(c.get("organizationId"))) {
-    return c.json({ error: "This organization has complimentary access — nothing to buy" }, 400);
+    return c.json({ error: "This organization has complimentary access; nothing to buy" }, 400);
   }
   const session = c.get("session");
   const stripe = getStripe();
@@ -156,7 +156,7 @@ app.post("/capacity/checkout", async (c) => {
   requirePermission(c, "billing:write");
   const orgId = c.get("organizationId");
   if (await isComplimentary(orgId)) {
-    return c.json({ error: "This organization has complimentary access — nothing to buy" }, 400);
+    return c.json({ error: "This organization has complimentary access; nothing to buy" }, 400);
   }
 
   const priceId = getStripeCapacitySlotPriceId();

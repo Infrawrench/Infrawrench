@@ -198,7 +198,7 @@ export async function createLeaseRecord(
         .limit(1);
       if (existing) {
         if (existing.status === "active") {
-          throw new LeaseInputError("This resource already has a lease — edit it instead", 409);
+          throw new LeaseInputError("This resource already has a lease, edit it instead", 409);
         }
         await tx.delete(resourceLeases).where(eq(resourceLeases.id, existing.id));
       }
@@ -224,7 +224,7 @@ export async function createLeaseRecord(
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      throw new LeaseInputError("This resource already has a lease — edit it instead", 409);
+      throw new LeaseInputError("This resource already has a lease, edit it instead", 409);
     }
     throw error;
   }
@@ -247,7 +247,7 @@ export async function updateLeaseRecord(
   const existing = await getLeaseRecord(organizationId, leaseId);
   if (!existing) throw new LeaseInputError("Lease not found", 404);
   if (existing.status !== "active") {
-    throw new LeaseInputError("Only active leases can be edited — create a new lease instead");
+    throw new LeaseInputError("Only active leases can be edited. Create a new lease instead");
   }
 
   const expiresAt = patch.expiresAt ?? existing.expiresAt.toISOString();

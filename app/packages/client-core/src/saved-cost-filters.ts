@@ -122,7 +122,7 @@ export function resolveSavedCostFilterInput(input: SavedCostFilterInput): CostFi
   if (text) {
     if (input.filters.length > 0) {
       throw new Error(
-        "Send either `filters` or `query`, not both — they are two spellings of the same filter.",
+        "Send either `filters` or `query`, not both; they are two spellings of the same filter.",
       );
     }
     filters = parseCostQuery(text);
@@ -133,7 +133,7 @@ export function resolveSavedCostFilterInput(input: SavedCostFilterInput): CostFi
   }
   if (filters.length === 0) {
     throw new Error(
-      "A saved filter needs at least one term — an empty filter matches everything, " +
+      "A saved filter needs at least one term; an empty filter matches everything, " +
         "which is the same as applying no filter at all.",
     );
   }

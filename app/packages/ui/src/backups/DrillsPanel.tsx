@@ -133,9 +133,8 @@ export function DrillsPanel({
     <div className="flex flex-col gap-4">
       <T>
         <p className="max-w-3xl text-sm text-on-surface-muted">
-          A backup you have never restored is a hypothesis. Record each drill — what you restored,
-          how long it took, and whether you checked what came back — and this page will tell you
-          when the evidence has gone stale.
+          Record each restore drill (what you restored, how long it took, whether you verified it).
+          This page flags drills that have gone stale.
         </p>
       </T>
 
@@ -174,8 +173,7 @@ export function DrillsPanel({
       {drills.rows.length === 0 ? (
         <T>
           <p className="text-sm text-on-surface-faint">
-            Nothing to drill yet. A resource appears here once something is actually backing it up —
-            a resource with no backup is a coverage gap rather than an untested restore.
+            Nothing to drill yet. Resources appear here once something backs them up.
           </p>
         </T>
       ) : (
@@ -302,7 +300,7 @@ export function DrillsPanel({
           <ul className="mt-2 flex flex-col gap-1">
             {drills.orphanedDrills.map((drill) => (
               <li key={drill.id}>
-                {new Date(drill.performedAt).toLocaleDateString()} —{" "}
+                {new Date(drill.performedAt).toLocaleDateString()}:{" "}
                 {outcomeLabel(gt, drill.outcome)}
                 {drill.notes ? ` · ${drill.notes}` : ""}
               </li>

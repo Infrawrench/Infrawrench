@@ -89,7 +89,7 @@ export function HostKeyTrustDialog({
               </p>
               <p className="text-xs text-danger/80">
                 {gt(
-                  "This can happen if the server was rebuilt or its key was rotated, but it can also indicate a man-in-the-middle attack. Only continue if you are certain the new key is legitimate (for example, you rotated it yourself or it matches the fingerprint your provider published).",
+                  "The server may have been rebuilt or its key rotated, or this may be a man-in-the-middle attack. Only continue if you are sure the new key is legitimate.",
                 )}
               </p>
             </div>
@@ -97,11 +97,10 @@ export function HostKeyTrustDialog({
             <div className="rounded-lg border border-border-strong bg-surface-overlay/50 p-3">
               <T>
                 <p className="text-xs text-on-surface-tertiary">
-                  You haven't connected to this host before. Confirm that the fingerprint below
-                  matches what you expect (for example, the value printed by your cloud provider or
-                  shown when you ran
+                  First connection to this host. Check the fingerprint below matches your cloud
+                  provider's or the output of
                   <span className="font-mono"> ssh-keygen -lf </span>
-                  on the host).
+                  on the host.
                 </p>
               </T>
             </div>

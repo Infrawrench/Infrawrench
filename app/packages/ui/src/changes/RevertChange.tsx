@@ -148,9 +148,9 @@ export function RevertChangeDialog({
         <h2 className="text-lg font-semibold">{gt("Revert this change")}</h2>
         <T>
           <p className="mt-1 text-sm text-on-surface-muted">
-            <Var>{entry.displayName}</Var> — recorded{" "}
-            <Var>{new Date(entry.createdAt).toLocaleString()}</Var>. The plan below is computed
-            against the resource&apos;s current state, not against what the poller saw.
+            <Var>{entry.displayName}</Var>, recorded{" "}
+            <Var>{new Date(entry.createdAt).toLocaleString()}</Var>. The plan below is based on the
+            resource&apos;s current state.
           </p>
         </T>
 

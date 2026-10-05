@@ -11,7 +11,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Redis Cloud",
   description:
-    "Manage Redis Cloud Pro and Essentials: subscriptions, databases (resize, alerts, backup, import, version upgrades), ACL rules, roles and users, VPC peering, Transit Gateway and Private Service Connect. Billed cost by subscription and database from the FOCUS cost report, and a Redis console and key browser for every database.",
+    "Manage Redis Cloud Pro and Essentials subscriptions, databases, ACLs, users, VPC peering and private connectivity. Billed cost by subscription and database, plus a Redis console and key browser.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",
@@ -32,7 +32,7 @@ const manifest: PluginManifest = {
       key: "userKey",
       label: "User Key",
       description:
-        "A user key (API secret) from the same page. It carries its owner's role: cost data needs Owner, Viewer or Billing admin, and changes need Owner. If the key has a CIDR allow list, include this server's address.",
+        "A user key (API secret) from the same page. Cost data needs Owner, Viewer or Billing admin; changes need Owner. If the key has a CIDR allow list, include this server's address.",
       sensitive: true,
       placeholder: "S9t8U7v6...",
       helpLink: {

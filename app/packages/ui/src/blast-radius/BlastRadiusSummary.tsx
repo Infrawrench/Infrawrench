@@ -63,8 +63,8 @@ export function BlastRadiusSummary({ client, resourceId, maxNamed = 3 }: BlastRa
         </p>
         <T>
           <p className="mt-0.5 text-xs text-on-surface-faint">
-            <Var>{error ?? gt("The impact report is unavailable.")}</Var> Deleting is still allowed
-            — decide from what you know.
+            <Var>{error ?? gt("The impact report is unavailable.")}</Var> You can still delete;
+            decide from what you know.
           </p>
         </T>
       </div>

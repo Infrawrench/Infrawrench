@@ -76,7 +76,7 @@ export function pageKeyAndCooldown(spec: PageSpec): { key: string; cooldownMinut
 
 /** SMS body: short, prefixed, and says who is talking. */
 function smsBody(audience: PageAudience, spec: PageSpec): string {
-  return `infrawrench: ${spec.title ?? audience.name} — ${spec.message}`;
+  return `infrawrench: ${spec.title ?? audience.name}: ${spec.message}`;
 }
 
 /**

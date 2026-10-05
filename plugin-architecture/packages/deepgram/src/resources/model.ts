@@ -11,7 +11,7 @@ export const ModelResourceType = rt({
   name: "Model",
   id: "model",
   description:
-    "A speech-to-text model or text-to-speech voice available to this Deepgram project. TTS entries carry voice metadata — accent, age, characteristics and a preview clip.",
+    "A speech-to-text model or text-to-speech voice available to this Deepgram project. TTS entries include accent, age, characteristics and a preview clip.",
   fields: [
     f("name", "Name", { editable: false }),
     f("canonicalName", "Canonical Name", { editable: false }),

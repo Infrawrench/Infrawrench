@@ -85,7 +85,7 @@ export const cloudsqlCreateConfigHandlers: Record<
           kind: "select",
           required: true,
           description:
-            "Public IP makes the instance reachable from the open internet. Disable to use private IP only — connections then require VPC reachability (Cloud VPN, Cloud Run/GCE in the VPC, IAP tunnel).",
+            "Makes the instance reachable from the internet. Disable for private IP only, which needs VPC reachability (VPN, Cloud Run/GCE in the VPC, IAP tunnel).",
           options: [
             { id: "true", label: "Enabled (recommended for desktop access)" },
             { id: "false", label: "Disabled (private IP only)" },
@@ -99,7 +99,7 @@ export const cloudsqlCreateConfigHandlers: Record<
           multiline: true,
           required: false,
           description:
-            "One CIDR per line. Cloud SQL drops connections from any IP not listed here. Use 0.0.0.0/0 to allow any IP (insecure — fine for dev). Leave empty to deny all public access. Click 'Detect my IP' to insert your current public IP.",
+            "One CIDR per line. Connections from other IPs are dropped. 0.0.0.0/0 allows any IP (insecure). Leave empty to deny all public access.",
           placeholder: "1.2.3.4/32\n10.0.0.0/8",
           showWhen: { fieldKey: "publicIp", fieldValue: "true" },
           actions: [

@@ -29,10 +29,10 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
       client={bound}
       copy={{
         description: gt(
-          "Send this report on a schedule to Slack, Microsoft Teams or email — the numbers and a link, no chart image. An empty period still sends, saying so.",
+          "Send this report's numbers and a link to Slack, Microsoft Teams or email on a schedule.",
         ),
         editorDescription: gt(
-          "The report runs server-side at each send: total for its window, change vs the period before, and its top groups — converted to your display currency where one is configured.",
+          "Each send includes the window's total, the change from the previous period and the top groups, in your display currency.",
         ),
       }}
     />

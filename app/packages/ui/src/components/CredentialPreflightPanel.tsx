@@ -214,7 +214,7 @@ export function CredentialPreflightPanel({
                 <span className="text-on-surface-secondary font-medium">
                   {gtData(row.capability.label)}
                 </span>
-                <span className="text-on-surface-faint"> — {statusText(gt, row.status)}</span>
+                <span className="text-on-surface-faint">: {statusText(gt, row.status)}</span>
                 {row.status === "unchecked" && row.capability.description && (
                   <p className="text-on-surface-faint mt-0.5">
                     {gtData(row.capability.description)}
@@ -354,7 +354,7 @@ export function CredentialPreflightModal({
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">
-            {gt("Check credentials — {name}", { name: accountName })}
+            {gt("Check credentials: {name}", { name: accountName })}
           </h2>
           <button
             type="button"

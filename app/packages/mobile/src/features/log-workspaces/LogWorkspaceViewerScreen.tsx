@@ -107,7 +107,7 @@ export function LogWorkspaceViewerScreen({ queryId }: { queryId: string }) {
         <TextInput
           value={effectiveSearch}
           onChangeText={setSearch}
-          placeholder='Filter — terms, "phrases", -not, /regex/'
+          placeholder='Filter: terms, "phrases", -not, /regex/'
           placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
           autoCorrect={false}

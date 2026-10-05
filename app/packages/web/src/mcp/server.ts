@@ -149,7 +149,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
         description:
           "How long this trial workspace has left before it is deleted, and whether a person " +
           "has claimed it yet. Check this before doing substantial work, and tell the user " +
-          "what you find — an unclaimed workspace is deleted along with everything in it.",
+          "what you find; an unclaimed workspace is deleted along with everything in it.",
         inputSchema: toInputSchema({}),
       },
       async () => {

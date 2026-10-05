@@ -28,7 +28,7 @@ function pageUrl(origin: string, page: StatusPage): string {
 export async function cmdStatusPages(ctx: CliContext, pageArg?: string): Promise<void> {
   if (ctx.flags.local) {
     throw new CliError(
-      "Status pages live in Infrawrench Cloud — the page is served by the web app. Drop --local.",
+      "Status pages live in Infrawrench Cloud. The page is served by the web app. Drop --local.",
     );
   }
   const org = await resolveOrg(ctx);
@@ -57,7 +57,7 @@ export async function cmdStatusPages(ctx: CliContext, pageArg?: string): Promise
   if (pages.length === 0) {
     println(
       c.dim(
-        "No status pages yet. Create one from the Probes tab — a page publishes probes you already run.",
+        "No status pages yet. Create one from the Probes tab. A page publishes probes you already run.",
       ),
     );
     return;
@@ -112,7 +112,7 @@ function printPageDetail(ctx: CliContext, page: StatusPage): void {
 
   if (page.components.length === 0) {
     println();
-    println(c.dim("No components — this page publishes nothing."));
+    println(c.dim("No components. This page publishes nothing."));
     return;
   }
 
@@ -139,7 +139,7 @@ function printPageDetail(ctx: CliContext, page: StatusPage): void {
     println();
     println(
       c.dim(
-        `${paused} probe${paused === 1 ? "" : "s"} paused — those components show as "No data" to visitors.`,
+        `${paused} probe${paused === 1 ? "" : "s"} paused. Those components show as "No data" to visitors.`,
       ),
     );
   }

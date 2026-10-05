@@ -16,7 +16,7 @@ const manifest: PluginManifest = {
     {
       key: "connectionString",
       label: "Server(s)",
-      description: "host:port — or comma-separated for multiple servers.",
+      description: "host:port, comma-separated for multiple servers.",
       sensitive: false,
       placeholder: "localhost:11211",
     },

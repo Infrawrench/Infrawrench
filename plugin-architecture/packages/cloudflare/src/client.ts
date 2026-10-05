@@ -1535,7 +1535,7 @@ export class CloudflareClient implements PluginClient {
       yield {
         kind: "error",
         message: isAuth
-          ? "Workers AI rejected this request (Authentication error). This account's Cloudflare API token needs the Account · Workers AI:Read permission to run models. Add it in Cloudflare → My Profile → API Tokens (edit the token, add Account · Workers AI:Read, save) and try again."
+          ? "Workers AI rejected this request (Authentication error). The account's API token needs the Account · Workers AI:Read permission to run models. Add it under Cloudflare → My Profile → API Tokens and try again."
           : `Chat endpoint returned ${res.status}: ${errText || res.statusText}`,
       };
       return;

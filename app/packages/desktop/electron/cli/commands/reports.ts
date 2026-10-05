@@ -33,7 +33,7 @@ import { confirm } from "../prompt";
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
     throw new CliError(
-      "Cost reports live in Infrawrench Cloud — there is no local report store or cost history.",
+      "Cost reports live in Infrawrench Cloud. There is no local report store or cost history.",
     );
   }
 }
@@ -144,7 +144,7 @@ export async function cmdReports(ctx: CliContext): Promise<void> {
   if (reports.length === 0) {
     println(
       c.dim(
-        "No saved reports. A report is a cost graph with a name — save one from the Reports page, then run it here by name.",
+        "No saved reports. A report is a cost graph with a name. Save one from the Reports page, then run it here by name.",
       ),
     );
     return;
@@ -451,12 +451,12 @@ export async function cmdSendReport(ctx: CliContext, query: string): Promise<voi
   for (const { notification, result } of results) {
     println(
       `  ${c.green("✓")} ${describeSchedule(notification)} ${c.dim(
-        `— delivered to ${result.succeeded}/${result.attempted} destination(s)`,
+        `delivered to ${result.succeeded}/${result.attempted} destination(s)`,
       )}`,
     );
   }
   for (const { notification, error } of failures) {
-    println(`  ${c.red("✗")} ${describeSchedule(notification)} ${c.dim(`— ${error}`)}`);
+    println(`  ${c.red("✗")} ${describeSchedule(notification)} ${c.dim(`(${error})`)}`);
   }
   if (failures.length > 0 && results.length === 0) {
     throw new CliError("Every send failed. See the errors above.");
@@ -587,7 +587,7 @@ export async function cmdRunReport(
     println();
     println(
       c.dim(
-        `Shown on ${report.placements.map((p) => p.dashboardName).join(", ")} — editing this report changes those cards too.`,
+        `Shown on ${report.placements.map((p) => p.dashboardName).join(", ")}. Editing this report changes those cards too.`,
       ),
     );
   }

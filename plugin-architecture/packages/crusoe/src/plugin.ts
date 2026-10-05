@@ -17,7 +17,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Crusoe Cloud",
   description:
-    "GPU cloud. Track billed Crusoe spend by product line, project, region and resource, follow credits, reservations and quotas, and manage VMs, disks, snapshots, VPC networks, subnets, firewall rules, managed Kubernetes clusters and node pools, load balancers and SSH keys.",
+    "GPU cloud. Billed spend by product, project, region and resource, credits, reservations and quotas, and VMs, disks, snapshots, networks, firewall rules, Kubernetes clusters, load balancers and SSH keys.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",

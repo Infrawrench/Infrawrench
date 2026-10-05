@@ -185,7 +185,7 @@ export async function createLogWorkspaceRecord(
   const alertEnabled = input.alertEnabled ?? false;
   if (alertEnabled && compileLogSearch(input.search).matchAll) {
     throw new LogWorkspaceInputError(
-      "Alerting requires a non-empty search expression — an empty query matches every line",
+      "Alerting requires a non-empty search expression; an empty query matches every line",
     );
   }
   await assertSelectorsResolve(organizationId, input.resources);
@@ -226,7 +226,7 @@ export async function createLogWorkspaceRecord(
         .limit(1);
       if (existing.length > 0) {
         throw new LogWorkspaceInputError(
-          "A saved query with this name already exists — pick another name or update it",
+          "A saved query with this name already exists. Pick another name or update it",
           409,
         );
       }
@@ -246,7 +246,7 @@ export async function createLogWorkspaceRecord(
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new LogWorkspaceInputError(
-        "A saved query with this name already exists — pick another name or update it",
+        "A saved query with this name already exists. Pick another name or update it",
         409,
       );
     }
@@ -278,7 +278,7 @@ export async function updateLogWorkspaceRecord(
   if (validationError) throw new LogWorkspaceInputError(validationError);
   if (alertEnabled && compileLogSearch(search).matchAll) {
     throw new LogWorkspaceInputError(
-      "Alerting requires a non-empty search expression — an empty query matches every line",
+      "Alerting requires a non-empty search expression; an empty query matches every line",
     );
   }
   if (patch.resources !== undefined) {
@@ -315,7 +315,7 @@ export async function updateLogWorkspaceRecord(
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new LogWorkspaceInputError(
-        "A saved query with this name already exists — pick another name or update it",
+        "A saved query with this name already exists. Pick another name or update it",
         409,
       );
     }

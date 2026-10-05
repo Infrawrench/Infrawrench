@@ -14,7 +14,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "CoreWeave",
   description:
-    "GPU cloud. Track GPU-hours and estimated spend by cluster, instance type and capacity plan, manage CKS clusters, Node Pools, VPCs and AI Object Storage buckets, chart GPU utilization, and see per-namespace GPU cost in each cluster's Kubernetes tab.",
+    "GPU cloud. GPU-hours and estimated spend by cluster, instance type and capacity plan, CKS clusters, Node Pools, VPCs, AI Object Storage buckets, GPU utilization, and per-namespace GPU cost.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",

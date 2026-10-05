@@ -33,7 +33,7 @@ export const GcsBucketResourceType = rt({
       label: "Cloud Storage bucket endpoint",
       hostPattern: String.raw`([a-z0-9][a-z0-9._-]*)\.(?:storage|commondatastorage)\.googleapis\.com`,
       reason:
-        "Cloud Storage bucket names are globally unique and released on delete, so anyone can recreate the bucket and serve their own objects from your hostname.",
+        "Bucket names are globally unique and released on delete, so anyone can recreate the bucket and serve their own objects from your hostname.",
     },
   ],
   secretExportTemplates: [
@@ -41,7 +41,7 @@ export const GcsBucketResourceType = rt({
       id: "gcs-full",
       displayName: "GCS Credentials",
       description:
-        "Service account key JSON and bucket name — a new key is created via the IAM API",
+        "Service account key JSON and bucket name. A new key is created via the IAM API.",
       entries: [
         {
           envKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON",
@@ -54,7 +54,7 @@ export const GcsBucketResourceType = rt({
     {
       id: "sa-key-only",
       displayName: "Service Account Key Only",
-      description: "Just the service account key JSON — a new key is created via the IAM API",
+      description: "Just the service account key JSON. A new key is created via the IAM API.",
       entries: [{ envKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON", outputKey: "serviceAccountKey" }],
     },
   ],
@@ -66,7 +66,7 @@ export const GcsBucketResourceType = rt({
       category: "public-exposure",
       conditions: [{ fieldKey: "publicAccessPrevention", when: "notEquals", value: "enforced" }],
       reason:
-        "Public access prevention is not enforced on this bucket, so a single IAM binding or ACL can make objects world-readable. Enforce it unless the bucket intentionally serves public content.",
+        "Public access prevention is off, so one IAM binding or ACL can make objects world-readable. Enforce it unless the bucket serves public content.",
     },
   ],
   supportsMetrics: true,

@@ -28,7 +28,7 @@ const CreateBastionResponse = strict({
   tokenPrefix: z.string(),
   token: z.string().openapi({
     description:
-      "Enrollment token in the form `iwb_<random>`. Pass to the agent container as `BASTION_TOKEN`. Returned once — not recoverable later.",
+      "Enrollment token in the form `iwb_<random>`. Pass to the agent container as `BASTION_TOKEN`. Returned once: not recoverable later.",
   }),
 }).openapi("CreateBastionResponse");
 
@@ -71,7 +71,7 @@ export function registerBastionPaths(ctx: BuildContext) {
     method: "delete",
     path: "/api/org/{orgId}/bastions/{id}",
     tags: ["Bastions"],
-    summary: "Revoke a bastion — accounts referencing it have their bastion binding cleared",
+    summary: "Revoke a bastion; accounts referencing it have their bastion binding cleared",
     request: {
       params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
     },

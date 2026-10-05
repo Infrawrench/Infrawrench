@@ -152,7 +152,7 @@ export function buildCloudflarePolicyTemplate(capabilityIds: string[]): PolicyTe
   }).toString()}`;
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const lines = [
-    "Cloudflare API token — permission groups (all accounts, all zones):",
+    "Cloudflare API token permission groups (all accounts, all zones):",
     "",
     ...scopes.map((s) => `  ${s.name} · ${capitalize(s.type)}`),
     "",
@@ -164,7 +164,7 @@ export function buildCloudflarePolicyTemplate(capabilityIds: string[]): PolicyTe
     language: "text",
     document: `${lines.join("\n")}\n`,
     instructions:
-      "Open the link (or Cloudflare dashboard → My Profile → API Tokens → Create Token), review the pre-filled permission groups, create the token, and paste it as the account's API Token.",
+      "Open the link (or Cloudflare dashboard → My Profile → API Tokens → Create Token), review the pre-filled permissions, create the token, and paste it as the account's API Token.",
     helpLink: { label: "Open Cloudflare's token creator with these scopes", url },
   };
 }
@@ -353,7 +353,7 @@ export async function runCloudflarePreflight(token: string): Promise<PreflightRe
       capabilityId: "costs",
       status: "unknown",
       message:
-        "Couldn't resolve an account id to probe billing with — grant Account Settings Read and re-run.",
+        "Couldn't resolve an account id to probe billing with. Grant Account Settings Read and re-run.",
     });
   } else {
     try {

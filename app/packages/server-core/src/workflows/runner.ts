@@ -138,7 +138,7 @@ async function clientForWorkflow(organizationId: string, accountId: string, side
   );
   if (!ctx) {
     throw new Error(
-      `Could not reach the ${sidecar.pluginId} sidecar of ${sidecar.parentResourceId} — ` +
+      `Could not reach the ${sidecar.pluginId} sidecar of ${sidecar.parentResourceId}: ` +
         `is that resource still around, and does it expose ${sidecar.pluginId}?`,
     );
   }

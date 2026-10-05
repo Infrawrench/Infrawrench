@@ -48,7 +48,7 @@ const HostPreflight = strict({
   staging: z.boolean().openapi({
     description:
       "A writable, exec-capable directory was found to stage the app server in. False means " +
-      "every candidate is missing, unwritable, or mounted noexec — which no package fixes.",
+      "every candidate is missing, unwritable, or mounted noexec, which no package fixes.",
   }),
   appCount: z.number().int(),
   ready: z.boolean(),
@@ -86,7 +86,7 @@ export function registerAppsPaths(ctx: BuildContext) {
     description:
       "Runs a read-only shell probe over SSH and reports what the host is missing, plus the " +
       "packages and commands that would fix it. A POST because it opens a connection to the " +
-      "named host and must never be cached — its whole value is saying what the host is now.",
+      "named host and must never be cached; its whole value is saying what the host is now.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: AppsHostTarget } }, required: true },
@@ -116,7 +116,7 @@ export function registerAppsPaths(ctx: BuildContext) {
     summary: "Install what a host needs to run Linux applications",
     description:
       "Installs the named requirements using the host's own package manager, then re-probes " +
-      "and reports what the host now is. Takes requirement ids, never commands — the commands " +
+      "and reports what the host now is. Takes requirement ids, never commands; the commands " +
       "are derived server-side from a fresh probe. Needs root or passwordless sudo on the " +
       "host, respects change freezes, and is audited as `linux_app.host_setup`.\n\n" +
       'Responds with `application/x-ndjson`: one `{"line":"…"}` per line of package-manager ' +

@@ -10,13 +10,13 @@ No new metric collection and no guesswork tables: the percentiles come from the 
 
 ## Where to find it
 
-Open **Costs** in the sidebar and scroll to **Oversized**, just below Potential savings. Each row shows the machine, its current and recommended size, the p95 CPU and memory figures backing the call, and the estimated monthly saving, with the [estimated CO2e](./carbon.md) the resize would save each month beneath it.
+Open **Costs** in the sidebar, go to the **Savings** tab, and find **Oversized**. Each row shows the machine, its current and recommended size, the p95 CPU and memory figures backing the call, and the estimated monthly saving, with the [estimated CO2e](./carbon.md) the resize would save each month beneath it.
 
-![Costs page scrolled to the Oversized section, showing a flagged server row with current → recommended size, p95 CPU/memory figures, a monthly saving on the right, and the Apply resize button](https://agent-assets.infrawrench.com/docs-screenshots/features/right-sizing/oversized-section.png)
+![Costs page Savings tab showing the Oversized section, showing a flagged server row with current → recommended size, p95 CPU/memory figures, a monthly saving on the right, and the Apply resize button](https://agent-assets.infrawrench.com/docs-screenshots/features/right-sizing/oversized-section.png)
 
 **Remediate** on a row shows the same resize as provider CLI commands (stop, resize, start, in whatever order the provider requires), ready to copy, and a Terraform hint instead when the machine is managed by Terraform. See [Remediation commands](./remediation-commands.md).
 
-The same list is on the mobile app's Costs tab (read-only — apply from web or desktop), in the `infrawrench oversized` CLI subcommand (`--json` for scripts), and as the `list_oversized_resources` [MCP tool](./mcp.md).
+The same list is on the mobile app's Costs tab, under **Savings** (read-only, apply from web or desktop), in the `infrawrench oversized` CLI subcommand (`--json` for scripts), and as the `list_oversized_resources` [MCP tool](./mcp.md).
 
 ## When a machine is flagged
 

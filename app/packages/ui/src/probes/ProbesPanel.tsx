@@ -141,7 +141,7 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
             <h2 className="text-base font-semibold text-on-surface">{gt("Synthetic probes")}</h2>
             <p className="text-xs text-on-surface-faint">
               {gt(
-                "Uptime and latency checks run on an interval from outside your infrastructure — the view your users get. Alerts fire after consecutive failures.",
+                "Uptime and latency checks from outside your infrastructure, as your users see it. Alerts fire after consecutive failures.",
               )}
             </p>
           </div>
@@ -170,7 +170,7 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
         {probes !== null && probes.length === 0 && (
           <p className="text-sm text-on-surface-faint">
             {gt(
-              "No probes yet. Create one to watch an endpoint from the outside — the editor suggests URLs from your synced resources.",
+              "No probes yet. Create one to watch an endpoint; the editor suggests URLs from your resources.",
             )}
           </p>
         )}
@@ -281,7 +281,7 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
                       {series === null && (
                         <p className="text-sm text-on-surface-faint">
                           {gt(
-                            "No history available — the metric store is unreachable or the probe hasn't produced results yet.",
+                            "No history yet. The metric store is unreachable or the probe hasn't produced results.",
                           )}
                         </p>
                       )}

@@ -169,7 +169,7 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
           actionId: "dnssec-enable",
           confirmMessage:
             "Enable DNSSEC for this zone? You must then add the DS record at your domain registrar to complete activation.",
-          successMessage: "DNSSEC enabled — add the DS record at your registrar to finish.",
+          successMessage: "DNSSEC enabled. Add the DS record at your registrar to finish.",
         },
       },
       {

@@ -38,7 +38,7 @@ export function DashboardDeliverySection({
       hideHeading={hideHeading}
       copy={{
         description: gt(
-          "Send this dashboard on a schedule to Slack, Microsoft Teams or email. It is rendered as a PDF at each send, attached to emails and uploaded to Slack; Microsoft Teams gets a summary and a link.",
+          "Send this dashboard on a schedule to Slack, Microsoft Teams or email as a PDF. Microsoft Teams gets a summary and a link.",
         ),
         editorDescription: gt(
           "The dashboard is rendered server-side as a PDF at each send. Uploading it to Slack needs the Slack app's files:write scope; if the file doesn't arrive, reconnect Slack from Settings.",

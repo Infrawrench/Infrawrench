@@ -70,9 +70,9 @@ export function ExtendedSupportAlertsSection() {
         </h2>
         <T>
           <p className="text-xs text-on-surface-muted mt-1">
-            A weekly alert naming every resource paying an extended-support surcharge or past the
-            end of support, with what upgrading saves. Turn the <strong>Extended support</strong>{" "}
-            trigger on for a channel or your phone above to route it. The findings live in Costs.
+            A weekly alert listing resources on paid extended support or past end of support, with
+            upgrade savings. Turn the <strong>Extended support</strong> trigger on for a channel or
+            your phone above to route it.
           </p>
         </T>
       </div>

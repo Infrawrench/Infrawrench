@@ -39,7 +39,7 @@ import { getCloudWsUrl } from "./cloud-ws";
 function requireOrgId(): string {
   const orgId = useUIStore.getState().activeCloudOrgId;
   if (!orgId) {
-    throw new Error("Deploying from the app needs an organization — sign in to Infrawrench Cloud.");
+    throw new Error("Deploying from the app needs an organization: sign in to Infrawrench Cloud.");
   }
   return orgId;
 }

@@ -11,7 +11,7 @@ export const FileResourceType = rt({
   name: "File",
   id: "file",
   description:
-    "An uploaded file — fine-tuning datasets, batch inputs and outputs, and file-search source documents.",
+    "An uploaded file: fine-tuning datasets, batch inputs and outputs, and file-search documents.",
   fields: [
     f("filename", "Filename"),
     f("purpose", "Purpose", { required: false }),

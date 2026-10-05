@@ -64,7 +64,7 @@ const OrgStatusIncident = strict({
     .nonnegative()
     .openapi({
       description:
-        "Change-timeline events recorded on this provider during the incident window — " +
+        "Change-timeline events recorded on this provider during the incident window; " +
         '"these N changes happened during an incident".',
     }),
 }).openapi("OrgStatusIncident");
@@ -81,7 +81,7 @@ export function registerStatusIncidentPaths(ctx: BuildContext) {
     summary: "Provider incidents overlapping your resources",
     description:
       'The "is it me or is it them?" feed. The poller watches each provider plugin\'s public ' +
-      "status feed (declared on its manifest — zero credentials, zero rate-limit risk), caches " +
+      "status feed (declared on its manifest; zero credentials, zero rate-limit risk), caches " +
       "active incidents, and this endpoint correlates them against the resources the " +
       "organization holds: an incident matches a resource when it is provider-wide, names the " +
       "resource's region, or names its resource type. Includes incidents resolved within the " +

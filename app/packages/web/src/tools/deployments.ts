@@ -59,7 +59,7 @@ export function deploymentTools(): ToolDefinition[] {
       title: "List deployments",
       description:
         "List recent deployment runs (newest first) with their environment, repo, branch, commit, " +
-        "status, image, and how long they took. Runs started from the CLI appear here too — one " +
+        "status, image, and how long they took. Runs started from the CLI appear here too; one " +
         "history across both origins. Logs and the rendered Dockerfile are omitted; use " +
         "get_deployment for those.",
       inputSchema: {
@@ -118,7 +118,7 @@ export function deploymentTools(): ToolDefinition[] {
       description:
         "List the repositories this organization's GitHub App installations can see, with each " +
         "one's default branch. These are the repos a deployment can be planned or rolled back " +
-        "from. An empty list means no GitHub App is connected — that is done under " +
+        "from. An empty list means no GitHub App is connected; that is done under " +
         "Settings → GitHub, not from here. Note that a repo appearing here does not mean it has " +
         "an Infrafile; plan_deployment says so if it doesn't.",
       inputSchema: {},
@@ -141,7 +141,7 @@ export function deploymentTools(): ToolDefinition[] {
         "pushed, or deployed. Use this to answer 'what would deploying this do' and to check an " +
         "Infrafile change before a human runs it for real. " +
         "Non-interactive: an Infrafile that calls `select(key, …)` cannot ask, so pass the choices " +
-        "up front in `answers` keyed by the same key — otherwise the run fails saying which key it " +
+        "up front in `answers` keyed by the same key; otherwise the run fails saying which key it " +
         "needed. There is no tool that actually deploys; a human starts that from the app or the CLI.",
       inputSchema: {
         repo: z
@@ -227,8 +227,8 @@ export function deploymentTools(): ToolDefinition[] {
         "image, so nothing is planned or built and the exact known-good artifact is what lands. " +
         "Only a successful run that produced an image can be rolled back to. With deleteCreated, " +
         "resources that runs after the target created through `infra.accounts` are deleted once " +
-        "the rollback succeeds — only pass it when the user explicitly asked for that, since those " +
-        "resources can hold data. This changes what is running in the environment — the chat " +
+        "the rollback succeeds; only pass it when the user explicitly asked for that, since those " +
+        "resources can hold data. This changes what is running in the environment; the chat " +
         "surface confirms with the user before invoking. Audit-logged.",
       inputSchema: {
         runId: z

@@ -102,8 +102,8 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
         <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Commitments")}</h2>
         <T>
           <p className="text-xs text-on-surface-muted mt-1">
-            Reserved instances, savings plans and committed-use discounts — the largest lever on a
-            large bill. Utilization is measured only over days with collected cost data.
+            Reserved instances, savings plans and committed-use discounts. Utilization counts only
+            days with collected cost data.
           </p>
         </T>
       </div>
@@ -123,7 +123,7 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
       {feed && feed.planner.recommendations.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-xs font-semibold text-on-surface-secondary">
-            {gt("Savings planner — commit at the floor of {days}-day uncovered spend", {
+            {gt("Savings planner: commit at the floor of {days}-day uncovered spend", {
               days: feed.plannerWindowDays,
             })}
           </h3>
@@ -137,7 +137,7 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
           </ul>
           <T>
             <p className="text-xs text-on-surface-muted">
-              Recommendations only — nothing is purchased automatically. Savings quote the
+              Recommendations only; nothing is bought automatically. Savings use the
               provider&rsquo;s published &ldquo;up to&rdquo; rates.
             </p>
           </T>
@@ -306,7 +306,7 @@ function RecommendationRow({ rec }: { rec: CommitmentRecommendationView }) {
           {rec.region ? ` · ${rec.region}` : ""}
         </span>{" "}
         <span className="text-on-surface-muted">
-          {gt("— commit {amount}/hour, save {saving}", {
+          {gt("· commit {amount}/hour, save {saving}", {
             amount: formatCreditAmount(rec.recommendedHourlyCommitment, rec.currency),
             saving,
           })}
@@ -314,7 +314,7 @@ function RecommendationRow({ rec }: { rec: CommitmentRecommendationView }) {
       </p>
       <p className="text-xs text-on-surface-muted mt-0.5">
         {gt(
-          "Break-even at {breakEven} utilization — this workload can shrink by {discount} before the commitment loses money.",
+          "Break-even at {breakEven} utilization: usage can drop {discount} before the commitment loses money.",
           {
             breakEven: pct(rec.breakEvenUtilization),
             discount: pct(rec.discountRateMax),

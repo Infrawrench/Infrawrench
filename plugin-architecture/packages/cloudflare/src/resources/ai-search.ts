@@ -6,7 +6,7 @@ export const AiSearchResourceType = rt({
   pinnable: false,
   id: "ai-search",
   description:
-    "A Cloudflare AI Search (AutoRAG) instance — a managed retrieval-augmented generation pipeline over your data source",
+    "A Cloudflare AI Search (AutoRAG) instance: managed retrieval-augmented generation over your data source",
   fields: [
     f("id", "Name", { editable: false }),
     f("source", "Source", { required: false }),

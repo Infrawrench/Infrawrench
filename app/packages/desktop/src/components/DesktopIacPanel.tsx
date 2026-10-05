@@ -25,9 +25,8 @@ export function DesktopIacPanel() {
         <h1 className="text-xl font-semibold mb-1">{gt("Infrastructure as Code")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted">
-            Reconciliation compares your Terraform state against the resources Infrawrench Cloud has
-            synced. Local-only mode has no synced inventory to compare against — sign in to an
-            organization to use it.
+            Reconciliation compares your Terraform state against resources synced by Infrawrench
+            Cloud. Sign in to an organization to use it.
           </p>
         </T>
       </div>

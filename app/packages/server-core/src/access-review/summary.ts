@@ -92,7 +92,7 @@ export function accessFindingLine(
   escape: (s: string) => string = (s) => s,
 ): string {
   const [principal, account] = untrustedFragments(finding);
-  return `${escape(principal)} (${escape(account)}) — ${finding.title} (${finding.severity})`;
+  return `${escape(principal)} (${escape(account)}): ${finding.title} (${finding.severity})`;
 }
 
 /**

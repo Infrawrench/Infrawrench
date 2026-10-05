@@ -80,11 +80,11 @@ function DeploymentsUpsell({ orgId }: { orgId: string }) {
         <h1 className="text-lg font-semibold mb-2">{gt("Deploy from GitHub")}</h1>
         <p className="text-sm text-on-surface-secondary mb-4">
           {gt(
-            "Connect a repository with an Infrafile and ship it from here: pick a branch and environment, preview the plan, and watch the build and deploy live. Deploy-on-push keeps it shipping after every merge.",
+            "Connect a repository with an Infrafile to deploy it from here: pick a branch and environment, preview the plan, and watch it live.",
           )}
         </p>
         <ul className="space-y-2 text-sm text-on-surface-tertiary mb-6">
-          <li>{gt("Hosted builds — no local Docker needed")}</li>
+          <li>{gt("Hosted builds, no local Docker needed")}</li>
           <li>{gt("Deploy-on-push from GitHub")}</li>
           <li>{gt("Full run history with rollbacks")}</li>
         </ul>

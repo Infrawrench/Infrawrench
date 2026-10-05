@@ -6,7 +6,7 @@ sidebar_order: 14
 
 Reserved instances, savings plans and committed-use discounts are the largest single lever on a big cloud bill — and the least visible thing on a spend graph. The purchase is one spike, the discount is a slightly lower slope, and "is that three-year reservation actually paying for itself" is a question no daily total answers.
 
-The **Commitments** section on the Costs panel makes the holdings first-class: every reservation, savings plan and committed-use discount your connected accounts hold, collected daily from the provider's own management APIs.
+The **Commitments** section on the Costs panel's **Commitments & credits** tab makes the holdings first-class: every reservation, savings plan and committed-use discount your connected accounts hold, collected daily from the provider's own management APIs.
 
 ![The Commitments section on the Costs panel showing a coverage range line ("62%–78% of USD usage covered"), a table of holdings with utilization percentages and one "expired" row, and a savings planner recommendation beneath](https://agent-assets.infrawrench.com/docs-screenshots/features/commitments/commitments-section.png)
 
@@ -82,7 +82,7 @@ Two of these facts raise alerts of their own — see
 ## Everywhere else
 
 - **CLI** — `infrawrench commitments` prints the holdings table, coverage range and planner recommendations; `--json` is built for a weekly cron that checks for commitments expiring inside your renewal horizon or utilization sagging.
-- **Mobile** — a read-only Commitments section on the Costs tab.
+- **Mobile**, a read-only Commitments section on the **Commitments** tab of the Costs screen.
 - **API / MCP** — `GET /api/org/{orgId}/commitments` (permission `costs:read`), and the `get_commitments` tool for AI assistants.
 
 ## Required permissions

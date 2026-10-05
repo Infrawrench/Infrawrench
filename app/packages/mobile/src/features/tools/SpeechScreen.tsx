@@ -472,7 +472,7 @@ function TranscribeSection({
     try {
       const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
-        setError("Microphone access was denied — grant it in Settings, or pick a clip instead.");
+        setError("Microphone access was denied. Grant it in Settings, or pick a clip instead.");
         return;
       }
       // iOS routes playback through the earpiece at a fraction of the volume
@@ -611,13 +611,13 @@ function TranscribeSection({
       {recordingBlocked ? (
         <FormHint>
           {capability.recordingDisabledReason ??
-            "This provider does not accept recordings made on a phone — pick a clip instead."}
+            "This provider does not accept recordings made on a phone. Pick a clip instead."}
         </FormHint>
       ) : null}
 
       {recording ? (
         <Text style={styles.recording} accessibilityLiveRegion="polite">
-          Recording {formatClock(recorderState.durationMillis / 1000)} — speak now, then press Stop.
+          Recording {formatClock(recorderState.durationMillis / 1000)}. Speak now, then press Stop.
         </Text>
       ) : null}
 

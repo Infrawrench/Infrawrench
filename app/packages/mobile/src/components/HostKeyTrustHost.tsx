@@ -101,7 +101,7 @@ export function HostKeyTrustHost() {
             <Text style={isMismatch ? styles.warning : styles.explanation}>
               {isMismatch
                 ? "The fingerprint of this host's SSH key does not match the one you previously trusted. This can happen if the server was rebuilt or its key was rotated, but it can also mean someone is intercepting the connection. Only continue if you are certain the new key is legitimate."
-                : "You haven't connected to this host before. Confirm the fingerprint below matches what you expect — the value your provider published, or what `ssh-keygen -lf` prints on the host."}
+                : "You haven't connected to this host before. Confirm the fingerprint below matches your provider's published value or `ssh-keygen -lf` on the host."}
             </Text>
 
             {payload.storedFingerprint ? (

@@ -442,7 +442,7 @@ export function renderBackendService(resource: ResourceInstance, base: DetailVie
         {
           kind: "text",
           content:
-            "No health check attached. Required for instance-group and zonal NEG backends — leave empty only for Internet NEG or Serverless NEG.",
+            "No health check attached. Required for instance-group and zonal NEG backends; optional for Internet and Serverless NEGs.",
         },
       ],
     });

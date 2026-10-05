@@ -4,7 +4,7 @@ export const ManagedEndpointResourceType = rt({
   name: "Managed Endpoint",
   id: "managed-endpoint",
   description:
-    "A Dedicated Managed Inference endpoint (the newer v2 API) — a named route that splits traffic across one or more deployments. Deleting one deletes its deployments first.",
+    "A Dedicated Managed Inference endpoint (v2 API): a named route that splits traffic across deployments. Deleting one deletes its deployments first.",
   fields: [
     f("name", "Name"),
     f("endpointId", "Endpoint ID"),
@@ -19,7 +19,7 @@ export const ManagedEndpointResourceType = rt({
   outputs: [
     o("endpointId", "Endpoint ID"),
     o("endpointName", "Endpoint Name", {
-      description: "`<project_slug>/<endpoint_name>` — the value you pass as `model`",
+      description: "`<project_slug>/<endpoint_name>`, the value you pass as `model`",
     }),
   ],
   // `GET /v2/projects/{projectId}/endpoints/{id}/analytics` time series.

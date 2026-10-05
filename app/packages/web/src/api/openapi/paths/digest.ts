@@ -4,7 +4,7 @@ import type { BuildContext } from "../context";
 
 const DigestStatus = z.enum(["pending", "succeeded", "partial", "failed", "no_targets"]).openapi({
   description:
-    "Outcome of the most recent delivery attempt. `partial` (some destinations took it, some failed) is deliberately never retried automatically — a retry would post the digest twice where it already landed. `failed` (nothing landed) is retried a bounded number of times with backoff, then parked until the next week.",
+    "Outcome of the most recent delivery attempt. `partial` (some destinations took it, some failed) is deliberately never retried automatically; a retry would post the digest twice where it already landed. `failed` (nothing landed) is retried a bounded number of times with backoff, then parked until the next week.",
 });
 
 const DigestSettings = strict({
@@ -120,7 +120,7 @@ export function registerDigestPaths(ctx: BuildContext) {
     tags: ["Weekly digest"],
     summary: "Update the weekly digest settings",
     description:
-      "Every field is optional. Enabling schedules the first digest for the next configured send time rather than sending immediately — use POST /digest/send for an immediate one. The week boundary follows `timezone`, so the reported window is always the organization's own local Monday-to-Sunday week. Changing the schedule clears any parked failure state but never replays a week that already went out.",
+      "Every field is optional. Enabling schedules the first digest for the next configured send time rather than sending immediately; use POST /digest/send for an immediate one. The week boundary follows `timezone`, so the reported window is always the organization's own local Monday-to-Sunday week. Changing the schedule clears any parked failure state but never replays a week that already went out.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: DigestSettingsUpdate } } },
@@ -140,7 +140,7 @@ export function registerDigestPaths(ctx: BuildContext) {
     tags: ["Weekly digest"],
     summary: "Compose and send last week's digest now",
     description:
-      "Ignores the schedule and the enabled flag — composes the digest for the last complete week and sends it to every opted-in channel and email recipient. This is also the manual recovery for a partial delivery, which is never retried automatically. Fails when nothing is routed to receive the digest, or when every destination rejected it.",
+      "Ignores the schedule and the enabled flag; composes the digest for the last complete week and sends it to every opted-in channel and email recipient. This is also the manual recovery for a partial delivery, which is never retried automatically. Fails when nothing is routed to receive the digest, or when every destination rejected it.",
     request: { params: OrgIdParam },
     responses: {
       200: {
@@ -157,7 +157,7 @@ export function registerDigestPaths(ctx: BuildContext) {
     tags: ["Weekly digest"],
     summary: "List the organization's digest email recipients",
     description:
-      "Email is a digest-only transport, so its destinations are an organization-level address list rather than a per-channel trigger. Addresses need not belong to Infrawrench users — a finance alias is a valid recipient.",
+      "Email is a digest-only transport, so its destinations are an organization-level address list rather than a per-channel trigger. Addresses need not belong to Infrawrench users; a finance alias is a valid recipient.",
     request: { params: OrgIdParam },
     responses: {
       200: {

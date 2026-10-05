@@ -206,14 +206,14 @@ export async function enrichDoDetail(
   for (const b of sortedBackups) {
     restoreOptions.push({
       id: String(b.id),
-      label: `[Backup] ${formatBackupLabel(b.name, b.created_at)} — ${b.size_gigabytes} GB`,
+      label: `[Backup] ${formatBackupLabel(b.name, b.created_at)} (${b.size_gigabytes} GB)`,
       category: "Backups",
     });
   }
   for (const s of sortedSnapshots) {
     restoreOptions.push({
       id: String(s.id),
-      label: `[Snapshot] ${s.name || `Snapshot ${s.id}`} — ${formatBackupDate(s.created_at)} — ${s.size_gigabytes} GB`,
+      label: `[Snapshot] ${s.name || `Snapshot ${s.id}`}, ${formatBackupDate(s.created_at)}, ${s.size_gigabytes} GB`,
       category: "Snapshots",
     });
   }

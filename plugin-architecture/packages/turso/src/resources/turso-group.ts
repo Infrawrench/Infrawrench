@@ -4,7 +4,7 @@ export const TursoGroupResourceType = rt({
   name: "Group",
   pinnable: false,
   id: "turso-group",
-  description: "A Turso placement group — defines where database replicas are located",
+  description: "A Turso placement group: defines where database replicas are located",
   fields: [
     f("name", "Name", { editable: false }),
     f("uuid", "UUID", { required: false, editable: false }),

@@ -100,8 +100,8 @@ export function CaptureTemplateModal({
         </h3>
         <T>
           <p className="mt-1 text-xs text-on-surface-faint">
-            Point this at the environment you already have. Every field comes from the plugin&apos;s
-            own create form, so anything it can&apos;t create is reported rather than guessed at.
+            Point this at an existing environment. Anything a plugin can&apos;t create is reported,
+            not guessed.
           </p>
         </T>
 
@@ -194,7 +194,7 @@ export function CaptureTemplateModal({
                 <ul className="mt-1 space-y-1">
                   {draft.skipped.map((item) => (
                     <li key={item.resourceId} className="text-xs text-on-surface-faint">
-                      {item.displayName} — {item.reason}
+                      {item.displayName}: {item.reason}
                     </li>
                   ))}
                 </ul>
@@ -212,7 +212,7 @@ export function CaptureTemplateModal({
               {draft.suggestedParameters.length === 0 ? (
                 <T>
                   <p className="mt-2 text-xs text-on-surface-faint">
-                    Nothing here looks like a knob — these resources will be reproduced exactly.
+                    Nothing here looks configurable; these resources will be reproduced exactly.
                   </p>
                 </T>
               ) : (

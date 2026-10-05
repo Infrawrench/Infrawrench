@@ -61,7 +61,7 @@ describe("formatAnomalySmsBody", () => {
   it("says the day, what spiked, and what it cost against what", () => {
     const body = formatAnomalySmsBody([spike()]);
     expect(body).toBe(
-      "infrawrench cost anomalies 2026-07-14: 1 flagged — Amazon EC2 $2,100 vs $310/day",
+      "infrawrench cost anomalies 2026-07-14: 1 flagged: Amazon EC2 $2,100 vs $310/day",
     );
   });
 
@@ -106,7 +106,7 @@ describe("formatAnomalySmsBody", () => {
     const body = formatAnomalySmsBody([spike({ dimensionKey: "x".repeat(400) })]);
     expect(body.length).toBeLessThanOrEqual(SMS_BODY_MAX);
     expect(body).toBe(
-      `infrawrench cost anomalies 2026-07-14: 1 flagged — ${"x".repeat(27)}… $2,100 vs $310/day`,
+      `infrawrench cost anomalies 2026-07-14: 1 flagged: ${"x".repeat(27)}… $2,100 vs $310/day`,
     );
   });
 

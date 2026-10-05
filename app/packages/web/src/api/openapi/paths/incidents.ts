@@ -20,7 +20,7 @@ const IncidentStatus = z.enum(["open", "mitigated", "resolved"]).openapi({
   description:
     "`mitigated` is a real state, not a synonym for resolved: impact has stopped but the " +
     "incident is still open for follow-up. Keeping it separate is what makes time-to-mitigate " +
-    "a measurement rather than a guess. Resolving runs the resolve path — the change freeze " +
+    "a measurement rather than a guess. Resolving runs the resolve path; the change freeze " +
     "this incident opened is lifted, and the status-page update it posted is closed.",
 });
 
@@ -57,12 +57,12 @@ export function registerIncidentPaths(ctx: BuildContext) {
     id: Uuid,
     kind: ArtifactKind,
     status: ArtifactStatus,
-    label: z.string().nullable().describe("Human label — the freeze name, the destination count."),
+    label: z.string().nullable().describe("Human label: the freeze name, the destination count."),
     refId: Uuid.or(z.string()).nullable().describe("Freeze id, notice id, Slack channel id…"),
     refSecondary: z
       .string()
       .nullable()
-      .describe("Second half of a compound reference — a Slack message ts, a window width."),
+      .describe("Second half of a compound reference; a Slack message ts, a window width."),
     error: z
       .string()
       .nullable()
@@ -78,7 +78,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
     severity: IncidentSeverity,
     status: IncidentStatus,
     summary: z.string().nullable(),
-    startedAt: IsoDateTime.describe("Backdatable — people declare after they start firefighting."),
+    startedAt: IsoDateTime.describe("Backdatable: people declare after they start firefighting."),
     mitigatedAt: IsoDateTime.nullable(),
     resolvedAt: IsoDateTime.nullable(),
     declaredByUserId: z.string().nullable(),
@@ -86,7 +86,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
     resolvedByUserId: z.string().nullable(),
     affectedResourceIds: z
       .array(z.string())
-      .describe("Advisory. Not foreign keys — the claim must survive the resource being deleted."),
+      .describe("Advisory. Not foreign keys; the claim must survive the resource being deleted."),
     affectedAccountIds: z.array(Uuid),
     issueUrl: z.string().nullable().describe("Where the write-up was filed, once anyone filed it."),
     createdAt: IsoDateTime,
@@ -103,7 +103,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
     authorUserId: z.string().nullable(),
     authorName: z.string().nullable(),
     occurredAt: IsoDateTime.describe(
-      "When the note is *about*, which may precede when it was written — a note typed at 04:00 " +
+      "When the note is *about*, which may precede when it was written; a note typed at 04:00 " +
         "can be dated to 03:14 and lands there on the timeline.",
     ),
     createdAt: IsoDateTime,
@@ -120,7 +120,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
       .optional()
       .describe(
         "Open an org change freeze for the duration, lifted when the incident resolves. " +
-          "Defaults to false — freezing has blast radius beyond the incident. Needs " +
+          "Defaults to false; freezing has blast radius beyond the incident. Needs " +
           "`freezes:write`; without it the freeze is recorded as a failed artefact naming the " +
           "permission, and the incident still stands.",
       ),
@@ -129,7 +129,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
       .optional()
       .describe(
         "Pin the moment (a timestamp and a window) so `GET /moment` is one click away. " +
-          "Defaults to true — it cannot fail, and the investigation always wants it.",
+          "Defaults to true; it cannot fail, and the investigation always wants it.",
       ),
     postSlack: z
       .boolean()
@@ -177,12 +177,12 @@ export function registerIncidentPaths(ctx: BuildContext) {
     id: z.string(),
     source: z.enum(["incident", "note", "artifact", "moment", "probe", "metric-alert"]).openapi({
       description:
-        "`moment` covers everything the moment union already indexes — resource changes, " +
+        "`moment` covers everything the moment union already indexes; resource changes, " +
         "deployments, cost anomalies, provider status incidents, audit entries, change freezes " +
         "and workflow runs. Nothing is copied into the incident's own tables; the timeline is a " +
         "join, so re-reading it reflects the record as it stands today.",
     }),
-    kind: z.string().describe("`<noun>.<verb>`. Open set — render unknown kinds generically."),
+    kind: z.string().describe("`<noun>.<verb>`. Open set: render unknown kinds generically."),
     at: IsoDateTime,
     title: z.string(),
     detail: z.string().nullable().optional(),
@@ -248,7 +248,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
     summary: "List declared incidents",
     description:
       "Every incident the organization has declared, newest first, each with the artefacts its " +
-      "declaration created — including the ones that failed.",
+      "declaration created: including the ones that failed.",
     request: {
       params: OrgIdParam,
       query: strict({
@@ -313,7 +313,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
     summary: "Edit or transition an incident",
     description:
       "Omitted fields keep their value. Setting `status` stamps the matching timestamp, and " +
-      "resolving undoes exactly what this incident created — the freeze whose id is on its own " +
+      "resolving undoes exactly what this incident created; the freeze whose id is on its own " +
       "artefact, not whatever freeze happens to be in effect. Resolving an incident that was " +
       "never marked mitigated back-fills `mitigatedAt` from `resolvedAt`. Audit-logged.",
     request: {
@@ -337,7 +337,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
     summary: "Delete an incident",
     description:
       "Removes the incident, its notes and its artefact records. It does not lift a freeze or " +
-      "close a status-page update — resolve for that; deleting is for a mis-declaration. " +
+      "close a status-page update, resolve for that; deleting is for a mis-declaration. " +
       "Audit-logged.",
     request: { params: OrgIdParam.extend({ incidentId: Uuid }) },
     responses: { 204: { description: "Deleted" }, 404: ErrorResponses[404] },
@@ -351,7 +351,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
     description:
       "Re-runs only the side effects whose artefact is in a failure state, replacing each " +
       "failure rather than queueing a second attempt beside it. A `failed` artefact is " +
-      "**re-created**; a `close_failed` one is **re-closed** — re-creating the latter would open " +
+      "**re-created**; a `close_failed` one is **re-closed**; re-creating the latter would open " +
       "a second change freeze or post a duplicate public notice. A status-page retry reuses the " +
       "components recorded on the artefact's `request`, so the announcement keeps its original " +
       "scope. Its own endpoint rather than a flag on PATCH, because it writes into three " +
@@ -376,7 +376,7 @@ export function registerIncidentPaths(ctx: BuildContext) {
       "resolution: resource changes, deployments, cost anomalies, provider status incidents, " +
       "audit entries, change freezes and workflow runs (all via the same union the Moment " +
       "screen uses), plus probe state transitions, metric-alert firings, the incident's own " +
-      "life events, its artefacts and its operator notes. Nothing is copied — a correction " +
+      "life events, its artefacts and its operator notes. Nothing is copied; a correction " +
       "upstream shows up here on the next read.\n\n" +
       "Probe transitions are an approximation: `synthetic_probes` keeps only a single " +
       "`lastStateChangeAt`, so a probe that flapped twice inside the window contributes its " +
@@ -398,8 +398,8 @@ export function registerIncidentPaths(ctx: BuildContext) {
     summary: "Export a pre-filled postmortem",
     description:
       "Markdown with the timeline, the affected resources, the duration, the time to mitigate " +
-      "and the notes already filled in. The analysis headings — impact, root cause, action " +
-      "items — are deliberately left blank: a generated document that guesses at a root cause " +
+      "and the notes already filled in. The analysis headings (impact, root cause, action " +
+      "items) are deliberately left blank: a generated document that guesses at a root cause " +
       "is worse than one that leaves a heading.",
     request: { params: OrgIdParam.extend({ incidentId: Uuid }) },
     responses: {

@@ -21,11 +21,11 @@ Each digest covers the last complete Monday-to-Sunday week and contains:
 
 ## Turning it on
 
-Go to **Settings → Notifications** and tick **Send a weekly digest** in the Weekly digest section. The first scheduled digest arrives at the next send time — enabling mid-week doesn't immediately send a stale one. If you want to see one right away, press **Send now**: it composes last week's digest and sends it immediately, which is also the quickest way to confirm the whole pipeline works.
+Go to **Settings → Notifications**, open the **Alerts & digest** tab, and tick **Send a weekly digest** in the Weekly digest section. The first scheduled digest arrives at the next send time, enabling mid-week doesn't immediately send a stale one. If you want to see one right away, press **Send now**: it composes last week's digest and sends it immediately, which is also the quickest way to confirm the whole pipeline works.
 
-![Settings → Notifications page showing the Weekly digest section: the enable checkbox ticked, the send day / hour / time zone controls, the AI summary checkbox, the email recipient list, and the last-attempt status line](https://agent-assets.infrawrench.com/docs-screenshots/features/weekly-digest/digest-settings.png)
+![Settings → Notifications Alerts & digest tab showing the Weekly digest section: the enable checkbox ticked, the send day / hour / time zone controls, the AI summary checkbox, the email recipient list, and the last-attempt status line](https://agent-assets.infrawrench.com/docs-screenshots/features/weekly-digest/digest-settings.png)
 
-The settings are org-wide and take the **Organization settings** permission, exactly like the Slack and Teams routing above them.
+The settings are org-wide and take the **Organization settings** permission, exactly like the Slack and Teams routing on the other Notifications tabs.
 
 ## Choosing when it arrives
 

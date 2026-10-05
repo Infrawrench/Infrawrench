@@ -8,8 +8,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const DirectoryGroupResourceType = rt({
   name: "Directory Group",
   id: "directory-group",
-  description:
-    "A group synced from a directory provider. Read-only — the IdP owns the group and Directory Sync mirrors it.",
+  description: "A group synced from a directory provider. Read-only; the IdP owns the group.",
   fields: [
     f("name", "Name", { editable: false }),
     f("idpId", "IdP ID", { required: false, editable: false }),

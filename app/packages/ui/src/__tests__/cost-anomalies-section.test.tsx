@@ -213,10 +213,10 @@ describe("CostAnomaliesSection", () => {
 
     const sms = (await screen.findByLabelText(/Text the on-call list/)) as HTMLSelectElement;
     // Nothing is wrong until the org asks for texts it cannot receive.
-    expect(screen.queryByText(/can.t receive SMS/)).toBeNull();
+    expect(screen.queryByText(/SMS isn.t set up/)).toBeNull();
 
     fireEvent.change(sms, { target: { value: "all" } });
-    expect(await screen.findByText(/can.t receive SMS/)).toBeTruthy();
+    expect(await screen.findByText(/SMS isn.t set up/)).toBeTruthy();
   });
 
   it("refuses to save a sigma outside the bounds the API enforces", async () => {
@@ -269,7 +269,7 @@ describe("CostAnomaliesSection — explaining a finding", () => {
 
     const box = (await screen.findByLabelText("What happened")) as HTMLTextAreaElement;
     // A sentence to finish, not a blank page.
-    expect(box.value).toBe("Amazon EC2 spend +173% — ");
+    expect(box.value).toBe("Amazon EC2 spend +173%: ");
     // …and the facts, so nobody has to hold the row in their head: the row
     // itself names the service, and so now does the composer.
     expect(screen.getAllByText("Amazon EC2")).toHaveLength(2);
@@ -287,7 +287,7 @@ describe("CostAnomaliesSection — explaining a finding", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /12 gce-instance resources/ }));
     const box = (await screen.findByLabelText("What happened")) as HTMLTextAreaElement;
-    expect(box.value).toBe("Amazon EC2 spend +173% — 12 gce-instance resources appeared");
+    expect(box.value).toBe("Amazon EC2 spend +173%: 12 gce-instance resources appeared");
   });
 
   it("sends the sentence and shows it on the row without a refetch", async () => {

@@ -311,7 +311,7 @@ export function workflowTools(): ToolDefinition[] {
       title: "List workflows",
       description:
         "List the organization's workflows (sandboxed TypeScript automations) with their trigger, " +
-        "declared metrics, enabled state, and last/next run times. Source is omitted — use " +
+        "declared metrics, enabled state, and last/next run times. Source is omitted; use " +
         "get_workflow for that.",
       inputSchema: {},
       risk: "read",
@@ -373,16 +373,16 @@ export function workflowTools(): ToolDefinition[] {
       name: "get_workflow_typings",
       title: "Get workflow typings",
       description:
-        "Return the generated `infra.d.ts` that workflow source is written against — the same " +
+        "Return the generated `infra.d.ts` that workflow source is written against; the same " +
         "ambient declarations the editor uses, specialized with THIS organization's real account " +
         "names, resource types, SSH key names, and the workflow's declared metrics. ALWAYS call " +
         "this before writing or editing workflow source: the `infra` API is generated per " +
         "organization and cannot be guessed. The default response is the fast static surface " +
         "(`create` fields are `Record<string, string>`); pass enrich:true only when you need " +
-        "precise create() field unions from live provider configs — that hits provider APIs and " +
+        "precise create() field unions from live provider configs; that hits provider APIs and " +
         "can be slow. Small organizations get the whole file in one call; large ones get the " +
         "global scope (the `infra` object, InfraAccounts, event, metrics, fetch) plus an index " +
-        "of the named per-plugin interfaces it references — call again with typeNames to pull " +
+        "of the named per-plugin interfaces it references; call again with typeNames to pull " +
         "just the plugins you are working with instead of the whole file. Pass workflowId to " +
         "type against an existing workflow, or pass triggerKind/metrics to preview the typings " +
         "for one you are about to create (a budget trigger types `infra.event` with the " +
@@ -406,7 +406,7 @@ export function workflowTools(): ToolDefinition[] {
           .optional()
           .describe(
             "When true, hit provider APIs for precise create() field unions and live sidecar " +
-              "capability flags. Slow on a cold cache — omit for the initial look at the API.",
+              "capability flags. Slow on a cold cache; omit for the initial look at the API.",
           ),
         scope: z
           .enum(["full", "global"])
@@ -489,11 +489,11 @@ export function workflowTools(): ToolDefinition[] {
           const names = parts.types.map((t) => t.name);
           return okText(
             `${parts.global}\n` +
-              `// ——— ${names.length} named interfaces omitted (full typings are ${parts.full.length} ` +
-              `chars; scope: "full" returns everything) ———\n` +
+              `// --- ${names.length} named interfaces omitted (full typings are ${parts.full.length} ` +
+              `chars; scope: "full" returns everything) ---\n` +
               `// The declarations above reference them by name: InfraAccounts → AccountGroup_<plugin> → ` +
               `Account_<plugin> → Resource_<plugin>_<type>.\n` +
-              `// Fetch only what you need by calling this tool with typeNames — a plugin id (e.g. ` +
+              `// Fetch only what you need by calling this tool with typeNames; a plugin id (e.g. ` +
               `"kubernetes") fetches all of that plugin's interfaces. Available:\n` +
               `// ${names.join(", ")}\n`,
           );
@@ -563,17 +563,17 @@ export function workflowTools(): ToolDefinition[] {
       title: "Write workflow",
       description:
         "Create a workflow (omit workflowId) or update one (pass workflowId). The source is a " +
-        "TypeScript program run in a sandboxed isolate against the global `infra` object — call " +
+        "TypeScript program run in a sandboxed isolate against the global `infra` object; call " +
         "get_workflow_typings FIRST so you write against this organization's real accounts. " +
         "Before saving, the source is type-checked against those same typings and the save is " +
         "REJECTED with diagnostics if it has errors: read them, fix the source, and call again " +
         "(set skipTypecheck to save anyway). To alert a human when the workflow finds a problem, " +
-        "call `infra.page(message, { key })` in the source — it delivers SMS and mobile push to " +
+        "call `infra.page(message, { key })` in the source; it delivers SMS and mobile push to " +
         "the org's paging recipients and throttles repeats per key, so a monitoring cron can page " +
         "unconditionally and only the first occurrence gets through. Prefer a cron trigger plus " +
         "`infra.page` over asking the user to watch something themselves. " +
         "A global `fetch(url, init)` is available for HTTP APIs Infrawrench has no plugin for; it " +
-        "goes through a proxy outside the cluster, so only PUBLIC addresses are reachable — a " +
+        "goes through a proxy outside the cluster, so only PUBLIC addresses are reachable; a " +
         "private/loopback/cluster-internal URL is refused at runtime. " +
         "Only fields you pass are changed. Audit-logged. In chat, a call that sets source, " +
         "trigger, or secretIds, or enables the workflow, waits for the user's approval, so " +
@@ -650,7 +650,7 @@ export function workflowTools(): ToolDefinition[] {
             });
             if (check.hasErrors) {
               return err(
-                `Not saved — the workflow source has type errors:\n${formatDiagnostics(check.diagnostics)}\n\n` +
+                `Not saved: the workflow source has type errors:\n${formatDiagnostics(check.diagnostics)}\n\n` +
                   "Call get_workflow_typings to see the available `infra` API, fix the source, and " +
                   "call write_workflow again.",
               );
@@ -721,7 +721,7 @@ export function workflowTools(): ToolDefinition[] {
       description:
         "Run a workflow now and return its outcome (status, log lines, output, error). " +
         "Non-interactive: `infra.prompt()` throws. Use this to verify a workflow you just wrote. " +
-        "The workflow's own code may create or delete real infrastructure — read the source first " +
+        "The workflow's own code may create or delete real infrastructure; read the source first " +
         "if you did not write it. The chat surface confirms with the user before invoking.",
       inputSchema: { workflowId: z.string() },
       // Destructive-tier despite not deleting anything itself: it executes
@@ -764,7 +764,7 @@ export function workflowTools(): ToolDefinition[] {
       name: "delete_workflow",
       title: "Delete workflow",
       description:
-        "Delete a workflow (soft delete — its run history is retained). Audit-logged. The chat " +
+        "Delete a workflow (soft delete, its run history is retained). Audit-logged. The chat " +
         "surface confirms with the user before invoking.",
       inputSchema: { workflowId: z.string() },
       risk: "destructive",

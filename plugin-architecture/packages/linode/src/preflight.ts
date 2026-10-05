@@ -208,7 +208,7 @@ export function linodePolicyTemplate(capabilityIds: string[]): PolicyTemplate {
     language: "text",
     document: scopes.join("\n"),
     instructions:
-      "In Cloud Manager open your profile, then API Tokens, and create a personal access token. Set each listed area to the access shown and leave the rest at No Access. For a read-only account, choose Read Only for every area; editing and actions will then be refused by Linode.",
+      "In Cloud Manager open your profile, then API Tokens, and create a personal access token. Set each listed area to the access shown and leave the rest at No Access. Choose Read Only everywhere for a read-only account.",
     helpLink: TOKENS_HELP,
   };
 }

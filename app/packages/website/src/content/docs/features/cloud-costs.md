@@ -166,7 +166,7 @@ Every filter editor — the cost graph editor, the report editor, and the budget
 
 Going the other way, once you have built rows worth keeping, **Save these rows as a filter…** names them and swaps the rows for the chip.
 
-Saved filters are managed on the **Costs** panel, in the **Saved filters** section under your budgets — that is where the objects they scope live. Each row shows the filter as query text; editing one warns you what it will re-scope by naming every graph, report and budget that references it.
+Saved filters are managed on the **Costs** panel, in the **Saved filters** section of the **Allocation** tab. That is where the objects they scope live. Each row shows the filter as query text; editing one warns you what it will re-scope by naming every graph, report and budget that references it.
 
 ![The Costs panel's Saved filters section listing two filters with their query text, with the edit modal open showing the "Saving changes budget ..." referent warning](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/saved-filters-edit-modal.png)
 
@@ -393,7 +393,19 @@ Budgets alert on totals you chose. For spend you didn't see coming — a provide
 
 ## The Costs panel
 
-**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — then every budget you have, then [tag compliance, untagged spend, and showback](./tag-policy-and-showback.md), then recently detected [anomalies](./cost-anomaly-alerts.md), and finally the resources that look wasted.
+**Costs** in the sidebar opens the Costs panel. It is split into tabs, and Infrawrench remembers the one you last used. The first tab, **Overview**, shows month-to-date spend for the whole org, broken down by provider, account, or service, and then every budget you have.
+
+| Tab                       | What is on it                                                                                                                                                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**              | This month, and Budgets.                                                                                                                                                                                         |
+| **Alerts**                | Recently detected [anomalies](./cost-anomaly-alerts.md), [change alerts](./cost-change-alerts.md), and [commitment and unit-cost alerts](./commitment-and-unit-cost-alerts.md).                                  |
+| **Savings**               | [Potential savings](./orphan-finder.md), [Oversized](./right-sizing.md), [Extended support](./extended-support.md), [Sleep schedules](./sleep-schedules.md), and [Realized savings](./realized-savings.md) last. |
+| **Commitments & credits** | [Credit burndown](./credit-burndown.md) and [Commitments](./commitments.md).                                                                                                                                     |
+| **Network**               | [Network costs](./network-costs.md) and [Kubernetes network costs](./kubernetes-costs.md).                                                                                                                       |
+| **Carbon**                | [Estimated carbon](./carbon.md). Shown only where the app supports it.                                                                                                                                           |
+| **Allocation**            | [Unit costs](./unit-costs.md), Saved filters, [Scenario models](./scenario-models.md), and Tags & allocation ([tag compliance, untagged spend, and showback](./tag-policy-and-showback.md)).                     |
+
+The mobile app has the same tabs except Network. Its **Commitments** tab has no credit burndown.
 
 A budget belongs to the org, not to a dashboard. It keeps evaluating and keeps alerting whether or not anything is showing it, which is why the panel exists: it is the one place a budget is always reachable. Each row says which dashboards carry a card for it, or **On no dashboard** when none do.
 
@@ -427,7 +439,7 @@ The same budget can appear on as many dashboards as you like — one budget, man
 
 ### Unit costs
 
-Under the saved filters, **Unit costs** lists the org's business metrics — the denominators a cost graph can divide by — with how many days each one actually has values for. A metric nobody is reporting draws a chart made entirely of gaps, and this is the only place that failure is visible, so a metric with no values says so in amber. See [Unit costs & margin](./unit-costs.md).
+On the **Allocation** tab, **Unit costs** lists the org's business metrics, the denominators a cost graph can divide by, with how many days each one actually has values for. A metric nobody is reporting draws a chart made entirely of gaps, and this is the only place that failure is visible, so a metric with no values says so in amber. See [Unit costs & margin](./unit-costs.md).
 
 ### Potential savings
 
@@ -518,19 +530,19 @@ If you run infrastructure on other people's behalf, the last step is a document.
 
 ## Prepaid credit
 
-Cost graphs answer "what did we spend". For providers that work off a prepaid pot rather than an invoice, the more urgent question is "how long until it runs out" — see [credit burndown](./credit-burndown.md), which sits on the same Costs panel.
+Cost graphs answer "what did we spend". For providers that work off a prepaid pot rather than an invoice, the more urgent question is "how long until it runs out", see [credit burndown](./credit-burndown.md), which sits on the Costs panel's **Commitments & credits** tab.
 
 ## Commitments
 
-The other question a spend graph can't answer is "are the reservations and savings plans we bought actually paying for themselves". See [Commitments](./commitments.md) — the holdings, how much of the usage bill they cover, their utilization, and a planner that sizes what to buy next — also on the Costs panel.
+The other question a spend graph can't answer is "are the reservations and savings plans we bought actually paying for themselves". See [Commitments](./commitments.md), the holdings, how much of the usage bill they cover, their utilization, and a planner that sizes what to buy next, also on the Costs panel's **Commitments & credits** tab.
 
 ## What the savings actually saved
 
-The finders on the Costs panel say what could be saved. **Realized savings**, the last section on the panel, says what the actions you took did save: each resize, orphan cleanup, sleep schedule, commitment discount and logged saving, measured against the resource's own spend before the action and shown beside its projection, with shortfalls flagged. See [Realized savings](./realized-savings.md).
+The finders on the Costs panel's **Savings** tab say what could be saved. **Realized savings**, the last section on the Costs panel's **Savings** tab, says what the actions you took did save: each resize, orphan cleanup, sleep schedule, commitment discount and logged saving, measured against the resource's own spend before the action and shown beside its projection, with shortfalls flagged. See [Realized savings](./realized-savings.md).
 
 ## Where the egress went
 
-A spend graph can say `AWSDataTransfer` cost $4,100. It cannot say which two services were talking, because every cost dimension describes one side of a transfer and a network charge is about a **pair**. See [Network costs](./network-costs.md) — priced source→destination attribution read from your VPC flow logs, on the same Costs panel.
+A spend graph can say `AWSDataTransfer` cost $4,100. It cannot say which two services were talking, because every cost dimension describes one side of a transfer and a network charge is about a **pair**. See [Network costs](./network-costs.md), priced source→destination attribution read from your VPC flow logs, on the Costs panel's **Network** tab.
 
 Those figures are estimates and are kept deliberately apart from collected spend: adding a derived second opinion of data transfer to the numbers on this page would double-count the same bytes.
 

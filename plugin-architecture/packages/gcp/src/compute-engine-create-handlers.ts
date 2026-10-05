@@ -70,9 +70,7 @@ async function waitForZoneOperation(
       continue;
     }
     if (op.error || op.httpErrorMessage) {
-      throw new Error(
-        `GCP Compute: creating the instance failed — ${formatZoneOperationError(op)}`,
-      );
+      throw new Error(`GCP Compute: creating the instance failed: ${formatZoneOperationError(op)}`);
     }
     if (op.status === "DONE") return;
     await new Promise((resolve) => setTimeout(resolve, ZONE_OPERATION_POLL_MS));
@@ -609,7 +607,7 @@ export const computeEngineCreateResourceHandlers: Record<
     const zone = fields["zone"] ?? "";
     if (!zone) {
       throw new Error(
-        'GCP Compute: no zone specified for the new instance — pass a "zone" field (e.g. "us-central1-a").',
+        'GCP Compute: no zone specified for the new instance. Pass a "zone" field (e.g. "us-central1-a").',
       );
     }
     const machineType = fields["machineType"] ?? "";

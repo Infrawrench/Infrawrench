@@ -12,7 +12,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Temporal Cloud",
   description:
-    "Durable execution as a service. Track Temporal Cloud spend by namespace and usage dimension from billing reports, chart actions, workflow outcomes, latency and backlog per namespace, and manage namespaces (retention, authentication, search attributes, replicas and failover), export sinks, users, service accounts, API keys, Nexus endpoints and connectivity rules.",
+    "Durable execution as a service. Track spend by namespace and usage dimension, chart actions, workflow outcomes, latency and backlog, and manage namespaces, export sinks, users, service accounts, API keys, Nexus endpoints and connectivity rules.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",

@@ -4,13 +4,13 @@ export const CronJobResourceType = rt({
   name: "CronJob",
   pinnable: false,
   id: "k8s-cronjob",
-  description: "A Kubernetes CronJob — runs Jobs on a schedule",
+  description: "A Kubernetes CronJob that runs Jobs on a schedule",
   fields: [
     f("name", "Name"),
     f("namespace", "Namespace"),
     f("qualifiedName", "Qualified Name", {
       required: false,
-      description: "namespace/name — how the Jobs it spawns reference this CronJob",
+      description: "namespace/name, as referenced by the Jobs it spawns",
     }),
     f("schedule", "Schedule", { required: false }),
     f("suspended", "Suspended", { required: false }),

@@ -61,7 +61,7 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
             {failing.map((s) => (
               <li key={s.accountId} className="text-on-surface-secondary">
                 {failing.length > 1 && (
-                  <span className="text-on-surface-muted">{s.displayName} — </span>
+                  <span className="text-on-surface-muted">{s.displayName}: </span>
                 )}
                 {s.costPollError!.message}
                 {s.costPollError!.helpLink && (
@@ -90,9 +90,7 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
             ))}
           </ul>
           <p className="mt-1.5 text-xs text-on-surface-faint">
-            {gt(
-              "Collection retries on its own — fix the cause and the next run backfills the gap.",
-            )}
+            {gt("Collection retries on its own; fix the cause and the next run fills the gap.")}
           </p>
         </div>
       )}
@@ -118,7 +116,7 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
           )}
           <p className="mt-1.5 text-xs text-on-surface-faint">
             {gt(
-              "Collection ran without error — the provider just hasn't reported any spend. A billing export enabled in the last day or two often has no rows to return yet.",
+              "Collection worked, but the provider hasn't reported any spend. New billing exports can take a day or two.",
             )}
           </p>
         </div>
@@ -145,7 +143,7 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
           )}
           <p className="mt-1.5 text-xs text-on-surface-faint">
             {gt(
-              "{subject} no billing API, so the amounts are what your current resources list for rather than what you were billed. Expect it to run low: anything deleted part-way through the period is no longer there to price, every rate is list rather than negotiated, and credits, tax and refunds never appear.",
+              "{subject} no billing API, so amounts are list prices for your current resources, not your bill. Expect it to run low: deleted resources, discounts, credits, tax and refunds are missing.",
               {
                 subject:
                   estimated.length === 1

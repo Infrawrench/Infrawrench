@@ -13,7 +13,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "Confluent Cloud",
   description:
-    "Managed Apache Kafka, Connect, Flink, ksqlDB and Schema Registry. Track Confluent Cloud spend by product, environment and resource, chart cluster throughput, consumer lag and CKU utilization, resize clusters, pause and resume connectors, manage Flink compute pools, service accounts and API keys, and browse topics through the Kafka plugin.",
+    "Managed Apache Kafka, Connect, Flink, ksqlDB and Schema Registry. Track spend, chart cluster throughput and consumer lag, resize clusters, manage connectors, Flink compute pools, service accounts and API keys.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",

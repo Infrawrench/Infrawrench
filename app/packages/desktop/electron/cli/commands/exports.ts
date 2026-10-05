@@ -31,7 +31,7 @@ import { resolveReport } from "./reports";
 function requireCloud(ctx: CliContext): void {
   if (ctx.flags.local) {
     throw new CliError(
-      "Cost exports live in Infrawrench Cloud — there is no local cost history to export.",
+      "Cost exports live in Infrawrench Cloud. There is no local cost history to export.",
     );
   }
 }
@@ -93,7 +93,7 @@ export async function cmdExports(ctx: CliContext): Promise<void> {
   if (exports.length === 0) {
     println(
       c.dim(
-        "No cost exports. An export writes your raw cost rows to a bucket, an HTTPS endpoint, or a Snowflake/Databricks table on a schedule — create one in Settings → Cost Exports, or `infrawrench exports create` for a table.",
+        "No cost exports. An export writes your raw cost rows to a bucket, an HTTPS endpoint, or a Snowflake/Databricks table on a schedule. Create one in Settings → Cost Exports, or `infrawrench exports create` for a table.",
       ),
     );
     return;
@@ -183,7 +183,7 @@ export async function cmdRunExport(ctx: CliContext, query: string): Promise<void
   if (run.collectionWatermark) {
     println(
       c.dim(
-        `Collection watermark ${run.collectionWatermark} — periods ending after it are still moving.`,
+        `Collection watermark ${run.collectionWatermark}. Periods ending after it are still moving.`,
       ),
     );
   }

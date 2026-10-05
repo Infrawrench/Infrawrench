@@ -245,9 +245,8 @@ export function OnCallSection() {
         <h2 className="text-lg font-semibold mb-1">{gt("On-call")}</h2>
         <T>
           <p className="text-sm text-on-surface-muted">
-            Who to wake, rather than which channel to shout into. A rotation is a list of people, a
-            shift length and a handover time; an alert routing rule can then say "whoever is on
-            call" and keep meaning it after Monday's handover.
+            Rotations of people with a shift length and handover time. Alert routing rules can send
+            to whoever is on call.
           </p>
         </T>
       </div>
@@ -369,7 +368,7 @@ export function OnCallSection() {
 
           <fieldset className="flex flex-col gap-2">
             <legend className="text-xs text-on-surface-tertiary">
-              {gt("Rotation order — click to add, click again to remove")}
+              {gt("Rotation order (click to add, click again to remove)")}
             </legend>
             <div className="flex flex-wrap gap-1.5 text-xs">
               {members.map((member) => {
@@ -439,10 +438,7 @@ export function OnCallSection() {
 
       {!loading && schedules.length === 0 && draft === null && (
         <T>
-          <p className="text-sm text-on-surface-faint">
-            No rotations yet. Create one and an alert routing rule can send to whoever is on call
-            instead of to a channel.
-          </p>
+          <p className="text-sm text-on-surface-faint">No rotations yet.</p>
         </T>
       )}
 
@@ -625,11 +621,9 @@ export function OnCallSection() {
 
       <T>
         <p className="text-xs text-on-surface-faint">
-          Shift boundaries are calendar days in the rotation's own time zone, so a 09:00 handover
-          stays at 09:00 through a daylight-saving change. A rotation that is off, empty, or has not
-          started yet resolves to nobody — and a routing rule that names it still delivers to its
-          other destinations, because an alert lost to a misconfigured rotation would be the worst
-          thing this could do.
+          Handovers follow the rotation&apos;s time zone, including daylight-saving changes. A
+          rotation that is off, empty or not yet started resolves to nobody; routing rules still
+          deliver to their other destinations.
         </p>
       </T>
     </div>

@@ -67,7 +67,7 @@ describe("formatChangeCostImpact", () => {
       reasons: ["period_native_provider"],
     });
     expect(formatChangeCostImpact(unknown, { verbose: true })).toBe(
-      "Cost impact unknown — this provider bills by invoice period, not by day.",
+      "Cost impact unknown: this provider bills by invoice period, not by day.",
     );
   });
 
@@ -103,7 +103,7 @@ describe("changeCostImpactAnnotationText", () => {
   it("writes a note naming the subject, the delta and the basis", () => {
     expect(
       changeCostImpactAnnotationText({ kind: "change", label: "api-prod updated" }, measured()),
-    ).toBe("Change: api-prod updated — +$12/day (+120%) · cash basis, 7d before/after");
+    ).toBe("Change api-prod updated: +$12/day (+120%) · cash basis, 7d before/after");
   });
 
   it("says when other changes overlapped rather than claiming the whole delta", () => {

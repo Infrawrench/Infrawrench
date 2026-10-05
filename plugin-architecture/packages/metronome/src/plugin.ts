@@ -20,7 +20,7 @@ const manifest: PluginManifest = {
       key: "apiToken",
       label: "API Token",
       description:
-        "A Metronome API token, created in the Metronome app under Developer, then API tokens. A token keeps the permissions of the user who made it; Infrawrench only reads, so a token Metronome support has scoped to read-only access works.",
+        "A Metronome API token, created in the Metronome app under Developer, then API tokens. A token keeps its creator's permissions. Infrawrench only reads, so a read-only token works.",
       sensitive: true,
       helpLink: {
         label: "Create a Metronome API token",

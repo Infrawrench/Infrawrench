@@ -6,7 +6,7 @@ const ParticipantRole = z.enum(["observer", "driver"]).openapi({
   description:
     "`driver` holds the keyboard; `observer` sees the terminal and cannot type into it. " +
     "Exactly one participant per console is a driver at any moment, enforced by a partial " +
-    "unique index rather than by the application — two simultaneous handovers cannot both win.",
+    "unique index rather than by the application; two simultaneous handovers cannot both win.",
 });
 
 const ParticipantStatus = z.enum(["joined", "left", "removed"]).openapi({
@@ -17,7 +17,7 @@ const ParticipantStatus = z.enum(["joined", "left", "removed"]).openapi({
 
 const SharedConsoleStatus = z.enum(["active", "revoked", "ended"]).openapi({
   description:
-    "`revoked` — somebody ended the share; `ended` — the underlying SSH session closed. " +
+    "`revoked`: somebody ended the share; `ended`: the underlying SSH session closed. " +
     "Either way the fan-out stops and attached guests are disconnected.",
 });
 
@@ -32,7 +32,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
     status: ParticipantStatus,
     driverRequestedAt: IsoDateTime.nullable().describe(
       "Set when this participant has asked for the keyboard and nobody has answered yet. " +
-        "Asking grants nothing — only the current driver or the sharer can move it.",
+        "Asking grants nothing; only the current driver or the sharer can move it.",
     ),
     joinedAt: IsoDateTime,
   }).openapi("SharedConsoleParticipant");
@@ -49,9 +49,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
     ownerName: z.string().nullable(),
     accountId: Uuid.nullable(),
     resourceId: z.string().nullable(),
-    host: z
-      .string()
-      .describe("Final hop, as the proxy dialled it — never as a client asserted it."),
+    host: z.string().describe("Final hop, as the proxy dialled it; never as a client asserted it."),
     port: z.number().int(),
     username: z.string(),
     allowHandover: z
@@ -100,7 +98,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
       .string()
       .describe(
         "The invite, returned exactly once. Only its sha256 is stored, so it cannot be shown " +
-          "again — mint a replacement instead.",
+          "again: mint a replacement instead.",
       ),
   }).openapi("SharedConsoleCreated");
 
@@ -122,7 +120,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
   const CreateSharedConsole = strict({
     liveConsoleId: Uuid.describe(
       "The pty to share, as the terminal's WebSocket reported it in its `ssh:connected` frame. " +
-        "Everything else about the session — host, account, recording — is read from the " +
+        "Everything else about the session (host, account, recording) is read from the " +
         "proxy's own registration rather than from this body.",
     ),
     routingKey: z.string().min(8).max(128),
@@ -158,10 +156,10 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
       "Opens a share on a session you already have running and mints its first invite. You " +
       "become the driver.\n\n" +
       "Returns 409 `console_not_here` when the pty is held by a different server replica than " +
-      "the one answering this call — reopen the terminal and share again. Writing the share " +
+      "the one answering this call; reopen the terminal and share again. Writing the share " +
       "anyway would produce a link that authorises correctly and then finds nothing to attach " +
       "to.\n\n" +
-      "Requires `resources:execute` — the same permission as opening the terminal. Closed to " +
+      "Requires `resources:execute`: the same permission as opening the terminal. Closed to " +
       "API keys: sharing a shell is an act a person performs.",
     request: {
       params: OrgIdParam,
@@ -186,7 +184,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
     description:
       "What the join screen shows before anyone commits: which host, whose session, and " +
       "whether you may join it. Reachable with a valid token by a signed-in member who " +
-      "already holds `resources:execute` — the token says *which* session, never *whether*. " +
+      "already holds `resources:execute`: the token says *which* session, never *whether*. " +
       "Returns nothing from the session itself.",
     request: { params: OrgIdParam.extend({ token: z.string() }) },
     responses: {
@@ -205,7 +203,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
     summary: "Get one shared console",
     description:
       "Visible to participants and to anyone who could revoke it (the sharer, or a holder of " +
-      "`org:settings:write`). Others get 404 — that a named colleague has a root shell open " +
+      "`org:settings:write`). Others get 404: that a named colleague has a root shell open " +
       "on a named production host right now is operational information.",
     request: { params: OrgIdParam.extend({ consoleId: Uuid }) },
     responses: {
@@ -223,7 +221,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
     tags: ["Shared consoles"],
     summary: "Redeem an invite and join",
     description:
-      "Admission needs live org membership **and** `resources:execute` — the invite is a " +
+      "Admission needs live org membership **and** `resources:execute`: the invite is a " +
       "locator, never a capability, so a leaked link admits nobody who could not have opened " +
       "the shell themselves.\n\n" +
       "The invite is consumed by the first person it admits. Somebody already on the console " +
@@ -276,7 +274,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
     description:
       "Authorised by the **current driver** (the keyboard is theirs to give) or by the " +
       "**sharer** (it is their box, and asking permission from somebody who has stopped " +
-      "responding is not a control). An observer cannot promote themselves — that is " +
+      "responding is not a control). An observer cannot promote themselves; that is " +
       "`/request-driver`.\n\n" +
       "Two simultaneous grants cannot both win: the database's partial unique index decides " +
       "the order, and the loser gets 409 `driver-race-lost`.\n\n" +
@@ -303,7 +301,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
     tags: ["Shared consoles"],
     summary: "Ask for the keyboard",
     description:
-      "Raises a flag the driver and the sharer can see. Grants nothing on its own — that is " +
+      "Raises a flag the driver and the sharer can see. Grants nothing on its own; that is " +
       "the point.",
     request: { params: OrgIdParam.extend({ consoleId: Uuid }) },
     responses: {
@@ -371,7 +369,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
     description:
       "Their socket is closed immediately on the replica holding the pty, and within one " +
       "two-second sweep on any other. They are marked `removed` rather than `left`, so they " +
-      "cannot resume without a fresh invite. The sharer cannot be removed — revoke the share.",
+      "cannot resume without a fresh invite. The sharer cannot be removed, revoke the share.",
     request: { params: OrgIdParam.extend({ consoleId: Uuid, participantId: Uuid }) },
     responses: {
       200: {
@@ -391,7 +389,7 @@ export function registerSharedConsolePaths(ctx: BuildContext) {
     summary: "Revoke a share",
     description:
       "Disconnects every guest and stops the fan-out. The sharer's own SSH session carries on " +
-      "— revoking a share is not killing a terminal.\n\n" +
+      ": revoking a share is not killing a terminal.\n\n" +
       "The sharer or a holder of `org:settings:write`. Deliberately does **not** require " +
       "`resources:execute`: ending access must never be gated on still holding the access, or " +
       "an owner whose role was narrowed mid-incident could not close the session they opened.",

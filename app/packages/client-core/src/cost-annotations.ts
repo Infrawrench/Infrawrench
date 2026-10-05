@@ -126,7 +126,7 @@ function inclusiveDaySpan(from: string, to: string): number {
 export function costAnnotationInputError(input: CostAnnotationInput): string | null {
   if (!ISO_DAY.test(input.startDate)) return "Pick a date for the annotation.";
   const text = input.text.trim();
-  if (!text) return "An annotation needs some text — that is the whole point of it.";
+  if (!text) return "An annotation needs some text; that is the whole point of it.";
   if (text.length > COST_ANNOTATION_LIMITS.maxTextLength) {
     return `Keep the note under ${COST_ANNOTATION_LIMITS.maxTextLength} characters.`;
   }
@@ -349,9 +349,9 @@ export function costAnomalyExplanationPrefill(
 ): string {
   const delta = costAnomalyDeltaPercent(anomaly);
   if (anomaly.kind === "new_source" || delta === null) {
-    return `${anomaly.dimensionKey} started spending — `;
+    return `${anomaly.dimensionKey} started spending: `;
   }
-  return `${anomaly.dimensionKey} spend ${delta} — `;
+  return `${anomaly.dimensionKey} spend ${delta}: `;
 }
 
 /**

@@ -126,7 +126,7 @@ export function gcpRenderDetail(
       supportsReveal: false,
       valuelessAdd: true,
       helpText:
-        "CryptoKey versions hold the actual key material, which never leaves Google Cloud. Adding a version rotates the key; destroy schedules deletion after a 24-hour grace period.",
+        "Versions hold the key material, which never leaves Google Cloud. Adding a version rotates the key. Destroying one schedules deletion after 24 hours.",
     };
   }
 
@@ -286,7 +286,7 @@ export function gcpRenderDetail(
           type: "plugin-action",
           actionId: "restart-replace",
           confirmMessage:
-            "Restart/replace the VMs in this instance group? VMs will be restarted in place where possible, or replaced with new VMs from the current template if the change is disruptive.",
+            "Restart or replace the VMs in this instance group? VMs restart in place where possible, otherwise they are replaced from the current template.",
           successMessage: "Restart/replace requested.",
         },
       },
@@ -321,7 +321,7 @@ export function gcpRenderDetail(
       subtitle: `Chat with ${modelId}`,
       greeting:
         "Hi! This streams from Vertex AI's OpenAI-compatible Gemini endpoint. " +
-        "Send a prompt — the full conversation history is included on each turn.",
+        "Send a prompt. The full conversation history is included on each turn.",
       inputPlaceholder: "Send a message…",
     };
   }

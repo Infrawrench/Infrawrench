@@ -146,7 +146,7 @@ export function coreweavePolicyTemplate(capabilityIds: string[]): PolicyTemplate
     language: "text",
     document: roles.join("\n"),
     instructions:
-      "In the CoreWeave Cloud Console, open IAM, Access Policies, and add a rule granting these roles to the user (or group) that owns the API access token. CKS Admin is only needed to create, edit, scale and delete; CKS Viewer alone keeps the account read-only. The usage export also has to be enabled for the organization by CoreWeave Support.",
+      "In the CoreWeave Cloud Console, open IAM, Access Policies, and add a rule granting these roles to the user (or group) that owns the API access token. CKS Admin is only needed to create, edit, scale and delete; CKS Viewer is read-only. CoreWeave Support must also enable the usage export.",
     helpLink: ACCESS_POLICIES_HELP,
   };
 }

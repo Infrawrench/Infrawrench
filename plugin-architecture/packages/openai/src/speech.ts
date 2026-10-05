@@ -10,7 +10,7 @@ import type { SpeechPanelOption } from "@infrawrench/plugin-base";
  * compatibility but are no longer in the enum, so they are not offered.
  */
 export const TTS_VOICES: SpeechPanelOption[] = [
-  { id: "alloy", label: "Alloy", description: "Neutral, even-toned — the API default" },
+  { id: "alloy", label: "Alloy", description: "Neutral, even-toned (the API default)" },
   { id: "ash", label: "Ash", description: "Warm and conversational" },
   { id: "ballad", label: "Ballad", description: "Soft, expressive, slower cadence" },
   { id: "coral", label: "Coral", description: "Bright and upbeat" },

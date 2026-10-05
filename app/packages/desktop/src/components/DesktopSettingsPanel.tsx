@@ -31,7 +31,7 @@ export function DesktopSettingsPanel({ section }: { section: string }) {
         <T>
           <p className="text-sm text-on-surface-muted max-w-sm text-center">
             Organization settings live in Infrawrench Cloud. Sign in and pick an organization to
-            manage its team, keys, alerts and billing from here.
+            manage them.
           </p>
         </T>
       </div>

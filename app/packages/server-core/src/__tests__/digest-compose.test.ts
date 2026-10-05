@@ -455,7 +455,7 @@ describe("formatting", () => {
       ),
     );
     expect(body).toContain(
-      "*Biggest cost move*: api-prod (updated) — +$42.50/day (cash basis, 7d before/after)",
+      "*Biggest cost move*: api-prod (updated): +$42.50/day (cash basis, 7d before/after)",
     );
   });
 

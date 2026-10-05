@@ -627,7 +627,7 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
       lines.push([
         { text: `Spend${suffix}: ${formatAmount(t.currentAmount, t.currency)}`, bold: true },
         {
-          text: ` — ${formatDelta(t.delta, t.currency)} (${formatPct(t.deltaPct)}) vs ${formatAmount(t.previousAmount, t.currency)} the week before`,
+          text: `, ${formatDelta(t.delta, t.currency)} (${formatPct(t.deltaPct)}) vs ${formatAmount(t.previousAmount, t.currency)} the week before`,
           bold: false,
         },
       ]);
@@ -771,7 +771,7 @@ function projectionSegments(projection: DigestProjection | null): DigestLine | n
   }
   const suffix = [
     parts.length > 0 ? ` (${parts.join(", ")})` : "",
-    caveats.length > 0 ? ` — ${caveats.join("; ")}` : "",
+    caveats.length > 0 ? `: ${caveats.join("; ")}` : "",
   ].join("");
   return [
     { text: "Projected spend", bold: true },
@@ -798,7 +798,7 @@ function costMoverSegments(mover: DigestCostMover | null): DigestLine | null {
     { text: "Biggest cost move", bold: true },
     {
       text:
-        `: ${mover.displayName} (${mover.changeKind}) — ` +
+        `: ${mover.displayName} (${mover.changeKind}): ` +
         `${formatDelta(mover.deltaPerDay, mover.currency)}/day ` +
         `(${mover.costBasis}, ${mover.windowDays}d before/after${caveat})`,
       bold: false,

@@ -12,7 +12,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const UtAppResourceType = rt({
   name: "App",
   id: "ut-app",
-  description: "An UploadThing app — the storage namespace an API key belongs to",
+  description: "An UploadThing app: the storage namespace an API key belongs to",
   fields: [
     f("appId", "App ID"),
     f("defaultAcl", "Default ACL", {
@@ -29,7 +29,7 @@ export const UtAppResourceType = rt({
   ],
   outputs: [
     o("appId", "App ID"),
-    o("appUrl", "App URL", { description: "https://<appId>.ufs.sh — the app's file-serving host" }),
+    o("appUrl", "App URL", { description: "https://<appId>.ufs.sh, the app's file-serving host" }),
     o("fileUrlPrefix", "File URL Prefix", {
       description: "Prepend to a file key to get its public URL",
     }),

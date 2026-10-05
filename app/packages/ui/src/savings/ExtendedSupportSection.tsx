@@ -130,9 +130,8 @@ export function ExtendedSupportSection({
           <h2 className="text-sm font-semibold text-on-surface">{gt("Extended support")}</h2>
           <T>
             <p className="mt-1 text-xs text-on-surface-secondary">
-              Clusters and databases on versions their provider charges extra to keep supporting, or
-              is about to upgrade for you, with what upgrading saves each month. Upcoming ones are
-              listed <Var>{data?.leadDays ?? 90}</Var> days ahead.
+              Clusters and databases on paid extended-support or soon-forced-upgrade versions, with
+              the monthly saving from upgrading. Looks <Var>{data?.leadDays ?? 90}</Var> days ahead.
             </p>
           </T>
         </div>
@@ -147,7 +146,7 @@ export function ExtendedSupportSection({
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't check support calendars —")} {error}{" "}
+          {gt("Couldn't check support calendars:")} {error}{" "}
           <button type="button" onClick={() => void refresh(true)} className="underline">
             {gt("Retry")}
           </button>
@@ -161,9 +160,7 @@ export function ExtendedSupportSection({
 
       {data !== null && findings.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          {gt(
-            "Nothing is on an extended-support or end-of-life version. Versions are read from synced resources and checked against each provider's published support calendar.",
-          )}
+          {gt("Nothing is on an extended-support or end-of-life version.")}
         </p>
       )}
 
@@ -340,7 +337,7 @@ export function ExtendedSupportSection({
       {findings.length > 0 && (
         <p className="text-xs text-on-surface-faint">
           {gt(
-            "Monthly figures assume 730 hours. List prices come from each provider's published rates for one region (hover a figure for the caveat); billed figures are the last 30 days of the provider's own charges.",
+            "Monthly figures assume 730 hours. List prices are one region's published rates (hover for details); billed figures are the provider's last 30 days of charges.",
           )}
         </p>
       )}

@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const KubernetesClusterResourceType = rt({
   name: "Kubernetes Cluster",
   id: "k8s-cluster",
-  description: "A Kubernetes cluster — connects via kubeconfig (literal or from a DOKS cluster)",
+  description: "A Kubernetes cluster, connected via kubeconfig",
   fields: [
     f("name", "Name"),
     f("kubeconfig", "Kubeconfig", {

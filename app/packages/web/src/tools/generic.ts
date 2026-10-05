@@ -171,7 +171,7 @@ export function genericTools(): ToolDefinition[] {
       name: "list_provider_incidents",
       title: "List provider incidents affecting you",
       description:
-        "Provider status-page incidents overlapping the organization's resources — \"is it me " +
+        "Provider status-page incidents overlapping the organization's resources: \"is it me " +
         "or is it them?\". The poller watches each provider plugin's public status feed and " +
         "this correlates active incidents (plus those resolved in the last 24h) against the " +
         "resources the org holds, by region, resource type, or provider-wide scope. Each " +
@@ -192,8 +192,8 @@ export function genericTools(): ToolDefinition[] {
       title: "List expiring resources",
       description:
         "The expiry radar: every deadline plugins declared on the organization's synced " +
-        "resources — TLS certificate expiries, domain registrations, API token expirations, " +
-        "access keys past their rotation budget, kubeconfig/SSH key ages — soonest first, " +
+        "resources, TLS certificate expiries, domain registrations, API token expirations, " +
+        "access keys past their rotation budget, kubeconfig/SSH key ages, soonest first, " +
         "bucketed by severity against the org's lead time (expired, critical <7d, warning " +
         "<30d, upcoming within lead, ok beyond it). Purely a read over already-synced state; " +
         "no provider API calls. Check this before certificates lapse or tokens rotate out.",
@@ -245,7 +245,7 @@ export function genericTools(): ToolDefinition[] {
       name: "diff_environments",
       title: "Compare two accounts' inventories",
       description:
-        "Compares two accounts of the same provider — typically staging against production — " +
+        "Compares two accounts of the same provider, typically staging against production, " +
         "over already-synced state: which resource types exist in one and not the other, the " +
         "per-type count deltas, and the fields on which two corresponding resources disagree " +
         "(instance class, engine version, replica count, feature flags). Resources are paired " +
@@ -308,10 +308,10 @@ export function genericTools(): ToolDefinition[] {
       name: "list_posture_findings",
       title: "List security posture findings",
       description:
-        "Plugin-declared security checks evaluated over the organization's synced resources — " +
+        "Plugin-declared security checks evaluated over the organization's synced resources, " +
         "public buckets, security groups and firewall rules open to 0.0.0.0/0, unencrypted " +
         "disks and databases, publicly reachable database endpoints, stale credentials, " +
-        "missing backup/deletion protection — ranked by severity (critical, high, medium, " +
+        "missing backup/deletion protection, ranked by severity (critical, high, medium, " +
         "low). Purely a read over already-synced state; no provider API calls. Check this " +
         "when auditing an account's exposure or before opening something to the internet. " +
         "Findings the organization has dismissed as accepted risks are excluded unless you " +
@@ -366,7 +366,7 @@ export function genericTools(): ToolDefinition[] {
       description:
         "Accept a security finding as a known, intentional risk: it leaves the posture list " +
         "and stops feeding the daily posture alerts. Use only when the user has said the " +
-        "exposure is deliberate — this silences a security warning. The rule keeps being " +
+        "exposure is deliberate; this silences a security warning. The rule keeps being " +
         "evaluated and the dismissal is reversible with restore_posture_finding, so nothing " +
         "is destroyed. Identify the finding by the resourceId and ruleId that " +
         "list_posture_findings returns.",
@@ -380,7 +380,7 @@ export function genericTools(): ToolDefinition[] {
           .string()
           .max(500)
           .optional()
-          .describe("Why this exposure is acceptable — recorded with the dismissal."),
+          .describe("Why this exposure is acceptable, recorded with the dismissal."),
       },
       risk: "write",
       // Mirrors `POST /posture/dismissals`: a statement about one resource,
@@ -409,7 +409,7 @@ export function genericTools(): ToolDefinition[] {
       name: "restore_posture_finding",
       title: "Restore a dismissed posture finding",
       description:
-        "Undo a dismissal — the finding returns to the posture list and to the daily alerts. " +
+        "Undo a dismissal; the finding returns to the posture list and to the daily alerts. " +
         "Use when an accepted risk is no longer acceptable, or when a finding was dismissed " +
         "by mistake.",
       inputSchema: {
@@ -443,10 +443,10 @@ export function genericTools(): ToolDefinition[] {
         "Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS, Vercel), with each record's " +
         "target classified against the rest of the workspace: `owned` (resolves to a synced " +
         "resource), `dangling` (points into a provider namespace the workspace manages that " +
-        "nothing synced claims — the subdomain-takeover signature), `external`, or " +
+        "nothing synced claims; the subdomain-takeover signature), `external`, or " +
         "`not-analysed`. Purely a read over already-synced state: no provider API calls and no " +
         'DNS resolution. Use it to answer "what points at this?", to audit a domain before ' +
-        "handing it over, or to find takeover risks — those also appear in " +
+        "handing it over, or to find takeover risks; those also appear in " +
         "`list_posture_findings` as `dns-dangling-target`.",
       inputSchema: {
         status: z
@@ -494,7 +494,7 @@ export function genericTools(): ToolDefinition[] {
         "and transitive dependants, measures who talks to it over the network, and lists the " +
         "dashboards, custom graphs, probes, status pages, metric alerts, leases, schedules, " +
         "saved log queries, workflows and owner record that name it. " +
-        "**Read `unchecked` before concluding anything is safe to delete** — it says what the " +
+        "**Read `unchecked` before concluding anything is safe to delete**; it says what the " +
         "report could not look at (flow collection off, workflows matched only by literal id), " +
         "and an empty dependant list next to a non-empty `unchecked` is not a clean bill of " +
         "health. Call this before proposing or performing delete_resource.",
@@ -521,7 +521,7 @@ export function genericTools(): ToolDefinition[] {
       title: "List resource ownership",
       description:
         "Who owns each resource, what it is for, and the ticket that authorized it. Only " +
-        "resources somebody has recorded something about appear — a resource absent from this " +
+        "resources somebody has recorded something about appear; a resource absent from this " +
         "list is unowned, which is itself the answer to 'who do I ask before deleting this?'. " +
         "Ownership also decides who resource-scoped alerts are delivered to, so an owner with " +
         "`ownerUserId` set is reachable and one with only `ownerLabel` (a team name) is not. " +
@@ -534,9 +534,7 @@ export function genericTools(): ToolDefinition[] {
         unownedOnly: z
           .boolean()
           .optional()
-          .describe(
-            "Return only records that name nobody — a purpose or ticket with no owner set.",
-          ),
+          .describe("Return only records that name nobody; a purpose or ticket with no owner set."),
       },
       risk: "read",
       // Mirrors `GET /ownership`.
@@ -696,7 +694,7 @@ export function genericTools(): ToolDefinition[] {
         resourceTypeId: z
           .string()
           .optional()
-          .describe("The parent's resource type id, if known — skips a lookup"),
+          .describe("The parent's resource type id, if known; skips a lookup"),
       },
       risk: "read",
       permission: "resources:read",
@@ -744,7 +742,7 @@ export function genericTools(): ToolDefinition[] {
         }
         if (!resourceTypeId) {
           return err(
-            "Could not resolve the resource's type — pass resourceTypeId explicitly (see list_resources / search_resources)",
+            "Could not resolve the resource's type; pass resourceTypeId explicitly (see list_resources / search_resources)",
           );
         }
         const typeDef = ctx.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
@@ -801,7 +799,7 @@ export function genericTools(): ToolDefinition[] {
         "List live resources of a given type for an account. Also works inside sidecars: to see " +
         "what's running in a managed Kubernetes cluster (DOKS, EKS, GKE, …), pass pluginId " +
         "'kubernetes', the cluster's accountId, a kubernetes resourceTypeId (e.g. " +
-        "'k8s-deployment', 'k8s-pod' — see list_resource_types), and parentResourceId = the " +
+        "'k8s-deployment', 'k8s-pod'; see list_resource_types), and parentResourceId = the " +
         "cluster's resource id. Same pattern for managed databases (postgres/mysql/redis/mongodb).",
       inputSchema: {
         pluginId: z.string(),
@@ -897,7 +895,7 @@ export function genericTools(): ToolDefinition[] {
       name: "get_resource_outputs",
       title: "Get resource outputs",
       description:
-        "Resolve a list of output keys for a resource (e.g. connectionString, ipv4). Outputs marked sensitive are returned in plaintext — handle with care. In chat, a call that includes any sensitive output (or omits outputKeys on a type that has one) waits for the user to approve it; ask only for the non-sensitive keys you need to avoid that.",
+        "Resolve a list of output keys for a resource (e.g. connectionString, ipv4). Outputs marked sensitive are returned in plaintext; handle with care. In chat, a call that includes any sensitive output (or omits outputKeys on a type that has one) waits for the user to approve it; ask only for the non-sensitive keys you need to avoid that.",
       inputSchema: {
         ...resourceTargetSchema,
         outputKeys: z
@@ -958,7 +956,7 @@ export function genericTools(): ToolDefinition[] {
       name: "get_resource_inputs",
       title: "Get resource inputs",
       description:
-        "Return the resource's user-supplied inputs: non-secret fields plus the secret-field bindings (literal vs output-ref) — secret values are NOT included.",
+        "Return the resource's user-supplied inputs: non-secret fields plus the secret-field bindings (literal vs output-ref); secret values are NOT included.",
       inputSchema: {
         resourceId: z.string(),
       },
@@ -1146,7 +1144,7 @@ export function genericTools(): ToolDefinition[] {
           .optional()
           .describe(
             "Stored org SSH key id (see list_ssh_keys) to install for SSH access. Only for " +
-              "resource types that accept an SSH key at create time (VM types) — its public " +
+              "resource types that accept an SSH key at create time (VM types); its public " +
               "key is injected into the type's SSH-key field.",
           ),
       },
@@ -1236,8 +1234,8 @@ export function genericTools(): ToolDefinition[] {
       title: "Delete resource",
       description:
         "Permanently delete a resource. Audit-logged. The chat surface confirms with the user " +
-        "before invoking. Call get_blast_radius first and say what it found — including its " +
-        "`unchecked` list — so the confirmation is an informed one.",
+        "before invoking. Call get_blast_radius first and say what it found, including its " +
+        "`unchecked` list; so the confirmation is an informed one.",
       inputSchema: resourceTargetSchema,
       risk: "destructive",
       permission: "resources:delete",
@@ -1298,7 +1296,7 @@ export function genericTools(): ToolDefinition[] {
       name: "invoke_action",
       title: "Invoke resource action",
       description:
-        "Run a plugin-defined action against a resource (start/stop/restart/etc.). actionId is plugin-specific — discover via the resource's detail schema.",
+        "Run a plugin-defined action against a resource (start/stop/restart/etc.). actionId is plugin-specific; discover via the resource's detail schema.",
       inputSchema: {
         ...resourceTargetSchema,
         actionId: z.string(),
@@ -1387,7 +1385,7 @@ export function genericTools(): ToolDefinition[] {
       name: "apply_manifest",
       title: "Apply resource manifest",
       description:
-        "Apply an updated manifest (YAML/JSON) to a resource — primary edit path for k8s, postgres, and similar plugins. Audit-logged.",
+        "Apply an updated manifest (YAML/JSON) to a resource, primary edit path for k8s, postgres, and similar plugins. Audit-logged.",
       inputSchema: {
         ...resourceTargetSchema,
         manifest: z.string(),

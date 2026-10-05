@@ -4,7 +4,7 @@ export const GenAiKnowledgeBaseResourceType = rt({
   name: "Knowledge Base",
   id: "gen-ai-knowledge-base",
   description:
-    "A DigitalOcean Gradient AI Platform knowledge base — a vector index built over your documents and data sources, queryable by agents for retrieval-augmented generation.",
+    "A DigitalOcean Gradient AI knowledge base: a vector index over your documents that agents can query.",
   fields: [
     f("name", "Name"),
     f("region", "Region", { required: false, editable: false }),

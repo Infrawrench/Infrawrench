@@ -209,7 +209,7 @@ export async function createScheduleRecord(
         )
         .limit(1);
       if (existing.length > 0) {
-        throw new ScheduleInputError("This resource already has a schedule — edit it instead", 409);
+        throw new ScheduleInputError("This resource already has a schedule, edit it instead", 409);
       }
 
       const count = await tx
@@ -226,7 +226,7 @@ export async function createScheduleRecord(
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      throw new ScheduleInputError("This resource already has a schedule — edit it instead", 409);
+      throw new ScheduleInputError("This resource already has a schedule, edit it instead", 409);
     }
     throw error;
   }

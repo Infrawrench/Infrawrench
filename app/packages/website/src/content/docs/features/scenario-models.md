@@ -97,7 +97,7 @@ A budget that opted into a model that is later deleted is not silently reverted 
 
 ## Creating and editing
 
-Scenario models live on the **Costs** panel, under **Scenario models** — next to saved filters, and for the same reason: a scenario is a cost object, not a preference. Settings is where you configure Infrawrench; the Costs panel is where you describe your own spend. It also puts models within sight of Budgets, which is where a model's sharpest consequence lives.
+Scenario models live on the **Costs** panel, in the **Scenario models** section of the **Allocation** tab, with saved filters and for the same reason: a scenario is a cost object, not a preference. Settings is where you configure Infrawrench; the Costs panel is where you describe your own spend. A model's sharpest consequence is on Budgets, which is one tab over.
 
 Creating and editing needs `costs:write`; reading needs `costs:read`.
 

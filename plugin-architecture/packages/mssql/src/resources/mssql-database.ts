@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MSSQLDatabaseResourceType = rt({
   name: "SQL Server Database",
   id: "mssql-database",
-  description: "A Microsoft SQL Server database — connects via connection string.",
+  description: "A Microsoft SQL Server database, connected via connection string.",
   fields: [
     f("name", "Display Name"),
     f("connectionString", "Connection String", {

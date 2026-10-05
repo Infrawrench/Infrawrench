@@ -46,7 +46,7 @@ app.get("/", async (c) => {
   if (windowRaw !== undefined) {
     windowMinutes = Number.parseInt(windowRaw, 10);
     if (!Number.isFinite(windowMinutes) || windowMinutes <= 0) {
-      return c.json({ error: "Invalid 'window' — expected a positive number of minutes" }, 400);
+      return c.json({ error: "Invalid 'window': expected a positive number of minutes" }, 400);
     }
   }
 

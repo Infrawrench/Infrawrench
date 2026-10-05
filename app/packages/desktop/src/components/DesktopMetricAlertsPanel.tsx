@@ -29,7 +29,7 @@ export function DesktopMetricAlertsPanel() {
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        {gt("Metric alerts require cloud mode — sign in to sync.")}
+        {gt("Metric alerts require cloud mode: sign in to sync.")}
       </div>
     );
   }

@@ -4,7 +4,7 @@ export const DaemonSetResourceType = rt({
   name: "DaemonSet",
   pinnable: false,
   id: "k8s-daemonset",
-  description: "A Kubernetes DaemonSet — runs a pod on every (or selected) node(s)",
+  description: "A Kubernetes DaemonSet that runs a pod on every (or selected) node",
   fields: [
     f("name", "Name"),
     f("namespace", "Namespace"),

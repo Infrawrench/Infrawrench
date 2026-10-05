@@ -34,7 +34,7 @@ const CostScenarioAdjustment = strict({
     .describe(
       "`one_off` is a single amount on a single day; `recurring` is an amount every period " +
         "from a date; `rate_change` is ±X% of the trend from a date. The split between an " +
-        "amount and a percentage of the trend is what fixes the composition order — see the " +
+        "amount and a percentage of the trend is what fixes the composition order; see the " +
         "`scenario` field on the cost query response.",
     ),
   startDate: IsoDate,
@@ -47,7 +47,7 @@ const CostScenarioAdjustment = strict({
     .nullable()
     .describe(
       "Minor units of the model's currency, for the amount kinds; null for `rate_change`. " +
-        "May be negative — turning off an old cluster is as real a known future cost as buying " +
+        "May be negative; turning off an old cluster is as real a known future cost as buying " +
         "a new one.",
     ),
   currency: z
@@ -73,7 +73,7 @@ const CostScenarioAdjustment = strict({
     .describe(
       "Which spend this adjustment describes; empty is the whole organization. For a rate " +
         "change the scope is what the percentage is *of*. For an amount it decides whether the " +
-        "adjustment applies to a given chart at all — a GCP commitment does not belong on a " +
+        "adjustment applies to a given chart at all; a GCP commitment does not belong on a " +
         "chart filtered to AWS, and one that is excluded is named in `scenario.outOfScope`.",
     ),
 }).openapi("CostScenarioAdjustment");
@@ -95,7 +95,7 @@ const CostScenarioModelInput = strict({
   currency: z
     .string()
     .describe(
-      "Three-letter code. Every amount in the model must be in it — a model that mixed two " +
+      "Three-letter code. Every amount in the model must be in it; a model that mixed two " +
         "would produce a projection that is the sum of two kinds of money, so this is refused " +
         "rather than converted behind the caller's back.",
     )
@@ -122,7 +122,7 @@ export function registerCostScenarioPaths(ctx: BuildContext) {
     tags: ["Scenario models"],
     summary: "List scenario models",
     description:
-      "Named, reusable sets of adjustments an organization overlays on a cost forecast — the " +
+      "Named, reusable sets of adjustments an organization overlays on a cost forecast; the " +
       "**known future cost a trend fit cannot see**. Pass an id as `POST /costs/query`'s " +
       "`scenarioModelId` (alongside `forecast: true`) to get the adjusted projection back " +
       "*beside* the unadjusted one, never instead of it.",
@@ -143,7 +143,7 @@ export function registerCostScenarioPaths(ctx: BuildContext) {
     tags: ["Scenario models"],
     summary: "Create a scenario model",
     description:
-      "Names must be unique per organization (case-insensitively) — the name is what a chart " +
+      "Names must be unique per organization (case-insensitively); the name is what a chart " +
       "prints under its scenario line and what the CLI's `--scenario <name>` addresses, so two " +
       "models sharing one would make both meaningless. A model needs at least one adjustment: " +
       "an empty model changes nothing, which is the same as applying no scenario.",
@@ -190,7 +190,7 @@ export function registerCostScenarioPaths(ctx: BuildContext) {
     description:
       "Replaces the whole model. This is the high-leverage write: every chart drawing it, and " +
       "**every budget whose forecast thresholds are measured against it**, uses the new " +
-      "numbers on its next evaluation — which for a budget can change which alerts fire. " +
+      "numbers on its next evaluation; which for a budget can change which alerts fire. " +
       "`GET /{id}/referents` names what a change will touch.",
     request: {
       params: idParam(),
@@ -219,7 +219,7 @@ export function registerCostScenarioPaths(ctx: BuildContext) {
     tags: ["Scenario models"],
     summary: "Delete a scenario model",
     description:
-      "Soft delete — **refused with a 409 while anything references the model**, with the " +
+      "Soft delete: **refused with a 409 while anything references the model**, with the " +
       "referents in the body. For a chart, deleting would silently drop the assumptions from a " +
       "projection somebody is reading; for a budget it would move the forecast thresholds back " +
       "to the bare trend, changing when people get paged. Detaching the referents is a " +
@@ -229,7 +229,7 @@ export function registerCostScenarioPaths(ctx: BuildContext) {
       200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
       404: ErrorResponses[404],
       409: {
-        description: "Still referenced — the body lists every referent.",
+        description: "Still referenced: the body lists every referent.",
         content: {
           "application/json": {
             schema: strict({ error: z.string(), referents: z.array(CostScenarioReferent) }),
@@ -245,7 +245,7 @@ export function registerCostScenarioPaths(ctx: BuildContext) {
     tags: ["Scenario models"],
     summary: "List a scenario model's referents",
     description:
-      "Every budget, cost report and dashboard cost graph referencing this model — what an " +
+      "Every budget, cost report and dashboard cost graph referencing this model; what an " +
       "edit will change, and what a delete would be refused over. Budgets come first: they are " +
       "the referents that page people.",
     request: { params: idParam() },

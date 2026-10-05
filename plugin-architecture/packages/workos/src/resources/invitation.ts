@@ -31,7 +31,7 @@ export const InvitationResourceType = rt({
     o("acceptInvitationUrl", "Accept URL", {
       sensitive: true,
       description:
-        "The URL the recipient accepts through. Contains the invitation token — treat it like a credential.",
+        "The URL the recipient accepts through. Contains the invitation token, so treat it like a credential.",
     }),
   ],
   dependsOn: [{ fieldKey: "inviterUserId", targetTypeId: "user", label: "invited by" }],

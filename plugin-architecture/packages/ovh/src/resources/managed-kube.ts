@@ -75,7 +75,7 @@ export const ManagedKubeResourceType = rt({
     o("nodeHourlyRates", "Node Hourly Rates", {
       hidden: true,
       description:
-        "JSON map of node instance type to hourly price, handed to the Kubernetes peer so it can derive per-namespace and per-workload cost. Empty when no price is available.",
+        "JSON map of node instance type to hourly price, used for per-namespace and per-workload cost. Empty when no price is available.",
     }),
   ],
   // `privateNetworkId` is the network's OpenStack id: `cloud.kube.Cluster` in

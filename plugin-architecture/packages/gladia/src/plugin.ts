@@ -27,7 +27,7 @@ const manifest: PluginManifest = {
       key: "apiKey",
       label: "API Key",
       description:
-        "Your Gladia API key, sent as the x-gladia-key header (Gladia does not use Bearer auth). Find it in the Gladia dashboard at app.gladia.io under Account → API Keys. A single key covers uploads, pre-recorded transcription, live sessions and the job history — there is no separate admin or usage key.",
+        "Your Gladia API key, from app.gladia.io under Account → API Keys. One key covers uploads, transcription, live sessions and job history.",
       sensitive: true,
       placeholder: "0123abcd-4567-89ef-0123-456789abcdef",
       helpLink: { label: "Open the Gladia dashboard", url: "https://app.gladia.io/" },

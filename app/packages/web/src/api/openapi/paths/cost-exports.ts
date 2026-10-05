@@ -31,7 +31,7 @@ const CostExportQuery = strict({
   dimensions: z
     .array(CostDimension)
     .describe(
-      "Row-identity columns kept in the output. Dropping one aggregates over it — an export " +
+      "Row-identity columns kept in the output. Dropping one aggregates over it; an export " +
         "grouped to provider + service is orders of magnitude smaller than a per-resource one.",
     ),
   tagKeys: z.array(z.string()).describe("Tag keys emitted as their own `tag_<key>` columns."),
@@ -138,7 +138,7 @@ const CostExportInput = strict({
   cadence: z
     .enum(["daily", "weekly", "monthly"])
     .describe(
-      "How often a run happens and — because a run writes one object per period — what a " +
+      "How often a run happens and (because a run writes one object per period) what a " +
         "period is: a calendar day, an ISO week (Monday-start), or a calendar month.",
     ),
   hour: z.number().int().min(0).max(23).describe("Local hour in `timezone` a run fires at."),
@@ -166,7 +166,7 @@ const CostExportInput = strict({
     .string()
     .optional()
     .describe(
-      "HTTPS destinations only. Write-only, never returned — a signed URL carries its own " +
+      "HTTPS destinations only. Write-only, never returned; a signed URL carries its own " +
         "signature, so it is treated as a bearer credential.",
     ),
 }).openapi("CostExportInput");
@@ -430,7 +430,7 @@ export function registerCostExportPaths(ctx: BuildContext) {
     description:
       "Runs the export immediately against the same code path the poller uses, writing every " +
       'period in the restatement window. Answers 200 with `status: "failed"` and a message ' +
-      "rather than an error status when the destination rejects the write — the caller wants " +
+      "rather than an error status when the destination rejects the write; the caller wants " +
       "the reason, and the same failure is recorded on the export.",
     request: { params: idParam() },
     responses: {

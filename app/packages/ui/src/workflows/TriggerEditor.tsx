@@ -379,7 +379,7 @@ function BudgetTriggerFields({
   if (budgets.length === 0) {
     return (
       <span className="opacity-60">
-        {loading ? gt("Loading budgets…") : gt("No budgets yet — create one on a dashboard first.")}
+        {loading ? gt("Loading budgets…") : gt("No budgets yet. Create one on a dashboard first.")}
       </span>
     );
   }

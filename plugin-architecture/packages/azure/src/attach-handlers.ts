@@ -38,7 +38,7 @@ export async function attachAzureResource(
     const vmLocation = String(vm.fields["location"] ?? "");
     if (diskLocation && vmLocation && diskLocation !== vmLocation) {
       throw new Error(
-        `Disk location ${diskLocation} does not match VM location ${vmLocation} — Azure managed disks must be in the same region as the VM.`,
+        `Disk location ${diskLocation} does not match VM location ${vmLocation} (Azure managed disks must be in the same region as the VM).`,
       );
     }
     const vmRg = String(vm.fields["resourceGroup"] ?? "");
@@ -88,7 +88,7 @@ export async function attachAzureResource(
     }
     if (nsgLocation && vmLocation && nsgLocation !== vmLocation) {
       throw new Error(
-        `NSG region ${nsgLocation} does not match VM region ${vmLocation} — Azure NSGs must be in the same region as the NIC.`,
+        `NSG region ${nsgLocation} does not match VM region ${vmLocation} (Azure NSGs must be in the same region as the NIC).`,
       );
     }
     const nsgId = `/subscriptions/${ctx.subscriptionId}/resourceGroups/${nsgRg}/providers/Microsoft.Network/networkSecurityGroups/${nsgName}`;

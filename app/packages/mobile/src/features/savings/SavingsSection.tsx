@@ -47,7 +47,7 @@ export function SavingsSection() {
       {orphans.isError ? (
         <Card>
           <Text style={styles.error}>
-            Couldn&apos;t load potential savings —{" "}
+            Couldn&apos;t load potential savings:{" "}
             {orphans.error instanceof Error ? orphans.error.message : "request failed"}
           </Text>
         </Card>
@@ -58,9 +58,8 @@ export function SavingsSection() {
       ) : data && data.accounts.length === 0 ? (
         <Card>
           <Text style={styles.muted}>
-            Nothing looks wasted right now. Resources are flagged when a provider plugin&apos;s
-            heuristic matches — unattached volumes, unassigned IPs — so an empty list is the good
-            outcome.
+            Nothing looks wasted right now. Resources are flagged for things like unattached volumes
+            and unassigned IPs.
           </Text>
         </Card>
       ) : (
@@ -93,8 +92,8 @@ export function SavingsSection() {
       {data !== null && data.accounts.length > 0 && (
         <Text style={styles.footnote}>
           {showCost
-            ? `Cost figures are best-effort, matched from collected per-resource billing rows over the last ${data.costWindowDays} days; most providers don't report cost at resource granularity.`
-            : "No cost figures here — the flags themselves never depend on billing data."}{" "}
+            ? `Cost figures are best-effort, matched from billing rows over the last ${data.costWindowDays} days; many providers don't bill per resource.`
+            : "No cost figures here; flags don't depend on billing data."}{" "}
           {showOwner && data.unownedCount > 0
             ? `${data.unownedCount} of ${data.totalCount} have no recorded owner. `
             : ""}

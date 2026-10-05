@@ -99,8 +99,8 @@ function ClaimPage() {
           <h1 className="text-2xl font-bold mb-2">{gt("Claim a workspace")}</h1>
           <p className="text-sm text-on-surface-tertiary mb-8">
             {gt(
-              "An agent set up an Infrawrench workspace for you. Enter the code it gave you to " +
-                "keep it — unclaimed workspaces are deleted 24 hours after they're created.",
+              "An agent set up an Infrawrench workspace for you. Enter its code to keep it; " +
+                "unclaimed workspaces are deleted after 24 hours.",
             )}
           </p>
 
@@ -227,8 +227,8 @@ function ClaimPage() {
               />
               <span>
                 {gt(
-                  "Also bring this workspace's metrics and cost history across. It can take a " +
-                    "few minutes to appear, and it will change the figures on existing cost charts.",
+                  "Also bring over this workspace's metrics and cost history. It can take a few " +
+                    "minutes and will change existing cost charts.",
                 )}
               </span>
             </label>

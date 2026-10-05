@@ -37,7 +37,7 @@ export const KeyVaultResourceType = rt({
       category: "data-protection",
       conditions: [{ fieldKey: "enablePurgeProtection", when: "falsy" }],
       reason:
-        "Without purge protection, a deleted vault or secret can be permanently purged before the soft-delete window ends — one compromised credential can destroy every secret irrecoverably.",
+        "Without purge protection, a deleted vault or secret can be permanently purged before the soft-delete window ends. One compromised credential can destroy every secret.",
     },
   ],
 });

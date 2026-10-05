@@ -3,7 +3,7 @@ import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime } from "../common
 import type { BuildContext } from "../context";
 
 const BackupSeverity = z.enum(["critical", "high", "medium", "low"]).openapi({
-  description: "How bad the gap is. Orphaned backups are always `low` — they cost money, not data.",
+  description: "How bad the gap is. Orphaned backups are always `low`: they cost money, not data.",
 });
 
 const BackupFindingKind = z
@@ -22,7 +22,7 @@ const BackupProtectionState = z
       "How the resource reads at a glance. `automated` means the provider is taking backups we " +
       "cannot enumerate, so there is a restore point but no listable one. `unknown` means the " +
       "resource type declares a provider-native automated-backup signal but this instance's " +
-      "value could not be read — it is unassessed, not a confirmed gap, and never produces a " +
+      "value could not be read; it is unassessed, not a confirmed gap, and never produces a " +
       "finding.",
   });
 
@@ -44,7 +44,7 @@ export function registerBackupPaths(ctx: BuildContext) {
     title: z.string().openapi({ example: "No backup of this volume" }),
     detail: z.string().describe("Sentence explaining the gap and what would close it."),
     policyId: Uuid.nullable().describe(
-      "The policy supplying the objective this finding breaches — the RPO policy for " +
+      "The policy supplying the objective this finding breaches; the RPO policy for " +
         "`rpo-breach`, the retention policy for `retention-below-policy`. Null when no policy " +
         "applies.",
     ),
@@ -71,7 +71,7 @@ export function registerBackupPaths(ctx: BuildContext) {
       .nullable()
       .describe(
         "Trailing-30-day spend on an orphaned backup. Null means the cost could not be " +
-          "determined — never that the backup is free.",
+          "determined: never that the backup is free.",
       ),
     currency: z.string().nullable(),
   }).openapi("BackupFinding");
@@ -97,11 +97,11 @@ export function registerBackupPaths(ctx: BuildContext) {
       .nullable()
       .describe(
         "Whether provider-native automated backups are on. Null means the plugin syncs no " +
-          "signal either way — which never counts as protection and never counts as a fault.",
+          "signal either way; which never counts as protection and never counts as a fault.",
       ),
     retentionDays: z.number().nullable(),
     rpoPolicyId: Uuid.nullable().describe(
-      "The policy supplying `maxRpoHours` — the strictest RPO among those selecting this " +
+      "The policy supplying `maxRpoHours`: the strictest RPO among those selecting this " +
         "resource. Tracked separately from the retention policy because the two strictest " +
         "demands routinely come from different policies.",
     ),
@@ -150,7 +150,7 @@ export function registerBackupPaths(ctx: BuildContext) {
       .number()
       .int()
       .describe(
-        "Backups whose source could not be determined — the plugin syncs no source field, the " +
+        "Backups whose source could not be determined; the plugin syncs no source field, the " +
           "field was empty, or more than one resource answered to it. Reported rather than " +
           "hidden: 'we found no orphans' and 'we could not tell' are different answers.",
       ),
@@ -248,7 +248,7 @@ export function registerBackupPaths(ctx: BuildContext) {
     accountId: Uuid.nullable(),
     accountName: z.string().nullable(),
     performedAt: IsoDateTime.describe(
-      "When the drill was performed, which is **not** when it was recorded — people write these " +
+      "When the drill was performed, which is **not** when it was recorded; people write these " +
         "up on Monday for a drill they ran on Saturday, and every staleness computation uses this.",
     ),
     outcome: DrillOutcome,
@@ -260,7 +260,7 @@ export function registerBackupPaths(ctx: BuildContext) {
         "Measured wall-clock minutes. Null when the drill never got that far; a blocked drill has " +
           "no RTO, and an invented one would be the most dangerous number on the page.",
       ),
-    restoredFrom: z.string().nullable().describe("Snapshot id, S3 key, a date — free text."),
+    restoredFrom: z.string().nullable().describe("Snapshot id, S3 key, a date, free text."),
     notes: z.string().nullable(),
     performedByUserId: Uuid.nullable(),
     performedByName: z.string().nullable(),
@@ -330,7 +330,7 @@ export function registerBackupPaths(ctx: BuildContext) {
     summary: "Where every protected resource stands on restore",
     description:
       "Backup coverage answers 'is there a backup'. This answers 'does it restore, and how long " +
-      "does it take' — a different question, and the one routinely answered wrongly on the day.\n\n" +
+      "does it take'; a different question, and the one routinely answered wrongly on the day.\n\n" +
       "A drill is a **record that somebody tried**, not an automated restore: restoring a " +
       "customer's database unattended costs real money, can collide with production, and cannot " +
       "be generically verified. What the product can do is make the exercise scheduled, recorded " +
@@ -382,7 +382,7 @@ export function registerBackupPaths(ctx: BuildContext) {
     summary: "Record a restore drill",
     description:
       "A `verified` drill **must** carry the measured time: an RPO comes from the backup, and an " +
-      "RTO can only come from somebody with a stopwatch — that number is the entire point of the " +
+      "RTO can only come from somebody with a stopwatch; that number is the entire point of the " +
       "exercise. A `blocked` drill must not carry one, because it never started.\n\n" +
       "Takes `resources:write`, not a settings permission: recording a drill is reporting what " +
       "you did, and the person who spent Saturday restoring a database is rarely the person who " +
@@ -406,7 +406,7 @@ export function registerBackupPaths(ctx: BuildContext) {
     tags: ["Backup coverage"],
     summary: "Delete a recorded drill",
     description:
-      "For one recorded against the wrong resource or the wrong date. Audited — deleting evidence " +
+      "For one recorded against the wrong resource or the wrong date. Audited: deleting evidence " +
       "that a restore failed is exactly the edit a reviewer would want to know about.",
     request: { params: OrgIdParam.extend({ drillId: Uuid }) },
     responses: { 204: { description: "The drill was deleted" }, 404: ErrorResponses[404] },
@@ -420,7 +420,7 @@ export function registerBackupPaths(ctx: BuildContext) {
     description:
       "What protects the organization's stateful resources, what does not, and which backups " +
       "protect nothing. Derived from already-synced inventory using the `backupRole` and " +
-      "`backupPolicy` declarations plugins carry on their resource types — no provider API " +
+      "`backupPolicy` declarations plugins carry on their resource types; no provider API " +
       "calls are made and results reflect the last sync. Findings are recomputed on every " +
       "read rather than stored. Orphaned backups carry a trailing-30-day spend quote when " +
       "billing data is available.",
@@ -456,7 +456,7 @@ export function registerBackupPaths(ctx: BuildContext) {
     tags: ["Backup coverage"],
     summary: "Create a backup policy",
     description:
-      "A policy must demand at least one of `maxRpoHours` and `minRetentionDays` — one that " +
+      "A policy must demand at least one of `maxRpoHours` and `minRetentionDays`: one that " +
       "demands nothing could never produce a finding and would read as protection while " +
       "providing none. An empty `resourceTypeIds` selects every stateful resource type.",
     request: {

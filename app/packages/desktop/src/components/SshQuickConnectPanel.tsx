@@ -223,7 +223,7 @@ export function SshQuickConnectPanel({
                       value="1password"
                       // i18n-ignore: product name
                       label="1Password"
-                      sublabel={gt("running — ")}
+                      sublabel={gt("running: ")}
                       selected={selectedKey?.type === "1password"}
                       onSelect={() => setSelectedKey({ type: "1password" })}
                     />
@@ -239,7 +239,7 @@ export function SshQuickConnectPanel({
                       value="pageant"
                       // i18n-ignore: product name
                       label="Pageant"
-                      sublabel={gt("running — ")}
+                      sublabel={gt("running: ")}
                       selected={selectedKey?.type === "pageant"}
                       onSelect={() => setSelectedKey({ type: "pageant" })}
                     />

@@ -158,7 +158,7 @@ describe("classifyInvoiceDelivery", () => {
 describe("the message", () => {
   it("leads with the invoice number and the period", () => {
     expect(invoiceEmailSubject(invoice(), "Fabrikam Cloud")).toBe(
-      "Fabrikam Cloud — Invoice INV-2026-0001 · 2026-01-01 to 2026-01-31",
+      "Fabrikam Cloud: Invoice INV-2026-0001 · 2026-01-01 to 2026-01-31",
     );
   });
 

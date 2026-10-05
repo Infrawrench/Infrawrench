@@ -42,9 +42,8 @@ function MomentPage() {
         <h1 className="text-xl font-semibold mb-1">{gt("Investigate a moment")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted">
-            The moment view merges feeds recorded by Infrawrench Cloud — the change timeline,
-            provider incidents, cost anomalies, workflow runs, deployments and more. Local-only mode
-            records none of them — sign in to an organization to investigate one.
+            The moment view merges feeds recorded by Infrawrench Cloud, such as changes, incidents,
+            cost anomalies and deployments. Sign in to an organization to use it.
           </p>
         </T>
       </div>

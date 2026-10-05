@@ -582,13 +582,13 @@ export class DeepSeekClient implements PluginClient {
             kind: "text",
             variant: "muted",
             content:
-              "DeepSeek does not publish an RPM or TPM rate limit. A request occupies one concurrent slot from the moment it is sent until the response completes; exceeding the cap returns HTTP 429. The cap is per account, whichever key sends the request, and capacity increases are free to request.",
+              "DeepSeek has no RPM or TPM limit. Each request holds one concurrent slot until it completes, and exceeding the per-account cap returns HTTP 429. Capacity increases are free to request.",
           },
           {
             kind: "text",
             variant: "muted",
             content:
-              "Call this model at https://api.deepseek.com/chat/completions or, in the OpenAI Responses format, /responses. The canonical paths have no /v1 segment; a /v1 prefix exists only so the OpenAI SDK works unchanged, and there is an Anthropic-compatible alias at https://api.deepseek.com/anthropic.",
+              "Call this model at https://api.deepseek.com/chat/completions or, in the OpenAI Responses format, /responses. Paths have no /v1 segment (a /v1 prefix works for OpenAI SDK compatibility), and an Anthropic-compatible alias is at https://api.deepseek.com/anthropic.",
           },
         ],
       },
@@ -730,7 +730,7 @@ export class DeepSeekClient implements PluginClient {
               },
               {
                 key: "Sufficient for API Calls",
-                value: available ? "Yes" : "No — top up to keep calling the API",
+                value: available ? "Yes" : "No (top up to keep calling the API)",
               },
             ],
           },

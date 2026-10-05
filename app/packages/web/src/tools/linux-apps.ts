@@ -244,7 +244,7 @@ export function linuxAppTools(): ToolDefinition[] {
       name: "read_app_accessibility_tree",
       title: "Read a window's accessibility tree",
       description:
-        "Read a window's accessibility tree — what a screen reader would see: every element's role, name, text, state, and on-screen bounds. Each element with bounds carries a `center` you can pass straight to click_app_window. Cheaper and more reliable than reading a screenshot when the app exposes accessibility (most GTK/Qt apps do).",
+        "Read a window's accessibility tree (what a screen reader would see): every element's role, name, text, state, and on-screen bounds. Each element with bounds carries a `center` you can pass straight to click_app_window. Cheaper and more reliable than reading a screenshot when the app exposes accessibility (most GTK/Qt apps do).",
       inputSchema: {
         ...targetShape,
         windowId: z.number().int().describe("Window id from launch_app or list_app_windows."),
@@ -277,7 +277,7 @@ export function linuxAppTools(): ToolDefinition[] {
       name: "click_app_window",
       title: "Click in an app window",
       description:
-        "Click at a pixel position in a window — the same coordinate space as a screenshot and the accessibility tree's `center`. Optionally right/middle button, or a double-click.",
+        "Click at a pixel position in a window; the same coordinate space as a screenshot and the accessibility tree's `center`. Optionally right/middle button, or a double-click.",
       inputSchema: {
         ...targetShape,
         windowId: z.number().int(),
@@ -320,7 +320,7 @@ export function linuxAppTools(): ToolDefinition[] {
       name: "type_in_app_window",
       title: "Type into an app window",
       description:
-        "Type text into the window's focused widget, character by character — click or tab to the field first. Handles any character a keyboard could produce, including accented ones.",
+        "Type text into the window's focused widget, character by character; click or tab to the field first. Handles any character a keyboard could produce, including accented ones.",
       inputSchema: {
         ...targetShape,
         windowId: z.number().int(),

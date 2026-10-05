@@ -313,7 +313,7 @@ async function applyFirewallToInstance(
   const targetTags = fw.targetTags ?? [];
   if (targetTags.length === 0) {
     throw new Error(
-      `Firewall "${firewallName}" has no target tags — it already applies to all VMs in its network. No changes needed.`,
+      `Firewall "${firewallName}" has no target tags, so it already applies to all VMs in its network. No changes needed.`,
     );
   }
   // Fetch the instance to read its current tags (with fingerprint) and tag list.
@@ -415,7 +415,7 @@ export async function attachResource(
     }
     if (diskZone !== instanceZone) {
       throw new Error(
-        `Disk zone ${diskZone} does not match instance zone ${instanceZone} — persistent disks must be in the same zone as the instance.`,
+        `Disk zone ${diskZone} does not match instance zone ${instanceZone}. Persistent disks must be in the same zone as the instance.`,
       );
     }
     const diskName = String(disk.fields["name"] ?? "");
@@ -508,7 +508,7 @@ export async function attachResource(
     }
     if (region !== subnetRegion) {
       throw new Error(
-        `NAT region ${region} does not match subnet region ${subnetRegion} — Cloud NAT only applies to subnets in its own region.`,
+        `NAT region ${region} does not match subnet region ${subnetRegion}. Cloud NAT only applies to subnets in its own region.`,
       );
     }
     const subnetSelfLink = `https://www.googleapis.com/compute/v1/projects/${p}/regions/${subnetRegion}/subnetworks/${subnetName}`;

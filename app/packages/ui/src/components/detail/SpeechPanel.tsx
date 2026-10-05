@@ -474,9 +474,9 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
             {recordingBlocked
               ? capability.recordingDisabledReason
                 ? gtData(capability.recordingDisabledReason)
-                : gt("This provider does not accept browser recordings — upload a clip instead.")
+                : gt("This provider does not accept browser recordings. Upload a clip instead.")
               : gt(
-                  "Microphone recording needs a browser with MediaRecorder — upload a clip instead.",
+                  "Microphone recording needs a browser with MediaRecorder. Upload a clip instead.",
                 )}
           </span>
         )}

@@ -159,8 +159,7 @@ export function PricingEditor({
         <span className="text-sm font-medium text-on-surface">{gt("Pricing")}</span>
         <T>
           <p className="text-xs text-on-surface-faint">
-            Applied when this customer&rsquo;s invoices are computed. Collected spend is never
-            rewritten; every invoice shows the collected figure and what each setting changed.
+            Applied to this customer&rsquo;s invoices. Collected spend is never changed.
           </p>
         </T>
       </div>
@@ -178,9 +177,8 @@ export function PricingEditor({
         <div className="flex flex-col gap-2 pl-5">
           <T>
             <p className="text-xs text-on-surface-faint">
-              Usage is billed at the list price the provider reports for it instead of what you
-              paid. Where a provider reports no list price, the line is billed at its collected
-              amount plus the fallback uplift, and the invoice shows how much went each way.
+              Usage is billed at the provider&rsquo;s list price instead of what you paid. Lines
+              with no list price get the collected amount plus the fallback uplift.
             </p>
           </T>
           <div className="flex flex-col gap-1">

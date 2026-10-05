@@ -163,7 +163,7 @@ function SummaryCards({ data }: { data: BackupCoverageResponse }) {
       value: `${summary.unprotectedCount} / ${summary.statefulCount}`,
       hint:
         summary.unknownCount > 0
-          ? gt("Confirmed gaps — {count} more could not be assessed", {
+          ? gt("Confirmed gaps; {count} more could not be assessed", {
               count: summary.unknownCount,
             })
           : gt("Stateful resources with no backup we can see"),
@@ -473,15 +473,14 @@ export function BackupsSection({
       <h1 className="text-xl font-semibold mb-1">{gt("Backups")}</h1>
       <T>
         <p className="text-sm text-on-surface-muted mb-6">
-          What is actually recoverable, across every provider — which stateful resources have a
-          backup, how old the newest one is, and which backups protect a resource that no longer
-          exists. Derived from the state your accounts last synced; no provider calls are made.
+          What is recoverable across every provider: which stateful resources have a backup, how old
+          it is, and which backups outlived their resource. From synced data only.
         </p>
       </T>
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          {gt("Couldn't load the backup coverage — {error}", { error })}{" "}
+          {gt("Couldn't load the backup coverage: {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
               {gt("Retry")}
@@ -496,7 +495,7 @@ export function BackupsSection({
       )}
       {error != null && data !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          {gt("Couldn't refresh — showing the last loaded coverage. {error}", { error })}
+          {gt("Couldn't refresh; showing the last loaded coverage. {error}", { error })}
         </p>
       )}
 
@@ -553,10 +552,8 @@ export function BackupsSection({
               {data.findings.length === 0 ? (
                 <T>
                   <p className="text-sm text-on-surface-faint">
-                    No gaps. Coverage appears when a plugin declares which of its types are backups
-                    and which need protecting, over fields its listers actually sync — so an empty
-                    list means nothing declared is unprotected, not that nothing was checked. The
-                    Coverage tab shows what was judged.
+                    No gaps found among the resources plugins can assess. The Coverage tab shows
+                    what was checked.
                   </p>
                 </T>
               ) : (
@@ -629,9 +626,8 @@ export function BackupsSection({
               {data.resources.length === 0 ? (
                 <T>
                   <p className="text-sm text-on-surface-faint">
-                    Nothing to judge yet. A resource appears here once its plugin declares it as
-                    stateful and something the plugin&apos;s listers already sync can tell us
-                    whether it is protected.
+                    Nothing to assess yet. Stateful resources appear here once synced data shows
+                    whether they are protected.
                   </p>
                 </T>
               ) : (
@@ -684,10 +680,8 @@ export function BackupsSection({
             <div className="flex flex-col gap-4">
               <T>
                 <p className="text-sm text-on-surface-tertiary">
-                  A policy is a recovery objective: which resources it applies to, and how fresh
-                  their newest backup has to be. Without one, coverage still reports what is
-                  unprotected — a policy is what turns &quot;there is a backup&quot; into
-                  &quot;there is a backup recent enough&quot;.
+                  A policy is a recovery objective: which resources it covers and how fresh their
+                  newest backup must be.
                 </p>
               </T>
 

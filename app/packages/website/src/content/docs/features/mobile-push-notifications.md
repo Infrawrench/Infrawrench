@@ -51,19 +51,29 @@ Sync incidents use the exact same state machine as SMS paging, configured on the
 - Only the **background poller** opens incidents. Manual syncs from the UI never notify, by design — you are already looking at the result.
 - When syncs for an (account, resource type) pair fail the configured number of times within the window (**default: 3 failures in 10 minutes**), an incident opens and everyone eligible is notified.
 - While the incident stays open, it re-notifies once per cooldown period (**default: 60 minutes**) until a successful sync closes it.
-- Paging must be **enabled** for the org on the Notifications page — but **Twilio credentials are now optional**. An org with paging enabled and no Twilio configured still opens incidents and delivers push-only. Add Twilio credentials and SMS/voice go out to the on-call recipient list in the same breath.
+- Paging must be **enabled** for the org on the Notifications page's **Channels** tab, but **Twilio credentials are now optional**. An org with paging enabled and no Twilio configured still opens incidents and delivers push-only. Add Twilio credentials and SMS/voice go out to the on-call recipient list in the same breath.
 
 Tapping a sync-incident notification deep-links straight to the failing account's screen in the app.
 
+### Cost notifications
+
+Cost pushes open the matching tab of the Costs screen in the [mobile app](./mobile-app.md):
+
+| Notification                                                                                                        | Opens        |
+| ------------------------------------------------------------------------------------------------------------------- | ------------ |
+| Budget alert                                                                                                        | **Overview** |
+| [Cost change alert](./cost-change-alerts.md), [commitment or unit-cost alert](./commitment-and-unit-cost-alerts.md) | **Alerts**   |
+| Savings finding, [extended support](./extended-support.md) finding                                                  | **Savings**  |
+
 ### Budget alerts
 
-Budget threshold breaches notify **at most once per budget, per threshold, per calendar month** — the same dedupe as the budget badge and SMS. Budget pushes are independent of the org's Twilio settings: they deliver even if paging/SMS is not set up at all. Tapping one opens the **Costs** tab, which lists every budget in the org with its month-to-date spend — whether or not a dashboard shows that budget.
+Budget threshold breaches notify **at most once per budget, per threshold, per calendar month**, the same dedupe as the budget badge and SMS. Budget pushes are independent of the org's Twilio settings: they deliver even if paging/SMS is not set up at all. Tapping one opens the **Overview** tab of the Costs screen, which lists every budget in the org with its month-to-date spend, whether or not a dashboard shows that budget.
 
 ### Resource drift
 
 The [change timeline](./change-timeline.md) records every resource that appears, changes, or disappears between polls — hundreds of rows in a single sync pass on a busy organization. A notification per change would be unreadable, so drift is the one trigger that is **batched rather than per event**: at most one digest per organization per cooldown window (**default: 60 minutes**), covering everything since the previous one, with the counts and the first dozen changes named and the rest linked.
 
-It is also the one trigger that is **off by default**, on phones and on channels alike, for the same reason: it is a continuous feed rather than an exceptional event. Which changes count — appearances, disappearances, field updates (off by default, they are the bulk of the volume), which accounts, and how few changes are too few to bother with — is set once for the whole organization under **Settings → Notifications → Resource drift alerts**, and it takes the **Organization settings** permission.
+It is also the one trigger that is **off by default**, on phones and on channels alike, for the same reason: it is a continuous feed rather than an exceptional event. Which changes count, appearances, disappearances, field updates (off by default, they are the bulk of the volume), which accounts, and how few changes are too few to bother with, is set once for the whole organization under **Settings → Notifications → Alerts & digest → Resource drift alerts**, and it takes the **Organization settings** permission.
 
 Tapping a drift notification opens the [moment view](./moment.md) centred on the window the digest covered — its changes merged chronologically with everything else that happened around them (deploys, incidents, anomalies). Cost-anomaly and provider-incident notifications land there too; the Changes feed itself is one tap away.
 
@@ -79,14 +89,20 @@ Tapping an approval notification opens the app's [approvals inbox](./workflows.m
 
 ## The Notifications settings page
 
-The org settings page formerly titled **Paging** is now **Notifications** (the nav label changed too). It gathers every delivery channel in one place:
+The org settings page formerly titled **Paging** is now **Notifications** (the nav label changed too). It gathers every delivery channel in one place, split into three tabs:
 
-- **Alert routing** — the ordered rules that decide where each alert goes, with quiet hours and escalation. See [Alert routing rules](./alert-routing.md).
-- **Slack** — the workspace connection and the channels a rule can route to.
-- **Microsoft Teams** — the channels a rule can route to, added by webhook URL.
-- **Your mobile push setup** — your per-org trigger toggles, your registered devices (with a remove button), and a **Send test push** button that delivers a test notification to your own devices.
-- **Members receiving push** — an admin-only roster (requires the `org:settings:write` permission) of org members who have at least one active device, so you can see at a glance who would actually hear an incident.
-- **SMS & voice** — last on the page, since it is opt-in: one card holding the whole Twilio setup — account SID, auth token, from-number, the threshold/window/cooldown knobs, the on-call recipient roster, and a **Send test page** button.
+- **Channels**: Slack, Microsoft Teams, email, mobile push, and SMS & voice.
+- **Routing**: the alert routing rules.
+- **Alerts & digest**: the drift, expiry and extended-support alert settings, and the weekly digest.
+
+The cards below sit on those tabs.
+
+- **Alert routing** (**Routing** tab): the ordered rules that decide where each alert goes, with quiet hours and escalation. See [Alert routing rules](./alert-routing.md).
+- **Slack** (**Channels** tab): the workspace connection and the channels a rule can route to.
+- **Microsoft Teams** (**Channels** tab): the channels a rule can route to, added by webhook URL.
+- **Your mobile push setup** (**Channels** tab): your per-org trigger toggles, your registered devices (with a remove button), and a **Send test push** button that delivers a test notification to your own devices.
+- **Members receiving push** (**Channels** tab): an admin-only roster (requires the `org:settings:write` permission) of org members who have at least one active device, so you can see at a glance who would actually hear an incident.
+- **SMS & voice** (**Channels** tab): last on that tab, since it is opt-in: one card holding the whole Twilio setup, account SID, auth token, from-number, the threshold/window/cooldown knobs, the on-call recipient roster, and a **Send test page** button.
 
 What actually texts that roster, once it is set up: sync-failure incidents, [budget](./cloud-costs.md) threshold crossings, [workflow pages](./workflows.md#paging-a-human) and approval requests, and — only if the organization opts in — [cost anomalies](./cost-anomaly-alerts.md#paging-by-sms). [Drift digests](./change-timeline.md) never do. Voice calls are placed only for sync incidents and for a workflow page that asked for `voice: true`.
 

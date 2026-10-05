@@ -4,7 +4,7 @@ export const NeonBucketResourceType = rt({
   name: "Bucket",
   plural: "Buckets",
   id: "neon-bucket",
-  description: "A Neon Object Storage bucket — S3-compatible storage that branches with your data",
+  description: "A Neon Object Storage bucket: S3-compatible storage that branches with your data",
   fields: [
     f("name", "Name"),
     f("accessLevel", "Access Level", {

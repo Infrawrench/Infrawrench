@@ -24,11 +24,11 @@ export const firestoreCreateConfigHandlers: Record<
           options: [
             {
               id: "STANDARD",
-              label: "Standard — Firestore's simple query engine with automatic indexing",
+              label: "Standard (simple query engine, automatic indexing)",
             },
             {
               id: "ENTERPRISE",
-              label: "Enterprise — Firestore Native + MongoDB-compatible data access",
+              label: "Enterprise (Firestore Native + MongoDB-compatible access)",
             },
           ],
           defaultValue: "STANDARD",

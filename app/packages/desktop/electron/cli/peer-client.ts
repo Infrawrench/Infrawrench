@@ -58,7 +58,7 @@ function resolveParentTypeId(
     candidates.length === 0
       ? `No resource type of plugin "${parentPluginId}" declares a "${peerPluginId}" peer, ` +
           `so ${parentResourceId} cannot supply its credentials.`
-      : `Cannot tell which "${parentPluginId}" resource type ${parentResourceId} is — ` +
+      : `Cannot tell which "${parentPluginId}" resource type ${parentResourceId} is. ` +
           `${candidates.map((t) => t.id).join(", ")} all declare a "${peerPluginId}" peer.`,
     2,
   );
@@ -95,7 +95,7 @@ async function buildCliPeerClient(
   const integration = typeDef?.peerIntegrations?.find((i) => i.pluginId === sidecar.pluginId);
   if (!integration) {
     throw new CliError(
-      `${parentTypeId} declares no "${sidecar.pluginId}" peer integration — ` +
+      `${parentTypeId} declares no "${sidecar.pluginId}" peer integration. ` +
         `${sidecar.parentResourceId} cannot supply its credentials.`,
       2,
     );

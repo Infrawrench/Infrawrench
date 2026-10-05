@@ -156,9 +156,9 @@ export function JiraSection() {
         <h1 className="text-xl font-semibold">Jira</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
-            File findings — cost anomalies, orphaned and oversized resources, posture findings,
-            expiring credentials, and failed probes — as Jira issues, and keep the issue link on the
-            finding. Connect one Jira Cloud site per organization. Filing needs{" "}
+            File findings (cost anomalies, orphaned resources, posture issues, expiring credentials,
+            failed probes) as Jira issues linked to the finding. One Jira Cloud site per
+            organization. Filing needs{" "}
             <Var>
               <code>jira:write</code>
             </Var>
@@ -190,9 +190,8 @@ export function JiraSection() {
             <h2 className="text-sm font-semibold">{gt("Connection")}</h2>
             <T>
               <p className="text-xs text-on-surface-muted">
-                Create an API token on your Atlassian account, then paste it here with the email you
-                sign in with. The token is encrypted and never shown again — the field stays blank
-                on return, and leaving it blank keeps the stored token.{" "}
+                Paste an Atlassian API token and the email you sign in with. The token is encrypted
+                and never shown again; leave the field blank to keep the stored one.{" "}
                 <button
                   type="button"
                   onClick={() => openExternal("https://id.atlassian.com/manage-profile/security")}
@@ -236,7 +235,7 @@ export function JiraSection() {
                   {integration && (
                     <span className="text-on-surface-muted">
                       {" "}
-                      {gt("— stored: {hint}", { hint: integration.tokenHint })}
+                      {gt("(stored: {hint})", { hint: integration.tokenHint })}
                     </span>
                   )}
                 </span>

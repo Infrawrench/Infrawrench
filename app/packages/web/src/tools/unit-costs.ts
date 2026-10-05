@@ -94,14 +94,14 @@ export function unitCostTools(): ToolDefinition[] {
       name: "list_business_metrics",
       title: "List business metrics",
       description:
-        "The organization's declared business metrics — the denominators unit costs divide by " +
+        "The organization's declared business metrics; the denominators unit costs divide by " +
         "(customers, API requests, GB processed, revenue). Each row carries its `key` (how " +
         'workflows and the API address it), its `unit` (the noun in "USD per customer"), its ' +
-        "`kind` (`count` for a quantity, `currency` for revenue — only `currency` metrics " +
+        "`kind` (`count` for a quantity, `currency` for revenue; only `currency` metrics " +
         "support margin), the `costScope` filter naming which spend it divides, and `coverage`: " +
         "the days it actually has values for. " +
         "A metric whose `coverage` is null or sparse is not broken, but every unit-cost chart " +
-        "drawn from it will be mostly gaps — say so rather than reporting a confident number.",
+        "drawn from it will be mostly gaps; say so rather than reporting a confident number.",
       inputSchema: {},
       risk: "read",
       permission: "costs:read",
@@ -116,7 +116,7 @@ export function unitCostTools(): ToolDefinition[] {
       title: "Get business metric values",
       description:
         "The reported daily values for one business metric, newest day first. `metric` accepts " +
-        'the metric\'s key or its id. Use this to answer "is this metric actually being fed" — ' +
+        'the metric\'s key or its id. Use this to answer "is this metric actually being fed", ' +
         "a missing day is not a zero, it is a day nobody reported, and it is why the matching " +
         "unit-cost bucket comes back as a gap.",
       inputSchema: {
@@ -151,7 +151,7 @@ export function unitCostTools(): ToolDefinition[] {
         "`metric` accepts the metric's key or its id; dates are inclusive YYYY-MM-DD.\n\n" +
         "Three properties of the answer decide how it must be read:\n" +
         "1. Each bucket's ratio is the bucket's **summed** spend over its **summed** metric " +
-        "value. Do not average the per-bucket ratios to get a period figure — " +
+        "value. Do not average the per-bucket ratios to get a period figure; " +
         "`series[].overallValue` is the correct period ratio and is computed the same way.\n" +
         "2. `value: null` is a **gap**, not a zero. It means no metric value was reported for " +
         "that period (or the value was zero or negative), so the unit cost is unknown. Report " +
@@ -159,19 +159,19 @@ export function unitCostTools(): ToolDefinition[] {
         "3. There is one series **per currency**. More than one means spend exists in a " +
         "currency with no stated exchange rate; those series are not comparable and must not be " +
         "added together.\n\n" +
-        "`gapBuckets` and `partialBuckets` summarise how much of the answer is unreliable — a " +
+        "`gapBuckets` and `partialBuckets` summarise how much of the answer is unreliable; a " +
         "partial bucket has spend for the whole period but volume for only part of it, so its " +
         "ratio reads high. Margin is a 400 for a metric whose kind is not `currency`.\n\n" +
         "Calculations (`mode`): `unit_cost` (default), `margin` (fraction, with " +
         "`absoluteMargin` = revenue − spend on every point), `raw_metric` (the metric itself " +
         "beside spend; zero is a real value there), and `usage_unit_cost` (spend ÷ the usage " +
-        "providers report in `usageUnit`; omit `metric` — find units with `list_usage_units`). " +
+        "providers report in `usageUnit`; omit `metric`; find units with `list_usage_units`). " +
         "`scale` (1, 100, 1000, 1e6, 1e9) expresses a ratio per that many units, so cost per " +
         "1,000 requests is `scale: 1000`; values come back already scaled.\n\n" +
         "Labels: `groupByLabel` returns one series per label value (e.g. per customer) with " +
         "`series[].label`; `labelFilters` keeps only some values. In a ratio mode the label must " +
         "be mapped to a cost dimension on the metric (see `list_business_metric_labels`), " +
-        "otherwise the query is refused — an unmapped label has no per-value spend to divide.",
+        "otherwise the query is refused; an unmapped label has no per-value spend to divide.",
       inputSchema: {
         metric: z
           .string()
@@ -240,7 +240,7 @@ export function unitCostTools(): ToolDefinition[] {
         'Declare a denominator. `kind: "count"` is a quantity (customers, requests, GB) and ' +
         'supports unit cost; `kind: "currency"` is revenue and must also state a `currency`, ' +
         "and is the only kind margin can be computed against. `costScope` narrows which spend " +
-        "the metric divides — leave it empty for all spend, and remember a unit-cost query can " +
+        "the metric divides; leave it empty for all spend, and remember a unit-cost query can " +
         "narrow it further but never widen it. Creating the metric does not populate it: values " +
         "arrive through `write_business_metric_values`, the API, or a workflow.",
       inputSchema: businessMetricInputSchema.shape,
@@ -313,7 +313,7 @@ export function unitCostTools(): ToolDefinition[] {
       title: "Report business metric values",
       description:
         "Write daily values for a metric. **Re-reporting a day restates it rather than adding " +
-        "to it**, so this is safe to call twice — and it is the only correct way to fix a bad " +
+        "to it**, so this is safe to call twice, and it is the only correct way to fix a bad " +
         "number: send the day again with the right value. Dates are UTC YYYY-MM-DD. Nothing " +
         "lands unless the whole batch validates. Optional `labels` (e.g. " +
         '`{"customer": "acme"}`) break a day down; the same day with the same labels restates, ' +
@@ -378,7 +378,7 @@ export function unitCostTools(): ToolDefinition[] {
       title: "Delete a business metric",
       description:
         "Soft-delete a metric and stop its values being reachable. Any dashboard card dividing " +
-        "by it will show an error rather than quietly reverting to plain spend — which is " +
+        "by it will show an error rather than quietly reverting to plain spend, which is " +
         "deliberate, because a chart that silently changed what it measures is worse than one " +
         "that says it is broken.",
       inputSchema: { metricId: z.string().describe("Metric id or key.") },

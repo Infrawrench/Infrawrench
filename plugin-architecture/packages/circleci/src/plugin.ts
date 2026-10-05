@@ -20,7 +20,7 @@ const manifest: PluginManifest = {
   version: "0.1.0",
   displayName: "CircleCI",
   description:
-    "Continuous integration and delivery. Track estimated CircleCI spend by project, resource class and executor from the Usage API, and manage projects, workflows with their Insights metrics, pipelines (trigger, rerun, cancel, approve), contexts and their variables, project variables, schedules, triggers and self-hosted runners.",
+    "Continuous integration and delivery. Track estimated CircleCI spend by project, resource class and executor, and manage projects, workflows with Insights metrics, pipelines, contexts, variables, schedules, triggers and self-hosted runners.",
   logoSvg: LOGO_SVG,
   author: "Infrawrench",
   minHostVersion: "0.1.0",

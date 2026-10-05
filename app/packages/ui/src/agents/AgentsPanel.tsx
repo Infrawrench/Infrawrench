@@ -503,10 +503,8 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                       <T>
                         <p className="text-xs text-on-surface-muted">
                           T3 Code runs as a server on the VM and drives{" "}
-                          <Var>{toolLabel(settings?.tool ?? "codex")}</Var>, which is installed
-                          alongside it. Open runs the one-off authorization steps over SSH; after
-                          that you use the server from T3 Code itself. No repository checkout — add
-                          projects from inside T3 Code.
+                          <Var>{toolLabel(settings?.tool ?? "codex")}</Var>. Open runs one-off
+                          authorization over SSH, then you work from T3 Code and add projects there.
                         </p>
                       </T>
                     )}
@@ -539,10 +537,9 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                           {t3Access === "tailscale" && (
                             <T>
                               <p className="text-xs text-on-surface-muted">
-                                The server is published on your tailnet with Tailscale Serve instead
-                                of T3 Connect, so no T3 account is needed. Authorize server prints a
-                                pairing link for T3 Code&apos;s Add environment. Your tailnet needs
-                                MagicDNS and HTTPS certificates enabled.
+                                Published on your tailnet with Tailscale Serve, so no T3 account is
+                                needed. Authorize server prints a pairing link for T3 Code&apos;s
+                                Add environment. Requires MagicDNS and HTTPS certificates.
                               </p>
                             </T>
                           )}

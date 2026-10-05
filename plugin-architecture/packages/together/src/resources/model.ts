@@ -4,7 +4,7 @@ export const ModelResourceType = rt({
   name: "Model",
   id: "model",
   description:
-    "A model served by Together AI — chat, language, code, image, embedding, moderation, rerank or speech",
+    "A model served by Together AI (chat, code, image, embedding, moderation, rerank or speech)",
   fields: [
     f("name", "Name"),
     f("modelId", "Model ID"),

@@ -598,8 +598,8 @@ export function formatEfficiencyReportText(report: EfficiencyReport, title: stri
   lines.push("  Derived allocation, not a billed amount. The cluster's money is invoiced to the");
   lines.push("  cloud account that owns the nodes; this is that bill, re-cut.");
   if (!report.measured) {
-    lines.push("  metrics-server is not reporting, so nothing here is measured — every efficiency");
-    lines.push("  figure reads 'unknown' rather than being assumed.");
+    lines.push("  metrics-server is not reporting, so nothing here is measured;");
+    lines.push("  efficiency figures read 'unknown'.");
   } else if (report.unknownWorkloads > 0) {
     lines.push(
       `  ${report.unknownWorkloads} of ${report.totalWorkloads} workloads have no usage data and read 'unknown'.`,

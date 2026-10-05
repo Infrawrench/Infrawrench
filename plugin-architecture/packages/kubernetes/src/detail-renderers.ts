@@ -169,7 +169,7 @@ function costSection(
             {
               key: "Basis",
               value: money
-                ? `Apportioned from node prices (${describeRateSource(costs.rateSource)}) — a derived estimate, not a billed amount.`
+                ? `Apportioned from node prices (${describeRateSource(costs.rateSource)}). A derived estimate, not a billed amount.`
                 : "No hourly rate is available for this cluster's nodes, so capacity is shown without cost.",
             },
           ],
@@ -375,19 +375,19 @@ function clusterComponentSection(costs: CostIndex): SectionNode[] {
   if (cluster.storage.dailyAttributedCost == null && cluster.storage.gib > 0) {
     items.push({
       key: "Persistent volumes",
-      value: `${gibText(cluster.storage.gib)} across ${cluster.storage.count} claims — no price for ${cluster.storage.unpricedClasses.join(", ") || "these storage classes"}.`,
+      value: `${gibText(cluster.storage.gib)} across ${cluster.storage.count} claims. No price for ${cluster.storage.unpricedClasses.join(", ") || "these storage classes"}.`,
     });
   }
   if (cluster.loadBalancers.dailyCost == null && cluster.loadBalancers.count > 0) {
     items.push({
       key: "Load balancers",
-      value: `${cluster.loadBalancers.count} LoadBalancer Service${cluster.loadBalancers.count === 1 ? "" : "s"} — no per-load-balancer price is configured.`,
+      value: `${cluster.loadBalancers.count} LoadBalancer Service${cluster.loadBalancers.count === 1 ? "" : "s"}. No per-load-balancer price is configured.`,
     });
   }
   if (cluster.storage.unboundCount > 0) {
     items.push({
       key: "Unbound claims",
-      value: `${cluster.storage.unboundCount} claim${cluster.storage.unboundCount === 1 ? "" : "s"} never bound to a volume (${gibText(cluster.storage.unboundGib)} requested). Not priced — nothing was provisioned.`,
+      value: `${cluster.storage.unboundCount} claim${cluster.storage.unboundCount === 1 ? "" : "s"} never bound to a volume (${gibText(cluster.storage.unboundGib)} requested). Not priced, nothing was provisioned.`,
     });
   }
 
@@ -415,11 +415,11 @@ function storageTable(costs: CostIndex): SectionNode[] {
       size: gibText(v.gib) + (v.capacityBasis === "requested" ? " (requested)" : ""),
       class: v.storageClass || "(default)",
       attribution: v.unbound
-        ? `Unbound — ${v.phase}`
+        ? `Unbound (${v.phase})`
         : v.unattached
           ? "Mounted by nothing"
           : v.shared
-            ? "Shared — charged to the namespace"
+            ? "Shared, charged to the namespace"
             : `${v.workloadKind} ${v.workload}`,
       cost: moneyCell(v.dailyCost, costs.currency),
     },
@@ -459,7 +459,7 @@ function loadBalancerTable(costs: CostIndex): SectionNode[] {
       class: lb.loadBalancerClass || "(provider default)",
       attribution: lb.workload
         ? `${lb.workloadKind} ${lb.workload}`
-        : "No single workload — charged to the namespace",
+        : "No single workload, charged to the namespace",
       cost: moneyCell(lb.dailyCost, costs.currency),
     },
   }));
@@ -814,7 +814,7 @@ function efficiencyTab(
 
   const currency = report.currency;
   const title = namespaceFilter
-    ? `Kubernetes efficiency — namespace ${namespaceFilter}`
+    ? `Kubernetes efficiency: namespace ${namespaceFilter}`
     : "Kubernetes efficiency report";
 
   const summary = [
@@ -830,7 +830,7 @@ function efficiencyTab(
       ? [
           {
             key: "Idle node capacity",
-            value: `${formatDaily(report.totals.dailyIdleCost, currency)} — capacity nobody requested, a separate finding from over-requesting`,
+            value: `${formatDaily(report.totals.dailyIdleCost, currency)}, capacity nobody requested`,
           },
         ]
       : []),
@@ -838,7 +838,7 @@ function efficiencyTab(
       ? [
           {
             key: "Unattached storage",
-            value: `${formatDaily(report.totals.dailyUnattachedStorageCost, currency)} — volumes no running pod mounts`,
+            value: `${formatDaily(report.totals.dailyUnattachedStorageCost, currency)}, volumes no running pod mounts`,
           },
         ]
       : []),
@@ -867,7 +867,7 @@ function efficiencyTab(
   const caveats: string[] = [];
   if (!report.measured) {
     caveats.push(
-      "metrics-server is not reporting on this cluster, so nothing here is measured. Every efficiency figure reads “unknown” rather than being assumed — install metrics-server and the report fills in on the next refresh.",
+      "metrics-server is not reporting, so nothing here is measured and efficiency figures read “unknown”. Install it and the report fills in on the next refresh.",
     );
   } else if (report.unknownWorkloads > 0) {
     caveats.push(
@@ -899,12 +899,12 @@ function efficiencyTab(
     },
     {
       kind: "section",
-      title: "By namespace — worst first",
+      title: "By namespace, worst first",
       children: [efficiencyTable(report.namespaces, currency, null, false, report.hasGpus)],
     },
     {
       kind: "section",
-      title: "By workload — worst first",
+      title: "By workload, worst first",
       children: [efficiencyTable(report.workloads, currency, accountId, true, report.hasGpus)],
     },
     ...gpuRightsizingSection(report),
@@ -912,7 +912,7 @@ function efficiencyTab(
       ? [
           {
             kind: "section" as const,
-            title: "By node group — most idle first",
+            title: "By node group, most idle first",
             children: [nodeGroupTable(report.nodeGroups, currency)],
           },
         ]
@@ -1087,7 +1087,7 @@ export function renderPodDetail(resource: ResourceInstance, costs?: CostIndex): 
                 {
                   kind: "key-value-list" as const,
                   items: [
-                    { key: "Type", value: "Ephemeral \u2014 auto-destroys after TTL" },
+                    { key: "Type", value: "Ephemeral (auto-destroys after TTL)" },
                     ...ephemeralItems,
                   ],
                 },

@@ -501,7 +501,7 @@ function BudgetScenarioField({
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
       >
-        <option value="">{gt("None — measure the bare trend")}</option>
+        <option value="">{gt("None (unadjusted trend)")}</option>
         {models.map((model) => (
           <option key={model.id} value={model.id}>
             {model.name}
@@ -513,9 +513,8 @@ function BudgetScenarioField({
           <>
             <T>
               <>
-                Forecast thresholds are judged against the trend <strong>plus</strong> “
-                <Var>{selected.name}</Var>”, and alerts say so. Actual-spend thresholds are
-                unaffected — they measure money already spent.
+                Forecast thresholds use the trend <strong>plus</strong> “<Var>{selected.name}</Var>
+                ”. Actual-spend thresholds are unaffected.
               </>
             </T>
             {!hasForecastThreshold && (
@@ -524,7 +523,7 @@ function BudgetScenarioField({
           </>
         ) : (
           gt(
-            "Forecast thresholds measure the unadjusted trend. Pick a model to have this budget — and only this budget — alert on assumptions you have written down.",
+            "Forecast thresholds use the unadjusted trend. Pick a model to add known future costs for this budget only.",
           )
         )}
       </p>
@@ -899,7 +898,7 @@ function BudgetParentField({
       <p className="mt-1 text-[11px] text-on-surface-faint">
         {hasChildren
           ? gt(
-              "This budget has child budgets, so its figures are the sum of theirs over its own period; its scope below is set aside while it has children.",
+              "This budget's figures are the sum of its child budgets; its scope below is ignored while it has children.",
             )
           : gt(
               "A parent's actual and forecast are the sum of its children's. Only budgets measuring the same currency or usage unit can be parents.",

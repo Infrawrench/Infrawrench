@@ -160,7 +160,7 @@ async function sendOne(message: EmailMessage): Promise<void> {
     // the status: an unverified sender domain and a malformed address both
     // surface as 400, and only the body distinguishes them.
     const detail = (await res.text().catch(() => "")).slice(0, 200).trim();
-    throw new Error(`email to ${message.to}: HTTP ${res.status}${detail ? ` — ${detail}` : ""}`);
+    throw new Error(`email to ${message.to}: HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
   }
 }
 
@@ -180,7 +180,7 @@ export async function sendEmails(
   if (messages.length === 0) return NO_DELIVERY;
   if (!isEmailConfigured()) {
     console.warn(
-      `[email] ${context}: skipping ${messages.length} message(s) — MAILGUN_API_KEY, MAILGUN_DOMAIN and EMAIL_FROM are not all set on this deployment.`,
+      `[email] ${context}: skipping ${messages.length} message(s). MAILGUN_API_KEY, MAILGUN_DOMAIN and EMAIL_FROM are not all set on this deployment.`,
     );
     return NO_DELIVERY;
   }

@@ -130,9 +130,8 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
         <h1 className="text-xl font-semibold mb-1">{gt("Backups")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted">
-            Backup coverage is a cloud feature. Sign in to an organization to see which of its
-            resources are actually recoverable, and to set the recovery objectives they are judged
-            against.
+            Backup coverage is a cloud feature. Sign in to an organization to see which resources
+            are recoverable.
           </p>
         </T>
       </div>

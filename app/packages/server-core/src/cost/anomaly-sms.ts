@@ -130,13 +130,13 @@ export function formatAnomalySmsBody(items: AnomalySmsItem[]): string {
     const next = [...named, describe(item)];
     const remaining = items.length - next.length;
     const tail = remaining > 0 ? `; and ${remaining} more` : "";
-    if (`${head} — ${next.join("; ")}${tail}`.length > SMS_BODY_MAX) break;
+    if (`${head}: ${next.join("; ")}${tail}`.length > SMS_BODY_MAX) break;
     named.push(next[next.length - 1]!);
   }
 
   const remaining = items.length - named.length;
   if (named.length === 0) return `${head}. See the Costs panel`;
-  return `${head} — ${named.join("; ")}${remaining > 0 ? `; and ${remaining} more` : ""}`;
+  return `${head}: ${named.join("; ")}${remaining > 0 ? `; and ${remaining} more` : ""}`;
 }
 
 /** Why a pass did or did not text. Returned for tests and logs. */

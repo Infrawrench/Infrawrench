@@ -189,7 +189,7 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
           </h2>
           <p className="text-xs text-on-surface-faint">
             {gt(
-              "Three things the cost data already knows and no spend total can show: a commitment about to lapse, a commitment nobody is using, and cost per unit going the wrong way.",
+              "Commitments about to lapse or sitting unused, and unit costs going the wrong way.",
             )}
           </p>
         </div>
@@ -209,7 +209,7 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
       {error !== null && (
         <div role="alert" className="rounded-xl border border-border p-4 text-sm text-danger">
           <T>
-            Couldn&rsquo;t load efficiency alerts — <Var>{error}</Var>
+            Couldn&rsquo;t load efficiency alerts: <Var>{error}</Var>
           </T>
         </div>
       )}
@@ -223,7 +223,7 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
       {error === null && events !== null && events.length === 0 && (
         <p className="rounded-xl border border-border p-4 text-sm text-on-surface-faint">
           {gt(
-            "Nothing has fired yet. Commitment alerts need at least one reservation, savings plan or committed-use discount; unit-cost regressions need a business metric with a fortnight of reported values on each side of the comparison.",
+            "Nothing has fired yet. Commitment alerts need a commitment; unit-cost alerts need a business metric with two weeks of values on each side.",
           )}
         </p>
       )}
@@ -251,9 +251,7 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
               </p>
               {event.notifiedAt === null && (
                 <p className="text-[11px] text-on-surface-faint">
-                  {gt(
-                    "Stored but not delivered — no routing rule matched, or quiet hours are holding it.",
-                  )}
+                  {gt("Not delivered: no routing rule matched, or quiet hours are holding it.")}
                 </p>
               )}
               <div>
@@ -373,7 +371,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
       return gt("Give at least one expiry horizon, or turn commitment expiry alerts off.");
     }
     if (next.commitmentExpiryHorizonDays.length > L.maxExpiryHorizons) {
-      return gt("At most {max} horizons — past that one commitment becomes its own digest.", {
+      return gt("At most {max} horizons.", {
         max: L.maxExpiryHorizons,
       });
     }
@@ -423,7 +421,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
     return (
       <div role="alert" className="rounded-xl border border-border p-4 text-sm text-danger">
         <T>
-          Couldn&rsquo;t load alert settings — <Var>{loadError}</Var>
+          Couldn&rsquo;t load alert settings: <Var>{loadError}</Var>
         </T>
       </div>
     );
@@ -460,7 +458,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
     <div className="flex flex-col gap-5 rounded-xl border border-border bg-surface-sunken p-4">
       <p className="text-xs text-on-surface-faint">
         {gt(
-          "Changes apply on the next evaluation pass, which runs after each cost collection. Alerts already fired are not re-judged — widening the horizon list warns about future crossings, not past ones.",
+          "Changes apply after the next cost collection. Alerts already fired are not re-evaluated.",
         )}
       </p>
 
@@ -498,9 +496,8 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             />
             <span className="text-[11px] text-on-surface-faint">
               <T>
-                Comma separated. Each fires once per commitment per term, and a commitment fires at
-                the smallest horizon it has reached — so an account connected 30 days out gets one
-                alert, not two. Default <Var>{D.commitmentExpiryHorizonDays.join(", ")}</Var>.
+                Comma separated. Each fires once per commitment per term. Default{" "}
+                <Var>{D.commitmentExpiryHorizonDays.join(", ")}</Var>.
               </T>
             </span>
           </label>
@@ -519,7 +516,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             </label>
             <span className="text-[11px] text-on-surface-faint">
               {gt(
-                "A commitment that ended before we ever collected it cannot have crossed a horizon, so nothing else would ever mention it. Bounded to the last 90 days. Default on.",
+                "Covers commitments that lapsed in the last 90 days before collection began. Default on.",
               )}
             </span>
           </label>
@@ -542,7 +539,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             id={`${uid}-idle-threshold`}
             label={gt("Utilization under (%)")}
             hint={gt(
-              "Aggregated over the whole window, never sampled per day — a weekday-only workload reads about 71% and stays quiet. Default {value}%.",
+              "Averaged over the whole window, so a weekday-only workload (about 71%) stays quiet. Default {value}%.",
               { value: D.commitmentIdleThresholdPercent },
             )}
             value={draft.commitmentIdleThresholdPercent}
@@ -567,7 +564,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             id={`${uid}-idle-measured`}
             label={gt("Least days with data")}
             hint={gt(
-              "Window days that must carry cost rows before anything is judged. A commitment whose utilization can't be measured at all never alerts, whatever this says. Default {value}.",
+              "Days in the window that need cost data before anything is judged. Default {value}.",
               { value: D.commitmentIdleMinMeasuredDays },
             )}
             value={draft.commitmentIdleMinMeasuredDays}
@@ -618,10 +615,9 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
           <NumberField
             id={`${uid}-unit-window`}
             label={gt("Each window (days)")}
-            hint={gt(
-              "Two adjacent windows of this length are compared. Default {value} — two whole weekly cycles a side.",
-              { value: D.unitCostWindowDays },
-            )}
+            hint={gt("Two adjacent windows of this length are compared. Default {value}.", {
+              value: D.unitCostWindowDays,
+            })}
             value={draft.unitCostWindowDays}
             min={L.minUnitCostWindowDays}
             max={L.maxUnitCostWindowDays}
@@ -632,7 +628,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             id={`${uid}-unit-reported`}
             label={gt("Least reported days")}
             hint={gt(
-              "Required in each window. A day with no reported metric value is a gap, not a zero: it counts on neither side, and a window below this bar produces no comparison at all. Default {value}.",
+              "Required in each window; days with no value are gaps, not zeros. Default {value}.",
               { value: D.unitCostMinReportedDays },
             )}
             value={draft.unitCostMinReportedDays}

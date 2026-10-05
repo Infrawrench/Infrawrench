@@ -277,7 +277,7 @@ export function datadogPolicyTemplate(capabilityIds: string[]): PolicyTemplate {
     language: "text",
     document: scopes.join("\n"),
     instructions:
-      "In Datadog, open Organization Settings, then Application Keys, create a key (or edit one) and use Edit Scopes to grant exactly these scopes. The key's owner must hold the same permissions through their role: a scope narrows a key, it cannot grant more than its owner has. The Write, Delete and Manage scopes are only needed for the matching actions; leave them out for a read-only account.",
+      "In Datadog, open Organization Settings, then Application Keys, create a key (or edit one) and use Edit Scopes to grant exactly these scopes. The key's owner must hold the same permissions through their role, since a scope cannot grant more than its owner has. Write, Delete and Manage scopes are only needed for the matching actions.",
     helpLink: SCOPES_HELP,
   };
 }

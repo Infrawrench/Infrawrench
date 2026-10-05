@@ -47,7 +47,7 @@ export const IAMUserResourceType = rt({
       category: "credential-age",
       conditions: [{ fieldKey: "passwordLastUsed", when: "olderThanDays", days: 90 }],
       reason:
-        "This user's console password was last used more than 90 days ago — dormant credentials are a favorite target; disable console access or remove the user.",
+        "This user's console password was last used more than 90 days ago. Disable console access or remove the user.",
     },
   ],
 });

@@ -415,7 +415,7 @@ export async function executeDoNoSqlCommand(
       }
       if (models.length === 0) {
         throw new Error(
-          "No models selected and the task has no default models — pick at least one model.",
+          "No models selected and the task has no default models. Pick at least one.",
         );
       }
       const next = cur.policies

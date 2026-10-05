@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const MySQLDatabaseResourceType = rt({
   name: "MySQL Database",
   id: "mysql-database",
-  description: "A MySQL database — connects via connection string.",
+  description: "A MySQL database, connected via connection string.",
   fields: [
     f("name", "Display Name"),
     f("connectionString", "Connection String", {

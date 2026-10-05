@@ -172,9 +172,7 @@ export function MomentPanel({
         {badge && (
           <span
             className="rounded-full border border-amber-500/40 text-warning px-2 py-0.5 text-xs whitespace-nowrap shrink-0"
-            title={gt(
-              "This event falls inside a provider incident's span — correlation, not causation.",
-            )}
+            title={gt("This event falls inside a provider incident (correlation, not causation).")}
           >
             {badge}
           </span>
@@ -191,7 +189,7 @@ export function MomentPanel({
       <h1 className="text-xl font-semibold mb-1">{gt("Investigate a moment")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
         {gt(
-          "Everything the platform knows happened around a timestamp — changes, incidents, anomalies, runs, deployments, audit entries and freezes, merged into one timeline.",
+          "Everything that happened around a timestamp (changes, incidents, anomalies, runs, deployments, audit entries and freezes) in one timeline.",
         )}
       </p>
 
@@ -310,7 +308,7 @@ export function MomentPanel({
       {error !== null && (
         <T>
           <div role="alert" className="mb-4 text-sm text-danger">
-            Couldn&apos;t load the moment — <Var>{error}</Var>{" "}
+            Couldn&apos;t load the moment: <Var>{error}</Var>{" "}
             <button type="button" onClick={() => void load()} className="underline">
               Retry
             </button>
@@ -329,7 +327,7 @@ export function MomentPanel({
               {gt("Nothing recorded in this window.")}
             </p>
             <p className="text-xs text-on-surface-faint mt-1">
-              {gt("Try a wider window — or breathe out, maybe nothing happened.")}
+              {gt("Try a wider window, or maybe nothing happened.")}
             </p>
           </div>
         ) : (
@@ -390,7 +388,7 @@ export function MomentPanel({
       {data !== null && !loading && (
         <T>
           <p className="text-xs text-on-surface-muted mt-4">
-            <Var>{new Date(data.from).toLocaleString()}</Var> —{" "}
+            <Var>{new Date(data.from).toLocaleString()}</Var> to{" "}
             <Var>{new Date(data.to).toLocaleString()}</Var> · <Var>{data.events.length}</Var> event
             <Var>{data.events.length === 1 ? "" : "s"}</Var>
           </p>

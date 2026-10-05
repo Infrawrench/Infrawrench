@@ -288,7 +288,7 @@ export function AccountDetailView({
 
       {showTerraformExport && (
         <TerraformExportModal
-          subjectDisplayName={gt("{name} — full inventory", { name: account.displayName })}
+          subjectDisplayName={gt("{name}: full inventory", { name: account.displayName })}
           generate={() =>
             apiGet<TerraformExportOutcome>(
               `/api/org/${orgId}/accounts/${account.id}/export-terraform`,

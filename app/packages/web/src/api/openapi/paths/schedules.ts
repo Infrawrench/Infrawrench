@@ -129,7 +129,7 @@ export function registerSchedulePaths(ctx: BuildContext) {
       .describe("Days of billing data the estimate was computed over (0 = none found)."),
     nextTransitions: z
       .array(ScheduleTransition)
-      .describe("The next few transitions, soonest first — a timezone sanity check."),
+      .describe("The next few transitions, soonest first; a timezone sanity check."),
   }).openapi("SleepSchedulePreview");
 
   registry.registerPath({

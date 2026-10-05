@@ -50,7 +50,7 @@ const CostChargeType = z
 const CostBasis = z
   .enum(["cash", "amortized", "blended"])
   .describe(
-    "Which number to sum. `cash` is what the provider charged on the day it charged it — the " +
+    "Which number to sum. `cash` is what the provider charged on the day it charged it; the " +
       "default, and what every query returned before this existed. `amortized` spreads a " +
       "commitment's up-front fee across the term it buys, so a year of capacity bought on one " +
       "day is counted on the days it covers. Providers that report no amortized amount fall " +
@@ -139,7 +139,7 @@ const CostQueryRequest = strict({
     .max(4000)
     .optional()
     .describe(
-      "The same filter written as text, in the cost query language — an alternative to " +
+      "The same filter written as text, in the cost query language; an alternative to " +
         "`filters`, compiled server-side into exactly that structure.\n\n" +
         "Grammar: a conjunction of equality terms joined by `AND`. A term is " +
         "`dimension = 'value'`, `dimension != 'value'`, `dimension IN ('a','b')` or " +
@@ -162,7 +162,7 @@ const CostQueryRequest = strict({
     .describe(
       "A saved cost filter (see /saved-cost-filters) applied by reference. Resolved " +
         "server-side at query time and AND-composed with whichever of `filters`/`query` is " +
-        "present — unlike those two it is a composition, not an alternative. An id that does " +
+        "present: unlike those two it is a composition, not an alternative. An id that does " +
         "not resolve to a live filter is a 400; the query is never silently run unfiltered.",
     ),
   topN: z.number().int().min(1).max(15).optional(),
@@ -173,7 +173,7 @@ const CostQueryRequest = strict({
     .optional()
     .describe(
       "Apply a scenario model (see /cost-scenarios) to the projection: known future cost the " +
-        "trend cannot see. Requires `forecast: true` — sending it without one is a 400, not a " +
+        "trend cannot see. Requires `forecast: true`: sending it without one is a 400, not a " +
         "no-op, because a caller who asked for assumptions and silently got none back is the " +
         "failure this feature exists to prevent. The adjusted projection comes back as " +
         "`scenario`, **alongside** the untouched `forecast`, never instead of it. An id that " +
@@ -185,7 +185,7 @@ const CostQueryRequest = strict({
     .optional()
     .describe(
       "Restrict to these kinds of charge. Omitted is all of them, which is what makes an " +
-        "unfiltered total net rather than gross — credits, refunds and commitment discounts are " +
+        "unfiltered total net rather than gross; credits, refunds and commitment discounts are " +
         "included. Rows collected before charge types existed, and rows from providers that " +
         "cannot distinguish them, are `usage`.",
     ),
@@ -193,7 +193,7 @@ const CostQueryRequest = strict({
     .boolean()
     .optional()
     .describe(
-      "Apply the organization's billing rules (see /billing-rules) — markups, discounts, " +
+      "Apply the organization's billing rules (see /billing-rules); markups, discounts, " +
         "reallocations. Omitted (the default, and what every unattended reader sends) is raw " +
         "collected spend. Present, the response carries `adjustment` with the collected totals " +
         "beside the adjusted ones and the rules that moved them; it is set even for an " +
@@ -229,7 +229,7 @@ const CostScenarioResult = strict({
   points: z
     .array(CostSeriesPoint)
     .describe(
-      "The adjusted projection — exactly the same days as `forecast`, never one more or fewer. " +
+      "The adjusted projection; exactly the same days as `forecast`, never one more or fewer. " +
         "A scenario modifies the projected region; it does not extend it, and it can never " +
         "touch a day that already has recorded spend behind it.",
     ),
@@ -251,7 +251,7 @@ const CostScenarioResult = strict({
   outOfScope: z
     .array(z.string())
     .describe(
-      "Adjustments this chart's own filters exclude, by label — a GCP commitment on an " +
+      "Adjustments this chart's own filters exclude, by label; a GCP commitment on an " +
         "AWS-filtered chart is correctly left out, and saying so is what makes the number " +
         "trustworthy rather than quietly assumed broken.",
     ),
@@ -273,7 +273,7 @@ export const CostQueryResponse = strict({
     .record(z.number())
     .describe(
       "Period total per currency, and always exactly the sum of `series`. Fixed-amount " +
-        "billing-rule charges are deliberately **not** folded in here — they have no series " +
+        "billing-rule charges are deliberately **not** folded in here; they have no series " +
         "behind them and are reported in `adjustment.fixedTotals` instead.",
     ),
   previousTotals: z.record(z.number()).optional(),
@@ -328,7 +328,7 @@ const CostAccountStatus = strict({
     .boolean()
     .describe(
       "Whether this account's plugin can tell one kind of charge from another. False means " +
-        "every row it writes is recorded as `usage` — not that the provider only bills usage.",
+        "every row it writes is recorded as `usage`: not that the provider only bills usage.",
     ),
   amortization: z
     .boolean()
@@ -348,8 +348,8 @@ const CostAccountStatus = strict({
   estimated: z
     .boolean()
     .describe(
-      "Whether this account's amounts are derived by Infrawrench — inventory priced against a " +
-        "rate card, or metered usage priced at published list rates — rather than reported as " +
+      "Whether this account's amounts are derived by Infrawrench (inventory priced against a " +
+        "rate card, or metered usage priced at published list rates) rather than reported as " +
         "billed spend. True means the series cannot be reconciled against an invoice: resources " +
         "deleted part-way through a period are no longer in inventory to be priced, all rates " +
         "are list rather than negotiated, and credits, tax and refunds never appear.",
@@ -403,12 +403,12 @@ export const CostAnomaly = strict({
     .describe(
       "Which detection produced the row. `spike` is spend far above the key's own trailing " +
         "baseline; `new_source` is a provider or service with no spend at all across the " +
-        "trailing window that suddenly has material spend — it can never be a `spike`, since " +
+        "trailing window that suddenly has material spend; it can never be a `spike`, since " +
         "a zero baseline has no mean or deviation to exceed. Rows written before new-source " +
         "detection existed read as `spike`.",
     ),
   dimension: z.enum(["provider", "service"]),
-  dimensionKey: z.string().describe("The dimension's value — a plugin id or a service name."),
+  dimensionKey: z.string().describe("The dimension's value; a plugin id or a service name."),
   currency: z.string(),
   actualCents: z.number().int(),
   baselineCents: z
@@ -416,7 +416,7 @@ export const CostAnomaly = strict({
     .int()
     .describe(
       "Mean daily spend over the trailing 28-day baseline, in cents. Zero, or near it, for a " +
-        "`new_source` — clients must not compute a percentage change from it.",
+        "`new_source`: clients must not compute a percentage change from it.",
     ),
   thresholdCents: z
     .number()
@@ -444,19 +444,19 @@ export const CostAnomaly = strict({
       .string()
       .describe("What somebody established this finding was. Also the annotation's text."),
     acknowledgedAt: IsoDateTime.describe(
-      "When the current explanation was recorded — restamped by a correction.",
+      "When the current explanation was recorded, restamped by a correction.",
     ),
     acknowledgedByUserId: z.string().nullable(),
     annotationId: Uuid.nullable().describe(
       "The cost annotation this created, drawn on every chart covering the anomalous day. " +
-        "Null once that note has been deleted — which removes the marker, never the " +
+        "Null once that note has been deleted; which removes the marker, never the " +
         "acknowledgement: the finding stays explained.",
     ),
   })
     .nullable()
     .describe(
       "Present once somebody has explained this finding, null while it is still an open " +
-        "question. Acknowledging does not suppress detection — the same key spiking again " +
+        "question. Acknowledging does not suppress detection; the same key spiking again " +
         "on a later day is a new anomaly and fires as normal.",
     ),
   feedback: CostAnomalyFeedback.nullable().describe(
@@ -478,8 +478,8 @@ const CostAnomalySettings = strict({
     .max(10)
     .describe(
       "Standard deviations above a key's own trailing mean that count as a spike. " +
-        "Lower is more sensitive. Bounded at 1 — below that roughly a third of ordinary " +
-        "days clear the bar — and at 10, above which nothing short of a 10x jump fires. " +
+        "Lower is more sensitive. Bounded at 1 (below that roughly a third of ordinary " +
+        "days clear the bar) and at 10, above which nothing short of a 10x jump fires. " +
         "Defaults to 3.",
     ),
   minDeltaCents: z
@@ -504,12 +504,12 @@ const CostAnomalySettings = strict({
   smsAlerts: z
     .enum(["off", "new_source", "all"])
     .describe(
-      "Which anomalies also text the organization's Twilio recipients. Defaults to `off` — " +
+      "Which anomalies also text the organization's Twilio recipients. Defaults to `off`: " +
         "an organization with Twilio configured for budgets does not start receiving anomaly " +
         "texts until it asks to. `new_source` texts only about spend appearing from nothing, " +
         "which is what a leaked key looks like on a bill; `all` adds spikes on existing lines. " +
-        "Delivery is batched — one SMS per detection pass summarizing what it alerted on, at " +
-        "most one every six hours per organization — and never places a voice call. Push, " +
+        "Delivery is batched (one SMS per detection pass summarizing what it alerted on, at " +
+        "most one every six hours per organization) and never places a voice call. Push, " +
         "Slack and Teams delivery is unaffected by this setting.",
     ),
   feedbackTuning: z
@@ -539,7 +539,7 @@ const CostAnomalySettingsView = CostAnomalySettings.extend({
     .describe(
       "Whether an SMS raised right now could be delivered: paging enabled for the " +
         "organization, Twilio credentials and a from-number stored, and at least one recipient " +
-        "opted into SMS. Read-only and derived — it is not accepted on PUT.",
+        "opted into SMS. Read-only and derived; it is not accepted on PUT.",
     ),
 }).openapi("CostAnomalySettingsView");
 
@@ -566,7 +566,7 @@ const CostEfficiencySettings = strict({
     .describe(
       "Whether a commitment that lapsed without any horizon warning having fired raises one " +
         "alert anyway. Defaults to true, and bounded to terms that ended within the last 90 " +
-        "days — connecting an account with years of dead reservations produces one pass of " +
+        "days: connecting an account with years of dead reservations produces one pass of " +
         "recent news, not an archive.",
     ),
   commitmentIdleEnabled: z
@@ -578,7 +578,7 @@ const CostEfficiencySettings = strict({
     .min(1)
     .max(99)
     .describe(
-      "Utilization percent the whole window must stay under. Defaults to 70 — roughly where " +
+      "Utilization percent the whole window must stay under. Defaults to 70; roughly where " +
         "a 1-year no-upfront commitment stops beating on-demand for the usage it covers.",
     ),
   commitmentIdleWindowDays: z
@@ -598,8 +598,8 @@ const CostEfficiencySettings = strict({
     .max(90)
     .describe(
       "Window days that must carry cost data before anything is judged. Defaults to 14. A " +
-        "commitment whose utilization cannot be measured at all — a unit-denominated GCP CUD, " +
-        "or an account whose plugin reports no commitment attribution — never alerts, " +
+        "commitment whose utilization cannot be measured at all (a unit-denominated GCP CUD, " +
+        "or an account whose plugin reports no commitment attribution) never alerts, " +
         "regardless of this value.",
     ),
   commitmentIdleMinWasteCents: z
@@ -626,7 +626,7 @@ const CostEfficiencySettings = strict({
     .min(7)
     .max(90)
     .describe(
-      "Length of each of the two compared windows. Defaults to 14 — two whole weekly cycles " +
+      "Length of each of the two compared windows. Defaults to 14; two whole weekly cycles " +
         "a side, so a weekday-shaped unit cost compares like with like.",
     ),
   unitCostMinReportedDays: z
@@ -669,7 +669,7 @@ const EfficiencyAlertEvent = strict({
     .number()
     .nullable()
     .describe(
-      "The money at stake, in **units of `currency`** rather than cents — commitment amounts " +
+      "The money at stake, in **units of `currency`** rather than cents; commitment amounts " +
         "are provider-reported in currency units. Per kind: the monthly on-demand exposure for " +
         "an expiry, the wasted amount for an idle commitment, the current window's spend for a " +
         "regression.",
@@ -746,8 +746,8 @@ export function registerCostPaths(ctx: BuildContext) {
     tags: ["Costs"],
     summary: "Push cost rows from your own systems",
     description:
-      "Reports spend Infrawrench has no provider plugin for — a parsed SaaS invoice, an internal " +
-      "chargeback, a colo bill — into the same store the provider collectors write to, so it " +
+      "Reports spend Infrawrench has no provider plugin for (a parsed SaaS invoice, an internal " +
+      "chargeback, a colo bill) into the same store the provider collectors write to, so it " +
       "appears in cost graphs, dimension filters, and budgets alongside everything else.\n\n" +
       "Rows are grouped under a caller-chosen `source`. Writes are idempotent per " +
       "`(source, day, service, region, resourceId, tags, currency)`: pushing the same day again " +
@@ -914,7 +914,7 @@ export function registerCostPaths(ctx: BuildContext) {
       "by a statistical threshold (mean + N·stddev, with an absolute floor to ignore " +
       "penny-scale noise), and a `new_source`, where a provider or service with no spend at " +
       "all across that window suddenly billed a material amount. Thresholds are per " +
-      "organization — see GET /costs/anomaly-settings. Newest day first, capped at 200 rows.",
+      "organization: see GET /costs/anomaly-settings. Newest day first, capped at 200 rows.",
     request: {
       params: OrgIdParam,
       query: strict({
@@ -943,7 +943,7 @@ export function registerCostPaths(ctx: BuildContext) {
     summary: "Explain a detected cost anomaly",
     description:
       "Record what a finding actually was, and publish that sentence as a cost annotation on " +
-      "**every** chart covering the anomalous day — the point being that 'we migrated the " +
+      "**every** chart covering the anomalous day; the point being that 'we migrated the " +
       "fleet' is not a fact about whichever report somebody happened to open. The note's date " +
       "(the anomalous day) and its org-wide scope are derived from the anomaly and are not the " +
       "caller's to choose.\n\n" +
@@ -989,9 +989,9 @@ export function registerCostPaths(ctx: BuildContext) {
     tags: ["Costs"],
     summary: "Get the organization's anomaly detection thresholds",
     description:
-      "The tunable part of cost anomaly detection. Everything else about the model — the " +
+      "The tunable part of cost anomaly detection. Everything else about the model (the " +
       "28-day baseline, the 7-day notification cooldown, the minimum history a baseline needs " +
-      "— is fixed. An organization that has never changed a threshold reads back the defaults. " +
+      ") is fixed. An organization that has never changed a threshold reads back the defaults. " +
       "The response also carries the derived, read-only `smsConfigured`.",
     request: { params: OrgIdParam },
     responses: {
@@ -1009,8 +1009,8 @@ export function registerCostPaths(ctx: BuildContext) {
     summary: "Update the organization's anomaly detection thresholds",
     description:
       "Takes effect on the next detection pass (which runs after each cost collection). " +
-      "Anomalies already stored are not re-judged. The four threshold fields are required — this is a " +
-      "PUT of the whole settings object, not a patch — and `smsAlerts` deliberately has no " +
+      "Anomalies already stored are not re-judged. The four threshold fields are required (this is a " +
+      "PUT of the whole settings object, not a patch) and `smsAlerts` deliberately has no " +
       "server-side default, so a client that omits it is rejected rather than silently " +
       "switching an organization's SMS paging back off. `smsConfigured` is derived and is not " +
       "accepted here.",
@@ -1035,8 +1035,8 @@ export function registerCostPaths(ctx: BuildContext) {
     description:
       "The three slow-lane cost alerts in one feed, newest first: commitments about to lapse, " +
       "commitments that are not being used, and business metrics whose cost per unit rose. " +
-      "Unlike budgets, anomalies and change alerts — all of which compare a spend total " +
-      "against another spend total — these read the commitment calendar and the volume the " +
+      "Unlike budgets, anomalies and change alerts (all of which compare a spend total " +
+      "against another spend total) these read the commitment calendar and the volume the " +
       "spend bought, so they see the two surprises the other three structurally cannot.",
     request: {
       params: OrgIdParam,
@@ -1096,7 +1096,7 @@ export function registerCostPaths(ctx: BuildContext) {
     description:
       "Takes effect on the next evaluation pass (which runs after each cost collection). " +
       "Already-fired alerts are not re-judged, and horizons that have already fired for a " +
-      "commitment's current term do not fire again — widening the horizon list warns about " +
+      "commitment's current term do not fire again; widening the horizon list warns about " +
       "future crossings, not past ones. A PUT of the whole object, not a patch.",
     request: {
       params: OrgIdParam,

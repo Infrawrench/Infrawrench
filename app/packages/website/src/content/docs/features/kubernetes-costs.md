@@ -396,7 +396,7 @@ Left blank, each uses a short default: the standard topology and architecture la
 
 ## Network costs
 
-The **Kubernetes network costs** section on the [Costs panel](./cloud-costs.md#the-costs-panel) answers which workloads are moving bytes across which billing boundary: same zone (usually free), cross-zone, cross-region, and internet egress. Per cluster, it shows:
+The **Kubernetes network costs** section on the [Costs panel](./cloud-costs.md#the-costs-panel)'s **Network** tab answers which workloads are moving bytes across which billing boundary: same zone (usually free), cross-zone, cross-region, and internet egress. Per cluster, it shows:
 
 - **By traffic class**: bytes and money per boundary.
 - **By namespace** and **by workload**: who sent it, with the boundaries each one mostly crossed and how it was measured.

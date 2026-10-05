@@ -32,7 +32,7 @@ const SavedCostFilterInput = strict({
     .max(4000)
     .optional()
     .describe(
-      "The same filter written in the cost query language — an alternative spelling of " +
+      "The same filter written in the cost query language; an alternative spelling of " +
         "`filters`, compiled server-side into exactly that structure. Sending both a query " +
         "and a non-empty `filters` is a 400, not a precedence rule. Whichever spelling is " +
         "used, the result must be non-empty (an empty saved filter matches everything, which " +
@@ -75,7 +75,7 @@ export function registerSavedFilterPaths(ctx: BuildContext) {
     description:
       "Named, reusable cost filter sets. Graphs, reports and budgets reference one **by id** " +
       "(`savedFilterId` in their configs and in `POST /costs/query`), and the server resolves " +
-      "the reference at query time — so editing a saved filter changes every referent at once, " +
+      "the reference at query time; so editing a saved filter changes every referent at once, " +
       "and nothing ever holds a copy.",
     request: { params: OrgIdParam },
     responses: {
@@ -92,7 +92,7 @@ export function registerSavedFilterPaths(ctx: BuildContext) {
     tags: ["Saved cost filters"],
     summary: "Create a saved cost filter",
     description:
-      "Names must be unique per organization (case-insensitively) — they are how the CLI's " +
+      "Names must be unique per organization (case-insensitively); they are how the CLI's " +
       "`--filter <name>` and humans address the filter. A name collision is a 409.",
     request: {
       params: OrgIdParam,
@@ -136,7 +136,7 @@ export function registerSavedFilterPaths(ctx: BuildContext) {
     description:
       "Replaces the filter's name, description and terms. This is the high-leverage write: " +
       "every graph, report and budget referencing the filter runs the new terms on its next " +
-      "query — re-scoping a referenced budget can change which alerts fire. " +
+      "query: re-scoping a referenced budget can change which alerts fire. " +
       "`GET /{id}/referents` names what a change will touch.",
     request: {
       params: idParam(),
@@ -164,7 +164,7 @@ export function registerSavedFilterPaths(ctx: BuildContext) {
     tags: ["Saved cost filters"],
     summary: "Delete a saved cost filter",
     description:
-      "Soft delete — **refused with a 409 while anything references the filter**, with the " +
+      "Soft delete: **refused with a 409 while anything references the filter**, with the " +
       "referents in the body. Deleting a referenced filter would silently widen every " +
       "referent's scope to all spend; for a budget that can fire or suppress alerts, so " +
       "detaching the referents is a deliberate step, never a side effect of deletion.",
@@ -173,7 +173,7 @@ export function registerSavedFilterPaths(ctx: BuildContext) {
       200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
       404: ErrorResponses[404],
       409: {
-        description: "Still referenced — the body lists every referent.",
+        description: "Still referenced: the body lists every referent.",
         content: {
           "application/json": {
             schema: strict({
@@ -192,7 +192,7 @@ export function registerSavedFilterPaths(ctx: BuildContext) {
     tags: ["Saved cost filters"],
     summary: "List a saved filter's referents",
     description:
-      "Every budget, cost report and dashboard cost graph referencing this filter — what an " +
+      "Every budget, cost report and dashboard cost graph referencing this filter; what an " +
       "edit will re-scope, and what a delete would be refused over.",
     request: { params: idParam() },
     responses: {

@@ -125,14 +125,11 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
       account.invoiceCount === 0
         ? gt('Retire "{name}"?', { name: account.name })
         : account.invoiceCount === 1
-          ? gt(
-              'Retire "{name}"?\n\n1 invoice raised for this customer will be kept — an issued invoice names its customer, so the record stays.',
-              { name: account.name },
-            )
-          : gt(
-              'Retire "{name}"?\n\n{count} invoices raised for this customer will be kept — an issued invoice names its customer, so the record stays.',
-              { name: account.name, count: account.invoiceCount },
-            );
+          ? gt('Retire "{name}"?\n\nIts 1 invoice will be kept.', { name: account.name })
+          : gt('Retire "{name}"?\n\nIts {count} invoices will be kept.', {
+              name: account.name,
+              count: account.invoiceCount,
+            });
     if (!window.confirm(confirmMessage)) return;
     try {
       await client.deleteManagedAccount?.(account.id);
@@ -163,7 +160,7 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
           <div role="alert" className="text-sm text-danger">
             <T>
               <span>
-                Couldn&rsquo;t load invoices — <Var>{error}</Var>
+                Couldn&rsquo;t load invoices: <Var>{error}</Var>
               </span>
             </T>{" "}
             <button type="button" onClick={() => void refresh()} className="underline">

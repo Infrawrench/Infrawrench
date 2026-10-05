@@ -107,10 +107,9 @@ export function TagPolicySection() {
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
             Require every resource to carry tags like <code>owner</code> and <code>env</code>.
-            Compliance is scored per account, untagged spend shows up on the Costs page, and — when
-            enforcement is on — creating a resource without the required tags is rejected. Holders
-            of <code>tag-policy:override</code> can override; blocks and overrides are recorded in
-            the audit log.
+            Compliance is scored per account and untagged spend shows on the Costs page. With
+            enforcement on, creating an untagged resource is rejected unless you hold{" "}
+            <code>tag-policy:override</code>; overrides are audit-logged.
           </p>
         </T>
       </div>
@@ -157,7 +156,7 @@ export function TagPolicySection() {
                     )
                   }
                   placeholder={gt(
-                    "Allowed values, comma-separated (optional — e.g. prod, staging, dev)",
+                    "Allowed values, comma-separated (optional, e.g. prod, staging, dev)",
                   )}
                   aria-label={gt("Allowed values")}
                   className="px-3 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong disabled:opacity-60"
@@ -197,11 +196,7 @@ export function TagPolicySection() {
                     disabled={saving}
                     className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
                   >
-                    {saving
-                      ? gt("Saving…")
-                      : savedAt
-                        ? gt("Saved — save again")
-                        : gt("Save policy")}
+                    {saving ? gt("Saving…") : savedAt ? gt("Saved. Save again") : gt("Save policy")}
                   </button>
                 </div>
               </div>
@@ -396,11 +391,9 @@ function AllocationSection({
       <h2 className="text-sm font-semibold">{gt("Cost centres & showback")}</h2>
       <T>
         <p className="text-xs text-on-surface-muted">
-          Map spend to cost centres for showback. Rules match on tag, account, provider, or service
-          and evaluate top-down — the first match wins, so every cost row is allocated exactly once;
-          unmatched spend reports as &ldquo;Unallocated&rdquo; on the Costs page. Centres nest, and
-          a rule may target a parent or a child freely: at the same priority the more deeply nested
-          centre claims the row, and the parent still counts it in its subtree total.
+          Map spend to cost centres for showback. Rules match on tag, account, provider or service,
+          top-down, and the first match wins. Unmatched spend reports as &ldquo;Unallocated&rdquo;.
+          At equal priority, the more deeply nested centre wins.
         </p>
       </T>
 
