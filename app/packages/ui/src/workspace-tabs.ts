@@ -188,6 +188,14 @@ export function costReportsTabTarget(reportId?: string): WorkspaceTabTarget {
 }
 
 /**
+ * The Canvases page. With a `canvasId` it opens that canvas; without one the
+ * list. One tab either way, like Cost reports.
+ */
+export function costCanvasesTabTarget(canvasId?: string): WorkspaceTabTarget {
+  return { kind: "cost-canvases", ...(canvasId ? { canvasId } : {}) };
+}
+
+/**
  * The Invoices page: managed accounts and the invoices raised against them.
  * With an `invoiceId` it opens that invoice; without one it opens the list.
  * One tab either way, like Cost reports.

@@ -294,6 +294,12 @@ export async function deleteDashboardNotification(
  * Composition
  * ------------------------------------------------------------------ */
 
+/**
+ * What a rendered delivery is called in its message copy. Canvas schedules
+ * (`canvas.ts`) reuse this delivery path with their own noun.
+ */
+export type DeliveryNoun = "dashboard" | "canvas";
+
 /** Lines quoted in a message. Bounded: the PDF is where the rest lives. */
 export const MAX_DASHBOARD_HIGHLIGHTS = 8;
 
@@ -316,13 +322,17 @@ export function dashboardDeliveryTitle(name: string, now: Date, timezone: string
 export function dashboardDeliverySegments(
   rendered: Pick<RenderedDashboard, "highlights">,
   fileNote: string | null,
+  noun: DeliveryNoun = "dashboard",
 ): DigestLine[] {
   const lines: DigestLine[] = [];
   const highlights = rendered.highlights.slice(0, MAX_DASHBOARD_HIGHLIGHTS);
   if (highlights.length === 0) {
     lines.push([
       {
-        text: "This dashboard has no cards with a figure to quote. Open it for the full picture.",
+        text:
+          noun === "canvas"
+            ? "This canvas has no blocks with a figure to quote. Open it for the full picture."
+            : "This dashboard has no cards with a figure to quote. Open it for the full picture.",
         bold: false,
       },
     ]);
@@ -331,7 +341,7 @@ export function dashboardDeliverySegments(
     if (rendered.highlights.length > highlights.length) {
       lines.push([
         {
-          text: `…and ${rendered.highlights.length - highlights.length} more card(s).`,
+          text: `…and ${rendered.highlights.length - highlights.length} more ${noun === "canvas" ? "block(s)" : "card(s)"}.`,
           bold: false,
         },
       ]);
@@ -362,23 +372,25 @@ export async function deliverDashboardNotification(
   rendered: RenderedDashboard,
   now: Date,
   origin = "scheduled",
+  noun: DeliveryNoun = "dashboard",
 ): Promise<DashboardNotificationSendResult> {
   const slackIds = asStringArray(row.slackChannelIds);
   const teamsIds = asStringArray(row.teamsWebhookIds);
   const recipients = asStringArray(row.emailRecipients);
   const pdf = row.attachPdf ? rendered.pdf : null;
-  const filename = pdfFileName(rendered.name, "dashboard");
+  const filename = pdfFileName(rendered.name, noun);
 
   const [org] = await db
     .select({ displayName: organizations.displayName })
     .from(organizations)
     .where(eq(organizations.id, organizationId));
   const title = dashboardDeliveryTitle(rendered.name, now, row.timezone);
-  const context = org ? `${org.displayName} · Infrawrench dashboard` : undefined;
+  const context = org ? `${org.displayName} · Infrawrench ${noun}` : undefined;
 
   const emailLines = dashboardDeliverySegments(
     rendered,
-    pdf ? `The full dashboard is attached as ${filename}.` : null,
+    pdf ? `The full ${noun} is attached as ${filename}.` : null,
+    noun,
   );
   const text =
     recipients.length > 0
@@ -397,7 +409,7 @@ export async function deliverDashboardNotification(
     text,
     html,
     ...(pdf ? { attachments: [{ filename, content: pdf, contentType: "application/pdf" }] } : {}),
-    traceKey: `dashboard-notification:${row.id}:${now.toISOString().slice(0, 10)}:${origin}:${to}`,
+    traceKey: `${noun}-notification:${row.id}:${now.toISOString().slice(0, 10)}:${origin}:${to}`,
   }));
 
   const [slack, teams, email] = await Promise.all([
@@ -409,7 +421,8 @@ export async function deliverDashboardNotification(
         body: flatten(
           dashboardDeliverySegments(
             rendered,
-            pdf ? "The full dashboard PDF is in the thread." : null,
+            pdf ? `The full ${noun} PDF is in the thread.` : null,
+            noun,
           ),
           (s) => `*${s}*`,
           "\n",
@@ -424,9 +437,8 @@ export async function deliverDashboardNotification(
       body: flatten(
         dashboardDeliverySegments(
           rendered,
-          rendered.url
-            ? "Open the dashboard for the full picture or to download it as a PDF."
-            : null,
+          rendered.url ? `Open the ${noun} for the full picture or to download it as a PDF.` : null,
+          noun,
         ),
         (s) => s,
         "\n\n",
@@ -434,7 +446,7 @@ export async function deliverDashboardNotification(
       ...(rendered.url ? { url: rendered.url } : {}),
       ...(context ? { context } : {}),
     }),
-    sendEmails(emails, `dashboard notification ${row.id}`),
+    sendEmails(emails, `${noun} notification ${row.id}`),
   ]);
 
   // Unsendable addresses count as attempted-and-failed: the report rule.
@@ -450,7 +462,8 @@ export async function deliverDashboardNotification(
   };
 }
 
-async function recordAttempt(
+/** Record one scheduled attempt's outcome and arm the next send. Shared with canvas schedules. */
+export async function recordAttempt(
   row: ReportNotificationRecord,
   now: Date,
   outcome: { status: ReportDeliveryStatus; error: string | null; retryable: boolean },

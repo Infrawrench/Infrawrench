@@ -1,3 +1,5 @@
+import { CanvasWidgetCard } from "@/features/cost-canvases/CanvasWidgetCard";
+import type { CostCanvasWidgetConfig } from "@infrawrench/client-core";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -231,7 +233,9 @@ export function DashboardBody({
           // A cost_report card holds only a reportId: there is nothing on it
           // to configure. Editing the report changes every dashboard showing
           // it, so it happens on the report's own page, not on one card.
-          widgets.find((w) => w.id === ref.id)?.kind !== "cost_report" ? (
+          widgets.find((w) => w.id === ref.id)?.kind !== "cost_report" &&
+          // Same for a canvas card: the canvas is edited on its own page.
+          widgets.find((w) => w.id === ref.id)?.kind !== "cost_canvas" ? (
             <Button
               label="Configure"
               variant="secondary"
@@ -345,6 +349,14 @@ export function DashboardBody({
             index,
             widgetRef,
             <CostGraphCard key={widget.id} title={report.name} config={report.config} />,
+          );
+        }
+
+        if (widget.kind === "cost_canvas") {
+          return withControls(
+            index,
+            widgetRef,
+            <CanvasWidgetCard key={widget.id} config={widget.config as CostCanvasWidgetConfig} />,
           );
         }
 

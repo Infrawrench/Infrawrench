@@ -37,7 +37,9 @@ import {
   type CostReportWidgetConfig,
   type CustomGraphChart,
   type CustomGraphWidgetConfig,
+  type CostCanvasWidgetConfig,
   type DashboardCardKind,
+  type UnitCostQueryResponse,
 } from "@infrawrench/client-core";
 import {
   formatPdfValue,
@@ -85,7 +87,7 @@ export interface PdfRenderOptions {
 }
 
 /** A section plus the one-line highlight a delivery message quotes. */
-interface CardRender {
+export interface CardRender {
   section: PdfSection;
   highlight: string | null;
 }
@@ -100,7 +102,7 @@ function rangeLabel(config: CostGraphConfig, from: string, to: string): string {
     : `${from} to ${to}`;
 }
 
-function describeConfig(config: CostGraphConfig, from: string, to: string): string {
+export function describeConfig(config: CostGraphConfig, from: string, to: string): string {
   const parts = [rangeLabel(config, from, to), COST_BINNING_LABELS[config.binning].toLowerCase()];
   if (config.groupBy !== "none") {
     parts.push(
@@ -117,7 +119,7 @@ function describeConfig(config: CostGraphConfig, from: string, to: string): stri
   return parts.join(" · ");
 }
 
-function shortDate(bucket: string): string {
+export function shortDate(bucket: string): string {
   const d = new Date(`${bucket}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return bucket;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -278,7 +280,45 @@ export function costResponseBlocks(
   };
 }
 
-async function costConfigCard(
+/** Map a unit-cost response onto blocks: the ratio line, then whole-period tiles. */
+export function unitCostResponseBlocks(response: UnitCostQueryResponse): {
+  blocks: PdfBlock[];
+  unitLabel: string;
+} {
+  const buckets = [
+    ...new Set(response.series.flatMap((s) => s.points.map((p) => p.bucket))),
+  ].sort();
+  const index = new Map(buckets.map((b, i) => [b, i]));
+  const unitLabel =
+    response.mode === "margin"
+      ? "Margin"
+      : `Cost per ${response.metric.unit || response.metric.name}`;
+  const blocks: PdfBlock[] = [
+    {
+      kind: "chart",
+      chartType: "line",
+      categories: buckets.map(shortDate),
+      series: response.series.map((s) => {
+        const values = new Array<number | null>(buckets.length).fill(null);
+        for (const p of s.points) values[index.get(p.bucket) ?? 0] = p.value;
+        return { label: `${unitLabel} (${s.currency})`, values };
+      }),
+      format: response.series[0] ? { currency: response.series[0].currency } : {},
+    },
+    {
+      kind: "stats",
+      items: response.series.map((s) => ({
+        label: `${unitLabel}, whole period`,
+        value:
+          s.overallValue === null ? "-" : formatPdfValue(s.overallValue, { currency: s.currency }),
+        caption: `${formatPdfValue(s.overallCost, { currency: s.currency })} spend`,
+      })),
+    },
+  ];
+  return { blocks, unitLabel };
+}
+
+export async function costConfigCard(
   organizationId: string,
   title: string,
   config: CostGraphConfig,
@@ -291,38 +331,7 @@ async function costConfigCard(
       ...request,
       ...(displayCurrency ? { displayCurrency } : {}),
     });
-    const buckets = [
-      ...new Set(response.series.flatMap((s) => s.points.map((p) => p.bucket))),
-    ].sort();
-    const index = new Map(buckets.map((b, i) => [b, i]));
-    const unitLabel =
-      response.mode === "margin"
-        ? "Margin"
-        : `Cost per ${response.metric.unit || response.metric.name}`;
-    const blocks: PdfBlock[] = [
-      {
-        kind: "chart",
-        chartType: "line",
-        categories: buckets.map(shortDate),
-        series: response.series.map((s) => {
-          const values = new Array<number | null>(buckets.length).fill(null);
-          for (const p of s.points) values[index.get(p.bucket) ?? 0] = p.value;
-          return { label: `${unitLabel} (${s.currency})`, values };
-        }),
-        format: response.series[0] ? { currency: response.series[0].currency } : {},
-      },
-      {
-        kind: "stats",
-        items: response.series.map((s) => ({
-          label: `${unitLabel}, whole period`,
-          value:
-            s.overallValue === null
-              ? "-"
-              : formatPdfValue(s.overallValue, { currency: s.currency }),
-          caption: `${formatPdfValue(s.overallCost, { currency: s.currency })} spend`,
-        })),
-      },
-    ];
+    const { blocks, unitLabel } = unitCostResponseBlocks(response);
     const first = response.series[0];
     return {
       section: {
@@ -355,7 +364,7 @@ async function costConfigCard(
   };
 }
 
-async function budgetCard(
+export async function budgetCard(
   organizationId: string,
   title: string,
   config: BudgetWidgetConfig,
@@ -497,7 +506,7 @@ export function customChartBlocks(chart: CustomGraphChart): PdfBlock[] {
   }
 }
 
-async function customGraphCard(
+export async function customGraphCard(
   organizationId: string,
   title: string,
   config: CustomGraphWidgetConfig,
@@ -543,7 +552,7 @@ async function customGraphCard(
   };
 }
 
-function failedCard(title: string, err: unknown): CardRender {
+export function failedCard(title: string, err: unknown): CardRender {
   const message = err instanceof Error ? err.message : String(err);
   return {
     section: {
@@ -556,7 +565,7 @@ function failedCard(title: string, err: unknown): CardRender {
   };
 }
 
-async function orgName(organizationId: string): Promise<string | undefined> {
+export async function orgName(organizationId: string): Promise<string | undefined> {
   const [org] = await db
     .select({ displayName: organizations.displayName })
     .from(organizations)
@@ -565,7 +574,7 @@ async function orgName(organizationId: string): Promise<string | undefined> {
   return org?.displayName;
 }
 
-async function displayCurrencyOf(organizationId: string): Promise<string | null> {
+export async function displayCurrencyOf(organizationId: string): Promise<string | null> {
   return getOrgCurrencySettings(organizationId)
     .then((s) => s.displayCurrency)
     .catch(() => null);
@@ -748,7 +757,10 @@ async function widgetCard(
   now: Date,
 ): Promise<CardRender> {
   const costKind =
-    widget.kind === "cost_graph" || widget.kind === "cost_report" || widget.kind === "budget";
+    widget.kind === "cost_graph" ||
+    widget.kind === "cost_report" ||
+    widget.kind === "budget" ||
+    widget.kind === "cost_canvas";
   if (costKind && !canReadCosts) {
     return {
       section: {
@@ -801,6 +813,38 @@ async function widgetCard(
         widget.title,
         widget.config as CustomGraphWidgetConfig,
       );
+    case "cost_canvas": {
+      // A canvas is several sections on its own page; on a dashboard's paper
+      // form its blocks are folded into one section under the canvas name.
+      // Loaded lazily: cost-canvas-pdf imports this module's mappers, and the
+      // canvas services pull in the database and visibility resolvers.
+      const { canvasPdfSections } = await import("./cost-canvas-pdf");
+      const built = await canvasPdfSections(
+        organizationId,
+        (widget.config as CostCanvasWidgetConfig).canvasId,
+        { granted: null, now },
+      );
+      if (!built) {
+        return {
+          section: {
+            title: widget.title || "Canvas",
+            blocks: [{ kind: "text", text: "This canvas was deleted.", tone: "muted" }],
+          },
+          highlight: null,
+        };
+      }
+      return {
+        section: {
+          title: widget.title || built.name,
+          subtitle: "Canvas",
+          blocks: built.sections.flatMap((sec) => [
+            { kind: "text" as const, text: sec.title, tone: "muted" as const },
+            ...sec.blocks,
+          ]),
+        },
+        highlight: built.highlights[0] ?? null,
+      };
+    }
     default:
       return {
         section: {

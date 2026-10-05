@@ -52,6 +52,7 @@ import { adminRoutes } from "./routes/admin";
 import { dashboardRoutes } from "./routes/dashboards";
 import { costRoutes } from "./routes/costs";
 import { costReportRoutes } from "./routes/cost-reports";
+import { costCanvasRoutes } from "./routes/cost-canvases";
 import {
   costReportNotificationRoutes,
   orgReportNotificationRoutes,
@@ -375,6 +376,8 @@ orgScoped.route("/cost-reports", costReportPdfRoutes);
 orgScoped.route("/dashboards", dashboardNotificationRoutes);
 orgScoped.route("/dashboard-notifications", orgDashboardNotificationRoutes);
 orgScoped.route("/cost-report-folders", costReportFolderRoutes);
+// Natural-language report canvases: CRUD, run, preview, PDF and schedules.
+orgScoped.route("/cost-canvases", costCanvasRoutes);
 // Dated notes drawn over cost charts. Its own prefix rather than a child of
 // /cost-reports: an annotation with no report id is org-wide and belongs to
 // every chart, so it is not a sub-resource of any one report.

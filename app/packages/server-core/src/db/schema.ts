@@ -658,6 +658,47 @@ export const costReports = pgTable(
 );
 
 /**
+ * Cost canvases: reports built from a natural-language description by the
+ * chat agent (see `client-core/src/cost-canvases.ts`).
+ *
+ * `spec` is the structured query spec, validated against
+ * `costCanvasSpecSchema` at every write, and never a frozen number: running a
+ * canvas re-executes its queries, so refresh needs no model call. The agent
+ * only touches a canvas through the `write_cost_canvas` tool, and an edit to a
+ * canvas that already has blocks waits for the user's approval in chat.
+ *
+ * The conversations that build and edit a canvas point at it
+ * (`chat_conversations.cost_canvas_id`), not the other way round: chat
+ * history is per user, so everyone a canvas is shared with as an editor gets
+ * a conversation of their own.
+ */
+export const costCanvases = pgTable(
+  "cost_canvases",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** A `CostCanvasSpec`. */
+    spec: jsonb("spec").notNull(),
+    /** The description the canvas was first created from; null when written directly. */
+    prompt: text("prompt"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Soft delete, matching `cost_reports`. */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_canvases_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
  * Dated notes drawn over cost charts: "we migrated to Graviton here".
  *
  * A step change in spend is only self-explanatory for about a fortnight. These
@@ -3357,6 +3398,15 @@ export const chatConversations = pgTable(
      * which is the intent. The usage rows underneath it survive to be billed.
      */
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    /**
+     * The cost canvas this conversation builds and edits, when it was started
+     * from one: the agent loads the canvas into its context each turn and the
+     * canvas page embeds the caller's latest such conversation. SET NULL so
+     * deleting the canvas row leaves the history readable.
+     */
+    costCanvasId: text("cost_canvas_id").references((): AnyPgColumn => costCanvases.id, {
+      onDelete: "set null",
+    }),
     title: text("title").notNull().default("New chat"),
     /**
      * Must stay in step with `DEFAULT_CHAT_MODEL` in client-core (server-core
@@ -3374,6 +3424,8 @@ export const chatConversations = pgTable(
   (t) => ({
     orgUserIdx: index("chat_conversations_org_user_idx").on(t.organizationId, t.userId),
     orgUpdatedIdx: index("chat_conversations_org_updated_idx").on(t.organizationId, t.updatedAt),
+    /** The canvas page finds the caller's conversations for one canvas. */
+    canvasIdx: index("chat_conversations_canvas_idx").on(t.costCanvasId),
   }),
 );
 
@@ -3431,6 +3483,13 @@ export const chatPendingActions = pgTable(
     /** Tool result text once executed; or rejection reason. */
     result: text("result"),
     isError: boolean("is_error").notNull().default(false),
+    /**
+     * What approving would change, in plain lines, when the tool can say so
+     * (`ToolDefinition.approvalSummary`): a canvas edit's block diff. Written
+     * when the action is queued so the card shows the diff against the
+     * canvas as it was then.
+     */
+    summary: text("summary"),
     resolvedAt: timestamp("resolved_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -4156,6 +4215,15 @@ export const reportNotifications = pgTable(
      */
     dashboardId: text("dashboard_id").references(() => dashboards.id, { onDelete: "cascade" }),
     /**
+     * The canvas a canvas schedule delivers; null otherwise. Canvas rows are
+     * claimed by the web process's delivery loop beside the dashboard rows,
+     * since rendering a canvas needs the same web services. Cascades like
+     * the other targets; a soft-deleted canvas parks its schedules.
+     */
+    costCanvasId: text("cost_canvas_id").references(() => costCanvases.id, {
+      onDelete: "cascade",
+    }),
+    /**
      * Attach the rendered PDF (email attachment, Slack file upload). Only read
      * for dashboard schedules; report schedules send their text summary.
      */
@@ -4228,9 +4296,11 @@ export const reportNotifications = pgTable(
     reportIdx: index("report_notifications_report_idx").on(t.costReportId),
     /** The dashboard's delivery modal lists one dashboard's schedules. */
     dashboardIdx: index("report_notifications_dashboard_idx").on(t.dashboardId),
+    /** A canvas's delivery section lists one canvas's schedules. */
+    canvasIdx: index("report_notifications_canvas_idx").on(t.costCanvasId),
     oneTarget: check(
       "report_notifications_one_target",
-      sql`num_nonnulls(${t.costReportId}, ${t.dashboardId}) = 1`,
+      sql`num_nonnulls(${t.costReportId}, ${t.dashboardId}, ${t.costCanvasId}) = 1`,
     ),
     /** The poller's due scan. */
     dueIdx: index("report_notifications_due_idx").on(t.nextSendAt),

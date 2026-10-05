@@ -46,6 +46,7 @@ import {
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { db } from "../db/client";
 import {
+  costCanvases,
   costReportFolders,
   costReports,
   dashboards,
@@ -64,6 +65,16 @@ export interface SharingPrincipal {
 }
 
 const storage = new AsyncLocalStorage<SharingPrincipal>();
+
+/** Types whose creator is their implicit owner (`created_by_user_id`). */
+function hasImplicitCreatorOwner(type: ShareableObjectType): boolean {
+  return type === "cost_report" || type === "cost_canvas";
+}
+
+/** Types that sit in the report-folder tree and inherit its explicit sharing. */
+function inFolderTree(type: ShareableObjectType): boolean {
+  return type === "cost_report" || type === "cost_report_folder";
+}
 
 export function runWithSharingPrincipal<T>(principal: SharingPrincipal, fn: () => T): T {
   return storage.run(principal, fn);
@@ -203,7 +214,7 @@ export async function loadAccessResolver(
 
   // Folder parents, for walking a report's (or folder's) chain upward.
   let folderParent = new Map<string, string | null>();
-  if (type !== "dashboard") {
+  if (inFolderTree(type)) {
     const folders = await db
       .select({ id: costReportFolders.id, parent: costReportFolders.parentFolderId })
       .from(costReportFolders)
@@ -226,17 +237,21 @@ export async function loadAccessResolver(
   return {
     level(objectId, meta) {
       const levels = ownLevels(own.get(objectId) ?? [], p, true);
-      if (type === "cost_report" && meta?.createdByUserId && meta.createdByUserId === p.userId) {
+      if (
+        hasImplicitCreatorOwner(type) &&
+        meta?.createdByUserId &&
+        meta.createdByUserId === p.userId
+      ) {
         levels.push("owner");
       }
-      if (type !== "dashboard") {
+      if (inFolderTree(type)) {
         const parent = type === "cost_report" ? meta?.folderId : folderParent.get(objectId);
         levels.push(...chainLevels(parent));
       }
       return maxAccessLevel(levels);
     },
     hasOwner(objectId, meta) {
-      if (type === "cost_report" && meta?.createdByUserId) return true;
+      if (hasImplicitCreatorOwner(type) && meta?.createdByUserId) return true;
       return (own.get(objectId) ?? []).some((r) => r.level === "owner");
     },
   };
@@ -324,6 +339,18 @@ export async function loadObjectMeta(
       .limit(1);
     return row && !row.deletedAt ? row : null;
   }
+  if (type === "cost_canvas") {
+    const [row] = await db
+      .select({
+        name: costCanvases.name,
+        createdByUserId: costCanvases.createdByUserId,
+        deletedAt: costCanvases.deletedAt,
+      })
+      .from(costCanvases)
+      .where(and(eq(costCanvases.id, objectId), eq(costCanvases.organizationId, organizationId)))
+      .limit(1);
+    return row && !row.deletedAt ? { name: row.name, createdByUserId: row.createdByUserId } : null;
+  }
   if (type === "cost_report_folder") {
     const [row] = await db
       .select({ name: costReportFolders.name, folderId: costReportFolders.parentFolderId })
@@ -395,7 +422,7 @@ export async function getObjectSharing(
     level: r.level as ObjectAccessLevel,
     implicit: false,
   }));
-  if (type === "cost_report" && meta.createdByUserId) {
+  if (hasImplicitCreatorOwner(type) && meta.createdByUserId) {
     const creator = meta.createdByUserId;
     if (!grants.some((g) => g.principalKind === "member" && g.principalId === creator)) {
       const [u] = await db
@@ -414,7 +441,7 @@ export async function getObjectSharing(
   }
 
   let inheritedFrom: ObjectSharing["inheritedFrom"] = null;
-  if (type !== "dashboard" && meta.folderId) {
+  if (inFolderTree(type) && meta.folderId) {
     const folder = await loadObjectMeta(organizationId, "cost_report_folder", meta.folderId);
     if (folder) {
       const resolver = await loadAccessResolver(organizationId, "cost_report_folder");
@@ -499,7 +526,7 @@ export async function putObjectSharing(
       throw new SharingInputError("One of the roles does not exist in this organization.");
     }
   }
-  const implicitOwner = type === "cost_report" && !!meta.createdByUserId;
+  const implicitOwner = hasImplicitCreatorOwner(type) && !!meta.createdByUserId;
   if (!implicitOwner && !input.grants.some((g) => g.level === "owner")) {
     throw new SharingInputError("Keep at least one owner, so somebody can still share this item.");
   }

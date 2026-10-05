@@ -350,3 +350,36 @@ func ptr(s string) *string        { return &s }
 func ptrInt(i int64) *int64       { return &i }
 func ptrBool(b bool) *bool        { return &b }
 func ptrFloat(f float64) *float64 { return &f }
+
+func TestCostCanvasSpecKeepsConfiguredFormatting(t *testing.T) {
+	configured := "{\n  \"version\": 1,\n  \"blocks\": [{\"kind\": \"text\", \"id\": \"a\", \"text\": \"hi\"}]\n}"
+	prior := costCanvasResourceModel{SpecJSON: types.StringValue(configured)}
+
+	t.Run("equal JSON keeps the configured string", func(t *testing.T) {
+		remote := &iw.CostCanvas{ID: "c1", Name: "n", Spec: []byte(`{"blocks":[{"id":"a","kind":"text","text":"hi"}],"version":1}`)}
+		got := costCanvasStateFrom(remote, prior)
+		if got.SpecJSON.ValueString() != configured {
+			t.Errorf("spec_json = %q, want the configured string kept", got.SpecJSON.ValueString())
+		}
+		if !got.Description.IsNull() {
+			t.Error("a null description must stay null")
+		}
+	})
+
+	t.Run("a real change takes the server's spec", func(t *testing.T) {
+		server := `{"blocks":[],"version":1}`
+		got := costCanvasStateFrom(&iw.CostCanvas{ID: "c1", Name: "n", Spec: []byte(server)}, prior)
+		if got.SpecJSON.ValueString() != server {
+			t.Errorf("spec_json = %q, want %q", got.SpecJSON.ValueString(), server)
+		}
+	})
+
+	t.Run("null object keys are not a difference", func(t *testing.T) {
+		if !jsonSemanticallyEqual(`{"a":1,"b":null}`, `{"a":1}`) {
+			t.Error("an explicit null and an absent key should compare equal")
+		}
+		if jsonSemanticallyEqual(`{"a":[1,2]}`, `{"a":[2,1]}`) {
+			t.Error("array order is meaningful")
+		}
+	})
+}

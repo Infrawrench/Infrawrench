@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   costReportsTabTarget,
+  costCanvasesTabTarget,
   invoicesTabTarget,
   deploymentsTabTarget,
   probesTabTarget,
@@ -296,6 +297,17 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns cost-canvases route args, clearing the canvas param for the list", () => {
+    expect(getWorkspaceNavigateArgs(costCanvasesTabTarget())).toEqual({
+      to: "/cost-canvases",
+      search: {},
+    });
+    expect(getWorkspaceNavigateArgs(costCanvasesTabTarget("c1"))).toEqual({
+      to: "/cost-canvases",
+      search: { canvas: "c1" },
+    });
+  });
+
   it("returns invoices route args, clearing the invoice param for the list", () => {
     // Same reason as cost-reports: navigating back to the list must CLEAR
     // ?invoice=, or the route resolves straight back into the open invoice.
@@ -430,6 +442,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/cost-reports", undefined, "report=r1")).toEqual({
       kind: "cost-reports",
       reportId: "r1",
+    });
+  });
+
+  it("parses the cost-canvases path with its canvas param", () => {
+    expect(syncWorkspaceRouteFromPath("/cost-canvases")).toEqual({ kind: "cost-canvases" });
+    expect(syncWorkspaceRouteFromPath("/cost-canvases", undefined, "canvas=c1")).toEqual({
+      kind: "cost-canvases",
+      canvasId: "c1",
     });
   });
 

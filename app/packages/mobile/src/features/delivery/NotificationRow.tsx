@@ -2,6 +2,7 @@ import { Text, View } from "react-native";
 import {
   describeReportSchedule,
   describeReportTargets,
+  type CostCanvasNotification,
   type DashboardNotification,
   type ReportNotification,
 } from "@infrawrench/client-core";
@@ -17,14 +18,14 @@ const STATUS_LABELS: Record<string, string> = {
 
 /**
  * One delivery schedule, read-only: when it fires, where it goes, how the
- * last send went. Shared by the cost report and dashboard screens; a
+ * last send went. Shared by the cost report, dashboard and canvas screens; a
  * dashboard schedule is the same row pointed at a dashboard, plus whether the
  * rendered PDF rides along.
  */
 export function NotificationRow({
   notification: n,
 }: {
-  notification: ReportNotification | DashboardNotification;
+  notification: ReportNotification | DashboardNotification | CostCanvasNotification;
 }) {
   const failed =
     n.lastStatus === "failed" || n.lastStatus === "partial" || n.lastStatus === "no_targets";

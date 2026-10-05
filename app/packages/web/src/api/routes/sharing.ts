@@ -39,11 +39,13 @@ const app = new Hono();
 const READ_PERMISSION: Record<ShareableObjectType, string> = {
   cost_report: "costs:read",
   cost_report_folder: "costs:read",
+  cost_canvas: "costs:read",
   dashboard: "dashboards:read",
 };
 const WRITE_PERMISSION: Record<ShareableObjectType, string> = {
   cost_report: "costs:write",
   cost_report_folder: "costs:write",
+  cost_canvas: "costs:write",
   dashboard: "dashboards:write",
 };
 

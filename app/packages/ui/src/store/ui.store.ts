@@ -7,6 +7,8 @@ export type WorkspaceTabTarget =
   | { kind: "agents" }
   | { kind: "costs" }
   | { kind: "cost-reports"; reportId?: string }
+  /** Cost canvases: reports built from a description. `canvasId` is remembered state. */
+  | { kind: "cost-canvases"; canvasId?: string }
   | { kind: "invoices"; invoiceId?: string }
   | { kind: "graph" }
   | { kind: "logs" }
@@ -132,6 +134,9 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       // Not keyed by report: opening a second report should retarget the open
       // Cost reports tab rather than pile up a tab per report.
       return "cost-reports";
+    case "cost-canvases":
+      // One Canvases tab whose open canvas is remembered state, like Reports.
+      return "cost-canvases";
     case "invoices":
       // Same as Cost reports: one Invoices tab whose open invoice is remembered
       // state, not a tab per invoice. A month of invoices is a list to work
@@ -229,6 +234,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Costs";
     case "cost-reports":
       return "Reports";
+    case "cost-canvases":
+      return "Canvases";
     case "invoices":
       return "Invoices";
     case "graph":
@@ -342,6 +349,10 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       // is what makes the route sync record which report the tab is on, so
       // reactivating it restores that report rather than the bare list.
       return a.reportId === (b as { reportId?: string }).reportId;
+    case "cost-canvases":
+      // The same trick as Cost reports: compare the canvas so the route sync
+      // records which one the tab is on and reactivation restores it.
+      return a.canvasId === (b as { canvasId?: string }).canvasId;
     case "invoices":
       // Its own arm rather than the payload-free fallthrough above, for the
       // same reason: comparing the invoice is what records which one the tab is

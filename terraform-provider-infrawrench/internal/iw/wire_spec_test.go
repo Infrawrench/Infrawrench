@@ -117,6 +117,14 @@ func specChecks() []specCheck {
 		{schema: "DashboardNotification", value: DashboardNotification{}},
 		{schema: "DashboardNotificationInput", value: DashboardNotificationInput{}},
 
+		// CostCanvasSpec and its block union are not checked: the provider
+		// carries the spec as raw JSON end to end, so there is no Go struct
+		// that could drop one of their properties.
+		{schema: "CostCanvas", value: CostCanvas{}},
+		{schema: "CostCanvasInput", value: CostCanvasInput{}},
+		{schema: "CostCanvasPlacement", value: CostCanvasPlacement{}},
+		{schema: "CostCanvasNotification", value: CostCanvasNotification{}},
+
 		{schema: "CostAnomalySettings", value: CostAnomalySettings{}},
 		{schema: "CostEfficiencySettings", value: CostEfficiencySettings{}},
 

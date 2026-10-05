@@ -384,6 +384,7 @@ export {
   type CostReportRunResult,
   type CostReportWidgetConfig,
 } from "./cost-reports";
+export * from "./cost-canvases";
 export {
   MANAGED_ACCOUNT_LIMITS,
   MANAGED_INVOICE_LIMITS,

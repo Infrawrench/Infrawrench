@@ -90,6 +90,12 @@ export interface ChatPendingAction {
   isError: boolean;
   resolvedAt: string | null;
   createdAt: string;
+  /**
+   * What approving would change, in plain lines, when the tool can say so
+   * (a canvas edit's block diff). Computed server-side when the action is
+   * queued; optional so a client a release ahead of its server still renders.
+   */
+  summary?: string | null | undefined;
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  costCanvasesTabTarget,
   invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
@@ -49,6 +50,7 @@ export {
   agentsTabTarget,
   costsTabTarget,
   costReportsTabTarget,
+  costCanvasesTabTarget,
   invoicesTabTarget,
   graphTabTarget,
   logsTabTarget,
@@ -136,6 +138,13 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/cost-reports",
         search: target.reportId ? { report: target.reportId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    // Canvases: the Cost reports shape, `?canvas=<id>` (always pass `search`).
+    case "cost-canvases":
+      return {
+        to: "/cost-canvases",
+        search: target.canvasId ? { canvas: target.canvasId } : {},
         ...(replace ? { replace: true } : {}),
       };
     // Same always-pass-`search` rule as Cost reports: omitting the key makes
@@ -339,6 +348,10 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "cost-reports") {
     const params = new URLSearchParams(search ?? "");
     return costReportsTabTarget(params.get("report") ?? undefined);
+  }
+  if (segments[0] === "cost-canvases") {
+    const params = new URLSearchParams(search ?? "");
+    return costCanvasesTabTarget(params.get("canvas") ?? undefined);
   }
   if (segments[0] === "invoices") {
     const params = new URLSearchParams(search ?? "");

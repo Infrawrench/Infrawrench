@@ -27,6 +27,19 @@ import {
 interface Props {
   client: ChatClient;
   conversationId: string;
+  /**
+   * Sent as the first message when the conversation loads empty: how a
+   * surface that starts a conversation for the user (a cost canvas built
+   * from a description) hands over the prompt. Sent at most once per mount.
+   */
+  initialMessage?: string | undefined;
+  /**
+   * Called after every refresh of the conversation (turn end, approval,
+   * rejection), so a host can re-read what the agent may have changed.
+   */
+  onActivity?: (() => void) | undefined;
+  /** Placeholder for the message box. */
+  placeholder?: string | undefined;
 }
 
 interface ConversationViewState {
@@ -52,7 +65,13 @@ function conversationViewReducer(
   return { ...state, ...("patch" in action ? action.patch : action.update(state)) };
 }
 
-export function ConversationView({ client, conversationId }: Props): React.ReactElement {
+export function ConversationView({
+  client,
+  conversationId,
+  initialMessage,
+  onActivity,
+  placeholder,
+}: Props): React.ReactElement {
   const gt = useGT();
   const [state, dispatch] = useReducer(conversationViewReducer, {
     conversation: null,
@@ -84,6 +103,10 @@ export function ConversationView({ client, conversationId }: Props): React.React
   // destructive action while a sleep from the same batch is still running).
   const sleepingRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  // Held in a ref so an inline host callback does not re-create `reload`.
+  const onActivityRef = useRef(onActivity);
+  onActivityRef.current = onActivity;
+  const initialSentRef = useRef(false);
 
   const reload = useCallback(
     async (opts?: { clearStreamingBuffer?: boolean }) => {
@@ -118,6 +141,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
       // conversations auto-rename after the first message. Done here (not in a
       // sidebar component) so it works even when the sidebar is collapsed. On
       // hosts without workspace tabs (web chat routes) this is a no-op.
+      onActivityRef.current?.();
       const { workspaceTabs, setWorkspaceTabTitle } = useUIStore.getState();
       for (const tab of workspaceTabs) {
         if (
@@ -298,6 +322,13 @@ export function ConversationView({ client, conversationId }: Props): React.React
     },
     [client, conversationId, reload, gt],
   );
+
+  useEffect(() => {
+    if (!initialMessage || initialSentRef.current) return;
+    if (!conversation || messages.length > 0 || streaming.active) return;
+    initialSentRef.current = true;
+    void startStream({ text: initialMessage });
+  }, [initialMessage, conversation, messages.length, streaming.active, startStream]);
 
   async function handleSend(): Promise<void> {
     const text = input.trim();
@@ -522,7 +553,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
               }
             }}
             disabled={streaming.active || sleeping != null}
-            placeholder={gt("Ask anything about your infrastructure…")}
+            placeholder={placeholder ?? gt("Ask anything about your infrastructure…")}
             rows={2}
             className="flex-1 bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
             aria-label={gt("Message")}
@@ -710,6 +741,11 @@ function BlockView({
           <span className="font-mono text-on-surface-secondary">{block.name}</span>
           <span className={statusColor}>{statusLabel}</span>
         </div>
+        {pending?.summary && (
+          <pre className="mx-3 mb-2 whitespace-pre-wrap break-words rounded border border-border bg-surface-sunken px-2 py-1.5 font-mono text-[11px] text-on-surface-secondary">
+            {pending.summary}
+          </pre>
+        )}
         {pending?.status === "pending" && (
           <div className="flex gap-2 px-3 pb-2">
             <button

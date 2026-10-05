@@ -598,6 +598,86 @@ func (c *Client) DeleteDashboardNotification(ctx context.Context, dashboardID, i
 	return c.Delete(ctx, "/dashboards/"+seg(dashboardID)+"/notifications/"+seg(id))
 }
 
+/* ------------------------------- cost canvases ------------------------------ */
+//
+// DELETE is a soft delete; the single GET then 404s like any missing row, so
+// the resource needs no special handling for it.
+
+func (c *Client) GetCostCanvas(ctx context.Context, id string) (*CostCanvas, error) {
+	var out CostCanvas
+	if err := c.Get(ctx, "/cost-canvases/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateCostCanvas(ctx context.Context, in CostCanvasInput) (*CostCanvas, error) {
+	var out CostCanvas
+	if err := c.Post(ctx, "/cost-canvases", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateCostCanvas(ctx context.Context, id string, in CostCanvasInput) (*CostCanvas, error) {
+	var out CostCanvas
+	if err := c.Put(ctx, "/cost-canvases/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteCostCanvas(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/cost-canvases/"+seg(id))
+}
+
+/* ------------------------ cost canvas notifications ------------------------ */
+//
+// The dashboard notification shape again, nested under a canvas, so the
+// Terraform resource imports as "costCanvasId/notificationId". The write body is
+// DashboardNotificationInput verbatim.
+
+func (c *Client) ListCostCanvasNotifications(ctx context.Context, canvasID string) ([]CostCanvasNotification, error) {
+	var out []CostCanvasNotification
+	err := c.Get(ctx, "/cost-canvases/"+seg(canvasID)+"/notifications", &out)
+	return out, err
+}
+
+// GetCostCanvasNotification lists a canvas's schedules and filters: there is
+// no single-GET route for one schedule.
+func (c *Client) GetCostCanvasNotification(ctx context.Context, canvasID, id string) (*CostCanvasNotification, error) {
+	all, err := c.ListCostCanvasNotifications(ctx, canvasID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/cost-canvases/"+seg(canvasID)+"/notifications", id)
+}
+
+func (c *Client) CreateCostCanvasNotification(ctx context.Context, canvasID string, in DashboardNotificationInput) (*CostCanvasNotification, error) {
+	var out CostCanvasNotification
+	if err := c.Post(ctx, "/cost-canvases/"+seg(canvasID)+"/notifications", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateCostCanvasNotification(ctx context.Context, canvasID, id string, in DashboardNotificationInput) (*CostCanvasNotification, error) {
+	var out CostCanvasNotification
+	if err := c.Put(ctx, "/cost-canvases/"+seg(canvasID)+"/notifications/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteCostCanvasNotification(ctx context.Context, canvasID, id string) error {
+	return c.Delete(ctx, "/cost-canvases/"+seg(canvasID)+"/notifications/"+seg(id))
+}
+
 /* ------------------------------ cost settings ------------------------------ */
 
 func (c *Client) GetAnomalySettings(ctx context.Context) (*CostAnomalySettings, error) {

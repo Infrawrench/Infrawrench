@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.54.0",
+    "version": "1.55.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -71,6 +71,10 @@
     {
       "name": "Cost reports",
       "description": "Named, addressable saved cost graphs. A report owns its config as an org object, so dashboards can reference it by id (the `cost_report` widget kind) and it can be run by id without the caller reassembling the query."
+    },
+    {
+      "name": "Cost canvases",
+      "description": "Reports built from a plain-language description by the chat agent: a saved, strictly validated spec of KPI tiles, charts, tables, budgets, anomalies and short narrative. The spec stores queries, not numbers, so running a canvas re-executes them with no model call; edits proposed in chat are approved against a diff."
     },
     {
       "name": "Cost annotations",
@@ -2776,9 +2780,10 @@
           "cost_graph",
           "cost_report",
           "budget",
-          "custom_graph"
+          "custom_graph",
+          "cost_canvas"
         ],
-        "description": "`cost_graph` stores its whole config inline — a one-off card. `cost_report` points at a saved cost report by id, so editing the report updates every dashboard showing it."
+        "description": "`cost_graph` stores its whole config inline — a one-off card. `cost_report` points at a saved cost report by id, so editing the report updates every dashboard showing it. `cost_canvas` points at a cost canvas by id (`{version: 1, canvasId}`) the same way."
       },
       "DashboardWidget": {
         "type": "object",
@@ -3116,6 +3121,7 @@
               "costs",
               "savings",
               "cost-reports",
+              "cost-canvases",
               "invoices",
               "graph",
               "logs",
@@ -3170,6 +3176,11 @@
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "invoiceId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "canvasId": {
             "type": "string",
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
@@ -4563,6 +4574,7 @@
                   "last_month",
                   "qtd",
                   "ytd",
+                  "6m",
                   "12m"
                 ]
               }
@@ -4884,6 +4896,1026 @@
         ],
         "additionalProperties": false
       },
+      "CostCanvasKpiMetric": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "spend"
+                ]
+              },
+              "dateRange": {
+                "$ref": "#/components/schemas/CostDateRange"
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CostReportFilter"
+                },
+                "maxItems": 20
+              },
+              "savedFilterId": {
+                "type": "string"
+              },
+              "costBasis": {
+                "type": "string",
+                "enum": [
+                  "cash",
+                  "amortized"
+                ]
+              },
+              "adjusted": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "dateRange"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "unit_cost"
+                ]
+              },
+              "businessMetricId": {
+                "type": "string",
+                "description": "A business metric id (see /business-metrics)."
+              },
+              "dateRange": {
+                "$ref": "#/components/schemas/CostDateRange"
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CostReportFilter"
+                },
+                "maxItems": 20
+              },
+              "savedFilterId": {
+                "type": "string"
+              },
+              "costBasis": {
+                "type": "string",
+                "enum": [
+                  "cash",
+                  "amortized"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "businessMetricId",
+              "dateRange"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "forecast"
+                ]
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CostReportFilter"
+                },
+                "maxItems": 20
+              },
+              "savedFilterId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "budget"
+                ]
+              },
+              "budgetId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "budgetId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "anomaly_count"
+                ]
+              },
+              "days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 90
+              }
+            },
+            "required": [
+              "type",
+              "days"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CostCanvasTableQuery": {
+        "type": "object",
+        "properties": {
+          "dateRange": {
+            "$ref": "#/components/schemas/CostDateRange"
+          },
+          "binning": {
+            "type": "string",
+            "enum": [
+              "none",
+              "daily",
+              "weekly",
+              "monthly"
+            ]
+          },
+          "groupBy": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "account",
+              "service",
+              "region",
+              "resource",
+              "tag",
+              "charge_type",
+              "commitment"
+            ]
+          },
+          "groupByTagKey": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostReportFilter"
+            },
+            "maxItems": 20
+          },
+          "savedFilterId": {
+            "type": "string"
+          },
+          "costBasis": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "amortized"
+            ]
+          },
+          "adjusted": {
+            "type": "boolean"
+          },
+          "topN": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [
+          "dateRange",
+          "binning",
+          "groupBy"
+        ],
+        "additionalProperties": false
+      },
+      "CostCanvasBlock": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "description": "Stable within the spec; text blocks reference KPI ids as `{{id}}`."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000,
+                "description": "Short narrative; `{{kpiId}}` / `{{kpiId.change}}` render that KPI's figure."
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "description": "Stable within the spec; text blocks reference KPI ids as `{{id}}`."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "kpi"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "metric": {
+                "$ref": "#/components/schemas/CostCanvasKpiMetric"
+              },
+              "comparePreviousPeriod": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "title",
+              "metric"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "description": "Stable within the spec; text blocks reference KPI ids as `{{id}}`."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "chart"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "config": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "title",
+              "config"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "description": "Stable within the spec; text blocks reference KPI ids as `{{id}}`."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "table"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "query": {
+                "$ref": "#/components/schemas/CostCanvasTableQuery"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "title",
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "description": "Stable within the spec; text blocks reference KPI ids as `{{id}}`."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "budgets"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "budgetIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 12
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "title"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "description": "Stable within the spec; text blocks reference KPI ids as `{{id}}`."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "anomalies"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 90
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "title"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "description": "Stable within the spec; text blocks reference KPI ids as `{{id}}`."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "cost_report"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "reportId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "reportId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "description": "Stable within the spec; text blocks reference KPI ids as `{{id}}`."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "custom_graph"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "graphId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "graphId"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CostCanvasSpec": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostCanvasBlock"
+            },
+            "maxItems": 24
+          }
+        },
+        "required": [
+          "version",
+          "blocks"
+        ],
+        "additionalProperties": false,
+        "description": "The structured query spec. It holds queries, never numbers: running the canvas re-executes every block, so a refresh needs no model call. Validated strictly on write; there is no field that takes a query string or SQL."
+      },
+      "CostCanvasPlacement": {
+        "type": "object",
+        "properties": {
+          "widgetId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "widgetId",
+          "dashboardId",
+          "dashboardName"
+        ],
+        "additionalProperties": false
+      },
+      "CostCanvas": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spec": {
+            "$ref": "#/components/schemas/CostCanvasSpec"
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conversationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The caller's latest unarchived chat conversation for this canvas; per user.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "placements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostCanvasPlacement"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "spec",
+          "prompt",
+          "conversationId",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt",
+          "placements"
+        ],
+        "additionalProperties": false
+      },
+      "CostCanvasInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "spec": {
+            "$ref": "#/components/schemas/CostCanvasSpec"
+          }
+        },
+        "required": [
+          "name",
+          "spec"
+        ],
+        "additionalProperties": false
+      },
+      "CostCanvasDraftInput": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "description": "What the report should show, in plain words."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "model": {
+            "type": "string",
+            "description": "A chat model id; the chat default when absent."
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "additionalProperties": false
+      },
+      "CostCanvasRunResult": {
+        "type": "object",
+        "properties": {
+          "canvasId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ranAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "displayCurrency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            },
+            "description": "One result per block, in spec order, each `{id, kind, ...}` with an `error` string when that block failed: `kpi` carries `kpi {value, unit, currency, previous, changePercent, from, to, note}`, `table` carries `table {columns, rows, currency}`, `chart`/`cost_report` carry the cost or unit-cost query response when chart data was requested, `budgets`, `anomalies` and `custom_graph` carry their rows or render spec, and `text` carries the narrative with KPI tokens filled in."
+          }
+        },
+        "required": [
+          "canvasId",
+          "name",
+          "ranAt",
+          "displayCurrency",
+          "blocks"
+        ],
+        "additionalProperties": false
+      },
+      "CostCanvasNotification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "costCanvasId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "How often the schedule fires. The report itself decides what window it charts."
+          },
+          "sendDay": {
+            "type": "integer"
+          },
+          "sendDayOfMonth": {
+            "type": "integer"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "attachPdf": {
+            "type": "boolean",
+            "description": "Attach the rendered PDF: as a file on every email, and uploaded into the Slack message's thread (needs the Slack app's `files:write` scope; without it the message still posts). Teams incoming webhooks cannot carry files, so Teams always gets the summary and a link."
+          },
+          "nextSendAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastSentAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pending",
+              "succeeded",
+              "partial",
+              "failed",
+              "no_targets"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "costCanvasId",
+          "cadence",
+          "sendDay",
+          "sendDayOfMonth",
+          "hour",
+          "timezone",
+          "slackChannelIds",
+          "teamsWebhookIds",
+          "emailRecipients",
+          "enabled",
+          "attachPdf",
+          "nextSendAt",
+          "lastSentAt",
+          "lastStatus",
+          "lastError",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ReportDeliveryTargetOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The stored row id — what the schedule input carries."
+          },
+          "label": {
+            "type": "string",
+            "description": "Display label: `#channel` for Slack, the saved label for Teams."
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "ReportDeliveryTargets": {
+        "type": "object",
+        "properties": {
+          "slackChannels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportDeliveryTargetOption"
+            }
+          },
+          "teamsWebhooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportDeliveryTargetOption"
+            }
+          },
+          "emailAvailable": {
+            "type": "boolean",
+            "description": "Whether this deployment can send mail at all. Addresses can be saved regardless, but they deliver nowhere until a mail provider is configured."
+          }
+        },
+        "required": [
+          "slackChannels",
+          "teamsWebhooks",
+          "emailAvailable"
+        ],
+        "additionalProperties": false
+      },
+      "DashboardNotificationInput": {
+        "type": "object",
+        "properties": {
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "How often the schedule fires. The report itself decides what window it charts."
+          },
+          "sendDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO day of week (1 = Monday … 7 = Sunday); read only when cadence is weekly."
+          },
+          "sendDayOfMonth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "description": "Day of month; read only when cadence is monthly. A day the month doesn't have clamps to its last day, so 31 means month end everywhere."
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23,
+            "description": "Local hour in `timezone` the delivery fires at."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA zone, e.g. `Europe/Berlin`. Validated server-side."
+          },
+          "slackChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored Slack channel row ids (from the targets endpoint) to post to."
+          },
+          "teamsWebhookIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stored Teams webhook row ids (from the targets endpoint) to post to."
+          },
+          "emailRecipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Email addresses; normalized (lowercased) server-side. At most 20."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "attachPdf": {
+            "type": "boolean",
+            "description": "Absent means `true`."
+          }
+        },
+        "required": [
+          "cadence",
+          "hour",
+          "timezone",
+          "slackChannelIds",
+          "teamsWebhookIds",
+          "emailRecipients",
+          "enabled"
+        ],
+        "additionalProperties": false,
+        "description": "A full replace. At least one destination is required. The same schedule shape as a cost report's delivery schedule, plus `attachPdf`."
+      },
+      "DashboardNotificationSendResult": {
+        "type": "object",
+        "properties": {
+          "attempted": {
+            "type": "integer"
+          },
+          "succeeded": {
+            "type": "integer"
+          },
+          "slack": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "teams": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "email": {
+            "type": "object",
+            "properties": {
+              "attempted": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "attempted",
+              "succeeded"
+            ],
+            "additionalProperties": false
+          },
+          "pdfAttached": {
+            "type": "boolean",
+            "description": "Whether a PDF was rendered and sent."
+          },
+          "slackFilesUploaded": {
+            "type": "integer",
+            "description": "Slack channels that also received the PDF. Lower than `slack.succeeded` when the Slack install predates the `files:write` scope."
+          }
+        },
+        "required": [
+          "attempted",
+          "succeeded",
+          "slack",
+          "teams",
+          "email",
+          "pdfAttached",
+          "slackFilesUploaded"
+        ],
+        "additionalProperties": false
+      },
       "ReportNotification": {
         "type": "object",
         "properties": {
@@ -5009,51 +6041,6 @@
           "createdByUserId",
           "createdAt",
           "updatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "ReportDeliveryTargetOption": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "The stored row id — what the schedule input carries."
-          },
-          "label": {
-            "type": "string",
-            "description": "Display label: `#channel` for Slack, the saved label for Teams."
-          }
-        },
-        "required": [
-          "id",
-          "label"
-        ],
-        "additionalProperties": false
-      },
-      "ReportDeliveryTargets": {
-        "type": "object",
-        "properties": {
-          "slackChannels": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ReportDeliveryTargetOption"
-            }
-          },
-          "teamsWebhooks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ReportDeliveryTargetOption"
-            }
-          },
-          "emailAvailable": {
-            "type": "boolean",
-            "description": "Whether this deployment can send mail at all. Addresses can be saved regardless, but they deliver nowhere until a mail provider is configured."
-          }
-        },
-        "required": [
-          "slackChannels",
-          "teamsWebhooks",
-          "emailAvailable"
         ],
         "additionalProperties": false
       },
@@ -5325,158 +6312,6 @@
           "createdByUserId",
           "createdAt",
           "updatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "DashboardNotificationInput": {
-        "type": "object",
-        "properties": {
-          "cadence": {
-            "type": "string",
-            "enum": [
-              "daily",
-              "weekly",
-              "monthly"
-            ],
-            "description": "How often the schedule fires. The report itself decides what window it charts."
-          },
-          "sendDay": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 7,
-            "description": "ISO day of week (1 = Monday … 7 = Sunday); read only when cadence is weekly."
-          },
-          "sendDayOfMonth": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 31,
-            "description": "Day of month; read only when cadence is monthly. A day the month doesn't have clamps to its last day, so 31 means month end everywhere."
-          },
-          "hour": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 23,
-            "description": "Local hour in `timezone` the delivery fires at."
-          },
-          "timezone": {
-            "type": "string",
-            "description": "IANA zone, e.g. `Europe/Berlin`. Validated server-side."
-          },
-          "slackChannelIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Stored Slack channel row ids (from the targets endpoint) to post to."
-          },
-          "teamsWebhookIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Stored Teams webhook row ids (from the targets endpoint) to post to."
-          },
-          "emailRecipients": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Email addresses; normalized (lowercased) server-side. At most 20."
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "attachPdf": {
-            "type": "boolean",
-            "description": "Absent means `true`."
-          }
-        },
-        "required": [
-          "cadence",
-          "hour",
-          "timezone",
-          "slackChannelIds",
-          "teamsWebhookIds",
-          "emailRecipients",
-          "enabled"
-        ],
-        "additionalProperties": false,
-        "description": "A full replace. At least one destination is required. The same schedule shape as a cost report's delivery schedule, plus `attachPdf`."
-      },
-      "DashboardNotificationSendResult": {
-        "type": "object",
-        "properties": {
-          "attempted": {
-            "type": "integer"
-          },
-          "succeeded": {
-            "type": "integer"
-          },
-          "slack": {
-            "type": "object",
-            "properties": {
-              "attempted": {
-                "type": "integer"
-              },
-              "succeeded": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "attempted",
-              "succeeded"
-            ],
-            "additionalProperties": false
-          },
-          "teams": {
-            "type": "object",
-            "properties": {
-              "attempted": {
-                "type": "integer"
-              },
-              "succeeded": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "attempted",
-              "succeeded"
-            ],
-            "additionalProperties": false
-          },
-          "email": {
-            "type": "object",
-            "properties": {
-              "attempted": {
-                "type": "integer"
-              },
-              "succeeded": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "attempted",
-              "succeeded"
-            ],
-            "additionalProperties": false
-          },
-          "pdfAttached": {
-            "type": "boolean",
-            "description": "Whether a PDF was rendered and sent."
-          },
-          "slackFilesUploaded": {
-            "type": "integer",
-            "description": "Slack channels that also received the PDF. Lower than `slack.succeeded` when the Slack install predates the `files:write` scope."
-          }
-        },
-        "required": [
-          "attempted",
-          "succeeded",
-          "slack",
-          "teams",
-          "email",
-          "pdfAttached",
-          "slackFilesUploaded"
         ],
         "additionalProperties": false
       },
@@ -12198,7 +13033,8 @@
                   "cost_graph",
                   "cost_report",
                   "budget",
-                  "custom_graph"
+                  "custom_graph",
+                  "cost_canvas"
                 ]
               },
               "title": {
@@ -25893,7 +26729,8 @@
         "enum": [
           "cost_report",
           "cost_report_folder",
-          "dashboard"
+          "dashboard",
+          "cost_canvas"
         ]
       },
       "OrgAccessLevel": {
@@ -41092,6 +41929,1051 @@
         },
         "operationId": "postOrgOrgIdCostReportsIdRun",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases": {
+      "get": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "List cost canvases",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Canvases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CostCanvas"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostCanvases",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Create a cost canvas from a spec",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostCanvasInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostCanvas"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostCanvases",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/draft": {
+      "post": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Start a canvas from a description",
+        "description": "Creates an empty canvas and a chat conversation linked to it. Send `prompt` as the conversation's first message (`POST /chat/conversations/{id}/messages`); the agent writes the spec. Needs `chat:write` as well as `costs:write`.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostCanvasDraftInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostCanvas"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostCanvasesDraft",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/preview": {
+      "post": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Run an unsaved canvas spec",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "spec": {
+                    "$ref": "#/components/schemas/CostCanvasSpec"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "includeChartData": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "spec"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostCanvasRunResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostCanvasesPreview",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/{id}": {
+      "get": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Get a cost canvas",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Canvas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostCanvas"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostCanvasesId",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Replace a cost canvas",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostCanvasInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostCanvas"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostCanvasesId",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Delete a cost canvas",
+        "description": "Soft delete. Its dashboard cards and delivery schedules go with it.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostCanvasesId",
+        "x-required-permission": "costs:write"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/{id}/run": {
+      "post": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Run (refresh) a cost canvas",
+        "description": "Re-executes every block's query. Deterministic; no model call.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "includeChartData": {
+                    "type": "boolean",
+                    "description": "Include full chart series. Default true; the live UI passes false."
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostCanvasRunResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostCanvasesIdRun",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/{id}/conversation": {
+      "post": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Open the caller's editing conversation for a canvas",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "fresh": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversationId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "00000000-0000-0000-0000-000000000000"
+                    }
+                  },
+                  "required": [
+                    "conversationId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostCanvasesIdConversation",
+        "x-required-permission": "costs:write",
+        "description": "_Requires permission: `costs:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/{id}/pdf": {
+      "get": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Export a cost canvas as a PDF",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown."
+            },
+            "required": false,
+            "description": "IANA zone the document's generated-at line is written in, e.g. `Europe/Berlin`. UTC when absent or unknown.",
+            "name": "tz",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The PDF, as an attachment",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostCanvasesIdPdf",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/{id}/notifications": {
+      "get": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "List a canvas's delivery schedules",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CostCanvasNotification"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostCanvasesIdNotifications",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "post": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Create a canvas delivery schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardNotificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostCanvasNotification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostCanvasesIdNotifications",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/{id}/notifications/targets": {
+      "get": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "List the destinations a canvas schedule can deliver to",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDeliveryTargets"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostCanvasesIdNotificationsTargets",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/{id}/notifications/{notificationId}": {
+      "put": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Replace a canvas delivery schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardNotificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostCanvasNotification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdCostCanvasesIdNotificationsNotificationId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      },
+      "delete": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Delete a canvas delivery schedule",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCostCanvasesIdNotificationsNotificationId",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
+      }
+    },
+    "/api/org/{orgId}/cost-canvases/{id}/notifications/{notificationId}/send": {
+      "post": {
+        "tags": [
+          "Cost canvases"
+        ],
+        "summary": "Send a canvas delivery now",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "notificationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardNotificationSendResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostCanvasesIdNotificationsNotificationIdSend",
+        "x-required-permission": "org:settings:write",
+        "description": "_Requires permission: `org:settings:write`._"
       }
     },
     "/api/org/{orgId}/cost-reports/{id}/notifications": {

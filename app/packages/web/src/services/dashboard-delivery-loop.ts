@@ -15,7 +15,9 @@
  */
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { runDashboardDeliveryPass } from "@infrawrench/server-core/report-delivery/dashboard";
+import { runCanvasDeliveryPass } from "@infrawrench/server-core/report-delivery/canvas";
 import { renderDashboardForDelivery } from "./dashboard-pdf";
+import { renderCanvasForDelivery } from "./cost-canvas-pdf";
 
 /** A minute: a delivery that lands a minute late is not late. */
 const DASHBOARD_DELIVERY_TICK_MS = 60_000;
@@ -27,6 +29,9 @@ class DashboardDeliveryLoop extends TickLoop {
 
   protected async runTick(): Promise<void> {
     await runDashboardDeliveryPass(renderDashboardForDelivery);
+    // Canvas schedules share the table and the loop: a canvas renders
+    // through the same web services a dashboard does.
+    await runCanvasDeliveryPass(renderCanvasForDelivery);
   }
 }
 

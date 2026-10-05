@@ -236,6 +236,8 @@ describe("chat approval gating", () => {
     ["run_workflow", { workflowId: "w1" }, true],
     ["write_custom_graph", { graphId: "g1", name: "renamed" }, false],
     ["write_custom_graph", { source: "graph.render({})" }, true],
+    ["write_cost_canvas", { name: "New canvas", spec: { version: 1, blocks: [] } }, false],
+    ["delete_cost_canvas", { canvasId: "c1" }, true],
   ])("%s %j needs approval: %s", async (name, input, expected) => {
     const tool = (await getToolRegistry()).find((t) => t.name === name);
     expect(tool, name).toBeDefined();

@@ -12,6 +12,7 @@ import { connectionTools } from "./connections";
 import { costTools } from "./costs";
 import { unitCostTools } from "./unit-costs";
 import { costReportTools } from "./cost-reports";
+import { costCanvasTools } from "./cost-canvases";
 import { costAlertTools } from "./cost-alerts";
 import { invoiceTools } from "./invoices";
 import { scheduleTools } from "./schedules";
@@ -38,6 +39,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...costTools(),
     ...unitCostTools(),
     ...costReportTools(),
+    ...costCanvasTools(),
     ...costAlertTools(),
     ...invoiceTools(),
     ...scheduleTools(),

@@ -130,6 +130,17 @@ infrawrench dashboards send "Platform"     # deliver it to its schedules right n
 
 <insert [Terminal showing `infrawrench reports` listing three saved reports, then `infrawrench reports "Monthly spend"` with its sparkline and per-service bar chart] here>
 
+`canvas` reads the org's [canvases](./ai-canvas.md), the reports the AI assistant builds from a description. `canvas show` prints a canvas's blocks; `canvas refresh` re-runs every query (no model call) and prints each KPI, table, chart total, budget and anomaly. `--json` carries the full result, and `--format pdf` saves the rendered canvas:
+
+```
+infrawrench canvas list
+infrawrench canvas show "AI spend by team"
+infrawrench canvas refresh "AI spend by team" --json
+infrawrench canvas refresh "AI spend by team" --format pdf --out ai-spend.pdf
+```
+
+<insert [Terminal showing `infrawrench canvas refresh "AI spend by team"` with KPI lines, a monthly table by team, and a chart total with its sparkline] here>
+
 `exports` lists the org's [scheduled cost exports](./cost-exports.md) — each one's format, schedule, destination, and the outcome of its last run, with any failure printed in full below the table. A nightly export that stopped working is invisible until somebody asks the warehouse why last week is missing, which is exactly what this command is for:
 
 ```

@@ -8,7 +8,7 @@ const IsoDate = z
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .openapi({ example: "2026-07-01" });
 
-const ReportCostFilter = strict({
+export const ReportCostFilter = strict({
   dimension: z.enum([
     "provider",
     "account",
@@ -24,11 +24,11 @@ const ReportCostFilter = strict({
   tagKey: z.string().optional(),
 }).openapi("CostReportFilter");
 
-const CostDateRange = z
+export const CostDateRange = z
   .union([
     strict({
       kind: z.literal("relative"),
-      preset: z.enum(["7d", "30d", "90d", "mtd", "last_month", "qtd", "ytd", "12m"]),
+      preset: z.enum(["7d", "30d", "90d", "mtd", "last_month", "qtd", "ytd", "6m", "12m"]),
     }),
     strict({ kind: z.literal("absolute"), from: IsoDate, to: IsoDate }),
   ])
@@ -38,7 +38,7 @@ const CostDateRange = z
   )
   .openapi("CostDateRange");
 
-const CostGraphConfig = strict({
+export const CostGraphConfig = strict({
   version: z.literal(1),
   chartType: z.enum(["stacked_bar", "multi_bar", "line", "area", "pie"]),
   binning: z.enum(["daily", "weekly", "monthly", "cumulative"]),

@@ -19,6 +19,7 @@ import type { CostCapabilityDeclaration, CostChargeType } from "@infrawrench/plu
 
 import type { CostReportWidgetConfig } from "./cost-reports";
 import type { CustomGraphWidgetConfig } from "./custom-graphs";
+import type { CostCanvasWidgetConfig } from "./cost-canvases";
 // Type-only, and deliberately one-way at runtime: `cost-scenarios.ts` is the
 // module that knows what a scenario *is*, this one only knows that a query can
 // carry one and a response can come back with one.
@@ -220,6 +221,7 @@ export const COST_RANGE_PRESETS = [
   "last_month",
   "qtd",
   "ytd",
+  "6m",
   "12m",
 ] as const;
 export type CostRangePreset = (typeof COST_RANGE_PRESETS)[number];
@@ -446,6 +448,7 @@ export const COST_RANGE_PRESET_LABELS: Record<CostRangePreset, string> = {
   last_month: "Last month",
   qtd: "Quarter to date",
   ytd: "Year to date",
+  "6m": "Last 6 months",
   "12m": "Last 12 months",
 };
 
@@ -471,6 +474,7 @@ export const DASHBOARD_WIDGET_KINDS = [
   "cost_report",
   "budget",
   "custom_graph",
+  "cost_canvas",
 ] as const;
 export type DashboardWidgetKind = (typeof DASHBOARD_WIDGET_KINDS)[number];
 
@@ -480,7 +484,12 @@ export interface DashboardWidget {
   dashboardId: string;
   kind: DashboardWidgetKind;
   title: string;
-  config: CostGraphConfig | CostReportWidgetConfig | BudgetWidgetConfig | CustomGraphWidgetConfig;
+  config:
+    | CostGraphConfig
+    | CostReportWidgetConfig
+    | BudgetWidgetConfig
+    | CustomGraphWidgetConfig
+    | CostCanvasWidgetConfig;
   gridX: number;
   gridY: number;
   gridW: number;
@@ -793,6 +802,8 @@ export function resolveCostDateRange(
       return { from: iso(new Date(Date.UTC(y, Math.floor(m / 3) * 3, 1))), to };
     case "ytd":
       return { from: iso(new Date(Date.UTC(y, 0, 1))), to };
+    case "6m":
+      return { from: iso(new Date(Date.UTC(y, m - 6, today.getUTCDate()))), to };
     case "12m":
       return { from: iso(new Date(Date.UTC(y - 1, m, today.getUTCDate()))), to };
   }
