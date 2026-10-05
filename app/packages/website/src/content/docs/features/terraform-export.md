@@ -47,6 +47,7 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 | Databricks      | `databricks/databricks`     | Clusters, SQL warehouses, catalogs, schemas                                                                                                            |
 | Snowflake       | `snowflakedb/snowflake`     | Warehouses, databases, schemas, resource monitors                                                                                                      |
 | Netlify         | `netlify/netlify`           | DNS zones, DNS records, environment variables                                                                                                          |
+| Datadog         | `datadog/datadog`           | Monitors (`datadog_monitor`) with thresholds, priority and tags                                                                                        |
 | New Relic       | `newrelic/newrelic`         | Alert policies (`newrelic_alert_policy`) with their incident preference                                                                                |
 | Crusoe Cloud    | `crusoecloud/crusoe`        | Projects, VMs, disks, VPC networks, subnets, firewall rules, Kubernetes clusters, node pools                                                           |
 | CoreWeave       | `coreweave/coreweave`       | CKS clusters, VPCs, AI Object Storage buckets                                                                                                          |

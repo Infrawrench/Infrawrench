@@ -144,6 +144,17 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   // (`{org}-{hash}.k8s.{zone}.coreweave.com`); bucket data is on cwobject.com.
   coreweave: ["*.coreweave.com", "cwobject.com", "*.cwobject.com"],
   cursor: ["api.cursor.com"],
+  datadog: [
+    "api.datadoghq.com",
+    "api.us3.datadoghq.com",
+    "api.us5.datadoghq.com",
+    "api.datadoghq.eu",
+    "api.ap1.datadoghq.com",
+    "api.ap2.datadoghq.com",
+    "api.uk1.datadoghq.com",
+    "api.ddog-gov.com",
+    "api.us2.ddog-gov.com",
+  ],
   deepgram: ["api.deepgram.com"],
   "elastic-cloud": ["api.elastic-cloud.com", "billing.elastic-cloud.com"],
   modal: ["api.modal.com"],

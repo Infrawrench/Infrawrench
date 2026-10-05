@@ -102,6 +102,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   crusoe: { accessKeyId: "TESTACCESSKEY", secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM" },
   coreweave: { apiToken: "CW-SECRET-test" },
   modal: { tokenId: "ak-test-modal", tokenSecret: "as-test-modal" },
+  datadog: { site: "us1", apiKey: "test-datadog-api-key", appKey: "test-datadog-app-key" },
   azure: {
     tenantId: "test-tenant-id",
     clientId: "test-client-id",

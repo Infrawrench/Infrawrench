@@ -59,6 +59,7 @@ export const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-cohere"),
   () => import("@infrawrench/plugin-coralogix"),
   () => import("@infrawrench/plugin-cursor"),
+  () => import("@infrawrench/plugin-datadog"),
   () => import("@infrawrench/plugin-deepgram"),
   () => import("@infrawrench/plugin-deepseek"),
   () => import("@infrawrench/plugin-devin"),
